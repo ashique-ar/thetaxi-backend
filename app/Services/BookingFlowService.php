@@ -9400,6 +9400,13 @@ class BookingFlowService
                 'booking.corporateDivision:id,name',
             ]);
 
+        $companyId = $filters['company_id'] ?? app(WebsiteSettingsService::class)->resolveCurrentCompanyId();
+        if ($companyId) {
+            $query->whereHas('booking', fn ($bookingQuery) => CompanyBookingScope::constrain($bookingQuery, 'bookings', (string) $companyId));
+        } else {
+            $query->whereRaw('1 = 0');
+        }
+
         if (!empty($filters['corporate_id'])) {
             $query->whereHas('booking', function ($bookingQuery) use ($filters) {
                 $bookingQuery->where('corporate_account_id', $filters['corporate_id']);
@@ -11432,6 +11439,7 @@ class BookingFlowService
         [$startDate, $endDate] = $this->getDateRange($period, $dateFrom, $dateTo);
 
         $query = Booking::whereBetween('created_at', [$startDate, $endDate]);
+        $this->applyBookingCompanyFilter($query, $params);
 
         if (($params['dashboard_scope'] ?? null) === 'standard') {
             $query->whereNull('corporate_account_id');
@@ -11474,6 +11482,7 @@ class BookingFlowService
         $groupBy = $params['group_by'] ?? null;
 
         $query = Booking::whereBetween('created_at', [$dateFrom, $dateTo]);
+        $this->applyBookingCompanyFilter($query, $params);
 
         $trends = [];
         $current = $dateFrom->copy();
@@ -11542,6 +11551,7 @@ class BookingFlowService
 
         $query = Booking::whereBetween('created_at', [$dateFrom, $dateTo])
             ->where('status', 'completed');
+        $this->applyBookingCompanyFilter($query, $params);
 
         $revenueStats = (clone $query)
             ->selectRaw('SUM(COALESCE(total_actual, total_estimated, 0)) as total_revenue')
@@ -11603,6 +11613,7 @@ class BookingFlowService
 
         $baseQuery = Booking::with('customer')
             ->whereBetween('created_at', [$dateFrom, $dateTo]);
+        $this->applyBookingCompanyFilter($baseQuery, $params);
 
         if ($customerSegment) {
             $baseQuery->whereHas('customer', function ($q) use ($customerSegment) {
@@ -11635,6 +11646,13 @@ class BookingFlowService
         $includeRelations = $params['include_relations'] ?? false;
 
         $query = Booking::query();
+
+        $companyId = $filters['company_id'] ?? $params['company_id'] ?? app(WebsiteSettingsService::class)->resolveCurrentCompanyId();
+        if ($companyId) {
+            CompanyBookingScope::constrain($query, 'bookings', (string) $companyId);
+        } else {
+            $query->whereRaw('1 = 0');
+        }
 
         // Apply filters (reuse filtering logic)
         if (!empty($filters)) {
@@ -11814,6 +11832,17 @@ class BookingFlowService
     private function getDashboardAlerts(): array
     {
         return [];
+    }
+
+    private function applyBookingCompanyFilter($query, array $params): void
+    {
+        $companyId = $params['company_id'] ?? app(WebsiteSettingsService::class)->resolveCurrentCompanyId();
+        if ($companyId) {
+            CompanyBookingScope::constrain($query, 'bookings', (string) $companyId);
+            return;
+        }
+
+        $query->whereRaw('1 = 0');
     }
 
     private function getTrendBreakdown($query, $groupBy, $metric): array
@@ -12982,19 +13011,21 @@ class BookingFlowService
                 $activities = $Activity::query()
                     ->where('subject_type', Booking::class)
                     ->where('subject_id', $bookingId)
-                    ->whereIn('description', [
-                        'vehicle_assigned',
-                        'driver_assigned',
-                        'vehicle_unassigned',
-                        'driver_unassigned',
-                        'assignment_swap',
-                        'assignment_breakdown',
-                        'assignment_approved',
-                        'assignment_conflict_resolved'
-                    ])
-                    ->orWhere('description', 'like', '%assigned%')
-                    ->orWhere('description', 'like', '%vehicle%')
-                    ->orWhere('description', 'like', '%driver%')
+                    ->where(function ($query) {
+                        $query->whereIn('description', [
+                            'vehicle_assigned',
+                            'driver_assigned',
+                            'vehicle_unassigned',
+                            'driver_unassigned',
+                            'assignment_swap',
+                            'assignment_breakdown',
+                            'assignment_approved',
+                            'assignment_conflict_resolved',
+                        ])
+                            ->orWhere('description', 'like', '%assigned%')
+                            ->orWhere('description', 'like', '%vehicle%')
+                            ->orWhere('description', 'like', '%driver%');
+                    })
                     ->orderByDesc('created_at')
                     ->get();
 
@@ -13187,9 +13218,10 @@ class BookingFlowService
     private function createBookingInquiryFromSource(array $params, string $sourceType, string $sourceId, string $actorUserId): array
     {
         [$booking, $created, $companyId] = DB::transaction(function () use ($params, $sourceType, $sourceId, $actorUserId): array {
-            $companyId = (string) (app(SingleCompanyScope::class)->activeDefaultCompany(true)?->id ?? '');
-            abort_unless($companyId !== '', 409, 'No active business is configured.');
             if ($sourceType === 'phone_call') {
+                $companyId = (string) (app(WebsiteSettingsService::class)->resolveCurrentCompanyId() ?? '');
+                abort_unless($companyId !== '', 409, 'Select an active business before creating a booking request.');
+                app(CompanySettingsAccessService::class)->assertCanAccess(User::query()->findOrFail($actorUserId), $companyId);
                 $source = PhoneCall::query()->where('company_id', $companyId)->lockForUpdate()->findOrFail($sourceId);
                 if ($source->booking_id) {
                     $existing = Booking::query()->whereKey($source->booking_id);
@@ -13200,6 +13232,8 @@ class BookingFlowService
                     return [$existing, false, $companyId];
                 }
             } else {
+                $companyId = (string) (app(SingleCompanyScope::class)->activeDefaultCompany(true)?->id ?? '');
+                abort_unless($companyId !== '', 409, 'No active business is configured.');
                 $source = IntegrationWebhookEvent::query()->where('company_id', $companyId)->where('provider', 'respond_io')
                     ->incomingMessage()->lockForUpdate()->findOrFail($sourceId);
                 if ($source->linked_booking_id) {

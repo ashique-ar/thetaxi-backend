@@ -13,7 +13,8 @@ use App\Services\Sales\BookingCommercialValueAdjustmentService;
 use App\Services\Sales\CommissionPlanResolver;
 use App\Services\Sales\SalesAccessScope;
 use App\Services\Sales\SalesCollectionCompanyIntegrity;
-use App\Services\SingleCompanyScope;
+use App\Services\CompanySettingsAccessService;
+use App\Services\WebsiteSettingsService;
 use Carbon\Carbon;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Exceptions\HttpResponseException;
@@ -78,7 +79,7 @@ class SalesBookingAttributionController extends Controller
         ]);
         $data['company_id'] = $this->resolveCompanyId($data['company_id'] ?? null);
         $includeUnassignedOwnerReviews = $this->scope->hasPermission($request->user(), 'sales.attributions.view-all')
-            && (string) $data['company_id'] === (string) (app(SingleCompanyScope::class)->activeDefaultCompany()?->id ?? '');
+            && (string) $data['company_id'] === $this->currentCompanyId();
 
         $query = DB::table('sales_attribution_exceptions as exception')
             ->join('bookings as booking', 'booking.id', '=', 'exception.booking_id')
@@ -133,7 +134,7 @@ class SalesBookingAttributionController extends Controller
 
         $profileIds = $this->actorProfileIds($request, $data['company_id'] ?? null);
         $includeUnownedOwnerReviews = $this->scope->hasPermission($request->user(), 'sales.attributions.view-all')
-            && (string) $data['company_id'] === (string) (app(SingleCompanyScope::class)->activeDefaultCompany()?->id ?? '');
+            && (string) $data['company_id'] === $this->currentCompanyId();
         $bookings = Booking::query()
             ->where(fn ($q) => $q->where('confirmed', true)->orWhere('status', 'confirmed')->orWhereNotNull('confirmed_at'))
             ->whereDoesntHave('salesAttribution')
@@ -183,7 +184,7 @@ class SalesBookingAttributionController extends Controller
             if($prior){abort_unless(hash_equals($prior->preview_checksum,$data['preview_checksum'])&&hash_equals($prior->booking_scope_checksum,$scopeChecksum),409,'Historical attribution batch key was reused with different evidence.');return response()->json(['status'=>'success','data'=>json_decode($prior->result_snapshot,true,512,JSON_THROW_ON_ERROR),'idempotent_replay'=>true]);}
             $profileIds=$this->actorProfileIds($request,$data['company_id']);
             $includeUnownedOwnerReviews=$this->scope->hasPermission($request->user(),'sales.attributions.view-all')
-                && (string)$data['company_id']===(string)(app(SingleCompanyScope::class)->activeDefaultCompany()?->id??'');
+                && (string)$data['company_id']===$this->currentCompanyId();
             $bookings=Booking::query()->whereIn('id',$data['booking_ids'])->where(fn($q)=>$q->where('confirmed',true)->orWhere('status','confirmed')->orWhereNotNull('confirmed_at'))->whereDoesntHave('salesAttribution')->orderBy('id')->lockForUpdate()->get();
             abort_unless($bookings->count()===count($data['booking_ids']),409,'The historical booking set changed; create a new preview.');
             $rows=$bookings->map(fn(Booking $booking)=>$this->attributions->preview($booking))->filter(fn(array$row)=>($row['company_id']===$data['company_id']||($includeUnownedOwnerReviews&&in_array('historical_company_owner_review_required',$row['holds'],true)))&&(in_array('historical_company_owner_review_required',$row['holds'],true)?$includeUnownedOwnerReviews:($profileIds===null||in_array($row['acquisition_sales_profile_id'],$profileIds,true)||in_array($row['collection_sales_profile_id'],$profileIds,true))))->values();
@@ -419,6 +420,7 @@ class SalesBookingAttributionController extends Controller
     {
         $data = $request->validate(['company_id' => ['nullable', 'uuid', 'exists:companies,id']]);
         if (! empty($data['company_id'])) {
+            $this->assertSelectedStaffCompany($request, (string) $data['company_id']);
             abort_unless(DB::table('companies')->where('id', $data['company_id'])->whereNull('deleted_at')->exists(), 422, 'Select an available legal entity.');
             $this->scope->assertCompany($request->user(), $data['company_id'], 'sales.attributions.view-all');
         }
@@ -426,7 +428,7 @@ class SalesBookingAttributionController extends Controller
         $authorizedCompanies = DB::table('companies')->whereNull('deleted_at')->where('is_active', true)
             ->when($companyIds !== null, fn ($query) => $query->whereIn('id', $companyIds))
             ->get(['id', 'is_default']);
-        $defaultCompanyId = app(SingleCompanyScope::class)->activeDefaultCompany()?->id;
+        $defaultCompanyId = $this->currentCompanyId() ?: null;
         if ($defaultCompanyId && ! $authorizedCompanies->contains('id', $defaultCompanyId)) $defaultCompanyId = null;
         return response()->json(['status' => 'success', 'data' => [
             'can_correct' => $this->scope->hasPermission($request->user(), 'sales.attributions.correct'),
@@ -441,7 +443,12 @@ class SalesBookingAttributionController extends Controller
             'page' => ['nullable', 'integer', 'min:1'], 'per_page' => ['nullable', 'integer', 'min:1', 'max:50'],
         ]);
         $companyIds = $this->scope->companyIds($request->user(), 'sales.attributions.view-all');
-        $defaultCompanyId = app(SingleCompanyScope::class)->activeDefaultCompany()?->id;
+        $defaultCompanyId = $this->currentCompanyId() ?: null;
+        if ($request->header('X-Active-Context-Type') === 'staff') {
+            abort_unless($defaultCompanyId, 409, 'Select an active business for Sales work.');
+            $this->assertSelectedStaffCompany($request, $defaultCompanyId);
+            $companyIds = [(string) $defaultCompanyId];
+        }
         if ($defaultCompanyId && $companyIds !== null && ! in_array($defaultCompanyId, $companyIds, true)) $defaultCompanyId = null;
         $query = DB::table('companies')->whereNull('deleted_at')
             ->when($companyIds !== null, fn ($company) => $company->whereIn('id', $companyIds));
@@ -612,9 +619,26 @@ class SalesBookingAttributionController extends Controller
 
     private function resolveCompanyId(?string $companyId): string
     {
-        $companyId = $companyId ?: app(SingleCompanyScope::class)->activeDefaultCompany()?->id;
-        abort_unless($companyId, 409, 'No active default legal entity is configured.');
+        $companyId = $companyId ?: $this->currentCompanyId();
+        abort_unless($companyId, 409, 'Select an active business for Sales work.');
+        if (request()->header('X-Active-Context-Type') === 'staff') {
+            $this->assertSelectedStaffCompany(request(), (string) $companyId);
+        }
 
         return (string) $companyId;
+    }
+
+    private function currentCompanyId(): ?string
+    {
+        $companyId = app(WebsiteSettingsService::class)->resolveCurrentCompanyId();
+
+        return $companyId ? (string) $companyId : null;
+    }
+
+    private function assertSelectedStaffCompany(Request $request, string $companyId): void
+    {
+        if ($request->header('X-Active-Context-Type') === 'staff') {
+            app(CompanySettingsAccessService::class)->assertCanAccess($request->user(), $companyId);
+        }
     }
 }

@@ -5,10 +5,12 @@ namespace App\Http\Controllers\Api\Website;
 use App\Http\Controllers\Controller;
 use App\Models\Website\WebsiteSetting;
 use App\Models\Company;
+use App\Models\BusinessSetting;
 use App\Http\Requests\Website\WebsiteSetting\CreateWebsiteSettingRequest;
 use App\Http\Requests\Website\WebsiteSetting\UpdateWebsiteSettingRequest;
 use App\Http\Resources\Website\WebsiteSettingResource;
 use App\Services\WebsiteSettingsService;
+use App\Services\CompanySettingsAccessService;
 use App\Services\Hr\Attendance\AttendanceIngestionActivationGuard;
 use Illuminate\Http\Request;
 use Illuminate\Http\JsonResponse;
@@ -74,6 +76,8 @@ class WebsiteSettingController extends Controller
     public function store(CreateWebsiteSettingRequest $request): JsonResponse
     {
         $data = $request->validated();
+        $this->validateCompanyWorkflowSetting($data['type'], $data['value'] ?? null);
+        $this->validateCheckoutVerificationResendDelay($data['type'], $data['value'] ?? null);
         $this->attendanceActivation->assertCanEnable($request->user(), $data['type'], $data['value'] ?? null);
         $data['value'] = WebsiteSetting::normalizeValue($data['value'] ?? null);
         $data['company_id'] = $data['type'] === 'feature_hr_attendance_ingestion_enabled'
@@ -105,6 +109,14 @@ class WebsiteSettingController extends Controller
     public function update(UpdateWebsiteSettingRequest $request, WebsiteSetting $websiteSetting): JsonResponse
     {
         $data = $request->validated();
+        $this->validateCompanyWorkflowSetting(
+            $data['type'] ?? (string) $websiteSetting->type,
+            array_key_exists('value', $data) ? $data['value'] : $websiteSetting->value,
+        );
+        $this->validateCheckoutVerificationResendDelay(
+            $data['type'] ?? $websiteSetting->type,
+            array_key_exists('value', $data) ? $data['value'] : $websiteSetting->value,
+        );
         $this->attendanceActivation->assertTypeCanChange(
             (string) $websiteSetting->type, (string) ($data['type'] ?? $websiteSetting->type),
         );
@@ -165,6 +177,7 @@ class WebsiteSettingController extends Controller
         $type = "{$section}.{$key}";
         $companyId = $this->settingsService->resolveCurrentCompanyId();
         $value = array_key_exists('setting_value', $data) ? $data['setting_value'] : ($data['value'] ?? null);
+        $this->validateCheckoutVerificationResendDelay($type, $value);
         $this->attendanceActivation->assertCanEnable($request->user(), $type, $value);
         $setting = WebsiteSetting::updateOrCreate(
             ['type' => $type, 'company_id' => $companyId],
@@ -223,6 +236,8 @@ class WebsiteSettingController extends Controller
 
         $settings = $this->normalizeBookingWorkflowSettingList($request->settings);
         foreach ($settings as $settingData) {
+            $this->validateCompanyWorkflowSetting($settingData['type'], $settingData['value'] ?? null);
+            $this->validateCheckoutVerificationResendDelay($settingData['type'], $settingData['value'] ?? null);
             $this->attendanceActivation->assertCanEnable($request->user(), $settingData['type'], $settingData['value'] ?? null);
         }
 
@@ -333,6 +348,19 @@ class WebsiteSettingController extends Controller
                 'message' => 'Validation failed',
                 'errors' => $validator->errors()
             ], 422);
+        }
+
+        if ($category === 'booking' && array_key_exists('checkout_customer_verification_resend_seconds', $request->input('settings', []))) {
+            $resendValidator = Validator::make($request->input('settings', []), [
+                'checkout_customer_verification_resend_seconds' => ['required', 'integer', 'between:30,600'],
+            ]);
+            if ($resendValidator->fails()) {
+                return response()->json([
+                    'status' => 'error',
+                    'message' => 'Set the verification resend delay to a whole number between 30 and 600 seconds.',
+                    'errors' => $resendValidator->errors(),
+                ], 422);
+            }
         }
 
         if ($category === 'booking' && array_key_exists('feature_hr_attendance_ingestion_enabled', $request->input('settings', []))) {
@@ -453,6 +481,9 @@ class WebsiteSettingController extends Controller
             $settings = $category === 'booking'
                 ? $this->normalizeBookingWorkflowSettings($request->settings)
                 : $request->settings;
+            foreach ($settings as $type => $value) {
+                $this->validateCompanyWorkflowSetting((string) $type, $value);
+            }
 
             if ($category === 'appearance' && array_key_exists('active_theme', $settings)) {
                 $requestedTheme = is_string($settings['active_theme']) ? $settings['active_theme'] : null;
@@ -796,5 +827,26 @@ class WebsiteSettingController extends Controller
             'on',
             'enabled',
         ], true);
+    }
+
+    private function validateCheckoutVerificationResendDelay(string $type, mixed $value): void
+    {
+        if ($type !== 'checkout_customer_verification_resend_seconds') {
+            return;
+        }
+
+        Validator::make([$type => $value], [
+            $type => ['required', 'integer', 'between:30,600'],
+        ])->validate();
+    }
+
+    private function validateCompanyWorkflowSetting(string $type, mixed $value): void
+    {
+        if (in_array($type, BusinessSetting::COMPANY_SCOPED_WORKFLOW_KEYS, true)) {
+            Validator::make(['value' => $value], ['value' => ['required', 'boolean']])->validate();
+            $companyId = $this->settingsService->resolveCurrentCompanyId();
+            abort_unless($companyId, 422, 'Select an active business before changing its workflow settings.');
+            app(CompanySettingsAccessService::class)->assertCanAccess(request()->user(), $companyId, true);
+        }
     }
 }

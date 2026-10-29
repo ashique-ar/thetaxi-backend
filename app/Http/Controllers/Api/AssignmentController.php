@@ -10,6 +10,7 @@ use App\Services\BookingPaymentLedgerService;
 use App\Services\Sales\SalesAccessScope;
 use App\Services\Sales\SalesCollectionCompanyIntegrity;
 use App\Models\Booking\Booking;
+use App\Models\Company;
 use App\Models\Booking\BookingActivity;
 use App\Models\Booking\BookingPaymentReceipt;
 use App\Enums\BookingLifecycleStatus;
@@ -17,6 +18,8 @@ use App\Models\Driver\RoutePoint;
 use App\Models\Driver\DriverSession;
 use App\Models\Driver\Driver;
 use App\Services\Driver\NotificationTriggerService;
+use App\Services\CompanySettingsAccessService;
+use App\Services\WebsiteSettingsService;
 use App\Models\Vehicle\VehicleAddon;
 use App\Notifications\BookingLifecycleNotification;
 use App\Models\Booking\BookingAddon;
@@ -221,6 +224,8 @@ class AssignmentController extends Controller
                     : (is_array($booking->pricing_snapshot) ? $booking->pricing_snapshot : [])
             );
             $customerUser = $booking->customer?->user;
+            $hasSentQuotation = BookingActivity::query()->where('booking_id', $booking->id)
+                ->whereNull('deleted_at')->where('event_key', 'quotation_email_sent')->where('result_status', 'sent')->exists();
             $canManagePrice = Auth::user()?->can('bookings.price_override') === true;
             $canUpdateBooking = Auth::user()?->can('bookings.update') === true;
             $canDeleteBooking = Auth::user()?->can('bookings.delete') === true;
@@ -262,6 +267,7 @@ class AssignmentController extends Controller
                     'dropoff_latitude' => $dropoffLatitude,
                     'dropoff_longitude' => $dropoffLongitude,
                     'status' => $booking->status,
+                    'has_sent_quotation' => $hasSentQuotation,
                     'can_cancel' => $canUpdateBooking && $booking->canBeCancelled(),
                     'cancellation_block_reason' => $canUpdateBooking ? $booking->cancellationBlockReason() : null,
                     'can_delete_draft' => $canDeleteBooking && (string) $booking->status === 'draft',
@@ -386,6 +392,13 @@ class AssignmentController extends Controller
                             'manually_confirmed' => $assignment->manually_confirmed,
                             'assigned_from' => $assignment->assigned_from,
                             'assigned_to' => $assignment->assigned_to,
+                            'overlap_details' => collect($assignment->overlap_details ?? [])->map(fn ($conflict) => [
+                                'service_type' => $conflict['service_type'] ?? null,
+                                'from_datetime' => $conflict['from_datetime'] ?? null,
+                                'to_datetime' => $conflict['to_datetime'] ?? null,
+                                'status' => $conflict['status'] ?? null,
+                                'overlap_type' => $conflict['overlap_type'] ?? null,
+                            ])->values()->all(),
                             'booking_item_id' => $assignment->booking_item_id,
                             'vehicle' => $assignment->vehicle ? [
                                 'id' => $assignment->vehicle->id,
@@ -404,6 +417,13 @@ class AssignmentController extends Controller
                             'manually_confirmed' => $assignment->manually_confirmed,
                             'assigned_from' => $assignment->assigned_from,
                             'assigned_to' => $assignment->assigned_to,
+                            'overlap_details' => collect($assignment->overlap_details ?? [])->map(fn ($conflict) => [
+                                'service_type' => $conflict['service_type'] ?? null,
+                                'from_datetime' => $conflict['from_datetime'] ?? null,
+                                'to_datetime' => $conflict['to_datetime'] ?? null,
+                                'status' => $conflict['status'] ?? null,
+                                'overlap_type' => $conflict['overlap_type'] ?? null,
+                            ])->values()->all(),
                             'booking_item_id' => $assignment->booking_item_id,
                             'decline_reason' => $assignment->decline_reason,
                             'driver' => $assignment->driver ? [
@@ -1790,8 +1810,7 @@ class AssignmentController extends Controller
 
         try {
             return DB::transaction(function () use ($request) {
-                $company = app(\App\Services\SingleCompanyScope::class)->activeDefaultCompany(true);
-                if (! $company) throw new \Symfony\Component\HttpKernel\Exception\HttpException(409, 'Set one active default company before swapping resources.');
+                $company = $this->selectedActiveCompanyForUpdate($request);
                 $bookingQuery = Booking::with(['customer', 'bookingItems'])->whereKey($request->booking_id);
                 \App\Services\CompanyBookingScope::constrain($bookingQuery, 'bookings', (string) $company->id);
                 $booking = $bookingQuery->lockForUpdate()->firstOrFail();
@@ -2214,8 +2233,7 @@ class AssignmentController extends Controller
 
         try {
             return DB::transaction(function () use ($request) {
-                $company = app(\App\Services\SingleCompanyScope::class)->activeDefaultCompany(true);
-                if (! $company) throw new \Symfony\Component\HttpKernel\Exception\HttpException(409, 'Set one active default company before recording a breakdown.');
+                $company = $this->selectedActiveCompanyForUpdate($request);
                 $bookingQuery = Booking::with('bookingItems')->whereKey($request->booking_id);
                 \App\Services\CompanyBookingScope::constrain($bookingQuery, 'bookings', (string) $company->id);
                 $booking = $bookingQuery->lockForUpdate()->firstOrFail();
@@ -2335,6 +2353,16 @@ class AssignmentController extends Controller
     /**
      * Calculate vehicle pricing for a specific period (helper method)
      */
+    private function selectedActiveCompanyForUpdate(Request $request): Company
+    {
+        $companyId = app(WebsiteSettingsService::class)->resolveCurrentCompanyId();
+        abort_unless($companyId, 409, 'Select an active business before managing a booking.');
+        app(CompanySettingsAccessService::class)->assertCanAccess($request->user(), (string) $companyId);
+
+        return Company::query()->whereKey($companyId)->where('is_active', true)
+            ->whereNull('deleted_at')->lockForUpdate()->firstOrFail();
+    }
+
     private function calculateVehiclePricingForPeriod(string $vehicleId, Carbon $from, Carbon $to): float
     {
         try {

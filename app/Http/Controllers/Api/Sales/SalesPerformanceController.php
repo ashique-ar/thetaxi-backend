@@ -14,7 +14,8 @@ use App\Services\Sales\SalesAlertReconciliationService;
 use App\Services\Sales\SalesPeriodCloseService;
 use App\Services\Sales\SalesPerformanceService;
 use App\Services\Sales\SalesPortfolioStatusService;
-use App\Services\SingleCompanyScope;
+use App\Services\CompanySettingsAccessService;
+use App\Services\WebsiteSettingsService;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
@@ -66,13 +67,18 @@ class SalesPerformanceController extends Controller
     public function administrationContext(Request $request): JsonResponse
     {
         $ids = $this->scope->profileIds($request->user(), 'sales.performance.view-all', 'sales.performance.view-team');
+        $activeCompanyId = app(WebsiteSettingsService::class)->resolveCurrentCompanyId();
+        if ($activeCompanyId && $request->header('X-Active-Context-Type') === 'staff') {
+            app(CompanySettingsAccessService::class)->assertCanAccess($request->user(), (string) $activeCompanyId);
+        }
         $companyIds = SalesProfile::query()->where('status', 'active')->activeAt(now())
+            ->when($activeCompanyId && $request->header('X-Active-Context-Type') === 'staff', fn ($query) => $query->where('company_id', $activeCompanyId))
             ->whereHas('staff', fn ($query) => $query->where(fn ($active) => $active->whereNull('employment_ended_at')->orWhere('employment_ended_at', '>', now())))
             ->when($ids !== null, fn ($query) => $query->whereIn('id', $ids))
             ->select('company_id')->distinct()->pluck('company_id');
         $companyLabels = DB::table('companies')->whereNull('deleted_at')->whereIn('id', $companyIds)->orderBy('name')->get(['id', 'name', 'is_active'])
             ->map(fn ($company) => ['id' => $company->id, 'name' => $company->name, 'is_active' => (bool) $company->is_active]);
-        $defaultCompanyId = app(SingleCompanyScope::class)->activeDefaultCompany()?->id;
+        $defaultCompanyId = $activeCompanyId;
         if ($defaultCompanyId && ! $companyIds->contains($defaultCompanyId)) $defaultCompanyId = null;
         $policies = SalesAlertPolicyVersion::query()->whereIn('company_id', $companyIds)->orderByDesc('effective_from')->orderByDesc('version')->get();
         $portfolioStatusPolicies = collect();
@@ -181,12 +187,17 @@ class SalesPerformanceController extends Controller
         $profileIds = $this->scope->profileIds(
             $request->user(), 'sales.performance.view-all', 'sales.performance.view-team',
         );
+        $activeCompanyId = app(WebsiteSettingsService::class)->resolveCurrentCompanyId();
+        if ($activeCompanyId && $request->header('X-Active-Context-Type') === 'staff') {
+            app(CompanySettingsAccessService::class)->assertCanAccess($request->user(), (string) $activeCompanyId);
+        }
         $companyIds = SalesProfile::query()->where('status', 'active')->activeAt(now())
+            ->when($activeCompanyId && $request->header('X-Active-Context-Type') === 'staff', fn ($query) => $query->where('company_id', $activeCompanyId))
             ->whereHas('staff', fn ($query) => $query->where(fn ($active) => $active
                 ->whereNull('employment_ended_at')->orWhere('employment_ended_at', '>', now())))
             ->when($profileIds !== null, fn ($query) => $query->whereIn('id', $profileIds))
             ->pluck('company_id')->filter()->unique()->values();
-        $defaultCompanyId = app(SingleCompanyScope::class)->activeDefaultCompany()?->id;
+        $defaultCompanyId = $activeCompanyId;
         if ($defaultCompanyId && ! $companyIds->contains($defaultCompanyId)) $defaultCompanyId = null;
         $query = DB::table('companies')->whereNull('deleted_at')->whereIn('id', $companyIds);
         if (! empty($data['selected_id'])) {
@@ -599,8 +610,11 @@ class SalesPerformanceController extends Controller
 
     private function resolveCompanyId(?string $companyId): string
     {
-        $companyId = $companyId ?: app(SingleCompanyScope::class)->activeDefaultCompany()?->id;
-        abort_unless($companyId, 409, 'No active default legal entity is configured.');
+        $companyId = $companyId ?: app(WebsiteSettingsService::class)->resolveCurrentCompanyId();
+        abort_unless($companyId, 409, 'Select an active business for Sales work.');
+        if (request()->header('X-Active-Context-Type') === 'staff') {
+            app(CompanySettingsAccessService::class)->assertCanAccess(request()->user(), (string) $companyId);
+        }
 
         return (string) $companyId;
     }

@@ -10,7 +10,8 @@ use App\Models\Sales\SalesBookingAttribution;
 use App\Services\BookingPaymentLedgerService;
 use App\Services\Sales\SalesCollectionCompanyIntegrity;
 use App\Services\Sales\SalesAccessScope;
-use App\Services\SingleCompanyScope;
+use App\Services\CompanySettingsAccessService;
+use App\Services\WebsiteSettingsService;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
@@ -454,8 +455,11 @@ class PaymentLedgerReconciliationController extends Controller
 
     private function resolveCompanyId(?string $companyId): string
     {
-        $companyId = $companyId ?: app(SingleCompanyScope::class)->activeDefaultCompany()?->id;
-        abort_unless($companyId, 409, 'No active default legal entity is configured.');
+        $companyId = $companyId ?: app(WebsiteSettingsService::class)->resolveCurrentCompanyId();
+        abort_unless($companyId, 409, 'Select an active business for Sales work.');
+        if (request()->header('X-Active-Context-Type') === 'staff') {
+            app(CompanySettingsAccessService::class)->assertCanAccess(request()->user(), (string) $companyId);
+        }
 
         return (string) $companyId;
     }

@@ -5,8 +5,9 @@ namespace App\Http\Controllers\Api\Sales;
 use App\Http\Controllers\Controller;
 use App\Models\Sales\SalesProfile;
 use App\Models\Sales\SalesReportingAssignment;
+use App\Services\CompanySettingsAccessService;
 use App\Services\Sales\SalesAccessScope;
-use App\Services\SingleCompanyScope;
+use App\Services\WebsiteSettingsService;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
@@ -132,6 +133,7 @@ class SalesReportingAssignmentController extends Controller
 
     public function end(Request $request, SalesReportingAssignment $assignment): JsonResponse
     {
+        $this->assertSelectedStaffCompany($request, (string) $assignment->company_id);
         $this->scope->assertCompany($request->user(), $assignment->company_id, 'sales.profiles.manage-all');
         $data = $request->validate([
             'effective_until' => ['required', 'date'],
@@ -203,9 +205,17 @@ class SalesReportingAssignmentController extends Controller
 
     private function resolveCompanyId(?string $companyId): string
     {
-        $resolved = $companyId ?: app(SingleCompanyScope::class)->activeDefaultCompany()?->id;
-        abort_unless($resolved, 409, 'No active default legal entity is configured.');
+        $resolved = $companyId ?: app(WebsiteSettingsService::class)->resolveCurrentCompanyId();
+        abort_unless($resolved, 409, 'Select an active business for Sales work.');
+        $this->assertSelectedStaffCompany(request(), (string) $resolved);
 
         return (string) $resolved;
+    }
+
+    private function assertSelectedStaffCompany(Request $request, string $companyId): void
+    {
+        if ($request->header('X-Active-Context-Type') === 'staff') {
+            app(CompanySettingsAccessService::class)->assertCanAccess($request->user(), $companyId);
+        }
     }
 }

@@ -10,7 +10,7 @@ use App\Services\BookingResponsibilityService;
 use App\Services\InquiryAssignmentService;
 use App\Services\Sales\SalesPolicySettingsService;
 use App\Services\Sales\InquiryFirstResponseDeadlineService;
-use App\Services\SingleCompanyScope;
+use App\Services\CompanySettingsAccessService;
 use App\Services\WebsiteSettingsService;
 use App\Models\User;
 use Illuminate\Http\JsonResponse;
@@ -22,8 +22,9 @@ class MyWorkController extends Controller
 {
     public function __invoke(Request $request): JsonResponse
     {
-        $companyId = (string) (app(SingleCompanyScope::class)->activeDefaultCompany()?->id ?? '');
+        $companyId = (string) (app(WebsiteSettingsService::class)->resolveCurrentCompanyId() ?? '');
         abort_unless($companyId !== '', 409, 'No active business is configured.');
+        app(CompanySettingsAccessService::class)->assertCanAccess($request->user(), $companyId);
         $userId = (string) $request->user()->id;
         $queues = [];
         $attention = [];
@@ -226,7 +227,7 @@ class MyWorkController extends Controller
             }
         }
 
-        $respondIoEnabled = filter_var(app(WebsiteSettingsService::class)->get('feature_respond_io_enabled', false), FILTER_VALIDATE_BOOL);
+        $respondIoEnabled = filter_var(app(WebsiteSettingsService::class)->get('feature_respond_io_enabled', false, $companyId), FILTER_VALIDATE_BOOL);
         if ($respondIoEnabled && $request->user()->can('communication.manage')) {
             foreach ([['received', 'New messages or updates', 'Review new information from Respond.io before linking it to customer work'],
                 ['reply_failed', 'Replies to check', 'Check whether the reply was accepted before trying again']] as [$status, $title, $help]) {
@@ -244,6 +245,34 @@ class MyWorkController extends Controller
                         'when' => $row->received_at, 'link' => '/admin/system/integrations/respond-io?status='.$status,
                         'sort_at' => strtotime((string) $row->received_at) ?: PHP_INT_MAX];
                 }
+            }
+        }
+
+        if ($request->user()->can('bookings.view') && Schema::hasTable('booking_activities')) {
+            $quotes = DB::table('bookings as booking')->whereNull('booking.deleted_at')
+                ->where('booking.status', 'quotation_requested')
+                ->where(fn ($owner) => $owner->where('booking.responsible_user_id', $userId)
+                    ->orWhere(fn ($sender) => $sender->whereNull('booking.responsible_user_id')
+                        ->whereRaw("booking.workflow_data->>'quotation_requested_by' = ?", [$userId])))
+                ->whereExists(fn ($sent) => $sent->selectRaw('1')->from('booking_activities as sent_quote')
+                    ->whereColumn('sent_quote.booking_id', 'booking.id')->where('sent_quote.company_id', $companyId)->whereNull('sent_quote.deleted_at')
+                    ->where('sent_quote.event_key', 'quotation_email_sent')->where('sent_quote.result_status', 'sent'));
+            CompanyBookingScope::constrain($quotes, 'booking', $companyId);
+            $queues[] = ['group' => 'mine', 'title' => 'Quotes awaiting a reply',
+                'help' => 'Quotations you sent that are still waiting for the customer', 'icon' => 'request_quote',
+                'link' => '/bookings/list?status=quotation_requested', 'count' => (int) (clone $quotes)->distinct('booking.id')->count('booking.id')];
+
+            $sentAt = DB::table('booking_activities as sent_quote')->select('sent_quote.event_at')
+                ->whereColumn('sent_quote.booking_id', 'booking.id')->where('sent_quote.company_id', $companyId)->whereNull('sent_quote.deleted_at')
+                ->where('sent_quote.event_key', 'quotation_email_sent')->where('sent_quote.result_status', 'sent')
+                ->orderByDesc('sent_quote.event_at')->limit(1);
+            foreach ($this->withBookingAttentionContext(clone $quotes)->selectSub($sentAt, 'quotation_sent_at')
+                ->orderBy('quotation_sent_at')->limit(5)->get() as $row) {
+                $attention[] = ['id' => 'quote:'.$row->id, 'group' => 'mine', 'type' => 'Quote to follow up',
+                    'title' => $row->booking_number ?: 'Quotation',
+                    'detail' => $this->bookingAttentionDetail($row, 'Check whether the customer has decided'),
+                    'when' => $row->quotation_sent_at, 'link' => '/bookings/'.$row->id,
+                    'sort_at' => strtotime((string) $row->quotation_sent_at) ?: PHP_INT_MAX];
             }
         }
 

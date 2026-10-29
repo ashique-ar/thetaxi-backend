@@ -8,7 +8,7 @@ use App\Models\Hr\Attendance\AttendanceDailyResult;
 use App\Models\Company;
 use App\Models\Staff;
 use App\Services\Hr\Attendance\AttendanceResultService;
-use App\Services\SingleCompanyScope;
+use App\Services\WebsiteSettingsService;
 use App\Services\StaffAccessService;
 use App\Services\Hr\Ess\HrDomainRequestProjectionService;
 use Carbon\CarbonImmutable;
@@ -29,7 +29,7 @@ class AttendanceResultController extends Controller
         $data = $request->validate(['search' => ['nullable', 'string', 'max:120'], 'selected_id' => ['nullable', 'uuid']]);
         $companyIds = $this->authorizedCompanyIds($request);
         abort_unless($companyIds->isNotEmpty(), 403, 'The authenticated user has no active Staff legal-entity context.');
-        $defaultCompanyId = app(SingleCompanyScope::class)->activeDefaultCompany()?->id;
+        $defaultCompanyId = app(WebsiteSettingsService::class)->resolveCurrentCompanyId();
         if (! $companyIds->contains($defaultCompanyId)) $defaultCompanyId = null;
         $companies = Company::query()->whereIn('id', $companyIds)
             ->when($data['selected_id'] ?? null, fn ($query, $id) => $query->whereKey($id))

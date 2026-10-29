@@ -17,7 +17,8 @@ use App\Services\InquiryAssignmentService;
 use App\Services\AuthService;
 use App\Services\MailDispatchService;
 use App\Mail\InquiryResponseMail;
-use App\Services\SingleCompanyScope;
+use App\Services\CompanySettingsAccessService;
+use App\Services\WebsiteSettingsService;
 use App\Services\CompanyBookingScope;
 use App\Services\Sales\SalesPolicySettingsService;
 use App\Services\Sales\InquiryFirstResponseDeadlineService;
@@ -51,8 +52,7 @@ class InquiryController extends Controller
 
     public function filterOptions(): JsonResponse
     {
-        $companyId = app(SingleCompanyScope::class)->activeDefaultCompany()?->id;
-        abort_unless($companyId, 409, 'Set one active default company before viewing inquiries.');
+        $companyId = $this->currentCompanyId();
 
         return response()->json(['status' => 'success', 'data' => [
             'services' => CmsContent::withInactive()->withTrashed()
@@ -82,8 +82,7 @@ class InquiryController extends Controller
             'date_to' => ['nullable', 'date', 'after_or_equal:date_from'],
             'per_page' => ['nullable', 'integer', 'min:1', 'max:100'],
         ]);
-        $companyId = app(SingleCompanyScope::class)->activeDefaultCompany()?->id;
-        abort_unless($companyId, 409, 'Set one active default company before viewing inquiries.');
+        $companyId = $this->currentCompanyId();
         $q = Inquiry::where('company_id', $companyId)->with(['cmsContent', 'inquiryServicePage', 'assignedUser.staff', 'firstResponseSavedBy']);
         $q->addSelect([
             'email_response_status' => InquiryOutboundResponse::query()->select('status')
@@ -178,6 +177,9 @@ class InquiryController extends Controller
     {
         $data = $request->validate(['search' => ['nullable', 'string', 'max:100']]);
         $query = Company::query()->where('is_active', true)->whereNull('deleted_at');
+        if ($request->header('X-Active-Context-Type') === 'staff') {
+            $query->whereKey($this->currentCompanyId());
+        }
         if (! empty($data['search'])) {
             $query->whereLikeInsensitive('name', trim($data['search']));
         }
@@ -195,6 +197,7 @@ class InquiryController extends Controller
             'idempotency_key' => ['required', 'uuid'],
         ]);
         $companyId = (string) $data['company_id'];
+        app(CompanySettingsAccessService::class)->assertCanAccess($request->user(), $companyId, true);
         $data['reason'] = trim($data['reason']);
         abort_unless(mb_strlen($data['reason']) >= 8, 422, 'Explain why this inquiry belongs to the selected business.');
         $scoped = DB::transaction(function () use ($inquiry, $data, $companyId, $request): Inquiry {
@@ -253,11 +256,10 @@ class InquiryController extends Controller
     public function store(CreateInquiryRequest $request): JsonResponse
     {
         $data = $request->validated();
+        $data['company_id'] = $this->currentCompanyId();
         if (($data['source'] ?? null) === 'respond_io') {
-            $this->ensureRespondIoEnabled();
+            $this->ensureRespondIoEnabled((string) $data['company_id']);
         }
-        $data['company_id'] = app(SingleCompanyScope::class)->activeDefaultCompany()?->id;
-        abort_unless($data['company_id'], 409, 'Set one active default company before creating inquiries.');
         $data['created_user_id'] = $request->user()->id;
         $inq = Inquiry::createWithUniqueNumber($data);
 
@@ -297,8 +299,7 @@ class InquiryController extends Controller
 
     public function responseMetrics(SalesPolicySettingsService $settings): JsonResponse
     {
-        $companyId = app(SingleCompanyScope::class)->activeDefaultCompany()?->id;
-        abort_unless($companyId, 409, 'Set one active default company before viewing inquiry response metrics.');
+        $companyId = $this->currentCompanyId();
         $inquiries = DB::table('inquiries')->where('company_id', $companyId)->whereNull('deleted_at');
         $hasUnconfirmedEmail = static fn ($query) => $query->selectRaw('1')->from('inquiry_outbound_responses as email_attempt')
             ->whereColumn('email_attempt.company_id', 'inquiries.company_id')->whereColumn('email_attempt.inquiry_id', 'inquiries.id')
@@ -345,10 +346,10 @@ class InquiryController extends Controller
         $data['updated_user_id'] = $request->user()->id;
         DB::transaction(function () use ($inquiry, $data, $request): void {
             $locked = Inquiry::query()->whereKey($inquiry->id)->lockForUpdate()->firstOrFail();
-            $companyId = app(SingleCompanyScope::class)->activeDefaultCompany(true)?->id;
+            $companyId = $this->currentCompanyId(true);
             abort_unless($companyId && $locked->company_id === $companyId, 404);
             if (($data['source'] ?? null) === 'respond_io' && $locked->source !== 'respond_io') {
-                $this->ensureRespondIoEnabled();
+                $this->ensureRespondIoEnabled((string) $companyId);
             }
             if (array_key_exists('customer_id', $data) && $data['customer_id'] !== $locked->customer_id) {
                 $customerId = $data['customer_id'];
@@ -388,8 +389,7 @@ class InquiryController extends Controller
             'selected_id' => ['nullable', 'uuid'], 'page' => ['nullable', 'integer', 'min:1'],
             'per_page' => ['nullable', 'integer', 'min:1', 'max:50'],
         ]);
-        $companyId = app(SingleCompanyScope::class)->activeDefaultCompany()?->id;
-        abort_unless($companyId, 409, 'No active business is configured.');
+        $companyId = $this->currentCompanyId();
         $phoneCallingCode = \App\Services\CompanyCustomerScope::phoneCallingCode((string) $companyId);
         if (! empty($data['inquiry_id'])) {
             Inquiry::query()->where('company_id', $companyId)->findOrFail($data['inquiry_id']);
@@ -444,8 +444,7 @@ class InquiryController extends Controller
             'search' => ['nullable', 'string', 'max:120'], 'selected_id' => ['nullable', 'uuid'],
             'page' => ['nullable', 'integer', 'min:1'], 'per_page' => ['nullable', 'integer', 'min:1', 'max:50'],
         ]);
-        $companyId = app(SingleCompanyScope::class)->activeDefaultCompany()?->id;
-        abort_unless($companyId, 409, 'No active business is configured.');
+        $companyId = $this->currentCompanyId();
         if (! empty($data['inquiry_id'])) {
             $inquiry = Inquiry::query()->where('company_id', $companyId)->findOrFail($data['inquiry_id']);
             abort_unless((string) $inquiry->customer_id === (string) $data['customer_id'], 422, 'Choose a booking for the linked customer.');
@@ -480,13 +479,12 @@ class InquiryController extends Controller
             'link_existing_account' => ['sometimes', 'boolean'],
         ]);
         $this->assertInquiryCompany($inquiry);
-        $companyId = app(SingleCompanyScope::class)->activeDefaultCompany(true)?->id;
-        abort_unless($companyId, 409, 'No active business is configured.');
+        $companyId = $this->currentCompanyId(true);
         $phoneCallingCode = \App\Services\CompanyCustomerScope::phoneCallingCode((string) $companyId);
 
         try {
             [$inquiry, $created, $createdUserId, $linkedExisting] = DB::transaction(function () use ($request, $inquiry, $companyId, $phoneCallingCode, $contexts): array {
-                abort_unless(app(SingleCompanyScope::class)->activeDefaultCompany(true)?->id === $companyId, 409, 'Business changed; retry customer creation.');
+                abort_unless($this->currentCompanyId(true) === $companyId, 409, 'Business changed; retry customer creation.');
                 $locked = Inquiry::query()->where('company_id', $companyId)->lockForUpdate()->findOrFail($inquiry->id);
                 if ($locked->customer_id) {
                     return [$locked, false, null, data_get($locked->payload, 'customer_link.action') === 'linked_existing_customer_account'];
@@ -679,7 +677,7 @@ class InquiryController extends Controller
         ]);
         $companyId = $this->assignmentCompany($request);
         [$assignedInquiry, $assignmentChanged] = DB::transaction(function () use ($inquiry, $data, $request, $companyId): array {
-            abort_unless(app(SingleCompanyScope::class)->activeDefaultCompany(true)?->id === $companyId, 409, 'Default company changed; retry assignment.');
+            abort_unless($this->currentCompanyId(true) === $companyId, 409, 'Business changed; retry assignment.');
             $locked = Inquiry::query()->whereKey($inquiry->id)->lockForUpdate()->firstOrFail();
             abort_unless($locked->company_id === $companyId, 404);
             abort_unless($this->eligibleAssignees($companyId)->where('users.id', $data['assigned_to'])->lockForUpdate()->first(['users.id']), 422, 'Select an active Staff assignee.');
@@ -752,11 +750,10 @@ class InquiryController extends Controller
 
     private function assignmentCompany(Request $request): string
     {
-        $company = app(SingleCompanyScope::class)->activeDefaultCompany();
-        abort_unless($company, 409, 'Set one active default company before using Inquiry Staff options.');
-        abort_unless(app(InquiryAssignmentService::class)->eligibleAssignees($company->id)->where('users.id', $request->user()->id)->exists(), 403);
+        $companyId = $this->currentCompanyId();
+        abort_unless(app(InquiryAssignmentService::class)->eligibleAssignees($companyId)->where('users.id', $request->user()->id)->exists(), 403);
 
-        return $company->id;
+        return $companyId;
     }
 
     private function eligibleAssignees(string $companyId)
@@ -764,10 +761,10 @@ class InquiryController extends Controller
         return app(InquiryAssignmentService::class)->eligibleAssignees($companyId);
     }
 
-    private function ensureRespondIoEnabled(): void
+    private function ensureRespondIoEnabled(string $companyId): void
     {
         abort_unless(filter_var(app(\App\Services\WebsiteSettingsService::class)
-            ->get('feature_respond_io_enabled', false), FILTER_VALIDATE_BOOL), 422,
+            ->get('feature_respond_io_enabled', false, $companyId), FILTER_VALIDATE_BOOL), 422,
             'Respond.io is turned off in Business Settings.');
     }
 
@@ -801,7 +798,7 @@ class InquiryController extends Controller
             'message' => ['required', 'string'],
             'status' => ['sometimes', 'nullable', 'in:open,in_progress,closed,archived'],
         ]);
-        $companyId = app(SingleCompanyScope::class)->activeDefaultCompany(true)?->id;
+        $companyId = $this->currentCompanyId(true);
         abort_unless($companyId && $inquiry->company_id === $companyId, 404);
         $inquiry = DB::transaction(function () use ($inquiry, $data, $request, $companyId): Inquiry {
             $locked = Inquiry::query()->where('company_id', $companyId)->lockForUpdate()->findOrFail($inquiry->id);
@@ -932,9 +929,23 @@ class InquiryController extends Controller
         ]);
     }
 
+    private function currentCompanyId(bool $forUpdate = false): string
+    {
+        $companyId = app(WebsiteSettingsService::class)->resolveCurrentCompanyId();
+        abort_unless($companyId, 409, 'Select an active business before managing inquiries.');
+        app(CompanySettingsAccessService::class)->assertCanAccess(request()->user(), (string) $companyId);
+        if ($forUpdate) {
+            $companyId = Company::query()->whereKey($companyId)->where('is_active', true)
+                ->whereNull('deleted_at')->lockForUpdate()->value('id');
+            abort_unless($companyId, 409, 'The selected business is no longer active.');
+        }
+
+        return (string) $companyId;
+    }
+
     private function assertInquiryCompany(Inquiry $inquiry): void
     {
-        abort_unless($inquiry->company_id && $inquiry->company_id === app(SingleCompanyScope::class)->activeDefaultCompany()?->id, 404);
+        abort_unless($inquiry->company_id && $inquiry->company_id === $this->currentCompanyId(), 404);
     }
 
     private function linkExistingInquiryCustomer(Inquiry $inquiry, Customer $customer, string $companyId, string $actorId): Inquiry

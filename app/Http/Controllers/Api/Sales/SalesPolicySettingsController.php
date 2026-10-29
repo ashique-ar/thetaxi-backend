@@ -6,8 +6,9 @@ use App\Http\Controllers\Controller;
 use App\Models\Sales\SalesPolicySetting;
 use App\Models\Sales\SalesCompanyFeatureSetting;
 use App\Models\Sales\SalesStaffCategoryDefinition;
+use App\Services\CompanySettingsAccessService;
 use App\Services\Sales\SalesPolicySettingsService;
-use App\Services\SingleCompanyScope;
+use App\Services\WebsiteSettingsService;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
@@ -40,7 +41,7 @@ class SalesPolicySettingsController extends Controller
             'page' => ['nullable', 'integer', 'min:1'], 'per_page' => ['nullable', 'integer', 'min:1', 'max:50'],
         ]);
         $companyIds = $this->actorCompanyIds($request);
-        $defaultCompanyId = app(SingleCompanyScope::class)->activeDefaultCompany()?->id;
+        $defaultCompanyId = app(WebsiteSettingsService::class)->resolveCurrentCompanyId();
         if ($defaultCompanyId && $companyIds !== null && ! in_array($defaultCompanyId, $companyIds, true)) $defaultCompanyId = null;
         $query = DB::table('companies')->whereNull('deleted_at')
             ->when($companyIds !== null, fn ($company) => $company->whereIn('id', $companyIds));
@@ -215,14 +216,20 @@ class SalesPolicySettingsController extends Controller
 
     private function resolveCompanyId(?string $companyId): string
     {
-        $resolved = $companyId ?: app(SingleCompanyScope::class)->activeDefaultCompany()?->id;
-        abort_unless($resolved, 409, 'No active default legal entity is configured.');
+        $resolved = $companyId ?: app(WebsiteSettingsService::class)->resolveCurrentCompanyId();
+        abort_unless($resolved, 409, 'Select an active business for Sales work.');
+        if (request()->header('X-Active-Context-Type') === 'staff') {
+            app(CompanySettingsAccessService::class)->assertCanAccess(request()->user(), (string) $resolved);
+        }
 
         return (string) $resolved;
     }
 
     private function assertCompany(Request $request, string $companyId): void
     {
+        if ($request->header('X-Active-Context-Type') === 'staff') {
+            app(CompanySettingsAccessService::class)->assertCanAccess($request->user(), $companyId, true);
+        }
         abort_unless(DB::table('companies')->where('id', $companyId)->whereNull('deleted_at')->exists(), 422, 'Select an available legal entity.');
         abort_unless(
             $request->user()->can('sales.policy-settings.manage-all') || in_array($companyId, $this->actorCompanyIds($request) ?? [], true),
@@ -234,6 +241,13 @@ class SalesPolicySettingsController extends Controller
     /** @return array<int, string>|null */
     private function actorCompanyIds(Request $request): ?array
     {
+        if ($request->header('X-Active-Context-Type') === 'staff') {
+            $companyId = app(WebsiteSettingsService::class)->resolveCurrentCompanyId();
+            abort_unless($companyId, 409, 'Select an active business for Sales work.');
+            app(CompanySettingsAccessService::class)->assertCanAccess($request->user(), (string) $companyId);
+
+            return [(string) $companyId];
+        }
         if ($request->user()->can('sales.policy-settings.manage-all')) {
             return null;
         }

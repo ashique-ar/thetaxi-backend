@@ -9,7 +9,8 @@ use App\Models\Sales\SalesProfile;
 use App\Models\Sales\SalesTask;
 use App\Models\Booking\Booking;
 use App\Services\Sales\SalesAccessScope;
-use App\Services\SingleCompanyScope;
+use App\Services\CompanySettingsAccessService;
+use App\Services\WebsiteSettingsService;
 use App\Services\Sales\SalesCrmService;
 use App\Services\Sales\SalesPolicySettingsService;
 use Illuminate\Http\JsonResponse;
@@ -29,8 +30,7 @@ class SalesCrmController extends Controller
     public function opportunities(Request $request): JsonResponse
     {
         $data = $request->validate(['stage' => ['nullable', Rule::in(['new', 'contacted', 'qualified', 'quotation', 'negotiation', 'won', 'lost'])], 'company_id' => ['nullable', 'uuid', 'exists:companies,id'], 'search' => ['nullable', 'string', 'max:100'], 'needs_follow_up' => ['nullable', 'boolean'], 'needs_owner_review' => ['nullable', 'boolean'], 'from' => ['nullable', 'date'], 'to' => ['nullable', 'date', 'after_or_equal:from'], 'page' => ['nullable', 'integer', 'min:1'], 'per_page' => ['nullable', 'integer', 'min:1', 'max:100']]);
-        $data['company_id'] = $data['company_id'] ?? app(SingleCompanyScope::class)->activeDefaultCompany()?->id;
-        abort_unless($data['company_id'], 409, 'No active default legal entity is configured.');
+        $data['company_id'] = $this->resolveCompanyId($data['company_id'] ?? null);
         $ids = $this->scope->profileIds($request->user(), 'sales.crm.view-all', 'sales.crm.view-team', $data['company_id']);
         abort_unless(! ($data['needs_owner_review'] ?? false) || $ids === null, 403,
             'Company-wide Sales access is required to review opportunities with an inactive owner.');
@@ -77,12 +77,16 @@ class SalesCrmController extends Controller
             'search' => ['nullable', 'string', 'max:120'], 'selected_id' => ['nullable', 'uuid'],
             'page' => ['nullable', 'integer', 'min:1'], 'per_page' => ['nullable', 'integer', 'min:1', 'max:50'],
         ]);
-        $profileIds = $this->scope->profileIds($request->user(), 'sales.crm.view-all', 'sales.crm.view-team');
+        $profileIds = $this->scope->profileIds($request->user(), 'sales.crm.view-all', 'sales.crm.view-team', $this->currentCompanyId());
         if ($this->scope->hasPermission($request->user(), 'sales.crm.manage-all')) $profileIds = null;
         $companyIds = $profileIds === null ? null : DB::table('sales_profiles')->whereNull('deleted_at')
             ->whereIn('id', $profileIds)->pluck('company_id')->filter()->unique()->values();
-        $defaultCompanyId = app(SingleCompanyScope::class)->activeDefaultCompany()?->id;
-        if ($defaultCompanyId && $companyIds !== null && ! $companyIds->contains($defaultCompanyId)) $defaultCompanyId = null;
+        $defaultCompanyId = $this->currentCompanyId();
+        if (request()->header('X-Active-Context-Type') === 'staff') {
+            $companyIds = collect([$defaultCompanyId]);
+        } elseif ($defaultCompanyId && $companyIds !== null && ! $companyIds->contains($defaultCompanyId)) {
+            $defaultCompanyId = null;
+        }
         $query = DB::table('companies')->where('is_active', true)->whereNull('deleted_at')
             ->when($companyIds !== null, fn ($companies) => $companies->whereIn('id', $companyIds));
         if (! empty($data['selected_id'])) $query->where('id', $data['selected_id']);
@@ -667,14 +671,22 @@ class SalesCrmController extends Controller
         $companyId = $this->resolveCompanyId($data['company_id']);
         $profileIds = $this->scope->profileIds($request->user(), 'sales.crm.manage-all', 'sales.crm.manage-team', $companyId);
         $this->assertActiveListCompany($companyId, $profileIds);
+        $userId = (string) $request->user()->id;
 
         $query = DB::table('bookings as booking')->whereNull('booking.deleted_at')
-            ->where(function ($scope) use ($companyId) {
+            ->where(function ($scope) use ($companyId, $userId) {
                 $scope->whereExists(fn ($attribution) => $attribution->selectRaw('1')->from('sales_booking_attributions as attribution')
                     ->whereColumn('attribution.booking_id', 'booking.id')->where('attribution.company_id', $companyId))
                     ->orWhereExists(fn ($staff) => $staff->selectRaw('1')->from('staff as booking_owner')
                         ->whereColumn('booking_owner.user_id', 'booking.responsible_user_id')
-                        ->where('booking_owner.company_id', $companyId)->whereNull('booking_owner.deleted_at'));
+                        ->where('booking_owner.company_id', $companyId)->whereNull('booking_owner.deleted_at'))
+                    ->orWhere(fn ($quote) => $quote->where('booking.status', 'quotation_requested')
+                        ->whereNull('booking.responsible_user_id')
+                        ->whereRaw("booking.workflow_data->>'quotation_requested_by' = ?", [$userId])
+                        ->whereExists(fn ($sent) => $sent->selectRaw('1')->from('booking_activities as sent_quote')
+                            ->whereColumn('sent_quote.booking_id', 'booking.id')->where('sent_quote.company_id', $companyId)
+                            ->whereNull('sent_quote.deleted_at')->where('sent_quote.event_key', 'quotation_email_sent')
+                            ->where('sent_quote.result_status', 'sent')));
             })
             ->when($data['selected_id'] ?? null, fn ($q, $id) => $q->where('booking.id', $id))
             ->when(empty($data['selected_id']) && ! empty($data['search']), function ($q) use ($data) {
@@ -801,12 +813,28 @@ class SalesCrmController extends Controller
 
     private function resolveCompanyId(?string $companyId): string
     {
-        $resolved = $companyId ?: app(SingleCompanyScope::class)->activeDefaultCompany()?->id;
-        abort_unless($resolved, 409, 'No active default legal entity is configured.');
+        $resolved = $companyId ?: $this->currentCompanyId();
+        abort_unless($resolved, 409, 'Select an active business for Sales work.');
+        $this->assertSelectedStaffCompany((string) $resolved);
         abort_unless(DB::table('companies')->where('id', $resolved)->where('is_active', true)
             ->whereNull('deleted_at')->exists(), 422, 'Select an active legal entity.');
 
         return (string) $resolved;
+    }
+
+    private function currentCompanyId(): string
+    {
+        $companyId = app(WebsiteSettingsService::class)->resolveCurrentCompanyId();
+        abort_unless($companyId, 409, 'Select an active business for Sales work.');
+
+        return (string) $companyId;
+    }
+
+    private function assertSelectedStaffCompany(string $companyId): void
+    {
+        if (request()->header('X-Active-Context-Type') === 'staff') {
+            app(CompanySettingsAccessService::class)->assertCanAccess(request()->user(), $companyId);
+        }
     }
 
     private function constrainBookingOwnerToOpportunity($query, string $bookingAlias, string $opportunityAlias): void
@@ -859,6 +887,7 @@ class SalesCrmController extends Controller
 
     public function transitionTask(Request $request, SalesTask $task, SalesCrmService $crm): JsonResponse
     {
+        $this->assertSelectedStaffCompany((string) $task->company_id);
         $profile = SalesProfile::query()->findOrFail($task->owner_sales_profile_id); $this->scope->assertProfile($request->user(), $profile, 'sales.crm.manage-all', 'sales.crm.manage-team');
         $data = $request->validate(['to_status' => ['required', Rule::in(['open', 'in_progress', 'completed', 'cancelled'])], 'expected_version' => ['required', 'integer', 'min:1'], 'reason' => ['nullable', 'string', 'max:2000'], 'idempotency_key' => ['required', 'string', 'max:160']]);
         return response()->json(['status' => 'success', 'data' => $this->writeConfirmation($crm->transitionTask($task, $data, (string) $request->user()->id))]);
@@ -866,6 +895,7 @@ class SalesCrmController extends Controller
 
     public function transferTask(Request $request, SalesTask $task, SalesCrmService $crm): JsonResponse
     {
+        $this->assertSelectedStaffCompany((string) $task->company_id);
         $current = SalesProfile::query()->findOrFail($task->owner_sales_profile_id);
         $this->scope->assertProfile($request->user(), $current, 'sales.crm.manage-all', 'sales.crm.manage-team');
         $data = $request->validate(['owner_sales_profile_id' => ['required', 'uuid', 'exists:sales_profiles,id'], 'expected_version' => ['required', 'integer', 'min:1'], 'reason' => ['required', 'string', 'max:2000'], 'idempotency_key' => ['required', 'string', 'max:160']]);
@@ -876,6 +906,7 @@ class SalesCrmController extends Controller
 
     private function assertOpportunityScope(Request $request, SalesOpportunity $opportunity, bool $manage = false): void
     {
+        $this->assertSelectedStaffCompany((string) $opportunity->company_id);
         $profile = SalesProfile::query()->findOrFail($opportunity->owner_sales_profile_id);
         abort_unless((string) $profile->company_id === (string) $opportunity->company_id
             && DB::table('staff')->where('id', $profile->staff_id)->where('company_id', $opportunity->company_id)

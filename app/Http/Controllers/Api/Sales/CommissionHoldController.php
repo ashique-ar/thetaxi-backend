@@ -9,7 +9,8 @@ use App\Services\Sales\CommissionHoldAdjustmentService;
 use App\Services\Sales\CommissionHoldRemediationService;
 use App\Services\Sales\SalesCommissionNotificationService;
 use App\Services\Sales\SalesAccessScope;
-use App\Services\SingleCompanyScope;
+use App\Services\CompanySettingsAccessService;
+use App\Services\WebsiteSettingsService;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Arr;
@@ -33,7 +34,12 @@ class CommissionHoldController extends Controller
             'page' => ['nullable', 'integer', 'min:1'], 'per_page' => ['nullable', 'integer', 'min:1', 'max:50'],
         ]);
         $companyIds = $this->scope->companyIds($request->user(), 'sales.commission-decisions.view-all');
-        $defaultCompanyId = app(SingleCompanyScope::class)->activeDefaultCompany()?->id;
+        $defaultCompanyId = $this->currentCompanyId();
+        if ($request->header('X-Active-Context-Type') === 'staff') {
+            abort_unless($defaultCompanyId, 409, 'Select an active business for Sales work.');
+            app(CompanySettingsAccessService::class)->assertCanAccess($request->user(), $defaultCompanyId);
+            $companyIds = [$defaultCompanyId];
+        }
         if ($defaultCompanyId && $companyIds !== null && ! in_array($defaultCompanyId, $companyIds, true)) $defaultCompanyId = null;
         $query = DB::table('companies')->whereNull('deleted_at')->where('is_active', true)
             ->when($companyIds !== null, fn ($query) => $query->whereIn('id', $companyIds))
@@ -62,6 +68,10 @@ class CommissionHoldController extends Controller
             'resolution' => ['nullable', Rule::in(['open', 'released', 'all'])],
             'per_page' => ['nullable', 'integer', 'min:1', 'max:100'],
         ]);
+        if ($request->header('X-Active-Context-Type') === 'staff' && empty($data['company_id'])) {
+            $data['company_id'] = $this->currentCompanyId();
+            abort_unless($data['company_id'], 409, 'Select an active business for Sales work.');
+        }
         $query = SalesCommissionDecision::query()->whereIn('status', ['held', 'shadow_held'])
             ->select([
                 'id', 'booking_id', 'company_id', 'beneficiary_sales_profile_id', 'beneficiary_staff_id',
@@ -157,8 +167,23 @@ class CommissionHoldController extends Controller
 
     private function scope($query, Request $request, ?string $companyId): void
     {
+        if ($request->header('X-Active-Context-Type') === 'staff') {
+            $activeCompanyId = $this->currentCompanyId();
+            abort_unless($activeCompanyId, 409, 'Select an active business for Sales work.');
+            app(CompanySettingsAccessService::class)->assertCanAccess($request->user(), $activeCompanyId);
+            abort_unless($companyId === null || (string) $companyId === $activeCompanyId, 403,
+                'Commission holds are outside your selected Staff business.');
+            $query->where('company_id', $activeCompanyId);
+        }
         $ids = $this->scope->profileIds($request->user(), 'sales.commission-decisions.view-all',
             'sales.commission-decisions.view-team', $companyId);
         if ($ids !== null) $query->whereIn('beneficiary_sales_profile_id', $ids);
+    }
+
+    private function currentCompanyId(): ?string
+    {
+        $companyId = app(WebsiteSettingsService::class)->resolveCurrentCompanyId();
+
+        return $companyId ? (string) $companyId : null;
     }
 }

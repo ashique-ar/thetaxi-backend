@@ -15,9 +15,10 @@ use App\Models\Sales\SalesProfile;
 use App\Services\Sales\SalesAccessScope;
 use App\Services\Sales\SalesCrmService;
 use App\Services\Sales\SalesPolicySettingsService;
-use App\Services\SingleCompanyScope;
 use App\Services\CompanyBookingScope;
 use App\Services\CompanyCustomerScope;
+use App\Services\CompanySettingsAccessService;
+use App\Services\WebsiteSettingsService;
 use App\Notifications\PhoneCallAssignedNotification;
 use Illuminate\Http\Request;
 use Illuminate\Http\JsonResponse;
@@ -40,9 +41,8 @@ class PhoneCallController extends Controller
     public function index(Request $request): AnonymousResourceCollection
     {
         $request->validate(['unassigned_only' => ['nullable', 'boolean'], 'mine_only' => ['nullable', 'boolean'], 'needs_follow_up' => ['nullable', 'boolean'], 'unassigned_follow_up' => ['nullable', 'boolean'], 'per_page' => ['nullable', 'integer', 'min:1', 'max:100']]);
-        $company = app(SingleCompanyScope::class)->activeDefaultCompany();
-        abort_unless($company, 409, 'No active business is configured.');
-        $q = PhoneCall::query()->where('company_id', $company->id)->with('assignedTo')
+        $companyId = $this->selectedCompanyId();
+        $q = PhoneCall::query()->where('company_id', $companyId)->with('assignedTo')
             ->when($request->user()->can('sales.crm.view'), fn ($query) => $query->with('salesOpportunity'))
             ->when($request->boolean('unassigned_only'), fn ($query) => $query->whereNull('assigned_user_id'));
         if ($request->boolean('mine_only')) {
@@ -53,7 +53,7 @@ class PhoneCallController extends Controller
         }
         if ($request->boolean('unassigned_follow_up')) {
             $eligible = User::permission('phone-calls.view')->whereHas('staff', fn ($staff) => $staff
-                ->where('company_id', $company->id)->whereNull('deleted_at')->whereNull('employment_ended_at'))
+                ->where('company_id', $companyId)->whereNull('deleted_at')->whereNull('employment_ended_at'))
                 ->where('is_active', true)->whereNull('deleted_at')->select('id');
             $q->where(fn ($queue) => $queue->whereNull('assigned_user_id')->orWhereNotIn('assigned_user_id', $eligible))
                 ->whereIn('call_status', ['Missed', 'Notanswered'])->whereNull('follow_up_task_id')->whereNull('follow_up_completed_at');
@@ -63,7 +63,7 @@ class PhoneCallController extends Controller
 
     public function assignmentOptions(): JsonResponse
     {
-        $companyId = app(SingleCompanyScope::class)->activeDefaultCompany()?->id;
+        $companyId = $this->selectedCompanyId();
         $employees = DB::table('staff')->join('users', 'users.id', '=', 'staff.user_id')
             ->where('staff.company_id', $companyId)->whereNull('staff.deleted_at')->whereNull('staff.employment_ended_at')
             ->whereNull('users.deleted_at')->where('users.is_active', true)
@@ -78,15 +78,14 @@ class PhoneCallController extends Controller
             'assigned_user_id' => ['present', 'nullable', 'uuid', 'exists:users,id'],
             'reason' => ['required', 'string', 'min:3', 'max:500'],
         ]);
-        $company = app(SingleCompanyScope::class)->activeDefaultCompany();
-        abort_unless($company, 409, 'No active business is configured.');
+        $companyId = $this->selectedCompanyId();
 
-        [$call, $assignmentChanged] = DB::transaction(function () use ($request, $phoneCall, $data, $company): array {
-            $call = PhoneCall::query()->where('company_id', $company->id)->lockForUpdate()->findOrFail($phoneCall->id);
+        [$call, $assignmentChanged] = DB::transaction(function () use ($request, $phoneCall, $data, $companyId): array {
+            $call = PhoneCall::query()->where('company_id', $companyId)->lockForUpdate()->findOrFail($phoneCall->id);
             if ((string) $call->assigned_user_id === (string) $data['assigned_user_id']) return [$call, false];
             if ($data['assigned_user_id'] !== null) {
                 $eligible = DB::table('staff')->join('users', 'users.id', '=', 'staff.user_id')
-                    ->where('staff.company_id', $company->id)->where('users.id', $data['assigned_user_id'])
+                    ->where('staff.company_id', $companyId)->where('users.id', $data['assigned_user_id'])
                     ->whereNull('staff.deleted_at')->whereNull('staff.employment_ended_at')
                     ->whereNull('users.deleted_at')->where('users.is_active', true)->lockForUpdate()->exists()
                     && User::permission('phone-calls.view')->whereKey($data['assigned_user_id'])->exists();
@@ -95,7 +94,7 @@ class PhoneCallController extends Controller
             $fromUserId = $call->assigned_user_id;
             $call->update(['assigned_user_id' => $data['assigned_user_id'], 'updated_user_id' => $request->user()->id]);
             PhoneCallAssignment::create([
-                'phone_call_id' => $call->id, 'company_id' => $company->id,
+                    'phone_call_id' => $call->id, 'company_id' => $companyId,
                 'from_user_id' => $fromUserId, 'to_user_id' => $data['assigned_user_id'],
                 'actor_user_id' => $request->user()->id, 'reason' => trim($data['reason']), 'event_at' => now(),
             ]);
@@ -129,8 +128,7 @@ class PhoneCallController extends Controller
         }
 
         $call = DB::transaction(function () use ($data, $followUp, $request, $scope, $crm): PhoneCall {
-            $companyId = app(SingleCompanyScope::class)->activeDefaultCompany()?->id;
-            abort_unless($companyId, 409, 'No active business is configured.');
+            $companyId = $this->selectedCompanyId();
             $this->assertCallLinksInCompany($data['customer_id'] ?? null, $data['booking_id'] ?? null, (string) $companyId);
             $data['created_user_id'] = $request->user()->id;
             $data['company_id'] = $companyId;
@@ -145,8 +143,7 @@ class PhoneCallController extends Controller
             }
             if (! $followUp) return $call;
 
-            $companyId = app(SingleCompanyScope::class)->activeDefaultCompany()?->id;
-            abort_unless($companyId, 409, 'No active business is configured for this follow-up.');
+            $companyId = $this->selectedCompanyId();
             $assignment = DB::table('customer_relationship_owner_assignments')->where('customer_id', $call->customer_id)
                 ->where('company_id', $companyId)->whereNull('ended_at')->whereNotNull('owner_sales_profile_id')
                 ->orderByDesc('effective_from')->lockForUpdate()->first();
@@ -195,8 +192,7 @@ class PhoneCallController extends Controller
             'follow_up_date' => ['required', 'date_format:Y-m-d'],
             'notes' => ['nullable', 'string', 'max:5000'],
         ]);
-        $companyId = (string) (app(SingleCompanyScope::class)->activeDefaultCompany()?->id ?? '');
-        abort_unless($companyId !== '', 409, 'No active business is configured for this follow-up.');
+        $companyId = $this->selectedCompanyId();
         $businessTimezone = app(SalesPolicySettingsService::class)->businessTimezone($companyId) ?? config('app.timezone');
         $followUpDate = Carbon::createFromFormat('!Y-m-d', $data['follow_up_date'], $businessTimezone);
         abort_if($followUpDate->lt(now($businessTimezone)->startOfDay()), 422, 'Choose today or a future date for the callback.');
@@ -204,8 +200,7 @@ class PhoneCallController extends Controller
             $call = PhoneCall::query()->lockForUpdate()->findOrFail($phoneCall->id);
             if ($call->follow_up_task_id) return ['task' => $call->followUpTask, 'callback' => false];
 
-            $companyId = app(SingleCompanyScope::class)->activeDefaultCompany()?->id;
-            abort_unless($companyId, 409, 'No active business is configured for this follow-up.');
+            $companyId = $this->selectedCompanyId();
             $assignment = $call->customer_id ? DB::table('customer_relationship_owner_assignments')->where('customer_id', $call->customer_id)
                 ->where('company_id', $companyId)->whereNull('ended_at')->whereNotNull('owner_sales_profile_id')
                 ->orderByDesc('effective_from')->lockForUpdate()->first() : null;
@@ -279,8 +274,7 @@ class PhoneCallController extends Controller
             'notes' => ['nullable', 'string', 'max:5000'],
             'idempotency_key' => ['required', 'uuid'],
         ]);
-        $companyId = (string) (app(SingleCompanyScope::class)->activeDefaultCompany()?->id ?? '');
-        abort_unless($companyId !== '', 409, 'No active business is configured.');
+        $companyId = $this->selectedCompanyId();
         $businessTimezone = app(SalesPolicySettingsService::class)->businessTimezone($companyId) ?? config('app.timezone');
         $nextDueAt = ! empty($data['next_follow_up_date'])
             ? Carbon::createFromFormat('!Y-m-d', $data['next_follow_up_date'], $businessTimezone)->startOfDay()
@@ -346,14 +340,13 @@ class PhoneCallController extends Controller
             'message' => ['required', 'string', 'max:20000'],
             'customer_id' => ['nullable', 'uuid'],
         ]);
-        $company = app(SingleCompanyScope::class)->activeDefaultCompany();
-        abort_unless($company, 409, 'No active business is configured.');
+        $companyId = $this->selectedCompanyId();
 
-        [$call, $inquiry, $duplicate] = DB::transaction(function () use ($request, $phoneCall, $data, $company): array {
-            abort_unless(app(SingleCompanyScope::class)->activeDefaultCompany(true)?->id === $company->id, 409, 'Business changed; retry call conversion.');
-            $call = PhoneCall::query()->where('company_id', $company->id)->lockForUpdate()->findOrFail($phoneCall->id);
+        [$call, $inquiry, $duplicate] = DB::transaction(function () use ($request, $phoneCall, $data, $companyId): array {
+            abort_unless($this->selectedCompanyId() === $companyId, 409, 'Business changed; retry call conversion.');
+            $call = PhoneCall::query()->where('company_id', $companyId)->lockForUpdate()->findOrFail($phoneCall->id);
             if ($call->inquiry_id) {
-                return [$call, \App\Models\Inquiry::query()->where('company_id', $company->id)->findOrFail($call->inquiry_id), true];
+                return [$call, \App\Models\Inquiry::query()->where('company_id', $companyId)->findOrFail($call->inquiry_id), true];
             }
             $selectedCustomerId = $data['customer_id'] ?? null;
             abort_unless(! $call->customer_id || ! $selectedCustomerId
@@ -361,13 +354,13 @@ class PhoneCallController extends Controller
                 'This call is already linked to a different customer. Use the linked customer for this inquiry.');
             $customerId = $call->customer_id ?? $selectedCustomerId;
             $bookingId = $call->booking_id;
-            $this->assertCallLinksInCompany($customerId, $bookingId, (string) $company->id);
+            $this->assertCallLinksInCompany($customerId, $bookingId, $companyId);
 
             $assigneeId = $call->assigned_user_id && in_array((string) $call->assigned_user_id,
-                app(\App\Services\InquiryAssignmentService::class)->eligibleAssigneeIds((string) $company->id), true)
+                app(\App\Services\InquiryAssignmentService::class)->eligibleAssigneeIds($companyId), true)
                 ? (string) $call->assigned_user_id : null;
             $inquiry = \App\Models\Inquiry::createWithUniqueNumber([
-                'company_id' => $company->id,
+                'company_id' => $companyId,
                 'customer_id' => $customerId,
                 'booking_id' => $bookingId,
                 'assigned_to' => $assigneeId,
@@ -391,7 +384,7 @@ class PhoneCallController extends Controller
             if ($assigneeId) {
                 DB::table('inquiry_assignment_events')->insertOrIgnore([
                     'id' => (string) Str::uuid(),
-                    'company_id' => $company->id,
+                    'company_id' => $companyId,
                     'inquiry_id' => $inquiry->id,
                     'from_user_id' => null,
                     'to_user_id' => $assigneeId,
@@ -475,7 +468,16 @@ class PhoneCallController extends Controller
 
     private function assertCompanyCall(PhoneCall $call): void
     {
-        $companyId = app(SingleCompanyScope::class)->activeDefaultCompany()?->id;
+        $companyId = $this->selectedCompanyId();
         abort_unless($companyId && (string) $call->company_id === (string) $companyId, 404);
+    }
+
+    private function selectedCompanyId(): string
+    {
+        $companyId = app(WebsiteSettingsService::class)->resolveCurrentCompanyId();
+        abort_unless($companyId, 409, 'Select an active business to manage phone calls.');
+        app(CompanySettingsAccessService::class)->assertCanAccess(request()->user(), (string) $companyId);
+
+        return (string) $companyId;
     }
 }

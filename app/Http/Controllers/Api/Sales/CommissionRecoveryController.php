@@ -7,7 +7,8 @@ use App\Models\Sales\SalesCommissionRecoveryCase;
 use App\Services\Sales\CommissionRecoveryService;
 use App\Services\Sales\SalesAccessScope;
 use App\Services\PermissionEvaluator;
-use App\Services\SingleCompanyScope;
+use App\Services\CompanySettingsAccessService;
+use App\Services\WebsiteSettingsService;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
@@ -27,7 +28,12 @@ class CommissionRecoveryController extends Controller
             'page' => ['nullable', 'integer', 'min:1'], 'per_page' => ['nullable', 'integer', 'min:1', 'max:50'],
         ]);
         $companyIds = $this->access->companyIds($request->user(), 'sales.commission-recoveries.view-all');
-        $defaultCompanyId = app(SingleCompanyScope::class)->activeDefaultCompany()?->id;
+        $defaultCompanyId = $this->currentCompanyId();
+        if ($request->header('X-Active-Context-Type') === 'staff') {
+            abort_unless($defaultCompanyId, 409, 'Select an active business for Sales work.');
+            app(CompanySettingsAccessService::class)->assertCanAccess($request->user(), $defaultCompanyId);
+            $companyIds = [$defaultCompanyId];
+        }
         if ($defaultCompanyId && $companyIds !== null && ! in_array($defaultCompanyId, $companyIds, true)) $defaultCompanyId = null;
         $query = DB::table('companies')->whereNull('deleted_at')->where('is_active', true)
             ->when($companyIds !== null, fn ($query) => $query->whereIn('id', $companyIds))
@@ -55,6 +61,10 @@ class CommissionRecoveryController extends Controller
             'recovery_kind' => ['nullable', Rule::in(['cash_decrease', 'reporting_fx'])],
             'per_page' => ['nullable', 'integer', 'min:1', 'max:100'],
         ]);
+        if ($request->header('X-Active-Context-Type') === 'staff' && empty($data['company_id'])) {
+            $data['company_id'] = $this->currentCompanyId();
+            abort_unless($data['company_id'], 409, 'Select an active business for Sales work.');
+        }
         if (! empty($data['company_id'])) {
             $this->access->assertCompany($request->user(), $data['company_id'], 'sales.commission-recoveries.view-all');
         }
@@ -125,6 +135,7 @@ class CommissionRecoveryController extends Controller
 
     private function authorizeCaseScope(Request $request, SalesCommissionRecoveryCase $case): void
     {
+        $this->assertSelectedStaffCompany($request, (string) $case->company_id);
         $profileIds = $this->profileIds($request, $case->company_id);
         abort_unless($profileIds === null || in_array($case->beneficiary_sales_profile_id, $profileIds, true), 403,
             'Recovery case is outside your permitted Sales scope.');
@@ -132,7 +143,29 @@ class CommissionRecoveryController extends Controller
 
     private function profileIds(Request $request, ?string $companyId = null): ?array
     {
+        if ($request->header('X-Active-Context-Type') === 'staff') {
+            $activeCompanyId = $this->currentCompanyId();
+            abort_unless($activeCompanyId, 409, 'Select an active business for Sales work.');
+            $this->assertSelectedStaffCompany($request, $activeCompanyId);
+            abort_unless($companyId === null || (string) $companyId === $activeCompanyId, 403,
+                'Recovery case is outside your selected Staff business.');
+            $companyId = $activeCompanyId;
+        }
         return $this->access->profileIds($request->user(), 'sales.commission-recoveries.view-all',
             'sales.commission-recoveries.view-team', $companyId);
+    }
+
+    private function currentCompanyId(): ?string
+    {
+        $companyId = app(WebsiteSettingsService::class)->resolveCurrentCompanyId();
+
+        return $companyId ? (string) $companyId : null;
+    }
+
+    private function assertSelectedStaffCompany(Request $request, string $companyId): void
+    {
+        if ($request->header('X-Active-Context-Type') === 'staff') {
+            app(CompanySettingsAccessService::class)->assertCanAccess($request->user(), $companyId);
+        }
     }
 }

@@ -9,8 +9,9 @@ use App\Models\Sales\SalesCommissionStatementLine;
 use App\Models\Sales\SalesCommissionPayout;
 use App\Models\Sales\SalesCommissionStatementExport;
 use App\Models\Sales\SalesProfile;
+use App\Services\CompanySettingsAccessService;
 use App\Services\StaffAccessService;
-use App\Services\SingleCompanyScope;
+use App\Services\WebsiteSettingsService;
 use App\Services\Sales\CommissionDisputeService;
 use App\Services\Sales\CommissionBusinessCalendarService;
 use App\Services\Sales\CommissionCycleResolver;
@@ -35,7 +36,7 @@ class CommissionStatementController extends Controller
             'page' => ['nullable', 'integer', 'min:1'], 'per_page' => ['nullable', 'integer', 'min:1', 'max:50'],
         ]);
         $companyIds = $this->actorCompanyIds($request);
-        $defaultCompanyId = app(SingleCompanyScope::class)->activeDefaultCompany()?->id;
+        $defaultCompanyId = app(WebsiteSettingsService::class)->resolveCurrentCompanyId();
         if ($defaultCompanyId && ! in_array($defaultCompanyId, $companyIds, true)) $defaultCompanyId = null;
         $query = DB::table('companies')->whereNull('deleted_at')->where('is_active', true)
             ->whereIn('id', $companyIds)->select(['id', 'name', 'is_default']);
@@ -490,14 +491,25 @@ class CommissionStatementController extends Controller
 
     private function resolveCompanyId(?string $companyId): string
     {
-        $resolved = $companyId ?: app(SingleCompanyScope::class)->activeDefaultCompany()?->id;
-        abort_unless($resolved, 409, 'No active default legal entity is configured.');
+        $resolved = $companyId ?: app(WebsiteSettingsService::class)->resolveCurrentCompanyId();
+        abort_unless($resolved, 409, 'Select an active business for Sales work.');
+        if (request()->header('X-Active-Context-Type') === 'staff') {
+            app(CompanySettingsAccessService::class)->assertCanAccess(request()->user(), (string) $resolved);
+        }
 
         return (string) $resolved;
     }
 
     private function actorCompanyIds(Request $request): array
     {
+        if ($request->header('X-Active-Context-Type') === 'staff') {
+            $companyId = app(WebsiteSettingsService::class)->resolveCurrentCompanyId();
+            abort_unless($companyId, 409, 'Select an active business for Sales work.');
+            app(CompanySettingsAccessService::class)->assertCanAccess($request->user(), (string) $companyId);
+
+            return DB::table('companies')->where('id', $companyId)->where('is_active', true)
+                ->whereNull('deleted_at')->exists() ? [(string) $companyId] : [];
+        }
         if ($request->user()->can('sales.commission-statements.view-all')) {
             return DB::table('companies')->where('is_active', true)->whereNull('deleted_at')->pluck('id')->all();
         }

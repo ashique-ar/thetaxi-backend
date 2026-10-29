@@ -9,7 +9,8 @@ use App\Services\Sales\BookingPaymentAdjustmentService;
 use App\Services\Sales\SalesAccessScope;
 use App\Services\Sales\SalesCollectionCompanyIntegrity;
 use App\Services\Sales\SalesPolicySettingsService;
-use App\Services\SingleCompanyScope;
+use App\Services\CompanySettingsAccessService;
+use App\Services\WebsiteSettingsService;
 use Closure;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
@@ -31,7 +32,12 @@ class BookingPaymentAdjustmentController extends Controller
             'page' => ['nullable', 'integer', 'min:1'], 'per_page' => ['nullable', 'integer', 'min:1', 'max:50'],
         ]);
         $companyIds = $this->access->companyIds($request->user(), 'sales.payment-adjustments.create-all');
-        $defaultCompanyId = app(SingleCompanyScope::class)->activeDefaultCompany()?->id;
+        $defaultCompanyId = app(WebsiteSettingsService::class)->resolveCurrentCompanyId();
+        if ($request->header('X-Active-Context-Type') === 'staff') {
+            abort_unless($defaultCompanyId, 409, 'Select an active business for Sales work.');
+            app(CompanySettingsAccessService::class)->assertCanAccess($request->user(), (string) $defaultCompanyId);
+            $companyIds = [(string) $defaultCompanyId];
+        }
         if ($defaultCompanyId && $companyIds !== null && ! in_array($defaultCompanyId, $companyIds, true)) $defaultCompanyId = null;
         $query = DB::table('companies')->whereNull('deleted_at')
             ->when($companyIds !== null, fn ($company) => $company->whereIn('id', $companyIds));
@@ -222,14 +228,25 @@ class BookingPaymentAdjustmentController extends Controller
 
     private function profileIds(Request $request, ?string $companyId = null): ?array
     {
+        if ($request->header('X-Active-Context-Type') === 'staff') {
+            $activeCompanyId = app(WebsiteSettingsService::class)->resolveCurrentCompanyId();
+            abort_unless($activeCompanyId, 409, 'Select an active business for Sales work.');
+            app(CompanySettingsAccessService::class)->assertCanAccess($request->user(), (string) $activeCompanyId);
+            abort_unless($companyId === null || (string) $companyId === (string) $activeCompanyId, 403,
+                'Payment adjustment is outside your selected Staff business.');
+            $companyId = (string) $activeCompanyId;
+        }
         return $this->access->profileIds($request->user(), 'sales.payment-adjustments.create-all',
             'sales.payment-adjustments.create-team', $companyId);
     }
 
     private function resolveCompanyId(?string $companyId): string
     {
-        $companyId = $companyId ?: app(SingleCompanyScope::class)->activeDefaultCompany()?->id;
-        abort_unless($companyId, 409, 'No active default legal entity is configured.');
+        $companyId = $companyId ?: app(WebsiteSettingsService::class)->resolveCurrentCompanyId();
+        abort_unless($companyId, 409, 'Select an active business for Sales work.');
+        if (request()->header('X-Active-Context-Type') === 'staff') {
+            app(CompanySettingsAccessService::class)->assertCanAccess(request()->user(), (string) $companyId);
+        }
 
         return (string) $companyId;
     }

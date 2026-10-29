@@ -741,9 +741,12 @@ trait BookingSubmissionTrait
             'queue' => 'nullable|string|in:needs_approval,needs_assignment,needs_responsible_owner,needs_responsible_owner_past_target,ready_to_dispatch,active,return_due,qc_pending,repair_pending,ready_to_complete,payment_pending,payment_attention',
         ]);
 
+        $companyId = app(\App\Services\WebsiteSettingsService::class)->resolveCurrentCompanyId();
+        abort_unless($companyId, 409, 'Select a business to view its bookings.');
+        app(\App\Services\CompanySettingsAccessService::class)->assertCanAccess($request->user(), (string) $companyId);
+
         $queue = $request->input('queue', $request->input('operations_queue'));
         if ($queue === 'needs_responsible_owner_past_target') {
-            $companyId = app(SingleCompanyScope::class)->activeDefaultCompany()?->id;
             abort_unless($companyId && app(\App\Services\Sales\SalesPolicySettingsService::class)
                 ->bookingAssignmentTargetMinutes((string) $companyId), 409,
                 'Ask an administrator to set and approve the booking assignment target first.');
@@ -757,6 +760,7 @@ trait BookingSubmissionTrait
             } elseif ($request->boolean('mine_only')) {
                 $filters['assigned_to'] = $request->user()->id;
             }
+            $filters['company_id'] = (string) $companyId;
             $bookings = $this->bookingFlowService->getFilteredBookings($filters);
 
             return response()->json([
@@ -776,11 +780,12 @@ trait BookingSubmissionTrait
 
     public function responsibleUserOptions(Request $request): JsonResponse
     {
-        $company = app(SingleCompanyScope::class)->activeDefaultCompany();
-        abort_unless($company, 409, 'Set one active default company before assigning bookings.');
+        $companyId = app(\App\Services\WebsiteSettingsService::class)->resolveCurrentCompanyId();
+        abort_unless($companyId, 409, 'Select a business before assigning bookings.');
+        app(\App\Services\CompanySettingsAccessService::class)->assertCanAccess($request->user(), (string) $companyId, true);
 
         $employees = app(\App\Services\BookingResponsibilityService::class)
-            ->eligibleEmployeesWithOpenBookingCounts((string) $company->id);
+            ->eligibleEmployeesWithOpenBookingCounts((string) $companyId);
 
         return response()->json(['status' => 'success', 'data' => $employees]);
     }
@@ -788,19 +793,20 @@ trait BookingSubmissionTrait
     public function assignResponsibleUser(Request $request, string $bookingId): JsonResponse
     {
         $data = $request->validate(['responsible_user_id' => ['present', 'nullable', 'uuid']]);
-        $company = app(SingleCompanyScope::class)->activeDefaultCompany(true);
-        abort_unless($company, 409, 'Set one active default company before assigning bookings.');
+        $companyId = app(\App\Services\WebsiteSettingsService::class)->resolveCurrentCompanyId();
+        abort_unless($companyId, 409, 'Select a business before assigning bookings.');
+        app(\App\Services\CompanySettingsAccessService::class)->assertCanAccess($request->user(), (string) $companyId, true);
 
-        $booking = DB::transaction(function () use ($bookingId, $data, $request, $company) {
-            abort_unless(app(SingleCompanyScope::class)->activeDefaultCompany(true)?->id === $company->id, 409, 'Default company changed; retry assignment.');
+        $booking = DB::transaction(function () use ($bookingId, $data, $request, $companyId) {
+            abort_unless(app(\App\Services\WebsiteSettingsService::class)->resolveCurrentCompanyId() === $companyId, 409, 'Business context changed; retry assignment.');
             $bookingQuery = Booking::query()->whereKey($bookingId);
-            \App\Services\CompanyBookingScope::constrain($bookingQuery, 'bookings', $company->id);
+            \App\Services\CompanyBookingScope::constrain($bookingQuery, 'bookings', $companyId);
             $booking = $bookingQuery->lockForUpdate()->firstOrFail();
             $newOwnerId = $data['responsible_user_id'];
 
             if ($newOwnerId !== null) {
                 $eligible = DB::table('staff')->join('users', 'users.id', '=', 'staff.user_id')
-                    ->where('staff.company_id', $company->id)->where('users.id', $newOwnerId)
+                    ->where('staff.company_id', $companyId)->where('users.id', $newOwnerId)
                     ->whereNull('staff.deleted_at')->whereNull('staff.employment_ended_at')
                     ->whereNull('users.deleted_at')->where('users.is_active', true)
                     ->lockForUpdate()->exists()
@@ -852,7 +858,11 @@ trait BookingSubmissionTrait
         ]);
 
         $recordType = $data['record_type'];
+        $companyId = app(\App\Services\WebsiteSettingsService::class)->resolveCurrentCompanyId();
+        abort_unless($companyId, 409, 'Select a business to view its bookings.');
+        app(\App\Services\CompanySettingsAccessService::class)->assertCanAccess($request->user(), (string) $companyId);
         $filters = [
+            'company_id' => (string) $companyId,
             'per_page' => min(50, (int) ($data['per_page'] ?? 25)),
             'search' => trim((string) ($data['search'] ?? '')),
             'page' => (int) ($data['page'] ?? 1),

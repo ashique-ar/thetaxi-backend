@@ -27,8 +27,9 @@ use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Str;
 use App\Services\PaymentMethodSyncService;
 use App\Services\Sales\SalesAccessScope;
-use App\Services\SingleCompanyScope;
 use App\Services\CustomerMergeService;
+use App\Services\CompanySettingsAccessService;
+use App\Services\WebsiteSettingsService;
 use Symfony\Component\HttpFoundation\StreamedResponse;
 
 class CustomerController extends Controller
@@ -60,7 +61,7 @@ class CustomerController extends Controller
         $q = Customer::query()->select('customers.*')
             ->leftJoin('users as customer_phone', 'customer_phone.id', '=', 'customers.user_id')
             ->with(['user', 'state', 'paymentMethods']);
-        $companyId = app(SingleCompanyScope::class)->activeDefaultCompany()?->id;
+        $companyId = $this->currentCompanyId();
         abort_unless($companyId, 409, 'Select an active company before viewing customers.');
         \App\Services\CompanyCustomerScope::constrain($q, 'customers', $companyId);
         $phoneCallingCode = \App\Services\CompanyCustomerScope::phoneCallingCode($companyId);
@@ -126,7 +127,7 @@ class CustomerController extends Controller
         }
 
         if ($request->filled('owner_status')) {
-            $companyId = app(SingleCompanyScope::class)->activeDefaultCompany()?->id;
+            $companyId = $this->currentCompanyId();
             abort_unless($companyId, 409, 'No active default company is configured.');
             \App\Services\CompanyCustomerScope::constrain($q, 'customers', $companyId);
             $ownership = DB::table('customer_relationship_owner_assignments as assignment')
@@ -249,7 +250,7 @@ class CustomerController extends Controller
         $search = $request->get('q', '');
         $limit = (int) $request->get('limit', 20);
 
-        $companyId = app(SingleCompanyScope::class)->activeDefaultCompany()?->id;
+        $companyId = $this->currentCompanyId();
         abort_unless($companyId, 409, 'Select an active company before searching customers.');
         $customers = Customer::with('user')
             ->where(function ($query) use ($companyId): void {
@@ -285,7 +286,7 @@ class CustomerController extends Controller
 
         $email = strtolower(trim($data['email']));
 
-        $companyId = app(SingleCompanyScope::class)->activeDefaultCompany()?->id;
+        $companyId = $this->currentCompanyId();
         abort_unless($companyId, 409, 'Select an active company before checking customer email.');
         $customerQuery = Customer::with('user')
             ->whereHas('user', fn ($query) => $query->whereRaw('LOWER(email) = ?', [$email]))
@@ -309,7 +310,7 @@ class CustomerController extends Controller
             'Payment method management permission is required.');
         if ($dob = SriLankanNic::dateOfBirth($data['nic'] ?? null)) $data['dob'] = $dob;
         $data['created_user_id'] = $request->user()->id;
-        $companyId = app(SingleCompanyScope::class)->activeDefaultCompany()?->id;
+        $companyId = $this->currentCompanyId();
         if (! $companyId) {
             return response()->json(['status' => 'error', 'message' => 'Select an active company before creating a customer.'], 409);
         }
@@ -568,7 +569,7 @@ class CustomerController extends Controller
 
     public function relationshipOwnerOptions(): JsonResponse
     {
-        $companyId = app(SingleCompanyScope::class)->activeDefaultCompany()?->id;
+        $companyId = $this->currentCompanyId();
         abort_unless($companyId, 409, 'No active default company is configured.');
 
         $options = DB::table('sales_profiles as profile')
@@ -595,7 +596,7 @@ class CustomerController extends Controller
             'owner_sales_profile_id' => ['nullable', 'uuid'],
             'reason' => ['required', 'string', 'max:500'],
         ]);
-        $companyId = app(SingleCompanyScope::class)->activeDefaultCompany()?->id;
+        $companyId = $this->currentCompanyId();
         abort_unless($companyId, 409, 'No active default company is configured.');
         $ownerId = $data['owner_sales_profile_id'] ?? null;
 
@@ -663,7 +664,7 @@ class CustomerController extends Controller
     {
         abort_unless($request->user()->can('users.manage'), 403);
         $request->validate(['confirm_verified_contact' => ['required', 'accepted']]);
-        $companyId = app(SingleCompanyScope::class)->activeDefaultCompany()?->id;
+        $companyId = $this->currentCompanyId();
         abort_unless($companyId, 409, 'No active business is configured.');
         $customer = $this->requireCompanyCustomer($customer);
 
@@ -686,7 +687,7 @@ class CustomerController extends Controller
     public function sendPortalVerification(Request $request, Customer $customer, AuthService $auth): JsonResponse
     {
         abort_unless($request->user()->can('users.manage'), 403);
-        $companyId = app(SingleCompanyScope::class)->activeDefaultCompany()?->id;
+        $companyId = $this->currentCompanyId();
         abort_unless($companyId, 409, 'No active business is configured.');
         $customer = $this->requireCompanyCustomer($customer);
         $user = User::query()->whereKey($customer->user_id)->firstOrFail();
@@ -699,7 +700,7 @@ class CustomerController extends Controller
 
     private function currentRelationshipOwner(Customer $customer): ?array
     {
-        $companyId = app(SingleCompanyScope::class)->activeDefaultCompany()?->id;
+        $companyId = $this->currentCompanyId();
         if (! $companyId) return null;
         $owner = DB::table('customer_relationship_owner_assignments as assignment')
             ->leftJoin('sales_profiles as profile', 'profile.id', '=', 'assignment.owner_sales_profile_id')
@@ -715,7 +716,7 @@ class CustomerController extends Controller
 
     private function relationshipOwnerHistory(Customer $customer): array
     {
-        $companyId = app(SingleCompanyScope::class)->activeDefaultCompany()?->id;
+        $companyId = $this->currentCompanyId();
         if (! $companyId) return [];
         return DB::table('customer_relationship_owner_assignments as assignment')
             ->leftJoin('sales_profiles as profile', 'profile.id', '=', 'assignment.owner_sales_profile_id')
@@ -808,7 +809,7 @@ class CustomerController extends Controller
     public function getCustomerBookings(Request $request, Customer $customer): JsonResponse
     {
         $customer = $this->requireCompanyCustomer($customer);
-        $companyId = app(SingleCompanyScope::class)->activeDefaultCompany()?->id;
+        $companyId = $this->currentCompanyId();
         abort_unless($companyId, 409, 'Set one active default company before viewing customer bookings.');
         $bookings = $customer->bookings();
         \App\Services\CompanyBookingScope::constrain($bookings, 'bookings', $companyId);
@@ -857,7 +858,7 @@ class CustomerController extends Controller
     public function getCustomerInquiries(Customer $customer): JsonResponse
     {
         $customer = $this->requireCompanyCustomer($customer);
-        $companyId = app(SingleCompanyScope::class)->activeDefaultCompany()?->id;
+        $companyId = $this->currentCompanyId();
         abort_unless($companyId, 409, 'Set one active default company before viewing customer inquiries.');
         $inquiries = DB::table('inquiries')->where('company_id', $companyId)->where('customer_id', $customer->id)->whereNull('deleted_at')
             ->latest('created_at')->select(['id', 'inquiry_number', 'inquiry_type', 'subject', 'status', 'source', 'created_at'])
@@ -876,7 +877,7 @@ class CustomerController extends Controller
     {
         $customer = $this->requireCompanyCustomer($customer);
         $request->validate(['page' => ['nullable', 'integer', 'min:1'], 'per_page' => ['nullable', 'integer', 'min:1', 'max:50']]);
-        $companyId = app(SingleCompanyScope::class)->activeDefaultCompany()?->id;
+        $companyId = $this->currentCompanyId();
         abort_unless($companyId, 409, 'Set one active default company before viewing the customer timeline.');
 
         $bookings = DB::table('bookings as booking')->where('booking.customer_id', $customer->id)->whereNull('booking.deleted_at');
@@ -2016,8 +2017,18 @@ class CustomerController extends Controller
 
     private function requireActiveCompanyId(): string
     {
-        $companyId = app(SingleCompanyScope::class)->activeDefaultCompany()?->id;
+        $companyId = $this->currentCompanyId();
         abort_unless($companyId, 409, 'Select an active company before viewing customer data.');
+
+        return (string) $companyId;
+    }
+
+    private function currentCompanyId(): ?string
+    {
+        $companyId = app(WebsiteSettingsService::class)->resolveCurrentCompanyId();
+        if (! $companyId) return null;
+
+        app(CompanySettingsAccessService::class)->assertCanAccess(request()->user(), (string) $companyId);
 
         return (string) $companyId;
     }

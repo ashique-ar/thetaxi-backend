@@ -781,10 +781,9 @@ class BookingLifecycleService
     public function requestReplacement(string $bookingId, string $bookingItemId, string $reason, ?string $notes = null): array
     {
         return DB::transaction(function () use ($bookingId, $bookingItemId, $reason, $notes): array {
-            $company = app(SingleCompanyScope::class)->activeDefaultCompany(true);
-            if (! $company) throw new \DomainException('Set one active default company before requesting a replacement.');
+            $companyId = $this->selectedCompanyId();
             $bookingQuery = Booking::query()->with(['bookingItems', 'dispatches', 'qcs'])->whereKey($bookingId);
-            CompanyBookingScope::constrain($bookingQuery, 'bookings', (string) $company->id);
+            CompanyBookingScope::constrain($bookingQuery, 'bookings', $companyId);
             $booking = $bookingQuery->lockForUpdate()->firstOrFail();
             $item = BookingItem::query()->whereKey($bookingItemId)->where('booking_id', $booking->id)->lockForUpdate()->firstOrFail();
             $dispatch = $this->resolveItemDispatch($booking, ['booking_item' => $item, 'booking_item_id' => $item->id]);
@@ -824,10 +823,9 @@ class BookingLifecycleService
     public function closeReplacementRequest(string $bookingId, string $bookingItemId, string $resolutionReason): array
     {
         return DB::transaction(function () use ($bookingId, $bookingItemId, $resolutionReason): array {
-            $company = app(SingleCompanyScope::class)->activeDefaultCompany(true);
-            if (! $company) throw new \DomainException('Set one active default company before closing a replacement request.');
+            $companyId = $this->selectedCompanyId();
             $bookingQuery = Booking::query()->with(['bookingItems', 'dispatches', 'qcs'])->whereKey($bookingId);
-            CompanyBookingScope::constrain($bookingQuery, 'bookings', (string) $company->id);
+            CompanyBookingScope::constrain($bookingQuery, 'bookings', $companyId);
             $booking = $bookingQuery->lockForUpdate()->firstOrFail();
             $item = BookingItem::query()->whereKey($bookingItemId)->where('booking_id', $booking->id)->lockForUpdate()->firstOrFail();
             $lifecycleData = is_array($item->lifecycle_data) ? $item->lifecycle_data : [];
@@ -3693,7 +3691,14 @@ class BookingLifecycleService
                 $bookingItem = $booking->bookingItems->first();
             }
         }
-        return $this->workflowSettingsResolver->resolve($bookingItem?->workflow_config_snapshot);
+        $companyId = $booking?->company_id ? (string) $booking->company_id : null;
+        if (! $companyId && $bookingItem?->service_type_id) {
+            $serviceType = $bookingItem->relationLoaded('serviceType')
+                ? $bookingItem->serviceType
+                : $bookingItem->serviceType()->first(['id', 'owner_type', 'owner_id']);
+            $companyId = $serviceType?->owner_type === 'company' ? (string) $serviceType->owner_id : null;
+        }
+        return $this->workflowSettingsResolver->resolve($bookingItem?->workflow_config_snapshot, $companyId);
     }
 
     /**
@@ -5187,6 +5192,18 @@ class BookingLifecycleService
                 'updated_at' => now()->toISOString(),
             ];
         });
+    }
+
+    private function selectedCompanyId(): string
+    {
+        $user = Auth::user();
+        $companyId = app(WebsiteSettingsService::class)->resolveCurrentCompanyId();
+        if (! $user || ! $companyId) {
+            throw new \DomainException('Select an active business before managing this booking.');
+        }
+        app(CompanySettingsAccessService::class)->assertCanAccess($user, (string) $companyId);
+
+        return (string) $companyId;
     }
 
     private function bookingDateTime(mixed $date, mixed $time = null): Carbon

@@ -17,9 +17,10 @@ trait BookingAnalyticsTrait
             'filters' => 'nullable|array',
             'dashboard_scope' => 'nullable|string|in:standard',
         ]);
+        $params = $this->withSelectedCompany($request);
 
         try {
-            $stats = $this->bookingFlowService->getDashboardStats($request->all());
+            $stats = $this->bookingFlowService->getDashboardStats($params);
 
             return response()->json([
                 'status' => 'success',
@@ -45,9 +46,10 @@ trait BookingAnalyticsTrait
             'date_to' => 'required|date|after_or_equal:date_from',
             'group_by' => 'nullable|string|in:service_type,vehicle_group,customer_type,status'
         ]);
+        $params = $this->withSelectedCompany($request);
 
         try {
-            $trends = $this->bookingFlowService->getBookingTrends($request->all());
+            $trends = $this->bookingFlowService->getBookingTrends($params);
 
             return response()->json([
                 'status' => 'success',
@@ -73,9 +75,10 @@ trait BookingAnalyticsTrait
             'breakdown' => 'nullable|string|in:service_type,vehicle_group,customer_segment',
             'include_projections' => 'nullable|boolean'
         ]);
+        $params = $this->withSelectedCompany($request);
 
         try {
-            $analytics = $this->bookingFlowService->getRevenueAnalytics($request->all());
+            $analytics = $this->bookingFlowService->getRevenueAnalytics($params);
 
             return response()->json([
                 'status' => 'success',
@@ -102,9 +105,10 @@ trait BookingAnalyticsTrait
             'vehicle_group_id' => 'nullable|uuid|exists:vehicle_groups,id',
             'include_idle_time' => 'nullable|boolean'
         ]);
+        $params = $this->withSelectedCompany($request);
 
         try {
-            $reports = $this->bookingFlowService->getUtilizationReports($request->all());
+            $reports = $this->bookingFlowService->getUtilizationReports($params);
 
             return response()->json([
                 'status' => 'success',
@@ -130,9 +134,10 @@ trait BookingAnalyticsTrait
             'date_to' => 'required|date|after_or_equal:date_from',
             'customer_segment' => 'nullable|string|in:corporate,individual,vip'
         ]);
+        $params = $this->withSelectedCompany($request);
 
         try {
-            $analytics = $this->bookingFlowService->getCustomerAnalytics($request->all());
+            $analytics = $this->bookingFlowService->getCustomerAnalytics($params);
 
             return response()->json([
                 'status' => 'success',
@@ -158,8 +163,17 @@ trait BookingAnalyticsTrait
             'include_relations' => 'nullable|boolean'
         ]);
 
+        $companyId = app(\App\Services\WebsiteSettingsService::class)->resolveCurrentCompanyId();
+        abort_unless($companyId, 409, 'Select a business before exporting bookings.');
+        app(\App\Services\CompanySettingsAccessService::class)->assertCanAccess($request->user(), (string) $companyId);
+
         try {
-            $export = $this->bookingFlowService->exportBookings($request->all());
+            $params = $request->all();
+            $params['company_id'] = (string) $companyId;
+            if (! empty($params['filters'])) {
+                $params['filters']['company_id'] = (string) $companyId;
+            }
+            $export = $this->bookingFlowService->exportBookings($params);
 
             return response()->json([
                 'status' => 'success',
@@ -174,5 +188,14 @@ trait BookingAnalyticsTrait
                 'error' => $e->getMessage()
             ], 500);
         }
+    }
+
+    private function withSelectedCompany(Request $request): array
+    {
+        $companyId = app(\App\Services\WebsiteSettingsService::class)->resolveCurrentCompanyId();
+        abort_unless($companyId, 409, 'Select a business to view its booking analytics.');
+        app(\App\Services\CompanySettingsAccessService::class)->assertCanAccess($request->user(), (string) $companyId);
+
+        return array_merge($request->all(), ['company_id' => (string) $companyId]);
     }
 }

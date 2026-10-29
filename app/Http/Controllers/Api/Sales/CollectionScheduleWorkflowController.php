@@ -15,8 +15,9 @@ use App\Services\Sales\SalesCollectionCompanyIntegrity;
 use App\Services\Sales\SalesAccessScope;
 use App\Services\Sales\SalesPolicySettingsService;
 use App\Services\BookingPaymentLedgerService;
+use App\Services\CompanySettingsAccessService;
 use App\Services\StaffAccessService;
-use App\Services\SingleCompanyScope;
+use App\Services\WebsiteSettingsService;
 use Closure;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
@@ -145,7 +146,12 @@ class CollectionScheduleWorkflowController extends Controller
         }
         $companyIds = $profileIds === null ? null : DB::table('sales_booking_attributions')->whereNull('deleted_at')
             ->whereIn('collection_sales_profile_id', $profileIds)->distinct()->pluck('company_id')->all();
-        $defaultCompanyId = app(SingleCompanyScope::class)->activeDefaultCompany()?->id;
+        $defaultCompanyId = $this->currentCompanyId();
+        if ($request->header('X-Active-Context-Type') === 'staff') {
+            abort_unless($defaultCompanyId, 409, 'Select an active business for Sales work.');
+            $this->assertSelectedStaffCompany($request, $defaultCompanyId);
+            $companyIds = [$defaultCompanyId];
+        }
         if ($defaultCompanyId && $companyIds !== null && ! in_array($defaultCompanyId, $companyIds, true)) $defaultCompanyId = null;
         $query = DB::table('companies')->whereNull('deleted_at')->where('is_active', true)
             ->when($companyIds !== null, fn ($companies) => $companies->whereIn('id', $companyIds));
@@ -551,7 +557,12 @@ class CollectionScheduleWorkflowController extends Controller
             'per_page' => ['nullable', 'integer', 'min:1', 'max:50'],
         ]);
         $companyIds = $this->collectionCompanyIds($request);
-        $defaultCompanyId = app(SingleCompanyScope::class)->activeDefaultCompany()?->id;
+        $defaultCompanyId = $this->currentCompanyId();
+        if ($request->header('X-Active-Context-Type') === 'staff') {
+            abort_unless($defaultCompanyId, 409, 'Select an active business for Sales work.');
+            $this->assertSelectedStaffCompany($request, $defaultCompanyId);
+            $companyIds = [$defaultCompanyId];
+        }
         if ($defaultCompanyId && $companyIds !== null && ! in_array($defaultCompanyId, $companyIds, true)) $defaultCompanyId = null;
         $query = DB::table('companies')->whereNull('deleted_at')->where('is_active', true)
             ->when($companyIds !== null, fn ($companies) => $companies->whereIn('id', $companyIds));
@@ -577,6 +588,13 @@ class CollectionScheduleWorkflowController extends Controller
 
     private function collectionCompanyIds(Request $request): ?array
     {
+        if ($request->header('X-Active-Context-Type') === 'staff') {
+            $companyId = $this->currentCompanyId();
+            abort_unless($companyId, 409, 'Select an active business for Sales work.');
+            $this->assertSelectedStaffCompany($request, $companyId);
+
+            return [$companyId];
+        }
         if ($request->user()->can('sales.collections.view-all')) {
             return null;
         }
@@ -596,6 +614,7 @@ class CollectionScheduleWorkflowController extends Controller
     {
         abort_unless(DB::table('companies')->where('id', $companyId)->where('is_active', true)
             ->whereNull('deleted_at')->exists(), 422, 'Select an active legal entity.');
+        $this->assertSelectedStaffCompany($request, $companyId);
         if ($request->user()->can('sales.collections.view-all')) {
             return;
         }
@@ -607,10 +626,25 @@ class CollectionScheduleWorkflowController extends Controller
 
     private function resolveCompanyId(?string $companyId): string
     {
-        $companyId = $companyId ?: app(SingleCompanyScope::class)->activeDefaultCompany()?->id;
-        abort_unless($companyId, 409, 'No active default legal entity is configured.');
+        $companyId = $companyId ?: $this->currentCompanyId();
+        abort_unless($companyId, 409, 'Select an active business for Sales work.');
+        $this->assertSelectedStaffCompany(request(), (string) $companyId);
 
         return (string) $companyId;
+    }
+
+    private function currentCompanyId(): ?string
+    {
+        $companyId = app(WebsiteSettingsService::class)->resolveCurrentCompanyId();
+
+        return $companyId ? (string) $companyId : null;
+    }
+
+    private function assertSelectedStaffCompany(Request $request, string $companyId): void
+    {
+        if ($request->header('X-Active-Context-Type') === 'staff') {
+            app(CompanySettingsAccessService::class)->assertCanAccess($request->user(), $companyId);
+        }
     }
 
     private function assertScheduleAttributionOwnerIntegrity(?string $companyId, ?array $profileIds, ?string $bookingId = null): void

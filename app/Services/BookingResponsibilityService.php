@@ -64,7 +64,8 @@ class BookingResponsibilityService
 
     public function notifyResponsibleEmployee(Booking $booking): void
     {
-        $userId = $this->eligibleEmployeeId($booking->responsible_user_id);
+        $companyId = $this->companyIdFor($booking);
+        $userId = $this->eligibleEmployeeId($booking->responsible_user_id, $companyId);
         if (! $userId) return;
 
         User::query()->whereKey($userId)->first()?->notify(new BookingResponsibilityAssignedNotification($booking));
@@ -72,17 +73,18 @@ class BookingResponsibilityService
 
     public function notifyBookingCreated(Booking $booking): void
     {
-        if ($this->eligibleEmployeeId($booking->responsible_user_id)) {
+        $companyId = $this->companyIdFor($booking);
+        if ($this->eligibleEmployeeId($booking->responsible_user_id, $companyId)) {
             $this->notifyResponsibleEmployee($booking);
             return;
         }
 
-        $this->notifyUnassignedBooking($booking);
+        $this->notifyUnassignedBooking($booking, $companyId);
     }
 
     public function notifyUnassignedBooking(Booking $booking, ?string $companyId = null): void
     {
-        $companyId ??= app(SingleCompanyScope::class)->activeDefaultCompany()?->id;
+        $companyId ??= $this->companyIdFor($booking);
         if (! $companyId || ! in_array($booking->status, array_merge(['inquiry', 'inquiry_qualified'], BookingLifecycleStatus::activeOperationalValues()), true)) {
             return;
         }
@@ -107,6 +109,13 @@ class BookingResponsibilityService
                 'error' => $exception->getMessage(),
             ]);
         }
+    }
+
+    private function companyIdFor(Booking $booking): ?string
+    {
+        return $booking->company_id
+            ? (string) $booking->company_id
+            : app(SingleCompanyScope::class)->activeDefaultCompany()?->id;
     }
 
 }

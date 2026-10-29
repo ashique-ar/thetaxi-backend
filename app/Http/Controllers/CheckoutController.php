@@ -89,6 +89,7 @@ class CheckoutController extends Controller
         ]);
         $channel = $data['channel'];
         $value = $channel === 'email' ? mb_strtolower(trim($data['value'])) : $this->normalizeCheckoutMobile($data['value']);
+        $resendAfter = (int) $this->websiteSettingsService->getBookingSettings()['checkout_customer_verification_resend_seconds'];
         if ($channel === 'email') validator(['email' => $value], ['email' => ['required', 'email:rfc', 'max:255']])->validate();
         abort_if($channel === 'mobile' && ! preg_match('/^\+[1-9]\d{7,14}$/', $value), 422, 'Enter a valid mobile number with its country code.');
 
@@ -105,16 +106,18 @@ class CheckoutController extends Controller
                 ->header('Retry-After', (string) $retryAfter);
         }
         RateLimiter::hit($limitKey, 600);
-        RateLimiter::hit($cooldownKey, 60);
+        RateLimiter::hit($cooldownKey, $resendAfter);
 
         $customer = $this->findCheckoutCustomer($channel, $value);
         if ($this->isEligibleCheckoutCustomer($customer)) {
             $code = (string) random_int(100000, 999999);
+            $expiresAt = now()->addMinutes(10);
             Cache::put($this->checkoutCustomerCodeKey($request, $channel, $value), [
                 'hash' => Hash::make($code),
                 'attempts' => 0,
                 'customer_id' => (string) $customer->id,
-            ], now()->addMinutes(10));
+                'expires_at' => $expiresAt->timestamp,
+            ], $expiresAt);
             try {
                 if ($channel === 'email') {
                     Notification::route('mail', $value)->notify(new \App\Notifications\CheckoutEmailVerificationCodeNotification($code));
@@ -139,7 +142,7 @@ class CheckoutController extends Controller
             }
         }
 
-        return response()->json(['status' => 'success', 'resend_after' => 60, 'message' => 'If these details match a previous booking, check your email or mobile for a code. The code expires in 10 minutes.']);
+        return response()->json(['status' => 'success', 'resend_after' => $resendAfter, 'message' => 'If these details match a previous booking, check your email or mobile for a code. The code expires in 10 minutes.']);
     }
 
     public function verifyCustomerEmailCode(Request $request)
@@ -155,10 +158,15 @@ class CheckoutController extends Controller
         $key = $this->checkoutCustomerCodeKey($request, $channel, $value);
         $challenge = Cache::get($key);
 
-        if (!$challenge || $challenge['attempts'] >= 5 || !Hash::check($data['code'], $challenge['hash'])) {
-            if ($challenge) {
+        $expired = ! $challenge || (int) ($challenge['expires_at'] ?? 0) <= now()->timestamp;
+        $attemptsExceeded = $challenge && (int) ($challenge['attempts'] ?? 0) >= 5;
+        $codeMatches = $challenge && Hash::check($data['code'], $challenge['hash']);
+        if ($expired || $attemptsExceeded || ! $codeMatches) {
+            if ($challenge && ($expired || $attemptsExceeded || (int) ($challenge['attempts'] ?? 0) >= 4)) {
+                Cache::forget($key);
+            } elseif ($challenge) {
                 $challenge['attempts']++;
-                Cache::put($key, $challenge, now()->addMinutes(10));
+                Cache::put($key, $challenge, now()->addSeconds(max(1, (int) $challenge['expires_at'] - now()->timestamp)));
             }
             throw ValidationException::withMessages(['code' => ['The code is invalid or expired. Request a new code and try again.']]);
         }
@@ -171,7 +179,7 @@ class CheckoutController extends Controller
         $customer->load(['user', 'country']);
         Cache::forget($key);
         $email = mb_strtolower(trim((string) $customer->user->email));
-        $mobile = $this->normalizeCheckoutMobile((string) $customer->user->phone);
+        $mobile = $this->normalizeCheckoutMobile((string) $customer->user->phone, $customer->country?->callcode);
         session()->put('checkout_verified_email', $email);
         session()->put('checkout_verified_email_at', now()->timestamp);
         session()->put('checkout_verified_customer_id', (string) $customer->id);
@@ -222,11 +230,22 @@ class CheckoutController extends Controller
         return 'checkout-customer-code:'.hash('sha256', $request->session()->getId().'|'.$channel.'|'.$value);
     }
 
-    private function normalizeCheckoutMobile(string $mobile): string
+    private function normalizeCheckoutMobile(string $mobile, ?string $callingCode = null): string
     {
-        $digits = preg_replace('/\D+/', '', trim($mobile)) ?? '';
-        if (str_starts_with($digits, '00')) $digits = substr($digits, 2);
+        $digits = PhoneNumberMatch::normalized(trim($mobile), $callingCode);
         return $digits === '' ? '' : '+'.$digits;
+    }
+
+    private function checkoutCallingCode(string $internationalMobile): ?string
+    {
+        $digits = ltrim($internationalMobile, '+');
+        $callingCodes = Cache::remember('checkout-phone-calling-codes', now()->addDay(), fn () => DB::table('countries')
+            ->whereNotNull('callcode')->whereNull('deleted_at')->pluck('callcode')
+            ->map(fn ($code) => preg_replace('/\D+/', '', (string) $code))
+            ->filter(fn ($code) => preg_match('/^[1-9]\d{0,2}$/', $code))
+            ->unique()->sortByDesc(fn ($code) => strlen($code))->values());
+
+        return $callingCodes->first(fn ($code) => str_starts_with($digits, $code));
     }
 
     private function findCheckoutCustomer(string $channel, string $value): ?Customer
@@ -236,15 +255,11 @@ class CheckoutController extends Controller
             $userQuery->whereRaw('LOWER(email) = ?', [$value]);
         } else {
             $digits = ltrim($value, '+');
-            $phoneCandidates = [$digits, '00'.$digits];
-            if (str_starts_with($digits, '94')) {
-                $nationalNumber = substr($digits, 2);
-                $phoneCandidates[] = '0'.$nationalNumber;
-                $phoneCandidates[] = $nationalNumber;
-            }
-            $phoneCandidates = array_values(array_unique($phoneCandidates));
+            $callingCode = $this->checkoutCallingCode($value);
+            $nationalNumber = $callingCode && str_starts_with($digits, $callingCode) ? substr($digits, strlen($callingCode)) : '';
+            $phoneCandidates = array_values(array_filter(array_unique([$digits, $nationalNumber])));
             $placeholders = implode(',', array_fill(0, count($phoneCandidates), '?'));
-            $userQuery->whereRaw(PhoneNumberMatch::sqlExpression('users.phone')." IN ({$placeholders})", $phoneCandidates);
+            $userQuery->whereRaw(PhoneNumberMatch::sqlExpression('users.phone', $callingCode)." IN ({$placeholders})", $phoneCandidates);
         }
 
         $users = $userQuery->limit(2)->get(['users.*']);
@@ -324,6 +339,7 @@ class CheckoutController extends Controller
         $bookingSettings = $this->websiteSettingsService->getBookingSettings();
         $guestBookingEnabled = $this->normalizeBoolean($bookingSettings['guest_booking_enabled'] ?? null, true);
         $customerLookupEnabled = $this->normalizeBoolean($bookingSettings['checkout_returning_customer_lookup_enabled'] ?? null, true);
+        $verificationResendAfter = (int) ($bookingSettings['checkout_customer_verification_resend_seconds'] ?? 60);
         $bookingBaseCurrency = $this->resolveBookingBaseCurrency($bookingSettings);
         try {
             $cartModel = $this->cartService->getOrCreateCart();
@@ -347,7 +363,7 @@ class CheckoutController extends Controller
                     'first_name' => $customer->user->first_name,
                     'last_name' => $customer->user->last_name,
                     'email' => $customer->user->email,
-                    'phone' => $this->normalizeCheckoutMobile((string) $customer->user->phone),
+                    'phone' => $this->normalizeCheckoutMobile((string) $customer->user->phone, $customer->country?->callcode),
                     'address' => $customer->address,
                     'city' => $customer->city,
                     'country' => $customer->getAttribute('country') ?: $customer->getRelation('country')?->name,
@@ -451,6 +467,7 @@ class CheckoutController extends Controller
             'hasAirportTransfer',
             'guestBookingEnabled',
             'customerLookupEnabled',
+            'verificationResendAfter',
             'verifiedCheckoutCustomer'
         ));
     }
@@ -646,11 +663,12 @@ class CheckoutController extends Controller
         $verifiedCustomerId = $customerLookupEnabled ? session('checkout_verified_customer_id') : null;
         if ($verifiedCustomerId && now()->timestamp - (int) session('checkout_verified_email_at', 0) <= 1800) {
             $verifiedCustomer = Customer::query()->with('user')->find($verifiedCustomerId);
+            $phoneCallingCode = $validated['phone_country_code'] ?? null;
             $submittedMobile = $this->normalizeCheckoutMobile((string) ($validated['phone_international'] ?? ''));
             if (! ($verifiedCustomer?->user
                 && mb_strtolower(trim((string) $verifiedCustomer->user->email)) === mb_strtolower(trim($validated['email']))
                 && (! filled($verifiedCustomer->user->phone)
-                    || $this->normalizeCheckoutMobile((string) $verifiedCustomer->user->phone) === $submittedMobile))) {
+                    || $this->normalizeCheckoutMobile((string) $verifiedCustomer->user->phone, $phoneCallingCode) === $submittedMobile))) {
                 throw ValidationException::withMessages(['email' => ['For a returning customer, keep the saved email and mobile number. You can update the other details below.']]);
             }
         }

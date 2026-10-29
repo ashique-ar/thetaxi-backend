@@ -497,6 +497,7 @@ class SettingsViewComposer
                     'booking_max_days',
                     'guest_booking_enabled',
                     'checkout_returning_customer_lookup_enabled',
+                    'checkout_customer_verification_resend_seconds',
                     'enable_whatsapp_quote_requests',
                     'booking_base_currency',
                     'booking_submit_inquiry_label',

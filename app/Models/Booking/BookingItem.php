@@ -153,7 +153,8 @@ class BookingItem extends BaseModel
 
     private static function snapshotServiceWorkflow(BookingItem $item, \App\Models\Service\ServiceType $serviceType): void
     {
-        $effective = app(\App\Services\BookingWorkflowSettingsResolver::class)->resolve($serviceType->workflow_config);
+        $companyId = $serviceType->owner_type === 'company' ? (string) $serviceType->owner_id : null;
+        $effective = app(\App\Services\BookingWorkflowSettingsResolver::class)->resolve($serviceType->workflow_config, $companyId);
         $item->workflow_config_snapshot = array_merge($item->workflow_config_snapshot ?? [], [
             'policy_version' => 1,
             'return_stage_enabled' => $effective['enable_return_stage'],

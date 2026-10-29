@@ -6,6 +6,8 @@ use App\Http\Controllers\Controller;
 use App\Models\Booking\Booking;
 use App\Models\UserMedia;
 use App\Services\BookingLifecycleService;
+use App\Services\CompanySettingsAccessService;
+use App\Services\WebsiteSettingsService;
 use App\Services\Sms\SmsAutomationService;
 use Illuminate\Http\Request;
 use Illuminate\Http\JsonResponse;
@@ -561,10 +563,11 @@ class BookingLifecycleController extends Controller
             throw ValidationException::withMessages(['notes' => 'Describe the completed work in at least 3 characters.']);
         }
 
-        $company = app(\App\Services\SingleCompanyScope::class)->activeDefaultCompany();
-        abort_unless($company, 409, 'Set one active default company before completing maintenance.');
+        $companyId = app(WebsiteSettingsService::class)->resolveCurrentCompanyId();
+        abort_unless($companyId, 409, 'Select an active business before completing maintenance.');
+        app(CompanySettingsAccessService::class)->assertCanAccess($request->user(), (string) $companyId);
         $bookingQuery = Booking::query()->whereKey($data['booking_id'])->whereNull('deleted_at');
-        \App\Services\CompanyBookingScope::constrain($bookingQuery, 'bookings', (string) $company->id);
+        \App\Services\CompanyBookingScope::constrain($bookingQuery, 'bookings', (string) $companyId);
         $bookingQuery->firstOrFail();
 
         try {

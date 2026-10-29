@@ -25,6 +25,11 @@ use Illuminate\Database\Eloquent\Relations\BelongsTo;
  */
 class BusinessSetting extends BaseModel
 {
+    public const COMPANY_SCOPED_WORKFLOW_KEYS = [
+        'feature_vehicle_return_management_enabled',
+        'assignment_enable_qc_stage',
+        'assignment_enable_maintenance_stage',
+    ];
     
 
     /**

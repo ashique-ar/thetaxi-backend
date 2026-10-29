@@ -6,11 +6,12 @@ use App\Http\Controllers\Controller;
 use App\Models\Sales\SalesProfile;
 use App\Models\Sales\SalesProfileExport;
 use App\Models\Staff;
-use App\Services\SingleCompanyScope;
+use App\Services\CompanySettingsAccessService;
 use App\Services\Sales\SalesAccessScope;
 use App\Services\Sales\SalesPolicySettingsService;
 use App\Services\Sales\SalesProfileExportService;
 use App\Services\UserContextService;
+use App\Services\WebsiteSettingsService;
 use App\Support\Foundation\CanonicalJson;
 use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Http\Exceptions\HttpResponseException;
@@ -509,7 +510,11 @@ class SalesProfileController extends Controller
             'page' => ['nullable', 'integer', 'min:1'], 'per_page' => ['nullable', 'integer', 'min:1', 'max:50'],
         ]);
         $companyIds = $this->scope->companyIds($request->user(), 'sales.profiles.view-all');
-        $defaultCompanyId = app(SingleCompanyScope::class)->activeDefaultCompany()?->id;
+        $defaultCompanyId = app(WebsiteSettingsService::class)->resolveCurrentCompanyId();
+        if ($defaultCompanyId && request()->header('X-Active-Context-Type') === 'staff') {
+            app(CompanySettingsAccessService::class)->assertCanAccess($request->user(), (string) $defaultCompanyId);
+            $companyIds = [(string) $defaultCompanyId];
+        }
         if ($defaultCompanyId && $companyIds !== null && ! in_array($defaultCompanyId, $companyIds, true)) $defaultCompanyId = null;
         $query = DB::table('companies')->whereNull('deleted_at')
             ->when($companyIds !== null, fn ($company) => $company->whereIn('id', $companyIds));
@@ -766,8 +771,11 @@ class SalesProfileController extends Controller
 
     private function resolveCompanyId(?string $companyId): string
     {
-        $companyId = $companyId ?: app(SingleCompanyScope::class)->activeDefaultCompany()?->id;
-        abort_unless($companyId, 409, 'No active default legal entity is configured.');
+        $companyId = $companyId ?: app(WebsiteSettingsService::class)->resolveCurrentCompanyId();
+        abort_unless($companyId, 409, 'Select an active business for Sales work.');
+        if (request()->header('X-Active-Context-Type') === 'staff') {
+            app(CompanySettingsAccessService::class)->assertCanAccess(request()->user(), (string) $companyId);
+        }
 
         return (string) $companyId;
     }

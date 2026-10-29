@@ -8,7 +8,7 @@ class BookingWorkflowSettingsResolver
     {
     }
 
-    public function resolve(?array $serviceConfig = null): array
+    public function resolve(?array $serviceConfig = null, ?string $companyId = null): array
     {
         // Version distinguishes frozen booking policies from legacy service-level overrides.
         if (($serviceConfig['policy_version'] ?? null) === 1) {
@@ -24,7 +24,7 @@ class BookingWorkflowSettingsResolver
             ];
         }
 
-        $defaults = $this->businessDefaults();
+        $defaults = $this->businessDefaults($companyId);
         $settings = $defaults;
 
         foreach ([
@@ -55,10 +55,10 @@ class BookingWorkflowSettingsResolver
         return $settings;
     }
 
-    public function preview(array $serviceConfig): array
+    public function preview(array $serviceConfig, ?string $companyId = null): array
     {
-        $defaults = $this->businessDefaults();
-        $effective = $this->resolve($serviceConfig);
+        $defaults = $this->businessDefaults($companyId);
+        $effective = $this->resolve($serviceConfig, $companyId);
         $sources = [];
 
         foreach ([
@@ -99,13 +99,13 @@ class BookingWorkflowSettingsResolver
         ];
     }
 
-    private function businessDefaults(): array
+    private function businessDefaults(?string $companyId = null): array
     {
-        $enableReturn = $this->enabled('feature_vehicle_return_management_enabled');
+        $enableReturn = $this->enabled('feature_vehicle_return_management_enabled', $companyId);
         return [
             'enable_return_stage' => $enableReturn,
-            'enable_qc_stage' => $this->enabled('assignment_enable_qc_stage') && $enableReturn,
-            'enable_maintenance_stage' => $this->enabled('assignment_enable_maintenance_stage'),
+            'enable_qc_stage' => $this->enabled('assignment_enable_qc_stage', $companyId) && $enableReturn,
+            'enable_maintenance_stage' => $this->enabled('assignment_enable_maintenance_stage', $companyId),
             'require_signed_agreement' => true,
             'require_driver_license' => false,
             'require_customer_identity_document' => false,
@@ -114,9 +114,9 @@ class BookingWorkflowSettingsResolver
         ];
     }
 
-    private function enabled(string $key): bool
+    private function enabled(string $key, ?string $companyId = null): bool
     {
-        $value = $this->websiteSettings->get($key, false);
+        $value = $this->websiteSettings->get($key, false, $companyId);
         if (is_bool($value)) return $value;
         if (is_numeric($value)) return (int) $value === 1;
         return in_array(strtolower(trim((string) $value)), ['1', 'true', 'yes', 'on', 'enabled'], true);

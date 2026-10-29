@@ -13,7 +13,8 @@ use App\Services\Sales\SalesMetricBreakdownService;
 use App\Services\Sales\SalesPolicySettingsService;
 use App\Services\Sales\SalesPerformanceService;
 use App\Services\Sales\SalesPortfolioStatusService;
-use App\Services\SingleCompanyScope;
+use App\Services\CompanySettingsAccessService;
+use App\Services\WebsiteSettingsService;
 use App\Support\Foundation\CanonicalJson;
 use Carbon\CarbonImmutable;
 use Illuminate\Database\Query\Builder;
@@ -1200,8 +1201,11 @@ class SalesDashboardController extends Controller
 
     private function resolveCompanyId(?string $companyId): string
     {
-        $companyId = $companyId ?: app(SingleCompanyScope::class)->activeDefaultCompany()?->id;
-        abort_unless($companyId, 409, 'No active default legal entity is configured.');
+        $companyId = $companyId ?: app(WebsiteSettingsService::class)->resolveCurrentCompanyId();
+        abort_unless($companyId, 409, 'Select an active business for Sales work.');
+        if (request()->header('X-Active-Context-Type') === 'staff') {
+            app(CompanySettingsAccessService::class)->assertCanAccess(request()->user(), (string) $companyId);
+        }
         abort_unless(DB::table('companies')->where('id', $companyId)->where('is_active', true)
             ->whereNull('deleted_at')->exists(), 422, 'Select an active legal entity.');
 

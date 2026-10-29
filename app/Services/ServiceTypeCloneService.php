@@ -49,7 +49,10 @@ class ServiceTypeCloneService
                 'revision' => 1,
                 'change_type' => 'cloned',
                 'workflow_config' => $target->workflow_config,
-                'effective_settings' => $this->workflowSettingsResolver->resolve($target->workflow_config),
+                'effective_settings' => $this->workflowSettingsResolver->resolve(
+                    $target->workflow_config,
+                    $target->owner_type === 'company' ? (string) $target->owner_id : null,
+                ),
                 'actor_user_id' => $userId,
                 'created_at' => now(),
             ]);

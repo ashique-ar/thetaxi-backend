@@ -5,7 +5,9 @@ namespace App\Services\Sales;
 use App\Models\Sales\SalesProfile;
 use App\Models\User;
 use App\Services\PermissionEvaluator;
+use App\Services\CompanySettingsAccessService;
 use App\Services\SingleCompanyScope;
+use App\Services\WebsiteSettingsService;
 use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Http\Exceptions\HttpResponseException;
 use Illuminate\Support\Facades\DB;
@@ -24,7 +26,10 @@ class SalesAccessScope
 
     public function actorProfiles(User $user, ?string $companyId = null)
     {
-        $companyId = $companyId ?: app(SingleCompanyScope::class)->activeDefaultCompany()?->id;
+        $companyId = $this->staffCompanyId($user, $companyId)
+            ?? $companyId
+            ?? app(WebsiteSettingsService::class)->resolveCurrentCompanyId()
+            ?? app(SingleCompanyScope::class)->activeDefaultCompany()?->id;
         if (! $companyId) {
             return collect();
         }
@@ -68,6 +73,10 @@ class SalesAccessScope
         ?string $companyId = null,
     ): ?array
     {
+        $staffCompanyId = $this->staffCompanyId($user, $companyId);
+        if ($staffCompanyId && $this->hasPermission($user, $allPermission)) {
+            return SalesProfile::query()->where('company_id', $staffCompanyId)->activeAt(now())->configured()->pluck('id')->all();
+        }
         if ($this->hasPermission($user, $allPermission)) {
             return null;
         }
@@ -131,6 +140,10 @@ class SalesAccessScope
         if (! $this->hasPermission($user, $basePermission)) {
             return [];
         }
+        $staffCompanyId = $this->staffCompanyId($user, $companyId);
+        if ($staffCompanyId && $this->hasPermission($user, $allPermission)) {
+            return SalesProfile::query()->where('company_id', $staffCompanyId)->activeAt(now())->configured()->pluck('id')->all();
+        }
         if ($this->hasPermission($user, $allPermission)) {
             return null;
         }
@@ -168,6 +181,7 @@ class SalesAccessScope
 
     public function assertCompany(User $user, string $companyId, string $allPermission): void
     {
+        $this->staffCompanyId($user, $companyId);
         if ($this->hasPermission($user, $allPermission)) {
             return;
         }
@@ -180,6 +194,10 @@ class SalesAccessScope
 
     public function companyIds(User $user, string $allPermission): ?array
     {
+        $staffCompanyId = $this->staffCompanyId($user);
+        if ($staffCompanyId) {
+            return [$staffCompanyId];
+        }
         if ($this->hasPermission($user, $allPermission)) {
             return null;
         }
@@ -265,6 +283,22 @@ class SalesAccessScope
             ->where(fn ($query) => $query->where('staff.company_id', $companyId)
                 ->orWhere(fn ($unassigned) => $unassigned->whereNull('staff.company_id')->whereRaw('? = ?', [$defaultCompanyId, $companyId])))
             ->exists();
+    }
+
+    private function staffCompanyId(User $user, ?string $companyId = null): ?string
+    {
+        if (request()->header('X-Active-Context-Type') !== 'staff') {
+            return null;
+        }
+
+        $selectedCompanyId = app(WebsiteSettingsService::class)->resolveCurrentCompanyId();
+        abort_unless($selectedCompanyId, 409, 'Select an active business for Sales work.');
+        $selectedCompanyId = (string) $selectedCompanyId;
+        app(CompanySettingsAccessService::class)->assertCanAccess($user, $selectedCompanyId);
+        abort_unless($companyId === null || (string) $companyId === $selectedCompanyId, 403,
+            'Sales work is outside your selected Staff business.');
+
+        return $selectedCompanyId;
     }
 
     private function deny(string $code, string $message): never

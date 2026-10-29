@@ -7,7 +7,8 @@ use App\Models\Booking\BookingPaymentFinalityPolicy;
 use App\Models\Booking\BookingPaymentReceipt;
 use App\Models\Staff;
 use App\Services\BookingPaymentLedgerService;
-use App\Services\SingleCompanyScope;
+use App\Services\CompanySettingsAccessService;
+use App\Services\WebsiteSettingsService;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
@@ -52,7 +53,12 @@ class PaymentFinalityController extends Controller
             'per_page' => ['nullable', 'integer', 'min:1', 'max:50'],
         ]);
         $companyIds = $request->user()->can('sales.payment-finality.manage-all') ? null : $this->actorCompanyIds($request);
-        $defaultCompanyId = app(SingleCompanyScope::class)->activeDefaultCompany()?->id;
+        $defaultCompanyId = app(WebsiteSettingsService::class)->resolveCurrentCompanyId();
+        if ($request->header('X-Active-Context-Type') === 'staff') {
+            abort_unless($defaultCompanyId, 409, 'Select an active business for Sales work.');
+            app(CompanySettingsAccessService::class)->assertCanAccess($request->user(), (string) $defaultCompanyId);
+            $companyIds = [(string) $defaultCompanyId];
+        }
         if ($defaultCompanyId && $companyIds !== null && ! in_array($defaultCompanyId, $companyIds, true)) $defaultCompanyId = null;
         $query = DB::table('companies')->whereNull('deleted_at')
             ->when($companyIds !== null, fn ($companies) => $companies->whereIn('id', $companyIds));
@@ -76,6 +82,12 @@ class PaymentFinalityController extends Controller
     public function context(Request $request): JsonResponse
     {
         $ids = $request->user()->can('sales.payment-finality.manage-all') ? DB::table('companies')->pluck('id') : collect($this->actorCompanyIds($request));
+        if ($request->header('X-Active-Context-Type') === 'staff') {
+            $companyId = app(WebsiteSettingsService::class)->resolveCurrentCompanyId();
+            abort_unless($companyId, 409, 'Select an active business for Sales work.');
+            app(CompanySettingsAccessService::class)->assertCanAccess($request->user(), (string) $companyId);
+            $ids = collect([(string) $companyId]);
+        }
         $companies = DB::table('companies')->whereIn('id', $ids)->orderBy('name')->get(['id', 'name']);
         return response()->json(['status' => 'success', 'data' => [
             'companies' => $companies,
@@ -234,6 +246,11 @@ class PaymentFinalityController extends Controller
 
     private function assertCompanyScope(Request $request, ?string $companyId): void
     {
+        if ($request->header('X-Active-Context-Type') === 'staff') {
+            abort_unless($companyId && $companyId === (string) app(WebsiteSettingsService::class)->resolveCurrentCompanyId(), 403,
+                'Payment-finality record is outside your selected Staff business.');
+            app(CompanySettingsAccessService::class)->assertCanAccess($request->user(), $companyId, true);
+        }
         if ($request->user()->can('sales.payment-finality.manage-all')) {
             return;
         }
@@ -242,8 +259,11 @@ class PaymentFinalityController extends Controller
 
     private function resolveCompanyId(Request $request, ?string $companyId): string
     {
-        $resolved = $companyId ?: app(SingleCompanyScope::class)->activeDefaultCompany()?->id;
-        abort_unless($resolved, 409, 'No active default legal entity is configured.');
+        $resolved = $companyId ?: app(WebsiteSettingsService::class)->resolveCurrentCompanyId();
+        abort_unless($resolved, 409, 'Select an active business for Sales work.');
+        if ($request->header('X-Active-Context-Type') === 'staff') {
+            app(CompanySettingsAccessService::class)->assertCanAccess($request->user(), (string) $resolved);
+        }
 
         return (string) $resolved;
     }

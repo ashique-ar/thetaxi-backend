@@ -3312,10 +3312,10 @@
                 status?.setAttribute('aria-busy', 'true');
                 showMessage('Sending your code…');
                 try {
-                    await post(@json(route('checkout.customer-email.send-code')), { channel, value });
+                    const result = await post(@json(route('checkout.customer-email.send-code')), { channel, value });
                     codePanel.hidden = false;
                     showMessage(`If these details match an earlier booking, check your ${channel === 'email' ? 'inbox' : 'phone'} for a code. It expires in 10 minutes.`, true);
-                    startCooldown(channel, 60);
+                    startCooldown(channel, result.resend_after || @json($verificationResendAfter ?? 60));
                     codeInput.focus();
                 } catch (error) {
                     showMessage(error.message || 'Could not send a code. Please try again.');

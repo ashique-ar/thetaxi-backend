@@ -9,8 +9,9 @@ use App\Services\CompanyBookingScope;
 use App\Services\BookingResponsibilityService;
 use App\Services\CompanyCustomerScope;
 use App\Services\Sales\SalesAccessScope;
-use App\Services\SingleCompanyScope;
+use App\Services\CompanySettingsAccessService;
 use App\Services\StaffAccessService;
+use App\Services\WebsiteSettingsService;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
@@ -23,8 +24,9 @@ class StaffWorkloadController extends Controller
             'page' => ['nullable', 'integer', 'min:1'],
             'per_page' => ['nullable', 'integer', 'min:1', 'max:100'],
         ]);
-        $companyId = app(SingleCompanyScope::class)->activeDefaultCompany()?->id;
+        $companyId = app(WebsiteSettingsService::class)->resolveCurrentCompanyId();
         abort_unless($companyId, 409, 'No active business is configured.');
+        app(CompanySettingsAccessService::class)->assertCanAccess($request->user(), (string) $companyId);
 
         $employeesPage = $staffAccess->scope(Staff::query(), $request->user())
             ->join('users', 'users.id', '=', 'staff.user_id')

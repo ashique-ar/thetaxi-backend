@@ -22,7 +22,7 @@ trait AuthorizesAttendanceRequests
         if ($requestedCompanyId) {
             abort_unless($actorCompanyIds->contains($requestedCompanyId), 403, 'Attendance data is outside your legal entity.');
         } else {
-            $defaultCompanyId = app(\App\Services\SingleCompanyScope::class)->activeDefaultCompany()?->id;
+            $defaultCompanyId = app(\App\Services\WebsiteSettingsService::class)->resolveCurrentCompanyId();
             $requestedCompanyId = $defaultCompanyId && $actorCompanyIds->contains($defaultCompanyId)
                 ? (string) $defaultCompanyId
                 : ($actorCompanyIds->count() === 1 ? (string) $actorCompanyIds->first() : null);

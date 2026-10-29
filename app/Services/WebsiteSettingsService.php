@@ -120,11 +120,20 @@ class WebsiteSettingsService
     /**
      * Get a setting value with caching
      */
-    public function get(string $type, $default = null)
+    public function get(string $type, $default = null, ?string $companyId = null)
     {
         if ($type === 'feature_hr_attendance_ingestion_enabled') {
             // Legacy business_settings values predate the separate activation permission.
             return WebsiteSetting::getValue($type, false, null);
+        }
+
+        $companyId ??= $this->resolveCurrentCompanyId();
+
+        if (in_array($type, BusinessSetting::COMPANY_SCOPED_WORKFLOW_KEYS, true)) {
+            if ($companyId) {
+                $companyValue = WebsiteSetting::query()->where('type', $type)->where('company_id', $companyId)->value('value');
+                if ($companyValue !== null) return $companyValue;
+            }
         }
 
         if (in_array($type, self::BUSINESS_OWNED_KEYS, true)) {
@@ -134,7 +143,6 @@ class WebsiteSettingsService
             }
         }
 
-        $companyId = $this->resolveCurrentCompanyId();
         $cacheKey = self::CACHE_PREFIX . ($companyId ?: 'global') . '_' . $type;
 
         return Cache::remember($cacheKey, self::CACHE_DURATION, function () use ($type, $default, $companyId) {
@@ -229,11 +237,18 @@ class WebsiteSettingsService
             ->pluck('value', 'type')
             ->all();
 
+        $companyWorkflowValues = $companyId
+            ? WebsiteSetting::query()->whereIn('type', BusinessSetting::COMPANY_SCOPED_WORKFLOW_KEYS)
+                ->where('company_id', $companyId)->pluck('value', 'type')->all()
+            : [];
+
         foreach ($businessValues as $type => $value) {
             if ($type === 'feature_hr_attendance_ingestion_enabled') {
                 continue;
             }
-            $result[$type] = $value;
+            $result[$type] = in_array($type, BusinessSetting::COMPANY_SCOPED_WORKFLOW_KEYS, true)
+                ? ($companyWorkflowValues[$type] ?? $value)
+                : $value;
         }
 
         return $result;
@@ -1098,6 +1113,7 @@ class WebsiteSettingsService
             'auto_dispatch_enabled',
             'guest_booking_enabled',
             'checkout_returning_customer_lookup_enabled',
+            'checkout_customer_verification_resend_seconds',
             'enable_whatsapp_quote_requests',
             'booking_base_currency',
             'booking_submit_inquiry_label',
@@ -1143,6 +1159,10 @@ class WebsiteSettingsService
             $settings['checkout_returning_customer_lookup_enabled'] ?? true,
             FILTER_VALIDATE_BOOL
         );
+        $resendSeconds = filter_var($settings['checkout_customer_verification_resend_seconds'] ?? 60, FILTER_VALIDATE_INT);
+        $settings['checkout_customer_verification_resend_seconds'] = $resendSeconds !== false && $resendSeconds >= 30 && $resendSeconds <= 600
+            ? $resendSeconds
+            : 60;
         $settings['enable_whatsapp_quote_requests'] = filter_var($settings['enable_whatsapp_quote_requests'] ?? false, FILTER_VALIDATE_BOOL);
         $availabilitySetting = $settings['public_booking_enforce_vehicle_availability'] ?? null;
         $settings['public_booking_enforce_vehicle_availability'] = $availabilitySetting === null || $availabilitySetting === ''
@@ -1441,6 +1461,25 @@ class WebsiteSettingsService
         }
 
         $request = request();
+        if ($request->header('X-Active-Context-Type') === 'staff') {
+            $contextId = $request->header('X-Active-Context-Id');
+            $companyId = $contextId ? DB::table('user_contexts as context')
+                ->join('staff', 'staff.id', '=', 'context.context_id')
+                ->where('context.id', $contextId)
+                ->where('context.user_id', $request->user()?->id)
+                ->where('context.context_type', 'staff')
+                ->where('context.is_active', true)
+                ->whereNull('context.deleted_at')
+                ->where('staff.user_id', $request->user()?->id)
+                ->whereNotNull('staff.company_id')
+                ->whereNull('staff.deleted_at')
+                ->where(fn ($employment) => $employment->whereNull('staff.employment_ended_at')->orWhere('staff.employment_ended_at', '>', now()))
+                ->value('staff.company_id') : null;
+            abort_unless($companyId, 403, 'Select a valid active Staff business context.');
+
+            return (string) $companyId;
+        }
+
         $companyId = $request->header('X-Company-Id') ?: $request->query('company_id');
         if ($companyId) {
             return (string) $companyId;

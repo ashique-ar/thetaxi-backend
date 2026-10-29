@@ -8,7 +8,8 @@ use App\Services\Hr\Leave\LeaveWorkflowService;
 use App\Services\Hr\Workforce\WorkforceWorkflowService;
 use App\Services\StaffAccessService;
 use App\Services\Hr\Ess\HrDomainRequestProjectionService;
-use App\Services\SingleCompanyScope;
+use App\Services\CompanySettingsAccessService;
+use App\Services\WebsiteSettingsService;
 use Carbon\CarbonImmutable;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
@@ -22,7 +23,7 @@ class WorkforceController extends Controller
     {
         $data = $r->validate(['search' => ['nullable', 'string', 'max:120'], 'selected_id' => ['nullable', 'uuid']]);
         $companyIds = $this->authorizedCompanyIds($r);
-        $defaultCompanyId = app(SingleCompanyScope::class)->activeDefaultCompany()?->id;
+        $defaultCompanyId = app(WebsiteSettingsService::class)->resolveCurrentCompanyId();
         if (! $companyIds->contains($defaultCompanyId)) $defaultCompanyId = null;
         $companies = DB::table('companies')->whereIn('id', $companyIds)
             ->when($data['selected_id'] ?? null, fn ($q, $id) => $q->where('id', $id))
@@ -43,8 +44,10 @@ class WorkforceController extends Controller
         } else {
             $allowed = $this->authorizedCompanyIds($r);
             abort_unless($allowed->isNotEmpty(), 403, 'The authenticated user has no active Staff legal-entity context.');
-            $companyId = DB::table('companies')->whereIn('id', $allowed)
-                ->where('is_active', true)->where('is_default', true)->whereNull('deleted_at')->value('id');
+            $companyId = $r->header('X-Active-Context-Type') === 'staff'
+                ? app(WebsiteSettingsService::class)->resolveCurrentCompanyId()
+                : DB::table('companies')->whereIn('id', $allowed)
+                    ->where('is_active', true)->where('is_default', true)->whereNull('deleted_at')->value('id');
             abort_unless($companyId, 422, 'Select an authorized legal entity.');
         }
         return response()->json(['status' => 'success', 'data' => [
@@ -638,15 +641,30 @@ class WorkforceController extends Controller
             abort_unless($allowed->contains($id), 403, 'Workforce data is outside your legal entity.');
             return $id;
         }
+        if ($r->header('X-Active-Context-Type') === 'staff') {
+            $selectedCompanyId = app(WebsiteSettingsService::class)->resolveCurrentCompanyId();
+            abort_unless($selectedCompanyId && $allowed->contains($selectedCompanyId), 403,
+                'Workforce data is outside your selected Staff business.');
+
+            return (string) $selectedCompanyId;
+        }
         if ($allowed->count() === 1 && ! $r->user()->can('staff.view-all')) return (string) $allowed->first();
 
-        $defaultCompanyId = app(SingleCompanyScope::class)->activeDefaultCompany()?->id;
+        $defaultCompanyId = app(WebsiteSettingsService::class)->resolveCurrentCompanyId();
         abort_unless($defaultCompanyId && $allowed->contains($defaultCompanyId), 422, 'Select an authorized legal entity.');
         return (string) $defaultCompanyId;
     }
 
     private function authorizedCompanyIds(Request $r)
     {
+        if ($r->header('X-Active-Context-Type') === 'staff') {
+            $companyId = app(WebsiteSettingsService::class)->resolveCurrentCompanyId();
+            abort_unless($companyId, 403, 'Select an active Staff business.');
+            app(CompanySettingsAccessService::class)->assertCanAccess($r->user(), (string) $companyId);
+
+            return DB::table('companies')->where('id', $companyId)->where('is_active', true)
+                ->whereNull('deleted_at')->pluck('id');
+        }
         if ($r->user()->can('staff.view-all')) {
             return DB::table('companies')->where('is_active', true)->whereNull('deleted_at')->orderByDesc('is_default')->orderBy('name')->pluck('id');
         }

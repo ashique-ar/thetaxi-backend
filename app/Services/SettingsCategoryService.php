@@ -853,6 +853,13 @@ class SettingsCategoryService
                     'type' => 'toggle',
                     'description' => 'Let returning customers verify one contact method before the booking form to load saved details'
                 ],
+                'checkout_customer_verification_resend_seconds' => [
+                    'label' => 'Verification Code Resend Delay (seconds)',
+                    'type' => 'number',
+                    'min' => 30,
+                    'max' => 600,
+                    'description' => 'Wait this long before another email or mobile verification code can be requested.'
+                ],
                 'feature_corporate_management_enabled' => [
                     'label' => 'Corporate Management',
                     'type' => 'toggle',
@@ -1145,6 +1152,10 @@ class SettingsCategoryService
 
         // Get actual values from the settings service
         $values = $this->settingsService->getMultiple($settingTypes);
+        if ($category === 'booking') {
+            $values['checkout_customer_verification_resend_seconds'] = $this->settingsService
+                ->getBookingSettings()['checkout_customer_verification_resend_seconds'];
+        }
 
         return [
             'config' => $config,

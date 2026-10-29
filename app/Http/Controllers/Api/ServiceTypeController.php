@@ -47,15 +47,17 @@ class ServiceTypeController extends Controller
             'workflow_config.booking_approval_required' => ['nullable', 'boolean'],
             'workflow_config.handover_checklist_required' => ['nullable', 'boolean'],
         ]);
+        $companyId = null;
         if (! empty($data['service_type_id'])) {
             $serviceType = ServiceType::query()->findOrFail($data['service_type_id']);
             $this->pricingContextPolicy->assertServiceTypeIsWritable($serviceType);
             $this->resolveScope($request, $serviceType);
+            $companyId = $serviceType->owner_type === 'company' ? (string) $serviceType->owner_id : null;
         }
 
         return response()->json([
             'status' => 'success',
-            'data' => $this->workflowSettingsResolver->preview($data['workflow_config']),
+            'data' => $this->workflowSettingsResolver->preview($data['workflow_config'], $companyId),
         ]);
     }
 
@@ -316,7 +318,10 @@ class ServiceTypeController extends Controller
             'change_type' => $changeType,
             'status' => $status,
             'workflow_config' => $workflowConfig,
-            'effective_settings' => $this->workflowSettingsResolver->resolve($workflowConfig),
+            'effective_settings' => $this->workflowSettingsResolver->resolve(
+                $workflowConfig,
+                $serviceType->owner_type === 'company' ? (string) $serviceType->owner_id : null,
+            ),
             'actor_user_id' => $actorUserId,
             'created_at' => now(),
         ]);
