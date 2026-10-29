@@ -55,7 +55,7 @@ class LifecycleService
                 $task = DB::table('hr_lifecycle_tasks as task')
                     ->join('hr_lifecycle_cases as lifecycle_case', 'lifecycle_case.id', '=', 'task.case_id')
                     ->where('task.id', $id)
-                    ->where('lifecycle_case.company_id', $companyId)
+                    ->where(fn ($_companyIdScope) => \App\Services\CompanyIdScope::constrain($_companyIdScope, 'lifecycle_case.company_id', $companyId))
                     ->select('task.*')
                     ->lockForUpdate()
                     ->first();
@@ -128,7 +128,7 @@ class LifecycleService
         return DB::transaction(function () use ($id, $actor, $companyId) {
             $company = DB::table('companies')->where('id', $companyId)->where('is_active', true)->whereNull('deleted_at')->lockForUpdate()->first();
             abort_unless($company, 409, 'Employee changes require an active legal entity.');
-            $row = DB::table('hr_employee_change_requests')->where('id', $id)->where('company_id', $companyId)->lockForUpdate()->first();
+            $row = DB::table('hr_employee_change_requests')->where('id', $id)->where(fn ($_companyIdScope) => \App\Services\CompanyIdScope::constrain($_companyIdScope, 'company_id', $companyId))->lockForUpdate()->first();
             abort_unless($row, 404);
             if ($row->status === 'approved') {
                 abort_unless($row->approved_by !== null && (string) $row->approved_by === $actor, 409, 'Employee change was approved by another user.');
@@ -149,7 +149,7 @@ class LifecycleService
         return DB::transaction(function () use ($id, $actor, $companyId) {
             $company = DB::table('companies')->where('id', $companyId)->where('is_active', true)->whereNull('deleted_at')->lockForUpdate()->first();
             abort_unless($company, 409, 'Exit approval requires an active legal entity.');
-            $exit = DB::table('hr_exit_cases')->where('id', $id)->where('company_id', $companyId)->lockForUpdate()->first();
+            $exit = DB::table('hr_exit_cases')->where('id', $id)->where(fn ($_companyIdScope) => \App\Services\CompanyIdScope::constrain($_companyIdScope, 'company_id', $companyId))->lockForUpdate()->first();
             abort_unless($exit, 404);
             if (in_array($exit->status, ['clearance', 'completed'], true)) {
                 abort_unless($exit->approved_by !== null && (string) $exit->approved_by === $actor, 409, 'Exit case was approved by another user.');
@@ -158,11 +158,11 @@ class LifecycleService
             }
             abort_unless($exit->status === 'pending_approval', 409);
             abort_if($exit->opened_by === $actor, 409, 'Exit initiator cannot approve the same case.');
-            $staff = Staff::query()->whereKey($exit->staff_id)->where('company_id', $companyId)->lockForUpdate()->first();
+            $staff = Staff::query()->whereKey($exit->staff_id)->where(fn ($_companyIdScope) => \App\Services\CompanyIdScope::constrain($_companyIdScope, 'company_id', $companyId))->lockForUpdate()->first();
             abort_unless($staff, 409, 'Exit case employee is outside this legal entity.');
             DB::table('hr_exit_cases')->where('id', $id)->update(['status' => 'clearance', 'approved_last_working_date' => $exit->proposed_last_working_date, 'approved_by' => $actor, 'approved_at' => now(), 'updated_at' => now()]);
             $this->requests->transition('exit_case', $id, 'clearance', 'Exit case approved; clearance started.', $actor);
-            $items = DB::table('hr_custody_assignments')->where('company_id', $companyId)->where('staff_id', $exit->staff_id)->where('status', 'assigned')->lockForUpdate()->get();
+            $items = DB::table('hr_custody_assignments')->where(fn ($_companyIdScope) => \App\Services\CompanyIdScope::constrain($_companyIdScope, 'company_id', $companyId))->where('staff_id', $exit->staff_id)->where('status', 'assigned')->lockForUpdate()->get();
             foreach ($items as $item)
                 $this->clearance($id, $item->custody_type, 'Return ' . $item->item_name, $item->id);
             foreach (['handover' => 'Complete handover', 'attendance' => 'Finalize attendance and leave', 'payroll' => 'Confirm final settlement boundary', 'access' => 'Revoke all remaining system and physical access'] as $type => $title)
@@ -177,7 +177,7 @@ class LifecycleService
             $item = DB::table('hr_exit_clearance_items as clearance')
                 ->join('hr_exit_cases as exit_case', 'exit_case.id', '=', 'clearance.exit_case_id')
                 ->where('clearance.id', $id)
-                ->where('exit_case.company_id', $companyId)
+                ->where(fn ($_companyIdScope) => \App\Services\CompanyIdScope::constrain($_companyIdScope, 'exit_case.company_id', $companyId))
                 ->select('clearance.*')
                 ->lockForUpdate()
                 ->first();
@@ -190,14 +190,14 @@ class LifecycleService
             abort_unless($item->status === 'pending', 409);
 
             if ($item->custody_assignment_id) {
-                $custody = DB::table('hr_custody_assignments')->where('id', $item->custody_assignment_id)->where('company_id', $companyId)->lockForUpdate()->first();
+                $custody = DB::table('hr_custody_assignments')->where('id', $item->custody_assignment_id)->where(fn ($_companyIdScope) => \App\Services\CompanyIdScope::constrain($_companyIdScope, 'company_id', $companyId))->lockForUpdate()->first();
                 abort_unless($custody, 409, 'The linked custody assignment is outside this lifecycle legal entity.');
                 if ($custody?->asset_item_id) {
                     abort_unless(in_array($custody->status, ['returned', 'recovery_approved', 'exception_approved'], true), 409, 'Complete the governed asset return or approved recovery/exception before clearance.');
                 }
 
                 if (! $custody->asset_item_id) {
-                    DB::table('hr_custody_assignments')->where('id', $item->custody_assignment_id)->where('company_id', $companyId)->update([
+                    DB::table('hr_custody_assignments')->where('id', $item->custody_assignment_id)->where(fn ($_companyIdScope) => \App\Services\CompanyIdScope::constrain($_companyIdScope, 'company_id', $companyId))->update([
                         'status' => 'returned', 'returned_at' => now(), 'received_by' => $actor, 'updated_at' => now(),
                     ]);
                 }
@@ -222,10 +222,10 @@ class LifecycleService
         return DB::transaction(function () use ($id, $actor, $companyId) {
             $company = DB::table('companies')->where('id', $companyId)->where('is_active', true)->whereNull('deleted_at')->lockForUpdate()->first();
             abort_unless($company, 409, 'Exit finalization requires an active legal entity.');
-            $exit = DB::table('hr_exit_cases')->where('id', $id)->where('company_id', $companyId)->lockForUpdate()->first();
+            $exit = DB::table('hr_exit_cases')->where('id', $id)->where(fn ($_companyIdScope) => \App\Services\CompanyIdScope::constrain($_companyIdScope, 'company_id', $companyId))->lockForUpdate()->first();
             abort_unless($exit, 404);
             if ($exit->status === 'completed') {
-                $termination = DB::table('staff_context_termination_events')->where('company_id', $companyId)
+                $termination = DB::table('staff_context_termination_events')->where(fn ($_companyIdScope) => \App\Services\CompanyIdScope::constrain($_companyIdScope, 'company_id', $companyId))
                     ->where('staff_id', $exit->staff_id)->where('idempotency_key', $id)->first();
                 abort_unless($termination && (string) $termination->actor_user_id === (string) $actor->id, 409, 'Exit was finalized by another user or lacks replay evidence.');
 
@@ -235,7 +235,7 @@ class LifecycleService
             $clearances = DB::table('hr_exit_clearance_items')->where('exit_case_id', $id)->lockForUpdate()->get(['id', 'status']);
             abort_unless($clearances->isNotEmpty() && $clearances->every(fn ($item) => $item->status === 'completed'), 409, 'Every exit clearance item must be completed.');
             abort_if(now()->toDateString() < $exit->approved_last_working_date, 409, 'Scheduled exit date has not arrived.');
-            $staff = Staff::query()->whereKey($exit->staff_id)->where('company_id', $companyId)->lockForUpdate()->firstOrFail();
+            $staff = Staff::query()->whereKey($exit->staff_id)->where(fn ($_companyIdScope) => \App\Services\CompanyIdScope::constrain($_companyIdScope, 'company_id', $companyId))->lockForUpdate()->firstOrFail();
             $result = $this->identities->terminate($staff, $actor, 'Exit case ' . $id . ': ' . $exit->reason_code, $id);
             DB::table('hr_exit_cases')->where('id', $id)->update(['status' => 'completed', 'updated_at' => now()]);
             $this->requests->transition('exit_case', $id, 'completed', 'Exit clearance completed.', $actor->id, null, 'staff', $staff->id);

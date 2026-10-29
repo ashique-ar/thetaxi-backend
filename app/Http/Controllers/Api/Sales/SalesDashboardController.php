@@ -61,9 +61,9 @@ class SalesDashboardController extends Controller
             422, 'The requested legal entity does not match the selected Staff Sales Profile.');
         $data['company_id'] = (string) $companyId;
         if ($selectedProfile) $ids = [$selectedProfile->id];
-        elseif ($ids === null) $ids = SalesProfile::query()->where('company_id', $companyId)->pluck('id')->all();
+        elseif ($ids === null) $ids = SalesProfile::query()->where(fn ($_companyIdScope) => \App\Services\CompanyIdScope::constrain($_companyIdScope, 'company_id', $companyId))->pluck('id')->all();
         else {
-            $ids = SalesProfile::query()->whereIn('id', $ids)->where('company_id', $companyId)->pluck('id')->all();
+            $ids = SalesProfile::query()->whereIn('id', $ids)->where(fn ($_companyIdScope) => \App\Services\CompanyIdScope::constrain($_companyIdScope, 'company_id', $companyId))->pluck('id')->all();
             abort_if(empty($ids), 403, 'Dashboard legal entity is outside your Sales scope.');
         }
 
@@ -141,7 +141,7 @@ class SalesDashboardController extends Controller
                 SUM(CASE WHEN expected_value_lkr IS NULL THEN 1 ELSE 0 END) missing_lkr_count,
                 CASE WHEN COUNT(expected_value_lkr) = COUNT(*) THEN COALESCE(SUM(expected_value_lkr),0) ELSE NULL END expected_lkr,
                 CASE WHEN COUNT(expected_value_lkr) = COUNT(*) THEN COALESCE(SUM(expected_value_lkr * probability_percent / 100),0) ELSE NULL END weighted_lkr")
-            ->where('company_id', $companyId)->whereIn('owner_sales_profile_id', $ids)
+            ->where(fn ($_companyIdScope) => \App\Services\CompanyIdScope::constrain($_companyIdScope, 'company_id', $companyId))->whereIn('owner_sales_profile_id', $ids)
             ->whereNotIn('stage', ['won', 'lost'])->groupBy('stage')
             ->orderByRaw("CASE stage WHEN 'new' THEN 1 WHEN 'contacted' THEN 2 WHEN 'qualified' THEN 3 WHEN 'quotation' THEN 4 WHEN 'negotiation' THEN 5 ELSE 6 END")
             ->orderBy('stage')->get();
@@ -163,7 +163,7 @@ class SalesDashboardController extends Controller
                     ->on('latest.latest_version', '=', 'snapshot.version');
             })
             ->selectRaw('snapshot.id snapshot_id, snapshot.version snapshot_version, snapshot.period_start, snapshot.period_end, snapshot.cutoff_at, snapshot.snapshot_checksum, SUM(row.gross_new_sales_lkr) gross_new_sales_lkr, SUM(row.new_sales_adjustment_lkr) new_sales_adjustment_lkr, SUM(row.net_new_sales_lkr) net_new_sales_lkr, COUNT(*) new_sales_row_count, COUNT(row.net_new_sales_lkr) net_new_sales_row_count, SUM(row.eligible_collections_lkr) eligible_collections_lkr, SUM(row.commission_new_business_lkr + row.commission_existing_business_lkr) commission_lkr')
-            ->where('snapshot.company_id', $companyId)->where('snapshot.status', 'frozen')->whereIn('row.sales_profile_id', $ids)
+            ->where(fn ($_companyIdScope) => \App\Services\CompanyIdScope::constrain($_companyIdScope, 'snapshot.company_id', $companyId))->where('snapshot.status', 'frozen')->whereIn('row.sales_profile_id', $ids)
             ->whereDate('snapshot.period_end', '<=', $data['to'])
             ->groupBy('snapshot.id', 'snapshot.version', 'snapshot.period_start', 'snapshot.period_end',
                 'snapshot.cutoff_at', 'snapshot.snapshot_checksum')
@@ -324,11 +324,11 @@ class SalesDashboardController extends Controller
                 'attribution.collection_sales_profile_id'],
             (int) ($data['dues_page'] ?? 1), (int) ($data['dues_per_page'] ?? 10));
         $quality = [
-            'held_attributions' => SalesBookingAttribution::query()->where('company_id', $companyId)->where('status', 'held')->where(fn ($q) => $q->whereIn('acquisition_sales_profile_id', $ids)->orWhereIn('collection_sales_profile_id', $ids))->count(),
-            'held_commission_decisions' => DB::table('sales_commission_decisions')->where('company_id', $companyId)->whereIn('beneficiary_sales_profile_id', $ids)->whereIn('status', ['held', 'shadow_held'])->count(),
-            'metric_freshness_at' => DB::table('sales_metric_facts')->where('company_id', $companyId)->whereIn('sales_profile_id', $ids)->max('created_at'),
+            'held_attributions' => SalesBookingAttribution::query()->where(fn ($_companyIdScope) => \App\Services\CompanyIdScope::constrain($_companyIdScope, 'company_id', $companyId))->where('status', 'held')->where(fn ($q) => $q->whereIn('acquisition_sales_profile_id', $ids)->orWhereIn('collection_sales_profile_id', $ids))->count(),
+            'held_commission_decisions' => DB::table('sales_commission_decisions')->where(fn ($_companyIdScope) => \App\Services\CompanyIdScope::constrain($_companyIdScope, 'company_id', $companyId))->whereIn('beneficiary_sales_profile_id', $ids)->whereIn('status', ['held', 'shadow_held'])->count(),
+            'metric_freshness_at' => DB::table('sales_metric_facts')->where(fn ($_companyIdScope) => \App\Services\CompanyIdScope::constrain($_companyIdScope, 'company_id', $companyId))->whereIn('sales_profile_id', $ids)->max('created_at'),
             'latest_alert_suppressed_rule_count' => $companyWide
-                ? DB::table('sales_alert_evaluation_runs')->where('company_id', $companyId)->latest('evaluated_at')->value('suppressed_rule_count')
+                ? DB::table('sales_alert_evaluation_runs')->where(fn ($_companyIdScope) => \App\Services\CompanyIdScope::constrain($_companyIdScope, 'company_id', $companyId))->latest('evaluated_at')->value('suppressed_rule_count')
                 : null,
         ];
         $alertEvidenceEnabled = true;
@@ -350,7 +350,7 @@ class SalesDashboardController extends Controller
                 $join->on('owner_staff.user_id', '=', 'alert.assigned_to')
                     ->on('owner_staff.company_id', '=', 'alert.company_id')->whereNull('owner_staff.deleted_at');
             })
-            ->where('alert.company_id', $companyId)->whereIn('alert.sales_profile_id', $ids)
+            ->where(fn ($_companyIdScope) => \App\Services\CompanyIdScope::constrain($_companyIdScope, 'alert.company_id', $companyId))->whereIn('alert.sales_profile_id', $ids)
             ->where('alert_snapshot.status', 'frozen')
             ->whereIn('alert.status', ($data['include_resolved_alerts'] ?? false) ? ['open', 'acknowledged', 'resolved'] : ['open', 'acknowledged'])
             ->orderByRaw("CASE alert.severity WHEN 'high' THEN 1 WHEN 'medium' THEN 2 ELSE 3 END")
@@ -1186,11 +1186,11 @@ class SalesDashboardController extends Controller
             $request->user(), 'sales.performance.view-all', 'sales.performance.view-team', $companyId,
         );
         if ($authorizedIds === null) {
-            $authorizedIds = SalesProfile::query()->where('company_id', $companyId)->pluck('id')->all();
+            $authorizedIds = SalesProfile::query()->where(fn ($_companyIdScope) => \App\Services\CompanyIdScope::constrain($_companyIdScope, 'company_id', $companyId))->pluck('id')->all();
         }
         if ($selectedProfileId !== null) {
             abort_unless(in_array($selectedProfileId, $authorizedIds, true)
-                && SalesProfile::query()->whereKey($selectedProfileId)->where('company_id', $companyId)->exists(),
+                && SalesProfile::query()->whereKey($selectedProfileId)->where(fn ($_companyIdScope) => \App\Services\CompanyIdScope::constrain($_companyIdScope, 'company_id', $companyId))->exists(),
                 404, $notFoundMessage);
             $authorizedIds = [$selectedProfileId];
         }

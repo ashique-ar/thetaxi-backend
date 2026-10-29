@@ -110,7 +110,7 @@ class WorkforceWorkflowService
         $latest = DB::table('hr_attendance_daily_results')
             ->select('company_id', 'staff_id', 'work_date')
             ->selectRaw('MAX(result_version) as result_version')
-            ->where('company_id', $companyId)->where('staff_id', $staffId)->whereBetween('work_date', [$from, $to])
+            ->where(fn ($_companyIdScope) => \App\Services\CompanyIdScope::constrain($_companyIdScope, 'company_id', $companyId))->where('staff_id', $staffId)->whereBetween('work_date', [$from, $to])
             ->groupBy('company_id', 'staff_id', 'work_date');
 
         return (int) DB::table('hr_attendance_daily_results as result')->joinSub($latest, 'latest', fn ($join) => $join

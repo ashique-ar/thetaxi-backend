@@ -46,7 +46,7 @@ class JobPositionAdministrationService
         return DB::transaction(function () use ($type, $id, $data, $companyId, $actorUserId) {
             $definition = $this->catalog($type);
             $this->lockCompany($companyId);
-            $row = DB::table($definition['table'])->where('id', $id)->where('company_id', $companyId)->lockForUpdate()->first();
+            $row = DB::table($definition['table'])->where('id', $id)->where(fn ($_companyIdScope) => \App\Services\CompanyIdScope::constrain($_companyIdScope, 'company_id', $companyId))->lockForUpdate()->first();
             abort_unless($row, 404, 'The requested job catalogue record was not found in your legal entity.');
             $payload = array_intersect_key($data, array_flip($definition['fields']));
             $checksum = $this->checksum(['aggregate_id' => $id, 'expected_version' => $data['expected_version'], 'payload' => $payload, 'reason' => $data['reason']]);
@@ -102,7 +102,7 @@ class JobPositionAdministrationService
     {
         return DB::transaction(function () use ($id, $data, $companyId, $actorUserId) {
             $this->lockCompany($companyId);
-            $row = DB::table('hr_positions')->where('id', $id)->where('company_id', $companyId)->lockForUpdate()->first();
+            $row = DB::table('hr_positions')->where('id', $id)->where(fn ($_companyIdScope) => \App\Services\CompanyIdScope::constrain($_companyIdScope, 'company_id', $companyId))->lockForUpdate()->first();
             abort_unless($row, 404, 'Position was not found in your legal entity.');
             $payload = $this->positionPayload($data, $companyId, true);
             $checksum = $this->checksum(['position_id' => $id, 'expected_version' => $data['expected_version'], 'payload' => $payload, 'reason' => $data['reason']]);
@@ -174,7 +174,7 @@ class JobPositionAdministrationService
         foreach (['organization_unit_id' => 'hr_organization_units', 'designation_id' => 'hr_designations'] as $field => $table) {
             abort_unless($this->referenceCovers($table, $payload[$field], $companyId, $payload['effective_from'], $payload['effective_until'] ?? null), 422, "{$field} must be an active effective record in the position legal entity and cover its interval.");
         }
-        $designation = DB::table('hr_designations')->where('id', $payload['designation_id'])->where('company_id', $companyId)->first(['job_family_id', 'job_grade_id']);
+        $designation = DB::table('hr_designations')->where('id', $payload['designation_id'])->where(fn ($_companyIdScope) => \App\Services\CompanyIdScope::constrain($_companyIdScope, 'company_id', $companyId))->first(['job_family_id', 'job_grade_id']);
         foreach (['job_family_id' => 'hr_job_families', 'job_grade_id' => 'hr_job_grades'] as $field => $table) {
             if (! empty($designation->{$field})) {
                 abort_unless($this->referenceCovers($table, $designation->{$field}, $companyId, $payload['effective_from'], $payload['effective_until'] ?? null), 422, "The designation {$field} must remain active and cover the position interval.");
@@ -184,7 +184,7 @@ class JobPositionAdministrationService
 
     private function referenceCovers(string $table, string $id, string $companyId, string $from, ?string $until): bool
     {
-        return DB::table($table)->where('id', $id)->where('company_id', $companyId)->where('status', 'active')
+        return DB::table($table)->where('id', $id)->where(fn ($_companyIdScope) => \App\Services\CompanyIdScope::constrain($_companyIdScope, 'company_id', $companyId))->where('status', 'active')
             ->whereNotNull('effective_from')->where('effective_from', '<=', $from)
             ->where(function ($query) use ($until) {
                 if ($until === null) {

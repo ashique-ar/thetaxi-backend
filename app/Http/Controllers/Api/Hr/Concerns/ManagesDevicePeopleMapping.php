@@ -246,7 +246,7 @@ trait ManagesDevicePeopleMapping
                 'policy' => ['table' => 'hr_attendance_policies', 'status' => 'approved'],
             };
             $records = DB::table($definition['table'])
-                ->where('company_id', $companyId)
+                ->where(fn ($_companyIdScope) => \App\Services\CompanyIdScope::constrain($_companyIdScope, 'company_id', $companyId))
                 ->where('status', $definition['status'])
                 ->when($data['selected_id'] ?? null, fn ($query, $id) => $query->where('id', $id))
                 ->when($search !== '', fn ($query) => $query->where(function ($match) use ($search) {
@@ -267,7 +267,7 @@ trait ManagesDevicePeopleMapping
         $includeFormer = ($data['include_former'] ?? false) && $request->user()->can('hr.attendance.access.request');
         $staff = DB::table('staff')
             ->join('users', 'users.id', '=', 'staff.user_id')
-            ->where('staff.company_id', $companyId)
+            ->where(fn ($_companyIdScope) => \App\Services\CompanyIdScope::constrain($_companyIdScope, 'staff.company_id', $companyId))
             ->when(! $includeFormer, fn ($query) => $query->whereNull('staff.deleted_at')
                 ->where(fn ($employment) => $employment
                     ->whereNull('staff.employment_ended_at')
@@ -369,7 +369,7 @@ trait ManagesDevicePeopleMapping
         $companyId = $this->authorizedCompanyId($request, $data['company_id'] ?? null);
         $query = DB::table('hr_attendance_person_mappings')
             ->select(['id', 'staff_id', 'device_id', 'provider_person_id', 'employee_number_snapshot', 'enrollment_status', 'effective_from', 'effective_until', 'created_by', 'last_verified_at', 'verified_by'])
-            ->where('company_id', $companyId)
+            ->where(fn ($_companyIdScope) => \App\Services\CompanyIdScope::constrain($_companyIdScope, 'company_id', $companyId))
             ->when($data['staff_id'] ?? null, fn ($builder, $value) => $builder->where('staff_id', $value))
             ->when($data['status'] ?? null, fn ($builder, $value) => $builder->where('enrollment_status', $value))
             ->when($data['provider_person_id'] ?? null, fn ($builder, $value) => $builder->where('provider_person_id', $value))

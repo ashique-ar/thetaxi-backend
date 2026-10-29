@@ -131,7 +131,7 @@ class WebsiteSettingsService
 
         if (in_array($type, BusinessSetting::COMPANY_SCOPED_WORKFLOW_KEYS, true)) {
             if ($companyId) {
-                $companyValue = WebsiteSetting::query()->where('type', $type)->where('company_id', $companyId)->value('value');
+                $companyValue = WebsiteSetting::query()->where('type', $type)->where(fn ($_companyIdScope) => \App\Services\CompanyIdScope::constrain($_companyIdScope, 'company_id', $companyId))->value('value');
                 if ($companyValue !== null) return $companyValue;
             }
         }
@@ -239,7 +239,7 @@ class WebsiteSettingsService
 
         $companyWorkflowValues = $companyId
             ? WebsiteSetting::query()->whereIn('type', BusinessSetting::COMPANY_SCOPED_WORKFLOW_KEYS)
-                ->where('company_id', $companyId)->pluck('value', 'type')->all()
+                ->where(fn ($_companyIdScope) => \App\Services\CompanyIdScope::constrain($_companyIdScope, 'company_id', $companyId))->pluck('value', 'type')->all()
             : [];
 
         foreach ($businessValues as $type => $value) {

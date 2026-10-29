@@ -76,7 +76,7 @@ class WialonService
         $synced = 0;
         $integration = $this->integration($companyId);
         $portalMileageAtStart = \App\Models\Vehicle\Vehicle::withInactive()
-            ->where('company_id', $companyId)
+            ->where(fn ($_companyIdScope) => \App\Services\CompanyIdScope::constrain($_companyIdScope, 'company_id', $companyId))
             ->whereNotNull('wialon_unit_id')
             ->pluck('current_mileage', 'wialon_unit_id')
             ->all();
@@ -86,7 +86,7 @@ class WialonService
             $selectedUnitIds = $this->unitIdsFromGroups($groups, $integration->group_ids);
             if ($selectedUnitIds) {
                 $pendingVehicles = \App\Models\Vehicle\Vehicle::withInactive()
-                    ->where('company_id', $companyId)
+                    ->where(fn ($_companyIdScope) => \App\Services\CompanyIdScope::constrain($_companyIdScope, 'company_id', $companyId))
                     ->where('wialon_mileage_sync_pending', true)
                     ->whereNotNull('current_mileage')
                     ->whereIn('wialon_unit_id', $selectedUnitIds)
@@ -102,7 +102,7 @@ class WialonService
                         );
                         DB::transaction(function () use ($companyId, $pendingVehicle, $requestedMileage, $confirmedMileage): void {
                             $currentVehicle = \App\Models\Vehicle\Vehicle::withInactive()
-                                ->where('company_id', $companyId)
+                                ->where(fn ($_companyIdScope) => \App\Services\CompanyIdScope::constrain($_companyIdScope, 'company_id', $companyId))
                                 ->where('wialon_unit_id', $pendingVehicle->wialon_unit_id)
                                 ->where('wialon_mileage_sync_pending', true)
                                 ->lockForUpdate()
@@ -137,7 +137,7 @@ class WialonService
             $mileage = $this->trackerMileageKm($unit);
             $updated = DB::transaction(function () use ($companyId, $unit, $unitId, $mileage, $portalMileageAtStart): bool {
                 $vehicle = \App\Models\Vehicle\Vehicle::withInactive()->withTrashed()
-                    ->where('company_id', $companyId)
+                    ->where(fn ($_companyIdScope) => \App\Services\CompanyIdScope::constrain($_companyIdScope, 'company_id', $companyId))
                     ->where('wialon_unit_id', $unitId)
                     ->lockForUpdate()
                     ->first();
@@ -207,7 +207,7 @@ class WialonService
             throw new RuntimeException('The GPS service accepts mileage counters from 0 to ' . self::MAX_COUNTER_KILOMETERS . ' km.');
         }
         $vehicle = \App\Models\Vehicle\Vehicle::withInactive()
-            ->where('company_id', $companyId)
+            ->where(fn ($_companyIdScope) => \App\Services\CompanyIdScope::constrain($_companyIdScope, 'company_id', $companyId))
             ->where('wialon_unit_id', $unitId)
             ->first();
         $this->assertSelectedUnit($companyId, $unitId);
@@ -222,7 +222,7 @@ class WialonService
         );
         DB::transaction(function () use ($companyId, $unitId, $mileageKm, $confirmedMileage): void {
             $currentVehicle = \App\Models\Vehicle\Vehicle::withInactive()
-                ->where('company_id', $companyId)
+                ->where(fn ($_companyIdScope) => \App\Services\CompanyIdScope::constrain($_companyIdScope, 'company_id', $companyId))
                 ->where('wialon_unit_id', $unitId)
                 ->lockForUpdate()
                 ->first();
@@ -299,7 +299,7 @@ class WialonService
         $unit = $this->selectedUnitDetails($companyId, $unitId, 1 + 8192);
         $acl = (int) ($unit['uacl'] ?? 0);
         $vehicle = \App\Models\Vehicle\Vehicle::withInactive()
-            ->where('company_id', $companyId)->where('wialon_unit_id', $unitId)->first();
+            ->where(fn ($_companyIdScope) => \App\Services\CompanyIdScope::constrain($_companyIdScope, 'company_id', $companyId))->where('wialon_unit_id', $unitId)->first();
         return [
             'unit_id' => $unitId,
             'unit_name' => $unit['nm'] ?? null,
@@ -632,7 +632,7 @@ class WialonService
 
     private function integration(string $companyId): object
     {
-        $row = DB::table('wialon_integrations')->where('company_id', $companyId)->where('enabled', true)->first();
+        $row = DB::table('wialon_integrations')->where(fn ($_companyIdScope) => \App\Services\CompanyIdScope::constrain($_companyIdScope, 'company_id', $companyId))->where('enabled', true)->first();
         if (!$row || !$row->token) throw new RuntimeException('GPS tracking is not configured for this company.');
         $row->token = decrypt($row->token);
         $row->resource_ids = json_decode($row->resource_ids ?: '[]', true) ?: [];
@@ -681,7 +681,7 @@ class WialonService
                 }
                 $this->baseUrl = $reported;
                 if ($integration->base_url !== $reported) {
-                    DB::table('wialon_integrations')->where('company_id', $companyId)->update(['base_url' => $reported, 'updated_at' => now()]);
+                    DB::table('wialon_integrations')->where(fn ($_companyIdScope) => \App\Services\CompanyIdScope::constrain($_companyIdScope, 'company_id', $companyId))->update(['base_url' => $reported, 'updated_at' => now()]);
                 }
             }
             return $callback($login['eid']);

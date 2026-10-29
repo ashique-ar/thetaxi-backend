@@ -139,7 +139,7 @@ class SalesCrmController extends Controller
             ->where(fn ($eligible) => $eligible->where('profile.acquisition_eligible', true)
                 ->orWhere('profile.collection_eligible', true)->orWhere('profile.commission_eligible', true))
             ->when($ids !== null, fn ($profiles) => $profiles->whereIn('profile.id', $ids))
-            ->where('profile.company_id', $companyId);
+            ->where(fn ($_companyIdScope) => \App\Services\CompanyIdScope::constrain($_companyIdScope, 'profile.company_id', $companyId));
         if ($featureTableReady) {
             $query->whereExists(fn ($feature) => $feature->selectRaw('1')->from('sales_company_feature_settings as setting')
                 ->whereColumn('setting.company_id', 'profile.company_id')->where('setting.feature_key', 'crm')
@@ -211,7 +211,7 @@ class SalesCrmController extends Controller
 
         if ($data['source_type'] === 'inquiry') {
             $query = DB::table('inquiries as source')->leftJoin('sales_opportunities as opportunity', 'opportunity.inquiry_id', '=', 'source.id')
-                ->where('source.company_id', $companyId)->whereNull('source.deleted_at')->whereNull('opportunity.id')
+                ->where(fn ($_companyIdScope) => \App\Services\CompanyIdScope::constrain($_companyIdScope, 'source.company_id', $companyId))->whereNull('source.deleted_at')->whereNull('opportunity.id')
                 ->where(fn ($scope) => $scope
                     ->where(fn ($assigned) => $assigned->whereNotNull('source.assigned_to')->whereIn('source.assigned_to', $userIds))
                     ->orWhere(fn ($created) => $created->whereNull('source.assigned_to')->whereIn('source.created_user_id', $userIds)));
@@ -238,7 +238,7 @@ class SalesCrmController extends Controller
                         ->on('opportunity.company_id', '=', 'source.company_id')
                         ->whereNull('opportunity.deleted_at');
                 })
-                ->where('source.company_id', $companyId)->whereNull('source.deleted_at')->whereNull('opportunity.id')
+                ->where(fn ($_companyIdScope) => \App\Services\CompanyIdScope::constrain($_companyIdScope, 'source.company_id', $companyId))->whereNull('source.deleted_at')->whereNull('opportunity.id')
                 ->whereIn('source.created_user_id', $userIds);
             if ($selected) $query->where('source.id', $data['selected_id']);
             else $query->when($data['search'] ?? null, function ($rows, $search) {
@@ -676,15 +676,15 @@ class SalesCrmController extends Controller
         $query = DB::table('bookings as booking')->whereNull('booking.deleted_at')
             ->where(function ($scope) use ($companyId, $userId) {
                 $scope->whereExists(fn ($attribution) => $attribution->selectRaw('1')->from('sales_booking_attributions as attribution')
-                    ->whereColumn('attribution.booking_id', 'booking.id')->where('attribution.company_id', $companyId))
+                    ->whereColumn('attribution.booking_id', 'booking.id')->where(fn ($_companyIdScope) => \App\Services\CompanyIdScope::constrain($_companyIdScope, 'attribution.company_id', $companyId)))
                     ->orWhereExists(fn ($staff) => $staff->selectRaw('1')->from('staff as booking_owner')
                         ->whereColumn('booking_owner.user_id', 'booking.responsible_user_id')
-                        ->where('booking_owner.company_id', $companyId)->whereNull('booking_owner.deleted_at'))
+                        ->where(fn ($_companyIdScope) => \App\Services\CompanyIdScope::constrain($_companyIdScope, 'booking_owner.company_id', $companyId))->whereNull('booking_owner.deleted_at'))
                     ->orWhere(fn ($quote) => $quote->where('booking.status', 'quotation_requested')
                         ->whereNull('booking.responsible_user_id')
                         ->whereRaw("booking.workflow_data->>'quotation_requested_by' = ?", [$userId])
                         ->whereExists(fn ($sent) => $sent->selectRaw('1')->from('booking_activities as sent_quote')
-                            ->whereColumn('sent_quote.booking_id', 'booking.id')->where('sent_quote.company_id', $companyId)
+                            ->whereColumn('sent_quote.booking_id', 'booking.id')->where(fn ($_companyIdScope) => \App\Services\CompanyIdScope::constrain($_companyIdScope, 'sent_quote.company_id', $companyId))
                             ->whereNull('sent_quote.deleted_at')->where('sent_quote.event_key', 'quotation_email_sent')
                             ->where('sent_quote.result_status', 'sent')));
             })
@@ -719,7 +719,7 @@ class SalesCrmController extends Controller
         $profileIds = $this->scope->profileIds($request->user(), 'sales.crm.manage-all', 'sales.crm.manage-team', $companyId);
         $this->assertActiveListCompany($companyId, $profileIds);
         $sourceUsers = $this->sourceUserIds($request, $companyId);
-        $query = DB::table('inquiries as inquiry')->where('inquiry.company_id', $companyId)->whereNull('inquiry.deleted_at')
+        $query = DB::table('inquiries as inquiry')->where(fn ($_companyIdScope) => \App\Services\CompanyIdScope::constrain($_companyIdScope, 'inquiry.company_id', $companyId))->whereNull('inquiry.deleted_at')
             ->where(function ($scope) use ($sourceUsers) {
                 $scope->whereIn('inquiry.assigned_to', $sourceUsers)
                     ->orWhere(function ($created) use ($sourceUsers) {
@@ -807,7 +807,7 @@ class SalesCrmController extends Controller
         abort_unless(DB::table('companies')->where('id', $companyId)->where('is_active', true)
             ->whereNull('deleted_at')->exists(), 422, 'Select an active legal entity.');
         abort_unless($profileIds === null || SalesProfile::query()->whereIn('id', $profileIds)
-            ->where('company_id', $companyId)->exists(), 403,
+            ->where(fn ($_companyIdScope) => \App\Services\CompanyIdScope::constrain($_companyIdScope, 'company_id', $companyId))->exists(), 403,
             'The selected legal entity is outside your Sales scope.');
     }
 
@@ -1035,9 +1035,9 @@ class SalesCrmController extends Controller
     {
         $profileIds = $this->scope->profileIds($request->user(), 'sales.crm.manage-all', 'sales.crm.manage-team', $companyId);
 
-        $userIds = SalesProfile::query()->where('company_id', $companyId)->activeAt(now())
+        $userIds = SalesProfile::query()->where(fn ($_companyIdScope) => \App\Services\CompanyIdScope::constrain($_companyIdScope, 'company_id', $companyId))->activeAt(now())
             ->when($profileIds !== null, fn ($profiles) => $profiles->whereIn('id', $profileIds))
-            ->whereHas('staff', fn ($staff) => $staff->where('company_id', $companyId)->whereNull('deleted_at')
+            ->whereHas('staff', fn ($staff) => $staff->where(fn ($_companyIdScope) => \App\Services\CompanyIdScope::constrain($_companyIdScope, 'company_id', $companyId))->whereNull('deleted_at')
                 ->where(fn ($employment) => $employment->whereNull('employment_ended_at')->orWhere('employment_ended_at', '>', now())))
             ->with('staff:id,user_id')->get()->pluck('staff.user_id')->filter()->unique()->values()->all();
 

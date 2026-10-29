@@ -259,7 +259,7 @@ class NavigationMenuController extends Controller
 
         return NavigationMenu::query()->when(
             $companyId,
-            fn ($query) => $query->where('company_id', $companyId),
+            fn ($query) => $query->where(fn ($_companyIdScope) => \App\Services\CompanyIdScope::constrain($_companyIdScope, 'company_id', $companyId)),
             fn ($query) => $query->whereNull('company_id')
         );
     }
@@ -274,7 +274,7 @@ class NavigationMenuController extends Controller
         $companyId = $this->companyId();
 
         return Rule::exists('navigation_menus', 'id')->where(
-            fn ($query) => $companyId ? $query->where('company_id', $companyId) : $query->whereNull('company_id')
+            fn ($query) => $companyId ? $query->where(fn ($_companyIdScope) => \App\Services\CompanyIdScope::constrain($_companyIdScope, 'company_id', $companyId)) : $query->whereNull('company_id')
         );
     }
 }

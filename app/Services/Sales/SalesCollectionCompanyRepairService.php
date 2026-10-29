@@ -78,7 +78,7 @@ class SalesCollectionCompanyRepairService
                     ->whereNull('rollback_evidence.deleted_at');
             })
             ->leftJoin('users as rollback_actor', 'rollback_actor.id', '=', 'rollback.performed_by')
-            ->where('repair.company_id', $companyId)
+            ->where(fn ($_companyIdScope) => \App\Services\CompanyIdScope::constrain($_companyIdScope, 'repair.company_id', $companyId))
             ->orderByDesc('repair.repaired_at')->orderBy('repair.id')
             ->select([
                 'booking.booking_number', 'repair.source_table', 'repair.reason', 'repair.repaired_at',
@@ -305,7 +305,7 @@ class SalesCollectionCompanyRepairService
         foreach ($rows as $row) {
             abort_unless($row->before_checksum && $row->after_checksum, 409,
                 'Original transaction audit checksums are incomplete; replay is held.');
-            $events = DB::table('domain_audit_events')->where('domain', 'sales')->where('company_id', $companyId)
+            $events = DB::table('domain_audit_events')->where('domain', 'sales')->where(fn ($_companyIdScope) => \App\Services\CompanyIdScope::constrain($_companyIdScope, 'company_id', $companyId))
                 ->where('event_type', $eventType)->where('correlation_id', $idempotencyKey)
                 ->where('subject_type', $row->source_table)->where('subject_id', $row->source_record_id)
                 ->limit(2)->get(['before_checksum', 'after_checksum', 'reason']);

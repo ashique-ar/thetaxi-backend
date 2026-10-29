@@ -503,7 +503,7 @@ class SalesBookingAttributionController extends Controller
             ->whereNotNull('sales_profiles.staff_category_snapshot')
             ->whereHas('staff', fn ($staff) => $staff->whereNull('deleted_at')
                 ->where(fn ($employment) => $employment->whereNull('employment_ended_at')->orWhere('employment_ended_at', '>', $at)))
-            ->when($companyId, fn ($profiles) => $profiles->where('sales_profiles.company_id', $companyId))
+            ->when($companyId, fn ($profiles) => $profiles->where(fn ($_companyIdScope) => \App\Services\CompanyIdScope::constrain($_companyIdScope, 'sales_profiles.company_id', $companyId)))
             ->when($companyIds !== null, fn ($profiles) => $profiles->whereIn('sales_profiles.company_id', $companyIds));
 
         if ($companyId) {
@@ -598,7 +598,7 @@ class SalesBookingAttributionController extends Controller
         $profileIds = $this->actorProfileIds($request, $companyId);
         $profile = SalesProfile::query()
             ->whereKey($profileId)
-            ->when($companyId, fn ($query) => $query->where('company_id', $companyId))
+            ->when($companyId, fn ($query) => $query->where(fn ($_companyIdScope) => \App\Services\CompanyIdScope::constrain($_companyIdScope, 'company_id', $companyId)))
             ->when($profileIds !== null, fn ($query) => $query->whereIn('id', $profileIds))
             ->first();
 

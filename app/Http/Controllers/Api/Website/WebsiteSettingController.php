@@ -63,7 +63,7 @@ class WebsiteSettingController extends Controller
     {
         $companyId = $this->settingsService->resolveCurrentCompanyId();
         $q = WebsiteSetting::query()
-            ->when($companyId, fn ($query) => $query->where('company_id', $companyId))
+            ->when($companyId, fn ($query) => $query->where(fn ($_companyIdScope) => \App\Services\CompanyIdScope::constrain($_companyIdScope, 'company_id', $companyId)))
             ->when(!$companyId, fn ($query) => $query->whereNull('company_id'));
         if ($request->filled('search')) {
             $q->where('type', 'like', '%' . $request->search . '%');
@@ -154,7 +154,7 @@ class WebsiteSettingController extends Controller
         $type = "{$section}.{$key}";
         $companyId = $this->settingsService->resolveCurrentCompanyId();
         $setting = WebsiteSetting::where('type', $type)
-            ->when($companyId, fn ($query) => $query->where('company_id', $companyId))
+            ->when($companyId, fn ($query) => $query->where(fn ($_companyIdScope) => \App\Services\CompanyIdScope::constrain($_companyIdScope, 'company_id', $companyId)))
             ->when(!$companyId, fn ($query) => $query->whereNull('company_id'))
             ->first();
 

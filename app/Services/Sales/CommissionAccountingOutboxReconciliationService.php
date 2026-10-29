@@ -11,7 +11,7 @@ class CommissionAccountingOutboxReconciliationService
     public function reconcilePayout(string $companyId, string $payoutId): ?array
     {
         $payout = DB::table('sales_commission_payouts')
-            ->where('company_id', $companyId)->where('id', $payoutId)
+            ->where(fn ($_companyIdScope) => \App\Services\CompanyIdScope::constrain($_companyIdScope, 'company_id', $companyId))->where('id', $payoutId)
             ->whereIn('status', ['confirmed', 'reversal', 'reversed'])->first();
 
         return $payout ? $this->reconcile($payout) : null;
@@ -20,7 +20,7 @@ class CommissionAccountingOutboxReconciliationService
     public function preview(string $companyId, int $perPage = 50): array
     {
         $page = DB::table('sales_commission_payouts')
-            ->where('company_id', $companyId)
+            ->where(fn ($_companyIdScope) => \App\Services\CompanyIdScope::constrain($_companyIdScope, 'company_id', $companyId))
             ->whereIn('status', ['confirmed', 'reversal', 'reversed'])
             ->orderByDesc('paid_at')->orderByDesc('id')
             ->paginate($perPage);

@@ -35,7 +35,7 @@ class SalesPeriodCloseService
         $cutoff = CarbonImmutable::parse($cutoffAt)->utc();
         abort_if($cutoff->isFuture(), 422, 'The Sales close cutoff cannot be in the future.');
 
-        $lock = DB::table('domain_period_locks')->where('domain', 'sales')->where('company_id', $companyId)
+        $lock = DB::table('domain_period_locks')->where('domain', 'sales')->where(fn ($_companyIdScope) => \App\Services\CompanyIdScope::constrain($_companyIdScope, 'company_id', $companyId))
             ->where('period_type', 'month')->where('period_start', $start->utc())
             ->where('period_end', $endExclusiveUtc)->first();
         $blockers = [];
@@ -47,23 +47,23 @@ class SalesPeriodCloseService
 
         $profileMismatchCount = DB::table('sales_metric_facts as fact')
             ->leftJoin('sales_profiles as profile', 'profile.id', '=', 'fact.sales_profile_id')
-            ->where('fact.company_id', $companyId)->whereBetween('fact.occurred_on', [$start->toDateString(), $end->toDateString()])
+            ->where(fn ($_companyIdScope) => \App\Services\CompanyIdScope::constrain($_companyIdScope, 'fact.company_id', $companyId))->whereBetween('fact.occurred_on', [$start->toDateString(), $end->toDateString()])
             ->where('fact.occurred_at', '<=', $cutoff)->where(fn ($query) => $query
                 ->whereNull('profile.id')->orWhereColumn('profile.company_id', '!=', 'fact.company_id'))->count();
         if ($profileMismatchCount > 0) $blockers[] = ['code' => 'metric_profile_scope_mismatch', 'count' => $profileMismatchCount];
-        $missingStaffCount = SalesProfile::query()->withTrashed()->where('company_id', $companyId)
+        $missingStaffCount = SalesProfile::query()->withTrashed()->where(fn ($_companyIdScope) => \App\Services\CompanyIdScope::constrain($_companyIdScope, 'company_id', $companyId))
             ->where('effective_from', '<', $endExclusiveUtc)->where(fn ($query) => $query
                 ->whereNull('effective_until')->orWhere('effective_until', '>', $start->utc()))
             ->whereDoesntHave('staff')->count();
         if ($missingStaffCount > 0) $blockers[] = ['code' => 'profile_staff_missing', 'count' => $missingStaffCount];
         $duplicateTargetCount = DB::query()->fromSub(
             SalesTargetVersion::query()->selectRaw('sales_profile_id, count(*) duplicate_count')
-                ->where('company_id', $companyId)->where('status', 'approved')
+                ->where(fn ($_companyIdScope) => \App\Services\CompanyIdScope::constrain($_companyIdScope, 'company_id', $companyId))->where('status', 'approved')
                 ->whereDate('period_start', '<=', $end)->whereDate('period_end', '>=', $start)
                 ->groupBy('sales_profile_id')->havingRaw('count(*) > 1'), 'duplicates'
         )->count();
         if ($duplicateTargetCount > 0) $blockers[] = ['code' => 'approved_target_ambiguous', 'count' => $duplicateTargetCount];
-        $policies = DB::table('sales_alert_policy_versions')->where('company_id', $companyId)->where('status', 'approved')
+        $policies = DB::table('sales_alert_policy_versions')->where(fn ($_companyIdScope) => \App\Services\CompanyIdScope::constrain($_companyIdScope, 'company_id', $companyId))->where('status', 'approved')
             ->whereDate('effective_from', '<=', $start)->where(fn ($query) => $query
                 ->whereNull('effective_until')->orWhereDate('effective_until', '>=', $end))->get();
         if ($policies->count() !== 1) $blockers[] = [
@@ -80,7 +80,7 @@ class SalesPeriodCloseService
                 $rules = $this->alertPolicyContract->normalize($rules);
             }
         }
-        $unlinkedFrozenCount = SalesKpiSnapshot::query()->where('company_id', $companyId)
+        $unlinkedFrozenCount = SalesKpiSnapshot::query()->where(fn ($_companyIdScope) => \App\Services\CompanyIdScope::constrain($_companyIdScope, 'company_id', $companyId))
             ->whereDate('period_start', $start)->whereDate('period_end', $end)
             ->where('status', 'frozen')->whereNull('period_lock_id')->count();
         if ($unlinkedFrozenCount > 0) $blockers[] = [
@@ -108,7 +108,7 @@ class SalesPeriodCloseService
         ];
         $factTotals = DB::table('sales_metric_facts')->selectRaw(
             'metric_type, SUM(quantity) quantity, SUM(amount_lkr) amount_lkr, COUNT(*) fact_count'
-        )->where('company_id', $companyId)->whereBetween('occurred_on', [$start->toDateString(), $end->toDateString()])
+        )->where(fn ($_companyIdScope) => \App\Services\CompanyIdScope::constrain($_companyIdScope, 'company_id', $companyId))->whereBetween('occurred_on', [$start->toDateString(), $end->toDateString()])
             ->where('occurred_at', '<=', $cutoff)->groupBy('metric_type')->orderBy('metric_type')->get()
             ->map(fn ($row) => (array) $row)->values()->all();
         $rowTotals = [
@@ -141,10 +141,10 @@ class SalesPeriodCloseService
         if (collect($deltas)->contains(fn ($delta) => abs($delta) > 0.0001)) {
             $blockers[] = ['code' => 'metric_row_reconciliation_failed', 'count' => collect($deltas)->filter(fn ($delta) => abs($delta) > 0.0001)->count()];
         }
-        $factChecksums = SalesMetricFact::query()->where('company_id', $companyId)
+        $factChecksums = SalesMetricFact::query()->where(fn ($_companyIdScope) => \App\Services\CompanyIdScope::constrain($_companyIdScope, 'company_id', $companyId))
             ->whereBetween('occurred_on', [$start->toDateString(), $end->toDateString()])->where('occurred_at', '<=', $cutoff)
             ->orderBy('occurred_at')->orderBy('id')->pluck('fact_checksum')->all();
-        $targetChecksums = SalesTargetVersion::query()->where('company_id', $companyId)->where('status', 'approved')
+        $targetChecksums = SalesTargetVersion::query()->where(fn ($_companyIdScope) => \App\Services\CompanyIdScope::constrain($_companyIdScope, 'company_id', $companyId))->where('status', 'approved')
             ->whereDate('period_start', '<=', $end)->whereDate('period_end', '>=', $start)
             ->orderBy('sales_profile_id')->orderBy('period_start')->pluck('payload_checksum')->all();
         $reconciliation = [
@@ -193,7 +193,7 @@ class SalesPeriodCloseService
         ): object {
             DB::table('companies')->where('id', $companyId)->where('is_active', true)
                 ->whereNull('deleted_at')->lockForUpdate()->firstOrFail();
-            $existing = DB::table('sales_period_close_events')->where('company_id', $companyId)
+            $existing = DB::table('sales_period_close_events')->where(fn ($_companyIdScope) => \App\Services\CompanyIdScope::constrain($_companyIdScope, 'company_id', $companyId))
                 ->where('idempotency_key', $idempotencyKey)->first();
             if ($existing) {
                 abort_unless(hash_equals($existing->request_payload_checksum, $requestChecksum), 409,
@@ -207,7 +207,7 @@ class SalesPeriodCloseService
             abort_unless($preview['can_close'], 409, 'Sales period reconciliation has unresolved blockers.');
             $startUtc = CarbonImmutable::parse($preview['period_start_utc']);
             $endExclusiveUtc = CarbonImmutable::parse($preview['period_end_exclusive_utc']);
-            $lock = DB::table('domain_period_locks')->where('domain', 'sales')->where('company_id', $companyId)
+            $lock = DB::table('domain_period_locks')->where('domain', 'sales')->where(fn ($_companyIdScope) => \App\Services\CompanyIdScope::constrain($_companyIdScope, 'company_id', $companyId))
                 ->where('period_type', 'month')->where('period_start', $startUtc)->where('period_end', $endExclusiveUtc)
                 ->lockForUpdate()->first();
             if (! $lock) {
@@ -221,10 +221,10 @@ class SalesPeriodCloseService
             }
             abort_unless((int) $lock->lock_version === $expectedLockVersion && in_array($lock->state, ['open', 'reopened'], true),
                 409, 'The Sales period is not open for this close operation.');
-            SalesMetricFact::query()->where('company_id', $companyId)
+            SalesMetricFact::query()->where(fn ($_companyIdScope) => \App\Services\CompanyIdScope::constrain($_companyIdScope, 'company_id', $companyId))
                 ->whereBetween('occurred_on', [$preview['period_start'], $preview['period_end']])
                 ->orderBy('occurred_at')->orderBy('id')->lockForUpdate()->get();
-            SalesTargetVersion::query()->where('company_id', $companyId)
+            SalesTargetVersion::query()->where(fn ($_companyIdScope) => \App\Services\CompanyIdScope::constrain($_companyIdScope, 'company_id', $companyId))
                 ->whereDate('period_start', '<=', $preview['period_end'])->whereDate('period_end', '>=', $preview['period_start'])
                 ->orderBy('sales_profile_id')->orderBy('version')->lockForUpdate()->get();
             $lockedPreview = $this->preview($companyId, $periodStart, $cutoffAt);

@@ -68,7 +68,7 @@ class CommissionStatementController extends Controller
         $query = SalesCommissionStatement::query();
         $this->applyScope($query, $request);
         $page = $query
-            ->when($data['company_id'] ?? null, fn ($q, $companyId) => $q->where('company_id', $companyId))
+            ->when($data['company_id'] ?? null, fn ($q, $companyId) => $q->where(fn ($_companyIdScope) => \App\Services\CompanyIdScope::constrain($_companyIdScope, 'company_id', $companyId)))
             ->when($data['status'] ?? null, fn ($q, $status) => $q->where('status', $status))
             ->when($data['from'] ?? null, fn ($q, $from) => $q->whereDate('period_end', '>=', $from))
             ->when($data['to'] ?? null, fn ($q, $to) => $q->whereDate('period_start', '<=', $to))
@@ -119,7 +119,7 @@ class CommissionStatementController extends Controller
             ->whereIn('sales_profiles.company_id', $companyIds)
             ->whereNull('company.deleted_at')
             ->commissionStatementEligible()
-            ->when($data['company_id'] ?? null, fn ($profiles, $companyId) => $profiles->where('sales_profiles.company_id', $companyId));
+            ->when($data['company_id'] ?? null, fn ($profiles, $companyId) => $profiles->where(fn ($_companyIdScope) => \App\Services\CompanyIdScope::constrain($_companyIdScope, 'sales_profiles.company_id', $companyId)));
         if (! empty($data['selected_id'])) $query->where('sales_profiles.id', $data['selected_id']);
         elseif (! empty($data['search'])) {
             $term = '%'.addcslashes($data['search'], '%_\\').'%';
@@ -178,7 +178,7 @@ class CommissionStatementController extends Controller
         abort_unless(in_array($data['company_id'], $companyIds, true), 403,
             'Commission operation is outside your legal entity.');
         $query = SalesCommissionDispute::query()->whereIn('company_id', $companyIds)
-            ->when($data['company_id'] ?? null, fn ($q, $companyId) => $q->where('company_id', $companyId));
+            ->when($data['company_id'] ?? null, fn ($q, $companyId) => $q->where(fn ($_companyIdScope) => \App\Services\CompanyIdScope::constrain($_companyIdScope, 'company_id', $companyId)));
         $page = $query
             ->when($data['status'] ?? null, fn ($q, $status) => $q->where('status', $status))
             ->orderByRaw("CASE status WHEN 'open' THEN 1 ELSE 2 END")->latest('raised_at')->paginate($this->paginationSize($request, 25));
@@ -205,7 +205,7 @@ class CommissionStatementController extends Controller
         abort_unless(in_array($data['company_id'], $companyIds, true), 403,
             'Commission operation is outside your legal entity.');
         $query = SalesCommissionPayout::query()->whereIn('company_id', $companyIds)
-            ->when($data['company_id'] ?? null, fn ($q, $companyId) => $q->where('company_id', $companyId));
+            ->when($data['company_id'] ?? null, fn ($q, $companyId) => $q->where(fn ($_companyIdScope) => \App\Services\CompanyIdScope::constrain($_companyIdScope, 'company_id', $companyId)));
         $page = $query
             ->when($data['status'] ?? null, fn ($q, $status) => $q->where('status', $status))
             ->latest('paid_at')->paginate($this->paginationSize($request, 25));

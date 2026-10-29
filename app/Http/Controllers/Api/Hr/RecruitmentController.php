@@ -138,15 +138,15 @@ class RecruitmentController extends Controller
 
         DB::transaction(function () use ($data, $id, $request, $companyId): void {
             $candidate = DB::table('hr_candidates')->where('id', $data['candidate_id'])
-                ->where('company_id', $companyId)->lockForUpdate()->first();
+                ->where(fn ($_companyIdScope) => \App\Services\CompanyIdScope::constrain($_companyIdScope, 'company_id', $companyId))->lockForUpdate()->first();
             $requisition = DB::table('hr_job_requisitions')->where('id', $data['requisition_id'])
-                ->where('company_id', $companyId)->lockForUpdate()->first();
+                ->where(fn ($_companyIdScope) => \App\Services\CompanyIdScope::constrain($_companyIdScope, 'company_id', $companyId))->lockForUpdate()->first();
             abort_unless($candidate && $requisition, 422, 'Application references must share one legal entity.');
             abort_unless($requisition->status === 'approved', 409, 'Requisition must be approved.');
 
             if (! empty($data['owner_staff_id'])) {
                 $owner = DB::table('staff')->where('id', $data['owner_staff_id'])
-                    ->where('company_id', $companyId)->whereNull('deleted_at')
+                    ->where(fn ($_companyIdScope) => \App\Services\CompanyIdScope::constrain($_companyIdScope, 'company_id', $companyId))->whereNull('deleted_at')
                     ->whereNull('employment_ended_at')->lockForUpdate()->first();
                 abort_unless($owner, 422, 'Application owner must be active Staff in the selected legal entity.');
             }

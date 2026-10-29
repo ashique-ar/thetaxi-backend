@@ -29,7 +29,7 @@ class SalesTaskInterventionFactService
         $asOf = $endExclusive->min(CarbonImmutable::parse($cutoffAt)->utc());
         $lookbackStart = $start->subMonths($lookbackMonths - 1)->startOfMonth()->utc();
 
-        $all = DB::table('sales_tasks')->where('company_id', $companyId)
+        $all = DB::table('sales_tasks')->where(fn ($_companyIdScope) => \App\Services\CompanyIdScope::constrain($_companyIdScope, 'company_id', $companyId))
             ->where('created_at', '<', $asOf)->where('due_at', '<', $asOf)->get([
                 'id', 'owner_sales_profile_id', 'due_at', 'created_at', 'deadline_contract_version',
                 'deadline_snapshot', 'deadline_checksum',

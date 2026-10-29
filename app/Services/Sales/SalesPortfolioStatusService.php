@@ -92,7 +92,7 @@ class SalesPortfolioStatusService
 
     public function policyFor(string $companyId, CarbonImmutable $asOf): SalesPortfolioStatusPolicyVersion
     {
-        $policies = SalesPortfolioStatusPolicyVersion::query()->where('company_id', $companyId)
+        $policies = SalesPortfolioStatusPolicyVersion::query()->where(fn ($_companyIdScope) => \App\Services\CompanyIdScope::constrain($_companyIdScope, 'company_id', $companyId))
             ->where('status', 'approved')->whereDate('effective_from', '<=', $asOf->toDateString())
             ->where(fn ($query) => $query->whereNull('effective_until')
                 ->orWhereDate('effective_until', '>=', $asOf->toDateString()))
@@ -141,7 +141,7 @@ class SalesPortfolioStatusService
             })
             ->leftJoinSub($scheduleTotals, 'schedule_totals',
                 fn ($join) => $join->on('schedule_totals.booking_id', '=', 'booking.id'))
-            ->where('attribution.company_id', $companyId)->whereNull('attribution.root_attribution_id')
+            ->where(fn ($_companyIdScope) => \App\Services\CompanyIdScope::constrain($_companyIdScope, 'attribution.company_id', $companyId))->whereNull('attribution.root_attribution_id')
             ->where('attribution.status', 'active')->whereNull('attribution.deleted_at')->whereNull('booking.deleted_at')
             ->whereIn('booking.status', $statuses)->where('attribution.secured_at', '<=', $asOf->utc())
             ->where(function ($query) use ($profileIds) {

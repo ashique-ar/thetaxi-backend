@@ -605,7 +605,7 @@ class SalesPerformanceController extends Controller
     {
         $ids = $this->scope->profileIds($request->user(), 'sales.performance.view-all', 'sales.performance.view-team', $companyId);
         if ($ids === null) return;
-        abort_unless(SalesProfile::query()->whereIn('id', $ids)->where('company_id', $companyId)->exists(), 403, 'Sales performance administration is outside your legal entity or team scope.');
+        abort_unless(SalesProfile::query()->whereIn('id', $ids)->where(fn ($_companyIdScope) => \App\Services\CompanyIdScope::constrain($_companyIdScope, 'company_id', $companyId))->exists(), 403, 'Sales performance administration is outside your legal entity or team scope.');
     }
 
     private function resolveCompanyId(?string $companyId): string
@@ -632,13 +632,13 @@ class SalesPerformanceController extends Controller
     {
         $ids = $this->scope->profileIds($request->user(), 'sales.performance.view-all', 'sales.performance.view-team');
         abort_unless($ids === null, 403, 'Company-wide Sales reconciliation requires view-all scope.');
-        abort_unless(SalesProfile::query()->withTrashed()->where('company_id', $companyId)->exists(), 422,
+        abort_unless(SalesProfile::query()->withTrashed()->where(fn ($_companyIdScope) => \App\Services\CompanyIdScope::constrain($_companyIdScope, 'company_id', $companyId))->exists(), 422,
             'The legal entity has no Sales Profiles to reconcile.');
     }
 
     private function assertTargetProfilesScope(Request $request, string $companyId, array $profileIds): void
     {
-        $profiles = SalesProfile::query()->where('company_id', $companyId)->whereIn('id', $profileIds)->get();
+        $profiles = SalesProfile::query()->where(fn ($_companyIdScope) => \App\Services\CompanyIdScope::constrain($_companyIdScope, 'company_id', $companyId))->whereIn('id', $profileIds)->get();
         abort_unless($profiles->count() === count(array_unique($profileIds)), 422,
             'Every selected Sales Profile must belong to the selected legal entity.');
         foreach ($profiles as $profile) {

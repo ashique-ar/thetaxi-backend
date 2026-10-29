@@ -5,9 +5,9 @@ class LifecycleController extends Controller{
  public function cases(Request $r, StaffAccessService $access): JsonResponse
  {
      $companyId = $this->actorCompanyId($r);
-     $staff = $access->scope(Staff::query(), $r->user())->where('company_id', $companyId)->select('id');
+     $staff = $access->scope(Staff::query(), $r->user())->where(fn ($_companyIdScope) => \App\Services\CompanyIdScope::constrain($_companyIdScope, 'company_id', $companyId))->select('id');
      $rows = DB::table('hr_lifecycle_cases as c')->leftJoin('staff as s', fn ($join) => $join->on('s.id', '=', 'c.staff_id')->on('s.company_id', '=', 'c.company_id'))
-         ->leftJoin('users as u', 'u.id', '=', 's.user_id')->where('c.company_id', $companyId)
+         ->leftJoin('users as u', 'u.id', '=', 's.user_id')->where(fn ($_companyIdScope) => \App\Services\CompanyIdScope::constrain($_companyIdScope, 'c.company_id', $companyId))
          ->where(function ($visibility) use ($staff) {
              $visibility->whereIn('c.staff_id', $staff)
                  ->orWhere(function ($preHire) {
@@ -40,7 +40,7 @@ class LifecycleController extends Controller{
          ->join('hr_exit_cases as exit_case', 'exit_case.id', '=', 'item.exit_case_id')
          ->leftJoin('staff', fn ($join) => $join->on('staff.id', '=', 'exit_case.staff_id')->on('staff.company_id', '=', 'exit_case.company_id'))
          ->leftJoin('users', 'users.id', '=', 'staff.user_id')
-         ->where('exit_case.company_id', $companyId)
+         ->where(fn ($_companyIdScope) => \App\Services\CompanyIdScope::constrain($_companyIdScope, 'exit_case.company_id', $companyId))
          ->select(['item.id', 'item.exit_case_id', 'item.clearance_type', 'item.title', 'item.status', 'item.completed_at', 'staff.code as staff_code', 'users.first_name', 'users.last_name'])
          ->latest('item.created_at')->paginate($this->paginationSize($r, 50));
 
@@ -53,7 +53,7 @@ class LifecycleController extends Controller{
          ->join('hr_employment_spells as spell', 'spell.id', '=', 'probation.employment_spell_id')
          ->join('staff', fn ($join) => $join->on('staff.id', '=', 'probation.staff_id')->on('staff.company_id', '=', 'spell.company_id'))
          ->leftJoin('users', 'users.id', '=', 'staff.user_id')
-         ->where('spell.company_id', $companyId)
+         ->where(fn ($_companyIdScope) => \App\Services\CompanyIdScope::constrain($_companyIdScope, 'spell.company_id', $companyId))
          ->whereColumn('spell.staff_id', 'probation.staff_id')
          ->select(['probation.id', 'probation.starts_at', 'probation.review_due_at', 'probation.current_end_at', 'probation.status', 'probation.proposed_outcome', 'probation.final_outcome', 'users.first_name', 'users.last_name', 'staff.code as staff_code'])
          ->latest('probation.created_at')->paginate($this->paginationSize($r, 50));
@@ -252,9 +252,9 @@ class LifecycleController extends Controller{
          $row = DB::table('hr_probation_cases')->where('id', $id)->lockForUpdate()->first();
          abort_unless($row, 404);
          $companyId = $this->actorCompanyId($r);
-         $staff = Staff::query()->whereKey($row->staff_id)->where('company_id', $companyId)->firstOrFail();
+         $staff = Staff::query()->whereKey($row->staff_id)->where(fn ($_companyIdScope) => \App\Services\CompanyIdScope::constrain($_companyIdScope, 'company_id', $companyId))->firstOrFail();
          $spell = DB::table('hr_employment_spells')->where('id', $row->employment_spell_id)
-             ->where('staff_id', $staff->id)->where('company_id', $companyId)->lockForUpdate()->first();
+             ->where('staff_id', $staff->id)->where(fn ($_companyIdScope) => \App\Services\CompanyIdScope::constrain($_companyIdScope, 'company_id', $companyId))->lockForUpdate()->first();
          abort_unless($spell, 409, 'The probation employment spell does not match this Staff legal entity.');
          $summary = fn () => DB::table('hr_probation_cases')->select([
              'id', 'starts_at', 'review_due_at', 'current_end_at', 'status', 'proposed_outcome', 'final_outcome', 'decided_at',
@@ -294,7 +294,7 @@ class LifecycleController extends Controller{
              ]);
              if ($data['outcome'] === 'confirmed') {
                  DB::table('hr_employment_spells')->where('id', $row->employment_spell_id)
-                     ->where('company_id', $companyId)->update(['confirmation_date' => now()->toDateString(), 'updated_at' => now()]);
+                     ->where(fn ($_companyIdScope) => \App\Services\CompanyIdScope::constrain($_companyIdScope, 'company_id', $companyId))->update(['confirmation_date' => now()->toDateString(), 'updated_at' => now()]);
              }
          }
 

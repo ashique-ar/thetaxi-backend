@@ -589,7 +589,7 @@ class CommissionConfigurationController extends Controller
 
     private function activeStaffExists(string $staffId, string $companyId): bool
     {
-        return Staff::query()->whereKey($staffId)->where('company_id', $companyId)
+        return Staff::query()->whereKey($staffId)->where(fn ($_companyIdScope) => \App\Services\CompanyIdScope::constrain($_companyIdScope, 'company_id', $companyId))
             ->whereNull('deleted_at')
             ->where(fn ($q) => $q->whereNull('employment_ended_at')->orWhere('employment_ended_at', '>', now()))->exists();
     }

@@ -18,14 +18,14 @@ class HrNotificationService
     public function recipientMatchesCompany(string $companyId, string $staffId, string $userId): bool
     {
         return DB::table('staff')->join('users', 'users.id', '=', 'staff.user_id')
-            ->where('staff.id', $staffId)->where('staff.company_id', $companyId)
+            ->where('staff.id', $staffId)->where(fn ($_companyIdScope) => \App\Services\CompanyIdScope::constrain($_companyIdScope, 'staff.company_id', $companyId))
             ->where('staff.user_id', $userId)->whereNull('staff.deleted_at')->whereNull('users.deleted_at')->exists();
     }
 
     public function recipientIsActive(string $companyId, string $staffId, string $userId): bool
     {
         return DB::table('staff')->join('users', 'users.id', '=', 'staff.user_id')
-            ->where('staff.id', $staffId)->where('staff.company_id', $companyId)
+            ->where('staff.id', $staffId)->where(fn ($_companyIdScope) => \App\Services\CompanyIdScope::constrain($_companyIdScope, 'staff.company_id', $companyId))
             ->where('staff.user_id', $userId)->whereNull('staff.deleted_at')->whereNull('staff.employment_ended_at')
             ->whereNull('users.deleted_at')->where('users.is_active', true)->exists();
     }
@@ -34,7 +34,7 @@ class HrNotificationService
     {
         if (! $this->companyIsActive($companyId)) return [];
 
-        $staff = Staff::query()->whereKey($staffId)->where('company_id', $companyId)
+        $staff = Staff::query()->whereKey($staffId)->where(fn ($_companyIdScope) => \App\Services\CompanyIdScope::constrain($_companyIdScope, 'company_id', $companyId))
             ->whereNull('employment_ended_at')->first();
         if (!$staff || !$staff->user_id) return [];
 
@@ -43,7 +43,7 @@ class HrNotificationService
 
         $rows = [];
         foreach (['in_app', 'email', 'sms'] as $channel) {
-            $template = DB::table('hr_notification_template_versions')->where('company_id', $companyId)
+            $template = DB::table('hr_notification_template_versions')->where(fn ($_companyIdScope) => \App\Services\CompanyIdScope::constrain($_companyIdScope, 'company_id', $companyId))
                 ->where('event_type', $eventType)->where('channel', $channel)->where('status', 'approved')
                 ->whereDate('effective_from', '<=', now())
                 ->where(fn ($query) => $query->whereNull('effective_until')->orWhereDate('effective_until', '>=', now()))

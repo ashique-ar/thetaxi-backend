@@ -16,7 +16,7 @@ class CommissionFormulaReplayService
         float $eligibleLkrAmount,
         CarbonInterface $effectiveAt,
     ): array {
-        $overrides = SalesCommissionStaffOverride::query()->where('company_id', $companyId)
+        $overrides = SalesCommissionStaffOverride::query()->where(fn ($_companyIdScope) => \App\Services\CompanyIdScope::constrain($_companyIdScope, 'company_id', $companyId))
             ->where('staff_id', $staffId)->where('status', 'approved')
             ->where('effective_from', '<=', $effectiveAt)
             ->where(fn ($query) => $query->whereNull('effective_until')->orWhere('effective_until', '>', $effectiveAt))->get();

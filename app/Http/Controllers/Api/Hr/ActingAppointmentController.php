@@ -22,7 +22,7 @@ class ActingAppointmentController extends Controller
         $authorizedStaff = $this->access->scope(Staff::query()->select('staff.id'), $request->user());
         $data = $request->validate(['status' => ['nullable', Rule::in(['pending_approval', 'approved'])], 'staff_id' => ['nullable', 'uuid'], 'effective_at' => ['nullable', 'date'], 'page' => ['nullable', 'integer', 'min:1'], 'per_page' => ['nullable', 'integer', 'min:1', 'max:100']]);
         $rows = DB::table('hr_acting_appointments as appointment')->join('staff as employee', 'employee.id', '=', 'appointment.staff_id')->leftJoin('users as employee_user', 'employee_user.id', '=', 'employee.user_id')->join('hr_positions as position', 'position.id', '=', 'appointment.acting_position_id')
-            ->where('appointment.company_id', $companyId)->whereIn('appointment.staff_id', $authorizedStaff)->when($data['status'] ?? null, fn ($query, $status) => $query->where('appointment.status', $status))
+            ->where(fn ($_companyIdScope) => \App\Services\CompanyIdScope::constrain($_companyIdScope, 'appointment.company_id', $companyId))->whereIn('appointment.staff_id', $authorizedStaff)->when($data['status'] ?? null, fn ($query, $status) => $query->where('appointment.status', $status))
             ->when($data['staff_id'] ?? null, fn ($query, $staffId) => $query->where('appointment.staff_id', $staffId))
             ->when($data['effective_at'] ?? null, fn ($query, $date) => $query->where('appointment.effective_from', '<=', $date)->where('appointment.effective_until', '>', $date))
             ->select(['appointment.id', 'appointment.effective_from', 'appointment.effective_until', 'appointment.status', 'appointment.version', 'appointment.reason', 'employee.code as employee_number', 'employee_user.first_name as employee_first_name', 'employee_user.last_name as employee_last_name', 'position.position_number', 'position.title as position_title'])
@@ -64,9 +64,9 @@ class ActingAppointmentController extends Controller
         $until = $data['effective_until'] ?? null;
         $query = $data['record_type'] === 'staff'
             ? DB::table('staff')->leftJoin('users', 'users.id', '=', 'staff.user_id')
-                ->where('staff.company_id', $companyId)->whereIn('staff.id', $this->access->scope(Staff::query()->select('staff.id'), $request->user()))
-                ->whereNull('staff.employment_ended_at')->whereExists(fn ($spell) => $spell->selectRaw('1')->from('hr_employment_spells')->whereColumn('hr_employment_spells.staff_id', 'staff.id')->where('hr_employment_spells.company_id', $companyId)->where('hr_employment_spells.status', 'active'))
-            : DB::table('hr_positions')->where('company_id', $companyId)->where('status', 'active')
+                ->where(fn ($_companyIdScope) => \App\Services\CompanyIdScope::constrain($_companyIdScope, 'staff.company_id', $companyId))->whereIn('staff.id', $this->access->scope(Staff::query()->select('staff.id'), $request->user()))
+                ->whereNull('staff.employment_ended_at')->whereExists(fn ($spell) => $spell->selectRaw('1')->from('hr_employment_spells')->whereColumn('hr_employment_spells.staff_id', 'staff.id')->where(fn ($_companyIdScope) => \App\Services\CompanyIdScope::constrain($_companyIdScope, 'hr_employment_spells.company_id', $companyId))->where('hr_employment_spells.status', 'active'))
+            : DB::table('hr_positions')->where(fn ($_companyIdScope) => \App\Services\CompanyIdScope::constrain($_companyIdScope, 'company_id', $companyId))->where('status', 'active')
                 ->where('effective_from', '<=', $from)->where(fn ($range) => $until === null
                     ? $range->whereNull('effective_until')
                     : $range->whereNull('effective_until')->orWhere('effective_until', '>=', $until));
@@ -122,7 +122,7 @@ class ActingAppointmentController extends Controller
         
         $data = $request->validate(['expected_version' => ['required', 'integer', 'min:1'], 'reason' => ['required', 'string', 'max:2000'], 'idempotency_key' => ['required', 'string', 'max:160']]);
         $companyId = $this->access->actorCompanyId($request->user());
-        $appointment = DB::table('hr_acting_appointments')->where('id', $appointmentId)->where('company_id', $companyId)->first();
+        $appointment = DB::table('hr_acting_appointments')->where('id', $appointmentId)->where(fn ($_companyIdScope) => \App\Services\CompanyIdScope::constrain($_companyIdScope, 'company_id', $companyId))->first();
         abort_unless($appointment, 404, 'Acting appointment was not found in your legal entity.');
         $this->access->authorize($request->user(), Staff::query()->whereKey($appointment->staff_id)->firstOrFail());
         return response()->json(['status' => 'success', 'data' => $this->commandResponse($this->appointments->approve($appointmentId, $data, $companyId, (string) $request->user()->id))]);

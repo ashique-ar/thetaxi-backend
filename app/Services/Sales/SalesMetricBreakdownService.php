@@ -36,10 +36,10 @@ class SalesMetricBreakdownService
                     ? data_get($dimensions, 'commission_category') : null,
             ]];
         });
-        $attributions = SalesBookingAttribution::withTrashed()->where('company_id', $companyId)
+        $attributions = SalesBookingAttribution::withTrashed()->where(fn ($_companyIdScope) => \App\Services\CompanyIdScope::constrain($_companyIdScope, 'company_id', $companyId))
             ->whereIn('booking_id', $records->pluck('booking_id')->filter()->unique()->values()->all())
             ->get(['id', 'booking_id', 'root_attribution_id', 'secured_at'])->keyBy('booking_id');
-        $roots = SalesBookingAttribution::withTrashed()->where('company_id', $companyId)
+        $roots = SalesBookingAttribution::withTrashed()->where(fn ($_companyIdScope) => \App\Services\CompanyIdScope::constrain($_companyIdScope, 'company_id', $companyId))
             ->whereIn('id', $attributions->pluck('root_attribution_id')->filter()->unique()->values()->all())
             ->get(['id', 'secured_at'])->keyBy('id');
 

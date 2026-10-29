@@ -174,7 +174,7 @@ class AnalyticsController extends Controller
                     ->join('vehicle_categories', 'vehicles.category_id', '=', 'vehicle_categories.id')
                     ->leftJoin('booking_items', 'vehicles.id', '=', 'booking_items.vehicle_id')
                     ->leftJoin('bookings', 'booking_items.booking_id', '=', 'bookings.id')
-                    ->where('vehicles.company_id', $companyId)
+                    ->where(fn ($_companyIdScope) => \App\Services\CompanyIdScope::constrain($_companyIdScope, 'vehicles.company_id', $companyId))
                     ->whereNull('booking_items.deleted_at')
                     ->where(fn ($query) => CompanyBookingScope::constrain($query, 'bookings', $companyId))
                     ->whereBetween('bookings.created_at', $dateRange)

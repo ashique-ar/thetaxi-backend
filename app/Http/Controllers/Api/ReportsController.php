@@ -799,7 +799,7 @@ class ReportsController extends Controller
         abort_unless($companyId, 409, 'Select a business to view generated reports.');
         app(CompanySettingsAccessService::class)->assertCanAccess($request->user(), (string) $companyId);
         $query = BookingGeneratedReport::query()
-            ->where('company_id', $companyId)
+            ->where(fn ($_companyIdScope) => \App\Services\CompanyIdScope::constrain($_companyIdScope, 'company_id', $companyId))
             ->with('createdBy')
             ->when(! empty($pagination['report_type']), fn ($query) => $query->where('report_type', $pagination['report_type']))
             ->when(! empty($pagination['search']), fn ($query) => $query->whereRaw('LOWER(name) LIKE ?', ['%' . mb_strtolower($pagination['search']) . '%']))

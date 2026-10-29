@@ -19,16 +19,16 @@ class AttendanceResultService
             $company = DB::table('companies')->where('id', $companyId)->where('is_active', true)
                 ->whereNull('deleted_at')->lockForUpdate()->first();
             abort_unless($company, 409, 'Attendance result writes require an active legal entity.');
-            $period = DB::table('hr_attendance_periods')->where('company_id', $companyId)->whereDate('period_start', '<=', $date)->whereDate('period_end', '>=', $date)->lockForUpdate()->first();
+            $period = DB::table('hr_attendance_periods')->where(fn ($_companyIdScope) => \App\Services\CompanyIdScope::constrain($_companyIdScope, 'company_id', $companyId))->whereDate('period_start', '<=', $date)->whereDate('period_end', '>=', $date)->lockForUpdate()->first();
             abort_if($period && $period->status === 'locked', 409, 'The attendance period is locked.');
-            $staff = DB::table('staff')->where('id', $staffId)->where('company_id', $companyId)->lockForUpdate()->first();
+            $staff = DB::table('staff')->where('id', $staffId)->where(fn ($_companyIdScope) => \App\Services\CompanyIdScope::constrain($_companyIdScope, 'company_id', $companyId))->lockForUpdate()->first();
             abort_unless($staff, 422, 'Staff does not belong to this legal entity.');
-            $roster = DB::table('hr_roster_assignments')->where('company_id', $companyId)->where('staff_id', $staffId)->whereNotNull('approved_at')
+            $roster = DB::table('hr_roster_assignments')->where(fn ($_companyIdScope) => \App\Services\CompanyIdScope::constrain($_companyIdScope, 'company_id', $companyId))->where('staff_id', $staffId)->whereNotNull('approved_at')
                 ->whereDate('effective_from', '<=', $date)->where(fn($query) => $query->whereNull('effective_until')->orWhereDate('effective_until', '>', $date))->latest('effective_from')->first();
             abort_unless($roster, 422, 'No approved roster applies to this Staff work date.');
-            $calendar = DB::table('hr_work_calendars')->where('company_id', $companyId)->find($roster->calendar_id);
-            $shift = DB::table('hr_shift_definitions')->where('company_id', $companyId)->find($roster->shift_id);
-            $policy = DB::table('hr_attendance_policies')->where('company_id', $companyId)->find($roster->policy_id);
+            $calendar = DB::table('hr_work_calendars')->where(fn ($_companyIdScope) => \App\Services\CompanyIdScope::constrain($_companyIdScope, 'company_id', $companyId))->find($roster->calendar_id);
+            $shift = DB::table('hr_shift_definitions')->where(fn ($_companyIdScope) => \App\Services\CompanyIdScope::constrain($_companyIdScope, 'company_id', $companyId))->find($roster->shift_id);
+            $policy = DB::table('hr_attendance_policies')->where(fn ($_companyIdScope) => \App\Services\CompanyIdScope::constrain($_companyIdScope, 'company_id', $companyId))->find($roster->policy_id);
             abort_unless($calendar && $shift && $policy && $calendar->status === 'active' && $shift->status === 'active' && $policy->status === 'approved', 422, 'The roster configuration is not fully approved and active.');
             $timezone = $shift->timezone;
             $dayOverride = DB::table('hr_work_calendar_days')->where('calendar_id', $calendar->id)->whereDate('calendar_date', $date)->first();
@@ -39,9 +39,9 @@ class AttendanceResultService
             $windowStart = $scheduledStart->subHours(6)->utc();
             $windowEnd = $scheduledEnd->addHours(6)->utc();
             $events = DB::table('hr_attendance_raw_events as raw')->leftJoin('hr_attendance_quarantine_items as quarantine', 'quarantine.raw_event_id', '=', 'raw.id')
-                ->where('raw.company_id', $companyId)->where(fn($query) => $query
+                ->where(fn ($_companyIdScope) => \App\Services\CompanyIdScope::constrain($_companyIdScope, 'raw.company_id', $companyId))->where(fn($query) => $query
                     ->where(fn($query) => $query->where('raw.staff_id', $staffId)->where('raw.mapping_status', 'mapped'))
-                    ->orWhere(fn($query) => $query->where('quarantine.company_id', $companyId)->where('quarantine.status', 'resolved')->where('quarantine.resolved_staff_id', $staffId)))
+                    ->orWhere(fn($query) => $query->where(fn ($_companyIdScope) => \App\Services\CompanyIdScope::constrain($_companyIdScope, 'quarantine.company_id', $companyId))->where('quarantine.status', 'resolved')->where('quarantine.resolved_staff_id', $staffId)))
                 ->whereBetween('raw.occurred_at', [$windowStart, $windowEnd])->whereIn('raw.event_kind', ['punch', 'access_control'])->where(fn($query) => $query->whereNull('raw.verification_result')->orWhereIn('raw.verification_result', ['success', 'verified', 'accepted']))
                 ->select(['raw.id', 'raw.occurred_at', 'raw.direction', 'raw.payload_checksum'])->orderBy('raw.occurred_at')->get();
             $in = $events->first(fn($event) => in_array($event->direction, ['in', 'unknown', null], true));
@@ -60,7 +60,7 @@ class AttendanceResultService
                 ->join('hr_leave_requests as request', 'request.id', '=', 'day.leave_request_id')
                 ->join('hr_leave_types as type', fn ($join) => $join->on('type.id', '=', 'request.leave_type_id')->on('type.company_id', '=', 'request.company_id'))
                 ->join('hr_leave_policies as leave_policy', fn ($join) => $join->on('leave_policy.id', '=', 'request.policy_id')->on('leave_policy.company_id', '=', 'request.company_id'))
-                ->where('request.company_id', $companyId)->where('request.staff_id', $staffId)
+                ->where(fn ($_companyIdScope) => \App\Services\CompanyIdScope::constrain($_companyIdScope, 'request.company_id', $companyId))->where('request.staff_id', $staffId)
                 ->where('request.status', 'approved')->whereDate('day.leave_date', $date)
                 ->select(['request.id', 'day.minutes', 'day.day_kind', 'type.code as leave_type_code', 'type.paid'])->first();
             if ($leave) {
@@ -179,7 +179,7 @@ class AttendanceResultService
             $company = DB::table('companies')->where('id', $companyId)->where('is_active', true)->whereNull('deleted_at')->lockForUpdate()->first();
             abort_unless($company, 409, 'Attendance correction decisions require an active legal entity.');
             $correction = DB::table('hr_attendance_correction_requests')->where('id', $requestId)
-                ->where('company_id', $companyId)->lockForUpdate()->first();
+                ->where(fn ($_companyIdScope) => \App\Services\CompanyIdScope::constrain($_companyIdScope, 'company_id', $companyId))->lockForUpdate()->first();
             abort_unless($correction, 404);
             abort_if($correction->requested_by === $actorUserId, 409, 'The correction requester cannot decide the same correction.');
             if ($correction->status === 'rejected'

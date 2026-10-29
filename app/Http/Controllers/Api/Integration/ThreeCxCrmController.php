@@ -273,7 +273,7 @@ class ThreeCxCrmController extends Controller
     {
         $keys = [$request->header('X-Cassons-Integration-Key'), $request->bearerToken(), $request->getUser(), $request->getPassword()];
         $companyId = app(SingleCompanyScope::class)->activeDefaultCompany()?->id;
-        $connection = $companyId ? IntegrationConnection::query()->where('company_id', $companyId)->where('provider', '3cx')->first() : null;
+        $connection = $companyId ? IntegrationConnection::query()->where(fn ($_companyIdScope) => \App\Services\CompanyIdScope::constrain($_companyIdScope, 'company_id', $companyId))->where('provider', '3cx')->first() : null;
         $authorized = $connection && $connection->enabled && $connection->api_key_hash
             && collect($keys)->contains(fn ($key) => is_string($key) && strlen($key) === 64
                 && hash_equals($connection->api_key_hash, hash('sha256', $key)));
@@ -354,6 +354,6 @@ class ThreeCxCrmController extends Controller
     private function companyConnection(): ?IntegrationConnection
     {
         $companyId = app(SingleCompanyScope::class)->activeDefaultCompany()?->id;
-        return $companyId ? IntegrationConnection::query()->where('company_id', $companyId)->where('provider', '3cx')->first() : null;
+        return $companyId ? IntegrationConnection::query()->where(fn ($_companyIdScope) => \App\Services\CompanyIdScope::constrain($_companyIdScope, 'company_id', $companyId))->where('provider', '3cx')->first() : null;
     }
 }

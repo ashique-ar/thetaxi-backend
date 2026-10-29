@@ -30,7 +30,7 @@ class ReportingLineController extends Controller
         ]);
         foreach (['manager_staff_id', 'member_staff_id'] as $field) {
             if (! empty($data[$field])) {
-                abort_unless(DB::table('staff')->where('id', $data[$field])->where('company_id', $companyId)->exists(), 422, 'Reporting-line Staff filter is outside your legal entity.');
+                abort_unless(DB::table('staff')->where('id', $data[$field])->where(fn ($_companyIdScope) => \App\Services\CompanyIdScope::constrain($_companyIdScope, 'company_id', $companyId))->exists(), 422, 'Reporting-line Staff filter is outside your legal entity.');
             }
         }
         $query = DB::table('hr_reporting_lines as line')
@@ -38,7 +38,7 @@ class ReportingLineController extends Controller
             ->leftJoin('users as manager_user', 'manager_user.id', '=', 'manager_staff.user_id')
             ->join('staff as member_staff', 'member_staff.id', '=', 'line.member_staff_id')
             ->leftJoin('users as member_user', 'member_user.id', '=', 'member_staff.user_id')
-            ->where('line.company_id', $companyId)
+            ->where(fn ($_companyIdScope) => \App\Services\CompanyIdScope::constrain($_companyIdScope, 'line.company_id', $companyId))
             ->when($data['manager_staff_id'] ?? null, fn ($q, $id) => $q->where('line.manager_staff_id', $id))
             ->when($data['member_staff_id'] ?? null, fn ($q, $id) => $q->where('line.member_staff_id', $id))
             ->when($data['line_type'] ?? null, fn ($q, $type) => $q->where('line.line_type', $type))
@@ -87,7 +87,7 @@ class ReportingLineController extends Controller
     private function staffOptionsQuery(string $companyId, string $search, ?string $selectedId = null): Builder
     {
         return DB::table('staff')->leftJoin('users', 'users.id', '=', 'staff.user_id')
-            ->where('staff.company_id', $companyId)->whereNull('staff.deleted_at')->whereNull('staff.employment_ended_at')
+            ->where(fn ($_companyIdScope) => \App\Services\CompanyIdScope::constrain($_companyIdScope, 'staff.company_id', $companyId))->whereNull('staff.deleted_at')->whereNull('staff.employment_ended_at')
             ->whereExists(fn ($employment) => $employment->selectRaw('1')->from('hr_employment_spells')
                 ->whereColumn('hr_employment_spells.staff_id', 'staff.id')->where('hr_employment_spells.status', 'active')->whereNull('hr_employment_spells.terminated_at'))
             ->when($selectedId, fn ($q, $id) => $q->where('staff.id', $id))

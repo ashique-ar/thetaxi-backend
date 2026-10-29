@@ -1104,7 +1104,7 @@ class RespondIoIntegrationController extends Controller
     private function companyConnection(): ?IntegrationConnection
     {
         $companyId = app(SingleCompanyScope::class)->activeDefaultCompany()?->id;
-        return $companyId ? IntegrationConnection::query()->where('company_id', $companyId)->where('provider', 'respond_io')->first() : null;
+        return $companyId ? IntegrationConnection::query()->where(fn ($_companyIdScope) => \App\Services\CompanyIdScope::constrain($_companyIdScope, 'company_id', $companyId))->where('provider', 'respond_io')->first() : null;
     }
 
     private function selectedCompanyCustomer(?string $customerId, string $companyId): ?Customer
@@ -1113,9 +1113,9 @@ class RespondIoIntegrationController extends Controller
         $customer = Customer::query()->whereKey($customerId)->whereNull('deleted_at')->firstOrFail();
         $linkedBooking = DB::table('bookings as linked_booking')->where('linked_booking.customer_id', $customerId)->whereNull('linked_booking.deleted_at');
         \App\Services\CompanyBookingScope::constrain($linkedBooking, 'linked_booking', $companyId);
-        $linked = DB::table('customer_relationship_owner_assignments')->where('customer_id', $customerId)->where('company_id', $companyId)->exists()
-            || DB::table('sales_opportunities')->where('customer_id', $customerId)->where('company_id', $companyId)->whereNull('deleted_at')->exists()
-            || DB::table('inquiries')->where('customer_id', $customerId)->where('company_id', $companyId)->whereNull('deleted_at')->exists()
+        $linked = DB::table('customer_relationship_owner_assignments')->where('customer_id', $customerId)->where(fn ($_companyIdScope) => \App\Services\CompanyIdScope::constrain($_companyIdScope, 'company_id', $companyId))->exists()
+            || DB::table('sales_opportunities')->where('customer_id', $customerId)->where(fn ($_companyIdScope) => \App\Services\CompanyIdScope::constrain($_companyIdScope, 'company_id', $companyId))->whereNull('deleted_at')->exists()
+            || DB::table('inquiries')->where('customer_id', $customerId)->where(fn ($_companyIdScope) => \App\Services\CompanyIdScope::constrain($_companyIdScope, 'company_id', $companyId))->whereNull('deleted_at')->exists()
             || $linkedBooking->exists();
         abort_unless($linked, 422, 'Choose a customer already associated with this business.');
         return $customer;

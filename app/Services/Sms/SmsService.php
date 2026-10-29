@@ -30,7 +30,7 @@ class SmsService
     public function getOverview(string $companyId): array
     {
         $since = now()->subDays(30);
-        $messages = fn (): Builder => SmsMessage::query()->where('company_id', $companyId);
+        $messages = fn (): Builder => SmsMessage::query()->where(fn ($_companyIdScope) => \App\Services\CompanyIdScope::constrain($_companyIdScope, 'company_id', $companyId));
 
         return [
             'messages' => [
@@ -42,21 +42,21 @@ class SmsService
                 'failed' => $messages()->where('status', 'failed')->count(),
             ],
             'campaigns' => [
-                'total' => SmsCampaign::query()->where('company_id', $companyId)->count(),
-                'draft' => SmsCampaign::query()->where('company_id', $companyId)->where('status', 'draft')->count(),
-                'scheduled' => SmsCampaign::query()->where('company_id', $companyId)->where('status', 'scheduled')->count(),
-                'processing' => SmsCampaign::query()->where('company_id', $companyId)->where('status', 'processing')->count(),
-                'completed' => SmsCampaign::query()->where('company_id', $companyId)->where('status', 'completed')->count(),
+                'total' => SmsCampaign::query()->where(fn ($_companyIdScope) => \App\Services\CompanyIdScope::constrain($_companyIdScope, 'company_id', $companyId))->count(),
+                'draft' => SmsCampaign::query()->where(fn ($_companyIdScope) => \App\Services\CompanyIdScope::constrain($_companyIdScope, 'company_id', $companyId))->where('status', 'draft')->count(),
+                'scheduled' => SmsCampaign::query()->where(fn ($_companyIdScope) => \App\Services\CompanyIdScope::constrain($_companyIdScope, 'company_id', $companyId))->where('status', 'scheduled')->count(),
+                'processing' => SmsCampaign::query()->where(fn ($_companyIdScope) => \App\Services\CompanyIdScope::constrain($_companyIdScope, 'company_id', $companyId))->where('status', 'processing')->count(),
+                'completed' => SmsCampaign::query()->where(fn ($_companyIdScope) => \App\Services\CompanyIdScope::constrain($_companyIdScope, 'company_id', $companyId))->where('status', 'completed')->count(),
             ],
             'recent_messages' => $messages()->with(['booking:id,booking_number', 'bookingItem:id,booking_id,trip_number'])->latest()->limit(10)->get(),
-            'recent_campaigns' => SmsCampaign::query()->where('company_id', $companyId)->latest()->limit(10)->get(),
+            'recent_campaigns' => SmsCampaign::query()->where(fn ($_companyIdScope) => \App\Services\CompanyIdScope::constrain($_companyIdScope, 'company_id', $companyId))->latest()->limit(10)->get(),
             'health' => $this->getOperationalHealth($companyId),
         ];
     }
 
     public function getOperationalHealth(string $companyId): array
     {
-        $messages = fn (): Builder => SmsMessage::query()->where('company_id', $companyId);
+        $messages = fn (): Builder => SmsMessage::query()->where(fn ($_companyIdScope) => \App\Services\CompanyIdScope::constrain($_companyIdScope, 'company_id', $companyId));
         $queueAgeMinutes = (int) config('sms.health.queue_age_minutes', 10);
         $callbackAgeMinutes = (int) config('sms.health.callback_age_minutes', 30);
         $failureWindowMinutes = (int) config('sms.health.failure_window_minutes', 60);
@@ -570,7 +570,7 @@ class SmsService
 
     public function getMessages(array $filters, string $companyId): LengthAwarePaginator
     {
-        return SmsMessage::query()->where('company_id', $companyId)->with(['booking:id,booking_number', 'bookingItem:id,booking_id,trip_number'])
+        return SmsMessage::query()->where(fn ($_companyIdScope) => \App\Services\CompanyIdScope::constrain($_companyIdScope, 'company_id', $companyId))->with(['booking:id,booking_number', 'bookingItem:id,booking_id,trip_number'])
             ->when(!empty($filters['status']), fn($query) => $query->where('status', $filters['status']))
             ->when(!empty($filters['channel']), fn($query) => $query->where('channel', $filters['channel']))
             ->when(!empty($filters['campaign_id']), fn($query) => $query->where('campaign_id', $filters['campaign_id']))
@@ -593,7 +593,7 @@ class SmsService
         $driverOnlyEvents = ['driver.assignment_fallback'];
 
         $messages = SmsMessage::query()
-            ->where('company_id', $companyId)
+            ->where(fn ($_companyIdScope) => \App\Services\CompanyIdScope::constrain($_companyIdScope, 'company_id', $companyId))
             ->where('source', 'automation')
             ->where('created_at', '>=', $since)
             ->whereNotNull('event_key')
@@ -687,7 +687,7 @@ class SmsService
     public function getCampaigns(array $filters, string $companyId): LengthAwarePaginator
     {
         return SmsCampaign::query()
-            ->where('company_id', $companyId)
+            ->where(fn ($_companyIdScope) => \App\Services\CompanyIdScope::constrain($_companyIdScope, 'company_id', $companyId))
             ->when(!empty($filters['status']), fn($query) => $query->where('status', $filters['status']))
             ->when(!empty($filters['search']), fn($query) => $query->where('name', 'like', '%' . $filters['search'] . '%'))
             ->latest()
@@ -736,7 +736,7 @@ class SmsService
     public function reconcileStaleProcessing(int $olderThanMinutes, int $limit, string $companyId): array
     {
         $messages = SmsMessage::query()
-            ->where('company_id', $companyId)
+            ->where(fn ($_companyIdScope) => \App\Services\CompanyIdScope::constrain($_companyIdScope, 'company_id', $companyId))
             ->where('status', 'processing')
             ->where('processing_at', '<=', now()->subMinutes(max(1, $olderThanMinutes)))
             ->whereNotNull('provider_transaction_id')

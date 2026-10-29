@@ -81,7 +81,7 @@ trait ManagesAttendanceDeviceCrud
             'per_page' => ['nullable', 'integer', 'min:1', 'max:100'],
         ]);
         $companyId = $this->authorizedCompanyId($request, $data['company_id'] ?? null);
-        $runs = DB::table('hr_attendance_sync_runs')->where('company_id', $companyId)->latest('started_at')->paginate($data['per_page'] ?? 50);
+        $runs = DB::table('hr_attendance_sync_runs')->where(fn ($_companyIdScope) => \App\Services\CompanyIdScope::constrain($_companyIdScope, 'company_id', $companyId))->latest('started_at')->paginate($data['per_page'] ?? 50);
 
         return response()->json(['status' => 'success', 'data' => $runs]);
     }
@@ -90,7 +90,7 @@ trait ManagesAttendanceDeviceCrud
     {
         $companyId = $this->authorizedCompanyId($request, $request->input('company_id'));
         $devices = AttendanceDevice::query()
-            ->where('company_id', $companyId)
+            ->where(fn ($_companyIdScope) => \App\Services\CompanyIdScope::constrain($_companyIdScope, 'company_id', $companyId))
             ->with('connector:id,name,status,last_heartbeat_at')
             ->orderBy('site_code')
             ->get();
@@ -108,7 +108,7 @@ trait ManagesAttendanceDeviceCrud
             'per_page' => ['nullable', 'integer', 'min:1', 'max:50'],
         ]);
         $companyId = $this->authorizedCompanyId($request, $data['company_id'] ?? null);
-        $devices = AttendanceDevice::query()->where('company_id', $companyId);
+        $devices = AttendanceDevice::query()->where(fn ($_companyIdScope) => \App\Services\CompanyIdScope::constrain($_companyIdScope, 'company_id', $companyId));
 
         if (! empty($data['selected_id'])) {
             $devices->whereKey($data['selected_id']);
@@ -143,7 +143,7 @@ trait ManagesAttendanceDeviceCrud
     {
         $companyId = $this->authorizedCompanyId($request, $request->input('company_id'));
         $connectors = DB::table('hr_attendance_connectors')
-            ->where('company_id', $companyId)
+            ->where(fn ($_companyIdScope) => \App\Services\CompanyIdScope::constrain($_companyIdScope, 'company_id', $companyId))
             ->whereNull('deleted_at')
             ->select(['id', 'name', 'topology', 'status', 'last_heartbeat_at', 'capabilities'])
             ->get();
@@ -151,7 +151,7 @@ trait ManagesAttendanceDeviceCrud
         // can already see this device's site/serial/model; the encrypted `password` sub-key
         // never round-trips back over the wire once set, matching the connector signing_secret's
         // existing "shown once at creation, never again" convention.
-        $devices = AttendanceDevice::query()->where('company_id', $companyId)
+        $devices = AttendanceDevice::query()->where(fn ($_companyIdScope) => \App\Services\CompanyIdScope::constrain($_companyIdScope, 'company_id', $companyId))
             ->get(['id', 'company_id', 'connector_id', 'provider', 'integration_mode', 'model', 'serial_number', 'site_code', 'timezone', 'status', 'last_sync_at', 'last_event_at', 'encrypted_configuration'])
             ->map(function (AttendanceDevice $device) {
                 $connection = collect($device->encrypted_configuration ?? [])->only(['ip_address', 'port', 'username'])->all();
@@ -159,13 +159,13 @@ trait ManagesAttendanceDeviceCrud
                 return $device->makeHidden('encrypted_configuration')->toArray() + ['connection' => $connection];
             });
         $counts = DB::table('hr_attendance_quarantine_items')
-            ->where('company_id', $companyId)
+            ->where(fn ($_companyIdScope) => \App\Services\CompanyIdScope::constrain($_companyIdScope, 'company_id', $companyId))
             ->where('status', 'open')
             ->selectRaw('reason_code, count(*) as total')
             ->groupBy('reason_code')
             ->pluck('total', 'reason_code');
 
-        $latestRun = DB::table('hr_attendance_sync_runs')->where('company_id', $companyId)->latest('started_at')->first();
+        $latestRun = DB::table('hr_attendance_sync_runs')->where(fn ($_companyIdScope) => \App\Services\CompanyIdScope::constrain($_companyIdScope, 'company_id', $companyId))->latest('started_at')->first();
         $latestCompletedAt = $latestRun?->finished_at ?? $latestRun?->started_at;
         $automationEnabled = true;
         $automationHealthy = $automationEnabled && $latestCompletedAt && CarbonImmutable::parse($latestCompletedAt)->gte(now()->subMinutes(15)) && $latestRun->status === 'completed';

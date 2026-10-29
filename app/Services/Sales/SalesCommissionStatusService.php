@@ -32,7 +32,7 @@ class SalesCommissionStatusService
         if ($stockAvailable) {
             $statementRows = DB::table('sales_commission_statements as statement')
                 ->join('staff', 'staff.id', '=', 'statement.staff_id')
-                ->where('statement.company_id', $companyId)->whereIn('statement.sales_profile_id', $profileIds)
+                ->where(fn ($_companyIdScope) => \App\Services\CompanyIdScope::constrain($_companyIdScope, 'statement.company_id', $companyId))->whereIn('statement.sales_profile_id', $profileIds)
                 ->whereIn('statement.status', ['draft', 'pending_approval', 'approved', 'partially_paid'])
                 ->orderByDesc('statement.period_end')->orderBy('statement.id')->get([
                     'statement.id', 'statement.sales_profile_id', 'staff.code as staff_code', 'statement.statement_number',
@@ -50,7 +50,7 @@ class SalesCommissionStatusService
                 ->leftJoin('sales_commission_hold_releases as release', 'release.commission_decision_id', '=', 'decision.id')
                 ->leftJoin('sales_commission_hold_adjustments as adjustment', 'adjustment.commission_decision_id', '=', 'decision.id')
                 ->leftJoin('sales_commission_hold_resolutions as resolution', 'resolution.commission_decision_id', '=', 'decision.id')
-                ->where('decision.company_id', $companyId)->whereIn('decision.beneficiary_sales_profile_id', $profileIds)
+                ->where(fn ($_companyIdScope) => \App\Services\CompanyIdScope::constrain($_companyIdScope, 'decision.company_id', $companyId))->whereIn('decision.beneficiary_sales_profile_id', $profileIds)
                 ->whereIn('decision.status', ['held', 'shadow_held'])
                 ->whereNull('release.id')->whereNull('adjustment.id')->whereNull('resolution.id')
                 ->orderByDesc('decision.decision_at')->orderBy('decision.id')->get([
@@ -65,7 +65,7 @@ class SalesCommissionStatusService
             ->join('sales_commission_payouts as payout', 'payout.id', '=', 'allocation.payout_id')
             ->join('sales_commission_statements as statement', 'statement.id', '=', 'allocation.statement_id')
             ->join('staff', 'staff.id', '=', 'statement.staff_id')
-            ->where('payout.company_id', $companyId)->whereIn('statement.sales_profile_id', $profileIds)
+            ->where(fn ($_companyIdScope) => \App\Services\CompanyIdScope::constrain($_companyIdScope, 'payout.company_id', $companyId))->whereIn('statement.sales_profile_id', $profileIds)
             ->where('payout.status', 'confirmed')->where('payout.paid_at', '>=', $fromUtc)
             ->where('payout.paid_at', '<', $toExclusiveUtc)
             ->orderByDesc('payout.paid_at')->orderBy('allocation.id')->get([

@@ -23,7 +23,7 @@ trait ManagesPhysicalAccessCommands
     public function accessCommands(Request $request): JsonResponse
     {
         $companyId = $this->authorizedCompanyId($request, $request->input('company_id'));
-        $query = DB::table('hr_attendance_access_commands')->where('company_id', $companyId)
+        $query = DB::table('hr_attendance_access_commands')->where(fn ($_companyIdScope) => \App\Services\CompanyIdScope::constrain($_companyIdScope, 'company_id', $companyId))
             ->when($request->input('status'), fn ($builder, $status) => $builder->where('status', $status))
             ->latest();
 
@@ -96,10 +96,10 @@ trait ManagesPhysicalAccessCommands
             }
             abort_unless($command->status === 'pending_approval', 409, 'Only pending commands may be approved.');
             if (in_array($command->command_type, ['grant', 'restore'], true)) {
-                $staff = Staff::query()->whereKey($command->staff_id)->where('company_id', $companyId)->lockForUpdate()->firstOrFail();
+                $staff = Staff::query()->whereKey($command->staff_id)->where(fn ($_companyIdScope) => \App\Services\CompanyIdScope::constrain($_companyIdScope, 'company_id', $companyId))->lockForUpdate()->firstOrFail();
                 abort_if(filled($staff->employment_ended_at), 409, 'Former Staff cannot receive physical access.');
             }
-            DB::table('hr_attendance_access_commands')->where('id', $commandId)->where('company_id', $companyId)->update([
+            DB::table('hr_attendance_access_commands')->where('id', $commandId)->where(fn ($_companyIdScope) => \App\Services\CompanyIdScope::constrain($_companyIdScope, 'company_id', $companyId))->update([
                 'status' => 'approved_pending_delivery', 'approved_by' => $request->user()->id, 'approved_at' => now(), 'updated_at' => now(),
             ]);
 

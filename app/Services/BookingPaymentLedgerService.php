@@ -1268,7 +1268,7 @@ class BookingPaymentLedgerService
     private function resolveFinality(?string $companyId, string $paymentMethod, $receivedAt): array
     {
         $policy = $companyId ? DB::table('booking_payment_finality_policies')
-            ->where('company_id', $companyId)
+            ->where(fn ($_companyIdScope) => \App\Services\CompanyIdScope::constrain($_companyIdScope, 'company_id', $companyId))
             ->where('payment_method', $paymentMethod)
             ->where('status', 'approved')
             ->where('effective_from', '<=', $receivedAt)

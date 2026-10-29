@@ -20,7 +20,7 @@ class SalesEvidenceController extends Controller
             'subject_id' => ['required', 'uuid'],
         ]);
         $companyId = $this->authorizeSubject($request, $data['subject_type'], $data['subject_id'], true);
-        $rows = DB::table('domain_evidence_files')->where('domain', 'sales')->where('company_id', $companyId)
+        $rows = DB::table('domain_evidence_files')->where('domain', 'sales')->where(fn ($_companyIdScope) => \App\Services\CompanyIdScope::constrain($_companyIdScope, 'company_id', $companyId))
             ->where('subject_type', $data['subject_type'])->where('subject_id', $data['subject_id'])->whereNull('deleted_at')
             ->select(['id', 'evidence_type', 'classification', 'file_name', 'mime_type', 'file_size', 'file_checksum',
                 'version', 'supersedes_id', 'retention_until', 'created_at'])
@@ -40,7 +40,7 @@ class SalesEvidenceController extends Controller
             'per_page' => ['nullable', 'integer', 'min:1', 'max:50'],
         ]);
         $companyId = $this->authorizeSubject($request, $data['subject_type'], $data['subject_id'], true);
-        $query = DB::table('domain_evidence_files')->where('domain', 'sales')->where('company_id', $companyId)
+        $query = DB::table('domain_evidence_files')->where('domain', 'sales')->where(fn ($_companyIdScope) => \App\Services\CompanyIdScope::constrain($_companyIdScope, 'company_id', $companyId))
             ->where('subject_type', $data['subject_type'])->where('subject_id', $data['subject_id'])->whereNull('deleted_at')
             ->select(['id', 'evidence_type', 'classification', 'file_name', 'version', 'created_at']);
         if (! empty($data['selected_id'])) {

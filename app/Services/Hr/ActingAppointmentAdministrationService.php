@@ -34,10 +34,10 @@ class ActingAppointmentAdministrationService
                 );
                 return $this->snapshot((string) $existing->id);
             }
-            $staff = DB::table('staff')->where('id', $data['staff_id'])->where('company_id', $companyId)->whereNull('employment_ended_at')->lockForUpdate()->first();
+            $staff = DB::table('staff')->where('id', $data['staff_id'])->where(fn ($_companyIdScope) => \App\Services\CompanyIdScope::constrain($_companyIdScope, 'company_id', $companyId))->whereNull('employment_ended_at')->lockForUpdate()->first();
             abort_unless($staff, 422, 'The employee must be active in your legal entity.');
             abort_unless($data['effective_until'] > $data['effective_from'], 422, 'An acting appointment must have a finite end after its start.');
-            $spell = DB::table('hr_employment_spells')->where('staff_id', $staff->id)->where('company_id', $companyId)->where('status', 'active')->lockForUpdate()->first();
+            $spell = DB::table('hr_employment_spells')->where('staff_id', $staff->id)->where(fn ($_companyIdScope) => \App\Services\CompanyIdScope::constrain($_companyIdScope, 'company_id', $companyId))->where('status', 'active')->lockForUpdate()->first();
             abort_unless($spell, 422, 'An active employment spell is required.');
             $source = $this->assignmentAt((string) $staff->id, $data['effective_from'], true);
             abort_unless($source && $source->employment_spell_id === $spell->id, 422, 'A governed source assignment must cover the acting start.');
@@ -94,7 +94,7 @@ class ActingAppointmentAdministrationService
     {
         return DB::transaction(function () use ($id, $data, $companyId, $actorUserId) {
             $this->lockCompany($companyId);
-            $row = DB::table('hr_acting_appointments')->where('id', $id)->where('company_id', $companyId)->lockForUpdate()->first();
+            $row = DB::table('hr_acting_appointments')->where('id', $id)->where(fn ($_companyIdScope) => \App\Services\CompanyIdScope::constrain($_companyIdScope, 'company_id', $companyId))->lockForUpdate()->first();
             abort_unless($row, 404, 'Acting appointment was not found in your legal entity.');
             $checksum = $this->checksum(['command' => 'approve', 'id' => $id, 'expected_version' => $data['expected_version'], 'reason' => $data['reason']]);
             if ($event = DB::table('hr_acting_appointment_events')->where('idempotency_key', $data['idempotency_key'])->first()) {
@@ -104,7 +104,7 @@ class ActingAppointmentAdministrationService
             abort_unless($row->status === 'pending_approval', 409, 'Only a pending acting appointment can be approved.');
             abort_unless((int) $row->version === (int) $data['expected_version'], 409, 'Acting-appointment version is stale.');
             abort_if($row->requested_by === $actorUserId, 403, 'The requester cannot approve the same acting appointment.');
-            abort_unless(DB::table('staff')->where('id', $row->staff_id)->where('company_id', $companyId)->whereNull('employment_ended_at')->lockForUpdate()->first(), 422, 'The employee is no longer active in this legal entity.');
+            abort_unless(DB::table('staff')->where('id', $row->staff_id)->where(fn ($_companyIdScope) => \App\Services\CompanyIdScope::constrain($_companyIdScope, 'company_id', $companyId))->whereNull('employment_ended_at')->lockForUpdate()->first(), 422, 'The employee is no longer active in this legal entity.');
             $current = $this->assignmentAt((string) $row->staff_id, $row->effective_from, true);
             abort_unless($current && $current->id === $row->source_assignment_id, 409, 'The source assignment changed after this request was prepared.');
             abort_unless($this->checksum($this->assignmentSnapshot($current)) === $this->checksum($this->decode($row->source_assignment_snapshot)), 409, 'The frozen source assignment changed after this request was prepared.');
@@ -167,7 +167,7 @@ class ActingAppointmentAdministrationService
 
     private function positionForInterval(string $id, string $companyId, string $from, ?string $until, bool $lock = false): object
     {
-        $query = DB::table('hr_positions')->where('id', $id)->where('company_id', $companyId)->where('status', 'active')
+        $query = DB::table('hr_positions')->where('id', $id)->where(fn ($_companyIdScope) => \App\Services\CompanyIdScope::constrain($_companyIdScope, 'company_id', $companyId))->where('status', 'active')
             ->where('effective_from', '<=', $from)->where(function ($range) use ($until) {
                 if ($until === null) $range->whereNull('effective_until');
                 else $range->whereNull('effective_until')->orWhere('effective_until', '>=', $until);
@@ -201,7 +201,7 @@ class ActingAppointmentAdministrationService
     {
         if ($staffId === null) return;
         abort_if($staffId === $memberId, 422, 'An acting employee cannot manage themselves.');
-        abort_unless(DB::table('staff')->where('id', $staffId)->where('company_id', $companyId)->whereNull('employment_ended_at')->exists(), 422, 'The acting manager must be active in the same legal entity.');
+        abort_unless(DB::table('staff')->where('id', $staffId)->where(fn ($_companyIdScope) => \App\Services\CompanyIdScope::constrain($_companyIdScope, 'company_id', $companyId))->whereNull('employment_ended_at')->exists(), 422, 'The acting manager must be active in the same legal entity.');
     }
 
     private function assignmentSnapshot(object $row): array

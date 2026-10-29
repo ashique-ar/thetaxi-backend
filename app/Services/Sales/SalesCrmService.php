@@ -397,7 +397,7 @@ class SalesCrmService
 
     private function lockBookingOwnerStaff(Booking $booking, string $companyId, bool $allowFormerOwner = false): ?object
     {
-        return DB::table('staff')->where('company_id', $companyId)
+        return DB::table('staff')->where(fn ($_companyIdScope) => \App\Services\CompanyIdScope::constrain($_companyIdScope, 'company_id', $companyId))
             ->when(! $allowFormerOwner, fn ($query) => $query->whereNull('deleted_at'))
             ->when($booking->commission_owner_staff_id,
                 fn ($query, $staffId) => $query->where('id', $staffId),
@@ -582,7 +582,7 @@ class SalesCrmService
         $booking = Booking::query()->lockForUpdate()->find($bookingId);
         $bookingStaff = $booking ? $this->lockBookingOwnerStaff($booking, $companyId, $allowFormerOwner) : null;
         $ownerMatches = $bookingStaff && SalesProfile::query()->whereKey($opportunity->owner_sales_profile_id)
-            ->where('company_id', $companyId)->where('staff_id', $bookingStaff->id)->exists();
+            ->where(fn ($_companyIdScope) => \App\Services\CompanyIdScope::constrain($_companyIdScope, 'company_id', $companyId))->where('staff_id', $bookingStaff->id)->exists();
         abort_unless($booking && $opportunity->company_id === $companyId && $ownerMatches
             && ($opportunity->won_booking_id === $bookingId || $booking->sales_opportunity_id === $opportunity->id), $status,
             'Booking owner Staff and opportunity must match the same legal entity.');
@@ -956,9 +956,9 @@ class SalesCrmService
         $booking = Booking::query()->whereKey($bookingId)->whereNull('deleted_at')->lockForUpdate()->first();
         abort_unless($booking, $status, 'Select an available Booking.');
         $belongsToCompany = DB::table('sales_booking_attributions')->where('booking_id', $booking->id)
-            ->where('company_id', $companyId)->exists()
+            ->where(fn ($_companyIdScope) => \App\Services\CompanyIdScope::constrain($_companyIdScope, 'company_id', $companyId))->exists()
             || ($booking->responsible_user_id && DB::table('staff')->where('user_id', $booking->responsible_user_id)
-                ->where('company_id', $companyId)->exists());
+                ->where(fn ($_companyIdScope) => \App\Services\CompanyIdScope::constrain($_companyIdScope, 'company_id', $companyId))->exists());
         abort_unless($belongsToCompany, $status, 'Booking must be assigned to this legal entity before follow-up.');
 
         return $booking;
@@ -970,7 +970,7 @@ class SalesCrmService
         if ($requireConfigured) $query->configured();
         $owner = $query->lockForUpdate()->findOrFail($profileId);
         abort_unless($owner->company_id === $companyId, 422, 'Sales Profile and legal entity must match.');
-        $staff = DB::table('staff')->where('id', $owner->staff_id)->where('company_id', $companyId)
+        $staff = DB::table('staff')->where('id', $owner->staff_id)->where(fn ($_companyIdScope) => \App\Services\CompanyIdScope::constrain($_companyIdScope, 'company_id', $companyId))
             ->whereNull('deleted_at')->where(fn ($query) => $query->whereNull('employment_ended_at')->orWhere('employment_ended_at', '>', now()))
             ->lockForUpdate()->first(['id', 'user_id']);
         abort_unless($staff && $staff->user_id, 422, 'Sales Profile owner must be current Staff with a linked User.');

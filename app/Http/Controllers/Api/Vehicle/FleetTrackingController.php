@@ -37,7 +37,7 @@ class FleetTrackingController extends Controller
     {
         try {
             $companyId = $this->companyId($request);
-            $selected = json_decode(DB::table('wialon_integrations')->where('company_id', $companyId)->value('resource_ids') ?: '[]', true) ?: [];
+            $selected = json_decode(DB::table('wialon_integrations')->where(fn ($_companyIdScope) => \App\Services\CompanyIdScope::constrain($_companyIdScope, 'company_id', $companyId))->value('resource_ids') ?: '[]', true) ?: [];
             return response()->json(['status' => 'success', 'data' => collect($wialon->reportTemplates($companyId))->whereIn('id', $selected)->values()]);
         } catch (RuntimeException $error) {
             return response()->json(['status' => 'error', 'message' => $error->getMessage()], 503);
@@ -203,7 +203,7 @@ class FleetTrackingController extends Controller
             $wialonError = $error->getMessage();
         }
         $vehicles = Vehicle::withInactive()
-            ->where(fn($query) => $query->where('company_id', $companyId)->orWhereNull('company_id'))
+            ->where(fn($query) => $query->where(fn ($_companyIdScope) => \App\Services\CompanyIdScope::constrain($_companyIdScope, 'company_id', $companyId))->orWhereNull('company_id'))
             ->select('id', 'title', 'license_plate', 'registration_no', 'wialon_unit_id', 'current_mileage', 'is_active', 'availability_status', 'wialon_mileage', 'wialon_mileage_sync_pending', 'wialon_last_message_at', 'wialon_last_synced_at')
             ->orderBy('title')
             ->get();
@@ -258,7 +258,7 @@ class FleetTrackingController extends Controller
             $unitId = $unitId === null ? null : (int) $unitId;
             if ($unitId) {
                 $previousVehicle = Vehicle::withTrashed()->withInactive()
-                    ->where('company_id', $companyId)
+                    ->where(fn ($_companyIdScope) => \App\Services\CompanyIdScope::constrain($_companyIdScope, 'company_id', $companyId))
                     ->where('wialon_unit_id', (int) $unitId)
                     ->where('id', '!=', $vehicle->id)
                     ->lockForUpdate()
@@ -327,7 +327,7 @@ class FleetTrackingController extends Controller
     public function settings(Request $request): JsonResponse
     {
         $companyId = $this->companyId($request);
-        $row = DB::table('wialon_integrations')->where('company_id', $companyId)->first();
+        $row = DB::table('wialon_integrations')->where(fn ($_companyIdScope) => \App\Services\CompanyIdScope::constrain($_companyIdScope, 'company_id', $companyId))->first();
         return response()->json(['status' => 'success', 'data' => ['configured' => (bool) $row, 'enabled' => (bool) ($row->enabled ?? false), 'base_url' => $row->base_url ?? 'https://hst-api.wialon.com', 'resource_ids' => json_decode($row->resource_ids ?? '[]', true) ?: [], 'group_ids' => json_decode($row->group_ids ?? '[]', true) ?: [], 'unit_ids' => []]]);
     }
 
@@ -401,7 +401,7 @@ class FleetTrackingController extends Controller
             'enabled' => ['required', 'boolean'],
         ]);
         $companyId = $this->companyId($request);
-        $existing = DB::table('wialon_integrations')->where('company_id', $companyId)->first();
+        $existing = DB::table('wialon_integrations')->where(fn ($_companyIdScope) => \App\Services\CompanyIdScope::constrain($_companyIdScope, 'company_id', $companyId))->first();
         abort_unless($existing || $data['token'] ?? false, 422, 'Enter the GPS service token to connect this company.');
         $token = $data['token'] ?? decrypt($existing->token);
         try {

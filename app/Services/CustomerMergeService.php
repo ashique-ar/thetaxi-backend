@@ -51,7 +51,7 @@ class CustomerMergeService
                 throw ValidationException::withMessages(['customer_id' => ['The records no longer share a matching email or phone. Review them again before merging.']]);
             }
 
-            if (DB::table('customer_duplicate_decisions')->where('company_id', $companyId)
+            if (DB::table('customer_duplicate_decisions')->where(fn ($_companyIdScope) => \App\Services\CompanyIdScope::constrain($_companyIdScope, 'company_id', $companyId))
                 ->where('customer_id', $primary->id)->where('other_customer_id', $duplicate->id)->exists()) {
                 throw ValidationException::withMessages(['customer_id' => ['This customer pair already has a review decision.']]);
             }

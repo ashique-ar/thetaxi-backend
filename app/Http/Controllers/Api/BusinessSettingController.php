@@ -142,7 +142,7 @@ class BusinessSettingController extends Controller
         $companyId = $this->websiteSettingsService->resolveCurrentCompanyId();
         $companyWorkflowValues = $companyId
             ? WebsiteSetting::query()->whereIn('type', BusinessSetting::COMPANY_SCOPED_WORKFLOW_KEYS)
-                ->where('company_id', $companyId)->pluck('value', 'type')->all()
+                ->where(fn ($_companyIdScope) => \App\Services\CompanyIdScope::constrain($_companyIdScope, 'company_id', $companyId))->pluck('value', 'type')->all()
             : [];
         if ($companyId && request()->user()) {
             app(CompanySettingsAccessService::class)->assertCanAccess(request()->user(), $companyId);

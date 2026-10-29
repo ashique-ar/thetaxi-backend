@@ -20,7 +20,7 @@ class BookingResponsibilityService
         }
 
         $employees = DB::table('staff')->join('users', 'users.id', '=', 'staff.user_id')
-            ->where('staff.company_id', $companyId)
+            ->where(fn ($_companyIdScope) => \App\Services\CompanyIdScope::constrain($_companyIdScope, 'staff.company_id', $companyId))
             ->whereNull('staff.deleted_at')->where(fn ($employment) => $employment->whereNull('staff.employment_ended_at')->orWhere('staff.employment_ended_at', '>', now()))
             ->whereNull('users.deleted_at')->where('users.is_active', true)
             ->select(['users.id', 'users.first_name', 'users.last_name', 'staff.code'])
@@ -96,7 +96,7 @@ class BookingResponsibilityService
         try {
             $recipients = User::permission('bookings.view')->permission('bookings.assign')->where('is_active', true)
                 ->whereNull('deleted_at')
-                ->whereHas('staff', fn ($query) => $query->where('company_id', $companyId)
+                ->whereHas('staff', fn ($query) => $query->where(fn ($_companyIdScope) => \App\Services\CompanyIdScope::constrain($_companyIdScope, 'company_id', $companyId))
                     ->whereNull('deleted_at')->where(fn ($employment) => $employment->whereNull('employment_ended_at')->orWhere('employment_ended_at', '>', now())))
                 ->get();
             foreach ($recipients as $recipient) {

@@ -24,17 +24,17 @@ class PeopleCoreMigrationService
 
     public function reconciliation(string $companyId): array
     {
-        $staff = Staff::withTrashed()->where('company_id', $companyId);
+        $staff = Staff::withTrashed()->where(fn ($_companyIdScope) => \App\Services\CompanyIdScope::constrain($_companyIdScope, 'company_id', $companyId));
         $active = (clone $staff)->whereNull('deleted_at')->whereNull('employment_ended_at');
         $former = (clone $staff)->where(fn ($q) => $q->whereNotNull('deleted_at')->orWhereNotNull('employment_ended_at'));
         $activeMissingIdentity = (clone $active)->whereNull('user_id')->count();
         $activeMissingCode = (clone $active)->where(fn ($q) => $q->whereNull('code')->orWhere('code', ''))->count();
         $activeMissingSpell = (clone $active)->whereDoesntHave('employmentSpells', fn ($q) => $q->where('status', 'active'))->count();
-        $activeMultipleSpells = DB::table('hr_employment_spells')->where('company_id', $companyId)->where('status', 'active')->select('staff_id')
+        $activeMultipleSpells = DB::table('hr_employment_spells')->where(fn ($_companyIdScope) => \App\Services\CompanyIdScope::constrain($_companyIdScope, 'company_id', $companyId))->where('status', 'active')->select('staff_id')
             ->groupBy('staff_id')->havingRaw('count(*) > 1')->get()->count();
         $activeMissingAssignment = (clone $active)->whereDoesntHave('employmentAssignments', fn ($q) => $q->where('effective_from', '<=', now())->where(fn ($range) => $range->whereNull('effective_until')->orWhere('effective_until', '>', now())))->count();
         $formerOpenSpell = (clone $former)->whereHas('employmentSpells', fn ($q) => $q->where('status', 'active'))->count();
-        $canonicalSelectionsPendingConsolidation = HrPeopleDuplicateReview::query()->where('company_id', $companyId)->where('disposition', 'canonical_selected')->whereNull('consolidated_at')->count();
+        $canonicalSelectionsPendingConsolidation = HrPeopleDuplicateReview::query()->where(fn ($_companyIdScope) => \App\Services\CompanyIdScope::constrain($_companyIdScope, 'company_id', $companyId))->where('disposition', 'canonical_selected')->whereNull('consolidated_at')->count();
         $issues = compact('activeMissingIdentity', 'activeMissingCode', 'activeMissingSpell', 'activeMultipleSpells', 'activeMissingAssignment', 'formerOpenSpell', 'canonicalSelectionsPendingConsolidation');
 
         return ['company_id'=>$companyId, 'generated_at'=>now()->toIso8601String(), 'counts'=>['staff'=>(clone $staff)->count(),'active'=>(clone $active)->count(),'former'=>(clone $former)->count()], 'issues'=>$issues, 'reconciled'=>array_sum($issues)===0];

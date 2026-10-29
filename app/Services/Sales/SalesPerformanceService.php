@@ -359,7 +359,7 @@ class SalesPerformanceService
         $profileIds = array_values(array_unique($profileIds));
         sort($profileIds, SORT_STRING);
         abort_if($profileIds === [], 422, 'Select at least one authorised Sales Profile.');
-        $profiles = SalesProfile::query()->withTrashed()->with('staff')->where('company_id', $companyId)
+        $profiles = SalesProfile::query()->withTrashed()->with('staff')->where(fn ($_companyIdScope) => \App\Services\CompanyIdScope::constrain($_companyIdScope, 'company_id', $companyId))
             ->whereIn('id', $profileIds)->get()->keyBy('id');
         abort_unless(
             $profiles->count() === count($profileIds),
@@ -551,7 +551,7 @@ class SalesPerformanceService
 
         $parsed = $this->parseTargetImportCsv($temporaryPath);
         $codes = collect($parsed)->pluck('sales_code')->filter()->unique()->values();
-        $profiles = SalesProfile::query()->withTrashed()->with('staff')->where('company_id', $companyId)
+        $profiles = SalesProfile::query()->withTrashed()->with('staff')->where(fn ($_companyIdScope) => \App\Services\CompanyIdScope::constrain($_companyIdScope, 'company_id', $companyId))
             ->whereIn('sales_code', $codes)
             ->when($authorizedProfileIds !== null, fn($query) => $query->whereIn('id', $authorizedProfileIds))
             ->get()->keyBy('sales_code');
@@ -654,7 +654,7 @@ class SalesPerformanceService
                 DB::table('companies')->where('id', $companyId)->where('is_active', true)
                     ->whereNull('deleted_at')->lockForUpdate()->firstOrFail();
                 $existing = DB::table('domain_transfer_jobs')->where('domain', 'sales')
-                    ->where('job_type', 'sales_target_csv')->where('company_id', $companyId)
+                    ->where('job_type', 'sales_target_csv')->where(fn ($_companyIdScope) => \App\Services\CompanyIdScope::constrain($_companyIdScope, 'company_id', $companyId))
                     ->where('idempotency_key', $idempotencyKey)->lockForUpdate()->first();
                 if ($existing) {
                     abort_unless(
@@ -938,7 +938,7 @@ class SalesPerformanceService
 
     private function activeAlertOwnerIdentity(string $companyId, string $userId, bool $lock = false): bool
     {
-        $staffQuery = DB::table('staff')->where('company_id', $companyId)->where('user_id', $userId)
+        $staffQuery = DB::table('staff')->where(fn ($_companyIdScope) => \App\Services\CompanyIdScope::constrain($_companyIdScope, 'company_id', $companyId))->where('user_id', $userId)
             ->whereNull('deleted_at')->where(fn ($query) => $query->whereNull('employment_ended_at')->orWhere('employment_ended_at', '>', now()));
         if ($lock) $staffQuery->lockForUpdate();
         $staff = $staffQuery->first(['id']);
@@ -1091,7 +1091,7 @@ class SalesPerformanceService
     private function calculateRows(string $companyId, string $from, string $to, $cutoff, ?array $alertRules = null): Collection
     {
         $overdueAsOf = CarbonImmutable::parse($to)->min(CarbonImmutable::parse($cutoff))->toDateString();
-        $profiles = SalesProfile::query()->with('staff')->where('company_id', $companyId)
+        $profiles = SalesProfile::query()->with('staff')->where(fn ($_companyIdScope) => \App\Services\CompanyIdScope::constrain($_companyIdScope, 'company_id', $companyId))
             ->where('effective_from', '<=', $to)->where(fn($q) => $q->whereNull('effective_until')->orWhere('effective_until', '>=', $from))->get();
         $agingSource = $this->frozenAging->source(
             $companyId,
@@ -1110,12 +1110,12 @@ class SalesPerformanceService
             $alertRules,
         );
         $facts = DB::table('sales_metric_facts')->selectRaw('sales_profile_id, metric_type, business_classification, SUM(quantity) quantity, SUM(amount_lkr) amount')
-            ->where('company_id', $companyId)->whereBetween('occurred_on', [$from, $to])->where('occurred_at', '<=', $cutoff)
+            ->where(fn ($_companyIdScope) => \App\Services\CompanyIdScope::constrain($_companyIdScope, 'company_id', $companyId))->whereBetween('occurred_on', [$from, $to])->where('occurred_at', '<=', $cutoff)
             ->groupBy('sales_profile_id', 'metric_type', 'business_classification')->get()->groupBy('sales_profile_id');
-        $collectionFacts = SalesMetricFact::query()->where('company_id', $companyId)->where('metric_type', 'eligible_collection')
+        $collectionFacts = SalesMetricFact::query()->where(fn ($_companyIdScope) => \App\Services\CompanyIdScope::constrain($_companyIdScope, 'company_id', $companyId))->where('metric_type', 'eligible_collection')
             ->whereBetween('occurred_on', [$from, $to])->where('occurred_at', '<=', $cutoff)
             ->orderBy('occurred_at')->orderBy('id')->get()->groupBy('sales_profile_id');
-        $commissionFacts = SalesMetricFact::query()->where('company_id', $companyId)->where('metric_type', 'commission_earned')
+        $commissionFacts = SalesMetricFact::query()->where(fn ($_companyIdScope) => \App\Services\CompanyIdScope::constrain($_companyIdScope, 'company_id', $companyId))->where('metric_type', 'commission_earned')
             ->whereBetween('occurred_on', [$from, $to])->where('occurred_at', '<=', $cutoff)
             ->orderBy('occurred_at')->orderBy('id')->get()->groupBy('sales_profile_id');
         $breakdowns = $this->metricBreakdowns->resolve(
@@ -1124,7 +1124,7 @@ class SalesPerformanceService
             $from,
             $to,
         );
-        $targets = SalesTargetVersion::query()->where('company_id', $companyId)->where('status', 'approved')
+        $targets = SalesTargetVersion::query()->where(fn ($_companyIdScope) => \App\Services\CompanyIdScope::constrain($_companyIdScope, 'company_id', $companyId))->where('status', 'approved')
             ->whereDate('period_start', '<=', $to)->whereDate('period_end', '>=', $from)->get()->groupBy('sales_profile_id');
         $adjustmentEvidenceIssues = DB::table('booking_commercial_value_adjustments as adjustment')
             ->leftJoin('sales_metric_facts as fact', function ($join) {
@@ -1132,7 +1132,7 @@ class SalesPerformanceService
                     ->where('fact.source_type', 'commercial_value_adjustment')
                     ->where('fact.metric_type', 'new_sales_adjustment');
             })->selectRaw('adjustment.acquisition_sales_profile_id, COUNT(*) issue_count')
-            ->where('adjustment.company_id', $companyId)->where('adjustment.counts_as_new_sales_adjustment', true)
+            ->where(fn ($_companyIdScope) => \App\Services\CompanyIdScope::constrain($_companyIdScope, 'adjustment.company_id', $companyId))->where('adjustment.counts_as_new_sales_adjustment', true)
             ->whereDate('adjustment.effective_at', '>=', $from)->whereDate('adjustment.effective_at', '<=', $to)
             ->where('adjustment.effective_at', '<=', $cutoff)->where(function ($query) {
                 $query->whereNull('adjustment.delta_lkr_amount')->orWhereNull('fact.id')
@@ -1149,7 +1149,7 @@ class SalesPerformanceService
             ->join('sales_booking_attributions as attribution', 'attribution.booking_id', '=', 'schedule.booking_id')
             ->leftJoinSub($allocationTotals, 'allocation', fn($join) => $join->on('allocation.booking_payment_schedule_id', '=', 'schedule.id'))
             ->selectRaw('attribution.collection_sales_profile_id sales_profile_id, COUNT(schedule.id) overdue_count, SUM(schedule.amount - COALESCE(allocation.allocated, 0)) overdue_lkr, MIN(schedule.due_date) oldest_due_date')
-            ->where('attribution.company_id', $companyId)->where(fn($q) => $q->whereNull('schedule.deleted_at')->orWhere('schedule.deleted_at', '>', $cutoff))
+            ->where(fn ($_companyIdScope) => \App\Services\CompanyIdScope::constrain($_companyIdScope, 'attribution.company_id', $companyId))->where(fn($q) => $q->whereNull('schedule.deleted_at')->orWhere('schedule.deleted_at', '>', $cutoff))
             ->where('schedule.created_at', '<=', $cutoff)->whereDate('schedule.due_date', '<', $overdueAsOf)
             ->whereRaw('schedule.amount > COALESCE(allocation.allocated, 0)')
             ->groupBy('attribution.collection_sales_profile_id')->get()->keyBy('sales_profile_id');

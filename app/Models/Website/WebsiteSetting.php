@@ -79,7 +79,7 @@ class WebsiteSetting extends BaseModel
     {
         $setting = static::query()
             ->where('type', $type)
-            ->when($companyId, fn ($query) => $query->where('company_id', $companyId))
+            ->when($companyId, fn ($query) => $query->where(fn ($_companyIdScope) => \App\Services\CompanyIdScope::constrain($_companyIdScope, 'company_id', $companyId)))
             ->when(!$companyId, fn ($query) => $query->whereNull('company_id'))
             ->first();
 
@@ -139,7 +139,7 @@ class WebsiteSetting extends BaseModel
         $companySettings = collect();
         if ($companyId) {
             $companySettings = static::whereIn('type', $types)
-                ->where('company_id', $companyId)
+                ->where(fn ($_companyIdScope) => \App\Services\CompanyIdScope::constrain($_companyIdScope, 'company_id', $companyId))
                 ->get()
                 ->keyBy('type');
         }

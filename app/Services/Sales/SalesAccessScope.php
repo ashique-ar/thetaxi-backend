@@ -62,7 +62,7 @@ class SalesAccessScope
             })
             ->activeAt(now())
             ->configured()
-            ->where('company_id', $companyId)
+            ->where(fn ($_companyIdScope) => \App\Services\CompanyIdScope::constrain($_companyIdScope, 'company_id', $companyId))
             ->orderBy('id')
             ->get();
     }

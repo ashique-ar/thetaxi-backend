@@ -281,7 +281,7 @@ class StaffIdentityService
         $visited = $frontier;
         $now = now();
         while ($frontier !== []) {
-            $rows = DB::table('sales_reporting_assignments')->where('company_id', $companyId)
+            $rows = DB::table('sales_reporting_assignments')->where(fn ($_companyIdScope) => \App\Services\CompanyIdScope::constrain($_companyIdScope, 'company_id', $companyId))
                 ->whereIn('member_sales_profile_id', $frontier)->whereNull('deleted_at')
                 ->where('effective_from', '<=', $now)
                 ->where(fn ($query) => $query->whereNull('effective_until')->orWhere('effective_until', '>', $now))
@@ -291,7 +291,7 @@ class StaffIdentityService
                 $managerId = (string) $row->manager_sales_profile_id;
                 if (in_array($managerId, $visited, true)) continue;
                 $visited[] = $managerId;
-                $manager = SalesProfile::query()->whereKey($managerId)->where('company_id', $companyId)
+                $manager = SalesProfile::query()->whereKey($managerId)->where(fn ($_companyIdScope) => \App\Services\CompanyIdScope::constrain($_companyIdScope, 'company_id', $companyId))
                     ->activeAt($now)->configured()
                     ->whereHas('staff', fn ($staff) => $staff->whereNull('deleted_at')
                         ->where(fn ($employment) => $employment->whereNull('employment_ended_at')->orWhere('employment_ended_at', '>', $now)))

@@ -54,7 +54,7 @@ class ReportingLineAdministrationService
     {
         return DB::transaction(function () use ($lineId, $data, $companyId, $actorUserId) {
             $this->lockCompany($companyId);
-            $row = DB::table('hr_reporting_lines')->where('id', $lineId)->where('company_id', $companyId)->lockForUpdate()->first();
+            $row = DB::table('hr_reporting_lines')->where('id', $lineId)->where(fn ($_companyIdScope) => \App\Services\CompanyIdScope::constrain($_companyIdScope, 'company_id', $companyId))->lockForUpdate()->first();
             abort_unless($row, 404, 'Reporting line was not found in your legal entity.');
             $checksum = $this->checksum(['command' => 'end_reporting_line', 'line_id' => $lineId, 'expected_version' => $data['expected_version'], 'effective_until' => $data['effective_until'], 'reason' => $data['reason']]);
             if ($replay = $this->replay($data['idempotency_key'], $checksum, $companyId)) {
@@ -102,7 +102,7 @@ class ReportingLineAdministrationService
     public function closeForEmploymentEnd(string $staffId, string $companyId, string $endDate, string $actorUserId, string $reason): void
     {
         $this->lockCompany($companyId);
-        $rows = DB::table('hr_reporting_lines')->where('company_id', $companyId)
+        $rows = DB::table('hr_reporting_lines')->where(fn ($_companyIdScope) => \App\Services\CompanyIdScope::constrain($_companyIdScope, 'company_id', $companyId))
             ->where(fn ($query) => $query->where('member_staff_id', $staffId)->orWhere('manager_staff_id', $staffId))
             ->where(fn ($query) => $query->whereNull('effective_until')->orWhere('effective_until', '>', $endDate))
             ->lockForUpdate()->get();
@@ -136,7 +136,7 @@ class ReportingLineAdministrationService
 
     private function replaceProjectedLine(string $memberId, ?string $managerId, string $type, string $companyId, string $from, ?string $until, string $actor, string $reason, string $key): void
     {
-        $current = DB::table('hr_reporting_lines')->where('company_id', $companyId)->where('member_staff_id', $memberId)->where('line_type', $type)
+        $current = DB::table('hr_reporting_lines')->where(fn ($_companyIdScope) => \App\Services\CompanyIdScope::constrain($_companyIdScope, 'company_id', $companyId))->where('member_staff_id', $memberId)->where('line_type', $type)
             ->where('effective_from', '<=', $from)->where(fn ($query) => $query->whereNull('effective_until')->orWhere('effective_until', '>', $from))
             ->lockForUpdate()->first();
         if ($current) {
@@ -159,7 +159,7 @@ class ReportingLineAdministrationService
 
     private function assertNoOverlap(string $memberId, string $type, string $companyId, string $from, ?string $until): void
     {
-        $overlap = DB::table('hr_reporting_lines')->where('company_id', $companyId)->where('member_staff_id', $memberId)->where('line_type', $type)
+        $overlap = DB::table('hr_reporting_lines')->where(fn ($_companyIdScope) => \App\Services\CompanyIdScope::constrain($_companyIdScope, 'company_id', $companyId))->where('member_staff_id', $memberId)->where('line_type', $type)
             ->where(fn ($query) => $query->whereNull('effective_until')->orWhereColumn('effective_from', '<', 'effective_until'))
             ->where(fn ($query) => $query->whereNull('effective_until')->orWhere('effective_until', '>', $from))
             ->when($until !== null, fn ($query) => $query->where('effective_from', '<', $until))
@@ -169,7 +169,7 @@ class ReportingLineAdministrationService
 
     private function assertNoCycle(string $managerId, string $memberId, string $companyId, string $from, ?string $until): void
     {
-        $rows = DB::table('hr_reporting_lines')->where('company_id', $companyId)->whereIn('line_type', self::SCOPE_LINE_TYPES)
+        $rows = DB::table('hr_reporting_lines')->where(fn ($_companyIdScope) => \App\Services\CompanyIdScope::constrain($_companyIdScope, 'company_id', $companyId))->whereIn('line_type', self::SCOPE_LINE_TYPES)
             ->where(fn ($query) => $query->whereNull('effective_until')->orWhereColumn('effective_from', '<', 'effective_until'))
             ->where(fn ($query) => $query->whereNull('effective_until')->orWhere('effective_until', '>', $from))
             ->when($until !== null, fn ($query) => $query->where('effective_from', '<', $until))
@@ -202,7 +202,7 @@ class ReportingLineAdministrationService
 
     private function assertEmploymentCovers(string $staffId, string $companyId, string $from, ?string $until, string $label): void
     {
-        $covered = DB::table('hr_employment_spells')->where('staff_id', $staffId)->where('company_id', $companyId)
+        $covered = DB::table('hr_employment_spells')->where('staff_id', $staffId)->where(fn ($_companyIdScope) => \App\Services\CompanyIdScope::constrain($_companyIdScope, 'company_id', $companyId))
             ->where('joined_at', '<=', $from)
             ->where(function ($query) use ($until) {
                 if ($until === null) {
@@ -216,7 +216,7 @@ class ReportingLineAdministrationService
 
     private function lockStaffPair(string $managerId, string $memberId, string $companyId): void
     {
-        $rows = Staff::withTrashed()->whereIn('id', [$managerId, $memberId])->where('company_id', $companyId)->orderBy('id')->lockForUpdate()->get();
+        $rows = Staff::withTrashed()->whereIn('id', [$managerId, $memberId])->where(fn ($_companyIdScope) => \App\Services\CompanyIdScope::constrain($_companyIdScope, 'company_id', $companyId))->orderBy('id')->lockForUpdate()->get();
         abort_unless($rows->count() === count(array_unique([$managerId, $memberId])), 422, 'Manager and member must be distinct Staff in your legal entity.');
     }
 

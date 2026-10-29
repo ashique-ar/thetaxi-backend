@@ -193,7 +193,7 @@ class CollectionScheduleWorkflowController extends Controller
                     ->where('schedule.status', '!=', 'superseded');
             })
             ->whereNull('attribution.deleted_at')
-            ->where('attribution.company_id', $companyId)
+            ->where(fn ($_companyIdScope) => \App\Services\CompanyIdScope::constrain($_companyIdScope, 'attribution.company_id', $companyId))
             ->where(fn ($scope) => $scope->where('attribution.commission_category', 'long_term')->orWhereNotNull('schedule.id'));
         if ($profileIds !== null) {
             $query->whereIn('attribution.collection_sales_profile_id', $profileIds);
@@ -308,7 +308,7 @@ class CollectionScheduleWorkflowController extends Controller
         $profileIds = $this->scheduleProfileIds($request, $companyId);
         $this->assertScheduleAttributionOwnerIntegrity($companyId, $profileIds);
         $query = BookingCollectionWorkItem::query()
-            ->where('company_id', $companyId)
+            ->where(fn ($_companyIdScope) => \App\Services\CompanyIdScope::constrain($_companyIdScope, 'company_id', $companyId))
             ->with([
                 'booking:id,booking_number,customer_id',
                 'booking.customer:id,user_id,code',
@@ -427,7 +427,7 @@ class CollectionScheduleWorkflowController extends Controller
             : $this->scheduleProfileIds($request, $companyId);
         $this->assertScheduleAttributionOwnerIntegrity($companyId, $profileIds);
         $query = BookingCollectionSubmission::query()->with(['booking:id,booking_number', 'paymentSchedule:id,label,due_date']);
-        $query->where('company_id', $companyId);
+        $query->where(fn ($_companyIdScope) => \App\Services\CompanyIdScope::constrain($_companyIdScope, 'company_id', $companyId));
         if ($profileIds !== null) {
             $query->whereIn('submitted_by_sales_profile_id', $profileIds);
         }

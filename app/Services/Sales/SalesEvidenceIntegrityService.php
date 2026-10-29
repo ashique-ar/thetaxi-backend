@@ -10,7 +10,7 @@ class SalesEvidenceIntegrityService
     public function assertAttachedFile(string $id, string $companyId, string $subjectType, array $subjectIds, bool $lock = false): object
     {
         $query = DB::table('domain_evidence_files')->where('id', $id)->where('domain', 'sales')
-            ->where('company_id', $companyId)->whereNull('deleted_at')
+            ->where(fn ($_companyIdScope) => \App\Services\CompanyIdScope::constrain($_companyIdScope, 'company_id', $companyId))->whereNull('deleted_at')
             ->where('subject_type', $subjectType)->whereIn('subject_id', $subjectIds);
         $evidence = ($lock ? $query->lockForUpdate() : $query)->first();
         abort_unless($evidence, 422, 'Evidence must be attached to the required Sales subject and legal entity.');

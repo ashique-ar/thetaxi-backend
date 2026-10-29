@@ -29,7 +29,7 @@ class SalesPolicySettingsService
     {
         if (! in_array($feature, self::FEATURES, true) || ! Schema::hasTable('sales_company_feature_settings')) return null;
 
-        return SalesCompanyFeatureSetting::query()->where('company_id', $companyId)
+        return SalesCompanyFeatureSetting::query()->where(fn ($_companyIdScope) => \App\Services\CompanyIdScope::constrain($_companyIdScope, 'company_id', $companyId))
             ->where('feature_key', $feature)->where('status', 'approved')->orderByDesc('version')->first();
     }
 
@@ -48,7 +48,7 @@ class SalesPolicySettingsService
         $labels = self::STAGE_LABEL_DEFAULTS;
         if (! Schema::hasColumn('sales_company_feature_settings', 'stage_label')) return $labels;
 
-        $settings = DB::table('sales_company_feature_settings')->where('company_id', $companyId)
+        $settings = DB::table('sales_company_feature_settings')->where(fn ($_companyIdScope) => \App\Services\CompanyIdScope::constrain($_companyIdScope, 'company_id', $companyId))
             ->whereIn('feature_key', array_keys(self::STAGE_FEATURES))->where('status', 'approved')
             ->whereNull('deleted_at')->orderByDesc('version')->get(['feature_key', 'stage_label']);
         foreach ($settings as $setting) {
@@ -80,7 +80,7 @@ class SalesPolicySettingsService
 
         return DB::transaction(function () use ($companyId, $feature, $enabled, $reason, $actorUserId, $stageLabel) {
             DB::table('companies')->where('id', $companyId)->lockForUpdate()->firstOrFail();
-            $version = (int) SalesCompanyFeatureSetting::query()->where('company_id', $companyId)
+            $version = (int) SalesCompanyFeatureSetting::query()->where(fn ($_companyIdScope) => \App\Services\CompanyIdScope::constrain($_companyIdScope, 'company_id', $companyId))
                 ->where('feature_key', $feature)->lockForUpdate()->max('version') + 1;
 
             return SalesCompanyFeatureSetting::create([
@@ -116,7 +116,7 @@ class SalesPolicySettingsService
 
     public function current(string $companyId, string $kind): ?SalesPolicySetting
     {
-        return SalesPolicySetting::query()->where('company_id', $companyId)->where('policy_kind', $kind)->where('status', 'approved')
+        return SalesPolicySetting::query()->where(fn ($_companyIdScope) => \App\Services\CompanyIdScope::constrain($_companyIdScope, 'company_id', $companyId))->where('policy_kind', $kind)->where('status', 'approved')
             ->orderByDesc('version')->first();
     }
 
@@ -165,7 +165,7 @@ class SalesPolicySettingsService
     /** @return array<int, string> */
     public function approvedStaffCategories(string $companyId): array
     {
-        return SalesStaffCategoryDefinition::query()->where('company_id', $companyId)->where('status', 'approved')
+        return SalesStaffCategoryDefinition::query()->where(fn ($_companyIdScope) => \App\Services\CompanyIdScope::constrain($_companyIdScope, 'company_id', $companyId))->where('status', 'approved')
             ->orderBy('category_name')->pluck('category_name')->all();
     }
 
@@ -178,7 +178,7 @@ class SalesPolicySettingsService
 
         return DB::transaction(function () use ($companyId, $kind, $values, $data, $actorUserId) {
             DB::table('companies')->where('id', $companyId)->lockForUpdate()->firstOrFail();
-            $version = (int) SalesPolicySetting::query()->where('company_id', $companyId)->where('policy_kind', $kind)->lockForUpdate()->max('version') + 1;
+            $version = (int) SalesPolicySetting::query()->where(fn ($_companyIdScope) => \App\Services\CompanyIdScope::constrain($_companyIdScope, 'company_id', $companyId))->where('policy_kind', $kind)->lockForUpdate()->max('version') + 1;
 
             return SalesPolicySetting::create($values + [
                 'policy_kind' => $kind,
@@ -238,7 +238,7 @@ class SalesPolicySettingsService
         if ($normalized === '') {
             throw ValidationException::withMessages(['category_name' => ['A category name is required.']]);
         }
-        if (SalesStaffCategoryDefinition::query()->where('company_id', $companyId)->whereRaw('lower(category_name) = ?', [mb_strtolower($normalized)])->exists()) {
+        if (SalesStaffCategoryDefinition::query()->where(fn ($_companyIdScope) => \App\Services\CompanyIdScope::constrain($_companyIdScope, 'company_id', $companyId))->whereRaw('lower(category_name) = ?', [mb_strtolower($normalized)])->exists()) {
             throw ValidationException::withMessages(['category_name' => ['This Sales staff category already exists.']]);
         }
 

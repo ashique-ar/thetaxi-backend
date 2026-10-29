@@ -13231,7 +13231,7 @@ class BookingFlowService
                 $companyId = (string) (app(WebsiteSettingsService::class)->resolveCurrentCompanyId() ?? '');
                 abort_unless($companyId !== '', 409, 'Select an active business before creating a booking request.');
                 app(CompanySettingsAccessService::class)->assertCanAccess(User::query()->findOrFail($actorUserId), $companyId);
-                $source = PhoneCall::query()->where('company_id', $companyId)->lockForUpdate()->findOrFail($sourceId);
+                $source = PhoneCall::query()->where(fn ($_companyIdScope) => \App\Services\CompanyIdScope::constrain($_companyIdScope, 'company_id', $companyId))->lockForUpdate()->findOrFail($sourceId);
                 if ($source->booking_id) {
                     $existing = Booking::query()->whereKey($source->booking_id);
                     CompanyBookingScope::constrain($existing, 'bookings', $companyId);
@@ -13243,7 +13243,7 @@ class BookingFlowService
             } else {
                 $companyId = (string) (app(SingleCompanyScope::class)->activeDefaultCompany(true)?->id ?? '');
                 abort_unless($companyId !== '', 409, 'No active business is configured.');
-                $source = IntegrationWebhookEvent::query()->where('company_id', $companyId)->where('provider', 'respond_io')
+                $source = IntegrationWebhookEvent::query()->where(fn ($_companyIdScope) => \App\Services\CompanyIdScope::constrain($_companyIdScope, 'company_id', $companyId))->where('provider', 'respond_io')
                     ->incomingMessage()->lockForUpdate()->findOrFail($sourceId);
                 if ($source->linked_booking_id) {
                     $existing = Booking::query()->whereKey($source->linked_booking_id);

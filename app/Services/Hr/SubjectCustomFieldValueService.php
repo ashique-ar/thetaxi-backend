@@ -31,7 +31,7 @@ class SubjectCustomFieldValueService
     {
         $subject = $this->subject($ownerType);
         $owner = $this->loadOwner($subject, $ownerId, $companyId);
-        $definitions = DB::table('hr_custom_field_definitions')->where('company_id', $companyId)->where('applies_to', $ownerType)->where('active', true)
+        $definitions = DB::table('hr_custom_field_definitions')->where(fn ($_companyIdScope) => \App\Services\CompanyIdScope::constrain($_companyIdScope, 'company_id', $companyId))->where('applies_to', $ownerType)->where('active', true)
             ->orderBy('label')->orderBy('id')->get();
         $values = DB::table('hr_custom_field_values')->where('owner_type', $ownerType)->where('owner_id', $owner->id)->get()->keyBy('definition_id');
         $requestId = (string) Str::uuid();
@@ -68,9 +68,9 @@ class SubjectCustomFieldValueService
         return DB::transaction(function () use ($ownerType, $ownerId, $definitionId, $data, $companyId, $actor) {
             $subject = $this->subject($ownerType);
             abort_unless(DB::table('companies')->where('id', $companyId)->lockForUpdate()->first(), 404, 'Legal entity was not found.');
-            $owner = DB::table($subject['table'])->where('id', $ownerId)->where('company_id', $companyId)->lockForUpdate()->first();
+            $owner = DB::table($subject['table'])->where('id', $ownerId)->where(fn ($_companyIdScope) => \App\Services\CompanyIdScope::constrain($_companyIdScope, 'company_id', $companyId))->lockForUpdate()->first();
             abort_unless($owner, 404, ucfirst(str_replace('_', ' ', $ownerType)).' was not found in your legal entity.');
-            $definition = DB::table('hr_custom_field_definitions')->where('id', $definitionId)->where('company_id', $companyId)->where('applies_to', $ownerType)->lockForUpdate()->first();
+            $definition = DB::table('hr_custom_field_definitions')->where('id', $definitionId)->where(fn ($_companyIdScope) => \App\Services\CompanyIdScope::constrain($_companyIdScope, 'company_id', $companyId))->where('applies_to', $ownerType)->lockForUpdate()->first();
             abort_unless($definition, 404, 'Custom-field definition was not found in your legal entity.');
             abort_unless((bool) $definition->active, 409, 'Inactive custom-field definitions cannot accept values.');
             abort_unless((int) $definition->version === (int) $data['definition_version'], 409, 'Custom-field definition version is stale.');
@@ -126,7 +126,7 @@ class SubjectCustomFieldValueService
 
     private function loadOwner(array $subject, string $ownerId, string $companyId): object
     {
-        $owner = DB::table($subject['table'])->where('id', $ownerId)->where('company_id', $companyId)->first();
+        $owner = DB::table($subject['table'])->where('id', $ownerId)->where(fn ($_companyIdScope) => \App\Services\CompanyIdScope::constrain($_companyIdScope, 'company_id', $companyId))->first();
         abort_unless($owner, 404, 'Subject was not found in your legal entity.');
         return $owner;
     }

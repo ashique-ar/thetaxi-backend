@@ -312,7 +312,7 @@ class BookingAttributionService
         }
 
         return SalesBookingAttribution::query()
-            ->where('company_id', $companyId)
+            ->where(fn ($_companyIdScope) => \App\Services\CompanyIdScope::constrain($_companyIdScope, 'company_id', $companyId))
             ->where('customer_id', $booking->customer_id)
             ->where('secured_at', '<', $securedAt)
             ->exists() ? 'existing' : 'new';

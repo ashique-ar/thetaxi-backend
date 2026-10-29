@@ -32,7 +32,7 @@ class StaffWorkloadController extends Controller
 
         $employeesPage = $staffAccess->scope(Staff::query(), $request->user())
             ->join('users', 'users.id', '=', 'staff.user_id')
-            ->where('staff.company_id', $companyId)
+            ->where(fn ($_companyIdScope) => \App\Services\CompanyIdScope::constrain($_companyIdScope, 'staff.company_id', $companyId))
             ->whereNull('staff.deleted_at')
             ->where(fn ($employment) => $employment->whereNull('staff.employment_ended_at')->orWhere('staff.employment_ended_at', '>', now()))
             ->whereNull('users.deleted_at')->where('users.is_active', true)
@@ -97,12 +97,12 @@ class StaffWorkloadController extends Controller
         if ($request->user()->can('inquiries.view')) {
             $available[] = 'open_inquiries';
             $eligibleInquiryAssignees = app(InquiryAssignmentService::class)->eligibleAssigneeIds((string) $companyId);
-            foreach (DB::table('inquiries')->where('company_id', $companyId)->whereNull('deleted_at')
+            foreach (DB::table('inquiries')->where(fn ($_companyIdScope) => \App\Services\CompanyIdScope::constrain($_companyIdScope, 'company_id', $companyId))->whereNull('deleted_at')
                 ->whereIn('status', ['open', 'in_progress'])->whereIn('assigned_to', $eligibleInquiryAssignees)
                 ->selectRaw('assigned_to, COUNT(*) as total')->groupBy('assigned_to')->get() as $count) {
                 $this->setCount($employees, (string) $count->assigned_to, 'open_inquiries', (int) $count->total);
             }
-            $unassigned['open_inquiries'] = (int) DB::table('inquiries')->where('company_id', $companyId)
+            $unassigned['open_inquiries'] = (int) DB::table('inquiries')->where(fn ($_companyIdScope) => \App\Services\CompanyIdScope::constrain($_companyIdScope, 'company_id', $companyId))
                 ->whereNull('deleted_at')->whereIn('status', ['open', 'in_progress'])
                 ->where(fn ($owner) => $owner->whereNull('assigned_to')->orWhereNotIn('assigned_to', $eligibleInquiryAssignees))
                 ->count();
@@ -112,15 +112,15 @@ class StaffWorkloadController extends Controller
             $available[] = 'calls_last_7_days';
             $since = now()->subDays(7);
             $eligibleCallAssignees = User::permission('phone-calls.view')->whereHas('staff', fn ($staff) => $staff
-                ->where('company_id', $companyId)->whereNull('deleted_at')
+                ->where(fn ($_companyIdScope) => \App\Services\CompanyIdScope::constrain($_companyIdScope, 'company_id', $companyId))->whereNull('deleted_at')
                 ->where(fn ($employment) => $employment->whereNull('employment_ended_at')->orWhere('employment_ended_at', '>', now())))
                 ->where('is_active', true)->whereNull('deleted_at')->select('id');
-            foreach (DB::table('phone_calls')->where('company_id', $companyId)->whereNull('deleted_at')
+            foreach (DB::table('phone_calls')->where(fn ($_companyIdScope) => \App\Services\CompanyIdScope::constrain($_companyIdScope, 'company_id', $companyId))->whereNull('deleted_at')
                 ->where('created_at', '>=', $since)->whereIn('assigned_user_id', $eligibleCallAssignees)
                 ->selectRaw('assigned_user_id, COUNT(*) as total')->groupBy('assigned_user_id')->get() as $count) {
                 $this->setCount($employees, (string) $count->assigned_user_id, 'calls_last_7_days', (int) $count->total);
             }
-            $unassigned['calls_last_7_days'] = (int) DB::table('phone_calls')->where('company_id', $companyId)
+            $unassigned['calls_last_7_days'] = (int) DB::table('phone_calls')->where(fn ($_companyIdScope) => \App\Services\CompanyIdScope::constrain($_companyIdScope, 'company_id', $companyId))
                 ->whereNull('deleted_at')->where('created_at', '>=', $since)
                 ->where(fn ($owner) => $owner->whereNull('assigned_user_id')->orWhereNotIn('assigned_user_id', $eligibleCallAssignees))
                 ->count();
@@ -133,11 +133,11 @@ class StaffWorkloadController extends Controller
                 ->join('staff as owner_staff', 'owner_staff.id', '=', 'profile.staff_id')
                 ->join('users as owner_user', 'owner_user.id', '=', 'owner_staff.user_id')
                 ->join('customers', 'customers.id', '=', 'assignment.customer_id')
-                ->where('assignment.company_id', $companyId)->whereNull('assignment.ended_at')->where('assignment.effective_from', '<=', now())
+                ->where(fn ($_companyIdScope) => \App\Services\CompanyIdScope::constrain($_companyIdScope, 'assignment.company_id', $companyId))->whereNull('assignment.ended_at')->where('assignment.effective_from', '<=', now())
                 ->whereNotNull('assignment.owner_sales_profile_id')->whereIn('owner_staff.user_id', $userIds)
-                ->where('profile.company_id', $companyId)->where('profile.status', 'active')->whereNull('profile.deleted_at')
+                ->where(fn ($_companyIdScope) => \App\Services\CompanyIdScope::constrain($_companyIdScope, 'profile.company_id', $companyId))->where('profile.status', 'active')->whereNull('profile.deleted_at')
                 ->where('profile.effective_from', '<=', now())->where(fn ($query) => $query->whereNull('profile.effective_until')->orWhere('profile.effective_until', '>', now()))
-                ->where('owner_staff.company_id', $companyId)->whereNull('owner_staff.deleted_at')
+                ->where(fn ($_companyIdScope) => \App\Services\CompanyIdScope::constrain($_companyIdScope, 'owner_staff.company_id', $companyId))->whereNull('owner_staff.deleted_at')
                 ->where(fn ($query) => $query->whereNull('owner_staff.employment_ended_at')->orWhere('owner_staff.employment_ended_at', '>', now()))
                 ->where('owner_user.is_active', true)->whereNull('owner_user.deleted_at');
             CompanyCustomerScope::constrain($owners, 'customers', (string) $companyId);
@@ -151,11 +151,11 @@ class StaffWorkloadController extends Controller
                 ->join('sales_profiles as profile', 'profile.id', '=', 'assignment.owner_sales_profile_id')
                 ->join('staff as owner_staff', 'owner_staff.id', '=', 'profile.staff_id')
                 ->join('users as owner_user', 'owner_user.id', '=', 'owner_staff.user_id')
-                ->whereColumn('assignment.customer_id', 'customers.id')->where('assignment.company_id', $companyId)
+                ->whereColumn('assignment.customer_id', 'customers.id')->where(fn ($_companyIdScope) => \App\Services\CompanyIdScope::constrain($_companyIdScope, 'assignment.company_id', $companyId))
                 ->whereNull('assignment.ended_at')->where('assignment.effective_from', '<=', now())
-                ->where('profile.company_id', $companyId)->where('profile.status', 'active')->whereNull('profile.deleted_at')
+                ->where(fn ($_companyIdScope) => \App\Services\CompanyIdScope::constrain($_companyIdScope, 'profile.company_id', $companyId))->where('profile.status', 'active')->whereNull('profile.deleted_at')
                 ->where('profile.effective_from', '<=', now())->where(fn ($query) => $query->whereNull('profile.effective_until')->orWhere('profile.effective_until', '>', now()))
-                ->where('owner_staff.company_id', $companyId)->whereNull('owner_staff.deleted_at')
+                ->where(fn ($_companyIdScope) => \App\Services\CompanyIdScope::constrain($_companyIdScope, 'owner_staff.company_id', $companyId))->whereNull('owner_staff.deleted_at')
                 ->where(fn ($query) => $query->whereNull('owner_staff.employment_ended_at')->orWhere('owner_staff.employment_ended_at', '>', now()))
                 ->where('owner_user.is_active', true)->whereNull('owner_user.deleted_at');
             $unassigned['owned_customers'] = (int) $unassignedCustomers->whereNotExists($activeOwner)->count();
@@ -167,12 +167,12 @@ class StaffWorkloadController extends Controller
                 $available[] = 'sales_followups';
                 $profiles = DB::table('sales_profiles as profile')
                     ->join('staff as owner_staff', 'owner_staff.id', '=', 'profile.staff_id')
-                    ->where('profile.company_id', $companyId)->where('profile.status', 'active')->whereNull('profile.deleted_at')
+                    ->where(fn ($_companyIdScope) => \App\Services\CompanyIdScope::constrain($_companyIdScope, 'profile.company_id', $companyId))->where('profile.status', 'active')->whereNull('profile.deleted_at')
                     ->where('profile.effective_from', '<=', now())->where(fn ($query) => $query->whereNull('profile.effective_until')->orWhere('profile.effective_until', '>', now()))
                     ->whereNotNull('profile.reporting_currency')->whereNotNull('profile.staff_category_snapshot')
                     ->where(fn ($eligible) => $eligible->where('profile.acquisition_eligible', true)
                         ->orWhere('profile.collection_eligible', true)->orWhere('profile.commission_eligible', true))
-                    ->where('owner_staff.company_id', $companyId)->whereNull('owner_staff.deleted_at')
+                    ->where(fn ($_companyIdScope) => \App\Services\CompanyIdScope::constrain($_companyIdScope, 'owner_staff.company_id', $companyId))->whereNull('owner_staff.deleted_at')
                     ->where(fn ($employment) => $employment->whereNull('owner_staff.employment_ended_at')->orWhere('owner_staff.employment_ended_at', '>', now()))
                     ->whereIn('owner_staff.user_id', $userIds)
                     ->whereExists(fn ($context) => $context->selectRaw('1')->from('user_contexts')
@@ -191,10 +191,10 @@ class StaffWorkloadController extends Controller
                 if ($profileIdsForCounts !== []) {
                     foreach (DB::table('sales_tasks as task')->join('sales_profiles as profile', 'profile.id', '=', 'task.owner_sales_profile_id')
                         ->join('staff as owner_staff', 'owner_staff.id', '=', 'profile.staff_id')
-                        ->where('task.company_id', $companyId)->whereIn('task.owner_sales_profile_id', $profileIdsForCounts)
-                        ->where('profile.company_id', $companyId)->where('profile.status', 'active')->whereNull('profile.deleted_at')
+                        ->where(fn ($_companyIdScope) => \App\Services\CompanyIdScope::constrain($_companyIdScope, 'task.company_id', $companyId))->whereIn('task.owner_sales_profile_id', $profileIdsForCounts)
+                        ->where(fn ($_companyIdScope) => \App\Services\CompanyIdScope::constrain($_companyIdScope, 'profile.company_id', $companyId))->where('profile.status', 'active')->whereNull('profile.deleted_at')
                         ->whereIn('task.status', ['open', 'in_progress'])
-                        ->where('owner_staff.company_id', $companyId)->whereNull('owner_staff.deleted_at')
+                        ->where(fn ($_companyIdScope) => \App\Services\CompanyIdScope::constrain($_companyIdScope, 'owner_staff.company_id', $companyId))->whereNull('owner_staff.deleted_at')
                         ->selectRaw('owner_staff.user_id, COUNT(*) as open_total, SUM(CASE WHEN task.due_at < ? THEN 1 ELSE 0 END) as overdue_total', [now('UTC')])
                         ->groupBy('owner_staff.user_id')->get() as $count) {
                         $this->setCount($employees, (string) $count->user_id, 'open_followups', (int) $count->open_total);
@@ -222,7 +222,7 @@ class StaffWorkloadController extends Controller
                             ->whereColumn('user_contexts.user_id', 'task_owner_staff.user_id')->whereColumn('user_contexts.context_id', 'task_owner_staff.id')
                             ->where('user_contexts.context_type', 'staff')->where('user_contexts.is_active', true)->whereNull('user_contexts.deleted_at'));
                     $unassigned['open_followups'] = (int) DB::table('sales_tasks as task')
-                        ->where('task.company_id', $companyId)->whereIn('task.status', ['open', 'in_progress'])
+                        ->where(fn ($_companyIdScope) => \App\Services\CompanyIdScope::constrain($_companyIdScope, 'task.company_id', $companyId))->whereIn('task.status', ['open', 'in_progress'])
                         ->whereExists(fn ($owner) => $owner->selectRaw('1')->from('sales_profiles as task_profile')
                             ->whereColumn('task_profile.id', 'task.owner_sales_profile_id')->whereColumn('task_profile.company_id', 'task.company_id')
                             ->whereNull('task_profile.deleted_at')->whereExists(fn ($staff) => $staff->selectRaw('1')->from('staff as task_staff')

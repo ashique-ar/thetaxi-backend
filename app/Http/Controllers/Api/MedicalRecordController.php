@@ -34,7 +34,7 @@ class MedicalRecordController extends Controller
             'per_page' => ['nullable', 'integer', 'min:1', 'max:50'],
         ]);
 
-        $query = MedicalRecord::query()->where('company_id', $companyId)
+        $query = MedicalRecord::query()->where(fn ($_companyIdScope) => \App\Services\CompanyIdScope::constrain($_companyIdScope, 'company_id', $companyId))
             ->when($filters['subject_type'] ?? null, fn ($q, $value) => $q->where('subject_type', $value))
             ->when($filters['subject_id'] ?? null, fn ($q, $value) => $q->where('subject_id', $value))
             ->when($filters['category_id'] ?? null, fn ($q, $value) => $q->where('medical_category_id', $value))
@@ -78,7 +78,7 @@ class MedicalRecordController extends Controller
             'medical_category_id' => ['required', 'uuid'],
             'title' => ['required', 'string', 'max:255'],
             'description' => ['nullable', 'string', 'max:10000'],
-            'record_number' => ['nullable', 'string', 'max:80', Rule::unique('medical_records', 'record_number')->where('company_id', $companyId)],
+            'record_number' => ['nullable', 'string', 'max:80', Rule::unique('medical_records', 'record_number')->where(fn ($_companyIdScope) => \App\Services\CompanyIdScope::constrain($_companyIdScope, 'company_id', $companyId))],
             'issued_date' => ['required', 'date'],
             'valid_until' => ['nullable', 'date', 'after_or_equal:issued_date'],
             'issuing_authority' => ['nullable', 'string', 'max:255'],
@@ -204,12 +204,12 @@ class MedicalRecordController extends Controller
     private function authorizeSubject(string $type, string $id, string $companyId): void
     {
         $exists = match ($type) {
-            'staff' => Staff::query()->whereKey($id)->where('company_id', $companyId)->exists(),
+            'staff' => Staff::query()->whereKey($id)->where(fn ($_companyIdScope) => \App\Services\CompanyIdScope::constrain($_companyIdScope, 'company_id', $companyId))->exists(),
             'vehicle' => DB::table('vehicles')->where('id', $id)->whereNull('deleted_at')
-                ->where(fn ($query) => $query->where('company_id', $companyId)
+                ->where(fn ($query) => $query->where(fn ($_companyIdScope) => \App\Services\CompanyIdScope::constrain($_companyIdScope, 'company_id', $companyId))
                     ->orWhereExists(fn ($company) => $company->selectRaw('1')->from('vehicle_companies')
                         ->whereColumn('vehicle_companies.vehicle_id', 'vehicles.id')
-                        ->where('vehicle_companies.company_id', $companyId)
+                        ->where(fn ($_companyIdScope) => \App\Services\CompanyIdScope::constrain($_companyIdScope, 'vehicle_companies.company_id', $companyId))
                         ->where('vehicle_companies.is_active', true)->whereNull('vehicle_companies.deleted_at')))
                 ->exists(),
             default => false,
@@ -219,7 +219,7 @@ class MedicalRecordController extends Controller
 
     private function record(string $id, string $companyId): MedicalRecord
     {
-        return MedicalRecord::query()->where('company_id', $companyId)->whereKey($id)->firstOrFail();
+        return MedicalRecord::query()->where(fn ($_companyIdScope) => \App\Services\CompanyIdScope::constrain($_companyIdScope, 'company_id', $companyId))->whereKey($id)->firstOrFail();
     }
 
     private function serializeRecord(MedicalRecord $record): array

@@ -241,7 +241,7 @@ class PeopleCoreController extends Controller
         $companyId = $this->access->actorCompanyId($request->user());
         abort_if(isset($data['company_id']) && $data['company_id'] !== $companyId, 403, 'The requested organization is outside your legal entity.');
         $search = trim((string) ($data['search'] ?? ''));
-        $rows = DB::table('hr_organization_units')->where('company_id', $companyId)->when($data['unit_type'] ?? null, fn($q, $type) => $q->where('unit_type', $type))->when($data['status'] ?? null, fn($q, $status) => $q->where('status', $status))->when($search !== '', fn($q) => $q->where(fn($match) => $match->whereRaw('LOWER(code) LIKE ?', ['%' . mb_strtolower($search) . '%'])->orWhereRaw('LOWER(name) LIKE ?', ['%' . mb_strtolower($search) . '%'])))->orderBy('name')->orderBy('id')->paginate((int) ($data['per_page'] ?? 50));
+        $rows = DB::table('hr_organization_units')->where(fn ($_companyIdScope) => \App\Services\CompanyIdScope::constrain($_companyIdScope, 'company_id', $companyId))->when($data['unit_type'] ?? null, fn($q, $type) => $q->where('unit_type', $type))->when($data['status'] ?? null, fn($q, $status) => $q->where('status', $status))->when($search !== '', fn($q) => $q->where(fn($match) => $match->whereRaw('LOWER(code) LIKE ?', ['%' . mb_strtolower($search) . '%'])->orWhereRaw('LOWER(name) LIKE ?', ['%' . mb_strtolower($search) . '%'])))->orderBy('name')->orderBy('id')->paginate((int) ($data['per_page'] ?? 50));
         $rows->getCollection()->transform(fn($row) => $this->decodeJsonColumns($row, ['custom_fields']));
         return response()->json(['status' => 'success', 'data' => $rows]);
     }
@@ -269,7 +269,7 @@ class PeopleCoreController extends Controller
             'job_grade' => 'hr_job_grades',
             'designation' => 'hr_designations',
         };
-        $query = DB::table($table)->where('company_id', $companyId);
+        $query = DB::table($table)->where(fn ($_companyIdScope) => \App\Services\CompanyIdScope::constrain($_companyIdScope, 'company_id', $companyId));
         if (! empty($data['exclude_id'])) {
             $query->where('id', '<>', $data['exclude_id']);
         }
@@ -342,11 +342,11 @@ class PeopleCoreController extends Controller
         $units = DB::table('hr_organization_units as unit')
             ->leftJoin('staff as manager_staff', 'manager_staff.id', '=', 'unit.manager_staff_id')
             ->leftJoin('users as manager_user', 'manager_user.id', '=', 'manager_staff.user_id')
-            ->where('unit.company_id', $companyId)->where('unit.effective_from', '<=', $asOf)
+            ->where(fn ($_companyIdScope) => \App\Services\CompanyIdScope::constrain($_companyIdScope, 'unit.company_id', $companyId))->where('unit.effective_from', '<=', $asOf)
             ->where(fn($q) => $q->whereNull('unit.effective_until')->orWhere('unit.effective_until', '>', $asOf))
             ->select(['unit.id', 'unit.parent_id', 'unit.unit_type', 'unit.code', 'unit.name', 'unit.status', 'unit.manager_staff_id', 'manager_staff.code as manager_employee_number', 'manager_user.first_name as manager_first_name', 'manager_user.last_name as manager_last_name'])
             ->orderBy('unit.name')->get();
-        $positionCounts = DB::table('hr_positions')->where('company_id', $companyId)->where('status', '!=', 'inactive')
+        $positionCounts = DB::table('hr_positions')->where(fn ($_companyIdScope) => \App\Services\CompanyIdScope::constrain($_companyIdScope, 'company_id', $companyId))->where('status', '!=', 'inactive')
             ->where('effective_from', '<=', $asOf)->where(fn($q) => $q->whereNull('effective_until')->orWhere('effective_until', '>', $asOf))
             ->groupBy('organization_unit_id')->selectRaw('organization_unit_id, count(*) as count')->pluck('count', 'organization_unit_id');
         $rows = $units->map(fn($unit) => (array) $unit + ['position_count' => (int) ($positionCounts[$unit->id] ?? 0)])->values();
@@ -378,7 +378,7 @@ class PeopleCoreController extends Controller
         $data = $request->validate(['status' => ['nullable', Rule::in(['active', 'inactive'])], 'search' => ['nullable', 'string', 'max:120'], 'page' => ['nullable', 'integer', 'min:1'], 'per_page' => ['nullable', 'integer', 'min:1', 'max:100']]);
         $companyId = $this->access->actorCompanyId($request->user());
         $search = trim((string) ($data['search'] ?? ''));
-        $rows = DB::table('hr_payroll_groups')->where('company_id', $companyId)->when($data['status'] ?? null, fn($q, $status) => $q->where('status', $status))->when($search !== '', fn($q) => $q->where(fn($match) => $match->whereRaw('LOWER(code) LIKE ?', ['%' . mb_strtolower($search) . '%'])->orWhereRaw('LOWER(name) LIKE ?', ['%' . mb_strtolower($search) . '%'])))->orderBy('name')->orderBy('id')->paginate((int) ($data['per_page'] ?? 50));
+        $rows = DB::table('hr_payroll_groups')->where(fn ($_companyIdScope) => \App\Services\CompanyIdScope::constrain($_companyIdScope, 'company_id', $companyId))->when($data['status'] ?? null, fn($q, $status) => $q->where('status', $status))->when($search !== '', fn($q) => $q->where(fn($match) => $match->whereRaw('LOWER(code) LIKE ?', ['%' . mb_strtolower($search) . '%'])->orWhereRaw('LOWER(name) LIKE ?', ['%' . mb_strtolower($search) . '%'])))->orderBy('name')->orderBy('id')->paginate((int) ($data['per_page'] ?? 50));
         return response()->json(['status' => 'success', 'data' => $rows]);
     }
 
@@ -420,7 +420,7 @@ class PeopleCoreController extends Controller
         $data = $request->validate(['category' => ['nullable', 'string', 'max:40'], 'status' => ['nullable', Rule::in(['active', 'inactive'])], 'search' => ['nullable', 'string', 'max:120'], 'page' => ['nullable', 'integer', 'min:1'], 'per_page' => ['nullable', 'integer', 'min:1', 'max:100']]);
         $companyId = $this->access->actorCompanyId($request->user());
         $search = trim((string) ($data['search'] ?? ''));
-        $rows = DB::table('hr_document_types')->where('company_id', $companyId)->when($data['category'] ?? null, fn($q, $category) => $q->where('category', $category))->when($data['status'] ?? null, fn($q, $status) => $q->where('status', $status))->when($search !== '', fn($q) => $q->where(fn($match) => $match->whereRaw('LOWER(code) LIKE ?', ['%' . mb_strtolower($search) . '%'])->orWhereRaw('LOWER(name) LIKE ?', ['%' . mb_strtolower($search) . '%'])))->orderBy('category')->orderBy('name')->orderBy('id')->paginate((int) ($data['per_page'] ?? 50));
+        $rows = DB::table('hr_document_types')->where(fn ($_companyIdScope) => \App\Services\CompanyIdScope::constrain($_companyIdScope, 'company_id', $companyId))->when($data['category'] ?? null, fn($q, $category) => $q->where('category', $category))->when($data['status'] ?? null, fn($q, $status) => $q->where('status', $status))->when($search !== '', fn($q) => $q->where(fn($match) => $match->whereRaw('LOWER(code) LIKE ?', ['%' . mb_strtolower($search) . '%'])->orWhereRaw('LOWER(name) LIKE ?', ['%' . mb_strtolower($search) . '%'])))->orderBy('category')->orderBy('name')->orderBy('id')->paginate((int) ($data['per_page'] ?? 50));
         $rows->getCollection()->transform(fn($row) => $this->decodeJsonColumns($row, ['required_for_staff_types', 'required_for_employment_types']));
         return response()->json(['status' => 'success', 'data' => $rows]);
     }
@@ -466,7 +466,7 @@ class PeopleCoreController extends Controller
     {
         
         $companyId = $this->access->actorCompanyId($request->user());
-        $rows = DB::table('hr_work_calendars')->where('company_id', $companyId)->orderBy('name')->orderBy('id')->get();
+        $rows = DB::table('hr_work_calendars')->where(fn ($_companyIdScope) => \App\Services\CompanyIdScope::constrain($_companyIdScope, 'company_id', $companyId))->orderBy('name')->orderBy('id')->get();
         return response()->json(['status' => 'success', 'data' => $rows->map(fn($row) => $this->decodeJsonColumns($row, ['weekly_working_days']))->values()]);
     }
 
@@ -482,7 +482,7 @@ class PeopleCoreController extends Controller
     {
         
         $companyId = $this->access->actorCompanyId($request->user());
-        abort_unless(DB::table('hr_work_calendars')->where('id', $calendarId)->where('company_id', $companyId)->exists(), 404, 'Work calendar was not found in your legal entity.');
+        abort_unless(DB::table('hr_work_calendars')->where('id', $calendarId)->where(fn ($_companyIdScope) => \App\Services\CompanyIdScope::constrain($_companyIdScope, 'company_id', $companyId))->exists(), 404, 'Work calendar was not found in your legal entity.');
         $rows = DB::table('hr_work_calendar_days')->where('calendar_id', $calendarId)->orderBy('calendar_date')->get();
         return response()->json(['status' => 'success', 'data' => $rows]);
     }
@@ -500,7 +500,7 @@ class PeopleCoreController extends Controller
         
         $companyId = $this->access->actorCompanyId($request->user());
         $data = $request->validate(['applies_to' => ['nullable', Rule::in(['staff', 'organization_unit', 'position', 'employment_spell'])], 'active' => ['nullable', 'boolean'], 'page' => ['nullable', 'integer', 'min:1'], 'per_page' => ['nullable', 'integer', 'min:1', 'max:100']]);
-        $rows = DB::table('hr_custom_field_definitions')->where('company_id', $companyId)->when($data['applies_to'] ?? null, fn($q, $type) => $q->where('applies_to', $type))->when(array_key_exists('active', $data), fn($q) => $q->where('active', (bool) $data['active']))->orderBy('applies_to')->orderBy('label')->orderBy('id')->paginate((int) ($data['per_page'] ?? 50));
+        $rows = DB::table('hr_custom_field_definitions')->where(fn ($_companyIdScope) => \App\Services\CompanyIdScope::constrain($_companyIdScope, 'company_id', $companyId))->when($data['applies_to'] ?? null, fn($q, $type) => $q->where('applies_to', $type))->when(array_key_exists('active', $data), fn($q) => $q->where('active', (bool) $data['active']))->orderBy('applies_to')->orderBy('label')->orderBy('id')->paginate((int) ($data['per_page'] ?? 50));
         $rows->getCollection()->transform(fn($row) => $this->decodeJsonColumns($row, ['validation_rules']));
         return response()->json(['status' => 'success', 'data' => $rows]);
     }
@@ -607,7 +607,7 @@ class PeopleCoreController extends Controller
         $search = trim((string) ($data['search'] ?? ''));
         $rows = DB::table('hr_positions')
             ->leftJoinSub($occupancy, 'occupancy', fn($join) => $join->on('occupancy.position_id', '=', 'hr_positions.id'))
-            ->where('hr_positions.company_id', $companyId)
+            ->where(fn ($_companyIdScope) => \App\Services\CompanyIdScope::constrain($_companyIdScope, 'hr_positions.company_id', $companyId))
             ->when($data['status'] ?? null, fn($query, $status) => $query->where('hr_positions.status', $status))
             ->when($search !== '', fn($query) => $query->where(fn($match) => $match
                 ->whereRaw('LOWER(hr_positions.position_number) LIKE ?', ['%' . mb_strtolower($search) . '%'])
@@ -811,7 +811,7 @@ class PeopleCoreController extends Controller
     {
         
         $companyId = $this->access->actorCompanyId($request->user());
-        abort_unless(DB::table($table)->where('id', $id)->where('company_id', $companyId)->exists(), 404, 'The requested job catalogue record was not found in your legal entity.');
+        abort_unless(DB::table($table)->where('id', $id)->where(fn ($_companyIdScope) => \App\Services\CompanyIdScope::constrain($_companyIdScope, 'company_id', $companyId))->exists(), 404, 'The requested job catalogue record was not found in your legal entity.');
 
         return response()->json(['status' => 'success', 'data' => $this->jobPositionAdmin->updateCatalog($type, $id, $data, $companyId, (string) $request->user()->id)]);
     }
@@ -820,7 +820,7 @@ class PeopleCoreController extends Controller
     {
         $search = trim((string) ($data['search'] ?? ''));
 
-        return DB::table($table)->where('company_id', $companyId)
+        return DB::table($table)->where(fn ($_companyIdScope) => \App\Services\CompanyIdScope::constrain($_companyIdScope, 'company_id', $companyId))
             ->when($data['status'] ?? null, fn($query, $status) => $query->where('status', $status))
             ->when($search !== '', fn($query) => $query->where(fn($match) => $match
                 ->whereRaw('LOWER(code) LIKE ?', ['%' . mb_strtolower($search) . '%'])
@@ -918,7 +918,7 @@ class PeopleCoreController extends Controller
     private function assertOptionalCompanyReference(?string $id, string $table, string $companyId, string $label): void
     {
         if ($id) {
-            abort_unless(DB::table($table)->where('id', $id)->where('company_id', $companyId)->exists(), 422, "{$label} must belong to your legal entity.");
+            abort_unless(DB::table($table)->where('id', $id)->where(fn ($_companyIdScope) => \App\Services\CompanyIdScope::constrain($_companyIdScope, 'company_id', $companyId))->exists(), 422, "{$label} must belong to your legal entity.");
         }
     }
 
@@ -969,7 +969,7 @@ class PeopleCoreController extends Controller
     {
         foreach (['manager_staff_id', 'hr_partner_staff_id'] as $field)
             if (!empty($data[$field]))
-                abort_unless(Staff::query()->whereKey($data[$field])->where('company_id', $companyId)->exists(), 422, "{$field} must belong to the organization legal entity.");
+                abort_unless(Staff::query()->whereKey($data[$field])->where(fn ($_companyIdScope) => \App\Services\CompanyIdScope::constrain($_companyIdScope, 'company_id', $companyId))->exists(), 422, "{$field} must belong to the organization legal entity.");
     }
 
     private function assertCustomFieldRules(array $data): void
