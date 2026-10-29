@@ -6,6 +6,7 @@ namespace App\Http\Controllers\Api;
 use App\Http\Controllers\Controller;
 use App\Models\PhoneCall;
 use App\Models\PhoneCallAssignment;
+use App\Models\PhoneCallFollowUpAttempt;
 use App\Models\User;
 use App\Http\Requests\PhoneCall\CreatePhoneCallRequest;
 use App\Http\Requests\PhoneCall\UpdatePhoneCallRequest;
@@ -48,14 +49,14 @@ class PhoneCallController extends Controller
             $q->where('assigned_user_id', $request->user()->id);
         }
         if ($request->boolean('needs_follow_up')) {
-            $q->whereIn('call_status', ['Missed', 'Notanswered'])->whereNull('follow_up_task_id');
+            $q->whereIn('call_status', ['Missed', 'Notanswered'])->whereNull('follow_up_task_id')->whereNull('follow_up_completed_at');
         }
         if ($request->boolean('unassigned_follow_up')) {
             $eligible = User::permission('phone-calls.view')->whereHas('staff', fn ($staff) => $staff
                 ->where('company_id', $company->id)->whereNull('deleted_at')->whereNull('employment_ended_at'))
                 ->where('is_active', true)->whereNull('deleted_at')->select('id');
             $q->where(fn ($queue) => $queue->whereNull('assigned_user_id')->orWhereNotIn('assigned_user_id', $eligible))
-                ->whereIn('call_status', ['Missed', 'Notanswered'])->whereNull('follow_up_task_id');
+                ->whereIn('call_status', ['Missed', 'Notanswered'])->whereNull('follow_up_task_id')->whereNull('follow_up_completed_at');
         }
         return PhoneCallResource::collection($q->latest('created_at')->paginate($request->integer('per_page', 15)));
     }
@@ -179,7 +180,7 @@ class PhoneCallController extends Controller
     public function show(PhoneCall $phoneCall): JsonResponse
     {
         $this->assertCompanyCall($phoneCall);
-        $phoneCall->load(['assignedTo', 'assignments.fromUser', 'assignments.toUser', 'assignments.actor']);
+        $phoneCall->load(['assignedTo', 'assignments.fromUser', 'assignments.toUser', 'assignments.actor', 'followUpAttempts.actor']);
         if (request()->user()->can('sales.crm.view')) $phoneCall->load('salesOpportunity');
         return response()->json([
             'status'=>'success',
@@ -199,26 +200,37 @@ class PhoneCallController extends Controller
         $businessTimezone = app(SalesPolicySettingsService::class)->businessTimezone($companyId) ?? config('app.timezone');
         $followUpDate = Carbon::createFromFormat('!Y-m-d', $data['follow_up_date'], $businessTimezone);
         abort_if($followUpDate->lt(now($businessTimezone)->startOfDay()), 422, 'Choose today or a future date for the callback.');
-        abort_unless($request->user()->can('sales.crm.manage'), 403, 'Sales permission is required to create a follow-up task.');
-        abort_unless($phoneCall->customer_id, 422, 'Link this call to a customer before scheduling a follow-up.');
-
-        $task = DB::transaction(function () use ($request, $phoneCall, $data, $scope, $crm, $followUpDate) {
+        $result = DB::transaction(function () use ($request, $phoneCall, $data, $scope, $crm, $followUpDate) {
             $call = PhoneCall::query()->lockForUpdate()->findOrFail($phoneCall->id);
-            if ($call->follow_up_task_id) return $call->followUpTask;
+            if ($call->follow_up_task_id) return ['task' => $call->followUpTask, 'callback' => false];
 
             $companyId = app(SingleCompanyScope::class)->activeDefaultCompany()?->id;
             abort_unless($companyId, 409, 'No active business is configured for this follow-up.');
-            $assignment = DB::table('customer_relationship_owner_assignments')->where('customer_id', $call->customer_id)
+            $assignment = $call->customer_id ? DB::table('customer_relationship_owner_assignments')->where('customer_id', $call->customer_id)
                 ->where('company_id', $companyId)->whereNull('ended_at')->whereNotNull('owner_sales_profile_id')
-                ->orderByDesc('effective_from')->lockForUpdate()->first();
-            abort_unless($assignment, 422, 'Assign a Sales owner to this customer before scheduling a follow-up.');
+                ->orderByDesc('effective_from')->lockForUpdate()->first() : null;
+
+            $dueAt = $followUpDate->copy()->startOfDay();
+            $notes = trim((string) ($data['notes'] ?? ''));
+            if (! $assignment || ! $request->user()->can('sales.crm.manage')) {
+                $employeeCanAccessCall = $call->assigned_user_id && User::permission('phone-calls.view')
+                    ->whereKey($call->assigned_user_id)->where('is_active', true)->whereNull('deleted_at')
+                    ->whereHas('staff', fn ($staff) => $staff->where('company_id', $companyId)->whereNull('deleted_at')->whereNull('employment_ended_at'))
+                    ->exists();
+                abort_unless($employeeCanAccessCall, 422, 'Assign this call to an active employee before scheduling a callback.');
+                $call->update([
+                    'follow_up_due_at' => $dueAt,
+                    'follow_up_notes' => $notes ?: null,
+                    'updated_user_id' => $request->user()->id,
+                ]);
+                return ['task' => null, 'callback' => true];
+            }
+
             $profile = SalesProfile::query()->findOrFail($assignment->owner_sales_profile_id);
             $profileIds = $scope->profileIds($request->user(), 'sales.crm.manage-all', 'sales.crm.manage-team', (string) $companyId);
             abort_unless($profileIds === null || in_array((string) $profile->id, $profileIds, true), 403,
                 'The customer owner is outside your Sales team. Ask a manager to assign the follow-up.');
 
-            $dueAt = $followUpDate->copy()->endOfDay();
-            $notes = trim((string) ($data['notes'] ?? ''));
             $description = trim(implode("\n\n", array_filter([$notes, $call->summary])));
             $bookingId = $call->booking_id;
             if ($bookingId) {
@@ -239,13 +251,87 @@ class PhoneCallController extends Controller
                 'priority' => 'normal',
                 'due_at' => $dueAt->toIso8601String(),
             ], (string) $request->user()->id, $profileIds);
-            $call->update(['follow_up_task_id' => $task->id, 'updated_user_id' => $request->user()->id]);
-            return $task;
+            $call->update(['follow_up_task_id' => $task->id, 'follow_up_due_at' => null, 'follow_up_notes' => null, 'updated_user_id' => $request->user()->id]);
+            return ['task' => $task, 'callback' => false];
         });
 
         $phoneCall->refresh();
-        return response()->json(['status' => 'success', 'message' => 'Follow-up task scheduled.', 'data' => [
-            'call' => new PhoneCallResource($phoneCall), 'task_id' => $task?->id,
+        if ($result['callback'] && $phoneCall->assigned_user_id) {
+            try {
+                User::query()->whereKey($phoneCall->assigned_user_id)->first()?->notify(new PhoneCallAssignedNotification($phoneCall));
+            } catch (\Throwable $exception) {
+                \Illuminate\Support\Facades\Log::warning('Phone callback notification could not be queued', [
+                    'phone_call_id' => $phoneCall->id, 'user_id' => $phoneCall->assigned_user_id, 'error' => $exception->getMessage(),
+                ]);
+            }
+        }
+        return response()->json(['status' => 'success', 'message' => $result['callback'] ? 'Callback scheduled for the assigned employee.' : 'Follow-up task scheduled.', 'data' => [
+            'call' => new PhoneCallResource($phoneCall), 'task_id' => $result['task']?->id, 'callback_scheduled' => $result['callback'],
+        ]]);
+    }
+
+    public function completeFollowUp(Request $request, PhoneCall $phoneCall): JsonResponse
+    {
+        $this->assertCompanyCall($phoneCall);
+        $data = $request->validate([
+            'outcome' => ['required', 'in:contacted,no_answer,not_interested,other'],
+            'next_follow_up_date' => ['nullable', 'required_if:outcome,no_answer', 'date_format:Y-m-d'],
+            'notes' => ['nullable', 'string', 'max:5000'],
+            'idempotency_key' => ['required', 'uuid'],
+        ]);
+        $companyId = (string) (app(SingleCompanyScope::class)->activeDefaultCompany()?->id ?? '');
+        abort_unless($companyId !== '', 409, 'No active business is configured.');
+        $businessTimezone = app(SalesPolicySettingsService::class)->businessTimezone($companyId) ?? config('app.timezone');
+        $nextDueAt = ! empty($data['next_follow_up_date'])
+            ? Carbon::createFromFormat('!Y-m-d', $data['next_follow_up_date'], $businessTimezone)->startOfDay()
+            : null;
+        abort_if($nextDueAt && $nextDueAt->lt(now($businessTimezone)->startOfDay()), 422, 'Choose today or a future date for the next callback.');
+
+        $result = DB::transaction(function () use ($request, $phoneCall, $data, $companyId, $nextDueAt): array {
+            $call = PhoneCall::query()->where('company_id', $companyId)->lockForUpdate()->findOrFail($phoneCall->id);
+            $previous = PhoneCallFollowUpAttempt::query()->where('company_id', $companyId)->where('idempotency_key', $data['idempotency_key'])->first();
+            if ($previous) {
+                abort_unless((string) $previous->phone_call_id === (string) $call->id, 409, 'This callback result was already used for another call.');
+                return ['call' => $call, 'duplicate' => true, 'outcome' => $previous->outcome];
+            }
+            abort_unless(in_array($call->call_status, ['Missed', 'Notanswered'], true) && ! $call->follow_up_task_id, 422,
+                'This call does not have an open callback to record.');
+            abort_unless($call->assigned_user_id && ((string) $call->assigned_user_id === (string) $request->user()->id || $request->user()->can('communication.manage')), 403,
+                'Only the responsible employee or a communication manager can record this callback.');
+            abort_unless(! $call->follow_up_completed_at, 409, 'This callback has already been completed.');
+
+            $call->followUpAttempts()->create([
+                'company_id' => $companyId,
+                'actor_user_id' => $request->user()->id,
+                'idempotency_key' => $data['idempotency_key'],
+                'outcome' => $data['outcome'],
+                'notes' => trim((string) ($data['notes'] ?? '')) ?: null,
+                'attempted_at' => now(),
+            ]);
+            $call->update([
+                'follow_up_due_at' => $data['outcome'] === 'no_answer' ? $nextDueAt : $call->follow_up_due_at,
+                'follow_up_notes' => $data['outcome'] === 'no_answer' ? null : $call->follow_up_notes,
+                'follow_up_completed_at' => $data['outcome'] === 'no_answer' ? null : now(),
+                'updated_user_id' => $request->user()->id,
+            ]);
+
+            return ['call' => $call, 'duplicate' => false, 'outcome' => $data['outcome']];
+        });
+
+        $call = $result['call']->load('followUpAttempts.actor');
+        if ($result['outcome'] === 'no_answer' && (string) $call->assigned_user_id !== (string) $request->user()->id) {
+            try {
+                User::query()->whereKey($call->assigned_user_id)->where('is_active', true)->whereNull('deleted_at')
+                    ->first()?->notify(new PhoneCallAssignedNotification($call));
+            } catch (\Throwable $exception) {
+                \Illuminate\Support\Facades\Log::warning('Rescheduled phone callback notification could not be queued', [
+                    'phone_call_id' => $call->id, 'user_id' => $call->assigned_user_id, 'error' => $exception->getMessage(),
+                ]);
+            }
+        }
+        return response()->json(['status' => 'success', 'message' => $result['outcome'] === 'no_answer'
+            ? 'No answer recorded. The next callback is on the work list.' : 'Callback result recorded.', 'data' => [
+            'call' => new PhoneCallResource($call), 'duplicate' => $result['duplicate'],
         ]]);
     }
 

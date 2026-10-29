@@ -1052,6 +1052,14 @@ class CustomerController extends Controller
                 ->where('call.customer_id', $customer->id)->whereNull('call.deleted_at')
                 ->selectRaw("CONCAT('call-assignment:', call.id, ':', assignment.id) as id, 'call_assignment' as event_type, 'Call employee changed' as title, 'assigned' as status, assignment.event_at as occurred_at, call.phone as reference, {$callBookingField} as booking_id, CONCAT(COALESCE(NULLIF(CONCAT_WS(' ', from_user.first_name, from_user.last_name), ''), 'Unassigned'), ' → ', COALESCE(NULLIF(CONCAT_WS(' ', to_user.first_name, to_user.last_name), ''), 'Unassigned'), CASE WHEN COALESCE(assignment.reason, '') = '' THEN '' ELSE CONCAT(' · ', assignment.reason) END, CASE WHEN actor.id IS NULL THEN '' ELSE CONCAT(' · by ', CONCAT_WS(' ', actor.first_name, actor.last_name)) END) as detail");
             $events->unionAll($callAssignments);
+
+            $callFollowUpAttempts = DB::table('phone_call_follow_up_attempts as attempt')
+                ->join('phone_calls as call', 'call.id', '=', 'attempt.phone_call_id')
+                ->leftJoin('users as actor', 'actor.id', '=', 'attempt.actor_user_id')
+                ->where('attempt.company_id', $companyId)->where('call.company_id', $companyId)
+                ->where('call.customer_id', $customer->id)->whereNull('call.deleted_at')
+                ->selectRaw("CONCAT('phone-call-follow-up:', call.id, ':', attempt.id) as id, 'call_follow_up' as event_type, CASE attempt.outcome WHEN 'contacted' THEN 'Callback: reached customer' WHEN 'no_answer' THEN 'Callback: no answer' WHEN 'not_interested' THEN 'Callback: not interested' ELSE 'Callback: result recorded' END as title, CASE WHEN attempt.outcome = 'no_answer' THEN 'rescheduled' ELSE 'completed' END as status, attempt.attempted_at as occurred_at, call.phone as reference, {$callBookingField} as booking_id, CONCAT(COALESCE(NULLIF(CONCAT_WS(' ', actor.first_name, actor.last_name), ''), 'Employee'), CASE WHEN COALESCE(attempt.notes, '') = '' THEN '' ELSE CONCAT(' · ', attempt.notes) END) as detail");
+            $events->unionAll($callFollowUpAttempts);
         }
 
         $canViewBookings = $request->user()->can('bookings.view');

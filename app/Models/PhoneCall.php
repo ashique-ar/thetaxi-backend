@@ -62,6 +62,9 @@ class PhoneCall extends BaseModel
         'call_ended_at',
         'talk_duration_seconds',
         'follow_up_task_id',
+        'follow_up_due_at',
+        'follow_up_notes',
+        'follow_up_completed_at',
         'assigned_user_id',
         'company_id',
     ];
@@ -73,6 +76,8 @@ class PhoneCall extends BaseModel
         'call_time' => 'date',
         'call_started_at' => 'datetime',
         'call_ended_at' => 'datetime',
+        'follow_up_due_at' => 'datetime',
+        'follow_up_completed_at' => 'datetime',
         'created_at' => 'datetime',
         'updated_at' => 'datetime',
         'deleted_at' => 'datetime',
@@ -127,5 +132,10 @@ class PhoneCall extends BaseModel
     public function assignments(): HasMany
     {
         return $this->hasMany(PhoneCallAssignment::class)->orderBy('event_at');
+    }
+
+    public function followUpAttempts(): HasMany
+    {
+        return $this->hasMany(PhoneCallFollowUpAttempt::class)->orderBy('attempted_at');
     }
 }

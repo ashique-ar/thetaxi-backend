@@ -191,17 +191,18 @@ class MyWorkController extends Controller
         }
 
         if ($request->user()->can('phone-calls.view')) {
-            $queues[] = ['group' => 'mine', 'title' => 'Callbacks to make', 'help' => 'Missed calls without a scheduled follow-up', 'icon' => 'call',
+            $queues[] = ['group' => 'mine', 'title' => 'Callbacks to make', 'help' => 'Missed calls waiting for a callback', 'icon' => 'call',
                 'link' => '/communication/calls?mine_only=true&needs_follow_up=true', 'count' => (int) DB::table('phone_calls')
                     ->where('company_id', $companyId)->whereNull('deleted_at')->where('assigned_user_id', $userId)
-                    ->whereIn('call_status', ['Missed', 'Notanswered'])->whereNull('follow_up_task_id')->count()];
+                    ->whereIn('call_status', ['Missed', 'Notanswered'])->whereNull('follow_up_task_id')->whereNull('follow_up_completed_at')->count()];
             foreach (DB::table('phone_calls')->where('company_id', $companyId)->whereNull('deleted_at')->where('assigned_user_id', $userId)
-                ->whereIn('call_status', ['Missed', 'Notanswered'])->whereNull('follow_up_task_id')->orderBy('call_time')->limit(5)
-                ->get(['id', 'client_name', 'phone', 'call_time', 'created_at']) as $row) {
+                ->whereIn('call_status', ['Missed', 'Notanswered'])->whereNull('follow_up_task_id')->whereNull('follow_up_completed_at')
+                ->orderByRaw('CASE WHEN follow_up_due_at IS NULL THEN 0 ELSE 1 END')->orderBy('follow_up_due_at')->orderBy('call_time')->limit(5)
+                ->get(['id', 'client_name', 'phone', 'call_time', 'follow_up_due_at', 'follow_up_notes', 'created_at']) as $row) {
                 $attention[] = ['id' => 'call:'.$row->id, 'group' => 'mine', 'type' => 'Callback', 'title' => $row->client_name ?: ($row->phone ?: 'Missed call'),
-                    'detail' => $row->phone ?: 'Call back and record the result', 'when' => $row->call_time ?: $row->created_at,
+                    'detail' => implode(' · ', array_filter([$row->phone, $row->follow_up_notes ?: 'Call back and record the result'])), 'when' => $row->follow_up_due_at ?: ($row->call_time ?: $row->created_at),
                     'link' => '/communication/calls/'.$row->id,
-                    'sort_at' => strtotime((string) ($row->call_time ?: $row->created_at)) ?: PHP_INT_MAX];
+                    'sort_at' => strtotime((string) ($row->follow_up_due_at ?: ($row->call_time ?: $row->created_at))) ?: PHP_INT_MAX];
             }
         }
 
@@ -213,10 +214,10 @@ class MyWorkController extends Controller
                 'link' => '/communication/calls?unassigned_follow_up=true', 'count' => (int) DB::table('phone_calls')
                     ->where('company_id', $companyId)->whereNull('deleted_at')
                     ->where(fn ($owner) => $owner->whereNull('assigned_user_id')->orWhereNotIn('assigned_user_id', $eligibleCallAssignees))
-                    ->whereIn('call_status', ['Missed', 'Notanswered'])->whereNull('follow_up_task_id')->count()];
+                    ->whereIn('call_status', ['Missed', 'Notanswered'])->whereNull('follow_up_task_id')->whereNull('follow_up_completed_at')->count()];
             foreach (DB::table('phone_calls')->where('company_id', $companyId)->whereNull('deleted_at')
                 ->where(fn ($owner) => $owner->whereNull('assigned_user_id')->orWhereNotIn('assigned_user_id', $eligibleCallAssignees))
-                ->whereIn('call_status', ['Missed', 'Notanswered'])->whereNull('follow_up_task_id')->orderBy('call_time')->limit(4)
+                ->whereIn('call_status', ['Missed', 'Notanswered'])->whereNull('follow_up_task_id')->whereNull('follow_up_completed_at')->orderBy('call_time')->limit(4)
                 ->get(['id', 'client_name', 'phone', 'call_time', 'created_at']) as $row) {
                 $attention[] = ['id' => 'call-assignment:'.$row->id, 'group' => 'assignment', 'type' => 'Missed call to assign',
                     'title' => $row->client_name ?: ($row->phone ?: 'Missed call'), 'detail' => 'Choose an employee',

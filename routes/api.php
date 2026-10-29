@@ -2238,6 +2238,8 @@ Route::middleware(['auth:api'])->group(function () {
     Route::apiResource('phone-calls', PhoneCallController::class);
     Route::post('phone-calls/{phoneCall}/follow-up', [PhoneCallController::class, 'scheduleFollowUp'])
         ->middleware('permission:phone-calls.edit');
+    Route::post('phone-calls/{phoneCall}/complete-follow-up', [PhoneCallController::class, 'completeFollowUp'])
+        ->middleware('permission:phone-calls.edit');
     Route::post('phone-calls/{phoneCall}/create-inquiry', [PhoneCallController::class, 'createInquiryFromCall'])
         ->middleware('permission:inquiries.create');
     Route::put('phone-calls/{phoneCall}/assignment', [PhoneCallController::class, 'assign'])

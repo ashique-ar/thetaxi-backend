@@ -32,6 +32,15 @@ class PhoneCallResource extends JsonResource
             'call_ended_at' => $this->call_ended_at,
             'talk_duration_seconds' => $this->talk_duration_seconds,
             'follow_up_task_id' => $this->follow_up_task_id,
+            'follow_up_due_at' => $this->follow_up_due_at,
+            'follow_up_notes' => $this->follow_up_notes,
+            'follow_up_completed_at' => $this->follow_up_completed_at,
+            'follow_up_attempts' => $this->whenLoaded('followUpAttempts', fn () => $this->followUpAttempts->map(fn ($attempt) => [
+                'outcome' => $attempt->outcome,
+                'notes' => $attempt->notes,
+                'attempted_at' => $attempt->attempted_at,
+                'employee' => $attempt->actor?->full_name,
+            ])),
             'assigned_user_id' => $this->assigned_user_id,
             'assigned_to' => $this->assignedTo?->full_name,
             'assignment_history' => $this->whenLoaded('assignments', fn () => $this->assignments->map(fn ($assignment) => [
@@ -48,7 +57,10 @@ class PhoneCallResource extends JsonResource
             'call_date' => $this->call_started_at ?? $this->call_time,
             'handled_by' => $this->agent_email ?? $this->agent_extension,
             'outcome' => in_array($this->call_status, ['Missed', 'Notanswered'], true) ? 'no_answer' : 'other',
-            'follow_up_required' => in_array($this->call_status, ['Missed', 'Notanswered'], true) && ! $this->follow_up_task_id,
+            'follow_up_required' => in_array($this->call_status, ['Missed', 'Notanswered'], true)
+                && ! $this->follow_up_task_id
+                && ! $this->follow_up_completed_at
+                && (! $this->follow_up_due_at || $this->follow_up_due_at->isPast()),
             'status' => in_array($this->call_status, ['Missed', 'Notanswered'], true) ? 'missed' : 'completed',
             'created_at'  => $this->created_at,
             'updated_at'  => $this->updated_at,

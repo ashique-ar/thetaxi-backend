@@ -36,6 +36,17 @@ class PhoneCallAssignedNotification extends Notification implements ShouldBroadc
 
     private function payload(): array
     {
+        if ($this->call->follow_up_due_at) {
+            return [
+                'title' => 'Callback scheduled for you',
+                'description' => 'Call back '.($this->call->client_name ?: $this->call->phone ?: 'the customer').' by '.$this->call->follow_up_due_at->format('M j, Y').'.',
+                'type' => 'phone_call_callback_scheduled',
+                'link' => '/communication/calls/'.$this->call->id,
+                'useRouter' => true,
+                'data' => ['phone_call_id' => (string) $this->call->id],
+            ];
+        }
+
         return [
             'title' => 'Call assigned to you',
             'description' => 'A call from '.($this->call->client_name ?: $this->call->phone ?: 'a customer').' needs your attention.',
