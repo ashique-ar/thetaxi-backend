@@ -515,25 +515,25 @@ class CheckoutController extends Controller
         }
 
         $paymentSettings = $this->resolvePaymentSettings();
-        $advancePaymentEnabled = $paymentSettings['advance_payment_enabled'];
-        $advancePercentage = $paymentSettings['advance_payment_percentage'];
         $webxpayEnabled = $paymentSettings['webxpay_enabled'];
-        $offlinePaymentEnabled = $this->normalizeBoolean($paymentSettings['payment_offline_enabled'] ?? null, false);
-        $allowedPaymentTypes = $advancePaymentEnabled ? ['full', 'advance', 'quotation'] : ['full', 'quotation'];
-        if ($offlinePaymentEnabled) {
-            $allowedPaymentTypes[] = 'checkin';
-        }
-
+        $advancePercentage = $paymentSettings['advance_payment_percentage'];
         $allowedPaymentMethodKeys = $this->getAvailablePaymentMethods(
             $webxpayEnabled,
             $paymentSettings['payment_online_enabled'],
             $paymentSettings['payment_offline_enabled']
         )->keys()->all();
-        if (empty($allowedPaymentMethodKeys)) {
+        if (empty($allowedPaymentMethodKeys) && $request->input('payment_type') !== 'quotation') {
             return redirect()->back()
                 ->withInput()
-                ->with('error', 'No payment methods are currently available. Please try again later.');
+                ->with('error', 'Online and pay-on-check-in options are unavailable. You can still request a quotation.');
         }
+        $advancePaymentEnabled = in_array('online', $allowedPaymentMethodKeys, true) && $paymentSettings['advance_payment_enabled'];
+        $allowedPaymentTypes = ['quotation'];
+        if (in_array('online', $allowedPaymentMethodKeys, true)) {
+            $allowedPaymentTypes[] = 'full';
+            if ($advancePaymentEnabled) $allowedPaymentTypes[] = 'advance';
+        }
+        if (in_array('offline', $allowedPaymentMethodKeys, true)) $allowedPaymentTypes[] = 'checkin';
 
         foreach ([
             'first_name', 'last_name', 'phone', 'phone_country_code',

@@ -507,6 +507,7 @@
                                                     </div>
                                                     <div class="card-body">
                                                         <div class="row g-3">
+                                                            @if ($paymentMethods->has('online'))
                                                             <div class="col-6">
                                                                 <div class="payment-option">
                                                                     <input type="radio" name="payment_type"
@@ -527,6 +528,7 @@
                                                                     </label>
                                                                 </div>
                                                             </div>
+                                                            @endif
                                                             @if ($advancePaymentEnabled)
                                                                 <div class="col-6">
                                                                     <div class="payment-option">
