@@ -379,9 +379,6 @@ Route::middleware(['auth:api'])->group(function () {
         Route::post('connection/rotate-api-key', [ThreeCxCrmController::class, 'rotateApiKey'])->middleware('permission:communication.manage');
     });
 
-    Route::post('diagnostic-reports', [ObservabilityController::class, 'mobileDiagnostic'])
-        ->middleware('throttle:30,1');
-
     Route::get('system/client-cache-clears', [SystemController::class, 'pendingClientCacheClears'])
         ->middleware('throttle:30,1');
 

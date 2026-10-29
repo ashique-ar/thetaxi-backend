@@ -260,7 +260,7 @@ class WaitingTimeService
             ->where('recorded_at', '<=', $tripEndAt)
             ->orderBy('recorded_at')
             ->orderBy('id')
-            ->get();
+            ->cursor();
 
         $waitingSeconds = 0;
         $waitingPeriods = 0;

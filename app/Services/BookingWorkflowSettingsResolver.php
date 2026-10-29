@@ -20,6 +20,7 @@ class BookingWorkflowSettingsResolver
                 'require_driver_license' => (bool) ($serviceConfig['driver_license_required'] ?? false),
                 'require_customer_identity_document' => (bool) ($serviceConfig['customer_identity_document_required'] ?? false),
                 'require_booking_approval' => (bool) ($serviceConfig['booking_approval_required'] ?? false),
+                'require_handover_checklist' => (bool) ($serviceConfig['handover_checklist_required'] ?? false),
             ];
         }
 
@@ -34,9 +35,16 @@ class BookingWorkflowSettingsResolver
             'driver_license_required' => 'require_driver_license',
             'customer_identity_document_required' => 'require_customer_identity_document',
             'booking_approval_required' => 'require_booking_approval',
+            'handover_checklist_required' => 'require_handover_checklist',
         ] as $configKey => $settingKey) {
             if (array_key_exists($configKey, $serviceConfig ?? []) && $serviceConfig[$configKey] !== null) {
-                $settings[$settingKey] = $settingKey === 'require_driver_license'
+                $settings[$settingKey] = in_array($settingKey, [
+                    'require_signed_agreement',
+                    'require_driver_license',
+                    'require_customer_identity_document',
+                    'require_booking_approval',
+                    'require_handover_checklist',
+                ], true)
                     ? (bool) $serviceConfig[$configKey]
                     : $settings[$settingKey] && (bool) $serviceConfig[$configKey];
             }
@@ -61,13 +69,14 @@ class BookingWorkflowSettingsResolver
             'driver_license_required' => 'require_driver_license',
             'customer_identity_document_required' => 'require_customer_identity_document',
             'booking_approval_required' => 'require_booking_approval',
+            'handover_checklist_required' => 'require_handover_checklist',
         ] as $configKey => $settingKey) {
             $choice = $serviceConfig[$configKey] ?? null;
             if ($choice === null) {
-                $sources[$settingKey] = in_array($settingKey, ['require_signed_agreement', 'require_driver_license', 'require_customer_identity_document', 'require_booking_approval'], true) ? 'Built-in default' : 'Business setting';
+                $sources[$settingKey] = in_array($settingKey, ['require_signed_agreement', 'require_driver_license', 'require_customer_identity_document', 'require_booking_approval', 'require_handover_checklist'], true) ? 'Built-in default' : 'Business setting';
             } elseif (! (bool) $choice) {
                 $sources[$settingKey] = 'Turned off for this service';
-            } elseif (in_array($settingKey, ['require_driver_license', 'require_customer_identity_document', 'require_booking_approval'], true)) {
+            } elseif (in_array($settingKey, ['require_signed_agreement', 'require_driver_license', 'require_customer_identity_document', 'require_booking_approval', 'require_handover_checklist'], true)) {
                 $sources[$settingKey] = 'Enabled for this service';
             } elseif (! $defaults[$settingKey]) {
                 $sources[$settingKey] = 'Blocked by business setting';
@@ -101,6 +110,7 @@ class BookingWorkflowSettingsResolver
             'require_driver_license' => false,
             'require_customer_identity_document' => false,
             'require_booking_approval' => false,
+            'require_handover_checklist' => false,
         ];
     }
 

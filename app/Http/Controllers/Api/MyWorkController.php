@@ -58,9 +58,9 @@ class MyWorkController extends Controller
                 ->where('booking.responsible_user_id', $userId)
                 ->whereIn('booking.status', array_merge(['draft'], $activeBookingStatuses));
             CompanyBookingScope::constrain($rows, 'booking', $companyId);
-            foreach ($rows->orderBy('booking.created_at')->limit(5)->get(['booking.id', 'booking.booking_number', 'booking.created_at']) as $row) {
-                $attention[] = ['id' => 'booking:'.$row->id, 'group' => 'mine', 'type' => 'Booking', 'title' => $row->booking_number ?: 'Open booking',
-                    'detail' => 'Assigned to you', 'when' => $row->created_at, 'link' => '/bookings/'.$row->id,
+            foreach ($this->withBookingAttentionContext($rows)->orderBy('booking.created_at')->limit(5)->get() as $row) {
+                $attention[] = ['id' => 'booking:'.$row->id, 'group' => 'mine', 'type' => 'Booking', 'title' => $this->bookingAttentionTitle($row),
+                    'detail' => $this->bookingAttentionDetail($row, 'Assigned to you'), 'when' => $row->created_at, 'link' => '/bookings/'.$row->id,
                     'sort_at' => strtotime((string) $row->created_at) ?: PHP_INT_MAX];
             }
         }
@@ -84,19 +84,18 @@ class MyWorkController extends Controller
                 CompanyBookingScope::constrain($pastTarget, 'booking', $companyId);
                 $queues[] = ['group' => 'assignment', 'title' => 'Bookings past assignment target', 'help' => 'Unassigned bookings that have waited longer than the approved target', 'icon' => 'schedule',
                     'link' => '/bookings/list?queue=needs_responsible_owner_past_target', 'count' => (int) $pastTarget->distinct('booking.id')->count('booking.id')];
-                foreach ((clone $pastTarget)->orderBy('booking.created_at')->limit(4)
-                    ->get(['booking.id', 'booking.booking_number', 'booking.created_at']) as $row) {
+                foreach ($this->withBookingAttentionContext(clone $pastTarget)->orderBy('booking.created_at')->limit(4)->get() as $row) {
                     $attention[] = ['id' => 'booking-assignment-overdue:'.$row->id, 'group' => 'assignment', 'type' => 'Booking past target',
-                        'title' => $row->booking_number ?: 'Booking waiting for an owner', 'detail' => 'Assign an employee now', 'when' => $row->created_at,
+                        'title' => $this->bookingAttentionTitle($row), 'detail' => $this->bookingAttentionDetail($row, 'Assign an employee now'), 'when' => $row->created_at,
                         'link' => '/bookings/list?queue=needs_responsible_owner_past_target', 'sort_at' => strtotime((string) $row->created_at) ?: PHP_INT_MAX];
                 }
             }
             $waitingBookings = DB::table('bookings as booking')->whereNull('booking.deleted_at')->whereIn('booking.status', $activeBookingStatuses)
                 ->where(fn ($owner) => $owner->whereNull('booking.responsible_user_id')->orWhereNotIn('booking.responsible_user_id', $eligibleOwners));
             CompanyBookingScope::constrain($waitingBookings, 'booking', $companyId);
-            foreach ($waitingBookings->orderBy('booking.created_at')->limit(4)->get(['booking.id', 'booking.booking_number', 'booking.created_at']) as $row) {
+            foreach ($this->withBookingAttentionContext($waitingBookings)->orderBy('booking.created_at')->limit(4)->get() as $row) {
                 $attention[] = ['id' => 'booking-assignment:'.$row->id, 'group' => 'assignment', 'type' => 'Booking to assign',
-                    'title' => $row->booking_number ?: 'New booking', 'detail' => 'Choose an employee', 'when' => $row->created_at,
+                    'title' => $this->bookingAttentionTitle($row), 'detail' => $this->bookingAttentionDetail($row, 'Choose an employee'), 'when' => $row->created_at,
                     'link' => '/bookings/list?queue=needs_responsible_owner', 'sort_at' => strtotime((string) $row->created_at) ?: PHP_INT_MAX];
             }
         }
@@ -178,10 +177,14 @@ class MyWorkController extends Controller
                 'link' => '/customers?owner_status=unassigned', 'count' => (int) $customers->whereNotExists($unassignedOwner)->count()];
             $waitingCustomers = DB::table('customers')->whereNull('customers.deleted_at');
             CompanyCustomerScope::constrain($waitingCustomers, 'customers', $companyId);
-            foreach ($waitingCustomers->whereNotExists($unassignedOwner)->orderBy('customers.created_at')->limit(4)
-                ->get(['customers.id', 'customers.code', 'customers.created_at']) as $row) {
+            foreach ($waitingCustomers->leftJoin('users as attention_customer_user', function ($join): void {
+                $join->on('attention_customer_user.id', '=', 'customers.user_id')->whereNull('attention_customer_user.deleted_at');
+            })->whereNotExists($unassignedOwner)->orderBy('customers.created_at')->limit(4)
+                ->get(['customers.id', 'customers.code', 'customers.created_at', 'attention_customer_user.first_name', 'attention_customer_user.last_name', 'attention_customer_user.phone']) as $row) {
+                $customerName = trim((string) $row->first_name.' '.(string) $row->last_name);
+                $customerTitle = $customerName ?: ($row->code ?: 'Customer');
                 $attention[] = ['id' => 'customer-owner:'.$row->id, 'group' => 'assignment', 'type' => 'Customer owner',
-                    'title' => $row->code ?: 'Customer', 'detail' => 'Choose a relationship owner', 'when' => $row->created_at,
+                    'title' => $customerTitle, 'detail' => implode(' · ', array_filter([$row->code, $row->phone, 'Choose a relationship owner'])), 'when' => $row->created_at,
                     'link' => '/customers?owner_status=unassigned', 'sort_at' => strtotime((string) $row->created_at) ?: PHP_INT_MAX];
             }
         }
@@ -223,18 +226,18 @@ class MyWorkController extends Controller
 
         if ($request->user()->can('communication.manage')) {
             foreach ([['received', 'New messages or updates', 'Review new information from Respond.io before linking it to customer work'],
-                ['reply_failed', 'Replies that need checking', 'Respond.io reported a sending problem; check the conversation before trying again']] as [$status, $title, $help]) {
+                ['reply_failed', 'Replies to check', 'Check whether the reply was accepted before trying again']] as [$status, $title, $help]) {
                 $events = DB::table('integration_webhook_events')->where('company_id', $companyId)
                     ->where('provider', 'respond_io')
-                    ->when($status === 'reply_failed', fn ($query) => $query->where('outbound_status', 'failed'))
+                    ->when($status === 'reply_failed', fn ($query) => $query->whereIn('outbound_status', ['failed', 'uncertain']))
                     ->when($status !== 'reply_failed', fn ($query) => $query->where('status', $status));
                 $queues[] = ['group' => 'integration', 'title' => $title, 'help' => $help, 'icon' => 'sync_problem',
                     'link' => '/admin/system/integrations/respond-io?status='.$status, 'count' => (int) (clone $events)->count()];
                 foreach ($events->orderBy('received_at')->limit(4)->get(['id', 'received_at']) as $row) {
                     $attention[] = ['id' => 'respond-io:'.$status.':'.$row->id, 'group' => 'integration',
-                        'type' => $status === 'received' ? 'New message or update' : 'Reply did not send',
-                        'title' => $status === 'received' ? 'Check this new information' : 'Check the conversation before retrying',
-                        'detail' => $status === 'received' ? 'Open to review and link it to the right customer work' : 'Check whether the customer received it first',
+                        'type' => $status === 'received' ? 'New message or update' : 'Reply needs checking',
+                        'title' => $status === 'received' ? 'Check this new information' : 'Check whether the reply went through',
+                        'detail' => $status === 'received' ? 'Open to review and link it to the right customer work' : 'Review the event before sending another reply',
                         'when' => $row->received_at, 'link' => '/admin/system/integrations/respond-io?status='.$status,
                         'sort_at' => strtotime((string) $row->received_at) ?: PHP_INT_MAX];
                 }
@@ -277,5 +280,52 @@ class MyWorkController extends Controller
             'as_of' => now()->toIso8601String(), 'queues' => $queues, 'attention' => $attention,
             'employee_workload' => $employeeWorkload,
         ]]);
+    }
+
+    private function withBookingAttentionContext($query)
+    {
+        return $query
+            ->leftJoin('customers as attention_customer', function ($join): void {
+                $join->on('attention_customer.id', '=', 'booking.customer_id')->whereNull('attention_customer.deleted_at');
+            })
+            ->leftJoin('users as attention_customer_user', function ($join): void {
+                $join->on('attention_customer_user.id', '=', 'attention_customer.user_id')->whereNull('attention_customer_user.deleted_at');
+            })
+            ->select([
+                'booking.id', 'booking.booking_number', 'booking.created_at',
+                'attention_customer_user.first_name', 'attention_customer_user.last_name', 'attention_customer_user.phone',
+            ])
+            ->selectSub(DB::table('bookings as attention_contact_booking')
+                ->selectRaw("attention_contact_booking.workflow_data->'corporate_contact'->>'name'")
+                ->whereColumn('attention_contact_booking.id', 'booking.id'), 'corporate_contact_name')
+            ->selectSub(DB::table('booking_items as attention_item')
+                ->join('service_types as attention_service', 'attention_service.id', '=', 'attention_item.service_type_id')
+                ->whereColumn('attention_item.booking_id', 'booking.id')->whereNull('attention_item.deleted_at')
+                ->where('attention_item.status', '!=', 'cancelled')
+                ->orderByRaw('attention_item.from_date NULLS LAST')->limit(1)->select('attention_service.name'), 'service_name')
+            ->selectSub(DB::table('booking_items as attention_item')
+                ->whereColumn('attention_item.booking_id', 'booking.id')->whereNull('attention_item.deleted_at')
+                ->where('attention_item.status', '!=', 'cancelled')->whereNotNull('attention_item.from_date')
+                ->orderBy('attention_item.from_date')->limit(1)->select('attention_item.from_date'), 'service_from_date');
+    }
+
+    private function bookingAttentionTitle(object $booking): string
+    {
+        $customerName = trim((string) $booking->first_name.' '.(string) $booking->last_name);
+
+        return $customerName ?: (trim((string) $booking->corporate_contact_name) ?: ($booking->booking_number ?: 'Open booking'));
+    }
+
+    private function bookingAttentionDetail(object $booking, string $action): string
+    {
+        $parts = array_filter([
+            $booking->booking_number ? 'Ref '.$booking->booking_number : null,
+            $booking->service_name,
+            $booking->service_from_date ? \Illuminate\Support\Carbon::parse($booking->service_from_date)->format('j M Y') : null,
+            $booking->phone,
+            $action,
+        ], fn ($part) => is_string($part) && trim($part) !== '');
+
+        return implode(' · ', $parts);
     }
 }

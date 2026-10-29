@@ -7,6 +7,7 @@ use App\Http\Requests\Corporate\StoreCorporateBookingRequest;
 use App\Models\Corporate\Corporate;
 use App\Models\Corporate\CorporateEmployee;
 use App\Services\CorporateBookingService;
+use App\Services\CorporateBookingSubmissionService;
 use Illuminate\Http\JsonResponse;
 
 class AdminCorporateBookingController extends Controller
@@ -34,16 +35,22 @@ class AdminCorporateBookingController extends Controller
             ->where('user_id', auth()->id())
             ->firstOrFail();
 
-        $booking = $this->bookingService->createBookingForEmployee(
-            $adminCoordinator,
-            $targetEmployee,
-            $request->validated()
+        $submission = app(CorporateBookingSubmissionService::class)->create(
+            (string) $corporate->id,
+            (string) $request->user()->id,
+            $request->validated(),
+            fn (array $data) => $this->bookingService->createBookingForEmployee(
+                $adminCoordinator,
+                $targetEmployee,
+                $data,
+            ),
         );
+        $booking = $submission['booking'];
 
         return response()->json([
             'status'  => 'success',
-            'message' => 'Booking created for employee successfully',
+            'message' => $submission['replayed'] ? 'This booking was already created.' : 'Booking created for employee successfully',
             'data'    => ['booking' => $booking],
-        ], 201);
+        ], $submission['replayed'] ? 200 : 201);
     }
 }

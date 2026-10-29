@@ -489,10 +489,18 @@ class BookingLifecycleService
             $this->assertItemSafeLifecycle($booking, $bookingItemId);
             $context = $this->resolveLifecycleContext($booking, $bookingItemId);
             $this->assertFinancialLifecycleReady($booking, 'dispatch', $context['booking_item']);
-            if ($this->getLifecycleWorkflowSettings($booking, $context['booking_item'])['require_signed_agreement']
-                && empty($dispatchData['agreements_signed'])) {
+            $workflowSettings = $this->getLifecycleWorkflowSettings($booking, $context['booking_item']);
+            if ($workflowSettings['require_signed_agreement'] && empty($dispatchData['agreements_signed'])) {
                 throw ValidationException::withMessages([
                     'agreements_signed' => 'The signed rental agreement must be confirmed before dispatch.',
+                ]);
+            }
+            if ($workflowSettings['require_handover_checklist']
+                && (trim((string) data_get($dispatchData, 'condition.notes')) === ''
+                    || ! array_key_exists('fuel_level', $dispatchData) || $dispatchData['fuel_level'] === null
+                    || ! array_key_exists('mileage', $dispatchData) || $dispatchData['mileage'] === null)) {
+                throw ValidationException::withMessages([
+                    'condition' => 'Record the vehicle condition, fuel level, and mileage before handover.',
                 ]);
             }
             $dispatch = $this->resolveItemDispatch($booking, $context, true);

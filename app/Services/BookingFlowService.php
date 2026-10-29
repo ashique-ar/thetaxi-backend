@@ -8751,6 +8751,7 @@ class BookingFlowService
                 'signed_agreement_required' => array_key_exists('signed_agreement_required', $item->workflow_config_snapshot ?? [])
                     ? (bool) $item->workflow_config_snapshot['signed_agreement_required']
                     : true,
+                'handover_checklist_required' => (bool) ($item->workflow_config_snapshot['handover_checklist_required'] ?? false),
                 'item_type' => $item->item_type ?? null,
                 'notes' => $item->notes ?? null,
                 'metadata' => $metadata,
@@ -10736,6 +10737,7 @@ class BookingFlowService
                 'signed_agreement_required' => array_key_exists('signed_agreement_required', $item->workflow_config_snapshot ?? [])
                     ? (bool) $item->workflow_config_snapshot['signed_agreement_required']
                     : true,
+                'handover_checklist_required' => (bool) ($item->workflow_config_snapshot['handover_checklist_required'] ?? false),
                 'approved_at' => optional($item->approved_at)->toISOString(),
                 'approved_by' => $item->approved_by ? (string) $item->approved_by : null,
                 'item_type' => $item->item_type,

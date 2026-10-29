@@ -37,7 +37,7 @@ class ServiceTypeController extends Controller
     {
         $data = $request->validate([
             'service_type_id' => ['nullable', 'uuid'],
-            'workflow_config' => ['required', 'array:return_stage_enabled,qc_stage_enabled,maintenance_stage_enabled,signed_agreement_required,driver_license_required,customer_identity_document_required,booking_approval_required'],
+            'workflow_config' => ['required', 'array:return_stage_enabled,qc_stage_enabled,maintenance_stage_enabled,signed_agreement_required,driver_license_required,customer_identity_document_required,booking_approval_required,handover_checklist_required'],
             'workflow_config.return_stage_enabled' => ['nullable', 'boolean'],
             'workflow_config.qc_stage_enabled' => ['nullable', 'boolean'],
             'workflow_config.maintenance_stage_enabled' => ['nullable', 'boolean'],
@@ -45,6 +45,7 @@ class ServiceTypeController extends Controller
             'workflow_config.driver_license_required' => ['nullable', 'boolean'],
             'workflow_config.customer_identity_document_required' => ['nullable', 'boolean'],
             'workflow_config.booking_approval_required' => ['nullable', 'boolean'],
+            'workflow_config.handover_checklist_required' => ['nullable', 'boolean'],
         ]);
         if (! empty($data['service_type_id'])) {
             $serviceType = ServiceType::query()->findOrFail($data['service_type_id']);

@@ -313,6 +313,10 @@ class AssignmentController extends Controller
                         'to_date' => $item->to_date,
                         'to_time' => $item->to_time,
                         'status' => $item->completed_at ? 'completed' : ($item->status ?? 'pending'),
+                        'signed_agreement_required' => array_key_exists('signed_agreement_required', $item->workflow_config_snapshot ?? [])
+                            ? (bool) $item->workflow_config_snapshot['signed_agreement_required']
+                            : true,
+                        'handover_checklist_required' => (bool) ($item->workflow_config_snapshot['handover_checklist_required'] ?? false),
                         'vehicle_name' => $item->vehicle?->title,
                         'driver_name' => $item->driver?->user
                             ? trim((string) $item->driver->user->first_name . ' ' . (string) $item->driver->user->last_name)

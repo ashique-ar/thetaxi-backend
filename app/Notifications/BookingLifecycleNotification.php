@@ -40,6 +40,18 @@ class BookingLifecycleNotification extends Notification implements ShouldQueue
 
     public function toMail(object $notifiable): MailMessage
     {
+        if ($this->booking->is_corporate_booking) {
+            $reference = (string) ($this->booking->booking_number ?: $this->booking->id);
+
+            return (new MailMessage)
+                ->subject('Corporate booking update - '.$reference)
+                ->greeting('Corporate booking update')
+                ->line($this->title.'. '.$this->message)
+                ->line('Business: '.($this->booking->corporateAccount?->name ?? 'Corporate account'))
+                ->line('Booking reference: '.$reference)
+                ->action('Check booking status', route('booking.status'));
+        }
+
         return (new MailMessage)
             ->subject($this->title . ' - ' . $this->booking->booking_number)
             ->line($this->message)

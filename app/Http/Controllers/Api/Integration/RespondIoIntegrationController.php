@@ -165,7 +165,7 @@ class RespondIoIntegrationController extends Controller
         $connection = $this->companyConnection();
         abort_unless($connection, 404, 'No respond.io connection is configured.');
         $events = IntegrationWebhookEvent::query()->where('company_id', $connection->company_id)->where('provider', 'respond_io')
-            ->when($request->get('status') === 'reply_failed', fn ($query) => $query->where('outbound_status', 'failed'))
+            ->when($request->get('status') === 'reply_failed', fn ($query) => $query->whereIn('outbound_status', ['failed', 'uncertain']))
             ->when($request->filled('status') && $request->get('status') !== 'reply_failed', fn ($query) => $query->where('status', $request->get('status')))
             ->latest('received_at')->paginate($request->integer('per_page', 25));
         $events->setCollection($events->getCollection()->map(fn (IntegrationWebhookEvent $event): array => [

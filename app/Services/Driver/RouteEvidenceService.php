@@ -14,19 +14,22 @@ class RouteEvidenceService
     public const MAX_ACCURACY_METERS = 100;
     public const MAX_PLAUSIBLE_SPEED_KPH = 180;
 
-    public function calculate(Collection $points, ?Carbon $tripStartedAt, ?Carbon $tripCompletedAt): array
+    public function calculate(iterable $points, ?Carbon $tripStartedAt, ?Carbon $tripCompletedAt): array
     {
-        $ordered = $points->sortBy([
-            ['recorded_at', 'asc'],
-            ['id', 'asc'],
-        ])->values();
-        $recordedCount = $ordered->count();
-        $accepted = collect();
+        // Database callers pass an ordered cursor so large trips stay bounded in memory.
+        $ordered = $points instanceof Collection ? $points->sortBy([['recorded_at', 'asc'], ['id', 'asc']]) : $points;
+        $recordedCount = 0;
         $rejectedCount = 0;
         $outsideTripWindowCount = 0;
         $qualityRejectedCount = 0;
+        $acceptedCount = 0;
+        $movementRejectedCount = 0;
+        $distance = 0.0;
+        $gapCount = $longestGap = $segmentCount = 0;
+        $firstAccepted = $lastAccepted = $previous = null;
 
         foreach ($ordered as $point) {
+            $recordedCount++;
             $recordedAt = $point->recorded_at ? Carbon::parse($point->recorded_at)->utc() : null;
             $latitude = (float) $point->latitude;
             $longitude = (float) $point->longitude;
@@ -48,21 +51,10 @@ class RouteEvidenceService
                 continue;
             }
 
-            $accepted->push($point);
-        }
-
-        $distance = 0.0;
-        $gapCount = 0;
-        $longestGap = 0;
-        $segmentCount = 0;
-        $movementRejectedCount = 0;
-        $previous = null;
-
-        foreach ($accepted as $point) {
-            if (!$previous) {
-                $previous = $point;
-                continue;
-            }
+            $acceptedCount++;
+            $firstAccepted ??= $point;
+            $lastAccepted = $point;
+            if (!$previous) { $previous = $point; continue; }
             $seconds = max(0, Carbon::parse($previous->recorded_at)->diffInSeconds(Carbon::parse($point->recorded_at), false));
             if ($seconds === 0) {
                 $movementRejectedCount++;
@@ -89,8 +81,8 @@ class RouteEvidenceService
             $previous = $point;
         }
 
-        if ($accepted->isNotEmpty() && $tripCompletedAt) {
-            $endingGap = Carbon::parse($accepted->last()->recorded_at)->diffInSeconds($tripCompletedAt, false);
+        if ($lastAccepted && $tripCompletedAt) {
+            $endingGap = Carbon::parse($lastAccepted->recorded_at)->diffInSeconds($tripCompletedAt, false);
             if ($endingGap > self::GAP_THRESHOLD_SECONDS) {
                 $gapCount++;
                 $longestGap = max($longestGap, $endingGap);
@@ -116,7 +108,7 @@ class RouteEvidenceService
             'distance_trustworthy' => $trustworthy,
             'recorded_point_count' => $recordedCount,
             'valid_tracking_point_count' => $recordedCount - $rejectedCount,
-            'accepted_point_count' => $accepted->count() - $movementRejectedCount,
+            'accepted_point_count' => $acceptedCount - $movementRejectedCount,
             'rejected_point_count' => $rejectedCount,
             'outside_trip_window_point_count' => $outsideTripWindowCount,
             // Temporary explicit alias for portal versions deployed during the
@@ -124,8 +116,8 @@ class RouteEvidenceService
             'quality_rejected_point_count' => $rejectedCount,
             'gap_count' => $gapCount,
             'longest_gap_seconds' => $longestGap,
-            'first_valid_point_at' => $accepted->first()?->recorded_at?->utc()->toIso8601String(),
-            'last_valid_point_at' => $accepted->last()?->recorded_at?->utc()->toIso8601String(),
+            'first_valid_point_at' => $firstAccepted?->recorded_at?->utc()->toIso8601String(),
+            'last_valid_point_at' => $lastAccepted?->recorded_at?->utc()->toIso8601String(),
             'calculation_version' => DriverRouteEvidenceContract::CALCULATION_VERSION,
             'warnings' => array_values(array_filter([
                 $outsideTripWindowCount > 0 ? 'Valid assignment tracking outside the passenger-carrying phase is retained and shown, but excluded from passenger-trip mileage.' : null,

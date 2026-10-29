@@ -1674,7 +1674,7 @@ class TripTrackingService
         $points = $assignment->routePoints()
             ->orderBy('recorded_at', 'asc')
             ->orderBy('id', 'asc')
-            ->get(['id', 'latitude', 'longitude', 'accuracy', 'recorded_at']);
+            ->cursor(['id', 'latitude', 'longitude', 'accuracy', 'recorded_at']);
 
         return app(RouteEvidenceService::class)->calculate(
             $points,

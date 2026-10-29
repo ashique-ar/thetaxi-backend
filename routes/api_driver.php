@@ -59,7 +59,7 @@ Route::middleware('business.module:driver')->group(function () {
     Route::middleware(['auth:api', 'ensure.driver'])->group(function () {
 
         Route::post('diagnostic-reports', [DiagnosticReportController::class, 'store'])
-            ->middleware('throttle:30,1');
+            ->middleware('throttle:30,60');
         Route::post('hire-recovery-events', [HireRecoveryController::class, 'store'])
             ->middleware('throttle:60,1');
 

@@ -75,10 +75,12 @@ class BookingLifecycleController extends Controller
             'fuel_level_out' => 'nullable|numeric|min:0|max:100',
             'mileage_out' => 'nullable|integer|min:0',
             'vehicle_condition_out' => 'nullable|array',
+            'vehicle_condition_out.notes' => 'nullable|string|max:2000',
             'dispatch_notes' => 'nullable|string',
             'agreements_signed' => 'nullable|boolean',
             'notes' => 'nullable|string',
             'condition' => 'nullable|array',
+            'condition.notes' => 'nullable|string|max:2000',
             'allow_repeat_dispatch_for_testing' => 'nullable|boolean',
         ]);
 
