@@ -1542,54 +1542,6 @@ class BookingController extends Controller
     // Now using BookingFlowService directly which handles all pricing logic
 
     /**
-     * Handle corporate enquiry submission
-     */
-    public function enquiry(Request $request)
-    {
-        $validator = Validator::make($request->all(), [
-            'company_name' => 'required|string|max:255',
-            'contact_person' => 'required|string|max:255',
-            'email' => 'required|email|max:255',
-            'phone' => 'required|string|max:20',
-            'requirements' => 'required|string|max:1000',
-        ]);
-
-        if ($validator->fails()) {
-            return redirect()->back()
-                ->withErrors($validator)
-                ->withInput()
-                ->with('error', 'Please check your enquiry details and try again.');
-        }
-
-        try {
-            // Store enquiry with enhanced tracking
-            $enquiryData = array_merge($request->all(), [
-                'ip_address' => $request->ip(),
-                'user_agent' => $request->userAgent(),
-                'submitted_at' => now(),
-                'status' => 'pending'
-            ]);
-
-            // TODO: Store in database and send notifications
-            // CorporateEnquiry::create($enquiryData);
-            // Mail::to(config('mail.corporate_enquiries'))->send(new CorporateEnquiryNotification($enquiryData));
-
-            return redirect()->route('contact')
-                ->with('success', 'Thank you for your enquiry! Our corporate team will contact you within 24 hours.');
-
-        } catch (\Exception $e) {
-            Log::error('Error submitting corporate enquiry', [
-                'error' => $e->getMessage(),
-                'data' => $request->all()
-            ]);
-
-            return redirect()->back()
-                ->withInput()
-                ->with('error', 'An error occurred while submitting your enquiry. Please try again.');
-        }
-    }
-
-    /**
      * Add vehicle to cart with pricing validation
      */
     public function addToCart(Request $request)

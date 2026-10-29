@@ -636,6 +636,8 @@ class CheckoutController extends Controller
 
         // Custom validation messages
         $messages = [
+            'payment_type.required' => 'Choose one of the payment options shown.',
+            'payment_type.in' => 'This payment option is no longer available. Choose one of the options shown.',
             'first_name.required' => 'Please enter your first name.',
             'phone.required' => 'Please enter your phone number.',
             'phone.required_if' => 'Please enter your mobile number.',

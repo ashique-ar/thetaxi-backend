@@ -10236,6 +10236,10 @@ class BookingFlowService
                 'id' => (string) $booking->responsibleUser->id,
                 'name' => trim($booking->responsibleUser->first_name.' '.$booking->responsibleUser->last_name),
             ] : null,
+            'created_by' => $booking?->createdBy ? [
+                'id' => (string) $booking->createdBy->id,
+                'name' => trim($booking->createdBy->first_name.' '.$booking->createdBy->last_name),
+            ] : null,
             'booking_origin_label' => match ($booking?->booking_origin) {
                 'corporate_portal' => 'Corporate portal',
                 'customer_portal' => 'Customer portal',
