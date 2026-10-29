@@ -940,6 +940,40 @@ class CustomerController extends Controller
                 ->selectRaw("CONCAT('quote-accepted:', quote_link.id) as id, 'quote_acceptance' as event_type, 'Quotation accepted' as title, 'accepted' as status, quote_link.accepted_at as occurred_at, NULL as reference, quote_link.booking_id as booking_id, NULL as detail");
             $events->unionAll($quoteAcceptances);
 
+            $quotesSent = DB::table('pending_payment_links as quote_link')->where('quote_link.type', 'quotation_conversion')
+                ->whereNull('quote_link.deleted_at')
+                ->whereExists(function ($booking) use ($customer, $companyId): void {
+                    $booking->selectRaw('1')->from('bookings as linked_booking')
+                        ->whereColumn('linked_booking.id', 'quote_link.booking_id')
+                        ->where('linked_booking.customer_id', $customer->id)->whereNull('linked_booking.deleted_at');
+                    $this->constrainBookingsToCompany($booking, 'linked_booking', $companyId);
+                })
+                ->selectRaw("CONCAT('quote-prepared:', quote_link.id) as id, 'quotation_prepared' as event_type, 'Quotation prepared' as title, CONCAT('Version ', quote_link.revision_number) as status, quote_link.created_at as occurred_at, NULL as reference, quote_link.booking_id as booking_id, NULL as detail");
+            $events->unionAll($quotesSent);
+
+            $quotesExpired = DB::table('pending_payment_links as quote_link')->where('quote_link.type', 'quotation_conversion')
+                ->whereNull('quote_link.accepted_at')->whereNull('quote_link.invalidated_at')->whereNull('quote_link.deleted_at')
+                ->where('quote_link.expires_at', '<=', now())
+                ->whereExists(function ($booking) use ($customer, $companyId): void {
+                    $booking->selectRaw('1')->from('bookings as linked_booking')
+                        ->whereColumn('linked_booking.id', 'quote_link.booking_id')
+                        ->where('linked_booking.customer_id', $customer->id)->whereNull('linked_booking.deleted_at');
+                    $this->constrainBookingsToCompany($booking, 'linked_booking', $companyId);
+                })
+                ->selectRaw("CONCAT('quote-expired:', quote_link.id) as id, 'quotation_expired' as event_type, 'Quotation expired' as title, CONCAT('Version ', quote_link.revision_number) as status, quote_link.expires_at as occurred_at, NULL as reference, quote_link.booking_id as booking_id, NULL as detail");
+            $events->unionAll($quotesExpired);
+
+            $quotesReplaced = DB::table('pending_payment_links as quote_link')->where('quote_link.type', 'quotation_conversion')
+                ->whereNull('quote_link.accepted_at')->whereNotNull('quote_link.invalidated_at')->whereNull('quote_link.deleted_at')
+                ->whereExists(function ($booking) use ($customer, $companyId): void {
+                    $booking->selectRaw('1')->from('bookings as linked_booking')
+                        ->whereColumn('linked_booking.id', 'quote_link.booking_id')
+                        ->where('linked_booking.customer_id', $customer->id)->whereNull('linked_booking.deleted_at');
+                    $this->constrainBookingsToCompany($booking, 'linked_booking', $companyId);
+                })
+                ->selectRaw("CONCAT('quote-replaced:', quote_link.id) as id, 'quotation_replaced' as event_type, 'Quotation replaced' as title, CONCAT('Version ', quote_link.revision_number) as status, quote_link.invalidated_at as occurred_at, NULL as reference, quote_link.booking_id as booking_id, NULL as detail");
+            $events->unionAll($quotesReplaced);
+
             $feedback = DB::table('bookings as feedback_booking')->where('feedback_booking.customer_id', $customer->id)
                 ->where('feedback_booking.status', 'completed')->whereNotNull('feedback_booking.customer_rating')
                 ->whereNull('feedback_booking.deleted_at');

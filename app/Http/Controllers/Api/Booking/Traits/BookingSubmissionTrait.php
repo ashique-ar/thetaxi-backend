@@ -18,6 +18,7 @@ use Illuminate\Support\Facades\Gate;
 use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Facades\Validator;
 use Illuminate\Validation\Rule;
+use Illuminate\Validation\ValidationException;
 
 trait BookingSubmissionTrait
 {
@@ -516,9 +517,11 @@ trait BookingSubmissionTrait
                 'message' => 'Booking draft saved successfully'
             ]);
         } catch (\Exception $e) {
-            $status = $e instanceof \Symfony\Component\HttpKernel\Exception\HttpExceptionInterface
-                ? $e->getStatusCode()
-                : 500;
+            $status = $e instanceof ValidationException
+                ? 422
+                : ($e instanceof \Symfony\Component\HttpKernel\Exception\HttpExceptionInterface
+                    ? $e->getStatusCode()
+                    : 500);
 
             if ($status >= 500) {
                 Log::error('Draft saving failed: ' . $e->getMessage());
@@ -532,10 +535,14 @@ trait BookingSubmissionTrait
 
             return response()->json([
                 'status' => 'error',
-                'message' => $status === 409
+                'message' => $status === 422
+                    ? collect($e->errors())->flatten()->first()
+                    : ($status === 409
                     ? $e->getMessage()
-                    : ($status >= 500 ? 'Failed to save booking draft' : $e->getMessage()),
-                'error' => $e->getMessage()
+                    : ($status >= 500 ? 'Failed to save booking draft' : $e->getMessage())),
+                ...($e instanceof ValidationException
+                    ? ['errors' => $e->errors()]
+                    : ['error' => $e->getMessage()]),
             ], $status);
         }
     }
