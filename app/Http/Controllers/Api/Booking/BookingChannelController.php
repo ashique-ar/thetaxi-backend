@@ -7,7 +7,7 @@ use App\Http\Controllers\Controller;
 use App\Models\Booking\BookingChannel;
 use App\Http\Requests\Booking\BookingChannel\CreateBookingChannelRequest;
 use App\Http\Requests\Booking\BookingChannel\UpdateBookingChannelRequest;
-use App\Http\Resources\BookingChannelResource;
+use App\Http\Resources\Booking\BookingChannelResource;
 use Illuminate\Http\Request;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Resources\Json\AnonymousResourceCollection;

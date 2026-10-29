@@ -939,6 +939,13 @@ class CustomerController extends Controller
                 })
                 ->selectRaw("CONCAT('quote-accepted:', quote_link.id) as id, 'quote_acceptance' as event_type, 'Quotation accepted' as title, 'accepted' as status, quote_link.accepted_at as occurred_at, NULL as reference, quote_link.booking_id as booking_id, NULL as detail");
             $events->unionAll($quoteAcceptances);
+
+            $feedback = DB::table('bookings as feedback_booking')->where('feedback_booking.customer_id', $customer->id)
+                ->where('feedback_booking.status', 'completed')->whereNotNull('feedback_booking.customer_rating')
+                ->whereNull('feedback_booking.deleted_at');
+            $this->constrainBookingsToCompany($feedback, 'feedback_booking', $companyId);
+            $feedback->selectRaw("CONCAT('customer-feedback:', feedback_booking.id) as id, 'customer_feedback' as event_type, 'Customer feedback received' as title, CONCAT(feedback_booking.customer_rating, '/5') as status, COALESCE(feedback_booking.customer_feedback_submitted_at, feedback_booking.updated_at) as occurred_at, feedback_booking.booking_number as reference, feedback_booking.id as booking_id, CONCAT(CASE WHEN COALESCE(feedback_booking.customer_feedback, '') = '' THEN '' ELSE feedback_booking.customer_feedback END, CASE WHEN COALESCE(feedback_booking.customer_feedback_response, '') = '' THEN '' ELSE CONCAT(CASE WHEN COALESCE(feedback_booking.customer_feedback, '') = '' THEN '' ELSE ' · ' END, 'Our response: ', feedback_booking.customer_feedback_response) END) as detail");
+            $events->unionAll($feedback);
         }
 
         if ($request->user()->can('customers.view')) {
