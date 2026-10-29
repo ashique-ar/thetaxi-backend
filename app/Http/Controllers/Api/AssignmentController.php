@@ -1922,7 +1922,7 @@ class AssignmentController extends Controller
 
                 // Create new assignments for remaining period
                 if ($newVehicleId && ($request->swap_type === 'vehicle' || $request->swap_type === 'both')) {
-                    $this->assignmentService->createVehicleAssignment([
+                    $newVehicleAssignment = $this->assignmentService->createVehicleAssignment([
                         'vehicle_id' => $newVehicleId,
                         'booking_id' => $booking->id,
                         'customer_name' => $customerName,
@@ -1934,6 +1934,9 @@ class AssignmentController extends Controller
                         'requires_approval' => false,
                         'assignment_notes' => "Swap from vehicle {$oldVehicleId}. Reason: {$reason}",
                     ]);
+                    if ($newVehicleAssignment->requires_approval) {
+                        throw new \Symfony\Component\HttpKernel\Exception\HttpException(409, 'The selected vehicle is no longer available. No replacement was applied.');
+                    }
 
                     if ($selectedBookingItem) {
                         $selectedBookingItem->update(['vehicle_id' => $newVehicleId]);
@@ -1977,6 +1980,9 @@ class AssignmentController extends Controller
                                 : 'Contact dispatch before proceeding. The previous driver location was not available; confirm the passenger handoff location.'),
                         ],
                     ]);
+                    if ($newDriverAssignment->requires_approval) {
+                        throw new \Symfony\Component\HttpKernel\Exception\HttpException(409, 'The selected driver is no longer available. No replacement was applied.');
+                    }
 
                     DB::afterCommit(fn () => $this->assignmentNotifications->sendAssignmentNotification($newDriverAssignment));
 

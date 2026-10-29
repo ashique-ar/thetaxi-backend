@@ -12708,7 +12708,8 @@ class BookingFlowService
                     'license_plate' => $vehicle->license_plate ?? null,
                     'assignment_id' => $vehicleAssignment->id,
                     'assignment_type' => $assignmentParams['assignment_type'],
-                    'status' => $status,
+                    'status' => $vehicleAssignment->status,
+                    'requires_approval' => (bool) $vehicleAssignment->requires_approval,
                 ]);
             } catch (\Exception $e) {
                 Log::error('Vehicle assignment creation failed', [
@@ -12752,7 +12753,8 @@ class BookingFlowService
                     'license_number' => $driver->license_number ?? $driver->license_no ?? null,
                     'assignment_id' => $driverAssignment->id,
                     'assignment_type' => $assignmentParams['assignment_type'],
-                    'status' => $status,
+                    'status' => $driverAssignment->status,
+                    'requires_approval' => (bool) $driverAssignment->requires_approval,
                 ]);
             } catch (\Exception $e) {
                 Log::error('Driver assignment creation failed', [
