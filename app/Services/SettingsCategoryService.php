@@ -848,6 +848,11 @@ class SettingsCategoryService
                     'type' => 'toggle',
                     'description' => 'Allow bookings without account registration'
                 ],
+                'checkout_returning_customer_lookup_enabled' => [
+                    'label' => 'Returning Customer Verification',
+                    'type' => 'toggle',
+                    'description' => 'Let returning customers verify one contact method before the booking form to load saved details'
+                ],
                 'feature_corporate_management_enabled' => [
                     'label' => 'Corporate Management',
                     'type' => 'toggle',

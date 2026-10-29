@@ -81,6 +81,7 @@ class CheckoutController extends Controller
 
     public function sendCustomerEmailVerificationCode(Request $request, SmsService $sms)
     {
+        abort_unless($this->isCheckoutCustomerLookupEnabled(), 404);
         $data = $request->validate([
             'channel' => ['required', 'in:email,mobile'],
             'value' => ['required', 'string', 'max:255'],
@@ -91,8 +92,19 @@ class CheckoutController extends Controller
         abort_if($channel === 'mobile' && ! preg_match('/^\+[1-9]\d{7,14}$/', $value), 422, 'Enter a valid mobile number with its country code.');
 
         $limitKey = 'checkout-customer-code:'.sha1($channel.'|'.$value.'|'.$request->ip());
-        abort_if(RateLimiter::tooManyAttempts($limitKey, 5), 429, 'Please wait before requesting another code.');
+        $cooldownKey = $limitKey.':resend';
+        $retryAfter = RateLimiter::availableIn($cooldownKey);
+        if ($retryAfter > 0) {
+            return response()->json(['message' => 'Please wait before requesting another code.', 'retry_after' => $retryAfter], 429)
+                ->header('Retry-After', (string) $retryAfter);
+        }
+        if (RateLimiter::tooManyAttempts($limitKey, 5)) {
+            $retryAfter = RateLimiter::availableIn($limitKey);
+            return response()->json(['message' => 'Too many code requests. Please try again later.', 'retry_after' => $retryAfter], 429)
+                ->header('Retry-After', (string) $retryAfter);
+        }
         RateLimiter::hit($limitKey, 600);
+        RateLimiter::hit($cooldownKey, 60);
 
         $customer = $this->findCheckoutCustomer($channel, $value);
         if ($this->isEligibleCheckoutCustomer($customer)) {
@@ -116,7 +128,6 @@ class CheckoutController extends Controller
                 }
             } catch (\Throwable $exception) {
                 Cache::forget($this->checkoutCustomerCodeKey($request, $channel, $value));
-                RateLimiter::clear($limitKey);
                 Log::warning('Checkout customer verification code could not be queued.', [
                     'channel' => $channel,
                     'error' => $exception->getMessage(),
@@ -124,11 +135,12 @@ class CheckoutController extends Controller
             }
         }
 
-        return response()->json(['status' => 'success', 'message' => 'If these details match a previous booking, check your email or mobile for a code. If no code arrives, try the other option or enter your details below.']);
+        return response()->json(['status' => 'success', 'resend_after' => 60, 'message' => 'If these details match a previous booking, check your email or mobile for a code. The code expires in 10 minutes.']);
     }
 
     public function verifyCustomerEmailCode(Request $request)
     {
+        abort_unless($this->isCheckoutCustomerLookupEnabled(), 404);
         $data = $request->validate([
             'channel' => ['required', 'in:email,mobile'],
             'value' => ['required', 'string', 'max:255'],
@@ -187,6 +199,14 @@ class CheckoutController extends Controller
         }
 
         return $this->isEligibleCheckoutCustomer(Customer::query()->with('user')->find($customerId));
+    }
+
+    private function isCheckoutCustomerLookupEnabled(): bool
+    {
+        return $this->normalizeBoolean(
+            $this->websiteSettingsService->getBookingSettings()['checkout_returning_customer_lookup_enabled'] ?? null,
+            true
+        );
     }
 
     private function checkoutCustomerCodeKey(Request $request, string $channel, string $value): string
@@ -286,6 +306,7 @@ class CheckoutController extends Controller
     {
         $bookingSettings = $this->websiteSettingsService->getBookingSettings();
         $guestBookingEnabled = $this->normalizeBoolean($bookingSettings['guest_booking_enabled'] ?? null, true);
+        $customerLookupEnabled = $this->normalizeBoolean($bookingSettings['checkout_returning_customer_lookup_enabled'] ?? null, true);
         $bookingBaseCurrency = $this->resolveBookingBaseCurrency($bookingSettings);
         try {
             $cartModel = $this->cartService->getOrCreateCart();
@@ -301,7 +322,7 @@ class CheckoutController extends Controller
         }
 
         $verifiedCheckoutCustomer = null;
-        if (session('checkout_verified_customer_id')
+        if ($customerLookupEnabled && session('checkout_verified_customer_id')
             && now()->timestamp - (int) session('checkout_verified_email_at', 0) <= 1800) {
             $customer = Customer::query()->with(['user', 'country'])->find(session('checkout_verified_customer_id'));
             if ($this->isEligibleCheckoutCustomer($customer)) {
@@ -412,6 +433,7 @@ class CheckoutController extends Controller
             'countries',
             'hasAirportTransfer',
             'guestBookingEnabled',
+            'customerLookupEnabled',
             'verifiedCheckoutCustomer'
         ));
     }
@@ -462,7 +484,14 @@ class CheckoutController extends Controller
         $bookingSettings = $this->websiteSettingsService->getBookingSettings();
         $bookingBaseCurrency = $this->resolveBookingBaseCurrency($bookingSettings);
         $guestBookingEnabled = $this->normalizeBoolean($bookingSettings['guest_booking_enabled'] ?? null, true);
-        if (!$guestBookingEnabled && !Auth::check() && ! $this->hasRecentCheckoutVerification()) {
+        $customerLookupEnabled = $this->normalizeBoolean($bookingSettings['checkout_returning_customer_lookup_enabled'] ?? null, true);
+        if (! $customerLookupEnabled) {
+            $request->session()->forget([
+                'checkout_verified_email', 'checkout_verified_email_at',
+                'checkout_verified_customer_id', 'checkout_verified_customer_mobile',
+            ]);
+        }
+        if (!$guestBookingEnabled && !Auth::check() && ! ($customerLookupEnabled && $this->hasRecentCheckoutVerification())) {
             return redirect()->route('home')
                 ->with('error', 'New customer booking is currently unavailable. Sign in or verify an existing customer account to continue.');
         }
@@ -597,7 +626,7 @@ class CheckoutController extends Controller
 
         $validated = $request->validate($rules, $messages);
 
-        $verifiedCustomerId = session('checkout_verified_customer_id');
+        $verifiedCustomerId = $customerLookupEnabled ? session('checkout_verified_customer_id') : null;
         if ($verifiedCustomerId && now()->timestamp - (int) session('checkout_verified_email_at', 0) <= 1800) {
             $verifiedCustomer = Customer::query()->with('user')->find($verifiedCustomerId);
             $submittedMobile = $this->normalizeCheckoutMobile((string) ($validated['phone_international'] ?? ''));
@@ -660,7 +689,8 @@ class CheckoutController extends Controller
         $checkoutEmail = mb_strtolower(trim($validated['email']));
         $emailIdentityConfirmed = (Auth::check()
                 && mb_strtolower(trim((string) Auth::user()->email)) === $checkoutEmail)
-            || (mb_strtolower(trim((string) session('checkout_verified_email'))) === $checkoutEmail
+            || ($customerLookupEnabled
+                && mb_strtolower(trim((string) session('checkout_verified_email'))) === $checkoutEmail
                 && now()->timestamp - (int) session('checkout_verified_email_at', 0) <= 1800);
         $existingCustomer = $emailIdentityConfirmed
             ? $this->customerService->getCustomerByEmail($validated['email'])

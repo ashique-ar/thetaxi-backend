@@ -20,6 +20,8 @@ use Illuminate\Validation\ValidationException;
 class SalesPolicySettingsService
 {
     public const KINDS = ['fx_corrections', 'commission_dispute', 'profile_export_retention', 'business_timezone', 'inquiry_response', 'booking_assignment'];
+    public const STAGE_LABEL_DEFAULTS = ['new' => 'New', 'contacted' => 'Contacted', 'qualified' => 'Qualified', 'quotation' => 'Quotation', 'negotiation' => 'Negotiation', 'won' => 'Won', 'lost' => 'Lost'];
+    public const STAGE_FEATURES = ['crm_contact_stage' => 'contacted', 'crm_qualification_stage' => 'qualified', 'crm_quotation_stage' => 'quotation', 'crm_negotiation_stage' => 'negotiation'];
     // Expose a tenant toggle only after every runtime path for it is company-aware.
     public const FEATURES = ['fx_corrections', 'rolling_payment_schedules', 'enforce_payment_finality', 'statements', 'payouts', 'performance_snapshots', 'performance_alert_evaluations', 'performance_alert_actions', 'crm', 'crm_contact_stage', 'crm_qualification_stage', 'crm_quotation_stage', 'crm_negotiation_stage', 'commission_notifications'];
 
@@ -41,6 +43,24 @@ class SalesPolicySettingsService
         return (bool) $this->approvedFeatureSetting($companyId, $feature)?->enabled;
     }
 
+    public function stageLabels(string $companyId): array
+    {
+        $labels = self::STAGE_LABEL_DEFAULTS;
+        if (! Schema::hasColumn('sales_company_feature_settings', 'stage_label')) return $labels;
+
+        $settings = DB::table('sales_company_feature_settings')->where('company_id', $companyId)
+            ->whereIn('feature_key', array_keys(self::STAGE_FEATURES))->where('status', 'approved')
+            ->whereNull('deleted_at')->orderByDesc('version')->get(['feature_key', 'stage_label']);
+        foreach ($settings as $setting) {
+            $stage = self::STAGE_FEATURES[$setting->feature_key] ?? null;
+            if ($stage && isset($labels[$stage]) && trim((string) $setting->stage_label) !== '') {
+                $labels[$stage] = trim((string) $setting->stage_label);
+            }
+        }
+
+        return $labels;
+    }
+
     public function featureAvailability(): array
     {
         return collect(self::FEATURES)->mapWithKeys(fn(string $feature) => [
@@ -48,13 +68,17 @@ class SalesPolicySettingsService
         ])->all();
     }
 
-    public function createFeature(string $companyId, string $feature, bool $enabled, string $reason, string $actorUserId): SalesCompanyFeatureSetting
+    public function createFeature(string $companyId, string $feature, bool $enabled, string $reason, string $actorUserId, ?string $stageLabel = null): SalesCompanyFeatureSetting
     {
         if (!in_array($feature, self::FEATURES, true)) {
             throw ValidationException::withMessages(['feature_key' => ['Unknown Sales feature.']]);
         }
 
-        return DB::transaction(function () use ($companyId, $feature, $enabled, $reason, $actorUserId) {
+        if (! isset(self::STAGE_FEATURES[$feature]) && filled($stageLabel)) {
+            throw ValidationException::withMessages(['stage_label' => ['Only Sales stage settings can have a custom stage name.']]);
+        }
+
+        return DB::transaction(function () use ($companyId, $feature, $enabled, $reason, $actorUserId, $stageLabel) {
             DB::table('companies')->where('id', $companyId)->lockForUpdate()->firstOrFail();
             $version = (int) SalesCompanyFeatureSetting::query()->where('company_id', $companyId)
                 ->where('feature_key', $feature)->lockForUpdate()->max('version') + 1;
@@ -64,6 +88,7 @@ class SalesPolicySettingsService
                 'feature_key' => $feature,
                 'version' => $version,
                 'enabled' => $enabled,
+                'stage_label' => isset(self::STAGE_FEATURES[$feature]) && filled($stageLabel) ? trim($stageLabel) : null,
                 'status' => 'draft',
                 'reason' => trim($reason),
                 'created_by' => $actorUserId,

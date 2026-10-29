@@ -165,6 +165,7 @@ class StaffIdentityService
         $managerCache = [];
         $reassigned = 0;
         $needsManagerReview = 0;
+        $managerCounts = [];
         foreach ($opportunities as $opportunity) {
             $oldOwnerId = (string) $opportunity->owner_sales_profile_id;
             $manager = $managerCache[$oldOwnerId] ??= $this->activeReportingManager($oldOwnerId, $profileIds, (string) $staff->company_id);
@@ -182,6 +183,25 @@ class StaffIdentityService
                 (string) $actor->id,
             );
             $reassigned++;
+            $managerUserId = (string) $manager->staff?->user?->id;
+            if ($managerUserId !== '') $managerCounts[$managerUserId] = ($managerCounts[$managerUserId] ?? 0) + 1;
+        }
+
+        foreach ($managerCounts as $managerUserId => $count) {
+            if ((string) $actor->id === $managerUserId) continue;
+            DatabaseNotification::create([
+                'id' => (string) Str::uuid(),
+                'type' => 'App\\Notifications\\SalesTaskNotice',
+                'notifiable_type' => User::class,
+                'notifiable_id' => $managerUserId,
+                'data' => [
+                    'notification_type' => 'sales_opportunities_reassigned',
+                    'title' => 'Sales opportunities reassigned',
+                    'message' => "{$count} open sales opportunity(s) were assigned to you after a staff change.",
+                    'link' => '/sales/opportunities',
+                    'useRouter' => true,
+                ],
+            ]);
         }
 
         return ['reassigned' => $reassigned, 'needs_manager_review' => $needsManagerReview];
@@ -272,10 +292,13 @@ class StaffIdentityService
                 if (in_array($managerId, $visited, true)) continue;
                 $visited[] = $managerId;
                 $manager = SalesProfile::query()->whereKey($managerId)->where('company_id', $companyId)
-                    ->activeAt($now)->configured()->with('staff.user')->first();
+                    ->activeAt($now)->configured()
+                    ->whereHas('staff', fn ($staff) => $staff->whereNull('deleted_at')
+                        ->where(fn ($employment) => $employment->whereNull('employment_ended_at')->orWhere('employment_ended_at', '>', $now)))
+                    ->with('staff.user')->first();
                 $user = $manager?->staff?->user;
                 $eligible = $manager && $user && $user->is_active && ! $user->trashed()
-                    && ! $manager->staff->trashed() && ! $manager->staff->employment_ended_at
+                    && ! $manager->staff->trashed()
                     && DB::table('user_contexts')->where('user_id', $user->id)->where('context_type', 'staff')
                         ->where('context_id', $manager->staff_id)->where('is_active', true)->whereNull('deleted_at')->exists();
                 if ($eligible && ! in_array($managerId, $leaverProfileIds, true)) return $manager;

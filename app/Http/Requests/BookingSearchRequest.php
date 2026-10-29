@@ -346,13 +346,15 @@ class BookingSearchRequest extends FormRequest
     public function rulesForService(string $serviceType): array
     {
         $this->merge(['service_type' => $serviceType]);
-        // Try dynamic rules first — if form_config exists, use it
+        // Public searches require database-managed service form fields.
         $dynamicRules = $this->buildDynamicRules($serviceType);
         if ($dynamicRules !== null) {
             return $dynamicRules;
         }
 
-        // Fallback to legacy hardcoded rules for backward compatibility
+        return ['service_type' => 'required|string'];
+
+        /* Disabled public search fallbacks; retain for reference.
         switch ($serviceType) {
             case 'airport_transfers':
                 return $this->airportTransferRules();
@@ -376,11 +378,11 @@ class BookingSearchRequest extends FormRequest
             default:
                 return $this->defaultRules();
         }
+        */
     }
 
     /**
-     * Build validation rules dynamically from form_config.
-     * Returns null if no config found (falls back to legacy rules).
+     * Build validation rules from the service type's database form configuration.
      */
     protected function buildDynamicRules(string $serviceCode): ?array
     {
@@ -389,9 +391,9 @@ class BookingSearchRequest extends FormRequest
         $serviceTypeId = $resolvedConfig[3] ?? null;
         $serviceHasActivePackages = $this->serviceHasActivePackages($serviceTypeId);
 
-        // If no fields configured, return null to use legacy rules
+        // Keep the request on dynamic rules so missing configuration fails closed.
         if (empty($fields)) {
-            return null;
+            return ['service_type' => 'required|string'];
         }
 
         $rules = ['service_type' => 'required|string'];
@@ -608,6 +610,11 @@ class BookingSearchRequest extends FormRequest
     public function withValidator($validator): void
     {
         $validator->after(function ($validator) {
+            if (empty($this->resolveServiceFormConfig((string) $this->input('service_type'))[0])) {
+                $validator->errors()->add('service_type', 'This service has no active public booking form configuration.');
+                return;
+            }
+
             try {
                 $settingsService = app(WebsiteSettingsService::class);
                 $settings = $settingsService->getBookingSettings();
@@ -916,6 +923,7 @@ class BookingSearchRequest extends FormRequest
     protected function resolveServiceFormConfig(string $serviceCode): array
     {
         $candidateCodes = [$serviceCode];
+        /* Disabled service-code fallbacks; retain for reference.
         $fallbackMap = [
             'self_drive' => ['day_rental'],
             'with_driver' => ['day_rental'],
@@ -926,6 +934,7 @@ class BookingSearchRequest extends FormRequest
         if (isset($fallbackMap[$serviceCode])) {
             $candidateCodes = array_merge($candidateCodes, $fallbackMap[$serviceCode]);
         }
+        */
 
         $candidateCodes = array_values(array_unique(array_filter($candidateCodes)));
 

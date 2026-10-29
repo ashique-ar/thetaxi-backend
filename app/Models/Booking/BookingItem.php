@@ -116,19 +116,7 @@ class BookingItem extends BaseModel
             if ($item->service_type_id) {
                 $serviceType = \App\Models\Service\ServiceType::find($item->service_type_id);
                 if ($serviceType) {
-                    $effective = app(\App\Services\BookingWorkflowSettingsResolver::class)->resolve($serviceType->workflow_config);
-                    $item->workflow_config_snapshot = array_merge($item->workflow_config_snapshot ?? [], [
-                        'policy_version' => 1,
-                        'return_stage_enabled' => $effective['enable_return_stage'],
-                        'qc_stage_enabled' => $effective['enable_qc_stage'],
-                        'maintenance_stage_enabled' => $effective['enable_maintenance_stage'],
-                        'signed_agreement_required' => $effective['require_signed_agreement'],
-                        'driver_license_required' => $effective['require_driver_license'],
-                        'customer_identity_document_required' => $effective['require_customer_identity_document'],
-                        'booking_approval_required' => $effective['require_booking_approval'],
-                        'service_deposit_mode' => $serviceType->deposit_mode ?: 'none',
-                        'service_deposit_value' => (float) ($serviceType->deposit_value ?? 0),
-                    ]);
+                    self::snapshotServiceWorkflow($item, $serviceType);
                 }
             }
             $corporateId = $booking?->is_corporate_booking ? $booking->corporate_account_id : null;
@@ -141,6 +129,43 @@ class BookingItem extends BaseModel
                 $references->reserveProvided((string) $item->item_code, 'item', $corporateId ? (string) $corporateId : null, 'item_code');
             }
         });
+
+        static::updating(function (BookingItem $item): void {
+            if (! $item->isDirty('service_type_id')) return;
+
+            $booking = Booking::query()->whereKey($item->booking_id)
+                ->first(['id', 'status', 'confirmed', 'confirmed_at']);
+            $stage = $booking ? \App\Enums\BookingLifecycleStatus::tryFrom((string) $booking->status)?->getStage() : null;
+            $alreadyStarted = $item->approved_at || $item->requires_approval || $booking?->confirmed
+                || $booking?->confirmed_at || $item->dispatch()->exists()
+                || in_array($stage, ['allocation_dispatch', 'ongoing', 'return', 'qc_repair', 'final'], true)
+                || in_array($booking?->status, ['booking_approved', 'booking_confirmed', 'approved', 'confirmed', 'allocated', 'in_progress', 'active'], true);
+            abort_unless(! $alreadyStarted, 422,
+                'The service type is locked once approval or dispatch has started. Ask a manager to review the change.');
+
+            if ($item->service_type_id && $serviceType = \App\Models\Service\ServiceType::find($item->service_type_id)) {
+                self::snapshotServiceWorkflow($item, $serviceType);
+            } elseif (! $item->service_type_id) {
+                $item->workflow_config_snapshot = null;
+            }
+        });
+    }
+
+    private static function snapshotServiceWorkflow(BookingItem $item, \App\Models\Service\ServiceType $serviceType): void
+    {
+        $effective = app(\App\Services\BookingWorkflowSettingsResolver::class)->resolve($serviceType->workflow_config);
+        $item->workflow_config_snapshot = array_merge($item->workflow_config_snapshot ?? [], [
+            'policy_version' => 1,
+            'return_stage_enabled' => $effective['enable_return_stage'],
+            'qc_stage_enabled' => $effective['enable_qc_stage'],
+            'maintenance_stage_enabled' => $effective['enable_maintenance_stage'],
+            'signed_agreement_required' => $effective['require_signed_agreement'],
+            'driver_license_required' => $effective['require_driver_license'],
+            'customer_identity_document_required' => $effective['require_customer_identity_document'],
+            'booking_approval_required' => $effective['require_booking_approval'],
+            'service_deposit_mode' => $serviceType->deposit_mode ?: 'none',
+            'service_deposit_value' => (float) ($serviceType->deposit_value ?? 0),
+        ]);
     }
 
     /**

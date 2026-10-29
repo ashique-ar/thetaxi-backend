@@ -496,6 +496,7 @@ class SettingsViewComposer
                     'booking_advance_hours',
                     'booking_max_days',
                     'guest_booking_enabled',
+                    'checkout_returning_customer_lookup_enabled',
                     'enable_whatsapp_quote_requests',
                     'booking_base_currency',
                     'booking_submit_inquiry_label',

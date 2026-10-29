@@ -11,6 +11,7 @@ class SalesCompanyFeatureSetting extends BaseModel
         'feature_key',
         'version',
         'enabled',
+        'stage_label',
         'status',
         'reason',
         'created_by',

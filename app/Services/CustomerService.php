@@ -44,7 +44,7 @@ class CustomerService
             if ($user) {
                 if (!$this->checkoutEmailIsVerified($email)) {
                     throw ValidationException::withMessages([
-                        'email' => ['This email is already linked to a customer. Choose “Use email” above to load your saved details.'],
+                        'email' => ['This email is linked to an existing customer. If the returning-customer option is available, use it to verify your details; otherwise contact our booking team.'],
                     ]);
                 }
 
@@ -197,7 +197,7 @@ class CustomerService
         $phoneCustomer = $this->getCustomerByPhone((string) ($data['customer_phone'] ?? ''));
         if ($phoneCustomer) {
             throw ValidationException::withMessages([
-                'phone' => ['This mobile number is already linked to a previous booking. Choose “Use mobile” to load those details before continuing.'],
+                'phone' => ['This mobile number is linked to an existing customer. If the returning-customer option is available, use it to verify your details; otherwise contact our booking team.'],
             ]);
         }
 

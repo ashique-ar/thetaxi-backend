@@ -69,6 +69,7 @@ class SalesPolicySettingsController extends Controller
         ];
         if (Schema::hasColumn('sales_policy_settings', 'inquiry_response_business_hours')) $policyColumns[] = 'inquiry_response_business_hours';
         $featureColumns = ['id', 'feature_key', 'version', 'enabled', 'status'];
+        if (Schema::hasColumn('sales_company_feature_settings', 'stage_label')) $featureColumns[] = 'stage_label';
         $categoryColumns = ['id', 'category_name', 'status'];
         if ($canReviewRationale) {
             $policyColumns[] = 'reason';
@@ -154,11 +155,12 @@ class SalesPolicySettingsController extends Controller
             'company_id' => ['nullable', 'uuid', 'exists:companies,id'],
             'feature_key' => ['required', Rule::in(SalesPolicySettingsService::FEATURES)],
             'enabled' => ['required', 'boolean'],
+            'stage_label' => ['nullable', 'string', 'max:80'],
             'reason' => ['required', 'string', 'min:3', 'max:2000'],
         ]);
         $data['company_id'] = $this->resolveCompanyId($data['company_id'] ?? null);
         $this->assertCompany($request, $data['company_id']);
-        $setting = $this->settings->createFeature($data['company_id'], $data['feature_key'], $data['enabled'], $data['reason'], (string) $request->user()->id);
+        $setting = $this->settings->createFeature($data['company_id'], $data['feature_key'], $data['enabled'], $data['reason'], (string) $request->user()->id, $data['stage_label'] ?? null);
 
         return response()->json(['status' => 'success', 'data' => $this->writeConfirmation($setting)], 201);
     }

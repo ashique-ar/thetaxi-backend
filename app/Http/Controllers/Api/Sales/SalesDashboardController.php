@@ -144,6 +144,8 @@ class SalesDashboardController extends Controller
             ->whereNotIn('stage', ['won', 'lost'])->groupBy('stage')
             ->orderByRaw("CASE stage WHEN 'new' THEN 1 WHEN 'contacted' THEN 2 WHEN 'qualified' THEN 3 WHEN 'quotation' THEN 4 WHEN 'negotiation' THEN 5 ELSE 6 END")
             ->orderBy('stage')->get();
+        $stageLabels = $this->policySettings->stageLabels($companyId);
+        $pipelineRows->each(fn ($row) => $row->stage_label = $stageLabels[$row->stage] ?? $row->stage);
         $pipeline = $this->paginateCollection(
             $pipelineRows, (int) ($data['pipeline_page'] ?? 1), (int) ($data['pipeline_per_page'] ?? 10),
         );
@@ -895,6 +897,7 @@ class SalesDashboardController extends Controller
             'as_of' => $asOf->toIso8601String(),
             'stock_definition' => 'Current open opportunities in the selected stage; never summed across periods.',
             'stage' => $data['stage'],
+            'stage_label' => $this->policySettings->stageLabels((string) $data['company_id'])[$data['stage']] ?? $data['stage'],
             'source_totals' => ['count' => $sourceCount, 'lkr_state' => $missingLkrCount === 0 ? 'complete' : 'missing',
                 'missing_lkr_count' => $missingLkrCount, 'expected_lkr' => $sourceExpected,
                 'weighted_lkr' => $sourceWeighted],

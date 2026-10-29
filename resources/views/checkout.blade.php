@@ -105,9 +105,10 @@
             @else
                 @php
                     $canBookAsNewCustomer = $guestBookingEnabled || Auth::check();
-                    $showCheckoutDetails = !empty($verifiedCheckoutCustomer) || old('email') || old('first_name');
+                    $showCheckoutDetails = (!$customerLookupEnabled && $canBookAsNewCustomer)
+                        || !empty($verifiedCheckoutCustomer) || old('email') || old('first_name');
                 @endphp
-                @if (!$showCheckoutDetails)
+                @if ($customerLookupEnabled && !$showCheckoutDetails)
                     <div id="checkout-customer-choice" class="checkout-form-wrapper mb-4" aria-labelledby="checkout-customer-choice-title">
                         <div class="checkout-form-title">
                             <h4 id="checkout-customer-choice-title">Who is booking?</h4>
@@ -130,23 +131,38 @@
                                 <button type="button" id="continue-customer-choice" class="primary-btn1" disabled>Continue</button>
                             </div>
                         </div>
-                        <div id="returning-customer-panel" class="mt-4" hidden>
-                            <h5>Find your saved details</h5>
-                            <p class="small text-muted">Enter the email or mobile number used for an earlier booking. We’ll send a code before showing your details. @if (!$canBookAsNewCustomer) New customers need to sign in to book. @endif</p>
+                    </div>
+                    <div id="returning-customer-panel" class="checkout-form-wrapper mb-4" aria-labelledby="returning-customer-title" hidden>
+                        <div class="checkout-form-title">
+                            <h4 id="returning-customer-title">Find your saved details</h4>
+                            <p class="small text-muted mb-0">Enter the email or mobile number used for an earlier booking. We’ll send a code before showing your details. @if (!$canBookAsNewCustomer) New customers need to sign in to book. @endif</p>
+                        </div>
+                        <div class="checkout-form">
+                            <fieldset class="mb-3 border-0 p-0">
+                                <legend class="fs-6 fw-semibold">How would you like to verify?</legend>
+                                <div class="d-flex flex-wrap gap-3" role="radiogroup" aria-label="Choose email or mobile verification">
+                                    <label class="checkout-customer-option border rounded p-3">
+                                        <input type="radio" name="checkout_lookup_channel" value="email" checked>
+                                        <strong class="ms-2">Email</strong>
+                                    </label>
+                                    <label class="checkout-customer-option border rounded p-3">
+                                        <input type="radio" name="checkout_lookup_channel" value="mobile">
+                                        <strong class="ms-2">Mobile</strong>
+                                    </label>
+                                </div>
+                            </fieldset>
                             <div class="row">
-                                <div class="col-md-6 mb-3">
+                                <div id="customer-lookup-email-field" class="col-md-6 mb-3">
                                     <label for="customer-lookup-email">Email address</label>
                                     <input type="email" id="customer-lookup-email" class="form-control" autocomplete="email" placeholder="you@example.com">
                                 </div>
-                                <div class="col-md-6 mb-3">
-                                    <label for="customer-lookup-mobile">Mobile number with country code</label>
-                                    <input type="tel" id="customer-lookup-mobile" class="form-control" autocomplete="tel" placeholder="+94771234567">
+                                <div id="customer-lookup-mobile-field" class="col-md-6 mb-3" hidden>
+                                    <label for="customer-lookup-mobile">Mobile number</label>
+                                    <input type="tel" id="customer-lookup-mobile" class="form-control" autocomplete="tel" placeholder="Enter mobile number">
+                                    <div id="customer-lookup-mobile-error" class="small text-danger mt-1" role="status" aria-live="polite"></div>
                                 </div>
                             </div>
-                            <div class="d-flex flex-wrap gap-2">
-                                <button type="button" id="send-customer-email-code" class="btn btn-outline-secondary">Send code by email</button>
-                                <button type="button" id="send-customer-mobile-code" class="btn btn-outline-secondary">Send code by mobile</button>
-                            </div>
+                            <button type="button" id="send-customer-code" class="primary-btn1">Send verification code</button>
                             <div id="customer-email-code-panel" class="mt-3" hidden>
                                 <label for="customer-email-code">Enter the 6-digit code</label>
                                 <div class="d-flex gap-2">
@@ -159,6 +175,7 @@
                         </div>
                     </div>
                 @endif
+                @if ($canBookAsNewCustomer || Auth::check() || $customerLookupEnabled)
                 <div class="row g-lg-4 gy-5" id="checkout-details-layout" @if (!$showCheckoutDetails) hidden @endif>
                         <div class="col-lg-7">
                             <form id="checkout-form" method="POST" action="{{ route('checkout.process') }}">
@@ -638,6 +655,9 @@
                             </div>
                         </div>
                     </div>
+                @elseif (!$customerLookupEnabled)
+                    <div class="alert alert-info" role="status">Guest bookings are currently unavailable. Please sign in to continue.</div>
+                @endif
             @endif
         </div>
     </div>
@@ -2834,12 +2854,24 @@
             const phoneInternationalField = document.querySelector('#phone-international');
             const phoneErrorDiv = document.querySelector('#phone-error');
             const phoneValidDiv = document.querySelector('#phone-valid');
+            if (!phoneInput) return;
 
             // Generate preferred countries from available countries
             const preferredCountryCodes = ['lk', 'in', 'us', 'gb', 'ca', 'au'];
             const availablePreferredCountries = preferredCountryCodes.filter(code =>
                 @json($countries->pluck('code')->map(fn($c) => strtolower($c))->toArray()).includes(code.toLowerCase())
             );
+
+            const lookupPhoneInput = document.querySelector('#customer-lookup-mobile');
+            if (lookupPhoneInput) {
+                window.checkoutLookupIntlTelInput = window.intlTelInput(lookupPhoneInput, {
+                    initialCountry: 'lk',
+                    preferredCountries: availablePreferredCountries,
+                    separateDialCode: true,
+                    formatAsYouType: true,
+                    utilsScript: 'https://cdn.jsdelivr.net/npm/intl-tel-input@17/build/js/utils.js'
+                });
+            }
 
             const iti = window.intlTelInput(phoneInput, {
                 initialCountry: 'lk',
@@ -2925,7 +2957,7 @@
                 validatePhoneNumber();
             });
 
-            document.querySelector('#checkout-form').addEventListener('submit', function(e) {
+            document.querySelector('#checkout-form')?.addEventListener('submit', function(e) {
                 if (!validatePhoneNumber()) {
                     e.preventDefault();
                     e.stopImmediatePropagation();
@@ -2960,29 +2992,33 @@
             const phoneInternationalInput = document.getElementById('phone-international');
             const lookupEmailInput = document.getElementById('customer-lookup-email');
             const lookupMobileInput = document.getElementById('customer-lookup-mobile');
-            const emailButton = document.getElementById('send-customer-email-code');
-            const mobileButton = document.getElementById('send-customer-mobile-code');
+            const sendCodeButton = document.getElementById('send-customer-code');
             const verifyButton = document.getElementById('verify-customer-email-code');
             const resetButton = document.getElementById('reset-customer-details');
             const codePanel = document.getElementById('customer-email-code-panel');
             const codeInput = document.getElementById('customer-email-code');
             const status = document.getElementById('customer-email-code-status');
             const customerChoice = document.getElementById('checkout-customer-choice');
-            const customerOptions = document.getElementById('checkout-customer-options');
             const customerKindInputs = document.querySelectorAll('input[name="checkout_customer_kind"]');
             const continueCustomerChoice = document.getElementById('continue-customer-choice');
             const returningPanel = document.getElementById('returning-customer-panel');
             const detailsLayout = document.getElementById('checkout-details-layout');
             const backToCustomerChoice = document.getElementById('back-to-customer-choice');
+            const lookupChannelInputs = document.querySelectorAll('input[name="checkout_lookup_channel"]');
+            const lookupEmailField = document.getElementById('customer-lookup-email-field');
+            const lookupMobileField = document.getElementById('customer-lookup-mobile-field');
+            const lookupMobileError = document.getElementById('customer-lookup-mobile-error');
             const verifiedStatus = document.getElementById('verified-customer-status');
             const csrf = document.querySelector('meta[name="csrf-token"]')?.content;
             let activeChannel = 'email';
+            const cooldownUntil = { email: 0, mobile: 0 };
+            let cooldownTimer = null;
 
             if (!form || !emailInput || !phoneInput || !phoneInternationalInput || !resetButton) return;
 
             const identityValue = channel => channel === 'email'
                 ? (lookupEmailInput?.value || '').trim().toLowerCase()
-                : (lookupMobileInput?.value || '').trim();
+                : window.checkoutLookupIntlTelInput?.getNumber() || '';
             const syncCustomerChoice = () => {
                 const selected = selectedCustomerKind();
                 customerKindInputs.forEach(input => {
@@ -3003,9 +3039,39 @@
             };
             const showBookingForm = () => {
                 if (customerChoice) customerChoice.hidden = true;
+                if (returningPanel) returningPanel.hidden = true;
                 if (detailsLayout) detailsLayout.hidden = false;
             };
             const selectedCustomerKind = () => document.querySelector('input[name="checkout_customer_kind"]:checked')?.value;
+            const renderCooldown = () => {
+                if (!sendCodeButton) return;
+                const remaining = Math.max(0, Math.ceil((cooldownUntil[activeChannel] - Date.now()) / 1000));
+                sendCodeButton.disabled = remaining > 0;
+                sendCodeButton.textContent = remaining > 0
+                    ? `Send again in ${Math.floor(remaining / 60)}:${String(remaining % 60).padStart(2, '0')}`
+                    : 'Send verification code';
+                if (remaining && !cooldownTimer) cooldownTimer = setInterval(renderCooldown, 1000);
+                if (!remaining && cooldownTimer) {
+                    clearInterval(cooldownTimer);
+                    cooldownTimer = null;
+                }
+            };
+            const startCooldown = (channel, seconds) => {
+                cooldownUntil[channel] = Date.now() + Math.max(1, Number(seconds) || 60) * 1000;
+                renderCooldown();
+            };
+            const syncLookupChannel = () => {
+                const selected = document.querySelector('input[name="checkout_lookup_channel"]:checked')?.value || 'email';
+                const changed = selected !== activeChannel;
+                activeChannel = selected;
+                lookupChannelInputs.forEach(input => input.closest('label')?.classList.toggle('border-primary', input.checked));
+                if (lookupEmailField) lookupEmailField.hidden = activeChannel !== 'email';
+                if (lookupMobileField) lookupMobileField.hidden = activeChannel !== 'mobile';
+                if (changed && codePanel) codePanel.hidden = true;
+                if (changed && codeInput) codeInput.value = '';
+                if (lookupMobileError) lookupMobileError.textContent = '';
+                renderCooldown();
+            };
             const post = async (url, data) => {
                 const response = await fetch(url, {
                     method: 'POST',
@@ -3013,7 +3079,11 @@
                     body: JSON.stringify(data),
                 });
                 const payload = await response.json().catch(() => ({}));
-                if (!response.ok) throw new Error(payload?.errors?.code?.[0] || payload?.errors?.email?.[0] || payload?.message || 'Please try again.');
+                if (!response.ok) {
+                    const error = new Error(payload?.errors?.code?.[0] || payload?.errors?.email?.[0] || payload?.message || 'Please try again.');
+                    error.retryAfter = payload?.retry_after;
+                    throw error;
+                }
                 return payload;
             };
 
@@ -3036,34 +3106,46 @@
                 showSavedDetailsMessage('Saved details loaded. Check them and update anything that has changed.');
             };
 
-            const requestCode = async channel => {
-                if (!emailButton || !mobileButton || !codePanel || !codeInput) return;
-                activeChannel = channel;
+            const requestCode = async () => {
+                if (!sendCodeButton || !codePanel || !codeInput) return;
+                const channel = activeChannel;
                 const value = identityValue(channel);
                 if (!value) {
                     const input = channel === 'email' ? lookupEmailInput : lookupMobileInput;
                     if (!input) return;
                     input.focus();
-                    if (channel === 'email') input.reportValidity();
-                    showMessage(channel === 'email' ? 'Enter your email address first.' : 'Enter your mobile number first.');
+                    if (channel === 'email') {
+                        input.reportValidity();
+                        showMessage('Enter your email address first.');
+                    } else {
+                        showMessage('Choose your country and enter a valid mobile number.');
+                    }
                     return;
                 }
                 if (channel === 'email' && lookupEmailInput && !lookupEmailInput.checkValidity()) { lookupEmailInput.reportValidity(); return; }
-                const button = channel === 'email' ? emailButton : mobileButton;
-                button.disabled = true;
+                if (channel === 'mobile' && !window.checkoutLookupIntlTelInput?.isValidNumber()) {
+                    if (lookupMobileError) lookupMobileError.textContent = 'Enter a valid mobile number for the selected country.';
+                    lookupMobileInput?.focus();
+                    return;
+                }
+                sendCodeButton.disabled = true;
                 try {
                     await post(@json(route('checkout.customer-email.send-code')), { channel, value });
                     codePanel.hidden = false;
-                    showMessage(`If these details match an earlier booking, check your ${channel === 'email' ? 'inbox' : 'phone'} for a code.`);
+                    showMessage(`If these details match an earlier booking, check your ${channel === 'email' ? 'inbox' : 'phone'} for a code. It expires in 10 minutes.`);
+                    startCooldown(channel, 60);
                     codeInput.focus();
                 } catch (error) {
                     showMessage(error.message || 'Could not send a code. Please try again.');
+                    if (error.retryAfter) startCooldown(channel, error.retryAfter);
                 } finally {
-                    button.disabled = false;
+                    renderCooldown();
                 }
             };
 
             customerKindInputs.forEach(input => input.addEventListener('change', syncCustomerChoice));
+            lookupChannelInputs.forEach(input => input.addEventListener('change', syncLookupChannel));
+            syncLookupChannel();
             syncCustomerChoice();
             continueCustomerChoice?.addEventListener('click', () => {
                 if (selectedCustomerKind() === 'new') {
@@ -3071,17 +3153,16 @@
                     return;
                 }
                 if (selectedCustomerKind() === 'returning') {
-                    if (customerOptions) customerOptions.hidden = true;
+                    if (customerChoice) customerChoice.hidden = true;
                     if (returningPanel) returningPanel.hidden = false;
                     lookupEmailInput?.focus();
                 }
             });
             backToCustomerChoice?.addEventListener('click', () => {
-                if (customerOptions) customerOptions.hidden = false;
+                if (customerChoice) customerChoice.hidden = false;
                 if (returningPanel) returningPanel.hidden = true;
             });
-            emailButton?.addEventListener('click', () => requestCode('email'));
-            mobileButton?.addEventListener('click', () => requestCode('mobile'));
+            sendCodeButton?.addEventListener('click', requestCode);
 
             verifyButton?.addEventListener('click', async () => {
                 if (!codeInput || !codePanel) return;

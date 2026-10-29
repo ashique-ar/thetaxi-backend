@@ -22,6 +22,7 @@ class DynamicServiceConfigurationService
     /**
      * Frontend service categories mapping for enhanced UX
      */
+    /* Retained legacy category metadata; public categories are service-type managed.
     private const FRONTEND_CATEGORIES = [
         'transport' => [
             'name' => 'Transportation Services',
@@ -54,6 +55,7 @@ class DynamicServiceConfigurationService
             'color' => '#dc3545'
         ]
     ];
+    */
 
     /**
      * Service field configurations based on old form structure
@@ -536,7 +538,7 @@ class DynamicServiceConfigurationService
         $serviceTypes = $this->getAllServiceTypes();
         $categorized = [];
 
-        // Define category mapping based on old form structure
+        /* Retained legacy category mapping; grouping is managed by service_types.frontend_category.
         $categoryMapping = [
             'airport_transfers' => [
                 'category_info' => [
@@ -609,13 +611,21 @@ class DynamicServiceConfigurationService
                 $categorized[$categoryKey] = $categoryData;
             }
         }
+        */
+
+        foreach ($serviceTypes->filter(static fn ($service) => filled($service['category'] ?? null))->groupBy('category') as $category => $services) {
+            $categorized[$category] = [
+                'category_info' => ['name' => \Illuminate\Support\Str::headline($category), 'icon' => null, 'description' => null, 'color' => null],
+                'services' => $services->values()->toArray(),
+            ];
+        }
 
         return $categorized;
     }
 
     /**
      * Get dynamic form configuration for a specific service type.
-     * Resolve the public form from Service Type config, then config-service and default fallbacks.
+     * Resolve the public form from the service type's database configuration.
      */
     public function getServiceFormConfiguration(string $serviceCode): array
     {
@@ -658,19 +668,17 @@ class DynamicServiceConfigurationService
         $cacheKey = "service_form_config_public_v7_{$serviceCode}_{$serviceType->id}_{$revision}_{$parentRevision}{$companySuffix}";
 
         $config = Cache::remember($cacheKey, self::CACHE_TIMEOUT, function () use ($serviceCode, $serviceType, $parentServiceType) {
-            // Public form ownership order: Service Type form, config-service record, defaults.
+            // Public form fields come only from the service type's database configuration.
             $serviceTypeFields = $this->extractRenderableFields($serviceType->form_config);
-            $parentFields = $this->extractRenderableFields($parentServiceType?->form_config);
             $dbConfig = ServiceFormConfig::forCode($serviceCode);
+            $fields = $serviceTypeFields;
+            $configSource = 'service_type_form_config';
+
+            /* Disabled public form fallbacks; retain for reference.
             $configServiceFields = $this->extractRenderableFields($dbConfig?->config);
             $defaultFields = DefaultFormConfigService::getDefaults($serviceCode);
-
             if (!empty($serviceTypeFields)) {
-                $fields = $this->fillMissingFieldProperties(
-                    $serviceTypeFields,
-                    $configServiceFields,
-                    $defaultFields,
-                );
+                $fields = $this->fillMissingFieldProperties($serviceTypeFields, $configServiceFields, $defaultFields);
                 $configSource = 'service_type_form_config';
             } elseif (!empty($configServiceFields)) {
                 $fields = $this->fillMissingFieldProperties($configServiceFields, $defaultFields);
@@ -679,15 +687,12 @@ class DynamicServiceConfigurationService
                 $fields = $defaultFields;
                 $configSource = 'default_form_config_service';
             }
-
-            $fields = $this->inheritMappedEndDateDefaults(
-                $fields,
-                $serviceType->form_config ?? [],
-                $parentFields,
-                $parentServiceType?->form_config ?? []
-            );
+            $fields = $this->inheritMappedEndDateDefaults($fields, $serviceType->form_config ?? [], $parentFields, $parentServiceType?->form_config ?? []);
+            */
             $fields = $this->hydrateConditionalAirportFields($fields);
 
+            $baseConfig = $dbConfig?->config ?? [];
+            /* Disabled static public-form metadata fallback; retain for reference.
             $baseConfig = $dbConfig?->config
                 ?? (self::SERVICE_FIELD_CONFIGS[$serviceCode] ?? [
                     'required_fields' => ['pickup_location', 'from_date', 'passengers'],
@@ -695,6 +700,7 @@ class DynamicServiceConfigurationService
                     'special_fields'  => [],
                     'validation_rules' => [],
                 ]);
+            */
 
             $slabs       = $this->getServicePricingSlabs($serviceType->id);
             $commonRates = $this->getServiceCommonRates($serviceType->id);
@@ -702,12 +708,11 @@ class DynamicServiceConfigurationService
             return [
                 'service_type'            => $serviceType,
                 'fields'                  => $fields,
-                'field_mappings'          => $this->extractFieldMappings($serviceType->form_config)
-                    ?: $this->extractFieldMappings($dbConfig?->config),
+                'field_mappings'          => $this->extractFieldMappings($serviceType->form_config),
                 'base_fields'             => $baseConfig,
                 'pricing_slabs'           => $slabs,
                 'common_rates'            => $commonRates,
-                'frontend_category'       => $this->determineServiceCategory($serviceCode),
+                'frontend_category'       => $serviceType->frontend_category,
                 'calculation_formula'     => $this->getServiceCalculationFormula($serviceType->id),
                 'estimated_duration_range' => $this->getServiceDurationRange($slabs),
                 'supported_features'      => array_values(array_filter(
@@ -1044,13 +1049,14 @@ class DynamicServiceConfigurationService
                 data_get($serviceType->form_config, 'service_features', []),
                 static fn ($feature) => is_string($feature) && trim($feature) !== ''
             )),
-            'category' => $this->determineServiceCategory($serviceType->code)
+            'category' => $serviceType->frontend_category
         ];
     }
 
     /**
      * Determine which category a service belongs to
      */
+    /* Retained legacy service-code category mapping; use service_types.frontend_category.
     private function determineServiceCategory(string $serviceCode): string
     {
         $categoryMapping = [
@@ -1067,6 +1073,7 @@ class DynamicServiceConfigurationService
 
         return $categoryMapping[$serviceCode] ?? 'transport';
     }
+    */
 
     /**
      * Get pricing slabs for a service type

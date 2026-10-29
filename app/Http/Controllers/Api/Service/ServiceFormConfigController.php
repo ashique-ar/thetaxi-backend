@@ -868,6 +868,7 @@ class ServiceFormConfigController extends Controller
                 'form_config.*.submit_as' => 'nullable|string|max:50',
                 'form_config.*.location_mode' => 'nullable|string|in:autocomplete,airport,predefined_or_custom,conditional',
                 'form_config.*.sync_from' => 'nullable|string|max:50',
+                'form_config.*.sync_to' => 'nullable|string|max:50',
                 'form_config.*.visible_when' => 'nullable|array',
                 'form_config.*.default' => 'nullable|string',
                 'form_config.*.default_option_value' => 'nullable|string|max:255',
@@ -911,6 +912,16 @@ class ServiceFormConfigController extends Controller
             foreach ($formConfig as $fieldName => $fieldConfig) {
                 if (!is_array($fieldConfig)) {
                     continue;
+                }
+                if (($fieldConfig['type'] ?? null) === 'number' && (filled($fieldConfig['sync_from'] ?? null) || filled($fieldConfig['sync_to'] ?? null))) {
+                    foreach (['sync_from', 'sync_to'] as $syncField) {
+                        $dateField = $formConfig[$fieldConfig[$syncField] ?? ''] ?? null;
+                        if (!is_array($dateField) || ($dateField['type'] ?? null) !== 'date') {
+                            throw ValidationException::withMessages([
+                                "form_config.{$fieldName}.{$syncField}" => 'Choose a configured date field.',
+                            ]);
+                        }
+                    }
                 }
                 $offset = $fieldConfig['default_date_offset_days'] ?? null;
                 $sourceName = trim((string) ($fieldConfig['default_date_from'] ?? ''));

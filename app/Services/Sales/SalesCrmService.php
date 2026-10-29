@@ -18,6 +18,7 @@ use App\Support\PhoneNumberMatch;
 use Carbon\CarbonImmutable;
 use Illuminate\Database\QueryException;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Schema;
 use Illuminate\Support\Str;
 
 class SalesCrmService
@@ -952,19 +953,45 @@ class SalesCrmService
 
     private function stageEvent(SalesOpportunity $opportunity, ?string $from, string $to, ?string $reasonCode, ?string $reason, string $key, string $actor, ?string $fromOwner = null, array $snapshotFacts = [], ?string $eventName = null): void
     {
+        $snapshot = array_merge($opportunity->only([
+            'stage', 'owner_sales_profile_id', 'expected_value_lkr', 'probability_percent',
+            'expected_close_date', 'state_version', 'workflow_contact_stage_setting_id',
+            'workflow_qualification_stage_setting_id', 'workflow_quotation_stage_setting_id',
+            'workflow_negotiation_stage_setting_id',
+        ]), $snapshotFacts);
+        $snapshot['stage_labels'] = $this->opportunityStageLabels($opportunity);
         SalesOpportunityStageEvent::create([
             'opportunity_id' => $opportunity->id, 'from_stage' => $from, 'to_stage' => $to,
             'from_owner_sales_profile_id' => $fromOwner ?? $opportunity->owner_sales_profile_id,
             'to_owner_sales_profile_id' => $opportunity->owner_sales_profile_id, 'reason_code' => $reasonCode,
             'reason' => $reason, 'idempotency_key' => $key, 'actor_user_id' => $actor, 'occurred_at' => now(),
-            'snapshot' => array_merge($opportunity->only([
-                'stage', 'owner_sales_profile_id', 'expected_value_lkr', 'probability_percent',
-                'expected_close_date', 'state_version', 'workflow_contact_stage_setting_id',
-                'workflow_qualification_stage_setting_id', 'workflow_quotation_stage_setting_id',
-                'workflow_negotiation_stage_setting_id',
-            ]), $snapshotFacts),
+            'snapshot' => $snapshot,
         ]);
         $this->events->record('sales', $opportunity->company_id, 'opportunity', $opportunity->id, 'sales.opportunity.'.($eventName ?? $to), $opportunity->state_version, 1, ['from_stage' => $from, 'to_stage' => $to] + $snapshotFacts, now(), $key);
+    }
+
+    private function opportunityStageLabels(SalesOpportunity $opportunity): array
+    {
+        $labels = SalesPolicySettingsService::STAGE_LABEL_DEFAULTS;
+        if (! Schema::hasColumn('sales_company_feature_settings', 'stage_label')) return $labels;
+        $mappings = [
+            'contacted' => ['workflow_contact_stage_setting_id', 'crm_contact_stage'],
+            'qualified' => ['workflow_qualification_stage_setting_id', 'crm_qualification_stage'],
+            'quotation' => ['workflow_quotation_stage_setting_id', 'crm_quotation_stage'],
+            'negotiation' => ['workflow_negotiation_stage_setting_id', 'crm_negotiation_stage'],
+        ];
+        $ids = collect($mappings)->map(fn ($mapping) => $opportunity->{$mapping[0]})->filter()->unique()->values();
+        if ($ids->isEmpty()) return $labels;
+        $settings = DB::table('sales_company_feature_settings')->whereIn('id', $ids)
+            ->where('company_id', $opportunity->company_id)->get(['id', 'feature_key', 'stage_label'])->keyBy('id');
+        foreach ($mappings as $stage => [$column, $feature]) {
+            $setting = $settings->get($opportunity->{$column});
+            if ($setting && $setting->feature_key === $feature && trim((string) $setting->stage_label) !== '') {
+                $labels[$stage] = trim((string) $setting->stage_label);
+            }
+        }
+
+        return $labels;
     }
 
     private function taskEvent(
