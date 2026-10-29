@@ -366,6 +366,9 @@
                 : 'full';
             $configuredRow = max(1, (int) ($field['row'] ?? 1));
             $autoDesktopSpan = $autoDesktopSpans->get($configuredRow, 12);
+            $isConfiguredDateDuration = $fieldType === 'number'
+                && filled($field['sync_from'] ?? null)
+                && filled($field['sync_to'] ?? null);
         @endphp
         @if($currentLayoutRow !== $configuredRow)
             @if($currentLayoutRow !== null)
@@ -386,7 +389,7 @@
                 && $submitAs === $endDateField;
             $showConditional = !$isReturnConditional || (bool) old('is_return_trip', $rideNowIsReturnTrip ?? false);
         @endphp
-        <div class="dynamic-field-layout dynamic-field-width-{{ $configuredWidth }} dynamic-field-tablet-{{ $configuredTabletWidth }} dynamic-field-mobile-{{ $configuredMobileWidth }}"
+        <div class="dynamic-field-layout dynamic-field-width-{{ $configuredWidth }} dynamic-field-tablet-{{ $configuredTabletWidth }} dynamic-field-mobile-{{ $configuredMobileWidth }} {{ $isConfiguredDateDuration ? 'dynamic-field-layout--date-duration' : '' }}"
              data-field-row="{{ $configuredRow }}"
              style="{{ $isReturnConditional && !$showConditional ? 'display: none !important;' : '' }}{{ $configuredWidth === 'auto' ? 'grid-column: span ' . $autoDesktopSpan . ';' : '' }}"
              @if($isReturnConditional)

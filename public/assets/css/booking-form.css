@@ -2055,3 +2055,8 @@ input.ui-autocomplete-loading {
     }
 }
 
+.filter-wrapper .dynamic-field-layout--date-duration,
+.t2-filter-wrapper .dynamic-field-layout--date-duration {
+    grid-column: 1 / -1 !important;
+}
+

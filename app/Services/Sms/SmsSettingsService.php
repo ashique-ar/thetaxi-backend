@@ -107,7 +107,7 @@ class SmsSettingsService
             )),
             'trip_completion_template' => trim((string) (
                 $settings['sms_trip_completion_template']
-                    ?? "Thank you for travelling with {company_name}.\n\nBooking #: {booking_number}\nYour trip has been completed.\n\nWe hope you had a pleasant journey.\n\n{company_website}"
+                    ?? "Thank you for travelling with {company_name}.\n\nBooking #: {booking_number}\nYour trip has been completed.\n\nWe hope you had a pleasant journey.\nRate your trip: {feedback_url}\n\n{company_website}"
             )),
             'payment_confirmation_template' => trim((string) (
                 $settings['sms_payment_confirmation_template']
