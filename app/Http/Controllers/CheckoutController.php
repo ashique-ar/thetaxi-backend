@@ -582,17 +582,30 @@ class CheckoutController extends Controller
         if (is_string($request->input('email'))) {
             $request->merge(['email' => strtolower($request->input('email'))]);
         }
+        $contactMethod = Auth::check() ? 'email' : $request->input('contact_method', 'mobile');
+        if (! in_array($contactMethod, ['email', 'mobile'], true)) {
+            $contactMethod = 'mobile';
+        }
+        $request->merge(['contact_method' => $contactMethod]);
+        if (! Auth::check() && ! ($customerLookupEnabled && $this->hasRecentCheckoutVerification())) {
+            // Contact choice is enforced server-side; hidden fields cannot become accidental identifiers.
+            if ($contactMethod === 'email') {
+                $request->merge(['phone' => null, 'phone_country_code' => null, 'phone_international' => null]);
+            } else {
+                $request->merge(['email' => null]);
+            }
+        }
         $request->merge([
             'identification' => filled($request->input('identification'))
                 ? strtoupper(trim((string) $request->input('identification')))
                 : null,
         ]);
-        $existingCustomerId = Customer::query()
+        $existingCustomerId = filled($request->input('email')) ? Customer::query()
             ->whereHas('user', fn ($query) => $query->whereRaw(
                 'LOWER(email) = ?',
                 [strtolower(trim((string) $request->input('email')))]
             ))
-            ->value('id');
+            ->value('id') : null;
         if (!$existingCustomerId && Auth::check()) {
             $existingCustomerId = $this->customerService->customerForUser(Auth::user())?->id;
         }
@@ -603,13 +616,14 @@ class CheckoutController extends Controller
 
         // Define validation rules
         $rules = [
+            'contact_method' => ['required', 'in:email,mobile'],
             'payment_type' => 'required|in:' . implode(',', $allowedPaymentTypes),
             'first_name' => ['required', 'string', 'max:255', 'regex:/^(?=.*\p{L})[\p{L}\p{M} .\x27?-]+$/u'],
             'last_name' => ['nullable', 'string', 'max:255', 'regex:/^(?=.*\p{L})[\p{L}\p{M} .\x27?-]+$/u'],
-            'phone' => ['required', 'string', 'min:5', 'max:20', 'regex:/^(?=(?:.*\d){5,})[+\d\s().-]+$/'],
-            'phone_country_code' => 'required|string|max:5',
-            'phone_international' => 'required|string|regex:/^\+[0-9]{1,3}[0-9]{6,14}$/',
-            'email' => 'required|email|max:255',
+            'phone' => ['nullable', 'required_if:contact_method,mobile', 'string', 'min:5', 'max:20', 'regex:/^(?=(?:.*\d){5,})[+\d\s().-]+$/'],
+            'phone_country_code' => 'nullable|required_if:contact_method,mobile|string|max:5',
+            'phone_international' => ['nullable', 'required_if:contact_method,mobile', 'string', 'regex:/^\+[1-9][0-9]{7,14}$/'],
+            'email' => 'nullable|required_if:contact_method,email|email|max:255',
             'identification' => [
                 'nullable', 'string', 'max:50',
                 function ($attribute, $value, $fail): void {
@@ -665,8 +679,10 @@ class CheckoutController extends Controller
             $verifiedCustomer = Customer::query()->with('user')->find($verifiedCustomerId);
             $phoneCallingCode = $validated['phone_country_code'] ?? null;
             $submittedMobile = $this->normalizeCheckoutMobile((string) ($validated['phone_international'] ?? ''));
+            $submittedEmail = mb_strtolower(trim((string) ($validated['email'] ?? '')));
             if (! ($verifiedCustomer?->user
-                && mb_strtolower(trim((string) $verifiedCustomer->user->email)) === mb_strtolower(trim($validated['email']))
+                && (! filled($verifiedCustomer->user->email)
+                    || mb_strtolower(trim((string) $verifiedCustomer->user->email)) === $submittedEmail)
                 && (! filled($verifiedCustomer->user->phone)
                     || $this->normalizeCheckoutMobile((string) $verifiedCustomer->user->phone, $phoneCallingCode) === $submittedMobile))) {
                 throw ValidationException::withMessages(['email' => ['For a returning customer, keep the saved email and mobile number. You can update the other details below.']]);
@@ -721,7 +737,7 @@ class CheckoutController extends Controller
 
         // Recalculate totals and revalidate any applied portal-owned promo code
         // against the current cart and existing customer before creating a booking.
-        $checkoutEmail = mb_strtolower(trim($validated['email']));
+        $checkoutEmail = mb_strtolower(trim((string) ($validated['email'] ?? '')));
         $emailIdentityConfirmed = (Auth::check()
                 && mb_strtolower(trim((string) Auth::user()->email)) === $checkoutEmail)
             || ($customerLookupEnabled
@@ -730,6 +746,9 @@ class CheckoutController extends Controller
         $existingCustomer = $emailIdentityConfirmed
             ? $this->customerService->getCustomerByEmail($validated['email'])
             : null;
+        if (! $existingCustomer && $customerLookupEnabled && $this->hasRecentCheckoutVerification()) {
+            $existingCustomer = Customer::query()->find(session('checkout_verified_customer_id'));
+        }
         $promoState = $this->cartService->updateTotals($cartModel, $existingCustomer?->id);
         $cartModel->refresh();
 
@@ -769,9 +788,9 @@ class CheckoutController extends Controller
 
             // Prepare customer data
             $validated['customer_name'] = trim($validated['first_name'] . ' ' . $validated['last_name']);
-            $validated['customer_email'] = $validated['email'];
+            $validated['customer_email'] = $validated['email'] ?? null;
             // Use international format phone number for payment gateway
-            $validated['customer_phone'] = $validated['phone_international'] ?? $validated['phone'];
+            $validated['customer_phone'] = $validated['phone_international'] ?? $validated['phone'] ?? null;
             $validated['customer_address'] = $validated['address'];
             $validated['customer_city'] = $validated['city'];
             $validated['customer_country'] = $validated['country'];

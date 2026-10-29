@@ -34,12 +34,18 @@ class CustomerService
     {
         return DB::transaction(function () use ($data) {
             $data = $this->normalizeCheckoutData($data);
-            $email = $data['customer_email'];
-            $this->lockCustomerEmail($email);
+            $email = $data['customer_email'] ?? null;
+            if ($email) {
+                $this->lockCustomerEmail($email);
+            }
+            $phone = (string) ($data['customer_phone'] ?? '');
+            if ($phone && ! $email) {
+                $this->lockCustomerPhone($phone);
+            }
             
             // CRITICAL FIX: Check if user with this email already exists FIRST
             // This prevents duplicate customer creation and links checkout bookings to the existing customer.
-            $user = $this->findUserByEmail($email, true);
+            $user = $email ? $this->findUserByEmail($email, true) : null;
 
             if ($user) {
                 if (!$this->checkoutEmailIsVerified($email)) {
@@ -83,6 +89,11 @@ class CustomerService
             }
 
             // No existing user or customer - create new ones
+            if ($phone && $this->getCustomerByPhone($phone)) {
+                throw ValidationException::withMessages([
+                    'phone' => ['This mobile number is linked to an existing customer. Choose “Returning customer” and verify it, or use a different number.'],
+                ]);
+            }
             [$firstName, $lastName] = $this->splitCustomerName($data['customer_name']);
 
             $user = User::create([
@@ -161,7 +172,8 @@ class CustomerService
         if (Auth::check()) {
             $user = Auth::user();
 
-            if (strtolower(trim((string) ($data['customer_email'] ?? ''))) !== strtolower(trim((string) $user->email))) {
+            if (filled($data['customer_email'] ?? null)
+                && strtolower(trim((string) $data['customer_email'])) !== strtolower(trim((string) $user->email))) {
                 throw ValidationException::withMessages([
                     'email' => ['Use the email address on your signed-in account to complete this booking.'],
                 ]);
@@ -209,9 +221,21 @@ class CustomerService
 
         $phoneCustomer = $this->getCustomerByPhone((string) ($data['customer_phone'] ?? ''));
         if ($phoneCustomer) {
-            throw ValidationException::withMessages([
-                'phone' => ['This mobile number is linked to an existing customer. If the returning-customer option is available, use it to verify your details; otherwise contact our booking team.'],
-            ]);
+            $verifiedCustomerId = (string) session('checkout_verified_customer_id', '');
+            $verifiedMobile = preg_replace('/\D+/', '', (string) session('checkout_verified_customer_mobile', ''));
+            $submittedMobile = preg_replace('/\D+/', '', (string) ($data['customer_phone'] ?? ''));
+            if ($verifiedCustomerId !== (string) $phoneCustomer->id
+                || ! $verifiedMobile || $verifiedMobile !== $submittedMobile
+                || now()->timestamp - (int) session('checkout_verified_email_at', 0) > 1800) {
+                throw ValidationException::withMessages([
+                    'phone' => ['This mobile number is linked to an existing customer. Choose “Returning customer” and verify it, or use a different number.'],
+                ]);
+            }
+
+            if (! $phoneCustomer->user || $phoneCustomer->user->trashed() || ! $phoneCustomer->user->is_active) {
+                throw ValidationException::withMessages(['phone' => ['This customer profile is inactive. Please contact the business before booking with this number.']]);
+            }
+            return $this->updateCustomerProfile($phoneCustomer, $data)->load('user');
         }
 
         return $this->createGuestCustomer($data);
@@ -386,6 +410,15 @@ class CustomerService
         }
 
         DB::statement('SELECT pg_advisory_xact_lock(?)', [(string) sprintf('%u', crc32(strtolower(trim($email))))]);
+    }
+
+    private function lockCustomerPhone(string $phone): void
+    {
+        if (DB::connection()->getDriverName() !== 'pgsql') {
+            return;
+        }
+
+        DB::statement('SELECT pg_advisory_xact_lock(?)', [(string) sprintf('%u', crc32('phone:'.preg_replace('/\D+/', '', $phone)))]);
     }
 
     private function normalizeCheckoutData(array $data): array

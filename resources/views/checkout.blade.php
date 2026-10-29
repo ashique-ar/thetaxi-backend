@@ -198,6 +198,15 @@
                                 </div>
                                 <div class="checkout-form">
                                     <div class="row">
+                                        <div class="col-12" id="checkout-contact-method">
+                                            <fieldset class="border-0 p-0 m-0">
+                                                <legend class="form-label fw-semibold mb-2">How should we contact you?</legend>
+                                                <div class="d-flex flex-wrap gap-2">
+                                                    <label class="btn btn-outline-secondary rounded-pill px-3"><input class="form-check-input me-1" type="radio" name="contact_method" value="mobile" @checked(old('contact_method', 'mobile') === 'mobile')> Mobile</label>
+                                                    <label class="btn btn-outline-secondary rounded-pill px-3"><input class="form-check-input me-1" type="radio" name="contact_method" value="email" @checked(old('contact_method') === 'email')> Email</label>
+                                                </div>
+                                            </fieldset>
+                                        </div>
                                         <div class="col-md-6">
                                             <div class="form-inner two mb-25">
                                                 <label>First Name*</label>
@@ -218,11 +227,11 @@
                                                 @enderror
                                             </div>
                                         </div>
-                                        <div class="col-md-6">
+                                        <div class="col-md-6" id="checkout-phone-field">
                                             <div class="form-inner two mb-25">
-                                                <label>Phone Number*</label>
+                                                <label>Mobile Number<span class="checkout-contact-required">*</span></label>
                                                 <input type="tel" id="phone-input" name="phone"
-                                                    placeholder="Phone number" autocomplete="phone" required
+                                                    placeholder="Mobile number" autocomplete="tel"
                                                     value="{{ old('phone') }}" style="padding-left: 48px;">
                                                 <div id="phone-error" class="text-danger mt-2" style="display: none;">
                                                 </div>
@@ -238,11 +247,11 @@
                                                 @enderror
                                             </div>
                                         </div>
-                                        <div class="col-md-6">
+                                        <div class="col-md-6" id="checkout-email-field">
                                             <div class="form-inner two mb-25">
-                                                <label>Email Address*</label>
+                                                <label>Email Address<span class="checkout-contact-required">*</span></label>
                                                 <input type="email" name="email" placeholder="Enter email address"
-                                                    required value="{{ old('email') }}">
+                                                    value="{{ old('email') }}">
                                                 @error('email')
                                                     <span class="text-danger">{{ $message }}</span>
                                                 @enderror
