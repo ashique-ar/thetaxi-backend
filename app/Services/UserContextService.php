@@ -977,7 +977,7 @@ class UserContextService
         $roleMap = [
             'customer' => ['customer'],
             'vehicle_owner' => ['vehicle-owner'],
-            'staff' => ['staff'],
+            'staff' => ['staff', 'staff-operations'],
             'driver' => ['driver'],
             'agent' => ['agent'],
         ];

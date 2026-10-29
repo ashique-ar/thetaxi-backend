@@ -614,7 +614,7 @@ class AllPermissionsSeeder extends Seeder
     private function seedBaselineRoles(string $guard, array $allPermissions, array $permissionModels): void
     {
         $rolePermissions = [
-            'staff-operations' => array_values(array_diff(array_unique(array_merge(
+            'staff-operations' => array_values(array_filter(array_diff(array_unique(array_merge(
                 $this->matchingPermissions(
                     $allPermissions,
                     '/^(bookings|booking-[a-z-]+|vehicles|vehicle-[a-z-]+|drivers|driver-[a-z-]+|driving-licen[cs]es|driving-licen[cs]e-types)\./'
@@ -642,7 +642,10 @@ class AllPermissionsSeeder extends Seeder
                 'bookings.tracking_estimate',
                 'approve_bookings',
                 'create_bookings_for_others',
-            ])),
+            ])), fn (string $permission): bool => preg_match(
+                '/^(vehicles|vehicle-[a-z-]+|drivers|driver-[a-z-]+|driving-licen[cs]es|driving-licen[cs]e-types)\.(?!view$)/',
+                $permission
+            ) !== 1),
             'manager' => $this->permissionsForTemplate('manager', $allPermissions),
             'dispatcher' => $this->permissionsForTemplate('dispatcher', $allPermissions),
             'customer-support' => $this->permissionsForTemplate('customer-support', $allPermissions),
@@ -1284,6 +1287,18 @@ class AllPermissionsSeeder extends Seeder
         foreach ($rolePermissions as $roleName => $permissions) {
             $role = Role::firstOrCreate(['name' => $roleName, 'guard_name' => $guard]);
             $this->addPermissionsToRole($role, $permissions, $permissionModels);
+
+            if ($roleName === 'staff-operations') {
+                $fleetWritePermissions = array_filter($allPermissions, fn (string $permission): bool => preg_match(
+                    '/^(vehicles|vehicle-[a-z-]+|drivers|driver-[a-z-]+|driving-licen[cs]es|driving-licen[cs]e-types)\.(?!view$)/',
+                    $permission
+                ) === 1);
+                $this->revokePermissionsFromRole($role, array_merge($fleetWritePermissions, [
+                    'bookings.assign', 'bookings.approve', 'bookings.price_override', 'bookings.delete',
+                    'bookings.export', 'bookings.tracking_export', 'bookings.tracking_replay',
+                    'bookings.tracking_estimate', 'approve_bookings', 'create_bookings_for_others',
+                ]), $permissionModels);
+            }
         }
     }
 
