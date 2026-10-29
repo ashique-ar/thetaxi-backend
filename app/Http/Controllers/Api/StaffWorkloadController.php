@@ -33,7 +33,8 @@ class StaffWorkloadController extends Controller
         $employeesPage = $staffAccess->scope(Staff::query(), $request->user())
             ->join('users', 'users.id', '=', 'staff.user_id')
             ->where('staff.company_id', $companyId)
-            ->whereNull('staff.deleted_at')->whereNull('staff.employment_ended_at')
+            ->whereNull('staff.deleted_at')
+            ->where(fn ($employment) => $employment->whereNull('staff.employment_ended_at')->orWhere('staff.employment_ended_at', '>', now()))
             ->whereNull('users.deleted_at')->where('users.is_active', true)
             ->orderBy('users.first_name')->orderBy('users.last_name')->orderBy('staff.id')
             ->select(['staff.id as staff_id', 'staff.user_id', 'staff.code', 'users.first_name', 'users.last_name'])
@@ -111,7 +112,8 @@ class StaffWorkloadController extends Controller
             $available[] = 'calls_last_7_days';
             $since = now()->subDays(7);
             $eligibleCallAssignees = User::permission('phone-calls.view')->whereHas('staff', fn ($staff) => $staff
-                ->where('company_id', $companyId)->whereNull('deleted_at')->whereNull('employment_ended_at'))
+                ->where('company_id', $companyId)->whereNull('deleted_at')
+                ->where(fn ($employment) => $employment->whereNull('employment_ended_at')->orWhere('employment_ended_at', '>', now())))
                 ->where('is_active', true)->whereNull('deleted_at')->select('id');
             foreach (DB::table('phone_calls')->where('company_id', $companyId)->whereNull('deleted_at')
                 ->where('created_at', '>=', $since)->whereIn('assigned_user_id', $eligibleCallAssignees)

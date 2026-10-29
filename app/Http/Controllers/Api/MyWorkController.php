@@ -209,7 +209,8 @@ class MyWorkController extends Controller
 
         if ($request->user()->can('phone-calls.view') && $request->user()->can('phone-calls.edit')) {
             $eligibleCallAssignees = User::permission('phone-calls.view')->whereHas('staff', fn ($staff) => $staff
-                ->where('company_id', $companyId)->whereNull('deleted_at')->whereNull('employment_ended_at'))
+                ->where('company_id', $companyId)->whereNull('deleted_at')
+                ->where(fn ($employment) => $employment->whereNull('employment_ended_at')->orWhere('employment_ended_at', '>', now())))
                 ->where('is_active', true)->whereNull('deleted_at')->select('id');
             $queues[] = ['group' => 'assignment', 'title' => 'Missed calls to assign', 'help' => 'Unassigned missed calls with no follow-up scheduled', 'icon' => 'person_add',
                 'link' => '/communication/calls?unassigned_follow_up=true', 'count' => (int) DB::table('phone_calls')
@@ -282,7 +283,8 @@ class MyWorkController extends Controller
                 ->join('users as owner_user', 'owner_user.id', '=', 'owner_staff.user_id')
                 ->where('profile.company_id', $companyId)->where('profile.status', 'active')->whereNull('profile.deleted_at')
                 ->where('profile.effective_from', '<=', now())
-                ->where('owner_staff.company_id', $companyId)->whereNull('owner_staff.deleted_at')->whereNull('owner_staff.employment_ended_at')
+                ->where('owner_staff.company_id', $companyId)->whereNull('owner_staff.deleted_at')
+                ->where(fn ($employment) => $employment->whereNull('owner_staff.employment_ended_at')->orWhere('owner_staff.employment_ended_at', '>', now()))
                 ->whereNull('owner_user.deleted_at')->where('owner_user.is_active', true)->where('owner_staff.user_id', $userId)
                 ->value('profile.id');
             if ($profile) {
