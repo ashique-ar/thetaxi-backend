@@ -148,7 +148,7 @@
                                     </label>
                                 </div>
                             </fieldset>
-                            <div class="row">
+                            <div class="row checkout-lookup-fields">
                                 <div id="customer-lookup-email-field" class="col-md-6 mb-3">
                                     <label for="customer-lookup-email">Email address</label>
                                     <input type="email" id="customer-lookup-email" class="form-control" autocomplete="email" placeholder="you@example.com">
@@ -945,10 +945,10 @@
             min-height: 76px;
             padding: 14px 16px;
             border: 1px solid #dbe3ef;
-            border-radius: 14px;
+            border-radius: 10px;
             background: #fff;
             cursor: pointer;
-            transition: border-color .18s ease, box-shadow .18s ease, background-color .18s ease, transform .18s ease;
+            transition: border-color .18s ease, box-shadow .18s ease, background-color .18s ease;
         }
 
         .checkout-customer-options {
@@ -989,7 +989,6 @@
 
         .checkout-customer-option:hover {
             border-color: var(--primary-color1, #BF2629);
-            transform: translateY(-1px);
             box-shadow: 0 10px 26px rgba(15, 23, 42, .08);
         }
 
@@ -1059,6 +1058,24 @@
             border-radius: 10px;
         }
 
+        .checkout-returning-panel .checkout-lookup-fields {
+            max-width: 780px;
+        }
+
+        .checkout-returning-panel .checkout-form > button {
+            min-height: 44px;
+            padding-inline: 22px;
+        }
+
+        .checkout-returning-panel #customer-email-code-status {
+            max-width: 780px;
+        }
+
+        .checkout-page :where(input, select, textarea, button, a):focus-visible {
+            outline: 3px solid color-mix(in srgb, var(--primary-color1, #BF2629) 48%, white);
+            outline-offset: 2px;
+        }
+
         .checkout-returning-panel #customer-email-code-panel {
             max-width: 540px;
             padding: 18px;
@@ -1083,6 +1100,7 @@
             body[class] .checkout-page .checkout-customer-choice .checkout-customer-options { padding: 0 18px 18px; }
             body[class] .checkout-page .checkout-returning-panel .checkout-form { padding: 0 18px 18px; }
             .checkout-returning-panel #customer-email-code-panel .d-flex { flex-direction: column; }
+            .checkout-returning-panel .checkout-lookup-fields { max-width: none; }
         }
 
         .checkout-form-title {

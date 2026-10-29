@@ -14,6 +14,12 @@ body.theme-theme-03 .checkout-workflow--theme-03 { padding: var(--t3-section-spa
 body.theme-theme-03 .checkout-workflow--theme-03 .checkout-form-wrapper { overflow: hidden; border: 1px solid var(--t3-line); border-radius: 0; background: #fffdf8; box-shadow: 12px 12px 0 var(--t3-stone); }
 body.theme-theme-03 .checkout-workflow--theme-03 .checkout-form-title { padding: 24px 28px; border-bottom: 5px solid var(--t3-ink); background: #fffaf2; }
 body.theme-theme-03 .checkout-workflow--theme-03 .checkout-form { padding: clamp(22px, 4vw, 38px); }
+body.theme-theme-03 .checkout-workflow--theme-03 :where(.checkout-customer-choice, .checkout-returning-panel) { border-color: var(--t3-line); background: #fffdf8; box-shadow: 8px 8px 0 var(--t3-stone); }
+body.theme-theme-03 .checkout-workflow--theme-03 :where(.checkout-customer-choice, .checkout-returning-panel) .checkout-form-title { padding: 20px 24px 16px; border-bottom: 1px solid var(--t3-line); background: #fffaf2; }
+body.theme-theme-03 .checkout-workflow--theme-03 .checkout-returning-panel .checkout-form { padding: 22px 24px 24px; }
+body.theme-theme-03 .checkout-workflow--theme-03 .checkout-customer-option { border-color: var(--t3-line); border-radius: 4px; background: #fffaf2; }
+body.theme-theme-03 .checkout-workflow--theme-03 .checkout-customer-option:has(input:checked) { border-color: var(--t3-accent); background: #f8eee4; box-shadow: inset 0 0 0 1px var(--t3-accent); }
+body.theme-theme-03 .checkout-workflow--theme-03 #customer-email-code-panel { border-color: var(--t3-line); border-radius: 4px; background: #fffaf2; }
 body.theme-theme-03 .checkout-workflow--theme-03 .form-section-divider { margin: 28px 0 20px; padding-top: 20px; border-top: 1px solid var(--t3-line); }
 body.theme-theme-03 .checkout-workflow--theme-03 :where(.terms-conditions-section, .payment-type-selection .card, .quotation-notice, .checkout-option-panel) { border: 1px solid var(--t3-line) !important; border-radius: 0 !important; background: #fffaf2 !important; box-shadow: none !important; }
 body.theme-theme-03 .checkout-workflow--theme-03 .term-body :where(p, a, span, li, h1, h2, h3, h4) { word-break: normal; overflow-wrap: break-word; }
@@ -38,4 +44,6 @@ body.theme-theme-03 .checkout-workflow--theme-03 :where(.apply-promo-checkout-bt
     body.theme-theme-03 .checkout-workflow--theme-03 :where(.checkout-form-title, .checkout-form) { padding-inline: 18px; }
     body.theme-theme-03 .checkout-workflow--theme-03 .checkout-cart-item .item-area { align-items: flex-start; }
     body.theme-theme-03 .checkout-workflow--theme-03 :where(button, .btn, input, select) { max-width: 100%; }
+    body.theme-theme-03 .checkout-workflow--theme-03 :where(.checkout-customer-choice, .checkout-returning-panel) .checkout-form-title { padding: 18px; }
+    body.theme-theme-03 .checkout-workflow--theme-03 .checkout-returning-panel .checkout-form { padding: 18px; }
 }

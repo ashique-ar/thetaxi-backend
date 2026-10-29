@@ -253,6 +253,9 @@ class InquiryController extends Controller
     public function store(CreateInquiryRequest $request): JsonResponse
     {
         $data = $request->validated();
+        if (($data['source'] ?? null) === 'respond_io') {
+            $this->ensureRespondIoEnabled();
+        }
         $data['company_id'] = app(SingleCompanyScope::class)->activeDefaultCompany()?->id;
         abort_unless($data['company_id'], 409, 'Set one active default company before creating inquiries.');
         $data['created_user_id'] = $request->user()->id;
@@ -312,13 +315,15 @@ class InquiryController extends Controller
             app(InquiryFirstResponseDeadlineService::class)->constrainOverdue($pastFirstResponseQuery, $targetMinutes, now());
             $pastFirstResponse = $pastFirstResponseQuery->count();
         }
-        $responseWindow = (clone $inquiries)->where('first_response_sent_at', '>=', now()->subDays(30))
-            ->whereNotNull('created_at')->whereColumn('first_response_sent_at', '>=', 'created_at');
+        $receivedAfter = now()->subDays(30)->utc();
+        $responseWindow = (clone $inquiries)->where('created_at', '>=', $receivedAfter)
+            ->whereNotNull('first_response_sent_at')->whereColumn('first_response_sent_at', '>=', 'created_at');
+        $averageQuery = clone $responseWindow;
         $averageSeconds = match (DB::connection()->getDriverName()) {
-            'pgsql' => $responseWindow->selectRaw('AVG(EXTRACT(EPOCH FROM (first_response_sent_at - created_at))) AS aggregate')->value('aggregate'),
-            'mysql', 'mariadb' => $responseWindow->selectRaw('AVG(TIMESTAMPDIFF(SECOND, created_at, first_response_sent_at)) AS aggregate')->value('aggregate'),
-            'sqlite' => $responseWindow->selectRaw('AVG((julianday(first_response_sent_at) - julianday(created_at)) * 86400) AS aggregate')->value('aggregate'),
-            'sqlsrv' => $responseWindow->selectRaw('AVG(DATEDIFF(SECOND, created_at, first_response_sent_at)) AS aggregate')->value('aggregate'),
+            'pgsql' => $averageQuery->selectRaw('AVG(EXTRACT(EPOCH FROM (first_response_sent_at - created_at))) AS aggregate')->value('aggregate'),
+            'mysql', 'mariadb' => $averageQuery->selectRaw('AVG(TIMESTAMPDIFF(SECOND, created_at, first_response_sent_at)) AS aggregate')->value('aggregate'),
+            'sqlite' => $averageQuery->selectRaw('AVG((julianday(first_response_sent_at) - julianday(created_at)) * 86400) AS aggregate')->value('aggregate'),
+            'sqlsrv' => $averageQuery->selectRaw('AVG(DATEDIFF(SECOND, created_at, first_response_sent_at)) AS aggregate')->value('aggregate'),
             default => null,
         };
 
@@ -328,7 +333,7 @@ class InquiryController extends Controller
             'past_first_response_target' => $pastFirstResponse,
             'response_delivery_needs_check' => $activeOpen()->where(fn ($query) => $query
                 ->whereExists($hasUnconfirmedEmail)->orWhereExists($hasUnconfirmedRespondIo))->count(),
-            'first_responses_last_30_days' => (clone $inquiries)->where('first_response_sent_at', '>=', now()->subDays(30))->count(),
+            'first_responses_last_30_days' => $responseWindow->count(),
             'average_first_response_minutes_last_30_days' => $averageSeconds === null ? null : round((float) $averageSeconds / 60, 1),
         ]]);
     }
@@ -342,6 +347,9 @@ class InquiryController extends Controller
             $locked = Inquiry::query()->whereKey($inquiry->id)->lockForUpdate()->firstOrFail();
             $companyId = app(SingleCompanyScope::class)->activeDefaultCompany(true)?->id;
             abort_unless($companyId && $locked->company_id === $companyId, 404);
+            if (($data['source'] ?? null) === 'respond_io' && $locked->source !== 'respond_io') {
+                $this->ensureRespondIoEnabled();
+            }
             if (array_key_exists('customer_id', $data) && $data['customer_id'] !== $locked->customer_id) {
                 $customerId = $data['customer_id'];
                 if ($locked->booking_id) {
@@ -752,6 +760,13 @@ class InquiryController extends Controller
     private function eligibleAssignees(string $companyId)
     {
         return app(InquiryAssignmentService::class)->eligibleAssignees($companyId);
+    }
+
+    private function ensureRespondIoEnabled(): void
+    {
+        abort_unless(filter_var(app(\App\Services\WebsiteSettingsService::class)
+            ->get('feature_respond_io_enabled', false), FILTER_VALIDATE_BOOL), 422,
+            'Respond.io is turned off in Business Settings.');
     }
 
     public function updateStatus(Request $request, Inquiry $inquiry): JsonResponse
