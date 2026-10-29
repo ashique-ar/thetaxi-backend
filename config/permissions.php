@@ -22,7 +22,13 @@ return [
     'templates' => [
         'admin' => [
             'label' => 'Admin',
-            'description' => 'Full operational administration access.',
+            'description' => 'Broad day-to-day access without role, permission, or system administration.',
+            'patterns' => ['*'],
+            'exclude' => ['roles.*', 'permissions.*', 'system.*', 'admin.*'],
+        ],
+        'master-admin' => [
+            'label' => 'Master Admin',
+            'description' => 'Full access to every portal permission.',
             'patterns' => ['*'],
         ],
         'manager' => [
@@ -36,12 +42,12 @@ return [
                 'bookings.*',
                 'reports.*',
             ],
-            'exclude' => ['permissions.*', 'roles.delete', 'users.delete'],
+            'exclude' => ['permissions.*', 'roles.*', 'system.*', 'admin.*', 'users.delete'],
         ],
         'dispatcher' => [
             'label' => 'Dispatcher',
             'description' => 'Booking dispatch, assignment, and fleet visibility.',
-            'patterns' => ['bookings.*', 'assignments.*', 'drivers.view', 'vehicles.view', 'customers.view'],
+            'patterns' => ['bookings.*', 'driver-assignments.*', 'drivers.view', 'vehicles.view', 'customers.view'],
         ],
         'fleet-manager' => [
             'label' => 'Fleet Manager',
@@ -56,7 +62,7 @@ return [
         'customer-support' => [
             'label' => 'Customer Support',
             'description' => 'Customer and booking support access.',
-            'patterns' => ['customers.*', 'bookings.view', 'bookings.edit', 'communication.view'],
+            'patterns' => ['customers.view', 'customers.create', 'customers.edit', 'bookings.view', 'bookings.edit', 'communication.view'],
         ],
         'corporate-admin' => [
             'label' => 'Corporate Admin',

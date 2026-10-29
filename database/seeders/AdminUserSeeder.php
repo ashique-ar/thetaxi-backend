@@ -6,7 +6,6 @@ use App\Models\User;
 use Illuminate\Database\Seeder;
 use Illuminate\Support\Facades\Hash;
 use Spatie\Permission\Models\Role;
-use Spatie\Permission\Models\Permission;
 
 class AdminUserSeeder extends Seeder
 {
@@ -15,13 +14,11 @@ class AdminUserSeeder extends Seeder
      */
     public function run(): void
     {
+        $this->call(AllPermissionsSeeder::class);
+
         // Create admin role for both guards if they don't exist
         $webAdminRole = Role::firstOrCreate(['name' => 'admin', 'guard_name' => 'web']);
         $apiAdminRole = Role::firstOrCreate(['name' => 'admin', 'guard_name' => 'api']);
-
-        // Sync permissions for both guards
-        $webAdminRole->syncPermissions(Permission::where('guard_name', 'web')->get());
-        $apiAdminRole->syncPermissions(Permission::where('guard_name', 'api')->get());
 
         // Create admin user
         $admin = User::firstOrCreate(
@@ -37,9 +34,6 @@ class AdminUserSeeder extends Seeder
             ]
         );
 
-        // Remove any existing role assignments
-        $admin->roles()->detach();
-
         // Assign admin role to user for API guard only (since your system uses api guard for authentication)
         if ($webAdminRole) {
             $admin->assignRole($webAdminRole);
@@ -47,7 +41,7 @@ class AdminUserSeeder extends Seeder
         if ($apiAdminRole) {
             $admin->assignRole($apiAdminRole);
         }
-        app(\App\Services\UserService::class)->syncDirectRoleGrants(
+        app(\App\Services\UserService::class)->grantDirectRoleGrants(
             $admin,
             collect([$webAdminRole, $apiAdminRole])->filter()
         );

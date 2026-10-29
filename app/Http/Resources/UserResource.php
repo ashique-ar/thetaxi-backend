@@ -28,7 +28,7 @@ class UserResource extends JsonResource
                 return [
                     'id' => $this->role->id,
                     'name' => $this->role->name,
-                    'display_name' => $this->role->display_name ?? $this->role->name,
+                    'display_name' => $this->role->display_name ?? ($this->role->name === 'super-admin' ? 'Master Admin' : $this->role->name),
                 ];
             }),
             'permissions' => $this->getPermissionsArray(),
@@ -64,7 +64,7 @@ class UserResource extends JsonResource
                             return [
                                 'id' => $role->id,
                                 'name' => $role->name,
-                                'display_name' => $role->display_name ?? $role->name,
+                                'display_name' => $role->display_name ?? ($role->name === 'super-admin' ? 'Master Admin' : $role->name),
                             ];
                         }),
                     ];

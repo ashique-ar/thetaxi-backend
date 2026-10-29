@@ -929,6 +929,14 @@ class CustomerController extends Controller
                 ->selectRaw("CONCAT('booking-inspection:', inspection.id) as id, 'booking_service' as event_type, 'Return inspection completed' as title, inspection.qc_status as status, inspection.inspection_completed_at as occurred_at, NULL as reference, inspection.booking_id as booking_id, CONCAT('By ', COALESCE(NULLIF(CONCAT_WS(' ', inspector.first_name, inspector.last_name), ''), 'System')) as detail");
             $events->unionAll($inspectionEvents);
 
+            $quotationEmails = DB::table('booking_activities as activity')
+                ->join('bookings as linked_booking', 'linked_booking.id', '=', 'activity.booking_id')
+                ->where('activity.company_id', $companyId)->where('activity.event_key', 'quotation_email_sent')
+                ->whereNull('activity.deleted_at')->where('linked_booking.customer_id', $customer->id)->whereNull('linked_booking.deleted_at')
+                ->where(function ($companyScope) use ($companyId) { $this->constrainBookingsToCompany($companyScope, 'linked_booking', $companyId); })
+                ->selectRaw("CONCAT('quotation-email:', activity.id) as id, 'quotation_email_sent' as event_type, activity.title as title, activity.result_status as status, activity.event_at as occurred_at, linked_booking.booking_number as reference, activity.booking_id as booking_id, NULL as detail");
+            $events->unionAll($quotationEmails);
+
             $quoteAcceptances = DB::table('pending_payment_links as quote_link')->where('quote_link.type', 'quotation_conversion')
                 ->whereNotNull('quote_link.accepted_at')->whereNull('quote_link.deleted_at')
                 ->whereExists(function ($booking) use ($customer, $companyId): void {

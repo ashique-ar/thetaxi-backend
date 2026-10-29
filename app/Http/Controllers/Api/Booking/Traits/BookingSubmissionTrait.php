@@ -601,7 +601,9 @@ trait BookingSubmissionTrait
                 app(SmsAutomationService::class)->queueWebsiteQuotationRequested($booking);
             }
 
+            $quotationEmailStatus = 'not_requested';
             if (filter_var($params['send_quotation_email'] ?? false, FILTER_VALIDATE_BOOL)) {
+                $quotationEmailStatus = 'missing_email';
                 try {
                     $booking->loadMissing('customer.user', 'bookingItems.vehicleGroup', 'bookingItems.serviceType');
                     $email = $booking->customer?->user?->email;
@@ -611,8 +613,32 @@ trait BookingSubmissionTrait
                             $email,
                             new QuotationRequestMail($booking, staffRequested: true, checkoutLink: $checkoutLink ?: null)
                         );
+                        $quotationEmailStatus = 'sent';
+                        try {
+                            $companyId = app(SingleCompanyScope::class)->activeDefaultCompany()?->id;
+                            if ($companyId) {
+                                BookingActivity::create([
+                                    'company_id' => $companyId,
+                                    'booking_id' => $booking->id,
+                                    'event_key' => 'quotation_email_sent',
+                                    'channel' => 'email',
+                                    'result_status' => 'sent',
+                                    'source' => 'staff',
+                                    'title' => 'Quotation email sent',
+                                    'detail' => 'Email handed to the configured mail service.',
+                                    'idempotency_key' => 'quotation-email-sent-'.\Illuminate\Support\Str::uuid(),
+                                    'event_at' => now(),
+                                ]);
+                            }
+                        } catch (\Throwable $e) {
+                            Log::warning('Quotation email sent but customer activity could not be recorded', [
+                                'booking_id' => $booking->id,
+                                'error' => $e->getMessage(),
+                            ]);
+                        }
                     }
                 } catch (\Throwable $e) {
+                    $quotationEmailStatus = 'failed';
                     Log::error('Staff quotation email failed', [
                         'booking_id' => $booking->id,
                         'error' => $e->getMessage(),
@@ -623,7 +649,13 @@ trait BookingSubmissionTrait
             return response()->json([
                 'status' => 'success',
                 'data' => new BookingFlowResource($booking),
-                'message' => 'Booking quotation requested successfully'
+                'quotation_email_status' => $quotationEmailStatus,
+                'message' => match ($quotationEmailStatus) {
+                    'failed' => 'The quotation was saved, but the email could not be sent. Please check the email settings and retry.',
+                    'missing_email' => 'The quotation was saved, but this customer has no email address. Add one or share the quotation another way.',
+                    'sent' => 'Quotation saved and email sent.',
+                    default => 'Booking quotation requested successfully',
+                },
             ]);
         } catch (\Exception $e) {
             Log::error('Booking quotation request failed: ' . $e->getMessage());

@@ -130,6 +130,8 @@ class RoleController extends Controller
      */
     public function update(UpdateRoleRequest $request, Role $role): JsonResponse
     {
+        $this->protectMasterRole($role);
+
         try {
             $data = $request->validated();
             $permissions = $data['permissions'] ?? null;
@@ -171,6 +173,8 @@ class RoleController extends Controller
      */
     public function destroy(Role $role): JsonResponse
     {
+        abort_if(in_array($role->name, ['admin', 'super-admin'], true), 403, 'System roles cannot be deleted.');
+
         try {
             // Check if role is being used by any users
             if ($role->users()->exists()) {
@@ -229,6 +233,8 @@ class RoleController extends Controller
      */
     public function assignPermissions(Request $request, Role $role): JsonResponse
     {
+        $this->protectMasterRole($role);
+
         $request->validate([
             'permissions' => ['required', 'array'],
             'permissions.*' => ['required', 'string']
@@ -259,6 +265,8 @@ class RoleController extends Controller
      */
     public function revokePermissions(Request $request, Role $role): JsonResponse
     {
+        $this->protectMasterRole($role);
+
         $request->validate([
             'permissions' => ['required', 'array'],
             'permissions.*' => ['required', 'string']
@@ -300,6 +308,8 @@ class RoleController extends Controller
 
     public function syncPermissions(Request $request, Role $role): JsonResponse
     {
+        $this->protectMasterRole($role);
+
         abort_if(! $role->exists || $role->getKey() === null, 404, 'Role not found.');
 
         $jsonPayload = json_decode($request->getContent() ?: '{}', true);
@@ -356,6 +366,8 @@ class RoleController extends Controller
 
     public function applyTemplate(Request $request, Role $role): JsonResponse
     {
+        $this->protectMasterRole($role);
+
         $request->validate([
             'template' => ['required', 'string'],
             'mode' => ['sometimes', Rule::in(['merge', 'replace'])],
@@ -432,6 +444,11 @@ class RoleController extends Controller
     private function syncRolePermissions(Role $role, array $permissionIdentifiers): Collection
     {
         return $this->assignmentService->syncRolePermissions($role, $permissionIdentifiers);
+    }
+
+    private function protectMasterRole(Role $role): void
+    {
+        abort_if($role->name === 'super-admin', 403, 'The Master Admin role cannot be changed or deleted.');
     }
 
     private function extractContextData(array &$data): array

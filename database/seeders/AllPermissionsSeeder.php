@@ -8,11 +8,12 @@ use Spatie\Permission\Models\Role;
 use Spatie\Permission\PermissionRegistrar;
 
 /**
- * Canonical, additive-only permission seeder.
+ * Canonical permission seeder. Baseline role grants are additive, except that
+ * elevated permissions are removed from the day-to-day admin role.
  *
- * This is the single source of truth for application permissions. It is safe
- * to run against existing client databases: no permission, role, or assignment
- * is deleted, and existing role assignments are never replaced.
+ * This is the single source of truth for application permissions. Existing
+ * user-role assignments remain intact; elevated grants are removed only from
+ * the day-to-day admin role.
  */
 class AllPermissionsSeeder extends Seeder
 {
@@ -556,11 +557,12 @@ class AllPermissionsSeeder extends Seeder
         }
 
         foreach (self::GUARDS as $guard) {
-            $this->addPermissionsToRole(
-                Role::firstOrCreate(['name' => 'admin', 'guard_name' => $guard]),
-                $permissionNames,
-                $permissionsByGuard[$guard]
-            );
+            $admin = Role::firstOrCreate(['name' => 'admin', 'guard_name' => $guard]);
+            $this->addPermissionsToRole($admin, $permissionNames, $permissionsByGuard[$guard]);
+            $this->revokePermissionsFromRole($admin, $this->adminOnlyRestrictions($permissionNames), $permissionsByGuard[$guard]);
+
+            $masterAdmin = Role::firstOrCreate(['name' => 'super-admin', 'guard_name' => $guard]);
+            $this->addPermissionsToRole($masterAdmin, $permissionNames, $permissionsByGuard[$guard]);
 
             $this->seedBaselineRoles($guard, $permissionNames, $permissionsByGuard[$guard]);
             $this->mapLegacyCommunicationPermissions($guard, $permissionsByGuard[$guard]);
@@ -570,7 +572,7 @@ class AllPermissionsSeeder extends Seeder
 
         $this->command?->info(
             sprintf(
-                'All permissions are present for [%s] guards; existing roles and assignments were preserved.',
+                'Permissions and baseline roles are synchronized for [%s] guards.',
                 implode(', ', self::GUARDS)
             )
         );
@@ -612,6 +614,9 @@ class AllPermissionsSeeder extends Seeder
     private function seedBaselineRoles(string $guard, array $allPermissions, array $permissionModels): void
     {
         $rolePermissions = [
+            'manager' => $this->permissionsForTemplate('manager', $allPermissions),
+            'dispatcher' => $this->permissionsForTemplate('dispatcher', $allPermissions),
+            'customer-support' => $this->permissionsForTemplate('customer-support', $allPermissions),
             'hr-manager' => [
                 'staff.view',
                 'staff.view-all',
@@ -1538,6 +1543,40 @@ class AllPermissionsSeeder extends Seeder
         if ($permissions->isNotEmpty()) {
             $role->givePermissionTo($permissions);
         }
+    }
+
+    private function revokePermissionsFromRole(Role $role, array $permissionNames, array $permissionModels): void
+    {
+        $permissions = collect($permissionNames)
+            ->unique()
+            ->map(fn (string $name) => $permissionModels[$name] ?? null)
+            ->filter()
+            ->values();
+
+        if ($permissions->isNotEmpty()) {
+            $role->revokePermissionTo($permissions);
+        }
+    }
+
+    private function adminOnlyRestrictions(array $permissions): array
+    {
+        return array_values(array_filter($permissions, fn (string $permission) =>
+            preg_match('/^(roles|permissions|system|admin)\./', $permission) === 1
+            || in_array($permission, self::denyByDefaultPermissions(), true)
+        ));
+    }
+
+    private function permissionsForTemplate(string $templateName, array $permissions): array
+    {
+        $template = config("permissions.templates.{$templateName}", []);
+        $patterns = $template['patterns'] ?? [];
+        $exclusions = $template['exclude'] ?? [];
+
+        return array_values(array_filter($permissions, function (string $permission) use ($patterns, $exclusions) {
+            $matches = fn (array $set) => collect($set)->contains(fn ($pattern) => $pattern === '*' || \Illuminate\Support\Str::is($pattern, $permission));
+            return $matches($patterns) && ! $matches($exclusions)
+                && ! in_array($permission, self::denyByDefaultPermissions(), true);
+        }));
     }
 
     /**

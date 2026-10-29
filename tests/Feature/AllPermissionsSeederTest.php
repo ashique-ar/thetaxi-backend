@@ -97,7 +97,12 @@ it('can run repeatedly without duplicates or removing client assignments', funct
 
     foreach (['api', 'web'] as $guard) {
         $admin = Role::where(['name' => 'admin', 'guard_name' => $guard])->firstOrFail();
+        $masterAdmin = Role::where(['name' => 'super-admin', 'guard_name' => $guard])->firstOrFail();
 
-        expect($admin->permissions()->count())->toBe(count(AllPermissionsSeeder::allPermissionNames()));
+        expect($masterAdmin->permissions()->count())->toBe(count(AllPermissionsSeeder::allPermissionNames()))
+            ->and($admin->permissions()->count())->toBeLessThan(count(AllPermissionsSeeder::allPermissionNames()))
+            ->and($admin->permissions()->whereIn('name', ['roles.manage', 'permissions.manage', 'system.manage'])->exists())->toBeFalse()
+            ->and(Role::where(['name' => 'dispatcher', 'guard_name' => $guard])->exists())->toBeTrue()
+            ->and(Role::where(['name' => 'customer-support', 'guard_name' => $guard])->exists())->toBeTrue();
     }
 });

@@ -283,7 +283,7 @@ class BookingAssignmentController extends Controller
                 if ($request->vehicle_id) {
                     $existingVA = VehicleAssignment::where('booking_id', $booking->id)
                         ->where('vehicle_id', $request->vehicle_id)
-                        ->where('status', 'active')
+                        ->whereIn('status', ['active', 'pending_approval'])
                         ->first();
 
                     if (!$existingVA) {
@@ -310,8 +310,9 @@ class BookingAssignmentController extends Controller
                 // --- Driver Assignment ---
                 if ($request->driver_id) {
                     $existingDA = DriverAssignment::where('booking_id', $booking->id)
+                        ->where('booking_item_id', $bookingItem->id)
                         ->where('driver_id', $request->driver_id)
-                        ->where('status', 'active')
+                        ->whereIn('status', ['active', 'pending_approval'])
                         ->first();
 
                     if (!$existingDA) {
@@ -339,7 +340,9 @@ class BookingAssignmentController extends Controller
 
                 return response()->json([
                     'status' => 'success',
-                    'message' => 'Assignment created successfully',
+                    'message' => collect($results)->contains(fn ($assignment) => (bool) $assignment->requires_approval)
+                        ? 'Assignment saved for manager review because a schedule conflict was found.'
+                        : 'Assignment created successfully',
                     'data' => $results,
                 ], 201);
             });

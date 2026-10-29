@@ -14,7 +14,7 @@ class AssignAdminRole extends Command
      *
      * @var string
      */
-    protected $signature = 'admin:assign-role';
+    protected $signature = 'admin:assign-role {--role=admin : Role to assign (admin or super-admin)}';
 
     /**
      * The console command description.
@@ -35,8 +35,13 @@ class AssignAdminRole extends Command
             return 1;
         }
 
-        // Get API admin role
-        $role = Role::where('name', 'admin')->where('guard_name', 'api')->first();
+        $roleName = (string) $this->option('role');
+        if (!in_array($roleName, ['admin', 'super-admin'], true)) {
+            $this->error('Choose either admin or super-admin.');
+            return 1;
+        }
+
+        $role = Role::where('name', $roleName)->where('guard_name', 'api')->first();
         
         if (!$role) {
             $this->error('API admin role not found');
@@ -45,11 +50,11 @@ class AssignAdminRole extends Command
 
         DB::transaction(function () use ($user, $role): void {
             $user = User::query()->whereKey($user->id)->lockForUpdate()->firstOrFail();
-            $user->syncRoles([$role]);
-            app(\App\Services\UserService::class)->syncDirectRoleGrants($user, collect([$role]));
+            $user->assignRole($role);
+            app(\App\Services\UserService::class)->grantDirectRoleGrants($user, collect([$role]));
         });
         
-        $this->info('API admin role assigned successfully!');
+        $this->info("API {$roleName} role assigned successfully!");
         $this->info('User now has roles: ' . implode(', ', $user->getRoleNames()->toArray()));
         
         return 0;

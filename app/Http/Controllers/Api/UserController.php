@@ -174,6 +174,7 @@ class UserController extends Controller
                     'password' => Str::random(16) . 'Aa1!', 'is_active' => strtolower(trim($row['is_active'] ?? 'yes')) !== 'no',
                 ];
                 $roles = array_values(array_filter(explode('|', $row['roles'] ?? '')));
+                $this->assertCanChangePrivilegedRoles($roles);
                 if ($roles) { $userData['roles'] = $roles; }
                 $this->userService->createUser($userData);
                 $created++;
@@ -191,8 +192,16 @@ class UserController extends Controller
             'action' => ['required', Rule::in(['activate', 'deactivate', 'delete', 'assign_role'])],
             'role' => ['nullable', 'required_if:action,assign_role', 'string', 'exists:roles,name'],
         ]);
+        if ($data['action'] === 'assign_role') {
+            $this->assertCanChangePrivilegedRoles([$data['role']]);
+        }
         abort_if(in_array(auth()->id(), $data['user_ids'], true) && in_array($data['action'], ['deactivate', 'delete'], true), 422, 'You cannot deactivate or delete your own account.');
         $users = User::whereIn('id', $data['user_ids'])->get();
+        if ($data['action'] === 'assign_role') {
+            $existingPrivilegedRoles = $users->flatMap(fn (User $target) => $target->roles()
+                ->whereIn('name', ['admin', 'super-admin'])->pluck('name')->all())->all();
+            $this->assertCanChangePrivilegedRoles(array_merge([$data['role']], $existingPrivilegedRoles));
+        }
         DB::transaction(function () use ($users, $data) {
             foreach ($users as $user) {
                 if ($data['action'] === 'assign_role') {
@@ -222,8 +231,11 @@ class UserController extends Controller
      */
     public function store(CreateUserRequest $request): JsonResponse
     {
+        $data = $request->validated();
+        $this->assertCanChangePrivilegedRoles($this->roleIdentifiers($data), !empty($data['permissions']));
+
         try {
-            $user = $this->userService->createUser($request->validated());
+            $user = $this->userService->createUser($data);
             
             return response()->json([
                 'status' => 'success',
@@ -266,8 +278,16 @@ class UserController extends Controller
      */
     public function update(UpdateUserRequest $request, User $user): JsonResponse
     {
+        $data = $request->validated();
+        if (array_key_exists('roles', $data) || array_key_exists('role_id', $data) || array_key_exists('permissions', $data)) {
+            $this->assertCanChangePrivilegedRoles(
+                array_merge($this->roleIdentifiers($data), $user->roles()->whereIn('name', ['admin', 'super-admin'])->pluck('name')->all()),
+                array_key_exists('permissions', $data)
+            );
+        }
+
         try {
-            $updatedUser = $this->userService->updateUser($user, $request->validated());
+            $updatedUser = $this->userService->updateUser($user, $data);
             
             return response()->json([
                 'status' => 'success',
@@ -681,6 +701,7 @@ class UserController extends Controller
             'roles.*' => ['required'],
             'auto_assign_permissions' => ['sometimes', 'boolean']
         ]);
+        $this->assertCanChangePrivilegedRoles($this->roleIdentifiers($request->all()));
 
         try {
             $activeContexts = DB::transaction(function () use ($user, $contextId, $request): ?\Illuminate\Support\Collection {
@@ -696,7 +717,7 @@ class UserController extends Controller
                 }
 
                 return $user->getActiveContexts()->map(function ($ctx) {
-                    return array_merge($ctx->toArray(), ['roles' => $ctx->roles()->get()->map(fn($role) => ['id' => $role->id, 'name' => $role->name, 'display_name' => $role->display_name ?? $role->name])]);
+                    return array_merge($ctx->toArray(), ['roles' => $ctx->roles()->get()->map(fn($role) => ['id' => $role->id, 'name' => $role->name, 'display_name' => $role->display_name ?? ($role->name === 'super-admin' ? 'Master Admin' : $role->name)])]);
                 });
             });
             if ($activeContexts === null) {
@@ -826,6 +847,8 @@ class UserController extends Controller
         $request->validate([
             'role_id' => ['required']
         ]);
+        $role = Role::find($request->input('role_id'));
+        $this->assertCanChangePrivilegedRoles($role ? [$role->name] : []);
 
         try {
             $context = $user->contexts()->where('id', $contextId)->first();
@@ -843,7 +866,7 @@ class UserController extends Controller
             }
 
             $activeContexts = $user->getActiveContexts()->map(function($ctx){
-                return array_merge($ctx->toArray(), ['roles' => $ctx->roles()->get()->map(function($r){ return ['id' => $r->id, 'name' => $r->name, 'display_name' => $r->display_name ?? $r->name]; })]);
+                return array_merge($ctx->toArray(), ['roles' => $ctx->roles()->get()->map(function($r){ return ['id' => $r->id, 'name' => $r->name, 'display_name' => $r->display_name ?? ($r->name === 'super-admin' ? 'Master Admin' : $r->name)]; })]);
             });
 
             return response()->json(['status' => 'success', 'message' => 'Role revoked from context', 'data' => ['contexts' => $activeContexts]]);
@@ -948,6 +971,7 @@ class UserController extends Controller
             'apply_to_guards' => ['sometimes', 'array'],
             'apply_to_guards.*' => ['string', Rule::in(['web', 'api'])],
         ]);
+        $this->assertCanChangePrivilegedRoles($request->input('roles', []));
 
         try {
             $guards = $this->resolveGuards($request);
@@ -1009,6 +1033,7 @@ class UserController extends Controller
             'apply_to_guards' => ['sometimes', 'array'],
             'apply_to_guards.*' => ['string', Rule::in(['web', 'api'])],
         ]);
+        $this->assertCanChangePrivilegedRoles($request->input('roles', []));
 
         try {
             $guards = $this->resolveGuards($request);
@@ -1358,5 +1383,31 @@ class UserController extends Controller
             'permissions.manage',
             'corporates.manage',
         ])->isNotEmpty();
+    }
+
+    private function roleIdentifiers(array $data): array
+    {
+        $identifiers = collect($data['roles'] ?? [])
+            ->when(isset($data['role_id']), fn ($roles) => $roles->push((string) $data['role_id']))
+            ->map(fn ($value) => (string) $value)
+            ->unique();
+
+        return Role::query()
+            ->whereIn('name', $identifiers)
+            ->orWhereIn('id', $identifiers->filter(fn ($value) => ctype_digit($value)))
+            ->pluck('name')
+            ->all();
+    }
+
+    private function assertCanChangePrivilegedRoles(array $roleNames, bool $changesDirectPermissions = false): void
+    {
+        $actor = request()->user();
+        $isMasterAdmin = $actor?->roles()->where('name', 'super-admin')->exists() ?? false;
+        abort_if($changesDirectPermissions && ! $isMasterAdmin, 403, 'Only a Master Admin can grant direct permissions.');
+        abort_if(
+            ! $isMasterAdmin && collect($roleNames)->intersect(['admin', 'super-admin'])->isNotEmpty(),
+            403,
+            'Only a Master Admin can assign or remove Admin roles.'
+        );
     }
 }

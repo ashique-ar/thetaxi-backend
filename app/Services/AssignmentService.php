@@ -117,6 +117,17 @@ class AssignmentService
     public function createVehicleAssignment(array $params): VehicleAssignment
     {
         return DB::transaction(function () use ($params) {
+            $vehicle = Vehicle::query()->whereKey($params['vehicle_id'])->lockForUpdate()->firstOrFail();
+            $conflicts = $vehicle->getAssignmentConflicts($params['assigned_from'], $params['assigned_to']);
+            if ($conflicts) {
+                $params['assignment_type'] = $vehicle->allowsConcurrentAssignments() ? 'concurrent' : 'override';
+                $params['overlap_type'] = $params['assignment_type'];
+                $params['overlap_details'] = $conflicts;
+                $params['requires_approval'] = true;
+                $params['status'] = 'pending_approval';
+            }
+            if (! empty($params['requires_approval'])) $params['status'] = 'pending_approval';
+
             $userId = Auth::id() ?? ($params['assigned_by'] ?? ($params['created_user_id'] ?? null));
             
             $assignment = VehicleAssignment::create([
@@ -147,6 +158,17 @@ class AssignmentService
     public function createDriverAssignment(array $params): DriverAssignment
     {
         return DB::transaction(function () use ($params) {
+            $driver = Driver::query()->whereKey($params['driver_id'])->lockForUpdate()->firstOrFail();
+            $conflicts = $driver->getAssignmentConflicts($params['assigned_from'], $params['assigned_to']);
+            if ($conflicts) {
+                $params['assignment_type'] = 'override';
+                $params['overlap_type'] = 'override';
+                $params['overlap_details'] = $conflicts;
+                $params['requires_approval'] = true;
+                $params['status'] = 'pending_approval';
+            }
+            if (! empty($params['requires_approval'])) $params['status'] = 'pending_approval';
+
             $bookingItem = ! empty($params['booking_item_id'])
                 ? BookingItem::with('serviceType')->find($params['booking_item_id'])
                 : null;
@@ -181,7 +203,7 @@ class AssignmentService
             ]);
 
             $booking = Booking::find($params['booking_id']);
-            if ($booking) {
+            if ($booking && $assignment->status === 'active' && ! $assignment->requires_approval) {
                 $driver = Driver::find($params['driver_id']);
                 if ($driver) {
                     SendCustomerDriverAssignedNotificationJob::dispatch($booking, $driver)
@@ -258,7 +280,7 @@ class AssignmentService
                 $vehicleAssignment = $this->createVehicleAssignment($vehicleAssignmentParams);
                 $assignments['vehicle'] = $vehicleAssignment;
 
-                if ($requiresApprovalForAssignment) {
+                if ($vehicleAssignment->requires_approval) {
                     $requiresApproval = true;
                 }
             }
@@ -286,7 +308,7 @@ class AssignmentService
                 $driverAssignment = $this->createDriverAssignment($driverAssignmentParams);
                 $assignments['driver'] = $driverAssignment;
 
-                if ($requiresApprovalForAssignment) {
+                if ($driverAssignment->requires_approval) {
                     $requiresApproval = true;
                 }
             }
@@ -616,30 +638,46 @@ class AssignmentService
     public function approveAssignments(string $bookingId, string $approverId): array
     {
         return DB::transaction(function () use ($bookingId, $approverId) {
-            $vehicleAssignment = VehicleAssignment::where('booking_id', $bookingId)->first();
-            $driverAssignment = DriverAssignment::where('booking_id', $bookingId)->first();
+            $vehicleIds = VehicleAssignment::query()->where('booking_id', $bookingId)->where('requires_approval', true)
+                ->whereIn('status', ['pending', 'pending_approval'])->pluck('vehicle_id')->unique()->sort()->values();
+            $driverIds = DriverAssignment::query()->where('booking_id', $bookingId)->where('requires_approval', true)
+                ->whereIn('status', ['pending', 'pending_approval'])->pluck('driver_id')->unique()->sort()->values();
+            foreach ($vehicleIds as $vehicleId) Vehicle::query()->whereKey($vehicleId)->lockForUpdate()->firstOrFail();
+            foreach ($driverIds as $driverId) Driver::query()->whereKey($driverId)->lockForUpdate()->firstOrFail();
 
-            $results = [];
-
-            if ($vehicleAssignment && $vehicleAssignment->requires_approval) {
-                $vehicleAssignment->update([
-                    'status' => 'active',
-                    'approved_by' => $approverId,
-                    'approved_at' => now(),
-                ]);
-                $results['vehicle_assignment'] = $vehicleAssignment;
+            $vehicleAssignments = VehicleAssignment::query()->where('booking_id', $bookingId)->where('requires_approval', true)
+                ->whereIn('status', ['pending', 'pending_approval'])->lockForUpdate()->get();
+            $driverAssignments = DriverAssignment::query()->where('booking_id', $bookingId)->where('requires_approval', true)
+                ->whereIn('status', ['pending', 'pending_approval'])->lockForUpdate()->get();
+            foreach ($vehicleAssignments as $assignment) {
+                $reviewed = collect($assignment->overlap_details ?? [])->pluck('assignment_id')->map(fn ($id) => (string) $id)->all();
+                $newConflicts = collect(Vehicle::findOrFail($assignment->vehicle_id)->getAssignmentConflicts($assignment->assigned_from, $assignment->assigned_to))
+                    ->reject(fn ($conflict) => (string) ($conflict['assignment_id'] ?? '') === (string) $assignment->id)
+                    ->reject(fn ($conflict) => in_array((string) ($conflict['assignment_id'] ?? ''), $reviewed, true));
+                abort_if($newConflicts->isNotEmpty(), 409, 'New vehicle schedule conflicts were found. Review the assignment again.');
+                $assignment->update(['status' => 'active', 'approved_by' => $approverId, 'approved_at' => now()]);
+            }
+            foreach ($driverAssignments as $assignment) {
+                $reviewed = collect($assignment->overlap_details ?? [])->pluck('assignment_id')->map(fn ($id) => (string) $id)->all();
+                $newConflicts = collect(Driver::findOrFail($assignment->driver_id)->getAssignmentConflicts($assignment->assigned_from, $assignment->assigned_to))
+                    ->reject(fn ($conflict) => (string) ($conflict['assignment_id'] ?? '') === (string) $assignment->id)
+                    ->reject(fn ($conflict) => in_array((string) ($conflict['assignment_id'] ?? ''), $reviewed, true));
+                abort_if($newConflicts->isNotEmpty(), 409, 'New driver schedule conflicts were found. Review the assignment again.');
+                $assignment->update(['status' => 'active', 'approved_by' => $approverId, 'approved_at' => now()]);
+                DB::afterCommit(function () use ($bookingId, $assignment): void {
+                    $booking = Booking::find($bookingId);
+                    $driver = Driver::find($assignment->driver_id);
+                    if ($booking && $driver) {
+                        SendCustomerDriverAssignedNotificationJob::dispatch($booking, $driver)
+                            ->onQueue(config('services.firebase.customer_queue', 'customer-notifications'));
+                    }
+                });
             }
 
-            if ($driverAssignment && $driverAssignment->requires_approval) {
-                $driverAssignment->update([
-                    'status' => 'active',
-                    'approved_by' => $approverId,
-                    'approved_at' => now(),
-                ]);
-                $results['driver_assignment'] = $driverAssignment;
-            }
-
-            return $results;
+            return [
+                'vehicle_assignments' => $vehicleAssignments->values(),
+                'driver_assignments' => $driverAssignments->values(),
+            ];
         });
     }
 
