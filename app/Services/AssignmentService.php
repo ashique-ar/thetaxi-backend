@@ -6,6 +6,7 @@ use App\Models\Vehicle\Vehicle;
 use App\Models\Driver\Driver;
 use App\Models\Booking\Booking;
 use App\Models\Booking\BookingItem;
+use App\Models\Service\ServiceType;
 use App\Models\Vehicle\VehicleAssignment;
 use App\Models\DriverAssignment;
 use App\Jobs\SendCustomerDriverAssignedNotificationJob;
@@ -149,7 +150,7 @@ class AssignmentService
             $bookingItem = ! empty($params['booking_item_id'])
                 ? BookingItem::with('serviceType')->find($params['booking_item_id'])
                 : null;
-            if ($bookingItem?->serviceType?->type === 'self_drive') {
+            if (ServiceType::isSelfDriveType($bookingItem?->serviceType?->type)) {
                 throw ValidationException::withMessages([
                     'driver_id' => 'A driver cannot be assigned to a self-drive service.',
                 ]);

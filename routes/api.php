@@ -357,6 +357,7 @@ Route::middleware(['auth:api'])->group(function () {
         Route::post('connection/rotate-secret', [RespondIoIntegrationController::class, 'rotateSecret'])->middleware('permission:communication.manage');
         Route::get('events', [RespondIoIntegrationController::class, 'events'])->middleware('permission:communication.view');
         Route::get('events/{event}', [RespondIoIntegrationController::class, 'event'])->middleware('permission:communication.view');
+        Route::get('events/{event}/booking-request-context', [RespondIoIntegrationController::class, 'bookingRequestContext'])->middleware(['permission:communication.manage', 'permission:bookings.create']);
         Route::get('events/{event}/inquiry-options', [RespondIoIntegrationController::class, 'inquiryOptions'])->middleware('permission:communication.manage');
         Route::post('events/{event}/link-inquiry', [RespondIoIntegrationController::class, 'linkInquiry'])->middleware('permission:communication.manage');
         Route::post('events/{event}/lookup-contact', [RespondIoIntegrationController::class, 'lookupContact'])->middleware(['permission:communication.manage', 'throttle:30,1']);
@@ -365,6 +366,7 @@ Route::middleware(['auth:api'])->group(function () {
         Route::post('events/{event}/sync-contact-history', [RespondIoIntegrationController::class, 'syncContactHistory'])->middleware(['permission:communication.manage', 'throttle:5,1']);
         Route::post('inquiries/{inquiry}/reply', [RespondIoIntegrationController::class, 'sendInquiryReply'])->middleware(['permission:inquiries.edit', 'throttle:10,1'])->whereUuid('inquiry');
         Route::post('events/{event}/create-inquiry', [RespondIoIntegrationController::class, 'createInquiry'])->middleware('permission:communication.manage');
+        Route::post('events/{event}/create-booking-request', [RespondIoIntegrationController::class, 'createBookingRequest'])->middleware(['permission:communication.manage', 'permission:bookings.create']);
         Route::post('events/{event}/create-support-request', [RespondIoIntegrationController::class, 'createSupportRequest'])->middleware('permission:communication.manage');
         Route::post('events/{event}/mark-not-lead', [RespondIoIntegrationController::class, 'markNotLead'])->middleware('permission:communication.manage');
         Route::post('events/{event}/apply-contact-assignee', [RespondIoIntegrationController::class, 'applyContactAssignee'])->middleware('permission:communication.manage');
@@ -2373,6 +2375,8 @@ Route::middleware(['auth:api'])->group(function () {
                 ->middleware(['permission:bookings.view', DenyCustomerPortalLegacyBookingActions::class]);
 
             // Draft Management Routes - Updated to match frontend service
+            Route::post('create-inquiry-from-call', [BookingFlowController::class, 'createCallBookingInquiry'])
+                ->middleware(['permission:bookings.create', 'permission:phone-calls.edit']);
             Route::post('save-draft', [BookingFlowController::class, 'saveBookingDraft'])
                 ->middleware(['permission:bookings.create', DenyCustomerPortalLegacyBookingActions::class]);
             Route::post('request-quotation', [BookingFlowController::class, 'requestBookingQuotation'])

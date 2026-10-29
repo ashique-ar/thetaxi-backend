@@ -3,6 +3,7 @@
 namespace App\Services;
 
 use App\Models\Booking\Booking;
+use App\Models\BusinessSetting;
 use App\Models\User;
 use App\Notifications\NewCorporateBookingNotification;
 use Illuminate\Support\Facades\Log;
@@ -22,7 +23,10 @@ class CorporateBookingNotificationService
                 ->get();
             Notification::send($dispatchUsers, $notification);
 
-            $recipients = collect($booking->corporateAccount?->booking_notification_emails ?? [])
+            $businessEmail = trim((string) BusinessSetting::getSetting('corporate_booking_notification_email'));
+            $recipients = collect(filter_var($businessEmail, FILTER_VALIDATE_EMAIL)
+                ? [$businessEmail]
+                : ($booking->corporateAccount?->booking_notification_emails ?? []))
                 ->filter(fn ($email) => is_string($email) && filter_var($email, FILTER_VALIDATE_EMAIL))
                 ->map(fn ($email) => strtolower(trim($email)))
                 ->unique()

@@ -2,6 +2,7 @@
 // app/Http/Requests/ServiceType/UpdateServiceTypeRequest.php
 namespace App\Http\Requests\ServiceType;
 
+use App\Models\Service\ServiceType;
 use Illuminate\Contracts\Validation\Validator;
 use Illuminate\Foundation\Http\FormRequest;
 use Illuminate\Validation\Rule;
@@ -99,11 +100,11 @@ class UpdateServiceTypeRequest extends FormRequest
                 $validator->errors()->add('workflow_config.qc_stage_enabled', 'Enable the vehicle return step before enabling return inspection (QC).');
             }
             if (filter_var($config['driver_license_required'] ?? false, FILTER_VALIDATE_BOOLEAN)
-                && $this->input('type', $this->route('service_type')?->type) !== 'self_driven') {
+                && ! ServiceType::isSelfDriveType($this->input('type', $this->route('service_type')?->type)) ) {
                 $validator->errors()->add('workflow_config.driver_license_required', 'A customer driver licence requirement can only be used for self-drive services.');
             }
             if (filter_var($config['customer_identity_document_required'] ?? false, FILTER_VALIDATE_BOOLEAN)
-                && $this->input('type', $this->route('service_type')?->type) !== 'self_driven') {
+                && ! ServiceType::isSelfDriveType($this->input('type', $this->route('service_type')?->type)) ) {
                 $validator->errors()->add('workflow_config.customer_identity_document_required', 'A customer identity document requirement can only be used for self-drive services.');
             }
             $serviceType = $this->route('service_type');

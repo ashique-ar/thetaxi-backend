@@ -55,7 +55,14 @@ class SystemBackupController extends Controller
             'label' => 'Create database backup', 'status' => 'queued', 'progress' => 0,
             'created_at' => now(), 'updated_at' => now(),
         ]);
-        CreateSystemBackup::dispatch($id);
+        try {
+            CreateSystemBackup::dispatch($id);
+        } catch (\Throwable $exception) {
+            DB::table('system_background_tasks')->where('id', $id)->update([
+                'status' => 'failed', 'error' => 'Backup could not be queued. Contact an administrator.', 'updated_at' => now(),
+            ]);
+            throw $exception;
+        }
 
         return response()->json(['status' => 'success', 'data' => ['id' => $id, 'status' => 'queued']], 202);
     }

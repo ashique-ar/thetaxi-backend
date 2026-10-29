@@ -103,7 +103,63 @@
                     <a href="{{ route('search') }}" class="primary-btn1 mt-3">Browse Vehicles</a>
                 </div>
             @else
-                <div class="row g-lg-4 gy-5">
+                @php
+                    $canBookAsNewCustomer = $guestBookingEnabled || Auth::check();
+                    $showCheckoutDetails = !empty($verifiedCheckoutCustomer) || old('email') || old('first_name');
+                @endphp
+                @if (!$showCheckoutDetails)
+                    <div id="checkout-customer-choice" class="checkout-form-wrapper mb-4" aria-labelledby="checkout-customer-choice-title">
+                        <div class="checkout-form-title">
+                            <h4 id="checkout-customer-choice-title">Who is booking?</h4>
+                            <p class="text-muted mb-0">Choose an option to continue.</p>
+                        </div>
+                        <div id="checkout-customer-options" class="d-flex flex-wrap gap-3 mt-3">
+                            @if ($canBookAsNewCustomer)
+                                <label class="checkout-customer-option border rounded p-3">
+                                    <input type="radio" name="checkout_customer_kind" value="new">
+                                    <strong class="ms-2">I’m a new customer</strong>
+                                    <small class="d-block ms-4 text-muted">Enter your details on the next step.</small>
+                                </label>
+                            @endif
+                            <label class="checkout-customer-option border rounded p-3">
+                                <input type="radio" name="checkout_customer_kind" value="returning">
+                                <strong class="ms-2">I’ve booked with you before</strong>
+                                <small class="d-block ms-4 text-muted">Verify your details to load them on the next step.</small>
+                            </label>
+                            <div class="w-100">
+                                <button type="button" id="continue-customer-choice" class="primary-btn1" disabled>Continue</button>
+                            </div>
+                        </div>
+                        <div id="returning-customer-panel" class="mt-4" hidden>
+                            <h5>Find your saved details</h5>
+                            <p class="small text-muted">Enter the email or mobile number used for an earlier booking. We’ll send a code before showing your details. @if (!$canBookAsNewCustomer) New customers need to sign in to book. @endif</p>
+                            <div class="row">
+                                <div class="col-md-6 mb-3">
+                                    <label for="customer-lookup-email">Email address</label>
+                                    <input type="email" id="customer-lookup-email" class="form-control" autocomplete="email" placeholder="you@example.com">
+                                </div>
+                                <div class="col-md-6 mb-3">
+                                    <label for="customer-lookup-mobile">Mobile number with country code</label>
+                                    <input type="tel" id="customer-lookup-mobile" class="form-control" autocomplete="tel" placeholder="+94771234567">
+                                </div>
+                            </div>
+                            <div class="d-flex flex-wrap gap-2">
+                                <button type="button" id="send-customer-email-code" class="btn btn-outline-secondary">Send code by email</button>
+                                <button type="button" id="send-customer-mobile-code" class="btn btn-outline-secondary">Send code by mobile</button>
+                            </div>
+                            <div id="customer-email-code-panel" class="mt-3" hidden>
+                                <label for="customer-email-code">Enter the 6-digit code</label>
+                                <div class="d-flex gap-2">
+                                    <input id="customer-email-code" type="text" inputmode="numeric" autocomplete="one-time-code" maxlength="6" class="form-control" aria-describedby="customer-email-code-status">
+                                    <button type="button" id="verify-customer-email-code" class="btn btn-primary">Verify and continue</button>
+                                </div>
+                            </div>
+                            <div id="customer-email-code-status" class="small mt-2" role="status" aria-live="polite"></div>
+                            <button type="button" id="back-to-customer-choice" class="btn btn-link px-0">Back to customer choices</button>
+                        </div>
+                    </div>
+                @endif
+                <div class="row g-lg-4 gy-5" id="checkout-details-layout" @if (!$showCheckoutDetails) hidden @endif>
                         <div class="col-lg-7">
                             <form id="checkout-form" method="POST" action="{{ route('checkout.process') }}">
                                 @csrf
@@ -120,6 +176,12 @@
                             <div class="checkout-form-wrapper">
                                 <div class="checkout-form-title">
                                     <h4>Billing Information</h4>
+                                    @if ($verifiedCheckoutCustomer)
+                                        <button type="button" id="reset-customer-details" class="btn btn-link btn-sm px-0">Use different details</button>
+                                    @else
+                                        <button type="button" id="reset-customer-details" class="btn btn-link btn-sm px-0" hidden>Use different details</button>
+                                    @endif
+                                    <p id="verified-customer-status" class="small text-success mb-0" hidden>Saved details loaded. Check them and update anything that has changed.</p>
                                 </div>
                                 <div class="checkout-form">
                                     <div class="row">
@@ -171,20 +233,6 @@
                                                 @error('email')
                                                     <span class="text-danger">{{ $message }}</span>
                                                 @enderror
-                                                <div class="mt-2">
-                                                    <button type="button" id="send-customer-email-code" class="btn btn-outline-secondary btn-sm">
-                                                        I've booked before - verify my email
-                                                    </button>
-                                                    <small class="d-block text-muted mt-1">Only needed if you have booked with us before using this email. New customers can continue without a code.</small>
-                                                    <div id="customer-email-code-panel" class="mt-2" hidden>
-                                                        <label for="customer-email-code">6-digit email code</label>
-                                                        <div class="d-flex gap-2">
-                                                            <input id="customer-email-code" type="text" inputmode="numeric" autocomplete="one-time-code" maxlength="6" class="form-control" aria-describedby="customer-email-code-status">
-                                                            <button type="button" id="verify-customer-email-code" class="btn btn-primary">Confirm</button>
-                                                        </div>
-                                                    </div>
-                                                    <div id="customer-email-code-status" class="small mt-1" role="status" aria-live="polite"></div>
-                                                </div>
                                             </div>
                                         </div>
                                         <div class="col-md-6">
@@ -868,6 +916,16 @@
 
         .checkout-form-wrapper {
             padding: 26px;
+        }
+
+        .checkout-customer-option {
+            flex: 1 1 280px;
+            cursor: pointer;
+        }
+
+        .checkout-customer-option:focus-within {
+            outline: 2px solid #2563eb;
+            outline-offset: 2px;
         }
 
         .checkout-form-title {
@@ -2845,6 +2903,9 @@
                 }
             }
 
+            window.checkoutIntlTelInput = iti;
+            window.validateCheckoutPhoneNumber = validatePhoneNumber;
+
             // Update country selection when select dropdown changes
             $(phoneCountrySelect).on('change', function() {
                 const selectedCountry = $(this).val();
@@ -2892,24 +2953,59 @@
     <!-- Checkout Payment Type Handler -->
     <script src="{{ assetVersion('assets/js/checkout-payment-type.js') }}"></script>
     <script>
-        (() => {
+        $(document).ready(() => {
             const form = document.getElementById('checkout-form');
             const emailInput = form?.querySelector('input[name="email"]');
-            const sendButton = document.getElementById('send-customer-email-code');
+            const phoneInput = document.getElementById('phone-input');
+            const phoneInternationalInput = document.getElementById('phone-international');
+            const lookupEmailInput = document.getElementById('customer-lookup-email');
+            const lookupMobileInput = document.getElementById('customer-lookup-mobile');
+            const emailButton = document.getElementById('send-customer-email-code');
+            const mobileButton = document.getElementById('send-customer-mobile-code');
             const verifyButton = document.getElementById('verify-customer-email-code');
+            const resetButton = document.getElementById('reset-customer-details');
             const codePanel = document.getElementById('customer-email-code-panel');
             const codeInput = document.getElementById('customer-email-code');
             const status = document.getElementById('customer-email-code-status');
+            const customerChoice = document.getElementById('checkout-customer-choice');
+            const customerOptions = document.getElementById('checkout-customer-options');
+            const customerKindInputs = document.querySelectorAll('input[name="checkout_customer_kind"]');
+            const continueCustomerChoice = document.getElementById('continue-customer-choice');
+            const returningPanel = document.getElementById('returning-customer-panel');
+            const detailsLayout = document.getElementById('checkout-details-layout');
+            const backToCustomerChoice = document.getElementById('back-to-customer-choice');
+            const verifiedStatus = document.getElementById('verified-customer-status');
             const csrf = document.querySelector('meta[name="csrf-token"]')?.content;
-            let verifiedEmail = '';
+            let activeChannel = 'email';
 
-            if (!form || !emailInput || !sendButton || !verifyButton || !status || !codePanel || !codeInput) return;
+            if (!form || !emailInput || !phoneInput || !phoneInternationalInput || !resetButton) return;
 
-            const normalizedEmail = () => emailInput.value.trim().toLowerCase();
+            const identityValue = channel => channel === 'email'
+                ? (lookupEmailInput?.value || '').trim().toLowerCase()
+                : (lookupMobileInput?.value || '').trim();
+            const syncCustomerChoice = () => {
+                const selected = selectedCustomerKind();
+                customerKindInputs.forEach(input => {
+                    input.closest('label')?.classList.toggle('border-primary', input.checked);
+                });
+                if (continueCustomerChoice) continueCustomerChoice.disabled = !selected;
+            };
             const showMessage = (message, verified = false) => {
+                if (!status) return;
                 status.textContent = message;
                 status.className = `small mt-1 ${verified ? 'text-success' : 'text-muted'}`;
             };
+            const showSavedDetailsMessage = (message, isError = false) => {
+                if (!verifiedStatus) return;
+                verifiedStatus.textContent = message;
+                verifiedStatus.className = `small mb-0 ${isError ? 'text-danger' : 'text-success'}`;
+                verifiedStatus.hidden = false;
+            };
+            const showBookingForm = () => {
+                if (customerChoice) customerChoice.hidden = true;
+                if (detailsLayout) detailsLayout.hidden = false;
+            };
+            const selectedCustomerKind = () => document.querySelector('input[name="checkout_customer_kind"]:checked')?.value;
             const post = async (url, data) => {
                 const response = await fetch(url, {
                     method: 'POST',
@@ -2921,31 +3017,80 @@
                 return payload;
             };
 
-            sendButton.addEventListener('click', async () => {
-                const email = normalizedEmail();
-                if (!emailInput.checkValidity()) { emailInput.reportValidity(); return; }
-                sendButton.disabled = true;
+            const fillCustomer = customer => {
+                for (const field of ['first_name', 'last_name', 'address', 'city', 'country', 'identification']) {
+                    const input = form.querySelector(`[name="${field}"]`);
+                    if (input && customer[field] != null) {
+                        input.value = customer[field];
+                        input.dispatchEvent(new Event('change', { bubbles: true }));
+                    }
+                }
+                emailInput.value = customer.email || '';
+                emailInput.readOnly = true;
+                const phone = window.checkoutIntlTelInput;
+                if (phone && customer.phone) phone.setNumber(customer.phone);
+                else phoneInput.value = customer.phone || '';
+                phoneInput.readOnly = Boolean(customer.phone);
+                if (window.validateCheckoutPhoneNumber) window.validateCheckoutPhoneNumber();
+                resetButton.hidden = false;
+                showSavedDetailsMessage('Saved details loaded. Check them and update anything that has changed.');
+            };
+
+            const requestCode = async channel => {
+                if (!emailButton || !mobileButton || !codePanel || !codeInput) return;
+                activeChannel = channel;
+                const value = identityValue(channel);
+                if (!value) {
+                    const input = channel === 'email' ? lookupEmailInput : lookupMobileInput;
+                    if (!input) return;
+                    input.focus();
+                    if (channel === 'email') input.reportValidity();
+                    showMessage(channel === 'email' ? 'Enter your email address first.' : 'Enter your mobile number first.');
+                    return;
+                }
+                if (channel === 'email' && lookupEmailInput && !lookupEmailInput.checkValidity()) { lookupEmailInput.reportValidity(); return; }
+                const button = channel === 'email' ? emailButton : mobileButton;
+                button.disabled = true;
                 try {
-                    await post(@json(route('checkout.customer-email.send-code')), { email });
+                    await post(@json(route('checkout.customer-email.send-code')), { channel, value });
                     codePanel.hidden = false;
-                    showMessage('If this email is already used for a customer account, check your inbox for a code.');
+                    showMessage(`If these details match an earlier booking, check your ${channel === 'email' ? 'inbox' : 'phone'} for a code.`);
                     codeInput.focus();
                 } catch (error) {
                     showMessage(error.message || 'Could not send a code. Please try again.');
                 } finally {
-                    sendButton.disabled = false;
+                    button.disabled = false;
+                }
+            };
+
+            customerKindInputs.forEach(input => input.addEventListener('change', syncCustomerChoice));
+            syncCustomerChoice();
+            continueCustomerChoice?.addEventListener('click', () => {
+                if (selectedCustomerKind() === 'new') {
+                    showBookingForm();
+                    return;
+                }
+                if (selectedCustomerKind() === 'returning') {
+                    if (customerOptions) customerOptions.hidden = true;
+                    if (returningPanel) returningPanel.hidden = false;
+                    lookupEmailInput?.focus();
                 }
             });
+            backToCustomerChoice?.addEventListener('click', () => {
+                if (customerOptions) customerOptions.hidden = false;
+                if (returningPanel) returningPanel.hidden = true;
+            });
+            emailButton?.addEventListener('click', () => requestCode('email'));
+            mobileButton?.addEventListener('click', () => requestCode('mobile'));
 
-            verifyButton.addEventListener('click', async () => {
-                const email = normalizedEmail();
-                if (!emailInput.checkValidity()) { emailInput.reportValidity(); return; }
+            verifyButton?.addEventListener('click', async () => {
+                if (!codeInput || !codePanel) return;
+                const value = identityValue(activeChannel);
                 verifyButton.disabled = true;
                 try {
-                    const result = await post(@json(route('checkout.customer-email.verify-code')), { email, code: codeInput.value.trim() });
-                    verifiedEmail = email;
-                    showMessage(result.message || 'Email verified.', true);
-                    codePanel.hidden = true;
+                    const result = await post(@json(route('checkout.customer-email.verify-code')), { channel: activeChannel, value, code: codeInput.value.trim() });
+                    fillCustomer(result.data);
+                    showBookingForm();
                 } catch (error) {
                     showMessage(error.message || 'The code is invalid or expired.');
                 } finally {
@@ -2953,15 +3098,22 @@
                 }
             });
 
-            emailInput.addEventListener('input', () => {
-                const email = normalizedEmail();
-                if (verifiedEmail && email !== verifiedEmail) {
-                    verifiedEmail = '';
-                    codePanel.hidden = true;
-                    codeInput.value = '';
-                    showMessage('Verify this email again if it belongs to an existing customer account.');
+            resetButton.addEventListener('click', async () => {
+                resetButton.disabled = true;
+                try {
+                    await post(@json(route('checkout.customer-email.reset')), {});
+                    window.location.reload();
+                } catch (error) {
+                    showSavedDetailsMessage(error.message || 'Could not clear the saved details. Refresh this page to start again.', true);
+                } finally {
+                    resetButton.disabled = false;
                 }
             });
-        })();
+            const verifiedCustomer = @json($verifiedCheckoutCustomer);
+            if (verifiedCustomer) {
+                fillCustomer(verifiedCustomer);
+                showBookingForm();
+            }
+        });
     </script>
 @endpush

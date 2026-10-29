@@ -11,7 +11,7 @@ class IntegrationWebhookEvent extends Model
 {
     use HasUuids;
 
-    protected $fillable = ['connection_id', 'company_id', 'provider', 'event_type', 'message_direction', 'external_contact_id', 'external_conversation_id', 'external_message_id', 'payload_hash', 'payload', 'status', 'received_at', 'outbound_message', 'outbound_status', 'outbound_message_id', 'outbound_sent_at', 'outbound_by_user_id'];
+    protected $fillable = ['connection_id', 'company_id', 'provider', 'event_type', 'message_direction', 'external_contact_id', 'external_conversation_id', 'external_message_id', 'linked_booking_id', 'payload_hash', 'payload', 'status', 'received_at', 'outbound_message', 'outbound_status', 'outbound_message_id', 'outbound_sent_at', 'outbound_by_user_id'];
     protected $hidden = ['payload_hash'];
     protected $casts = ['payload' => 'encrypted:array', 'resolution_note' => 'encrypted', 'outbound_message' => 'encrypted', 'received_at' => 'datetime', 'processed_at' => 'datetime', 'outbound_sent_at' => 'datetime'];
 

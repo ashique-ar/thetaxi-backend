@@ -21,8 +21,13 @@ class BackgroundTaskController extends Controller
             if (!$campaign) {
                 $task->status = 'failed';
                 $task->error = 'Campaign is no longer available.';
+                DB::table('system_background_tasks')->where('id', $task->id)->update([
+                    'status' => 'failed', 'error' => $task->error, 'updated_at' => now(),
+                ]);
                 continue;
             }
+            $storedStatus = $task->status;
+            $storedProgress = (int) $task->progress;
             $task->label = 'SMS campaign: ' . $campaign->name;
             $total = max(0, (int) $campaign->total_recipients);
             $completed = (int) $campaign->sent_recipients + (int) $campaign->delivered_recipients + (int) $campaign->failed_recipients;
@@ -35,6 +40,11 @@ class BackgroundTaskController extends Controller
                 $task->progress = 100;
             } elseif ($campaign->status === 'processing') {
                 $task->status = 'processing';
+            }
+            if ($task->status !== $storedStatus || $task->progress !== $storedProgress) {
+                DB::table('system_background_tasks')->where('id', $task->id)->update([
+                    'status' => $task->status, 'progress' => $task->progress, 'error' => $task->error, 'updated_at' => now(),
+                ]);
             }
         }
 

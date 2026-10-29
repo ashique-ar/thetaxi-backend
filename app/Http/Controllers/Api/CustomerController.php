@@ -110,11 +110,16 @@ class CustomerController extends Controller
         if ($companyId) {
             $q->addSelect(['relationship_owner_name' => DB::table('customer_relationship_owner_assignments as assignment')
                 ->join('sales_profiles as profile', 'profile.id', '=', 'assignment.owner_sales_profile_id')
-                ->join('staff', 'staff.id', '=', 'profile.staff_id')
-                ->join('users as owner', 'owner.id', '=', 'staff.user_id')
+                ->join('staff as owner_staff', 'owner_staff.id', '=', 'profile.staff_id')
+                ->join('users as owner', 'owner.id', '=', 'owner_staff.user_id')
                 ->selectRaw("CONCAT_WS(' ', owner.first_name, owner.last_name)")
                 ->whereColumn('assignment.customer_id', 'customers.id')->where('assignment.company_id', $companyId)
-                ->whereNull('assignment.ended_at')->whereNotNull('assignment.owner_sales_profile_id')
+                ->whereNull('assignment.ended_at')->where('assignment.effective_from', '<=', now())->whereNotNull('assignment.owner_sales_profile_id')
+                ->where('profile.company_id', $companyId)->where('profile.status', 'active')->whereNull('profile.deleted_at')
+                ->where('profile.effective_from', '<=', now())->where(fn ($query) => $query->whereNull('profile.effective_until')->orWhere('profile.effective_until', '>', now()))
+                ->where('owner_staff.company_id', $companyId)->whereNull('owner_staff.deleted_at')
+                ->where(fn ($query) => $query->whereNull('owner_staff.employment_ended_at')->orWhere('owner_staff.employment_ended_at', '>', now()))
+                ->where('owner.is_active', true)->whereNull('owner.deleted_at')
                 ->orderByDesc('assignment.effective_from')->limit(1)]);
         }
 
@@ -123,9 +128,16 @@ class CustomerController extends Controller
             abort_unless($companyId, 409, 'No active default company is configured.');
             \App\Services\CompanyCustomerScope::constrain($q, 'customers', $companyId);
             $ownership = DB::table('customer_relationship_owner_assignments as assignment')
+                ->join('sales_profiles as profile', 'profile.id', '=', 'assignment.owner_sales_profile_id')
+                ->join('staff as owner_staff', 'owner_staff.id', '=', 'profile.staff_id')
+                ->join('users as owner_user', 'owner_user.id', '=', 'owner_staff.user_id')
                 ->selectRaw('1')->whereColumn('assignment.customer_id', 'customers.id')
-                ->where('assignment.company_id', $companyId)->whereNull('assignment.ended_at')
-                ->whereNotNull('assignment.owner_sales_profile_id');
+                ->where('assignment.company_id', $companyId)->whereNull('assignment.ended_at')->where('assignment.effective_from', '<=', now())
+                ->where('profile.company_id', $companyId)->where('profile.status', 'active')->whereNull('profile.deleted_at')
+                ->where('profile.effective_from', '<=', now())->where(fn ($query) => $query->whereNull('profile.effective_until')->orWhere('profile.effective_until', '>', now()))
+                ->where('owner_staff.company_id', $companyId)->whereNull('owner_staff.deleted_at')
+                ->where(fn ($query) => $query->whereNull('owner_staff.employment_ended_at')->orWhere('owner_staff.employment_ended_at', '>', now()))
+                ->where('owner_user.is_active', true)->whereNull('owner_user.deleted_at');
             $request->get('owner_status') === 'assigned'
                 ? $q->whereExists($ownership)
                 : $q->whereNotExists($ownership);

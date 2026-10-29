@@ -421,6 +421,8 @@ class SalesCrmService
                 if (! empty($data['opportunity_id'])) {
                     $opportunity = SalesOpportunity::query()->lockForUpdate()->findOrFail($data['opportunity_id']);
                     abort_unless($opportunity->company_id === $profile->company_id, 422, 'Activity opportunity and Sales Profile must belong to the same legal entity.');
+                    abort_unless(in_array($opportunity->stage, ['won', 'lost'], true) || $followUpTask, 422,
+                        'Add a due follow-up task before recording activity on an open sales opportunity.');
                     $opportunityOwner = SalesProfile::query()->lockForUpdate()->find($opportunity->owner_sales_profile_id);
                     abort_unless($opportunityOwner && $opportunityOwner->company_id === $opportunity->company_id, 422,
                         'Activity Opportunity owner must belong to the same legal entity.');

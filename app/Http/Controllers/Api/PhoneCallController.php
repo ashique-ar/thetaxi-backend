@@ -255,7 +255,7 @@ class PhoneCallController extends Controller
             'confirm_lead' => ['required', 'accepted'],
             'name' => ['required', 'string', 'max:255'],
             'phone' => ['nullable', 'string', 'max:30'],
-            'inquiry_type' => ['required', 'in:booking,general,corporate,point_to_point,complaint,feedback'],
+            'inquiry_type' => ['required', 'in:general,complaint,feedback'],
             'subject' => ['required', 'string', 'max:255'],
             'message' => ['required', 'string', 'max:20000'],
             'customer_id' => ['nullable', 'uuid'],

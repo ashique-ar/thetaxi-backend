@@ -131,6 +131,8 @@ Route::post('/checkout/customer-email/send-code', [CheckoutController::class, 's
     ->middleware('throttle:10,1')->name('checkout.customer-email.send-code');
 Route::post('/checkout/customer-email/verify-code', [CheckoutController::class, 'verifyCustomerEmailCode'])
     ->middleware('throttle:10,1')->name('checkout.customer-email.verify-code');
+Route::post('/checkout/customer-email/reset', [CheckoutController::class, 'resetVerifiedCheckoutCustomer'])
+    ->middleware('throttle:10,1')->name('checkout.customer-email.reset');
 Route::post('/checkout/process', [CheckoutController::class, 'process'])->name('checkout.process');
 Route::get('/checkout/success', [CheckoutController::class, 'success'])->name('checkout.success');
 

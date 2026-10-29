@@ -1,0 +1,26 @@
+# Template only — replace the deployment placeholders before installing.
+
+[Unit]
+Description=TheTaxi background export and backup worker
+After=network.target
+ConditionPathExists=__DEPLOYMENT_DIRECTORY__/artisan
+
+[Service]
+Type=simple
+User=__PROCESS_USER__
+Group=__PROCESS_GROUP__
+WorkingDirectory=__DEPLOYMENT_DIRECTORY__
+ExecStart=__PHP_BINARY__ artisan queue:work __QUEUE_CONNECTION__ --queue=exports --sleep=3 --tries=3 --timeout=1800 --max-time=3600
+Restart=always
+RestartSec=5
+KillSignal=SIGTERM
+TimeoutStopSec=1810
+StandardOutput=journal
+StandardError=journal
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectSystem=full
+ReadWritePaths=__DEPLOYMENT_DIRECTORY__/storage __DEPLOYMENT_DIRECTORY__/bootstrap/cache
+
+[Install]
+WantedBy=multi-user.target

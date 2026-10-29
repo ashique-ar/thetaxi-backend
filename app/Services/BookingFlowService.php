@@ -8,6 +8,7 @@ use App\Models\Booking\BookingApproval;
 use App\Models\Booking\BookingAddon;
 use App\Models\Booking\BookingItem;
 use App\Models\Booking\BookingActivity;
+use App\Models\Booking\BookingStatus;
 use App\Models\Booking\BookingVariableCustomization;
 use App\Models\Corporate\Corporate;
 use App\Models\Corporate\CorporateEmployee;
@@ -18,6 +19,8 @@ use App\Models\Vehicle\VehicleAssignment;
 use App\Models\Driver\Driver;
 use App\Models\DriverAssignment;
 use App\Models\Customer;
+use App\Models\PhoneCall;
+use App\Models\IntegrationWebhookEvent;
 use App\Models\User;
 use App\Models\Service\ServiceType;
 use App\Models\Service\ServicePackage;
@@ -4926,7 +4929,8 @@ class BookingFlowService
      */
     private function isVehicleSelfDrivenCompatible($vehicle, $serviceType): bool
     {
-        return $serviceType !== 'self_driven' || ($vehicle->is_self_driven_eligible ?? true);
+        $resolvedType = $this->resolveCalculationServiceType($serviceType, [])?->type ?? (string) $serviceType;
+        return ! ServiceType::isSelfDriveType($resolvedType) || ($vehicle->is_self_driven_eligible ?? true);
     }
 
     /**
@@ -9322,7 +9326,7 @@ class BookingFlowService
     {
         $bookingStatuses = $this->normalizeFilterValues(
             $filters['status'] ?? null,
-            ['draft', 'pending_approval', 'approved', 'confirmed', 'allocated', 'in_progress', 'completed', 'cancelled']
+            ['draft', 'inquiry', 'inquiry_qualified', 'pending_approval', 'approved', 'confirmed', 'allocated', 'in_progress', 'completed', 'cancelled']
         );
         $itemStatuses = $this->normalizeFilterValues(
             $filters['item_status'] ?? null,
@@ -9811,7 +9815,7 @@ class BookingFlowService
             'needs_responsible_owner', 'needs_responsible_owner_past_target' => $query->whereHas('booking', function ($bookingQuery) use ($queue) {
                     $companyId = app(SingleCompanyScope::class)->activeDefaultCompany()?->id;
                     $eligibleOwners = $companyId ? app(BookingResponsibilityService::class)->eligibleEmployees((string) $companyId)->pluck('id')->map(fn ($id) => (string) $id)->all() : [];
-                    $bookingQuery->whereIn('status', BookingLifecycleStatus::activeOperationalValues())
+                    $bookingQuery->whereIn('status', array_merge(['inquiry', 'inquiry_qualified'], BookingLifecycleStatus::activeOperationalValues()))
                         ->where(fn ($ownerQuery) => $ownerQuery->whereNull('bookings.responsible_user_id')->orWhereNotIn('bookings.responsible_user_id', $eligibleOwners));
                     if ($queue === 'needs_responsible_owner_past_target') {
                         $targetMinutes = $companyId ? app(SalesPolicySettingsService::class)->bookingAssignmentTargetMinutes((string) $companyId) : null;
@@ -12718,7 +12722,7 @@ class BookingFlowService
         }
 
         // Create driver assignment if driver is selected and not self-driven
-        if ($bookingItem->driver_id && $bookingItem->serviceType?->type !== 'self_drive') {
+        if ($bookingItem->driver_id && ! ServiceType::isSelfDriveType($bookingItem->serviceType?->type)) {
             try {
                 $driverAssignmentParams = array_merge($assignmentParams, [
                     'driver_id' => $bookingItem->driver_id,
@@ -13164,6 +13168,131 @@ class BookingFlowService
 
             return $booking->load(['customer', 'bookingItems']);
         });
+    }
+
+    public function createCallBookingInquiry(array $params, string $phoneCallId, string $actorUserId): array
+    {
+        return $this->createBookingInquiryFromSource($params, 'phone_call', $phoneCallId, $actorUserId);
+    }
+
+    public function createRespondIoBookingInquiry(array $params, string $eventId, string $actorUserId): array
+    {
+        return $this->createBookingInquiryFromSource($params, 'respond_io', $eventId, $actorUserId);
+    }
+
+    private function createBookingInquiryFromSource(array $params, string $sourceType, string $sourceId, string $actorUserId): array
+    {
+        [$booking, $created, $companyId] = DB::transaction(function () use ($params, $sourceType, $sourceId, $actorUserId): array {
+            $companyId = (string) (app(SingleCompanyScope::class)->activeDefaultCompany(true)?->id ?? '');
+            abort_unless($companyId !== '', 409, 'No active business is configured.');
+            if ($sourceType === 'phone_call') {
+                $source = PhoneCall::query()->where('company_id', $companyId)->lockForUpdate()->findOrFail($sourceId);
+                if ($source->booking_id) {
+                    $existing = Booking::query()->whereKey($source->booking_id);
+                    CompanyBookingScope::constrain($existing, 'bookings', $companyId);
+                    $existing = $existing->firstOrFail();
+                    abort_unless(data_get($existing->workflow_data, 'request_origin.phone_call_id') === (string) $source->id,
+                        409, 'This call is already linked to a different booking.');
+                    return [$existing, false, $companyId];
+                }
+            } else {
+                $source = IntegrationWebhookEvent::query()->where('company_id', $companyId)->where('provider', 'respond_io')
+                    ->incomingMessage()->lockForUpdate()->findOrFail($sourceId);
+                if ($source->linked_booking_id) {
+                    $existing = Booking::query()->whereKey($source->linked_booking_id);
+                    CompanyBookingScope::constrain($existing, 'bookings', $companyId);
+                    $existing = $existing->firstOrFail();
+                    abort_unless(data_get($existing->workflow_data, 'request_origin.respond_io_event_id') === (string) $source->id,
+                        409, 'This message is already linked to a different booking.');
+                    return [$existing, false, $companyId];
+                }
+                abort_unless($source->status === 'received' && ! $source->linked_inquiry_id, 409, 'This message has already been reviewed.');
+            }
+
+            $sourceCustomerId = $sourceType === 'phone_call' ? $source->customer_id : null;
+            $customerId = $params['customer_id'] ?? $sourceCustomerId;
+            abort_unless($customerId && (! $sourceCustomerId || (string) $sourceCustomerId === (string) $customerId),
+                422, 'Use the customer already linked to this call, or link a customer before creating the request.');
+            $customer = Customer::query()->whereKey($customerId);
+            CompanyCustomerScope::constrain($customer, 'customers', $companyId);
+            abort_unless($customer->exists(), 422, 'Select a customer associated with this business.');
+
+            $items = $params['booking_items'] ?? [];
+            abort_unless(is_array($items) && count($items) > 0, 422, 'Add at least one requested trip.');
+            foreach ($items as $index => &$item) {
+                $serviceTypeId = $item['service_type_id'] ?? $item['service_type'] ?? null;
+                abort_unless($serviceTypeId && ServiceType::query()->whereKey($serviceTypeId)
+                    ->where('owner_type', 'company')->where('owner_id', $companyId)->where('is_active', true)->exists(),
+                    422, 'Trip '.($index + 1).' must use an active service from this business.');
+                $item['service_type_id'] = $serviceTypeId;
+                $item['vehicle_id'] = null;
+                $item['driver_id'] = null;
+            }
+            unset($item);
+
+            $params['customer_id'] = (string) $customerId;
+            $params['booking_items'] = $items;
+            $params['booking_source'] = 'internal';
+            $createdFrom = $sourceType === 'phone_call' ? 'call_center' : 'respond_io';
+            $params['created_from'] = $createdFrom;
+            unset($params['source_phone_call_id'], $params['source_respond_io_event_id'], $params['send_confirmation_sms'], $params['send_confirmation_emails']);
+
+            $booking = $this->saveBookingDraft($params);
+            $originKey = $sourceType === 'phone_call' ? 'phone_call_id' : 'respond_io_event_id';
+            $origin = ['kind' => $sourceType, $originKey => (string) $source->id];
+            $workflowData = is_array($booking->workflow_data) ? $booking->workflow_data : [];
+            $booking->forceFill([
+                'status' => 'inquiry',
+                'workflow_step' => 'inquiry',
+                'confirmed' => false,
+                'confirmed_at' => null,
+                'confirmation_number' => null,
+                'created_from' => $createdFrom,
+                'workflow_data' => array_merge($workflowData, ['request_origin' => $origin, 'inquiry_created_by' => $actorUserId]),
+                'updated_user_id' => $actorUserId,
+            ])->save();
+            $booking->bookingItems()->update(['status' => 'inquiry', 'vehicle_id' => null, 'driver_id' => null]);
+            BookingStatus::query()->create([
+                'booking_id' => $booking->id, 'old_status' => null, 'new_status' => 'inquiry',
+                'created_user_id' => $actorUserId, 'updated_user_id' => $actorUserId,
+            ]);
+            $activityChannel = $sourceType === 'phone_call' ? 'phone' : 'chat';
+            $sourceLabel = $sourceType === 'phone_call' ? 'phone_call' : 'respond_io';
+            $sourceTitle = $sourceType === 'phone_call' ? 'A booking request was created from a phone call.' : 'A booking request was created from Respond.io.';
+            BookingActivity::query()->create([
+                'company_id' => $companyId, 'booking_id' => $booking->id, 'event_key' => 'booking_inquiry_created',
+                'channel' => $activityChannel, 'result_status' => 'completed', 'source' => $sourceLabel,
+                'title' => 'Booking request received', 'detail' => $sourceTitle,
+                'idempotency_key' => 'booking-inquiry-created:'.$booking->id,
+                'meta' => [$originKey => (string) $source->id, 'actor_user_id' => $actorUserId], 'event_at' => now(),
+            ]);
+            if ($sourceType === 'phone_call') {
+                $source->forceFill(['customer_id' => $customerId, 'booking_id' => $booking->id, 'updated_user_id' => $actorUserId])->save();
+            } else {
+                $source->forceFill([
+                    'linked_booking_id' => $booking->id, 'processed_by_user_id' => $actorUserId,
+                    'processed_at' => now(), 'status' => 'processed', 'resolution_code' => 'booking_request',
+                    'resolution_note' => 'A booking request was created from this Respond.io conversation.',
+                ])->save();
+                if ($source->external_conversation_id) {
+                    IntegrationWebhookEvent::query()->conversationMessage()
+                        ->where('connection_id', $source->connection_id)->where('id', '!=', $source->id)
+                        ->where('external_conversation_id', $source->external_conversation_id)
+                        ->where('status', 'received')->whereNull('linked_inquiry_id')->whereNull('linked_booking_id')
+                        ->update([
+                            'linked_booking_id' => $booking->id, 'status' => 'processed',
+                            'resolution_code' => 'booking_request', 'processed_by_user_id' => $actorUserId,
+                            'processed_at' => now(), 'updated_at' => now(),
+                        ]);
+                }
+            }
+
+            return [$booking->fresh(['customer', 'bookingItems', 'serviceType', 'vehicleGroup']), true, $companyId];
+        }, 3);
+
+        if ($created) app(BookingResponsibilityService::class)->notifyBookingCreated($booking);
+
+        return ['booking' => $booking, 'duplicate' => ! $created, 'company_id' => $companyId];
     }
 
     private function hasDraftPricingInputs(array $params): bool

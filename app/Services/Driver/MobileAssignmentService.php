@@ -777,7 +777,7 @@ class MobileAssignmentService
         $isOpenPackage = ($itemMetadata['trip_mode'] ?? null) === 'open_package';
         $payload['trip_mode'] = $isOpenPackage ? 'open_package' : 'fixed_route';
         $payload['destination_known'] = !$isOpenPackage;
-        $requiresDriver = ($serviceType?->type ?? 'with_driver') !== 'self_drive';
+        $requiresDriver = ! \App\Models\Service\ServiceType::isSelfDriveType($serviceType?->type ?? 'with_driver');
         $payload['service'] = [
             'id' => $serviceType?->id,
             'code' => $serviceType?->code,

@@ -12,7 +12,7 @@ Type=simple
 User=__PROCESS_USER__
 Group=__PROCESS_GROUP__
 WorkingDirectory=__DEPLOYMENT_DIRECTORY__
-ExecStart=__PHP_BINARY__ artisan queue:work __QUEUE_CONNECTION__ --queue=sms --sleep=3 --tries=3 --timeout=180 --max-time=3600
+ExecStart=__PHP_BINARY__ artisan queue:work __QUEUE_CONNECTION__ --queue=sms-campaigns,sms --sleep=3 --tries=3 --timeout=180 --max-time=3600
 Restart=no
 KillSignal=SIGTERM
 TimeoutStopSec=190

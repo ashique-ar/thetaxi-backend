@@ -44,7 +44,7 @@ class CustomerService
             if ($user) {
                 if (!$this->checkoutEmailIsVerified($email)) {
                     throw ValidationException::withMessages([
-                        'email' => ['Verify this email to connect the booking to the existing customer account.'],
+                        'email' => ['This email is already linked to a customer. Choose “Use email” above to load your saved details.'],
                     ]);
                 }
 
@@ -119,9 +119,16 @@ class CustomerService
     public function updateCustomerProfile(Customer $customer, array $data): Customer
     {
         return DB::transaction(function () use ($customer, $data) {
+            if ($customer->user && (isset($data['first_name']) || isset($data['last_name']))) {
+                $customer->user->update(array_filter([
+                    'first_name' => $data['first_name'] ?? null,
+                    'last_name' => $data['last_name'] ?? null,
+                ], fn ($value) => $value !== null));
+            }
             $customer->update([
                 'address' => $data['customer_address'] ?? $customer->address,
                 'city' => $data['customer_city'] ?? $customer->city,
+                'country' => $data['customer_country'] ?? $customer->country,
                 'country_id' => $data['country_id'] ?? $customer->country_id,
                 'nic' => $data['customer_identification'] ?? $customer->nic,
                 'dob' => $data['dob'] ?? $customer->dob,
@@ -167,7 +174,7 @@ class CustomerService
             if ($customer) {
                 if (!$this->checkoutEmailIsVerified($data['customer_email'])) {
                     throw ValidationException::withMessages([
-                        'email' => ['Verify this email to connect the booking to the existing customer account.'],
+                        'email' => ['This email is already linked to a customer. Choose “Use email” above to load your saved details.'],
                     ]);
                 }
 
@@ -185,6 +192,13 @@ class CustomerService
 
                 return $this->updateCustomerProfile($customer, $data)->load('user');
             }
+        }
+
+        $phoneCustomer = $this->getCustomerByPhone((string) ($data['customer_phone'] ?? ''));
+        if ($phoneCustomer) {
+            throw ValidationException::withMessages([
+                'phone' => ['This mobile number is already linked to a previous booking. Choose “Use mobile” to load those details before continuing.'],
+            ]);
         }
 
         return $this->createGuestCustomer($data);
@@ -210,6 +224,16 @@ class CustomerService
         $userId = User::query()->whereRaw('LOWER(email) = ?', [$email])->value('id');
         $customerId = $userId ? DB::table('customer_user_aliases')->where('user_id', $userId)->value('customer_id') : null;
         return $customerId ? Customer::query()->with('user')->find($customerId) : null;
+    }
+
+    private function getCustomerByPhone(string $phone): ?Customer
+    {
+        $digits = preg_replace('/\D+/', '', trim($phone)) ?? '';
+        if (str_starts_with($digits, '00')) $digits = substr($digits, 2);
+        if ($digits === '') return null;
+
+        $user = User::query()->whereIn('phone', ['+'.$digits, '00'.$digits, $digits])->first();
+        return $user ? $this->customerForUser($user)?->load('user') : null;
     }
 
     /**

@@ -4,6 +4,8 @@ namespace App\Http\Controllers\Api\Integration;
 
 use App\Http\Controllers\Controller;
 use App\Http\Resources\Inquiry\InquiryResource;
+use App\Http\Resources\Booking\BookingFlowResource;
+use App\Models\Booking\Booking;
 use App\Models\IntegrationConnection;
 use App\Models\IntegrationContactMessage;
 use App\Models\IntegrationWebhookEvent;
@@ -12,6 +14,7 @@ use App\Models\Customer;
 use App\Models\User;
 use App\Services\InquiryAssignmentService;
 use App\Services\InquiryAssignmentNotificationService;
+use App\Services\BookingFlowService;
 use App\Services\SingleCompanyScope;
 use App\Notifications\RespondIoInquiryNeedsOwnerNotification;
 use Illuminate\Database\QueryException;
@@ -168,7 +171,8 @@ class RespondIoIntegrationController extends Controller
         $events->setCollection($events->getCollection()->map(fn (IntegrationWebhookEvent $event): array => [
             'id' => $event->id, 'event_type' => $event->event_type, 'status' => $event->status,
             'reply_status' => $event->outbound_status, 'received_at' => $event->received_at,
-            'linked_inquiry_id' => $event->linked_inquiry_id, 'resolution_code' => $event->resolution_code,
+            'linked_inquiry_id' => $event->linked_inquiry_id, 'linked_booking_id' => $event->linked_booking_id,
+            'resolution_code' => $event->resolution_code,
         ]));
         return response()->json(['status' => 'success', 'data' => $events]);
     }
@@ -178,10 +182,12 @@ class RespondIoIntegrationController extends Controller
         $connection = $this->companyConnection();
         abort_unless($connection && $event->connection_id === $connection->id
             && $event->company_id === $connection->company_id && $event->provider === 'respond_io', 404);
-        $linkedBookingNumber = $event->linked_inquiry_id
+        $linkedBookingNumber = $event->linked_booking_id
+            ? $this->companyBookingQuery((string) $connection->company_id, (string) $event->linked_booking_id)->value('booking_number')
+            : ($event->linked_inquiry_id
             ? Inquiry::query()->where('company_id', $connection->company_id)->whereKey($event->linked_inquiry_id)
                 ->with('booking:id,booking_number')->first()?->booking?->booking_number
-            : null;
+            : null);
 
         return response()->json(['status' => 'success', 'data' => [
             'id' => $event->id,
@@ -189,6 +195,7 @@ class RespondIoIntegrationController extends Controller
             'status' => $event->status,
             'received_at' => $event->received_at,
             'linked_inquiry_id' => $event->linked_inquiry_id,
+            'linked_booking_id' => $event->linked_booking_id,
             'external_contact_id' => $event->external_contact_id,
             'external_conversation_id' => $event->external_conversation_id,
             'external_message_id' => $event->external_message_id,
@@ -199,6 +206,63 @@ class RespondIoIntegrationController extends Controller
             'processed_at' => $event->processed_at,
             'payload' => $event->payload,
         ]]);
+    }
+
+    public function bookingRequestContext(IntegrationWebhookEvent $event): JsonResponse
+    {
+        $connection = $this->companyConnection();
+        abort_unless($connection && $event->connection_id === $connection->id
+            && $event->company_id === $connection->company_id && $event->provider === 'respond_io', 404);
+        abort_unless($event->status === 'received' && ! $event->linked_inquiry_id && ! $event->linked_booking_id
+            && $this->isRespondIoMessageEvent($event->event_type, $event->message_direction), 409, 'This message has already been reviewed.');
+
+        $root = is_array($event->payload) ? $event->payload : [];
+        $data = $root['data'] ?? $root['payload'] ?? [];
+        $contact = $root['contact'] ?? ($data['contact'] ?? []);
+        $firstName = trim((string) ($contact['firstName'] ?? $contact['first_name'] ?? ''));
+        $lastName = trim((string) ($contact['lastName'] ?? $contact['last_name'] ?? ''));
+        $name = trim((string) ($contact['name'] ?? trim($firstName.' '.$lastName)));
+
+        return response()->json(['status' => 'success', 'data' => [
+            'event_id' => (string) $event->id,
+            'name' => $name,
+            'email' => trim((string) ($contact['email'] ?? $data['email'] ?? $root['email'] ?? '')),
+            'phone' => trim((string) ($contact['phone'] ?? $data['phone'] ?? $root['phone'] ?? '')),
+        ]]);
+    }
+
+    public function createBookingRequest(Request $request, IntegrationWebhookEvent $event): JsonResponse
+    {
+        $request->validate([
+            'customer_id' => ['required', 'uuid'],
+            'booking_items' => ['required', 'array', 'min:1', 'max:10'],
+            'booking_items.*.service_type_id' => ['required', 'uuid'],
+            'booking_items.*.from_date' => ['required', 'date'],
+            'booking_items.*.from_time' => ['required', 'date_format:H:i'],
+            'booking_items.*.to_date' => ['nullable', 'date', 'after_or_equal:booking_items.*.from_date'],
+            'booking_items.*.to_time' => ['nullable', 'date_format:H:i'],
+            'booking_items.*.pickup_location' => ['nullable', 'array'],
+            'booking_items.*.dropoff_location' => ['nullable', 'array'],
+            'passenger_count' => ['nullable', 'integer', 'min:1', 'max:100'],
+            'luggage_count' => ['nullable', 'integer', 'min:0', 'max:100'],
+            'special_requirements' => ['nullable', 'string', 'max:5000'],
+        ]);
+        $connection = $this->companyConnection();
+        abort_unless($connection && $event->connection_id === $connection->id
+            && $event->company_id === $connection->company_id && $event->provider === 'respond_io', 404);
+
+        $bookingFlow = app(BookingFlowService::class);
+        $params = $bookingFlow->normalizeDynamicCalculationParams($request->all());
+        $params = $bookingFlow->normalizeCorporateEmployeeReferences($params);
+        $result = app(BookingFlowService::class)->createRespondIoBookingInquiry(
+            $params,
+            (string) $event->id,
+            (string) $request->user()->id,
+        );
+
+        return response()->json(['status' => 'success', 'duplicate' => $result['duplicate'],
+            'data' => new BookingFlowResource($result['booking']),
+            'message' => $result['duplicate'] ? 'This message already has a booking request.' : 'Booking request added to the booking queue.']);
     }
 
     public function inquiryOptions(Request $request, IntegrationWebhookEvent $event): JsonResponse
@@ -1042,6 +1106,13 @@ class RespondIoIntegrationController extends Controller
         abort_unless($booking->customer_id && (! $customerId || (string) $booking->customer_id === $customerId), 422,
             'Choose a booking for the selected customer.');
         return $booking;
+    }
+
+    private function companyBookingQuery(string $companyId, string $bookingId)
+    {
+        $query = Booking::query()->whereKey($bookingId);
+        \App\Services\CompanyBookingScope::constrain($query, 'bookings', $companyId);
+        return $query;
     }
 
     private function eligibleDefaultAssignee(IntegrationConnection $connection): ?string

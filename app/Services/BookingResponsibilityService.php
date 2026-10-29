@@ -62,7 +62,7 @@ class BookingResponsibilityService
     public function notifyUnassignedBooking(Booking $booking, ?string $companyId = null): void
     {
         $companyId ??= app(SingleCompanyScope::class)->activeDefaultCompany()?->id;
-        if (! $companyId || ! in_array($booking->status, BookingLifecycleStatus::activeOperationalValues(), true)) {
+        if (! $companyId || ! in_array($booking->status, array_merge(['inquiry', 'inquiry_qualified'], BookingLifecycleStatus::activeOperationalValues()), true)) {
             return;
         }
 

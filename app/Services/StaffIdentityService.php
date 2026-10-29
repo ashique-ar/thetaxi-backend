@@ -10,6 +10,7 @@ use App\Models\PhoneCall;
 use App\Models\PhoneCallAssignment;
 use App\Models\Sales\SalesTask;
 use App\Models\Sales\SalesTaskEvent;
+use App\Models\Sales\SalesOpportunity;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Schema;
 use Illuminate\Support\Facades\Crypt;
@@ -17,6 +18,7 @@ use Illuminate\Support\Str;
 use Illuminate\Notifications\DatabaseNotification;
 use App\Models\Sales\SalesProfile;
 use App\Services\Sales\BookingAttributionMutationService;
+use App\Services\Sales\SalesCrmService;
 use App\Services\Hr\PeopleCoreService;
 
 class StaffIdentityService
@@ -25,6 +27,7 @@ class StaffIdentityService
         private readonly UserContextService $contextService,
         private readonly BookingAttributionMutationService $attributionMutations,
         private readonly PeopleCoreService $peopleCore,
+        private readonly SalesCrmService $salesCrm,
     ) {}
 
     public function terminate(Staff $staff, User $actor, string $reason, string $idempotencyKey): array
@@ -65,6 +68,7 @@ class StaffIdentityService
                 ));
             $releasedCustomerCount = $this->releaseCustomerOwnership($salesProfiles, $actor);
             $releasedInquiryCount = $this->releaseInquiries($lockedStaff, $user, $actor);
+            $reassignedOpportunityCounts = $this->reassignSalesOpportunities($lockedStaff, $salesProfiles, $actor);
             $reassignedSalesTaskCounts = $this->reassignSalesTasks($lockedStaff, $salesProfiles, $actor);
             $releasedMissedCallCount = $this->releaseMissedCalls($lockedStaff, $user, $actor);
             $releasedBookingCount = $this->releaseBookings($lockedStaff, $user, $actor);
@@ -104,6 +108,8 @@ class StaffIdentityService
                 'inquiries_returned_to_queue' => $releasedInquiryCount,
                 'sales_tasks_reassigned' => $reassignedSalesTaskCounts['reassigned'],
                 'sales_tasks_needing_manager_review' => $reassignedSalesTaskCounts['needs_manager_review'],
+                'sales_opportunities_reassigned' => $reassignedOpportunityCounts['reassigned'],
+                'sales_opportunities_needing_manager_review' => $reassignedOpportunityCounts['needs_manager_review'],
                 'missed_calls_returned_to_queue' => $releasedMissedCallCount,
                 'bookings_returned_to_queue' => $releasedBookingCount,
                 'remaining_active_contexts' => $remainingContexts,
@@ -135,6 +141,8 @@ class StaffIdentityService
                     'inquiries_returned_to_queue' => $releasedInquiryCount,
                     'sales_tasks_reassigned' => $reassignedSalesTaskCounts['reassigned'],
                     'sales_tasks_needing_manager_review' => $reassignedSalesTaskCounts['needs_manager_review'],
+                    'sales_opportunities_reassigned' => $reassignedOpportunityCounts['reassigned'],
+                    'sales_opportunities_needing_manager_review' => $reassignedOpportunityCounts['needs_manager_review'],
                     'missed_calls_returned_to_queue' => $releasedMissedCallCount,
                     'bookings_returned_to_queue' => $releasedBookingCount,
                     'remaining_active_contexts' => $remainingContexts,
@@ -145,6 +153,38 @@ class StaffIdentityService
 
             return $outcome;
         });
+    }
+
+    private function reassignSalesOpportunities(Staff $staff, $salesProfiles, User $actor): array
+    {
+        $profileIds = $salesProfiles->pluck('id')->map(fn ($id): string => (string) $id)->all();
+        if ($profileIds === []) return ['reassigned' => 0, 'needs_manager_review' => 0];
+
+        $opportunities = SalesOpportunity::query()->where('company_id', $staff->company_id)
+            ->whereIn('owner_sales_profile_id', $profileIds)->whereNotIn('stage', ['won', 'lost'])->orderBy('id')->get();
+        $managerCache = [];
+        $reassigned = 0;
+        $needsManagerReview = 0;
+        foreach ($opportunities as $opportunity) {
+            $oldOwnerId = (string) $opportunity->owner_sales_profile_id;
+            $manager = $managerCache[$oldOwnerId] ??= $this->activeReportingManager($oldOwnerId, $profileIds, (string) $staff->company_id);
+            if (! $manager) {
+                $needsManagerReview++;
+                continue;
+            }
+
+            $this->salesCrm->transfer(
+                $opportunity,
+                $manager,
+                (int) $opportunity->state_version,
+                'Transferred to the active reporting manager after staff termination.',
+                "staff-termination:{$staff->id}:opportunity:{$opportunity->id}",
+                (string) $actor->id,
+            );
+            $reassigned++;
+        }
+
+        return ['reassigned' => $reassigned, 'needs_manager_review' => $needsManagerReview];
     }
 
     private function reassignSalesTasks(Staff $staff, $salesProfiles, User $actor): array
@@ -232,7 +272,7 @@ class StaffIdentityService
                 if (in_array($managerId, $visited, true)) continue;
                 $visited[] = $managerId;
                 $manager = SalesProfile::query()->whereKey($managerId)->where('company_id', $companyId)
-                    ->activeAt($now)->with('staff.user')->first();
+                    ->activeAt($now)->configured()->with('staff.user')->first();
                 $user = $manager?->staff?->user;
                 $eligible = $manager && $user && $user->is_active && ! $user->trashed()
                     && ! $manager->staff->trashed() && ! $manager->staff->employment_ended_at

@@ -26,7 +26,7 @@ class MyWorkController extends Controller
         $userId = (string) $request->user()->id;
         $queues = [];
         $attention = [];
-        $activeBookingStatuses = BookingLifecycleStatus::activeOperationalValues();
+        $activeBookingStatuses = array_merge(['inquiry', 'inquiry_qualified'], BookingLifecycleStatus::activeOperationalValues());
 
         if ($request->user()->can('bookings.view') && !Schema::hasColumn('bookings', 'responsible_user_id')) {
             return response()->json([
@@ -151,8 +151,16 @@ class MyWorkController extends Controller
             $customers = DB::table('customers')->whereNull('customers.deleted_at');
             CompanyCustomerScope::constrain($customers, 'customers', $companyId);
             $unassignedOwner = DB::table('customer_relationship_owner_assignments as assignment')->selectRaw('1')
+                ->join('sales_profiles as profile', 'profile.id', '=', 'assignment.owner_sales_profile_id')
+                ->join('staff as owner_staff', 'owner_staff.id', '=', 'profile.staff_id')
+                ->join('users as owner_user', 'owner_user.id', '=', 'owner_staff.user_id')
                 ->whereColumn('assignment.customer_id', 'customers.id')->where('assignment.company_id', $companyId)
-                ->whereNull('assignment.ended_at')->whereNotNull('assignment.owner_sales_profile_id');
+                ->whereNull('assignment.ended_at')->where('assignment.effective_from', '<=', now())
+                ->where('profile.company_id', $companyId)->where('profile.status', 'active')->whereNull('profile.deleted_at')
+                ->where('profile.effective_from', '<=', now())->where(fn ($query) => $query->whereNull('profile.effective_until')->orWhere('profile.effective_until', '>', now()))
+                ->where('owner_staff.company_id', $companyId)->whereNull('owner_staff.deleted_at')
+                ->where(fn ($query) => $query->whereNull('owner_staff.employment_ended_at')->orWhere('owner_staff.employment_ended_at', '>', now()))
+                ->where('owner_user.is_active', true)->whereNull('owner_user.deleted_at');
             $queues[] = ['group' => 'assignment', 'title' => 'Customers needing an owner', 'help' => 'Existing and new customers without a relationship owner', 'icon' => 'group_add',
                 'link' => '/customers?owner_status=unassigned', 'count' => (int) $customers->whereNotExists($unassignedOwner)->count()];
             $waitingCustomers = DB::table('customers')->whereNull('customers.deleted_at');

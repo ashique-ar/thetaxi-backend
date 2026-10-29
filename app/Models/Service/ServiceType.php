@@ -35,6 +35,11 @@ use App\Traits\UUID;
 class ServiceType extends BaseModel
 {
 
+    public static function isSelfDriveType(mixed $type): bool
+    {
+        return is_string($type) && in_array(strtolower(trim($type)), ['self_drive', 'self_driven'], true);
+    }
+
 
     /**
      * The attributes that are mass assignable.
@@ -49,7 +54,7 @@ class ServiceType extends BaseModel
         'owner_id',
         'parent_service_type_id',
         'description',
-        'type', // self_drive or with_driver
+        'type', // self_driven/self_drive or with_driver
         'slug',
         'thumbnail',
         'pricing_mode',

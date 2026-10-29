@@ -540,6 +540,40 @@ trait BookingSubmissionTrait
         }
     }
 
+    public function createCallBookingInquiry(Request $request): JsonResponse
+    {
+        $request->validate([
+            'source_phone_call_id' => ['required', 'uuid'],
+            'customer_id' => ['required', 'uuid'],
+            'booking_items' => ['required', 'array', 'min:1', 'max:10'],
+            'booking_items.*.service_type_id' => ['required', 'uuid'],
+            'booking_items.*.from_date' => ['required', 'date'],
+            'booking_items.*.from_time' => ['required', 'date_format:H:i'],
+            'booking_items.*.to_date' => ['nullable', 'date', 'after_or_equal:booking_items.*.from_date'],
+            'booking_items.*.to_time' => ['nullable', 'date_format:H:i'],
+            'booking_items.*.pickup_location' => ['nullable', 'array'],
+            'booking_items.*.dropoff_location' => ['nullable', 'array'],
+            'passenger_count' => ['nullable', 'integer', 'min:1', 'max:100'],
+            'luggage_count' => ['nullable', 'integer', 'min:0', 'max:100'],
+            'special_requirements' => ['nullable', 'string', 'max:5000'],
+        ]);
+
+        $params = $this->bookingFlowService->normalizeDynamicCalculationParams($request->all());
+        $params = $this->bookingFlowService->normalizeCorporateEmployeeReferences($params);
+        $result = $this->bookingFlowService->createCallBookingInquiry(
+            $params,
+            (string) $params['source_phone_call_id'],
+            (string) $request->user()->id,
+        );
+
+        return response()->json([
+            'status' => 'success',
+            'duplicate' => $result['duplicate'],
+            'data' => new BookingFlowResource($result['booking']),
+            'message' => $result['duplicate'] ? 'This call already has a booking request.' : 'Booking request created and linked to the call.',
+        ], $result['duplicate'] ? 200 : 201);
+    }
+
     public function requestBookingQuotation(Request $request): JsonResponse
     {
         $request->validate([
@@ -680,7 +714,7 @@ trait BookingSubmissionTrait
             $filters = $request->all();
             if ($request->boolean('work_only')) {
                 $filters['assigned_to'] = $request->user()->id;
-                $filters['status'] = array_merge(['draft'], BookingLifecycleStatus::activeOperationalValues());
+                $filters['status'] = array_merge(['draft', 'inquiry', 'inquiry_qualified'], BookingLifecycleStatus::activeOperationalValues());
             } elseif ($request->boolean('mine_only')) {
                 $filters['assigned_to'] = $request->user()->id;
             }

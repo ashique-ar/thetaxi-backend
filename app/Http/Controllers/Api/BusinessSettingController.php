@@ -105,6 +105,7 @@ class BusinessSettingController extends Controller
             'booking_confirmation_enabled',
             'booking_reminder_enabled',
             'contact_form_notification',
+            'corporate_booking_notification_email',
             'email_footer_text',
             'email_header_subtitle',
         ],
@@ -184,6 +185,19 @@ class BusinessSettingController extends Controller
                     'status' => 'error',
                     'message' => 'Portal booking notice must be between 0 and 8760 hours; corporate settings may use decimals.',
                     'errors' => $timingValidator->errors(),
+                ], 422);
+            }
+        }
+
+        if ($category === 'email') {
+            $emailValidator = Validator::make($request->input('settings', []), [
+                'corporate_booking_notification_email' => ['sometimes', 'nullable', 'email:rfc', 'max:255'],
+            ]);
+            if ($emailValidator->fails()) {
+                return response()->json([
+                    'status' => 'error',
+                    'message' => 'Enter a valid corporate booking notification email address.',
+                    'errors' => $emailValidator->errors(),
                 ], 422);
             }
         }

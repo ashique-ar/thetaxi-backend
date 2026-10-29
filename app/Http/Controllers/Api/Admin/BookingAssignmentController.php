@@ -267,7 +267,7 @@ class BookingAssignmentController extends Controller
             ], 422);
         }
 
-        if ($request->driver_id && $bookingItem->serviceType?->type === 'self_drive') {
+        if ($request->driver_id && \App\Models\Service\ServiceType::isSelfDriveType($bookingItem->serviceType?->type)) {
             return response()->json([
                 'status' => 'error',
                 'message' => 'A driver cannot be assigned to a self-drive service.',

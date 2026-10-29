@@ -464,12 +464,16 @@ class SmsManagementController extends Controller
             'consent_confirmed' => ['required_if:audience_type,manual', 'accepted'],
         ]);
         $data['company_id'] = $company->id;
+        $campaign = $this->smsService->createCampaign($data);
+        if (($data['launch_now'] ?? false) === true) {
+            $this->registerCampaignTask($request, $campaign);
+        }
 
         return response()->json([
             'status' => 'success',
             'message' => 'SMS campaign created successfully',
             'data' => [
-                'campaign' => $this->smsService->createCampaign($data),
+                'campaign' => $campaign,
             ],
         ], 201);
     }
@@ -489,18 +493,7 @@ class SmsManagementController extends Controller
     {
         abort_unless($smsCampaign->company_id === $this->campaignCompany($request)->id, 404);
 
-        $taskId = (string) Str::uuid();
-        DB::table('system_background_tasks')->insert([
-            'id' => $taskId,
-            'user_id' => $request->user()->getAuthIdentifier(),
-            'related_id' => $smsCampaign->id,
-            'type' => 'sms_campaign_launch',
-            'label' => 'SMS campaign: ' . $smsCampaign->name,
-            'status' => 'queued',
-            'progress' => 0,
-            'created_at' => now(),
-            'updated_at' => now(),
-        ]);
+        $taskId = $this->registerCampaignTask($request, $smsCampaign);
 
         try {
             $this->smsService->scheduleCampaignLaunch($smsCampaign);
@@ -516,6 +509,31 @@ class SmsManagementController extends Controller
             'message' => 'Campaign launch scheduled successfully',
             'data' => ['campaign' => $smsCampaign->fresh()],
         ]);
+    }
+
+    private function registerCampaignTask(Request $request, SmsCampaign $campaign): string
+    {
+        $existing = DB::table('system_background_tasks')
+            ->where('user_id', $request->user()->getAuthIdentifier())
+            ->where('related_id', $campaign->id)
+            ->where('type', 'sms_campaign_launch')
+            ->whereIn('status', ['queued', 'processing'])
+            ->value('id');
+        if ($existing) return $existing;
+
+        $taskId = (string) Str::uuid();
+        DB::table('system_background_tasks')->insert([
+            'id' => $taskId,
+            'user_id' => $request->user()->getAuthIdentifier(),
+            'related_id' => $campaign->id,
+            'type' => 'sms_campaign_launch',
+            'label' => 'SMS campaign: ' . $campaign->name,
+            'status' => 'queued',
+            'progress' => 0,
+            'created_at' => now(),
+            'updated_at' => now(),
+        ]);
+        return $taskId;
     }
 
     public function balance(Request $request): JsonResponse
