@@ -15,10 +15,10 @@ return new class extends Migration
         });
 
         DB::table('inquiries')->whereNull('company_id')->whereNotNull('assigned_to')->update([
-            'company_id' => DB::table('staff')->selectRaw('MIN(company_id)')->whereColumn('staff.user_id', 'inquiries.assigned_to')->groupBy('user_id')->havingRaw('COUNT(DISTINCT company_id) = 1')->limit(1),
+            'company_id' => DB::table('staff')->selectRaw('MIN(company_id::text)::uuid')->whereColumn('staff.user_id', 'inquiries.assigned_to')->groupBy('user_id')->havingRaw('COUNT(DISTINCT company_id) = 1')->limit(1),
         ]);
         DB::table('inquiries')->whereNull('company_id')->whereNotNull('created_user_id')->update([
-            'company_id' => DB::table('staff')->selectRaw('MIN(company_id)')->whereColumn('staff.user_id', 'inquiries.created_user_id')->groupBy('user_id')->havingRaw('COUNT(DISTINCT company_id) = 1')->limit(1),
+            'company_id' => DB::table('staff')->selectRaw('MIN(company_id::text)::uuid')->whereColumn('staff.user_id', 'inquiries.created_user_id')->groupBy('user_id')->havingRaw('COUNT(DISTINCT company_id) = 1')->limit(1),
         ]);
         $defaultCompanies = DB::table('companies')->where('is_active', true)->where('is_default', true)->whereNull('deleted_at')->pluck('id');
         if ($defaultCompanies->count() === 1) {
