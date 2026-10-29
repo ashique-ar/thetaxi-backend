@@ -453,7 +453,11 @@
                        class="@error($submitAs) is-invalid @enderror"
                        {{ $required ? 'required' : '' }}
                        @if($minimum !== null && $minimum !== '') min="{{ $minimum }}" @endif
-                       @if($maximum !== null && $maximum !== '') max="{{ $maximum }}" @endif>
+                       @if($maximum !== null && $maximum !== '') max="{{ $maximum }}" @endif
+                       @if(filled($durationStartField ?? null) && filled($durationEndField ?? null))
+                           data-duration-start="{{ $durationStartField }}"
+                           data-duration-end="{{ $durationEndField }}"
+                       @endif>
                 </div>
             </div>
             @error($submitAs)

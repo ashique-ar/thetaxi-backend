@@ -392,6 +392,14 @@
              @if($isReturnConditional)
                  data-conditional-parent="is_return_trip"
              @endif>
+            @php
+                $durationStartField = $fieldType === 'number' && filled($field['sync_from'] ?? null)
+                    ? $resolveConfiguredControlName($field['sync_from'], $sortedFields)
+                    : '';
+                $durationEndField = $fieldType === 'number' && filled($field['sync_to'] ?? null)
+                    ? $resolveConfiguredControlName($field['sync_to'], $sortedFields)
+                    : '';
+            @endphp
             @include('components.dynamic-form-field', [
                 'fieldName' => $fieldName,
                 'field' => $field,
@@ -407,48 +415,9 @@
                 'airportOptions' => $airportOptions ?? collect(),
                 'servicePackages' => $servicePackages,
                 'transferType' => $airportTransferType ?? null,
+                'durationStartField' => $durationStartField,
+                'durationEndField' => $durationEndField,
             ])
-
-            @if($fieldType === 'number' && filled($field['sync_from'] ?? null) && filled($field['sync_to'] ?? null))
-                @php
-                    $durationStartField = $resolveConfiguredControlName($field['sync_from'], $sortedFields);
-                    $durationEndField = $resolveConfiguredControlName($field['sync_to'], $sortedFields);
-                @endphp
-                @if($durationStartField !== '' && $durationEndField !== '')
-                    <script>
-                        (function() {
-                            var form = document.getElementById(@json($formId));
-                            var start = Array.from(form?.elements || []).find(function(input) { return input.name === @json($durationStartField); });
-                            var end = Array.from(form?.elements || []).find(function(input) { return input.name === @json($durationEndField); });
-                            var days = Array.from(form?.elements || []).find(function(input) { return input.name === @json($submitAs); });
-                            if (!start || !end || !days) return;
-                            function parse(value) {
-                                var parts = value.split('/');
-                                return parts.length === 3 ? new Date(Number(parts[2]), Number(parts[1]) - 1, Number(parts[0])) : null;
-                            }
-                            function format(date) {
-                                return [String(date.getDate()).padStart(2, '0'), String(date.getMonth() + 1).padStart(2, '0'), date.getFullYear()].join('/');
-                            }
-                            function syncDays() {
-                                var from = parse(start.value), to = parse(end.value);
-                                if (!from || !to || to < from) { days.value = ''; return; }
-                                days.value = Math.round((to - from) / 86400000) + 1;
-                            }
-                            function syncEnd() {
-                                var from = parse(start.value), count = Number(days.value);
-                                if (!from || !Number.isInteger(count) || count < 1) return;
-                                from.setDate(from.getDate() + count - 1);
-                                if (end._flatpickr) end._flatpickr.setDate(from, true);
-                                else { end.value = format(from); end.dispatchEvent(new Event('change', { bubbles: true })); }
-                            }
-                            start.addEventListener('change', syncEnd);
-                            end.addEventListener('change', syncDays);
-                            days.addEventListener('input', syncEnd);
-                            syncDays();
-                        })();
-                    </script>
-                @endif
-            @endif
 
             @if(in_array($serviceCode, ['self_drive', 'with_driver'], true)
                 && !$hasRentalDropoffField

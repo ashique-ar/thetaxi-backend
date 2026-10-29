@@ -77,6 +77,7 @@
         setupAdvanceBookingConstraints();
         setupDefaultEndDates();
         setupEndTimeConstraints();
+        setupConfiguredDateDurations();
     }
 
     /**
@@ -636,6 +637,57 @@
             applyRelativeDefault(form, endInput, endInput.dataset.defaultDateFrom, endInput.dataset.defaultDateOffsetDays, true);
         });
 
+    }
+
+    function setupConfiguredDateDurations() {
+        const parse = (value) => {
+            const match = String(value || '').match(/^(\d{2})\/(\d{2})\/(\d{4})$/);
+            if (match) return new Date(+match[3], +match[2] - 1, +match[1]);
+            const iso = String(value || '').match(/^(\d{4})-(\d{2})-(\d{2})$/);
+            return iso ? new Date(+iso[1], +iso[2] - 1, +iso[3]) : null;
+        };
+        const format = (date) => [
+            String(date.getDate()).padStart(2, '0'),
+            String(date.getMonth() + 1).padStart(2, '0'),
+            date.getFullYear(),
+        ].join('/');
+
+        document.querySelectorAll('input[type="number"][data-duration-start][data-duration-end]').forEach((days) => {
+            const form = days.closest('form');
+            const start = form?.querySelector(`[name="${CSS.escape(days.dataset.durationStart)}"]`);
+            const end = form?.querySelector(`[name="${CSS.escape(days.dataset.durationEnd)}"]`);
+            if (!start || !end) return;
+
+            const syncDays = () => {
+                const from = parse(start.value);
+                const to = parse(end.value);
+                if (!from || !to || to < from) {
+                    days.value = '';
+                    return;
+                }
+                days.value = Math.round((to - from) / 86400000) + 1;
+            };
+            const syncEnd = () => {
+                const from = parse(start.value);
+                const count = Number(days.value);
+                if (!from || !Number.isInteger(count) || count < 1) return;
+                from.setDate(from.getDate() + count - 1);
+                const value = format(from);
+                if (end._flatpickr) end._flatpickr.setDate(value, true, 'd/m/Y');
+                else if (end._litepicker?.setDate) {
+                    end._litepicker.setDate(value);
+                    end.dispatchEvent(new Event('change', { bubbles: true }));
+                } else {
+                    end.value = value;
+                    end.dispatchEvent(new Event('change', { bubbles: true }));
+                }
+            };
+
+            start.addEventListener('change', syncEnd);
+            end.addEventListener('change', syncDays);
+            days.addEventListener('input', syncEnd);
+            syncDays();
+        });
     }
 
     /**
@@ -1757,9 +1809,10 @@
     function updateAirportTransferLocations(type) {
         const form = document.getElementById("airport_transfers-form");
         if (!form) {
-            console.error('Airport transfers form not found');
             return;
         }
+        // The DB-configured form has its own conditional field and coordinate handlers.
+        if (form.querySelector('.dynamic-conditional-location')) return;
 
         // Get all form elements
         const fromAirportSelect = form.querySelector('#from-airport-select');
