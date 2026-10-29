@@ -66,6 +66,8 @@ class WebsiteSettingsService
         'feature_hr_management_enabled',
         'feature_hr_attendance_ingestion_enabled',
         'feature_sales_management_enabled',
+        'feature_respond_io_enabled',
+        'feature_3cx_enabled',
         'feature_driver_management_enabled',
         'driver_form_public_enabled',
         'assignment_enable_maintenance_stage',
@@ -1132,6 +1134,8 @@ class WebsiteSettingsService
             'feature_hr_management_enabled',
             'feature_hr_attendance_ingestion_enabled',
             'feature_sales_management_enabled',
+            'feature_respond_io_enabled',
+            'feature_3cx_enabled',
         ];
 
         $settings = $this->getMultiple($types);
@@ -1221,6 +1225,8 @@ class WebsiteSettingsService
             'feature_hr_management_enabled',
             'feature_hr_attendance_ingestion_enabled',
             'feature_sales_management_enabled',
+            'feature_respond_io_enabled',
+            'feature_3cx_enabled',
             'feature_driver_management_enabled',
         ]);
     }

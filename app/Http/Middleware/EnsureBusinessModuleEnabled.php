@@ -20,6 +20,8 @@ class EnsureBusinessModuleEnabled
             'hr-attendance-ingestion' => 'feature_hr_attendance_ingestion_enabled',
             'sales' => 'feature_sales_management_enabled',
             'driver' => 'feature_driver_management_enabled',
+            'respond-io' => 'feature_respond_io_enabled',
+            '3cx' => 'feature_3cx_enabled',
             default => null,
         };
 
@@ -27,7 +29,7 @@ class EnsureBusinessModuleEnabled
             abort(404);
         }
 
-        $default = $module === 'hr-attendance-ingestion' ? false : true;
+        $default = in_array($module, ['hr-attendance-ingestion', 'respond-io', '3cx'], true) ? false : true;
         $value = $this->settings->get($setting, $default);
         $enabled = filter_var($value, FILTER_VALIDATE_BOOL, FILTER_NULL_ON_FAILURE) ?? $default;
 

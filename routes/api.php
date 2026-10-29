@@ -299,9 +299,9 @@ Route::match(['get', 'post'], 'sms/webhooks/delivery-report', [SmsManagementCont
     ->middleware('throttle:sms-webhook');
 
 Route::post('webhooks/respond-io/{connection}/{token}', [RespondIoIntegrationController::class, 'receive'])
-    ->whereUuid('connection')->where('token', '[a-f0-9]{64}')->middleware('throttle:120,1');
+    ->whereUuid('connection')->where('token', '[a-f0-9]{64}')->middleware(['throttle:120,1', 'business.module:respond-io']);
 
-Route::prefix('integrations/3cx')->middleware('throttle:600,1')->group(function (): void {
+Route::prefix('integrations/3cx')->middleware(['throttle:600,1', 'business.module:3cx'])->group(function (): void {
     Route::get('contact-by-number', [ThreeCxCrmController::class, 'contactByNumber']);
     Route::get('call-context-by-number', [ThreeCxCrmController::class, 'callContextByNumber']);
     Route::get('contact-by-email', [ThreeCxCrmController::class, 'contactByEmail']);
@@ -347,7 +347,7 @@ Route::post('observability/frontend-log', [ObservabilityController::class, 'fron
 
 Route::middleware(['auth:api'])->group(function () {
 
-    Route::prefix('integrations/respond-io')->group(function (): void {
+    Route::prefix('integrations/respond-io')->middleware('business.module:respond-io')->group(function (): void {
         Route::get('assignee-options', [RespondIoIntegrationController::class, 'assigneeOptions'])->middleware('permission:communication.view');
         Route::get('agent-mappings', [RespondIoIntegrationController::class, 'agentMappings'])->middleware('permission:communication.manage');
         Route::delete('agent-mappings/{mapping}', [RespondIoIntegrationController::class, 'removeAgentMapping'])->middleware('permission:communication.manage')->whereUuid('mapping');
@@ -372,7 +372,7 @@ Route::middleware(['auth:api'])->group(function () {
         Route::post('events/{event}/apply-contact-assignee', [RespondIoIntegrationController::class, 'applyContactAssignee'])->middleware('permission:communication.manage');
     });
 
-    Route::prefix('integrations/3cx')->group(function (): void {
+    Route::prefix('integrations/3cx')->middleware('business.module:3cx')->group(function (): void {
         Route::get('connection', [ThreeCxCrmController::class, 'connection'])->middleware('permission:communication.view');
         Route::post('connection', [ThreeCxCrmController::class, 'createConnection'])->middleware('permission:communication.manage');
         Route::put('connection', [ThreeCxCrmController::class, 'updateConnection'])->middleware('permission:communication.manage');

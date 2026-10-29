@@ -878,6 +878,14 @@ class SettingsCategoryService
                     'type' => 'toggle',
                     'description' => 'Enable or disable the complete Sales module.'
                 ],
+                'feature_respond_io_enabled' => [
+                    'label' => 'Respond.io Leads', 'type' => 'toggle',
+                    'description' => 'Show and enable the Respond.io lead integration.'
+                ],
+                'feature_3cx_enabled' => [
+                    'label' => '3CX Call Centre', 'type' => 'toggle',
+                    'description' => 'Show and enable the 3CX call centre integration.'
+                ],
                 'feature_driver_management_enabled' => [
                     'label' => 'Driver Management',
                     'type' => 'toggle',
