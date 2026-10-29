@@ -19,6 +19,7 @@ class SalesPolicySetting extends BaseModel
         'profile_export_retention_days',
         'business_timezone',
         'inquiry_first_response_minutes',
+        'inquiry_response_business_hours',
         'booking_assignment_target_minutes',
         'reason',
         'created_by',
@@ -33,6 +34,7 @@ class SalesPolicySetting extends BaseModel
         'dispute_response_days' => 'integer',
         'profile_export_retention_days' => 'integer',
         'inquiry_first_response_minutes' => 'integer',
+        'inquiry_response_business_hours' => 'array',
         'booking_assignment_target_minutes' => 'integer',
         'approved_at' => 'datetime',
     ];

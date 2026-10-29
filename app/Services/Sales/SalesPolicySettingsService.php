@@ -127,6 +127,11 @@ class SalesPolicySettingsService
         return $this->current($companyId, 'inquiry_response')?->inquiry_first_response_minutes;
     }
 
+    public function inquiryResponseBusinessHours(string $companyId): ?array
+    {
+        return $this->current($companyId, 'inquiry_response')?->inquiry_response_business_hours;
+    }
+
     public function bookingAssignmentTargetMinutes(string $companyId): ?int
     {
         return $this->current($companyId, 'booking_assignment')?->booking_assignment_target_minutes;
@@ -178,7 +183,7 @@ class SalesPolicySettingsService
 
     private function kindValues(string $kind, array $data): array
     {
-        return match ($kind) {
+        $values = match ($kind) {
             'fx_corrections' => [
                 'fx_quote_base' => trim((string) $data['fx_quote_base']),
                 'fx_calculation_mode' => $data['fx_calculation_mode'],
@@ -191,6 +196,11 @@ class SalesPolicySettingsService
             'inquiry_response' => ['inquiry_first_response_minutes' => (int) $data['inquiry_first_response_minutes']],
             'booking_assignment' => ['booking_assignment_target_minutes' => (int) $data['booking_assignment_target_minutes']],
         };
+        if ($kind === 'inquiry_response' && Schema::hasColumn('sales_policy_settings', 'inquiry_response_business_hours')) {
+            $values['inquiry_response_business_hours'] = $data['inquiry_response_business_hours'] ?? null;
+        }
+
+        return $values;
     }
 
     public function createStaffCategory(string $companyId, string $name, ?string $reason, string $actorUserId): SalesStaffCategoryDefinition

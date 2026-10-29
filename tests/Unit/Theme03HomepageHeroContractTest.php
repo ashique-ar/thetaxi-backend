@@ -11,11 +11,8 @@ beforeEach(function () {
 
 it('keeps the Theme 03 hero on the existing homepage content owners', function () {
     expect($this->hero)
-        ->toContain("\$settings['banner_heading']")
-        ->toContain("\$settings['banner_subheading']")
+        ->toContain("@include('partials.hero-copy'")
         ->toContain('get_hero_slides($settings)')
-        ->toContain("\$settings['site_name']")
-        ->toContain("\$settings['site_tagline']")
         ->not->toContain('theme_02_slider_images')
         ->not->toContain('banner_cta')
         ->not->toContain('components.booking-form')
@@ -35,8 +32,8 @@ it('preserves the separate shared booking-form boundary after the hero', functio
 it('uses semantic shared mixed media with eager first-slide loading', function () {
     $media = file_get_contents(dirname(__DIR__, 2) . '/resources/views/partials/hero-media.blade.php');
     expect($this->hero)
-        ->toContain('<section class="t3-hero" aria-labelledby="t3-hero-title">')
-        ->toContain('<h1 id="t3-hero-title">')
+        ->toContain('<section class="t3-hero shared-hero-slider" aria-label="Homepage banner">')
+        ->toContain("@include('partials.hero-copy'")
         ->toContain('<figure class="t3-hero__visual">')
         ->toContain('shared-hero-swiper')
         ->toContain("@include('partials.hero-media'")

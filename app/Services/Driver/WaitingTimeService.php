@@ -237,7 +237,7 @@ class WaitingTimeService
             }
 
             $speedKmh = $point->speed !== null
-                ? max(0.0, (float) $point->speed * 3.6)
+                ? max(0.0, (float) $point->speed)
                 : ($this->distanceKm($previous, $point) / $seconds) * 3600;
 
             if ($speedKmh < self::SPEED_THRESHOLD_KMH) {

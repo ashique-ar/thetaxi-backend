@@ -2857,12 +2857,18 @@ class BookingLifecycleService
         );
         $durationMetrics = is_array($booking->duration_metrics) ? $booking->duration_metrics : [];
         $durationItems = is_array($durationMetrics['items'] ?? null) ? $durationMetrics['items'] : [];
-        $durationItems[(string) $bookingItem->id] = [
+        $itemDurationMetrics = is_array($durationItems[(string) $bookingItem->id] ?? null)
+            ? $durationItems[(string) $bookingItem->id]
+            : [];
+        $durationItems[(string) $bookingItem->id] = array_merge($itemDurationMetrics, [
             'source' => $source,
             'actual_minutes' => $durationMinutes,
             'waiting_minutes' => $waitingMinutes,
+            'pickup_waiting_minutes' => $pickupWaitingMinutes,
+            'hire_waiting_minutes' => $hireWaitingMinutes,
+            'total_waiting_minutes' => $totalWaitingMinutes,
             'extra_minutes' => $extraMinutes,
-        ];
+        ]);
         $aggregateDurationMinutes = (int) collect($durationItems)->sum(
             fn ($metrics) => (int) ($metrics['actual_minutes'] ?? 0)
         );
@@ -2900,6 +2906,15 @@ class BookingLifecycleService
                 'source' => count($durationItems) > 1 ? 'multiple_item_sources' : $source,
                 'actual_minutes' => $aggregateDurationMinutes,
                 'waiting_minutes' => $aggregateWaitingMinutes,
+                'pickup_waiting_minutes' => (int) collect($durationItems)->sum(
+                    fn ($metrics) => (int) ($metrics['pickup_waiting_minutes'] ?? 0)
+                ),
+                'hire_waiting_minutes' => (int) collect($durationItems)->sum(
+                    fn ($metrics) => (int) ($metrics['hire_waiting_minutes'] ?? 0)
+                ),
+                'total_waiting_minutes' => (int) collect($durationItems)->sum(
+                    fn ($metrics) => (int) ($metrics['total_waiting_minutes'] ?? $metrics['waiting_minutes'] ?? 0)
+                ),
                 'extra_minutes' => $aggregateExtraMinutes,
                 'items' => $durationItems,
             ]),

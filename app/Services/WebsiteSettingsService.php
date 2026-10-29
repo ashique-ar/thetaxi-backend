@@ -250,6 +250,7 @@ class WebsiteSettingsService
             'banner_video',
             'banner_image',
             'hero_slides',
+            'hero_display_mode',
             'hero_booking_note',
             'homepage_vehicle_sections',
             'homepage_cms_sections',
@@ -426,6 +427,9 @@ class WebsiteSettingsService
             // Show legacy media in the shared editor using the public site's precedence.
             $settings['hero_slides'] = get_hero_slides($settings);
         }
+        $resolved = get_hero_slides($settings);
+        $settings['hero_display_mode'] = $settings['hero_display_mode']
+            ?? (count($resolved) > 1 ? 'carousel' : ($resolved[0]['type'] ?? 'image'));
 
         return $settings;
     }

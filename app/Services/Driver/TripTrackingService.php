@@ -111,6 +111,9 @@ class TripTrackingService
         }
 
         $waitingTime = $this->waitingTimeService->getTotalWaitingTime($assignment);
+        $durationSeconds = $assignment->trip_started_at && $assignment->trip_completed_at
+            ? (int) $assignment->trip_started_at->diffInSeconds($assignment->trip_completed_at)
+            : null;
 
         return [
             'assignment_id' => $assignment->id,
@@ -142,8 +145,9 @@ class TripTrackingService
             'total_waiting_time_seconds' => $waitingTime['total_waiting_time_seconds'],
             'waiting_period_count' => $waitingTime['waiting_period_count'],
             'route_point_count' => $assignment->routePoints()->count(),
-            'total_duration_minutes' => $assignment->trip_started_at && $assignment->trip_completed_at
-                ? (int) $assignment->trip_started_at->diffInMinutes($assignment->trip_completed_at)
+            'total_duration_seconds' => $durationSeconds,
+            'total_duration_minutes' => $durationSeconds !== null
+                ? intdiv($durationSeconds + 59, 60)
                 : null,
             'hire_completed' => $assignment->trip_phase === TripPhase::COMPLETED,
             // Recover a lost completion response with the same canonical totals.
@@ -249,6 +253,9 @@ class TripTrackingService
             if ($assignment->trip_phase === TripPhase::COMPLETED) {
                 $waitingTime = $this->waitingTimeBreakdown($assignment);
                 $distanceEvidence = $this->calculateTripEvidence($assignment);
+                $durationSeconds = $assignment->trip_started_at && $assignment->trip_completed_at
+                    ? (int) $assignment->trip_started_at->diffInSeconds($assignment->trip_completed_at)
+                    : 0;
                 return [
                     'assignment_id'              => $assignment->id,
                     'booking_id'                 => $assignment->booking_id,
@@ -259,9 +266,8 @@ class TripTrackingService
                         ? round((float) $assignment->total_distance_km, 2)
                         : null,
                     'distance_evidence'          => $distanceEvidence,
-                    'total_duration_minutes'     => $assignment->trip_started_at && $assignment->trip_completed_at
-                        ? (int) $assignment->trip_started_at->diffInMinutes($assignment->trip_completed_at)
-                        : 0,
+                    'total_duration_seconds'     => $durationSeconds,
+                    'total_duration_minutes'     => intdiv($durationSeconds + 59, 60),
                     'total_waiting_time_seconds' => $waitingTime['total_waiting_time_seconds'],
                     'pickup_waiting_time_seconds' => $waitingTime['pickup_waiting_time_seconds'],
                     'hire_waiting_time_seconds' => $waitingTime['hire_waiting_time_seconds'],
@@ -342,9 +348,10 @@ class TripTrackingService
                 ],
             ];
 
-            $durationMinutes = $assignment->trip_started_at
-                ? (int) $assignment->trip_started_at->diffInMinutes($now)
+            $durationSeconds = $assignment->trip_started_at
+                ? max(0, (int) $assignment->trip_started_at->diffInSeconds($now))
                 : 0;
+            $durationMinutes = intdiv($durationSeconds + 59, 60);
 
             $assignment->update([
                 'trip_phase' => TripPhase::COMPLETED,
@@ -402,6 +409,7 @@ class TripTrackingService
                 'total_distance_km' => $totalDistance !== null ? round($totalDistance, 2) : null,
                 'distance_evidence' => $distanceEvidence,
                 'total_duration_minutes' => $durationMinutes,
+                'total_duration_seconds' => $durationSeconds,
                 'total_waiting_time_seconds' => $waitingTime['total_waiting_time_seconds'],
                 'pickup_waiting_time_seconds' => $waitingTime['pickup_waiting_time_seconds'],
                 'hire_waiting_time_seconds' => $waitingTime['hire_waiting_time_seconds'],
@@ -1549,6 +1557,7 @@ class TripTrackingService
             'pickup_waiting_minutes' => $pickupWaitingMinutes,
             'hire_waiting_minutes' => $hireWaitingMinutes,
             'total_waiting_minutes' => $waitingMinutes,
+            'waiting_sources_seconds' => $waitingTime['sources'] ?? [],
             'recorded_at' => $completedAt->toIso8601String(),
         ];
 

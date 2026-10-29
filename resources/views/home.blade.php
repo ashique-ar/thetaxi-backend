@@ -27,6 +27,9 @@
     </div>
 @endif
 <!-- End Booking Form Section -->
+@if (!empty($settings['hero_booking_note']))
+    <p class="container shared-booking-note">{{ $settings['hero_booking_note'] }}</p>
+@endif
 @php($managedCmsLayouts = collect($cmsSections['sections'] ?? [])->pluck('layout'))
 
 @if (isset($partners) && $partners->count() > 0 && !$managedCmsLayouts->contains('logos'))

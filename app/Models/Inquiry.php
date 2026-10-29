@@ -4,10 +4,13 @@ namespace App\Models;
 
 use App\Models\Website\CmsContent;
 use App\Models\Booking\Booking;
+use App\Models\Sales\SalesPolicySetting;
+use App\Services\Sales\InquiryFirstResponseDeadlineService;
 use App\Traits\UUID;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Illuminate\Database\QueryException;
 use Illuminate\Support\Carbon;
+use Illuminate\Support\Facades\Schema;
 
 /**
  * App\Models\Inquiry
@@ -22,6 +25,7 @@ use Illuminate\Support\Carbon;
  * @property Carbon|null $responded_at Response date (optional)
  * @property Carbon|null $first_response_saved_at First staff response draft saved date
  * @property Carbon|null $first_response_sent_at First confirmed human response sent date
+ * @property Carbon|null $first_response_due_at Snapshotted first-response deadline
  * @property string|null $first_response_saved_by_user_id Staff member who first saved a response draft
  * @property string|null $created_user_id ID of user who created this record
  * @property string|null $updated_user_id ID of user who last updated this record
@@ -34,6 +38,24 @@ use Illuminate\Support\Carbon;
  */
 class Inquiry extends BaseModel
 {
+    protected static function booted(): void
+    {
+        static::creating(function (Inquiry $inquiry): void {
+            if (! $inquiry->company_id || ! Schema::hasColumn('inquiries', 'first_response_due_at')) return;
+            $policy = SalesPolicySetting::query()->where('company_id', $inquiry->company_id)
+                ->where('policy_kind', 'inquiry_response')->where('status', 'approved')->orderByDesc('version')->first();
+            if (! $policy?->inquiry_first_response_minutes) return;
+
+            $receivedAt = $inquiry->created_at ? $inquiry->asDateTime($inquiry->created_at) : now();
+            $dueAt = app(InquiryFirstResponseDeadlineService::class)->dueAt(
+                $receivedAt,
+                (int) $policy->inquiry_first_response_minutes,
+                $policy->inquiry_response_business_hours,
+            );
+            $inquiry->setAttribute('first_response_due_at', $dueAt->utc());
+        });
+    }
+
     /**
      * The attributes that are mass assignable.
      *
@@ -86,6 +108,7 @@ class Inquiry extends BaseModel
         'responded_at' => 'datetime',
         'first_response_saved_at' => 'datetime',
         'first_response_sent_at' => 'datetime',
+        'first_response_due_at' => 'datetime',
         'payload' => 'array',
         'search_context' => 'array',
         'form_data' => 'array',

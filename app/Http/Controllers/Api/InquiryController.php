@@ -18,6 +18,7 @@ use App\Services\MailDispatchService;
 use App\Mail\InquiryResponseMail;
 use App\Services\SingleCompanyScope;
 use App\Services\Sales\SalesPolicySettingsService;
+use App\Services\Sales\InquiryFirstResponseDeadlineService;
 use App\Models\Website\CmsContent;
 use App\Http\Requests\Inquiry\CreateInquiryRequest;
 use App\Http\Requests\Inquiry\UpdateInquiryRequest;
@@ -117,7 +118,7 @@ class InquiryController extends Controller
                 $q->whereNotExists($hasUnconfirmedEmail)->whereNotExists($hasUnconfirmedRespondIo);
                 if ($filters['first_response_state'] === 'overdue') {
                     abort_unless($responseTargetMinutes !== null, 409, 'Configure and approve a first-response target before using the overdue queue.');
-                    $q->where('created_at', '<=', now()->subMinutes($responseTargetMinutes));
+                    app(InquiryFirstResponseDeadlineService::class)->constrainOverdue($q, $responseTargetMinutes, now());
                 }
             }
         } elseif (($filters['first_response_state'] ?? null) === 'answered') {
@@ -210,6 +211,12 @@ class InquiryController extends Controller
         $activeOpen = fn () => (clone $inquiries)->whereNotIn('status', ['closed', 'resolved', 'archived']);
         $activeUnanswered = fn () => $activeOpen()->whereNull('first_response_sent_at');
         $targetMinutes = $settings->inquiryFirstResponseMinutes((string) $companyId);
+        $pastFirstResponse = null;
+        if ($targetMinutes !== null) {
+            $pastFirstResponseQuery = $activeUnanswered()->whereNotExists($hasUnconfirmedEmail)->whereNotExists($hasUnconfirmedRespondIo);
+            app(InquiryFirstResponseDeadlineService::class)->constrainOverdue($pastFirstResponseQuery, $targetMinutes, now());
+            $pastFirstResponse = $pastFirstResponseQuery->count();
+        }
         $responseWindow = (clone $inquiries)->where('first_response_sent_at', '>=', now()->subDays(30))
             ->whereNotNull('created_at')->whereColumn('first_response_sent_at', '>=', 'created_at');
         $averageSeconds = match (DB::connection()->getDriverName()) {
@@ -223,8 +230,7 @@ class InquiryController extends Controller
         return response()->json(['status' => 'success', 'data' => [
             'awaiting_first_response' => $activeUnanswered()->whereNotExists($hasUnconfirmedEmail)->whereNotExists($hasUnconfirmedRespondIo)->count(),
             'first_response_target_minutes' => $targetMinutes,
-            'past_first_response_target' => $targetMinutes === null ? null : $activeUnanswered()->whereNotExists($hasUnconfirmedEmail)
-                ->whereNotExists($hasUnconfirmedRespondIo)->where('created_at', '<=', now()->subMinutes($targetMinutes))->count(),
+            'past_first_response_target' => $pastFirstResponse,
             'response_delivery_needs_check' => $activeOpen()->where(fn ($query) => $query
                 ->whereExists($hasUnconfirmedEmail)->orWhereExists($hasUnconfirmedRespondIo))->count(),
             'first_responses_last_30_days' => (clone $inquiries)->where('first_response_sent_at', '>=', now()->subDays(30))->count(),

@@ -73,6 +73,7 @@ class InquiryResource extends JsonResource
             'notes' => $this->notes,
             'responded_at' => $this->responded_at,
             'first_response_sent_at' => $this->first_response_sent_at,
+            'first_response_due_at' => $this->first_response_due_at,
             'first_response_saved_at' => $this->first_response_saved_at,
             'first_response_saved_by_user_id' => $this->first_response_saved_by_user_id,
             'first_response_saved_by' => $responseAuthor ? trim(($responseAuthor->first_name ?? '') . ' ' . ($responseAuthor->last_name ?? '')) : null,

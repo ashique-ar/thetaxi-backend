@@ -53,6 +53,7 @@ class RoutePoint extends Model
         'speed',
         'heading',
         'accuracy',
+        'sensor_stationary',
         'recorded_at',
     ];
 
@@ -66,6 +67,7 @@ class RoutePoint extends Model
         'speed' => 'decimal:2',
         'heading' => 'decimal:2',
         'accuracy' => 'decimal:2',
+        'sensor_stationary' => 'boolean',
         'recorded_at' => 'datetime',
         'created_at' => 'datetime',
     ];

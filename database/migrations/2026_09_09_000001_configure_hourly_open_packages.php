@@ -29,6 +29,23 @@ return new class extends Migration
             return;
         }
 
+        $adminUserId = Schema::hasTable('model_has_roles') && Schema::hasTable('roles')
+            ? DB::table('model_has_roles')->join('roles', 'roles.id', '=', 'model_has_roles.role_id')
+                ->join('users', 'users.id', '=', 'model_has_roles.model_id')
+                ->where('model_has_roles.model_type', App\Models\User::class)->where('roles.name', 'admin')
+                ->where('users.is_active', true)->whereNull('users.deleted_at')->value('users.id')
+            : null;
+        $actorCandidates = [
+            $service->created_user_id ?? null,
+            config('hr.system_user_id'),
+            $adminUserId,
+            DB::table('users')->where('email', 'admin@casons.lk')->value('id'),
+        ];
+        $createdBy = collect($actorCandidates)->first(fn ($id) => $id && DB::table('users')->where('id', $id)->exists());
+        if (!$createdBy) {
+            throw new RuntimeException('Cannot configure hourly pricing without an existing service creator, HR system actor, or active administrator.');
+        }
+
         $config = json_decode((string) $service->form_config, true) ?: [];
         $config['trip_mode'] = 'open_package';
         $config['disable_route_preview'] = true;
@@ -103,17 +120,21 @@ return new class extends Migration
                 $variables[] = ['name' => "EXTRA_HOUR_RATE_{$slug}", 'type' => 'common_rate', 'is_required' => true];
                 $formula .= " + (max(0, duration_hours - package_included_hours) * EXTRA_HOUR_RATE_{$slug})";
             }
+            $existingDefinition = DB::table('vehicle_pricing_calculation_definitions')
+                ->where('service_type_id', $service->id)->where('name', 'Hourly Package - '.$definition['name'])
+                ->first(['id', 'created_by', 'created_at']);
             DB::table('vehicle_pricing_calculation_definitions')->updateOrInsert(
                 ['service_type_id' => $service->id, 'name' => 'Hourly Package - '.$definition['name']],
                 [
-                    'id' => DB::table('vehicle_pricing_calculation_definitions')->where('service_type_id', $service->id)->where('name', 'Hourly Package - '.$definition['name'])->value('id') ?? (string) Str::uuid(),
+                    'id' => $existingDefinition?->id ?? (string) Str::uuid(),
                     'description' => 'Package-selected hourly open-package calculation.',
                     'formula' => $formula, 'variables' => json_encode($variables),
                     'conditions' => json_encode([['field' => 'package_id', 'operator' => '=', 'value' => $packageId]]),
                     // Pricing definitions are activated after mandatory rates
                     // are entered; a missing monetary rate must never become zero.
                     'status' => 'draft', 'owner_type' => null, 'owner_id' => null,
-                    'priority' => 500 + $index, 'updated_at' => now(), 'created_at' => now(), 'deleted_at' => null,
+                    'created_by' => $existingDefinition?->created_by ?? $createdBy,
+                    'priority' => 500 + $index, 'updated_at' => now(), 'created_at' => $existingDefinition?->created_at ?? now(), 'deleted_at' => null,
                 ]
             );
         }

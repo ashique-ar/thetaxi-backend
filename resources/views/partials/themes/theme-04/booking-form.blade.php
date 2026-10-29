@@ -7,9 +7,6 @@
                 <span class="t4-kicker">Book Your Ride</span>
             </header>
             @include('components.booking-form', ['search' => $search ?? null])
-            @if (!$embedded && !empty($settings['hero_booking_note']))
-                <p class="t4-booking-panel__note">{{ $settings['hero_booking_note'] }}</p>
-            @endif
         </div>
     </div>
 </section>

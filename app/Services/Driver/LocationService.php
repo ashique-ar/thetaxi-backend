@@ -75,7 +75,7 @@ class LocationService
             $assignmentId = $this->getActiveAssignmentId($driver);
 
             // Create route point
-            $routePoint = RoutePoint::create([
+            $routePointData = [
                 'session_id' => $session->id,
                 'assignment_id' => $assignmentId,
                 'latitude' => $locationData['latitude'],
@@ -85,7 +85,11 @@ class LocationService
                 'heading' => $locationData['heading'] ?? null,
                 'accuracy' => $locationData['accuracy'] ?? null,
                 'recorded_at' => $recordedAt,
-            ]);
+            ];
+            if (isset($locationData['sensor_stationary'])) {
+                $routePointData['sensor_stationary'] = $locationData['sensor_stationary'];
+            }
+            $routePoint = RoutePoint::create($routePointData);
 
             // Update driver coordinates and last_active_at
             $driver->update([
@@ -270,7 +274,7 @@ class LocationService
                 return null;
             }
 
-            return [
+            $normalized = [
                 'index' => $index,
                 'assignment_id' => $activeAssignmentId,
                 'latitude' => (float) $locationData['latitude'],
@@ -282,6 +286,10 @@ class LocationService
                 'recorded_at' => $recordedAt,
                 'dedupe_key' => $this->buildLocationDedupeKey($recordedAt, (float) $locationData['latitude'], (float) $locationData['longitude']),
             ];
+            if (isset($locationData['sensor_stationary'])) {
+                $normalized['sensor_stationary'] = (bool) $locationData['sensor_stationary'];
+            }
+            return $normalized;
         })->filter()->sortBy(fn (array $point) => $point['recorded_at']->timestamp)->values();
 
         if ($normalizedLocations->isEmpty()) {
@@ -351,6 +359,7 @@ class LocationService
                     'speed' => $locationData['speed'],
                     'heading' => $locationData['heading'],
                     'accuracy' => $locationData['accuracy'],
+                    ...(isset($locationData['sensor_stationary']) ? ['sensor_stationary' => $locationData['sensor_stationary']] : []),
                     'recorded_at' => $locationData['recorded_at'],
                 ]);
 

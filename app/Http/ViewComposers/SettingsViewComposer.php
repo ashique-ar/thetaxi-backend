@@ -19,7 +19,13 @@ class SettingsViewComposer
     {
         // ULTRA-OPTIMIZED: Use aggressive caching to avoid repeated database hits
         $companyId = $this->settingsService->resolveCompanyId() ?: 'global';
-        $settings = Cache::remember('global_settings_flattened_' . $companyId, 86400, function () {
+        $cacheKey = 'global_settings_flattened_' . $companyId;
+        $cached = Cache::get($cacheKey);
+        if (is_array($cached) && !array_key_exists('hero_slides', $cached)) {
+            // Replace cached payloads from before the shared banner fields were included.
+            Cache::forget($cacheKey);
+        }
+        $settings = Cache::remember($cacheKey, 86400, function () {
             try {
                 // Get ALL settings that templates might need (homepage + global + all pages)
                 $allSettingsKeys = [
@@ -211,6 +217,9 @@ class SettingsViewComposer
                     'banner_subheading',
                     'banner_video',
                     'banner_image',
+                    'hero_slides',
+                    'hero_display_mode',
+                    'hero_booking_note',
                     'theme_02_slider_images',
 
                     // Partner section

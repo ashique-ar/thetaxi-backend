@@ -62,7 +62,7 @@ it('normalizes mixed image and video slides with backward-compatible fallbacks',
 });
 
 it('keeps theme 04 text attached to each managed slide', function () {
-    $source = file_get_contents(dirname(__DIR__, 2) . '/resources/views/partials/themes/theme-04/hero.blade.php');
+    $source = file_get_contents(dirname(__DIR__, 2) . '/resources/views/partials/hero-copy.blade.php');
 
     expect($source)->toContain("\$slide['heading']")
         ->toContain("\$slide['subheading']")
@@ -90,7 +90,7 @@ it('carries theme 04 hero details from the slide editor to the public view', fun
     ]] ])[0]['ctaUrl'])->toBe('/services');
 
     $root = dirname(__DIR__, 2);
-    $view = file_get_contents($root . '/resources/views/partials/themes/theme-04/hero.blade.php');
+    $view = file_get_contents($root . '/resources/views/partials/hero-copy.blade.php');
     $editor = file_get_contents(dirname($root) . '/portal-thetaxi/src/app/modules/admin/system/settings/website-settings-enhanced.component.html');
     $editorForm = file_get_contents(dirname($root) . '/portal-thetaxi/src/app/modules/admin/system/settings/website-settings-enhanced.component.ts');
     foreach (['eyebrow', 'ctaText', 'ctaUrl', 'locationLabel'] as $field) {
@@ -103,7 +103,7 @@ it('carries theme 04 hero details from the slide editor to the public view', fun
     expect($editor)->toContain('formControlName="hero_booking_note"')
         ->and($editorForm)->toContain("hero_booking_note: ['']")
         ->and(file_get_contents($root . '/app/Services/WebsiteSettingsService.php'))->toContain("'hero_booking_note'")
-        ->and(file_get_contents($root . '/resources/views/partials/themes/theme-04/booking-form.blade.php'))->toContain("\$settings['hero_booking_note']");
+        ->and(file_get_contents($root . '/resources/views/home.blade.php'))->toContain("\$settings['hero_booking_note']");
 });
 
 it('renders the same shared slider and media partial in all four theme heroes', function () {
@@ -113,13 +113,25 @@ it('renders the same shared slider and media partial in all four theme heroes', 
         $source = file_get_contents($root . '/resources/views/' . $view);
         expect($source)->toContain('get_hero_slides($settings)')
             ->toContain('shared-hero-swiper')
+            ->toContain("@include('partials.hero-copy'")
             ->toContain("@include('partials.hero-media'");
     }
 
     $media = file_get_contents($root . '/resources/views/partials/hero-media.blade.php');
     expect($media)->toContain("\$slide['type'] === 'video'")
-        ->toContain('muted playsinline preload="metadata"')
+        ->toContain('muted loop playsinline preload="metadata"')
         ->toContain('<picture>')->toContain('<source media="(max-width: 767px)"');
+});
+
+it('uses the selected banner format without losing saved carousel cards', function () {
+    $cards = [
+        ['type' => 'image', 'desktop' => 'first.jpg', 'video' => 'first.mp4'],
+        ['type' => 'image', 'desktop' => 'second.jpg'],
+    ];
+    expect(array_column(get_hero_slides(['hero_slides' => $cards, 'hero_display_mode' => 'image']), 'desktop'))->toBe(['first.jpg'])
+        ->and(get_hero_slides(['hero_slides' => $cards, 'hero_display_mode' => 'video'])[0]['video'])->toBe('first.mp4')
+        ->and(get_hero_slides(['hero_slides' => $cards, 'hero_display_mode' => 'carousel']))->toHaveCount(2)
+        ->and(get_hero_slides(['hero_slides' => [['desktop' => '']], 'hero_display_mode' => 'image', 'banner_image' => 'old.jpg']))->toBe([]);
 });
 
 it('uses one idempotent reduced-motion-aware slider behavior', function () {

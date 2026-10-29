@@ -340,6 +340,7 @@ $themeContentType = request()->route('contentType');
     <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/litepicker/dist/css/litepicker.css">
     <script src="https://cdn.jsdelivr.net/npm/litepicker/dist/litepicker.js"></script>
     <link rel="stylesheet" href="{{ assetVersion('assets/css/flatpickr-custom.css') }}">
+    <link rel="stylesheet" href="{{ assetVersion('assets/css/hero-shared.css') }}">
 
     <script src="{{ asset('assets/js/bootstrap.min.js') }}"></script>
     <script src="{{ asset('assets/js/popper.min.js') }}"></script>

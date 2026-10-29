@@ -32,6 +32,7 @@ class RoutePointResource extends JsonResource
             'speed' => $this->speed !== null ? (float) $this->speed : null,
             'heading' => $this->heading !== null ? (float) $this->heading : null,
             'accuracy' => $this->accuracy !== null ? (float) $this->accuracy : null,
+            'sensor_stationary' => $this->sensor_stationary,
             'recorded_at' => $this->recorded_at?->toIso8601String(),
             'created_at' => $this->created_at?->toIso8601String(),
         ];

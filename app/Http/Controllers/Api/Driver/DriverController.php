@@ -936,10 +936,10 @@ class DriverController extends Controller
         $assignments = DriverAssignment::query()
             ->where('driver_id', $driver->id)
             ->with([
-                'booking:id,booking_number,status,trip_status',
-                'booking.bookingItems:id,booking_id,service_type_id,from_date,from_time,to_date,to_time,pickup_location,dropoff_location,pickup_latitude,pickup_longitude,dropoff_latitude,dropoff_longitude',
+                'booking:id,booking_number,status,trip_status,duration_metrics',
+                'booking.bookingItems:id,booking_id,service_type_id,from_date,from_time,to_date,to_time,metadata,pickup_location,dropoff_location,pickup_latitude,pickup_longitude,dropoff_latitude,dropoff_longitude',
                 'booking.bookingItems.serviceType:id,name',
-                'bookingItem:id,booking_id,service_type_id,from_date,from_time,to_date,to_time,pickup_location,dropoff_location,pickup_latitude,pickup_longitude,dropoff_latitude,dropoff_longitude',
+                'bookingItem:id,booking_id,service_type_id,from_date,from_time,to_date,to_time,metadata,pickup_location,dropoff_location,pickup_latitude,pickup_longitude,dropoff_latitude,dropoff_longitude',
                 'bookingItem.serviceType:id,name',
             ])
             ->where(function ($query) use ($dayStart, $dayEnd) {
@@ -967,10 +967,10 @@ class DriverController extends Controller
                 $query->where('driver_id', $driver->id);
             })
             ->with([
-                'assignment.booking:id,booking_number,status,trip_status',
-                'assignment.booking.bookingItems:id,booking_id,service_type_id,from_date,from_time,to_date,to_time,pickup_location,dropoff_location,pickup_latitude,pickup_longitude,dropoff_latitude,dropoff_longitude',
+                'assignment.booking:id,booking_number,status,trip_status,duration_metrics',
+                'assignment.booking.bookingItems:id,booking_id,service_type_id,from_date,from_time,to_date,to_time,metadata,pickup_location,dropoff_location,pickup_latitude,pickup_longitude,dropoff_latitude,dropoff_longitude',
                 'assignment.booking.bookingItems.serviceType:id,name',
-                'assignment.bookingItem:id,booking_id,service_type_id,from_date,from_time,to_date,to_time,pickup_location,dropoff_location,pickup_latitude,pickup_longitude,dropoff_latitude,dropoff_longitude',
+                'assignment.bookingItem:id,booking_id,service_type_id,from_date,from_time,to_date,to_time,metadata,pickup_location,dropoff_location,pickup_latitude,pickup_longitude,dropoff_latitude,dropoff_longitude',
                 'assignment.bookingItem.serviceType:id,name',
             ])
             ->orderBy('recorded_at')
@@ -994,6 +994,15 @@ class DriverController extends Controller
         $assignmentPayload = $assignments->map(function (DriverAssignment $assignment) use ($assignmentPointCounts) {
             $booking = $assignment->booking;
             $bookingItem = $this->resolveAssignmentBookingItem($assignment);
+            $durationItems = is_array($booking?->duration_metrics['items'] ?? null)
+                ? $booking->duration_metrics['items']
+                : [];
+            $itemDurationMetrics = is_array($durationItems[(string) ($bookingItem?->id ?? '')] ?? null)
+                ? $durationItems[(string) ($bookingItem?->id ?? '')]
+                : [];
+            $durationSeconds = $assignment->trip_started_at && $assignment->trip_completed_at
+                ? (int) $assignment->trip_started_at->diffInSeconds($assignment->trip_completed_at)
+                : null;
             $pickup = $this->extractMappedLocation(
                 $bookingItem?->pickup_location,
                 $bookingItem?->pickup_latitude,
@@ -1015,12 +1024,17 @@ class DriverController extends Controller
                 'trip_phase' => $assignment->trip_phase?->value,
                 'trip_phase_label' => $assignment->trip_phase?->getDisplayName(),
                 'service_type_name' => $bookingItem?->serviceType?->name,
+                'trip_mode' => data_get($bookingItem?->metadata, 'trip_mode'),
                 'assigned_from' => $assignment->assigned_from?->toIso8601String(),
                 'assigned_to' => $assignment->assigned_to?->toIso8601String(),
                 'confirmed_at' => $assignment->confirmed_at?->toIso8601String(),
                 'trip_started_at' => $assignment->trip_started_at?->toIso8601String(),
                 'pickup_arrived_at' => $assignment->pickup_arrived_at?->toIso8601String(),
                 'trip_completed_at' => $assignment->trip_completed_at?->toIso8601String(),
+                'total_duration_seconds' => $durationSeconds,
+                'total_duration_minutes' => $durationSeconds !== null
+                    ? intdiv($durationSeconds + 59, 60)
+                    : null,
                 'pickup_location' => $pickup,
                 'dropoff_location' => $dropoff,
                 'pickup_arrived_location' => $this->buildCoordinatePayload(
@@ -1034,6 +1048,10 @@ class DriverController extends Controller
                 'total_distance_km' => $assignment->total_distance_km !== null
                     ? (float) $assignment->total_distance_km
                     : null,
+                'pickup_waiting_time_seconds' => (int) ($assignment->pickup_waiting_time_seconds ?? 0),
+                'hire_waiting_time_seconds' => (int) ($assignment->hire_waiting_time_seconds ?? 0),
+                'total_waiting_time_seconds' => (int) ($assignment->total_waiting_time_seconds ?? 0),
+                'waiting_sources_seconds' => $itemDurationMetrics['waiting_sources_seconds'] ?? null,
                 'route_point_count' => (int) ($assignmentPointCounts[$assignment->id] ?? 0),
             ];
         })->values();
@@ -1724,6 +1742,7 @@ class DriverController extends Controller
                 'speed' => $point->speed !== null ? (float) $point->speed : null,
                 'heading' => $point->heading !== null ? (float) $point->heading : null,
                 'accuracy' => $point->accuracy !== null ? (float) $point->accuracy : null,
+                'sensor_stationary' => $point->sensor_stationary,
                 'recorded_at' => $point->recorded_at?->toIso8601String(),
             ];
             $currentSegment['point_count']++;

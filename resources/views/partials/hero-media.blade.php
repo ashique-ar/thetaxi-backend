@@ -1,5 +1,5 @@
 @if ($slide['type'] === 'video')
-    <video class="shared-hero-slide__media" muted playsinline preload="metadata"
+    <video class="shared-hero-slide__media" muted loop playsinline preload="metadata"
         @if (!empty($slide['poster'])) poster="{{ s3_asset($slide['poster']) }}" @endif
         aria-label="{{ $slide['alt'] }}">
         <source src="{{ s3_asset($slide['video']) }}">

@@ -273,6 +273,7 @@ beforeEach(function () {
         $table->decimal('speed', 10, 2)->nullable();
         $table->decimal('heading', 10, 2)->nullable();
         $table->decimal('accuracy', 10, 2)->nullable();
+        $table->boolean('sensor_stationary')->nullable();
         $table->timestamp('recorded_at');
         $table->timestamp('created_at')->nullable();
     });
@@ -360,6 +361,7 @@ it('persists single and buffered tracking without changing contractual pricing s
     $single = $locations->updateLocation($driver, [
         'latitude' => 6.91,
         'longitude' => 79.81,
+        'sensor_stationary' => true,
         'recorded_at' => now()->subMinutes(2)->toIso8601String(),
     ]);
     $bulk = $locations->syncBufferedLocations($driver->fresh(), [[
@@ -369,6 +371,7 @@ it('persists single and buffered tracking without changing contractual pricing s
     ], [
         'latitude' => 6.93,
         'longitude' => 79.83,
+        'sensor_stationary' => false,
         'recorded_at' => now()->toIso8601String(),
     ]]);
     $replay = app(\App\Services\BookingObservabilityService::class)
@@ -376,7 +379,9 @@ it('persists single and buffered tracking without changing contractual pricing s
 
     expect($single->session_id)->toBe($session->id)
         ->and($single->assignment_id)->toBe($assignment->id)
+        ->and($single->sensor_stationary)->toBeTrue()
         ->and($bulk['saved_count'])->toBe(2)
+        ->and(RoutePoint::where('session_id', $session->id)->where('sensor_stationary', false)->count())->toBe(1)
         ->and(RoutePoint::where('session_id', $session->id)->count())->toBe(3)
         ->and(RoutePoint::where('session_id', $session->id)->where('assignment_id', $assignment->id)->count())->toBe(3)
         ->and($replay['booking_item_id'])->toBe((string) $item->id)
@@ -387,6 +392,38 @@ it('persists single and buffered tracking without changing contractual pricing s
         ->and($item->fresh()->pricing_breakdown)->toBe($contractualSnapshot)
         ->and((float) $booking->fresh()->total_estimated)->toBe(5000.0)
         ->and((float) $item->fresh()->total_price)->toBe(5000.0);
+});
+
+it('stores derived mobile sensor state alongside open package GPS points', function () {
+    $driver = Driver::create(['code' => 'MOTION-TELEMETRY']);
+    $assignment = DriverAssignment::create([
+        'driver_id' => $driver->id,
+        'trip_phase' => TripPhase::IN_PROGRESS,
+        'status' => 'active',
+    ]);
+    DriverSession::create([
+        'driver_id' => $driver->id,
+        'assignment_id' => $assignment->id,
+        'status' => 'active',
+        'start_time' => now()->subMinute(),
+    ]);
+
+    $single = app(LocationService::class)->updateLocation($driver, [
+        'latitude' => 6.91,
+        'longitude' => 79.81,
+        'recorded_at' => now()->subSeconds(10),
+        'sensor_stationary' => true,
+    ]);
+    $bulk = app(LocationService::class)->syncBufferedLocations($driver->fresh(), [[
+        'latitude' => 6.92,
+        'longitude' => 79.82,
+        'recorded_at' => now()->subSeconds(5)->toIso8601String(),
+        'sensor_stationary' => false,
+    ]]);
+
+    expect($single->sensor_stationary)->toBeTrue()
+        ->and($bulk['saved_count'])->toBe(1)
+        ->and(RoutePoint::where('assignment_id', $assignment->id)->where('sensor_stationary', false)->count())->toBe(1);
 });
 
 it('rejects stale and cross-context recovery without rewriting raw claims', function () {
@@ -977,10 +1014,12 @@ it('allows stops with the same route order to be completed independently', funct
 });
 
 it('persists actual completion and route distance once without a pricing owner', function () {
+    $this->travelTo(now());
+    $startedAt = now()->subSeconds(61);
     $assignment = DriverAssignment::create([
         'trip_phase' => TripPhase::IN_PROGRESS,
         'status' => 'active',
-        'trip_started_at' => now()->subMinutes(2),
+        'trip_started_at' => $startedAt,
     ]);
     RoutePoint::create([
         'assignment_id' => $assignment->id, 'latitude' => 6.90, 'longitude' => 79.80, 'recorded_at' => now()->subSeconds(20),
@@ -1002,15 +1041,46 @@ it('persists actual completion and route distance once without a pricing owner',
         ->and((float) $completed->total_distance_km)->toBeGreaterThan(0)
         ->and($summary['trip_started_at'])->toBe($completed->trip_started_at->copy()->utc()->toIso8601String())
         ->and($summary['trip_completed_at'])->toBe($completed->trip_completed_at->copy()->utc()->toIso8601String())
+        ->and($summary['total_duration_seconds'])->toBe(61)
+        ->and($summary['total_duration_minutes'])->toBe(2)
         ->and($retry['total_distance_km'])->toBe($summary['total_distance_km'])
+        ->and($retry['total_duration_seconds'])->toBe($summary['total_duration_seconds'])
+        ->and($retry['total_duration_minutes'])->toBe($summary['total_duration_minutes'])
         ->and($retry['trip_started_at'])->toBe($summary['trip_started_at'])
         ->and($retry['trip_completed_at'])->toBe($summary['trip_completed_at'])
         ->and($staleRetry['dropoff_coordinates'])->toBe($summary['dropoff_coordinates'])
         ->and($status['trip_phase'])->toBe('completed')
+        ->and($status['total_duration_seconds'])->toBe(61)
+        ->and($status['total_duration_minutes'])->toBe(2)
         ->and($status['total_distance_km'] ?? null)->toBe($summary['total_distance_km'])
         ->and(array_key_exists('final_pricing', $status))->toBeTrue()
         ->and(array_key_exists('payment', $status))->toBeTrue()
         ->and($completed->fresh()->updated_at->toIso8601String())->toBe($completed->updated_at->toIso8601String());
+});
+
+it('reconstructs waiting from route speeds stored in kilometers per hour', function () {
+    $this->travelTo(now());
+    $startedAt = now()->subSeconds(150);
+    $assignment = DriverAssignment::create([
+        'trip_phase' => TripPhase::IN_PROGRESS,
+        'status' => 'active',
+        'trip_started_at' => $startedAt,
+    ]);
+
+    foreach (range(0, 5) as $index) {
+        RoutePoint::create([
+            'assignment_id' => $assignment->id,
+            'latitude' => 6.9,
+            'longitude' => 79.8,
+            'speed' => 2,
+            'recorded_at' => $startedAt->copy()->addSeconds($index * 30),
+        ]);
+    }
+
+    $waiting = app(WaitingTimeService::class)->calculateValidatedTripWaitingTime($assignment);
+
+    expect($waiting['total_waiting_time_seconds'])->toBe(150)
+        ->and($waiting['waiting_period_count'])->toBe(1);
 });
 
 it('does not expose completion errors and reports server failures', function (string $exceptionClass, string $action, string $operation, array $expected) {

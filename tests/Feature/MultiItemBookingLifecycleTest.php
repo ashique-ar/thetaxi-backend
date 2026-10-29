@@ -102,6 +102,7 @@ beforeEach(function () {
         $table->timestamps();
         $table->softDeletes();
     });
+
     DB::table('users')->insert([
         'id' => '00000000-0000-0000-0000-000000000001',
         'first_name' => 'QC',
@@ -519,6 +520,15 @@ it('accepts split waiting telemetry without a legacy waiting total', function ()
         'service_type_id' => '44444444-4444-4444-8444-444444444444',
         'vehicle_group_id' => '55555555-5555-4555-8555-555555555555',
     ]);
+    $this->booking->update(['duration_metrics' => [
+        'items' => [(string) $item->id => [
+            'waiting_sources_seconds' => [
+                'persisted_records' => 45,
+                'validated_route_points' => 60,
+                'authenticated_mobile_meter' => 90,
+            ],
+        ]],
+    ]]);
     $this->bookingFlowService->shouldReceive('calculateDynamicPricing')
         ->once()
         ->withArgs(fn (array $params): bool => ($params['pickup_waiting_minutes'] ?? null) === 4
@@ -545,7 +555,14 @@ it('accepts split waiting telemetry without a legacy waiting total', function ()
         'activity_source' => 'system_completion',
     ], 'booking_completion');
 
-    expect($result)->toBeArray();
+    $durationMetrics = $this->booking->fresh()->duration_metrics;
+    expect($result)->toBeArray()
+        ->and($durationMetrics['pickup_waiting_minutes'])->toBe(4)
+        ->and($durationMetrics['hire_waiting_minutes'])->toBe(7)
+        ->and($durationMetrics['total_waiting_minutes'])->toBe(11)
+        ->and($durationMetrics['items'][(string) $item->id]['pickup_waiting_minutes'])->toBe(4)
+        ->and($durationMetrics['items'][(string) $item->id]['hire_waiting_minutes'])->toBe(7)
+        ->and($durationMetrics['items'][(string) $item->id]['waiting_sources_seconds']['authenticated_mobile_meter'])->toBe(90);
 });
 
 it('preserves single-item behavior while recording the same item-owned terminal state', function () {

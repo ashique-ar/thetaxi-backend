@@ -341,6 +341,35 @@ class WebsiteSettingController extends Controller
             );
         }
 
+        if ($category === 'homepage') {
+            $hero = $request->input('settings', []);
+            if (array_key_exists('hero_slides', $hero) && is_string($hero['hero_slides'])) {
+                $decoded = json_decode($hero['hero_slides'], true);
+                $hero['hero_slides'] = json_last_error() === JSON_ERROR_NONE ? $decoded : false;
+            }
+            $heroValidator = Validator::make($hero, [
+                'hero_display_mode' => 'sometimes|required|in:image,video,carousel',
+                'hero_slides' => 'sometimes|array|list|max:30',
+                'hero_slides.*' => 'required|array',
+                'hero_slides.*.type' => 'sometimes|in:image,video',
+                'hero_slides.*.desktop' => 'nullable|string|max:2048',
+                'hero_slides.*.mobile' => 'nullable|string|max:2048',
+                'hero_slides.*.video' => 'nullable|string|max:2048',
+                'hero_slides.*.poster' => 'nullable|string|max:2048',
+                'hero_slides.*.heading' => 'nullable|string|max:500',
+                'hero_slides.*.subheading' => 'nullable|string|max:2000',
+                'hero_slides.*.caption' => 'nullable|string|max:1000',
+                'hero_slides.*.alt' => 'nullable|string|max:500',
+                'hero_slides.*.eyebrow' => 'nullable|string|max:500',
+                'hero_slides.*.location_label' => 'nullable|string|max:500',
+                'hero_slides.*.cta_text' => 'nullable|string|max:200',
+                'hero_slides.*.cta_url' => ['nullable', 'string', 'max:2048', 'regex:~^/(?!/)[a-zA-Z0-9/_#?=&%.\-]*$~'],
+            ]);
+            if ($heroValidator->fails()) {
+                return response()->json(['status' => 'error', 'message' => 'Check the main banner settings.', 'errors' => $heroValidator->errors()], 422);
+            }
+        }
+
         if ($category === 'homepage' && array_key_exists('homepage_vehicle_sections', $request->settings)) {
             $sections = $request->input('settings.homepage_vehicle_sections');
             $sectionValidator = Validator::make(['sections' => $sections], [

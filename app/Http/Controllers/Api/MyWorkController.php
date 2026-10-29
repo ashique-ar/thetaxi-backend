@@ -9,6 +9,7 @@ use App\Services\CompanyCustomerScope;
 use App\Services\BookingResponsibilityService;
 use App\Services\InquiryAssignmentService;
 use App\Services\Sales\SalesPolicySettingsService;
+use App\Services\Sales\InquiryFirstResponseDeadlineService;
 use App\Services\SingleCompanyScope;
 use App\Models\User;
 use Illuminate\Http\JsonResponse;
@@ -109,9 +110,9 @@ class MyWorkController extends Controller
                     ->whereColumn('reply_attempt.company_id', 'inquiries.company_id')->whereColumn('reply_attempt.linked_inquiry_id', 'inquiries.id')
                     ->whereIn('reply_attempt.outbound_status', ['sending', 'uncertain']);
                 $overdueFirstResponses = DB::table('inquiries')->where('company_id', $companyId)->whereNull('deleted_at')
-                    ->whereIn('status', ['open', 'in_progress'])->whereNull('first_response_sent_at')
-                    ->where('created_at', '<=', now()->subMinutes($responseTargetMinutes))
-                    ->whereNotExists($hasUnconfirmedEmail)->whereNotExists($hasUnconfirmedRespondIo);
+                    ->whereIn('status', ['open', 'in_progress'])->whereNull('first_response_sent_at');
+                app(InquiryFirstResponseDeadlineService::class)->constrainOverdue($overdueFirstResponses, $responseTargetMinutes, now());
+                $overdueFirstResponses->whereNotExists($hasUnconfirmedEmail)->whereNotExists($hasUnconfirmedRespondIo);
                 $myOverdueResponses = (clone $overdueFirstResponses)->where('assigned_to', $userId);
                 $queues[] = ['group' => 'mine', 'title' => 'First replies overdue', 'help' => 'Open requests that passed the approved first-response target', 'icon' => 'schedule',
                     'link' => '/communication/inquiries?mine_only=true&actionable_only=true&first_response_state=overdue',

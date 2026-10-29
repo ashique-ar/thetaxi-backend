@@ -21,6 +21,7 @@ class BulkLocationUpdateRequest extends FormRequest
             'locations.*.speed' => ['nullable', 'numeric', 'min:0'],
             'locations.*.heading' => ['nullable', 'numeric', 'between:0,360'],
             'locations.*.accuracy' => ['nullable', 'numeric', 'min:0'],
+            'locations.*.sensor_stationary' => ['nullable', 'boolean'],
             'locations.*.recorded_at' => ['required', 'date'],
             'locations.*.assignment_id' => ['nullable', 'uuid'],
             'locations.*.trip_id' => ['nullable', 'uuid'],

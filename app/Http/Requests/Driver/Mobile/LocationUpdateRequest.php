@@ -37,6 +37,7 @@ class LocationUpdateRequest extends FormRequest
             'speed' => ['nullable', 'numeric', 'min:0'],
             'heading' => ['nullable', 'numeric', 'between:0,360'],
             'accuracy' => ['nullable', 'numeric', 'min:0'],
+            'sensor_stationary' => ['nullable', 'boolean'],
             'recorded_at' => ['nullable', 'date'],
             'assignment_id' => ['nullable', 'uuid'],
             'trip_id' => ['nullable', 'uuid'],

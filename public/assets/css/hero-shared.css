@@ -1,0 +1,24 @@
+/* Shared content and media behavior; theme styles retain layout and colours. */
+.shared-hero-eyebrow, .shared-hero-caption, .shared-hero-location { display: block; margin-block: 0.75rem; }
+.shared-hero-eyebrow { font-weight: 600; letter-spacing: 0.06em; }
+.shared-hero-action { display: inline-flex; align-items: center; gap: 0.75rem; margin-block: 1rem; padding: 0.8rem 1.25rem; border-radius: 0.4rem; background: var(--primary-color1, #bf2629); color: #fff; font-weight: 600; }
+.shared-hero-action:hover, .shared-hero-action:focus-visible { color: #fff; text-decoration: underline; }
+.shared-hero-slider .shared-hero-slide__media { width: 100%; height: 100%; object-fit: cover; }
+.shared-hero-slider picture { display: block; height: 100%; }
+body.theme-default .shared-hero-swiper .banner-content-wrap { position: absolute; inset: 0; z-index: 2; display: flex; align-items: center; padding-block: 2rem; }
+body.theme-default .shared-hero-swiper .banner-content-wrap .banner-content { position: relative; inset: auto; }
+body.theme-default .banner-content .shared-hero-heading { max-width: 760px; margin: 0 auto 1rem; color: #fff; font-family: var(--font-poppins); font-size: clamp(2rem, 4.5vw, 3.75rem); font-weight: 800; line-height: 1.05; }
+body.theme-default .banner-content :where(.shared-hero-description, .shared-hero-caption, .shared-hero-eyebrow, .shared-hero-location) { color: #fff; }
+body.theme-default .banner-content .shared-hero-description { margin-inline: auto; }
+body.theme-theme-02 .shared-hero-heading { color: #fff; font-size: clamp(2rem, 5vw, 4rem); font-weight: 800; line-height: 1.1; margin-bottom: 1.25rem; }
+body.theme-theme-02 .shared-hero-description { color: #fff; font-size: clamp(1rem, 2vw, 1.25rem); }
+body.theme-theme-03 .t3-hero__copy .shared-hero-heading { margin: 18px 0 30px; color: var(--t3-ink); font-size: clamp(3.6rem, 6.6vw, 7.7rem); letter-spacing: -0.055em; line-height: 0.86; }
+body.theme-theme-03 .t3-hero > .shared-hero-swiper { min-height: inherit; }
+body.theme-theme-03 .t3-hero__frame { min-height: clamp(620px, calc(84svh - 92px), 820px); }
+body.theme-theme-03 .shared-hero-pagination { bottom: 2rem; text-align: center; z-index: 3; }
+body.theme-theme-04 .shared-hero-eyebrow { color: var(--t4-accent); }
+body.theme-theme-04 .shared-hero-action { background: var(--t4-accent); text-shadow: none; }
+.shared-booking-note { margin-block: 1rem; text-align: center; }
+@media (max-width: 767px) {
+    body.theme-theme-03 .t3-hero__copy .shared-hero-heading { font-size: clamp(2.5rem, 11vw, 4rem); }
+}

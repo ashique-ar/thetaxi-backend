@@ -160,12 +160,17 @@ if (!function_exists('get_hero_slides')) {
         $slides = [];
 
         if (is_array($decoded)) {
+            $mode = $settings['hero_display_mode'] ?? 'carousel';
+            if (in_array($mode, ['image', 'video'], true)) {
+                $decoded = array_slice($decoded, 0, 1);
+            }
             foreach ($decoded as $index => $slide) {
                 if (!is_array($slide)) {
                     continue;
                 }
 
-                $type = ($slide['type'] ?? 'image') === 'video' ? 'video' : 'image';
+                $type = in_array($mode, ['image', 'video'], true)
+                    ? $mode : (($slide['type'] ?? 'image') === 'video' ? 'video' : 'image');
                 $desktop = $slide['desktop'] ?? $slide['image'] ?? null;
                 $mobile = $slide['mobile'] ?? $slide['mobile_image'] ?? null;
                 $video = $slide['video'] ?? null;
@@ -239,6 +244,6 @@ if (!function_exists('get_hero_slides')) {
             ];
         }
 
-        return $slides;
+        return get_hero_slides(array_replace($settings, ['hero_slides' => $slides]));
     }
 }

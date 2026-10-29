@@ -25,13 +25,14 @@ it('loads legacy uploads through the API and persists removals without reviving 
     $controller = $this->app->make(WebsiteSettingController::class);
     $loaded = $controller->getCategory('homepage')->getData(true)['data'];
     expect(array_column($loaded['hero_slides'], 'desktop'))->toBe(['first.jpg', 'second.jpg'])
+        ->and($loaded['hero_display_mode'])->toBe('carousel')
         ->and($loaded['hero_slides'][0]['mobile'])->toBe('mobile.jpg');
 
     $remaining = [$loaded['hero_slides'][1]];
     foreach ([$remaining, [['type' => 'image', 'desktop' => '', 'video' => '']]] as $slides) {
         $saved = json_encode($slides);
         $request = Request::create('/api/website-settings/category/homepage', 'PUT', [
-            'settings' => ['hero_slides' => $saved],
+            'settings' => ['hero_slides' => $saved, 'hero_display_mode' => 'image'],
         ]);
         $request->setUserResolver(fn () => (object) ['id' => 'editor']);
         $response = WebsiteSetting::withoutEvents(fn () => $controller->updateCategory($request, 'homepage'));
@@ -39,8 +40,22 @@ it('loads legacy uploads through the API and persists removals without reviving 
             ->and(WebsiteSetting::getValue('hero_slides'))->toBe($saved);
         $reloaded = $controller->getCategory('homepage')->getData(true)['data'];
         expect($reloaded['hero_slides'])->toBe($saved)
+            ->and($reloaded['hero_display_mode'])->toBe('image')
             ->and(array_column(get_hero_slides($reloaded), 'desktop'))->toBe(
                 $slides === $remaining ? ['second.jpg'] : []
             );
     }
 });
+
+it('rejects invalid banner formats and malformed media before saving', function (array $settings) {
+    $controller = $this->app->make(WebsiteSettingController::class);
+    $response = $controller->updateCategory(Request::create('/settings', 'PUT', ['settings' => $settings]), 'homepage');
+    expect($response->getStatusCode())->toBe(422);
+})->with([
+    [['hero_display_mode' => 'theme-02']],
+    [['hero_slides' => '{']],
+    [['hero_slides' => '{"desktop":"image.jpg"}']],
+    [['hero_slides' => [['type' => 'document']]]],
+    [['hero_slides' => [['desktop' => ['path' => 'image.jpg']]]]],
+    [['hero_slides' => [['cta_url' => 'javascript:alert(1)']]]],
+]);

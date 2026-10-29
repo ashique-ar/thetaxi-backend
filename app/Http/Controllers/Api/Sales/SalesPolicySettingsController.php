@@ -11,7 +11,9 @@ use App\Services\SingleCompanyScope;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Schema;
 use Illuminate\Validation\Rule;
+use Illuminate\Validation\ValidationException;
 
 class SalesPolicySettingsController extends Controller
 {
@@ -65,6 +67,7 @@ class SalesPolicySettingsController extends Controller
             'id', 'policy_kind', 'version', 'status', 'fx_quote_base', 'fx_calculation_mode', 'fx_max_rate_age_hours',
             'fx_rounding_scale', 'dispute_response_days', 'profile_export_retention_days', 'business_timezone', 'inquiry_first_response_minutes', 'booking_assignment_target_minutes', 'approved_at',
         ];
+        if (Schema::hasColumn('sales_policy_settings', 'inquiry_response_business_hours')) $policyColumns[] = 'inquiry_response_business_hours';
         $featureColumns = ['id', 'feature_key', 'version', 'enabled', 'status'];
         $categoryColumns = ['id', 'category_name', 'status'];
         if ($canReviewRationale) {
@@ -102,9 +105,24 @@ class SalesPolicySettingsController extends Controller
             'profile_export_retention_days' => ['required_if:policy_kind,profile_export_retention', 'nullable', 'integer', 'min:1', 'max:3650'],
             'business_timezone' => ['required_if:policy_kind,business_timezone', 'nullable', 'timezone'],
             'inquiry_first_response_minutes' => ['required_if:policy_kind,inquiry_response', 'nullable', 'integer', 'min:1', 'max:10080'],
+            'inquiry_response_business_hours' => ['nullable', 'prohibited_unless:policy_kind,inquiry_response', 'array:timezone,days,opens_at,closes_at'],
+            'inquiry_response_business_hours.timezone' => ['required_with:inquiry_response_business_hours', 'timezone'],
+            'inquiry_response_business_hours.days' => ['required_with:inquiry_response_business_hours', 'array', 'min:1'],
+            'inquiry_response_business_hours.days.*' => ['integer', 'between:1,7', 'distinct'],
+            'inquiry_response_business_hours.opens_at' => ['required_with:inquiry_response_business_hours', 'date_format:H:i'],
+            'inquiry_response_business_hours.closes_at' => ['required_with:inquiry_response_business_hours', 'date_format:H:i'],
             'booking_assignment_target_minutes' => ['required_if:policy_kind,booking_assignment', 'nullable', 'integer', 'min:1', 'max:10080'],
             'reason' => ['required', 'string', 'max:2000'],
         ]);
+        if (! empty($data['inquiry_response_business_hours'])
+            && $data['inquiry_response_business_hours']['closes_at'] <= $data['inquiry_response_business_hours']['opens_at']) {
+            throw ValidationException::withMessages(['inquiry_response_business_hours.closes_at' => ['Closing time must be after opening time.']]);
+        }
+        if (! empty($data['inquiry_response_business_hours'])
+            && (! Schema::hasColumn('sales_policy_settings', 'inquiry_response_business_hours')
+                || ! Schema::hasColumn('inquiries', 'first_response_due_at'))) {
+            throw ValidationException::withMessages(['inquiry_response_business_hours' => ['Business-hour reply targets need the latest database update. Ask your system administrator to apply the pending update.']]);
+        }
         $data['company_id'] = $this->resolveCompanyId($data['company_id'] ?? null);
         $this->assertCompany($request, $data['company_id']);
         $setting = $this->settings->create($data['company_id'], $data['policy_kind'], $data, (string) $request->user()->id);
