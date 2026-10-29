@@ -40,6 +40,7 @@ return [
                 '*.edit',
                 '*.manage',
                 'bookings.*',
+                'view_all_bookings',
                 'reports.*',
             ],
             'exclude' => ['permissions.*', 'roles.*', 'system.*', 'admin.*', 'users.delete'],
@@ -47,7 +48,7 @@ return [
         'dispatcher' => [
             'label' => 'Dispatcher',
             'description' => 'Booking dispatch, assignment, and fleet visibility.',
-            'patterns' => ['bookings.*', 'driver-assignments.*', 'drivers.view', 'vehicles.view', 'customers.view'],
+            'patterns' => ['bookings.*', 'view_all_bookings', 'driver-assignments.*', 'drivers.view', 'vehicles.view', 'customers.view'],
         ],
         'fleet-manager' => [
             'label' => 'Fleet Manager',
@@ -62,7 +63,7 @@ return [
         'customer-support' => [
             'label' => 'Customer Support',
             'description' => 'Customer and booking support access.',
-            'patterns' => ['customers.view', 'customers.create', 'customers.edit', 'bookings.view', 'bookings.edit', 'communication.view'],
+            'patterns' => ['customers.view', 'customers.create', 'customers.edit', 'bookings.view', 'bookings.edit', 'view_all_bookings', 'communication.view'],
         ],
         'corporate-admin' => [
             'label' => 'Corporate Admin',
