@@ -94,6 +94,14 @@ class SalesPolicySettingsController extends Controller
 
     public function store(Request $request): JsonResponse
     {
+        $businessHours = $request->input('inquiry_response_business_hours');
+        if (is_array($businessHours) && isset($businessHours['opens_at'], $businessHours['closes_at']) && is_array($businessHours['days'] ?? null)) {
+            $businessHours['days'] = array_map(fn ($day) => is_numeric($day)
+                ? ['day' => (int) $day, 'opens_at' => $businessHours['opens_at'], 'closes_at' => $businessHours['closes_at']]
+                : $day, $businessHours['days']);
+            unset($businessHours['opens_at'], $businessHours['closes_at']);
+            $request->merge(['inquiry_response_business_hours' => $businessHours]);
+        }
         $data = $request->validate([
             'company_id' => ['nullable', 'uuid', 'exists:companies,id'],
             'policy_kind' => ['required', Rule::in(SalesPolicySettingsService::KINDS)],
@@ -105,18 +113,20 @@ class SalesPolicySettingsController extends Controller
             'profile_export_retention_days' => ['required_if:policy_kind,profile_export_retention', 'nullable', 'integer', 'min:1', 'max:3650'],
             'business_timezone' => ['required_if:policy_kind,business_timezone', 'nullable', 'timezone'],
             'inquiry_first_response_minutes' => ['required_if:policy_kind,inquiry_response', 'nullable', 'integer', 'min:1', 'max:10080'],
-            'inquiry_response_business_hours' => ['nullable', 'prohibited_unless:policy_kind,inquiry_response', 'array:timezone,days,opens_at,closes_at'],
+            'inquiry_response_business_hours' => ['nullable', 'prohibited_unless:policy_kind,inquiry_response', 'array:timezone,days'],
             'inquiry_response_business_hours.timezone' => ['required_with:inquiry_response_business_hours', 'timezone'],
             'inquiry_response_business_hours.days' => ['required_with:inquiry_response_business_hours', 'array', 'min:1'],
-            'inquiry_response_business_hours.days.*' => ['integer', 'between:1,7', 'distinct'],
-            'inquiry_response_business_hours.opens_at' => ['required_with:inquiry_response_business_hours', 'date_format:H:i'],
-            'inquiry_response_business_hours.closes_at' => ['required_with:inquiry_response_business_hours', 'date_format:H:i'],
+            'inquiry_response_business_hours.days.*' => ['required', 'array:day,opens_at,closes_at'],
+            'inquiry_response_business_hours.days.*.day' => ['required', 'integer', 'between:1,7', 'distinct'],
+            'inquiry_response_business_hours.days.*.opens_at' => ['required', 'date_format:H:i'],
+            'inquiry_response_business_hours.days.*.closes_at' => ['required', 'date_format:H:i'],
             'booking_assignment_target_minutes' => ['required_if:policy_kind,booking_assignment', 'nullable', 'integer', 'min:1', 'max:10080'],
             'reason' => ['required', 'string', 'max:2000'],
         ]);
-        if (! empty($data['inquiry_response_business_hours'])
-            && $data['inquiry_response_business_hours']['closes_at'] <= $data['inquiry_response_business_hours']['opens_at']) {
-            throw ValidationException::withMessages(['inquiry_response_business_hours.closes_at' => ['Closing time must be after opening time.']]);
+        foreach ($data['inquiry_response_business_hours']['days'] ?? [] as $index => $day) {
+            if ($day['closes_at'] <= $day['opens_at']) {
+                throw ValidationException::withMessages(["inquiry_response_business_hours.days.$index.closes_at" => ['Closing time must be after opening time.']]);
+            }
         }
         if (! empty($data['inquiry_response_business_hours'])
             && (! Schema::hasColumn('sales_policy_settings', 'inquiry_response_business_hours')

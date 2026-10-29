@@ -356,6 +356,8 @@ Route::middleware(['auth:api'])->group(function () {
         Route::post('connection/rotate-secret', [RespondIoIntegrationController::class, 'rotateSecret'])->middleware('permission:communication.manage');
         Route::get('events', [RespondIoIntegrationController::class, 'events'])->middleware('permission:communication.view');
         Route::get('events/{event}', [RespondIoIntegrationController::class, 'event'])->middleware('permission:communication.view');
+        Route::get('events/{event}/inquiry-options', [RespondIoIntegrationController::class, 'inquiryOptions'])->middleware('permission:communication.manage');
+        Route::post('events/{event}/link-inquiry', [RespondIoIntegrationController::class, 'linkInquiry'])->middleware('permission:communication.manage');
         Route::post('events/{event}/lookup-contact', [RespondIoIntegrationController::class, 'lookupContact'])->middleware(['permission:communication.manage', 'throttle:30,1']);
         Route::post('events/{event}/map-assignee', [RespondIoIntegrationController::class, 'mapContactAssignee'])->middleware(['permission:communication.manage', 'throttle:20,1']);
         Route::get('events/{event}/contact-history', [RespondIoIntegrationController::class, 'contactHistory'])->middleware(['permission:communication.manage', 'throttle:10,1']);

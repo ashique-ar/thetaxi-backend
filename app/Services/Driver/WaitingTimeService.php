@@ -46,6 +46,16 @@ class WaitingTimeService
         $openRecord = WaitingTimeRecord::where('assignment_id', $assignment->id)
             ->whereNull('end_time')
             ->first();
+        $previousPoint = $recentPoints->count() > 1 ? $recentPoints[$recentPoints->count() - 2] : null;
+        $latestGapSeconds = $previousPoint
+            ? (int) Carbon::parse($previousPoint->recorded_at)
+                ->diffInSeconds(Carbon::parse($latestPoint->recorded_at), false)
+            : 0;
+
+        if ($openRecord && $latestGapSeconds > self::MAX_CONTIGUOUS_GAP_SECONDS) {
+            $this->closeWaitingRecord($openRecord, $previousPoint);
+            $openRecord = null;
+        }
 
         if ($isStationary) {
             $stationaryPeriod = $this->detectStationaryPeriod($recentPoints);
@@ -61,13 +71,7 @@ class WaitingTimeService
             }
         } elseif ($openRecord) {
             // Vehicle resumed movement — close the record
-            $openRecord->update([
-                'end_time' => $latestPoint->recorded_at,
-                'end_latitude' => $latestPoint->latitude,
-                'end_longitude' => $latestPoint->longitude,
-                'duration_seconds' => (int) Carbon::parse($openRecord->start_time)
-                    ->diffInSeconds($latestPoint->recorded_at),
-            ]);
+            $this->closeWaitingRecord($openRecord, $latestPoint);
         }
     }
 
@@ -85,8 +89,18 @@ class WaitingTimeService
 
         $stationaryStart = null;
         $stationaryStartPoint = null;
+        $previousTimestamp = null;
 
         foreach ($recentPoints as $point) {
+            $timestamp = Carbon::parse($point->recorded_at);
+            if ($previousTimestamp) {
+                $gapSeconds = (int) $previousTimestamp->diffInSeconds($timestamp, false);
+                if ($gapSeconds <= 0 || $gapSeconds > self::MAX_CONTIGUOUS_GAP_SECONDS) {
+                    $stationaryStart = null;
+                    $stationaryStartPoint = null;
+                }
+            }
+
             $speed = $point->speed ?? 0;
 
             if ($speed < self::SPEED_THRESHOLD_KMH) {
@@ -95,7 +109,7 @@ class WaitingTimeService
                     $stationaryStartPoint = $point;
                 }
 
-                $elapsed = Carbon::parse($stationaryStart)->diffInSeconds($point->recorded_at);
+                $elapsed = Carbon::parse($stationaryStart)->diffInSeconds($timestamp);
 
                 if ($elapsed >= self::MIN_STATIONARY_SECONDS) {
                     return [
@@ -109,6 +123,7 @@ class WaitingTimeService
                 $stationaryStart = null;
                 $stationaryStartPoint = null;
             }
+            $previousTimestamp = $timestamp;
         }
 
         return null;
@@ -124,19 +139,33 @@ class WaitingTimeService
         $openRecords = WaitingTimeRecord::where('assignment_id', $assignment->id)
             ->whereNull('end_time')
             ->get();
+        $lastPoint = $assignment->routePoints()
+            ->orderBy('recorded_at', 'desc')
+            ->first();
 
         foreach ($openRecords as $record) {
-            $lastPoint = $assignment->routePoints()
-                ->orderBy('recorded_at', 'desc')
-                ->first();
-
-            $record->update([
-                'end_time' => $now,
-                'end_latitude' => $lastPoint?->latitude,
-                'end_longitude' => $lastPoint?->longitude,
-                'duration_seconds' => (int) Carbon::parse($record->start_time)->diffInSeconds($now),
-            ]);
+            $lastEvidenceAt = $lastPoint
+                ? Carbon::parse($lastPoint->recorded_at)->addSeconds(self::MAX_CONTIGUOUS_GAP_SECONDS)->min($now)
+                : Carbon::parse($record->start_time);
+            $this->closeWaitingRecord($record, $lastPoint, $lastEvidenceAt);
         }
+    }
+
+    private function closeWaitingRecord(
+        WaitingTimeRecord $record,
+        ?object $lastPoint,
+        ?Carbon $endTime = null
+    ): void {
+        $endTime ??= $lastPoint ? Carbon::parse($lastPoint->recorded_at) : Carbon::parse($record->start_time);
+        $startTime = Carbon::parse($record->start_time);
+        $endTime = $endTime->max($startTime);
+
+        $record->update([
+            'end_time' => $endTime,
+            'end_latitude' => $lastPoint?->latitude,
+            'end_longitude' => $lastPoint?->longitude,
+            'duration_seconds' => max(0, (int) $startTime->diffInSeconds($endTime)),
+        ]);
     }
 
     /**
@@ -145,15 +174,16 @@ class WaitingTimeService
     public function getTotalWaitingTime(DriverAssignment $assignment): array
     {
         $records = WaitingTimeRecord::where('assignment_id', $assignment->id)->get();
-
+        $now = Carbon::now('UTC');
+        $lastPoint = $assignment->routePoints()->orderBy('recorded_at', 'desc')->first();
         $totalSeconds = 0;
 
         foreach ($records as $record) {
             if ($record->duration_seconds !== null) {
                 $totalSeconds += $record->duration_seconds;
             } elseif ($record->start_time && $record->end_time === null) {
-                // Still open — calculate live duration
-                $totalSeconds += (int) Carbon::parse($record->start_time)->diffInSeconds(Carbon::now());
+                $end = $this->openRecordEndTime($record, $lastPoint, $now);
+                $totalSeconds += max(0, (int) Carbon::parse($record->start_time)->diffInSeconds($end));
             }
         }
 
@@ -176,10 +206,14 @@ class WaitingTimeService
                     ->orWhereNull('end_time');
             })
             ->get();
+        $now = Carbon::now('UTC');
+        $lastPoint = $assignment->routePoints()->orderBy('recorded_at', 'desc')->first();
         $totalSeconds = 0;
         foreach ($records as $record) {
             $start = Carbon::parse($record->start_time)->max($assignment->trip_started_at);
-            $end = $record->end_time ? Carbon::parse($record->end_time) : Carbon::now('UTC');
+            $end = $record->end_time
+                ? Carbon::parse($record->end_time)
+                : $this->openRecordEndTime($record, $lastPoint, $now);
             if ($assignment->trip_completed_at) {
                 $end = $end->min($assignment->trip_completed_at);
             }
@@ -194,6 +228,18 @@ class WaitingTimeService
         ];
     }
 
+    private function openRecordEndTime(
+        WaitingTimeRecord $record,
+        ?object $lastPoint,
+        Carbon $now
+    ): Carbon {
+        $lastEvidence = $lastPoint
+            ? Carbon::parse($lastPoint->recorded_at)->addSeconds(self::MAX_CONTIGUOUS_GAP_SECONDS)
+            : Carbon::parse($record->start_time);
+
+        return $lastEvidence->min($now)->max(Carbon::parse($record->start_time));
+    }
+
     /**
      * Reconstruct meter waiting from immutable in-trip route evidence.
      * Missing device speed is derived from consecutive coordinates. Gaps are
@@ -205,9 +251,13 @@ class WaitingTimeService
             return ['total_waiting_time_seconds' => 0, 'waiting_period_count' => 0];
         }
 
+        $tripEndAt = min(
+            Carbon::now('UTC'),
+            $assignment->trip_completed_at?->copy()->utc() ?? Carbon::now('UTC')
+        );
         $points = $assignment->routePoints()
             ->where('recorded_at', '>=', $assignment->trip_started_at)
-            ->when($assignment->trip_completed_at, fn ($query) => $query->where('recorded_at', '<=', $assignment->trip_completed_at))
+            ->where('recorded_at', '<=', $tripEndAt)
             ->orderBy('recorded_at')
             ->orderBy('id')
             ->get();
@@ -225,7 +275,8 @@ class WaitingTimeService
 
             $seconds = (int) Carbon::parse($previous->recorded_at)
                 ->diffInSeconds(Carbon::parse($point->recorded_at), false);
-            if ($seconds <= 0 || $seconds > self::MAX_CONTIGUOUS_GAP_SECONDS) {
+            $continuous = $seconds > 0 && $seconds <= self::MAX_CONTIGUOUS_GAP_SECONDS;
+            if (!$continuous) {
                 [$waitingSeconds, $waitingPeriods] = $this->finishStationaryPeriod(
                     $stationarySeconds,
                     $waitingSeconds,
@@ -292,4 +343,5 @@ class WaitingTimeService
 
         return $earth * 2 * atan2(sqrt($a), sqrt(max(0, 1 - $a)));
     }
+
 }

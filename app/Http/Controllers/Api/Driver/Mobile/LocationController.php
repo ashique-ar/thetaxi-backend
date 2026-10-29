@@ -83,20 +83,20 @@ class LocationController extends Controller
                 ], 400);
             }
 
-            if ($e->getMessage() === 'LOCATION_RATE_LIMITED') {
-                return response()->json([
-                    'status' => 'error',
-                    'message' => 'Location updates must be at least 10 seconds apart',
-                    'error_code' => 'LOCATION_RATE_LIMITED'
-                ], 429);
-            }
-
             if ($e->getMessage() === 'LOCATION_ASSIGNMENT_AMBIGUOUS') {
                 return response()->json([
                     'status' => 'error',
                     'message' => 'Driver has more than one active trip assignment; location point was not saved',
                     'error_code' => 'LOCATION_ASSIGNMENT_AMBIGUOUS'
                 ], 409);
+            }
+
+            if (str_starts_with($e->getMessage(), 'LOCATION_POINT_REJECTED:')) {
+                return response()->json([
+                    'status' => 'error',
+                    'message' => 'Location point is outside the active tracking context',
+                    'error_code' => substr($e->getMessage(), strlen('LOCATION_POINT_REJECTED:')),
+                ], 422);
             }
 
             $this->healthMonitor->recordLocationUploadFailure(

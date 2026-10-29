@@ -10,3 +10,12 @@ Task 235: Team workload now reports each employee's completed bookings during th
 Task 236: Added an approved weekly-business-hours option to inquiry response targets. New inquiries snapshot their calculated reply deadline; My Work, inquiry overdue filtering, and dashboard overdue counts use that deadline. Old inquiries without one retain elapsed-time fallback. PHP syntax and scoped diff checks pass; Angular production build completes. The migration was not applied, and live DB, timezone/DST, and notification behavior remain unverified. Weekly hours do not account for holidays.
 
 Task 237: Fixed hourly-package pricing migration inserts to populate required created_by using the service creator, configured system actor, or an active administrator, and to preserve the original creator/timestamp on reruns. PHP syntax and scoped diff checks pass. Migration was not rerun against thetaxi_prod; migration behavior remains unverified.
+
+Task 238: Fixed the PostgreSQL inquiry-scope migration's MIN(UUID) error by aggregating company_id as text and casting the result back to UUID. PHP syntax/diff checks pass; the remote migration was not run.
+Task 239: Inquiry reply business-hours configuration now supports different opening/closing times for each selected weekday. Existing stored schedules and legacy shared-hours API submissions remain supported. PHP lint, a multi-day deadline self-check, portal TypeScript compile, scoped diff check, and Angular production build pass. Migration/live API and timezone/DST/role behavior remain unverified.
+
+Task 241: Fixed a second PostgreSQL UUID aggregation in the booking-items migration rollback by aggregating text and casting the UUID back. PHP lint/diff checks pass; no database rollback was executed.
+
+Task 242: Removed Respond.io event inbox filters for processing and ailed; the synchronous webhook/review flow does not emit those states. Received, processed, reviewed-not-lead, and failed-reply filters remain. PHP lint/diff and Angular production build pass; old rows remain visible through All Events. No live webhook check was run.
+
+Task 243: Managers can now search company-scoped active/booking inquiries and link a received Respond.io message directly to existing work, avoiding duplicate sales/support requests. The write is permission-gated, transactional and idempotent; sibling events link only for the exact same conversation. PHP lint, route registration, TypeScript compile and Angular production build pass. Database-backed role/scope and real Respond.io payload behavior remain unverified.

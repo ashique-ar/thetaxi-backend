@@ -158,7 +158,7 @@ class RespondIoIntegrationController extends Controller
 
     public function events(Request $request): JsonResponse
     {
-        $request->validate(['status' => ['nullable', 'in:received,processing,processed,failed,reply_failed,not_a_lead'], 'per_page' => ['nullable', 'integer', 'min:1', 'max:100']]);
+        $request->validate(['status' => ['nullable', 'in:received,processed,reply_failed,not_a_lead'], 'per_page' => ['nullable', 'integer', 'min:1', 'max:100']]);
         $connection = $this->companyConnection();
         abort_unless($connection, 404, 'No respond.io connection is configured.');
         $events = IntegrationWebhookEvent::query()->where('company_id', $connection->company_id)->where('provider', 'respond_io')
@@ -192,11 +192,83 @@ class RespondIoIntegrationController extends Controller
             'external_contact_id' => $event->external_contact_id,
             'external_conversation_id' => $event->external_conversation_id,
             'external_message_id' => $event->external_message_id,
+            'can_link_to_inquiry' => $this->isRespondIoMessageEvent($event->event_type, $event->message_direction),
             'resolution_code' => $event->resolution_code,
             'resolution_note' => $event->resolution_note,
             'booking_number' => $linkedBookingNumber,
             'processed_at' => $event->processed_at,
             'payload' => $event->payload,
+        ]]);
+    }
+
+    public function inquiryOptions(Request $request, IntegrationWebhookEvent $event): JsonResponse
+    {
+        $data = $request->validate([
+            'customer_id' => ['nullable', 'uuid'], 'search' => ['nullable', 'string', 'max:120'],
+            'selected_id' => ['nullable', 'uuid'], 'page' => ['nullable', 'integer', 'min:1'],
+            'per_page' => ['nullable', 'integer', 'min:1', 'max:50'],
+        ]);
+        $connection = $this->companyConnection();
+        abort_unless($connection && $event->connection_id === $connection->id
+            && $event->company_id === $connection->company_id && $event->provider === 'respond_io', 404);
+
+        $inquiries = Inquiry::query()->where('company_id', $connection->company_id)->whereNull('deleted_at')
+            ->when(empty($data['selected_id']), fn ($query) => $query->where(fn ($active) => $active->whereIn('status', ['open', 'in_progress'])
+                ->orWhereHas('booking', fn ($booking) => $booking->where('company_id', $connection->company_id))))
+            ->when(! empty($data['customer_id']), fn ($query) => $query->where('customer_id', $data['customer_id']))
+            ->when(! empty($data['selected_id']), fn ($query) => $query->whereKey($data['selected_id']))
+            ->when(empty($data['selected_id']) && ! empty($data['search']), function ($query) use ($data, $connection): void {
+                $term = '%'.addcslashes(trim($data['search']), '%_\\').'%';
+                $query->where(fn ($search) => $search->where('name', 'like', $term)
+                    ->orWhere('email', 'like', $term)->orWhere('phone', 'like', $term)->orWhere('subject', 'like', $term)
+                    ->orWhereHas('booking', fn ($booking) => $booking->where('company_id', $connection->company_id)->where('booking_number', 'like', $term)));
+            })
+            ->with(['booking' => fn ($booking) => $booking->where('company_id', $connection->company_id)->select(['id', 'booking_number'])])
+            ->select(['id', 'name', 'subject', 'status', 'customer_id', 'booking_id', 'created_at'])
+            ->orderByDesc('created_at')->paginate($data['per_page'] ?? 25);
+
+        $inquiries->setCollection($inquiries->getCollection()->map(fn (Inquiry $inquiry): array => [
+            'value' => (string) $inquiry->id,
+            'label' => trim(($inquiry->name ?: 'Customer request').($inquiry->subject ? ' · '.$inquiry->subject : '').($inquiry->booking?->booking_number ? ' · '.$inquiry->booking->booking_number : '')),
+            'metadata' => ['Status' => Str::headline((string) $inquiry->status), 'Received' => $inquiry->created_at],
+        ]));
+
+        return response()->json(['status' => 'success', 'data' => $inquiries]);
+    }
+
+    public function linkInquiry(Request $request, IntegrationWebhookEvent $event): JsonResponse
+    {
+        $data = $request->validate(['inquiry_id' => ['required', 'uuid']]);
+        $connection = $this->companyConnection();
+        abort_unless($connection && $event->connection_id === $connection->id
+            && $event->company_id === $connection->company_id && $event->provider === 'respond_io', 404);
+        abort_unless($this->isRespondIoMessageEvent($event->event_type, $event->message_direction), 409, 'Only incoming Respond.io messages can be linked to an inquiry.');
+
+        $duplicate = DB::transaction(function () use ($request, $data, $connection, $event): bool {
+            abort_unless(app(SingleCompanyScope::class)->activeDefaultCompany(true)?->id === $connection->company_id, 409, 'Business changed; retry event review.');
+            $lockedEvent = IntegrationWebhookEvent::query()->whereKey($event->id)->lockForUpdate()->firstOrFail();
+            abort_unless($lockedEvent->connection_id === $connection->id && $lockedEvent->company_id === $connection->company_id, 404);
+            if ($lockedEvent->status === 'processed' && (string) $lockedEvent->linked_inquiry_id === (string) $data['inquiry_id']) return true;
+            abort_unless($lockedEvent->status === 'received' && $this->isRespondIoMessageEvent($lockedEvent->event_type, $lockedEvent->message_direction), 409, 'This message has already been reviewed.');
+            $inquiry = Inquiry::query()->where('company_id', $connection->company_id)->whereNull('deleted_at')
+                ->where(fn ($active) => $active->whereIn('status', ['open', 'in_progress'])
+                    ->orWhereHas('booking', fn ($booking) => $booking->where('company_id', $connection->company_id)))
+                ->lockForUpdate()->findOrFail($data['inquiry_id']);
+            $lockedEvent->forceFill([
+                'linked_inquiry_id' => $inquiry->id,
+                'status' => 'processed',
+                'resolution_code' => 'conversation_update',
+                'resolution_note' => 'Linked to existing inquiry by manager review.',
+                'processed_by_user_id' => $request->user()->id,
+                'processed_at' => now(),
+            ])->save();
+            $this->linkSiblingConversationMessages($lockedEvent, $inquiry, (string) $request->user()->id);
+            return false;
+        });
+
+        return response()->json(['status' => 'success', 'duplicate' => $duplicate, 'message' => 'Message linked to the existing inquiry.', 'data' => [
+            'id' => (string) $event->id, 'status' => 'processed', 'linked_inquiry_id' => (string) $data['inquiry_id'],
+            'resolution_code' => 'conversation_update',
         ]]);
     }
 

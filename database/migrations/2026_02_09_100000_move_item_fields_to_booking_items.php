@@ -279,7 +279,7 @@ return new class extends Migration {
                 'is_self_driven'
             )
             ->whereIn('id', function ($query) {
-                $query->select(DB::raw('MIN(id)'))
+                $query->select(DB::raw('MIN(id::text)::uuid'))
                     ->from('booking_items')
                     ->groupBy('booking_id');
             })

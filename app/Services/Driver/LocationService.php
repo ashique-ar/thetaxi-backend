@@ -22,8 +22,6 @@ use Illuminate\Support\Facades\Log;
  */
 class LocationService
 {
-    private const MIN_UPDATE_INTERVAL_SECONDS = 0;
-
     public function __construct(
         private ?WaitingTimeService $waitingTimeService = null
     ) {}
@@ -53,18 +51,6 @@ class LocationService
             throw new \Exception('No active session');
         }
 
-        // Enforce minimum 10-second interval between location updates
-        $lastPoint = $session->routePoints()
-            ->orderBy('recorded_at', 'desc')
-            ->first();
-
-        if ($lastPoint && $lastPoint->recorded_at) {
-            $elapsed = Carbon::parse($lastPoint->recorded_at)->utc()->diffInSeconds(Carbon::now('UTC'));
-            if ($elapsed < self::MIN_UPDATE_INTERVAL_SECONDS) {
-                throw new \Exception('LOCATION_RATE_LIMITED');
-            }
-        }
-
         return DB::transaction(function () use ($driver, $session, $locationData) {
             $now = Carbon::now('UTC');
             $recordedAt = isset($locationData['recorded_at'])
@@ -73,6 +59,18 @@ class LocationService
 
             // Check for active trip tracking session
             $assignmentId = $this->getActiveAssignmentId($driver);
+            $assignment = $assignmentId ? DriverAssignment::find($assignmentId) : null;
+            $reason = $this->recoveryRejectionReason(
+                $recordedAt,
+                $locationData,
+                $locationData['session_id'] ?? $locationData['tracking_session_id'] ?? null,
+                $locationData['assignment_id'] ?? $locationData['trip_id'] ?? null,
+                $session,
+                $assignment
+            );
+            if ($reason) {
+                throw new \InvalidArgumentException('LOCATION_POINT_REJECTED:'.$reason);
+            }
 
             // Create route point
             $routePointData = [

@@ -1,6 +1,7 @@
 <?php
 
 use App\Enums\TripPhase;
+use App\Http\Controllers\Api\Driver\DriverController;
 use App\Models\Driver\Driver;
 use App\Models\Driver\DriverSession;
 use App\Models\Driver\RoutePoint;
@@ -9,6 +10,7 @@ use App\Models\DriverAssignmentStop;
 use App\Models\Booking\Booking;
 use App\Models\Booking\BookingDispatch;
 use App\Models\Booking\BookingItem;
+use App\Models\WaitingTimeRecord;
 use App\Models\Corporate\CorporateDistancePricingPolicy;
 use App\Services\AssignmentService;
 use App\Services\AvailabilityEnforcementService;
@@ -35,6 +37,7 @@ beforeEach(function () {
     activity()->disableLogging();
     Schema::dropIfExists('reference_number_registry');
     Schema::dropIfExists('route_points');
+    Schema::dropIfExists('waiting_time_records');
     Schema::dropIfExists('driver_assignment_stops');
     Schema::dropIfExists('driver_assignments');
     Schema::dropIfExists('drivers');
@@ -278,6 +281,19 @@ beforeEach(function () {
         $table->timestamp('created_at')->nullable();
     });
 
+    Schema::create('waiting_time_records', function (Blueprint $table) {
+        $table->uuid('id')->primary();
+        $table->uuid('assignment_id');
+        $table->timestamp('start_time');
+        $table->decimal('start_latitude', 10, 8);
+        $table->decimal('start_longitude', 11, 8);
+        $table->timestamp('end_time')->nullable();
+        $table->decimal('end_latitude', 10, 8)->nullable();
+        $table->decimal('end_longitude', 11, 8)->nullable();
+        $table->integer('duration_seconds')->nullable();
+        $table->timestamps();
+    });
+
     Schema::create('driver_sessions', function (Blueprint $table) {
         $table->uuid('id')->primary();
         $table->uuid('driver_id');
@@ -424,6 +440,54 @@ it('stores derived mobile sensor state alongside open package GPS points', funct
     expect($single->sensor_stationary)->toBeTrue()
         ->and($bulk['saved_count'])->toBe(1)
         ->and(RoutePoint::where('assignment_id', $assignment->id)->where('sensor_stationary', false)->count())->toBe(1);
+});
+
+it('returns stored sensor state in driver movement map route points', function () {
+    $point = (new RoutePoint())->forceFill([
+        'id' => 'route-point-1',
+        'session_id' => 'session-1',
+        'latitude' => 6.91,
+        'longitude' => 79.81,
+        'sensor_stationary' => true,
+        'recorded_at' => now(),
+    ]);
+    $controller = (new ReflectionClass(DriverController::class))->newInstanceWithoutConstructor();
+    $projection = (new ReflectionMethod(DriverController::class, 'buildMovementSegments'))
+        ->invoke($controller, collect([$point]));
+
+    expect($projection[0]['points'][0]['sensor_stationary'])->toBeTrue();
+});
+
+it('rejects live GPS points outside the active session and assignment time window', function () {
+    $this->travelTo(now());
+    $driver = Driver::create(['code' => 'LIVE-GPS-TIME-WINDOW']);
+    $assignment = DriverAssignment::create([
+        'driver_id' => $driver->id,
+        'trip_phase' => TripPhase::IN_PROGRESS,
+        'status' => 'active',
+        'confirmed_at' => now()->subMinutes(5),
+        'trip_started_at' => now()->subMinutes(4),
+    ]);
+    $session = DriverSession::create([
+        'driver_id' => $driver->id,
+        'assignment_id' => $assignment->id,
+        'status' => 'active',
+        'start_time' => now()->subMinutes(3),
+    ]);
+    $locations = app(LocationService::class);
+
+    expect(fn () => $locations->updateLocation($driver->fresh(), [
+        'latitude' => 6.91,
+        'longitude' => 79.81,
+        'recorded_at' => now()->addMinutes(10),
+    ]))->toThrow(InvalidArgumentException::class, 'LOCATION_POINT_REJECTED:timestamp_in_future');
+
+    expect(fn () => $locations->updateLocation($driver->fresh(), [
+        'latitude' => 6.91,
+        'longitude' => 79.81,
+        'recorded_at' => now()->subMinutes(4)->toIso8601String(),
+    ]))->toThrow(InvalidArgumentException::class, 'LOCATION_POINT_REJECTED:outside_session_window')
+        ->and(RoutePoint::where('session_id', $session->id)->count())->toBe(0);
 });
 
 it('rejects stale and cross-context recovery without rewriting raw claims', function () {
@@ -1029,7 +1093,11 @@ it('persists actual completion and route distance once without a pricing owner',
     ]);
 
     $staleRequestAssignment = $assignment->fresh();
-    $summary = $this->tripService->endTrip($assignment, ['latitude' => 6.95, 'longitude' => 79.85]);
+    $summary = $this->tripService->endTrip($assignment, [
+        'latitude' => 6.95,
+        'longitude' => 79.85,
+        'tracked_waiting_seconds' => 61,
+    ]);
     $staleRetry = $this->tripService->endTrip($staleRequestAssignment, ['latitude' => 6.96, 'longitude' => 79.86]);
     $completed = $assignment->fresh();
     $retry = $this->tripService->endTrip($completed, []);
@@ -1043,6 +1111,8 @@ it('persists actual completion and route distance once without a pricing owner',
         ->and($summary['trip_completed_at'])->toBe($completed->trip_completed_at->copy()->utc()->toIso8601String())
         ->and($summary['total_duration_seconds'])->toBe(61)
         ->and($summary['total_duration_minutes'])->toBe(2)
+        ->and($summary['hire_waiting_time_seconds'])->toBe(0)
+        ->and($summary['total_waiting_time_seconds'])->toBe(0)
         ->and($retry['total_distance_km'])->toBe($summary['total_distance_km'])
         ->and($retry['total_duration_seconds'])->toBe($summary['total_duration_seconds'])
         ->and($retry['total_duration_minutes'])->toBe($summary['total_duration_minutes'])
@@ -1076,11 +1146,84 @@ it('reconstructs waiting from route speeds stored in kilometers per hour', funct
             'recorded_at' => $startedAt->copy()->addSeconds($index * 30),
         ]);
     }
+    foreach ([180, 210] as $seconds) {
+        RoutePoint::create([
+            'assignment_id' => $assignment->id,
+            'latitude' => 6.9,
+            'longitude' => 79.8,
+            'speed' => 0,
+            'recorded_at' => $startedAt->copy()->addSeconds($seconds),
+        ]);
+    }
 
     $waiting = app(WaitingTimeService::class)->calculateValidatedTripWaitingTime($assignment);
 
     expect($waiting['total_waiting_time_seconds'])->toBe(150)
         ->and($waiting['waiting_period_count'])->toBe(1);
+});
+
+it('does not use client-reported sensor state to calculate waiting across a long GPS gap', function () {
+    $this->travelTo(now());
+    $startedAt = now()->subSeconds(180);
+    $waiting = app(WaitingTimeService::class);
+    $assignments = [];
+
+    foreach ([true, false, null] as $sensorState) {
+        $assignment = DriverAssignment::create([
+            'trip_phase' => TripPhase::IN_PROGRESS,
+            'status' => 'active',
+            'trip_started_at' => $startedAt,
+        ]);
+        foreach ([0, 120, 150, 180] as $seconds) {
+            RoutePoint::create([
+                'assignment_id' => $assignment->id,
+                'latitude' => 6.9,
+                'longitude' => 79.8,
+                'speed' => 0,
+                'accuracy' => 5,
+                'sensor_stationary' => $sensorState,
+                'recorded_at' => $startedAt->copy()->addSeconds($seconds),
+            ]);
+        }
+        $assignments[] = $assignment;
+    }
+
+    expect($waiting->calculateValidatedTripWaitingTime($assignments[0])['total_waiting_time_seconds'])->toBe(0)
+        ->and($waiting->calculateValidatedTripWaitingTime($assignments[1])['total_waiting_time_seconds'])->toBe(0)
+        ->and($waiting->calculateValidatedTripWaitingTime($assignments[2])['total_waiting_time_seconds'])->toBe(0);
+});
+
+it('caps persisted waiting at the last GPS point plus the continuity window', function () {
+    $this->travelTo(now());
+    $assignment = DriverAssignment::create([
+        'trip_phase' => TripPhase::IN_PROGRESS,
+        'status' => 'active',
+        'trip_started_at' => now()->subMinutes(10),
+    ]);
+    $lastPoint = RoutePoint::create([
+        'assignment_id' => $assignment->id,
+        'latitude' => 6.9,
+        'longitude' => 79.8,
+        'speed' => 0,
+        'recorded_at' => now()->subMinutes(5),
+    ]);
+    $record = WaitingTimeRecord::create([
+        'assignment_id' => $assignment->id,
+        'start_time' => now()->subMinutes(10),
+        'start_latitude' => 6.9,
+        'start_longitude' => 79.8,
+    ]);
+
+    $waitingService = app(WaitingTimeService::class);
+    $liveTotal = $waitingService->getTotalWaitingTime($assignment);
+    $liveHire = $waitingService->getHireWaitingTime($assignment);
+    $waitingService->closeOpenWaitingRecords($assignment);
+    $record->refresh();
+
+    expect($liveTotal['total_waiting_time_seconds'])->toBe(330)
+        ->and($liveHire['total_waiting_time_seconds'])->toBe(330)
+        ->and($record->end_time->equalTo($lastPoint->recorded_at->copy()->addSeconds(30)))->toBeTrue()
+        ->and($record->duration_seconds)->toBe(330);
 });
 
 it('does not expose completion errors and reports server failures', function (string $exceptionClass, string $action, string $operation, array $expected) {

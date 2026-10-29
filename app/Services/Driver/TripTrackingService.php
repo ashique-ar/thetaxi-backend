@@ -328,11 +328,11 @@ class TripTrackingService
                 ? min($tripElapsedSeconds, max(0, (int) $finalLocation['tracked_waiting_seconds']))
                 : 0;
             $pickupWaitingSeconds = max(0, (int) ($assignment->pickup_waiting_time_seconds ?? 0));
+            // The client total is retained as audit evidence; pricing uses server-validated route intervals.
             $hireWaitingSeconds = max(
-                    (int) $persistedWaiting['total_waiting_time_seconds'],
-                    (int) $reconstructedWaiting['total_waiting_time_seconds'],
-                    $clientWaitingSeconds
-                );
+                (int) $persistedWaiting['total_waiting_time_seconds'],
+                (int) $reconstructedWaiting['total_waiting_time_seconds']
+            );
             $waitingTime = [
                 'pickup_waiting_time_seconds' => $pickupWaitingSeconds,
                 'hire_waiting_time_seconds' => $hireWaitingSeconds,

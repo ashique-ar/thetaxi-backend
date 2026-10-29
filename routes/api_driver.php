@@ -83,8 +83,8 @@ Route::middleware('business.module:driver')->group(function () {
 
         // Location routes
         Route::prefix('location')->group(function () {
-            Route::post('', [LocationController::class, 'update']);
-            Route::post('bulk', [LocationController::class, 'bulkUpdate']);
+            Route::post('', [LocationController::class, 'update'])->middleware('throttle:60,1');
+            Route::post('bulk', [LocationController::class, 'bulkUpdate'])->middleware('throttle:10,1');
             Route::post('health', [LocationController::class, 'health']);
             Route::post('tracking-incidents', [LocationController::class, 'trackingIncident'])
                 ->middleware('throttle:30,1');

@@ -899,14 +899,16 @@ class DriverController extends Controller
     {
         $validated = $request->validate([
             'date' => ['nullable', 'date'],
+            'timezone' => ['nullable', 'timezone'],
         ]);
 
+        $timezone = $validated['timezone'] ?? config('app.timezone');
         $targetDate = isset($validated['date'])
-            ? Carbon::parse($validated['date'], config('app.timezone'))
-            : now(config('app.timezone'));
-        $dayStart = $targetDate->copy()->startOfDay();
-        $dayEnd = $targetDate->copy()->endOfDay();
-        $isToday = $targetDate->isSameDay(now(config('app.timezone')));
+            ? Carbon::parse($validated['date'], $timezone)
+            : now($timezone);
+        $dayStart = $targetDate->copy()->startOfDay()->utc();
+        $dayEnd = $targetDate->copy()->endOfDay()->utc();
+        $isToday = $targetDate->isSameDay(now($timezone));
 
         $sessions = DriverSession::query()
             ->where('driver_id', $driver->id)
@@ -1000,6 +1002,10 @@ class DriverController extends Controller
             $itemDurationMetrics = is_array($durationItems[(string) ($bookingItem?->id ?? '')] ?? null)
                 ? $durationItems[(string) ($bookingItem?->id ?? '')]
                 : [];
+            $pickupFreeWaitingMinutes = data_get(
+                $bookingItem?->metadata,
+                'final_pricing_audit.rates_and_variables.pickup_free_waiting_minutes'
+            );
             $durationSeconds = $assignment->trip_started_at && $assignment->trip_completed_at
                 ? (int) $assignment->trip_started_at->diffInSeconds($assignment->trip_completed_at)
                 : null;
@@ -1051,6 +1057,9 @@ class DriverController extends Controller
                 'pickup_waiting_time_seconds' => (int) ($assignment->pickup_waiting_time_seconds ?? 0),
                 'hire_waiting_time_seconds' => (int) ($assignment->hire_waiting_time_seconds ?? 0),
                 'total_waiting_time_seconds' => (int) ($assignment->total_waiting_time_seconds ?? 0),
+                'pickup_free_waiting_minutes' => is_numeric($pickupFreeWaitingMinutes)
+                    ? (float) $pickupFreeWaitingMinutes
+                    : null,
                 'waiting_sources_seconds' => $itemDurationMetrics['waiting_sources_seconds'] ?? null,
                 'route_point_count' => (int) ($assignmentPointCounts[$assignment->id] ?? 0),
             ];
@@ -1075,7 +1084,7 @@ class DriverController extends Controller
             'status' => 'success',
             'data' => [
                 'date' => $targetDate->toDateString(),
-                'timezone' => config('app.timezone'),
+                'timezone' => $timezone,
                 'summary' => $summary,
                 'current_location' => $isToday
                     ? $this->buildCoordinatePayload($driver->current_latitude, $driver->current_longitude, [

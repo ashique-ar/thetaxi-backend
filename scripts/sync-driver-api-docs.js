@@ -353,6 +353,117 @@ openapi.paths['/api/driver/location/health'] = {
     },
 };
 
+const locationPointSchema = {
+    type: 'object',
+    required: ['latitude', 'longitude'],
+    properties: {
+        latitude: { type: 'number', minimum: -90, maximum: 90 },
+        longitude: { type: 'number', minimum: -180, maximum: 180 },
+        altitude: { type: 'number', nullable: true },
+        speed: { type: 'number', minimum: 0, nullable: true, description: 'Kilometers per hour.' },
+        heading: { type: 'number', minimum: 0, maximum: 360, nullable: true },
+        accuracy: { type: 'number', minimum: 0, nullable: true, description: 'GPS accuracy in meters.' },
+        sensor_stationary: { type: 'boolean', nullable: true, description: 'Phone-derived motion state for route visibility; not fare evidence.' },
+        recorded_at: { type: 'string', format: 'date-time' },
+        assignment_id: { type: 'string', format: 'uuid', nullable: true },
+        trip_id: { type: 'string', format: 'uuid', nullable: true },
+        session_id: { type: 'string', format: 'uuid', nullable: true },
+        tracking_session_id: { type: 'string', format: 'uuid', nullable: true },
+    },
+};
+const locationRoutePointProperties = {
+    id: { type: 'string', format: 'uuid' },
+    session_id: { type: 'string', format: 'uuid' },
+    assignment_id: { type: 'string', format: 'uuid', nullable: true },
+    latitude: { type: 'number' },
+    longitude: { type: 'number' },
+    altitude: { type: 'number', nullable: true },
+    speed: { type: 'number', nullable: true },
+    heading: { type: 'number', nullable: true },
+    accuracy: { type: 'number', nullable: true },
+    sensor_stationary: { type: 'boolean', nullable: true },
+    recorded_at: { type: 'string', format: 'date-time' },
+    created_at: { type: 'string', format: 'date-time' },
+};
+const locationPost = openapi.paths['/api/driver/location']?.post;
+if (locationPost) {
+    locationPost.description = 'Upload a current driver GPS point. The server links it to the active session and assignment, validates its time window, and stores the optional phone-derived sensor_stationary state for route visibility. Sensor state is not used to calculate fares.';
+    locationPost.requestBody = { required: true, content: { 'application/json': {
+        schema: locationPointSchema,
+        example: { latitude: 6.9285, longitude: 79.8625, speed: 45.2, heading: 180.5, accuracy: 10, sensor_stationary: false, recorded_at: '2026-10-29T08:05:00Z' },
+    } } };
+    const locationDataSchema = locationPost.responses?.['200']?.content?.['application/json']?.schema?.properties?.data;
+    if (locationDataSchema) locationDataSchema.properties = locationRoutePointProperties;
+    const locationSuccess = locationPost.responses?.['200']?.content?.['application/json']?.example?.data;
+    if (locationSuccess) locationSuccess.sensor_stationary = false;
+    locationPost.responses['422'] = jsonResponse(
+        'Location timestamp, quality, or tracking context is invalid',
+        errorSchema,
+        { status: 'error', message: 'Location point is outside the active tracking context', error_code: 'timestamp_in_future' },
+    );
+    if (locationPost.responses['429']) {
+        locationPost.responses['429'].description = 'Location upload rate limit exceeded';
+        const rateLimit = locationPost.responses['429'].content?.['application/json'];
+        if (rateLimit) {
+            rateLimit.schema = { type: 'object', properties: { message: { type: 'string' } } };
+            rateLimit.example = { message: 'Too Many Attempts.' };
+        }
+    }
+}
+const bulkLocationPost = openapi.paths['/api/driver/location/bulk']?.post;
+if (bulkLocationPost) {
+    const bulkExample = {
+        locations: [
+            { latitude: 6.9271, longitude: 79.8612, speed: 0, accuracy: 8, sensor_stationary: true, recorded_at: '2026-10-29T09:10:00Z' },
+            { latitude: 6.9279, longitude: 79.862, speed: 22.5, accuracy: 7, sensor_stationary: false, recorded_at: '2026-10-29T09:10:15Z' },
+        ],
+    };
+    bulkLocationPost.description = 'Upload points buffered during network loss. Each point may include phone-derived sensor_stationary state for route visibility; it is not fare evidence.';
+    bulkLocationPost.requestBody = { required: true, content: { 'application/json': {
+        schema: { type: 'object', required: ['locations'], properties: { locations: { type: 'array', minItems: 1, maxItems: 1000, items: locationPointSchema } } },
+        example: bulkExample,
+    } } };
+    const bulkDataSchema = bulkLocationPost.responses?.['200']?.content?.['application/json']?.schema?.properties?.data;
+    const latestPointSchema = bulkDataSchema?.properties?.latest_saved_point;
+    if (latestPointSchema) latestPointSchema.properties = locationRoutePointProperties;
+    const latestPoint = bulkLocationPost.responses?.['200']?.content?.['application/json']?.example?.data?.latest_saved_point;
+    if (latestPoint) latestPoint.sensor_stationary = false;
+}
+
+const locationFolder = collection.item.find((entry) => entry.name === 'Location Tracking');
+const liveLocation = locationFolder?.item.find((entry) => entry.name === 'Update Location');
+if (liveLocation) {
+    liveLocation.request.description = 'Upload a current GPS point for the active driver session. speed is km/h. sensor_stationary is an optional phone-derived state shown in route tracking and is not used for fare calculations. recorded_at must fall within the active tracking context.';
+    liveLocation.request.body.raw = liveLocation.request.body.raw
+        .replace(/,\n\s*"sensor_stationary": (?:true|false|null)/g, '')
+        .replace('"accuracy": 10.0,', '"accuracy": 10.0,\n    "sensor_stationary": false,');
+    liveLocation.response = liveLocation.response.filter((item) => item.name !== 'Rate Limited');
+    const liveSuccessResponse = liveLocation.response.find((item) => item.name === 'Location Updated');
+    if (liveSuccessResponse) {
+        const body = JSON.parse(liveSuccessResponse.body);
+        body.data.sensor_stationary = false;
+        liveSuccessResponse.body = JSON.stringify(body, null, 4);
+    }
+    if (!liveLocation.response.some((item) => item.name === 'Invalid Tracking Context')) {
+        liveLocation.response.push(response('Invalid Tracking Context', 422, { status: 'error', message: 'Location point is outside the active tracking context', error_code: 'timestamp_in_future' }));
+    }
+}
+const bufferedLocation = locationFolder?.item.find((entry) => entry.name === 'Bulk Upload Buffered Locations');
+if (bufferedLocation) {
+    bufferedLocation.request.description = 'Upload points buffered during network loss. Each point may include sensor_stationary, a phone-derived route visibility hint that is not used for fare calculations.';
+    const bufferedBody = JSON.parse(bufferedLocation.request.body.raw);
+    bufferedBody.locations[0].sensor_stationary = true;
+    bufferedBody.locations[1].sensor_stationary = false;
+    bufferedLocation.request.body.raw = JSON.stringify(bufferedBody, null, 4);
+    for (const example of bufferedLocation.response) {
+        if (example.name === 'Bulk Upload Success') {
+            const body = JSON.parse(example.body);
+            body.data.latest_saved_point.sensor_stationary = false;
+            example.body = JSON.stringify(body, null, 4);
+        }
+    }
+}
+
 if (openapi.paths['/api/driver/version-check']?.post) {
     const postVersionCheck = openapi.paths['/api/driver/version-check'].post;
     openapi.paths['/api/driver/version-check'].get = {
