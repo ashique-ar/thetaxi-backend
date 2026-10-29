@@ -3182,10 +3182,10 @@
                 if (returningPanel) returningPanel.hidden = hasVerifiedCustomer || selected !== 'returning';
                 if (detailsLayout) detailsLayout.hidden = !hasVerifiedCustomer && selected !== 'new';
             };
-            const showMessage = (message, verified = false) => {
+            const showMessage = (message, success = false) => {
                 if (!status) return;
                 status.textContent = message;
-                status.className = `small mt-1 ${verified ? 'text-success' : 'text-muted'}`;
+                status.className = `small mt-1 ${success ? 'text-success' : 'text-muted'}`;
             };
             const showSavedDetailsMessage = (message, isError = false) => {
                 if (!verifiedStatus) return;
@@ -3307,16 +3307,22 @@
                     return;
                 }
                 sendCodeButton.disabled = true;
+                sendCodeButton.textContent = 'Sending…';
+                sendCodeButton.setAttribute('aria-busy', 'true');
+                status?.setAttribute('aria-busy', 'true');
+                showMessage('Sending your code…');
                 try {
                     await post(@json(route('checkout.customer-email.send-code')), { channel, value });
                     codePanel.hidden = false;
-                    showMessage(`If these details match an earlier booking, check your ${channel === 'email' ? 'inbox' : 'phone'} for a code. It expires in 10 minutes.`);
+                    showMessage(`If these details match an earlier booking, check your ${channel === 'email' ? 'inbox' : 'phone'} for a code. It expires in 10 minutes.`, true);
                     startCooldown(channel, 60);
                     codeInput.focus();
                 } catch (error) {
                     showMessage(error.message || 'Could not send a code. Please try again.');
                     if (error.retryAfter) startCooldown(channel, error.retryAfter);
                 } finally {
+                    sendCodeButton.removeAttribute('aria-busy');
+                    status?.removeAttribute('aria-busy');
                     renderCooldown();
                 }
             };
