@@ -538,9 +538,9 @@ trait BookingAvailabilityTrait
         ]);
 
         try {
-            $result = $this->assignmentService->approveAssignments(
+            $result = app(\App\Services\BookingLifecycleService::class)->approveAssignments(
                 $request->booking_id,
-                \Illuminate\Support\Facades\Auth::id()
+                (string) \Illuminate\Support\Facades\Auth::id()
             );
 
             return response()->json([

@@ -1053,13 +1053,14 @@ class SalesCrmService
         if (! empty($data['customer_id'])) return;
         abort_if(empty($data['prospect_name']) || (empty($data['prospect_email']) && empty($data['prospect_phone'])), 422, 'A prospect name and at least one contact identifier are required when no Customer is linked.');
         $companyId = (string) $data['company_id'];
+        $phoneCallingCode = CompanyCustomerScope::phoneCallingCode($companyId);
         $matches = DB::table('customers')->join('users', 'users.id', '=', 'customers.user_id')->select('customers.id')
             ->whereNull('customers.deleted_at')->whereNull('users.deleted_at')
-            ->where(function ($query) use ($data) {
+            ->where(function ($query) use ($data, $phoneCallingCode) {
                 if (! empty($data['prospect_email'])) $query->orWhereRaw('LOWER(TRIM(users.email)) = ?', [strtolower(trim($data['prospect_email']))]);
                 if (! empty($data['prospect_phone'])) $query->orWhereRaw(
-                    PhoneNumberMatch::sqlExpression('users.phone').' = ?',
-                    [PhoneNumberMatch::normalized(trim($data['prospect_phone']))],
+                    PhoneNumberMatch::sqlExpression('users.phone', $phoneCallingCode).' = ?',
+                    [PhoneNumberMatch::normalized(trim($data['prospect_phone']), $phoneCallingCode)],
                 );
             });
         CompanyCustomerScope::constrain($matches, 'customers', $companyId);

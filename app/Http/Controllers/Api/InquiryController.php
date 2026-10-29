@@ -390,6 +390,7 @@ class InquiryController extends Controller
         ]);
         $companyId = app(SingleCompanyScope::class)->activeDefaultCompany()?->id;
         abort_unless($companyId, 409, 'No active business is configured.');
+        $phoneCallingCode = \App\Services\CompanyCustomerScope::phoneCallingCode((string) $companyId);
         if (! empty($data['inquiry_id'])) {
             Inquiry::query()->where('company_id', $companyId)->findOrFail($data['inquiry_id']);
         }
@@ -408,7 +409,7 @@ class InquiryController extends Controller
                     });
             })
             ->when(! empty($data['selected_id']), fn ($query) => $query->where('customers.id', $data['selected_id']))
-            ->when(empty($data['selected_id']) && ! empty($data['search']), function ($query) use ($data): void {
+            ->when(empty($data['selected_id']) && ! empty($data['search']), function ($query) use ($data, $phoneCallingCode): void {
                 $term = '%' . addcslashes(trim($data['search']), '%_\\') . '%';
                 $emailTerm = strtolower($term);
                 $phoneDigits = preg_replace('/\D+/', '', $data['search']);
@@ -417,12 +418,12 @@ class InquiryController extends Controller
                     ->orWhere('users.last_name', 'like', $term)->orWhereRaw('LOWER(users.email) LIKE ?', [$emailTerm])
                     ->orWhere('users.phone', 'like', $term)->orWhere('customers.code', 'like', $term)
                     ->when($phoneDigits !== '', fn ($search) => $search->orWhereRaw(
-                        PhoneNumberMatch::sqlExpression('users.phone').' LIKE ?',
+                        PhoneNumberMatch::sqlExpression('users.phone', $phoneCallingCode).' LIKE ?',
                         ['%' . $phoneDigits . '%'],
                     ))
                     // shortcut: last-eight-digit matches can collide; use only to surface candidates for staff review until country-aware parsing is available.
                     ->when($phoneSuffix !== '', fn ($search) => $search->orWhereRaw(
-                        PhoneNumberMatch::sqlExpression('users.phone').' LIKE ?', ['%'.$phoneSuffix.'%'],
+                        PhoneNumberMatch::sqlExpression('users.phone', $phoneCallingCode).' LIKE ?', ['%'.$phoneSuffix.'%'],
                     )));
             })
             ->select(['customers.id', 'customers.code', 'users.first_name', 'users.last_name', 'users.email', 'users.phone'])
@@ -481,6 +482,7 @@ class InquiryController extends Controller
         $this->assertInquiryCompany($inquiry);
         $companyId = app(SingleCompanyScope::class)->activeDefaultCompany(true)?->id;
         abort_unless($companyId, 409, 'No active business is configured.');
+        $phoneCallingCode = \App\Services\CompanyCustomerScope::phoneCallingCode((string) $companyId);
 
         try {
             [$inquiry, $created, $createdUserId, $linkedExisting] = DB::transaction(function () use ($request, $inquiry, $companyId, $contexts): array {
@@ -498,8 +500,8 @@ class InquiryController extends Controller
                 abort_if($request->boolean('link_existing_account') && ! $email && $phone === '', 422, 'An email address or phone number is required to link an existing customer account.');
                 abort_if($phone === '' && ! $email, 422, 'Add a phone number or email address to the inquiry first.');
                 abort_if(strlen($phone) > 20, 422, 'Shorten the phone number to 20 characters or less before creating the customer.');
-                $normalizedPhone = PhoneNumberMatch::normalized($phone);
-                $phoneColumn = PhoneNumberMatch::sqlExpression('users.phone');
+                $normalizedPhone = PhoneNumberMatch::normalized($phone, $phoneCallingCode);
+                $phoneColumn = PhoneNumberMatch::sqlExpression('users.phone', $phoneCallingCode);
                 $phoneMatches = Customer::query()->join('users', 'users.id', '=', 'customers.user_id')
                     ->whereNull('customers.deleted_at')->whereNull('users.deleted_at')
                     ->whereRaw($phoneColumn.' = ?', [$normalizedPhone]);
@@ -541,7 +543,7 @@ class InquiryController extends Controller
                 if (! $email && $normalizedPhone !== '' && ! $request->boolean('allow_shared_phone_duplicate')) {
                     $phoneMatches = DB::table('customers')->join('users', 'users.id', '=', 'customers.user_id')
                         ->whereNull('customers.deleted_at')->whereNull('users.deleted_at')
-                        ->whereRaw(PhoneNumberMatch::sqlExpression('users.phone').' = ?', [$normalizedPhone])
+                        ->whereRaw(PhoneNumberMatch::sqlExpression('users.phone', $phoneCallingCode).' = ?', [$normalizedPhone])
                         ->whereExists(fn ($context) => $context->selectRaw('1')->from('user_contexts')
                             ->whereColumn('user_contexts.context_id', 'customers.id')
                             ->whereColumn('user_contexts.user_id', 'customers.user_id')

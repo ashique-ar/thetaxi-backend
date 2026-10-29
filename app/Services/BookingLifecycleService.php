@@ -8,6 +8,7 @@ use App\Models\Booking\BookingDispatch;
 use App\Models\Booking\BookingQC;
 use App\Models\Booking\BookingActivity;
 use App\Models\DriverAssignment;
+use App\Models\Vehicle\VehicleAssignment;
 use App\Models\Driver\DriverSession;
 use App\Models\Vehicle\VehiclePricing\VehiclePricingCalculationDefinition;
 use App\Models\Vehicle\VehiclePricing\BookingPriceAdjustmentHistory;
@@ -444,6 +445,7 @@ class BookingLifecycleService
             $bookingItemId = $dispatchData['booking_item_id'] ?? null;
             $this->assertItemSafeLifecycle($booking, $bookingItemId);
             $context = $this->resolveLifecycleContext($booking, $bookingItemId);
+            $this->assertAssignmentsApproved($booking, $context);
             $this->assertFinancialLifecycleReady($booking, 'dispatch', $context['booking_item']);
 
             if (!$context['vehicle_id']) {
@@ -494,6 +496,7 @@ class BookingLifecycleService
             $bookingItemId = $dispatchData['booking_item_id'] ?? null;
             $this->assertItemSafeLifecycle($booking, $bookingItemId);
             $context = $this->resolveLifecycleContext($booking, $bookingItemId);
+            $this->assertAssignmentsApproved($booking, $context);
             $this->assertFinancialLifecycleReady($booking, 'dispatch', $context['booking_item']);
             $workflowSettings = $this->getLifecycleWorkflowSettings($booking, $context['booking_item']);
             if ($workflowSettings['require_signed_agreement'] && empty($dispatchData['agreements_signed'])) {
@@ -4240,10 +4243,52 @@ class BookingLifecycleService
             && !empty($bookingItem->vehicle_id)
             && ($itemIsSelfDriven || !empty($bookingItem->driver_id))
         ) {
+            if ($this->hasPendingAssignmentApproval($booking, $bookingItem)) {
+                return BookingLifecycleStatus::ALLOCATION_CONFLICTS;
+            }
+
             return BookingLifecycleStatus::ALLOCATION_ASSIGNED;
         }
 
         return $booking->getLifecycleStatus();
+    }
+
+    public function approveAssignments(string $bookingId, string $approverId): array
+    {
+        return DB::transaction(function () use ($bookingId, $approverId) {
+            $booking = Booking::query()->lockForUpdate()->findOrFail($bookingId);
+            $fromStatus = $booking->getLifecycleStatus();
+            $result = $this->assignmentService->approveAssignments($bookingId, $approverId);
+
+            if ($fromStatus === BookingLifecycleStatus::ALLOCATION_CONFLICTS
+                && !VehicleAssignment::query()->where('booking_id', $bookingId)->where('requires_approval', true)->whereIn('status', ['pending', 'pending_approval'])->exists()
+                && !DriverAssignment::query()->where('booking_id', $bookingId)->where('requires_approval', true)->whereIn('status', ['pending', 'pending_approval'])->exists()) {
+                $booking->transitionToStatus(BookingLifecycleStatus::ALLOCATION_APPROVED, $approverId);
+                $this->logLifecycleTransition($booking, $fromStatus, BookingLifecycleStatus::ALLOCATION_APPROVED, ['source' => 'assignment_approval']);
+            }
+
+            return $result;
+        });
+    }
+
+    private function hasPendingAssignmentApproval(Booking $booking, ?BookingItem $bookingItem): bool
+    {
+        $vehiclePending = VehicleAssignment::query()->where('booking_id', $booking->id)->where('requires_approval', true)
+            ->whereIn('status', ['pending', 'pending_approval'])->exists();
+        $driverPending = DriverAssignment::query()->where('booking_id', $booking->id)
+            ->when($bookingItem && Schema::hasColumn('driver_assignments', 'booking_item_id'), fn ($query) => $query->where('booking_item_id', $bookingItem->id))
+            ->where('requires_approval', true)->whereIn('status', ['pending', 'pending_approval'])->exists();
+
+        return $vehiclePending || $driverPending;
+    }
+
+    private function assertAssignmentsApproved(Booking $booking, array $context): void
+    {
+        if ($this->hasPendingAssignmentApproval($booking, $context['booking_item'] ?? null)) {
+            throw ValidationException::withMessages([
+                'assignment' => 'Manager approval is required before dispatch.',
+            ]);
+        }
     }
 
     private function enumValue(mixed $value): ?string
@@ -4296,9 +4341,14 @@ class BookingLifecycleService
             BookingLifecycleStatus::ALLOCATION_PENDING,
             BookingLifecycleStatus::ALLOCATION_CONFLICTS,
         ], true)) {
-            $actions[] = 'assign_vehicle';
-            if (!$isSelfDriven) {
-                $actions[] = 'assign_driver';
+            if ($currentStatus === BookingLifecycleStatus::ALLOCATION_CONFLICTS
+                && $this->hasPendingAssignmentApproval($booking, $context['booking_item'])) {
+                $blockingReasons[] = 'Manager approval is required before dispatch';
+            } else {
+                $actions[] = 'assign_vehicle';
+                if (!$isSelfDriven) {
+                    $actions[] = 'assign_driver';
+                }
             }
         }
 

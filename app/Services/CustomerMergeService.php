@@ -33,6 +33,7 @@ class CustomerMergeService
             $duplicate = $locked->get($duplicate->id);
             abort_unless($primary && $duplicate, 404, 'One of these customer records is no longer available.');
             $this->assertSingleCompanyMerge($primary, $duplicate, $companyId);
+            $phoneCallingCode = CompanyCustomerScope::phoneCallingCode($companyId);
 
             $sourceUser = User::query()->whereKey($duplicate->user_id)->lockForUpdate()->firstOrFail();
             $alias = DB::table('customer_user_aliases')->where('user_id', $sourceUser->id)->first();
@@ -44,8 +45,8 @@ class CustomerMergeService
             $duplicateIdentities = $this->identityUsers($duplicate);
             $emailMatches = $primaryIdentities->contains(fn ($left) => filled($left->email)
                 && $duplicateIdentities->contains(fn ($right) => strtolower(trim((string) $left->email)) === strtolower(trim((string) $right->email))));
-            $phoneMatches = $primaryIdentities->contains(fn ($left) => PhoneNumberMatch::normalized((string) $left->phone) !== ''
-                && $duplicateIdentities->contains(fn ($right) => PhoneNumberMatch::normalized((string) $left->phone) === PhoneNumberMatch::normalized((string) $right->phone)));
+            $phoneMatches = $primaryIdentities->contains(fn ($left) => PhoneNumberMatch::normalized((string) $left->phone, $phoneCallingCode) !== ''
+                && $duplicateIdentities->contains(fn ($right) => PhoneNumberMatch::normalized((string) $left->phone, $phoneCallingCode) === PhoneNumberMatch::normalized((string) $right->phone, $phoneCallingCode)));
             if (! $emailMatches && ! $phoneMatches) {
                 throw ValidationException::withMessages(['customer_id' => ['The records no longer share a matching email or phone. Review them again before merging.']]);
             }

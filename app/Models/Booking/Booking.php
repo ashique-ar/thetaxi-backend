@@ -1147,6 +1147,7 @@ class Booking extends BaseModel
     {
         switch ($status) {
             case BookingLifecycleStatus::ONGOING_REPLACEMENT_NEEDED:
+            case BookingLifecycleStatus::ALLOCATION_APPROVED:
                 $this->status = $status->value;
                 $this->updated_user_id = $userId;
                 $this->save();

@@ -63,13 +63,14 @@ class CustomerController extends Controller
         $companyId = app(SingleCompanyScope::class)->activeDefaultCompany()?->id;
         abort_unless($companyId, 409, 'Select an active company before viewing customers.');
         \App\Services\CompanyCustomerScope::constrain($q, 'customers', $companyId);
+        $phoneCallingCode = \App\Services\CompanyCustomerScope::phoneCallingCode($companyId);
         $completedBookingCount = DB::table('bookings as completed_booking')->selectRaw('COUNT(*)')
             ->whereColumn('completed_booking.customer_id', 'customers.id')->whereNotNull('completed_booking.completed_at')
             ->whereNull('completed_booking.deleted_at');
         $this->constrainBookingsToCompany($completedBookingCount, 'completed_booking', $companyId);
         $q->addSelect(['completed_booking_count' => $completedBookingCount]);
         // Ignore common display punctuation; shared numbers still require human review, never an automatic merge.
-        $normalizedPhoneSql = PhoneNumberMatch::sqlExpression(...);
+        $normalizedPhoneSql = fn (string $column): string => PhoneNumberMatch::sqlExpression($column, $phoneCallingCode);
         $phoneMatches = DB::table('customers as other_customer')
             ->join('users as other_user', 'other_user.id', '=', 'other_customer.user_id')
             ->selectRaw('1')->whereRaw($normalizedPhoneSql('other_user.phone').' = '.$normalizedPhoneSql('customer_phone.phone'))
@@ -470,20 +471,21 @@ class CustomerController extends Controller
     {
         $customer = $this->requireCompanyCustomer($customer);
         $companyId = $this->requireActiveCompanyId();
+        $phoneCallingCode = \App\Services\CompanyCustomerScope::phoneCallingCode($companyId);
         $currentIdentities = $this->customerIdentityDetails($customer);
         $emails = $currentIdentities->pluck('email')->map(fn ($value) => strtolower(trim((string) $value)))->filter()->unique()->values()->all();
-        $phones = $currentIdentities->pluck('phone')->map(fn ($value) => PhoneNumberMatch::normalized((string) $value))->filter()->unique()->values()->all();
+        $phones = $currentIdentities->pluck('phone')->map(fn ($value) => PhoneNumberMatch::normalized((string) $value, $phoneCallingCode))->filter()->unique()->values()->all();
         if (! $emails && ! $phones) return response()->json(['status' => 'success', 'data' => []]);
 
         $matches = $this->companyCustomers($companyId)->with('user')
             ->where('customers.id', '!=', $customer->id)
-            ->where(function ($identities) use ($emails, $phones): void {
-                $identities->whereHas('user', fn ($user) => $this->matchCustomerIdentityQuery($user, $emails, $phones))
-                    ->orWhereExists(function ($alias) use ($emails, $phones): void {
+            ->where(function ($identities) use ($emails, $phones, $phoneCallingCode): void {
+                $identities->whereHas('user', fn ($user) => $this->matchCustomerIdentityQuery($user, $emails, $phones, $phoneCallingCode))
+                    ->orWhereExists(function ($alias) use ($emails, $phones, $phoneCallingCode): void {
                         $alias->selectRaw('1')->from('customer_user_aliases as customer_alias')
                             ->join('users as alias_user', 'alias_user.id', '=', 'customer_alias.user_id')
                             ->whereColumn('customer_alias.customer_id', 'customers.id')
-                            ->where(fn ($user) => $this->matchCustomerIdentityQuery($user, $emails, $phones));
+                            ->where(fn ($user) => $this->matchCustomerIdentityQuery($user, $emails, $phones, $phoneCallingCode));
                 });
             })
             ->whereNotExists(fn ($decision) => $decision->selectRaw('1')->from('customer_duplicate_decisions as decision')
@@ -491,10 +493,10 @@ class CustomerController extends Controller
                 ->where('decision.customer_id', $customer->id)->whereColumn('decision.other_customer_id', 'customers.id'))
             ->limit(20)->get(); // shortcut: show up to 20 matches, expand to paginated review if this queue grows.
 
-        $matches = $matches->map(function (Customer $match) use ($emails, $phones): array {
+        $matches = $matches->map(function (Customer $match) use ($emails, $phones, $phoneCallingCode): array {
             $identities = $this->customerIdentityDetails($match);
             $matchedEmail = $identities->first(fn ($identity) => in_array(strtolower(trim((string) $identity->email)), $emails, true))?->email;
-            $matchedPhone = $identities->first(fn ($identity) => in_array(PhoneNumberMatch::normalized((string) $identity->phone), $phones, true))?->phone;
+            $matchedPhone = $identities->first(fn ($identity) => in_array(PhoneNumberMatch::normalized((string) $identity->phone, $phoneCallingCode), $phones, true))?->phone;
             return [
                 'id' => (string) $match->id,
                 'name' => trim(($match->user?->first_name ?? '').' '.($match->user?->last_name ?? '')),
@@ -1274,12 +1276,12 @@ class CustomerController extends Controller
         return User::withTrashed()->whereIn('id', $userIds)->get(['id', 'email', 'phone', 'first_name', 'last_name']);
     }
 
-    private function matchCustomerIdentityQuery($query, array $emails, array $phones): void
+    private function matchCustomerIdentityQuery($query, array $emails, array $phones, ?string $phoneCallingCode): void
     {
-        $query->where(function ($identity) use ($emails, $phones): void {
+        $query->where(function ($identity) use ($emails, $phones, $phoneCallingCode): void {
             if ($emails) $identity->whereIn(DB::raw('LOWER(TRIM(email))'), $emails);
             if ($phones) {
-                $expression = PhoneNumberMatch::sqlExpression('phone');
+                $expression = PhoneNumberMatch::sqlExpression('phone', $phoneCallingCode);
                 $emails ? $identity->orWhereIn(DB::raw($expression), $phones) : $identity->whereIn(DB::raw($expression), $phones);
             }
         });
