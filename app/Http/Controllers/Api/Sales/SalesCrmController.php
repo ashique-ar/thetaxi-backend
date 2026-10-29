@@ -963,9 +963,9 @@ class SalesCrmController extends Controller
                 : null,
             'stage_events' => $row->stageEvents->sortByDesc('occurred_at')->map(fn ($event) => [
                 'from_stage' => $event->from_stage,
-                'from_stage_label' => $event->from_stage ? (data_get($event->snapshot, 'stage_labels.'.$event->from_stage) ?? $event->from_stage) : 'Created',
+                'from_stage_label' => $event->from_stage ? (data_get($event->snapshot, 'stage_labels.'.$event->from_stage) ?? SalesPolicySettingsService::STAGE_LABEL_DEFAULTS[$event->from_stage] ?? $event->from_stage) : 'Created',
                 'to_stage' => $event->to_stage,
-                'to_stage_label' => data_get($event->snapshot, 'stage_labels.'.$event->to_stage) ?? $event->to_stage,
+                'to_stage_label' => data_get($event->snapshot, 'stage_labels.'.$event->to_stage) ?? SalesPolicySettingsService::STAGE_LABEL_DEFAULTS[$event->to_stage] ?? $event->to_stage,
                 'reason' => $event->reason,
                 'occurred_at' => $event->occurred_at,
             ])->values(),

@@ -228,7 +228,16 @@ class CheckoutController extends Controller
             $userQuery->whereRaw('LOWER(email) = ?', [$value]);
         } else {
             $digits = ltrim($value, '+');
-            $userQuery->whereIn('phone', [$value, '00'.$digits, $digits]);
+            $phoneCandidates = [$digits, '00'.$digits];
+            if (str_starts_with($digits, '94')) {
+                $nationalNumber = substr($digits, 2);
+                $phoneCandidates[] = '0'.$nationalNumber;
+                $phoneCandidates[] = $nationalNumber;
+            }
+            $normalizedPhoneSql = "REPLACE(REPLACE(REPLACE(REPLACE(REPLACE(REPLACE(phone, '+', ''), ' ', ''), '-', ''), '(', ''), ')', ''), '.', '')";
+            $phoneCandidates = array_values(array_unique($phoneCandidates));
+            $placeholders = implode(',', array_fill(0, count($phoneCandidates), '?'));
+            $userQuery->whereRaw("{$normalizedPhoneSql} IN ({$placeholders})", $phoneCandidates);
         }
 
         $user = $userQuery->first();

@@ -108,46 +108,43 @@
                     $showCheckoutDetails = (!$customerLookupEnabled && $canBookAsNewCustomer)
                         || !empty($verifiedCheckoutCustomer) || old('email') || old('first_name');
                 @endphp
-                @if ($customerLookupEnabled && !$showCheckoutDetails)
-                    <div id="checkout-customer-choice" class="checkout-form-wrapper mb-4" aria-labelledby="checkout-customer-choice-title">
+                @if ($customerLookupEnabled)
+                    <div id="checkout-customer-choice" class="checkout-form-wrapper checkout-customer-choice mb-4" aria-labelledby="checkout-customer-choice-title">
                         <div class="checkout-form-title">
-                            <h4 id="checkout-customer-choice-title">Who is booking?</h4>
-                            <p class="text-muted mb-0">Choose an option to continue.</p>
-                        </div>
-                        <div id="checkout-customer-options" class="d-flex flex-wrap gap-3 mt-3">
-                            @if ($canBookAsNewCustomer)
-                                <label class="checkout-customer-option border rounded p-3">
-                                    <input type="radio" name="checkout_customer_kind" value="new">
-                                    <strong class="ms-2">I’m a new customer</strong>
-                                    <small class="d-block ms-4 text-muted">Enter your details on the next step.</small>
-                                </label>
-                            @endif
-                            <label class="checkout-customer-option border rounded p-3">
-                                <input type="radio" name="checkout_customer_kind" value="returning">
-                                <strong class="ms-2">I’ve booked with you before</strong>
-                                <small class="d-block ms-4 text-muted">Verify your details to load them on the next step.</small>
-                            </label>
-                            <div class="w-100">
-                                <button type="button" id="continue-customer-choice" class="primary-btn1" disabled>Continue</button>
+                            <div>
+                                <h4 id="checkout-customer-choice-title">Who is booking?</h4>
+                                <p class="text-muted mb-0">Choose the option that fits you. The right fields will appear below.</p>
                             </div>
                         </div>
+                        <div id="checkout-customer-options" class="checkout-customer-options mt-4" role="radiogroup" aria-labelledby="checkout-customer-choice-title">
+                            @if ($canBookAsNewCustomer)
+                                <label class="checkout-customer-option">
+                                    <input type="radio" name="checkout_customer_kind" value="new" @checked(old('first_name') || (!$verifiedCheckoutCustomer && $showCheckoutDetails))>
+                                    <span class="checkout-customer-option-copy"><strong>I’m a new customer</strong><small>Enter your contact and booking details below.</small></span>
+                                </label>
+                            @endif
+                            <label class="checkout-customer-option">
+                                <input type="radio" name="checkout_customer_kind" value="returning" @checked($verifiedCheckoutCustomer || !$canBookAsNewCustomer)>
+                                <span class="checkout-customer-option-copy"><strong>I’ve booked with you before</strong><small>Verify your email or mobile to load saved details.</small></span>
+                            </label>
+                        </div>
                     </div>
-                    <div id="returning-customer-panel" class="checkout-form-wrapper mb-4" aria-labelledby="returning-customer-title" hidden>
+                    <div id="returning-customer-panel" class="checkout-form-wrapper checkout-returning-panel mb-4" aria-labelledby="returning-customer-title" @if ($verifiedCheckoutCustomer || ($canBookAsNewCustomer && !$showCheckoutDetails)) hidden @endif>
                         <div class="checkout-form-title">
                             <h4 id="returning-customer-title">Find your saved details</h4>
                             <p class="small text-muted mb-0">Enter the email or mobile number used for an earlier booking. We’ll send a code before showing your details. @if (!$canBookAsNewCustomer) New customers need to sign in to book. @endif</p>
                         </div>
                         <div class="checkout-form">
                             <fieldset class="mb-3 border-0 p-0">
-                                <legend class="fs-6 fw-semibold">How would you like to verify?</legend>
-                                <div class="d-flex flex-wrap gap-3" role="radiogroup" aria-label="Choose email or mobile verification">
-                                    <label class="checkout-customer-option border rounded p-3">
+                                <legend class="fs-6 fw-semibold mb-2">Choose how we should send your code</legend>
+                                <div class="checkout-customer-options checkout-channel-options" role="radiogroup" aria-label="Choose email or mobile verification">
+                                    <label class="checkout-customer-option">
                                         <input type="radio" name="checkout_lookup_channel" value="email" checked>
-                                        <strong class="ms-2">Email</strong>
+                                        <span class="checkout-customer-option-copy"><strong>Email</strong><small>Get a code in your inbox.</small></span>
                                     </label>
-                                    <label class="checkout-customer-option border rounded p-3">
+                                    <label class="checkout-customer-option">
                                         <input type="radio" name="checkout_lookup_channel" value="mobile">
-                                        <strong class="ms-2">Mobile</strong>
+                                        <span class="checkout-customer-option-copy"><strong>Mobile</strong><small>Get a text message on your phone.</small></span>
                                     </label>
                                 </div>
                             </fieldset>
@@ -162,21 +159,20 @@
                                     <div id="customer-lookup-mobile-error" class="small text-danger mt-1" role="status" aria-live="polite"></div>
                                 </div>
                             </div>
-                            <button type="button" id="send-customer-code" class="primary-btn1">Send verification code</button>
+                            <button type="button" id="send-customer-code" class="primary-btn1">Send code</button>
                             <div id="customer-email-code-panel" class="mt-3" hidden>
                                 <label for="customer-email-code">Enter the 6-digit code</label>
                                 <div class="d-flex gap-2">
                                     <input id="customer-email-code" type="text" inputmode="numeric" autocomplete="one-time-code" maxlength="6" class="form-control" aria-describedby="customer-email-code-status">
-                                    <button type="button" id="verify-customer-email-code" class="btn btn-primary">Verify and continue</button>
+                                    <button type="button" id="verify-customer-email-code" class="primary-btn1">Verify code</button>
                                 </div>
                             </div>
                             <div id="customer-email-code-status" class="small mt-2" role="status" aria-live="polite"></div>
-                            <button type="button" id="back-to-customer-choice" class="btn btn-link px-0">Back to customer choices</button>
                         </div>
                     </div>
                 @endif
                 @if ($canBookAsNewCustomer || Auth::check() || $customerLookupEnabled)
-                <div class="row g-lg-4 gy-5" id="checkout-details-layout" @if (!$showCheckoutDetails) hidden @endif>
+                <div class="row g-lg-4 gy-5" id="checkout-details-layout" @if (!$showCheckoutDetails || ($customerLookupEnabled && !$verifiedCheckoutCustomer && !old('first_name') && !old('email'))) hidden @endif>
                         <div class="col-lg-7">
                             <form id="checkout-form" method="POST" action="{{ route('checkout.process') }}">
                                 @csrf
@@ -939,13 +935,105 @@
         }
 
         .checkout-customer-option {
-            flex: 1 1 280px;
+            display: flex;
+            align-items: flex-start;
+            gap: 14px;
+            min-height: 92px;
+            padding: 18px 20px;
+            border: 1px solid #dbe3ef;
+            border-radius: 14px;
+            background: #fff;
             cursor: pointer;
+            transition: border-color .18s ease, box-shadow .18s ease, background-color .18s ease, transform .18s ease;
+        }
+
+        .checkout-customer-options {
+            display: grid;
+            grid-template-columns: repeat(2, minmax(0, 1fr));
+            gap: 14px;
+        }
+
+        .checkout-channel-options {
+            grid-template-columns: repeat(2, minmax(0, 1fr));
+        }
+
+        .checkout-customer-option input[type="radio"] {
+            flex: 0 0 auto;
+            width: 18px;
+            height: 18px;
+            margin: 3px 0 0;
+            accent-color: var(--primary-color1, #BF2629);
+        }
+
+        .checkout-customer-option-copy {
+            display: grid;
+            gap: 5px;
+        }
+
+        .checkout-customer-option-copy strong {
+            color: #111827;
+            font-size: 16px;
+            font-weight: 750;
+            line-height: 1.35;
+        }
+
+        .checkout-customer-option-copy small {
+            color: #64748b;
+            font-size: 13px;
+            line-height: 1.5;
+        }
+
+        .checkout-customer-option:hover {
+            border-color: var(--primary-color1, #BF2629);
+            transform: translateY(-1px);
+            box-shadow: 0 10px 26px rgba(15, 23, 42, .08);
+        }
+
+        .checkout-customer-option:has(input:checked) {
+            border-color: var(--primary-color1, #BF2629);
+            background: color-mix(in srgb, var(--primary-color1, #BF2629) 5%, #fff);
+            box-shadow: inset 0 0 0 1px var(--primary-color1, #BF2629), 0 10px 26px rgba(15, 23, 42, .06);
         }
 
         .checkout-customer-option:focus-within {
-            outline: 2px solid #2563eb;
+            outline: 3px solid color-mix(in srgb, var(--primary-color1, #BF2629) 30%, transparent);
             outline-offset: 2px;
+        }
+
+        .checkout-returning-panel .checkout-form-title,
+        .checkout-customer-choice .checkout-form-title {
+            margin-bottom: 20px;
+        }
+
+        .checkout-returning-panel fieldset {
+            margin-bottom: 22px !important;
+        }
+
+        .checkout-returning-panel .form-control {
+            min-height: 50px;
+            border-radius: 10px;
+        }
+
+        .checkout-returning-panel #customer-email-code-panel {
+            max-width: 540px;
+            padding: 18px;
+            border: 1px solid #e2e8f0;
+            border-radius: 12px;
+            background: #f8fafc;
+        }
+
+        .checkout-returning-panel #customer-email-code-panel .d-flex {
+            align-items: stretch;
+            gap: 12px !important;
+        }
+
+        @media (max-width: 767.98px) {
+            .checkout-page { padding: 32px 0 52px; }
+            .checkout-form-wrapper { padding: 20px; }
+            .checkout-customer-options,
+            .checkout-channel-options { grid-template-columns: minmax(0, 1fr); gap: 10px; }
+            .checkout-customer-option { min-height: auto; padding: 16px; }
+            .checkout-returning-panel #customer-email-code-panel .d-flex { flex-direction: column; }
         }
 
         .checkout-form-title {
@@ -3000,10 +3088,8 @@
             const status = document.getElementById('customer-email-code-status');
             const customerChoice = document.getElementById('checkout-customer-choice');
             const customerKindInputs = document.querySelectorAll('input[name="checkout_customer_kind"]');
-            const continueCustomerChoice = document.getElementById('continue-customer-choice');
             const returningPanel = document.getElementById('returning-customer-panel');
             const detailsLayout = document.getElementById('checkout-details-layout');
-            const backToCustomerChoice = document.getElementById('back-to-customer-choice');
             const lookupChannelInputs = document.querySelectorAll('input[name="checkout_lookup_channel"]');
             const lookupEmailField = document.getElementById('customer-lookup-email-field');
             const lookupMobileField = document.getElementById('customer-lookup-mobile-field');
@@ -3011,6 +3097,7 @@
             const verifiedStatus = document.getElementById('verified-customer-status');
             const csrf = document.querySelector('meta[name="csrf-token"]')?.content;
             let activeChannel = 'email';
+            let hasVerifiedCustomer = @json((bool) $verifiedCheckoutCustomer);
             const cooldownUntil = { email: 0, mobile: 0 };
             let cooldownTimer = null;
 
@@ -3020,11 +3107,13 @@
                 ? (lookupEmailInput?.value || '').trim().toLowerCase()
                 : window.checkoutLookupIntlTelInput?.getNumber() || '';
             const syncCustomerChoice = () => {
+                if (!customerChoice) return;
                 const selected = selectedCustomerKind();
                 customerKindInputs.forEach(input => {
                     input.closest('label')?.classList.toggle('border-primary', input.checked);
                 });
-                if (continueCustomerChoice) continueCustomerChoice.disabled = !selected;
+                if (returningPanel) returningPanel.hidden = hasVerifiedCustomer || selected !== 'returning';
+                if (detailsLayout) detailsLayout.hidden = !hasVerifiedCustomer && selected !== 'new';
             };
             const showMessage = (message, verified = false) => {
                 if (!status) return;
@@ -3038,7 +3127,7 @@
                 verifiedStatus.hidden = false;
             };
             const showBookingForm = () => {
-                if (customerChoice) customerChoice.hidden = true;
+                hasVerifiedCustomer = true;
                 if (returningPanel) returningPanel.hidden = true;
                 if (detailsLayout) detailsLayout.hidden = false;
             };
@@ -3048,8 +3137,8 @@
                 const remaining = Math.max(0, Math.ceil((cooldownUntil[activeChannel] - Date.now()) / 1000));
                 sendCodeButton.disabled = remaining > 0;
                 sendCodeButton.textContent = remaining > 0
-                    ? `Send again in ${Math.floor(remaining / 60)}:${String(remaining % 60).padStart(2, '0')}`
-                    : 'Send verification code';
+                    ? `Resend code in ${Math.floor(remaining / 60)}:${String(remaining % 60).padStart(2, '0')}`
+                    : 'Send code';
                 if (remaining && !cooldownTimer) cooldownTimer = setInterval(renderCooldown, 1000);
                 if (!remaining && cooldownTimer) {
                     clearInterval(cooldownTimer);
@@ -3106,6 +3195,28 @@
                 showSavedDetailsMessage('Saved details loaded. Check them and update anything that has changed.');
             };
 
+            const clearVerifiedCustomer = async () => {
+                await post(@json(route('checkout.customer-email.reset')), {});
+                hasVerifiedCustomer = false;
+                for (const field of ['first_name', 'last_name', 'address', 'city', 'country', 'identification']) {
+                    const input = form.querySelector(`[name="${field}"]`);
+                    if (input) {
+                        input.value = '';
+                        input.dispatchEvent(new Event('change', { bubbles: true }));
+                    }
+                }
+                emailInput.value = '';
+                emailInput.readOnly = false;
+                phoneInput.readOnly = false;
+                if (window.checkoutIntlTelInput) window.checkoutIntlTelInput.setNumber('');
+                else phoneInput.value = '';
+                resetButton.hidden = true;
+                if (verifiedStatus) verifiedStatus.hidden = true;
+                const newCustomerOption = document.querySelector('input[name="checkout_customer_kind"][value="new"]');
+                if (newCustomerOption) newCustomerOption.checked = true;
+                syncCustomerChoice();
+            };
+
             const requestCode = async () => {
                 if (!sendCodeButton || !codePanel || !codeInput) return;
                 const channel = activeChannel;
@@ -3143,25 +3254,20 @@
                 }
             };
 
-            customerKindInputs.forEach(input => input.addEventListener('change', syncCustomerChoice));
+            customerKindInputs.forEach(input => input.addEventListener('change', async () => {
+                if (input.value === 'new' && hasVerifiedCustomer) {
+                    try {
+                        await clearVerifiedCustomer();
+                    } catch (error) {
+                        showSavedDetailsMessage(error.message || 'Could not switch customer details. Please refresh the page and try again.', true);
+                    }
+                    return;
+                }
+                syncCustomerChoice();
+            }));
             lookupChannelInputs.forEach(input => input.addEventListener('change', syncLookupChannel));
             syncLookupChannel();
             syncCustomerChoice();
-            continueCustomerChoice?.addEventListener('click', () => {
-                if (selectedCustomerKind() === 'new') {
-                    showBookingForm();
-                    return;
-                }
-                if (selectedCustomerKind() === 'returning') {
-                    if (customerChoice) customerChoice.hidden = true;
-                    if (returningPanel) returningPanel.hidden = false;
-                    lookupEmailInput?.focus();
-                }
-            });
-            backToCustomerChoice?.addEventListener('click', () => {
-                if (customerChoice) customerChoice.hidden = false;
-                if (returningPanel) returningPanel.hidden = true;
-            });
             sendCodeButton?.addEventListener('click', requestCode);
 
             verifyButton?.addEventListener('click', async () => {
@@ -3182,8 +3288,7 @@
             resetButton.addEventListener('click', async () => {
                 resetButton.disabled = true;
                 try {
-                    await post(@json(route('checkout.customer-email.reset')), {});
-                    window.location.reload();
+                    await clearVerifiedCustomer();
                 } catch (error) {
                     showSavedDetailsMessage(error.message || 'Could not clear the saved details. Refresh this page to start again.', true);
                 } finally {
