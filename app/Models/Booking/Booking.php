@@ -290,6 +290,10 @@ class Booking extends BaseModel
         // Feedback and ratings
         'customer_rating',
         'customer_feedback',
+        'customer_feedback_submitted_at',
+        'customer_feedback_response',
+        'customer_feedback_responded_at',
+        'customer_feedback_responded_by',
         'driver_rating',
         'driver_feedback',
 

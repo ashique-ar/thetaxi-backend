@@ -1233,32 +1233,14 @@ class CustomerController extends Controller
     public function getCustomerFeedback(Customer $customer): JsonResponse
     {
         $customer = $this->requireCompanyCustomer($customer);
-        // This would typically come from a feedback table
-        // For now, returning mock data
-        $feedback = [
-            [
-                'id' => 1,
-                'booking_id' => 'B001',
-                'booking_number' => 'B001',
-                'rating' => 5,
-                'comment' => 'Excellent service!',
-                'created_at' => now()->subDays(2)
-            ],
-            [
-                'id' => 2,
-                'booking_id' => 'B002',
-                'booking_number' => 'B002',
-                'rating' => 4,
-                'comment' => 'Good experience overall',
-                'created_at' => now()->subDays(7)
-            ]
-        ];
+        $feedback = Booking::query()->where('customer_id', $customer->id)
+            ->whereNotNull('customer_rating')->where('status', 'completed')
+            ->with('serviceType')->orderByDesc('customer_feedback_submitted_at')->orderByDesc('updated_at');
+        \App\Services\CompanyBookingScope::constrain($feedback, 'bookings', $this->requireActiveCompanyId());
 
         return response()->json([
             'status' => 'success',
-            'data' => [
-                'feedback' => $feedback
-            ]
+            'data' => ['feedback' => $feedback->get()->map(fn (Booking $booking) => $this->formatCustomerFeedback($booking))->values()],
         ]);
     }
 
@@ -1269,28 +1251,12 @@ class CustomerController extends Controller
     public function addCustomerFeedback(Request $request, Customer $customer): JsonResponse
     {
         $customer = $this->requireCompanyCustomer($customer);
-        $data = $request->validate([
-            'booking_id' => 'required|exists:bookings,id',
-            'rating' => 'required|integer|min:1|max:5',
-            'comment' => 'nullable|string|max:1000'
-        ]);
-        $bookingQuery = Booking::query()->whereKey($data['booking_id'])->where('customer_id', $customer->id);
-        \App\Services\CompanyBookingScope::constrain($bookingQuery, 'bookings', (string) app(SingleCompanyScope::class)->activeDefaultCompany()->id);
-        abort_unless($bookingQuery->exists(), 404);
-
-        // This would typically save to a feedback table
-        // For now, returning success response
+        $data = $request->validate(['booking_id' => ['required', 'uuid'], 'rating' => ['required', 'integer', 'min:1', 'max:5'], 'comment' => ['nullable', 'string', 'max:1000']]);
+        $booking = $this->saveBookingFeedback($data['booking_id'], $customer->id, $data);
         return response()->json([
             'status' => 'success',
-            'message' => 'Feedback added successfully',
-            'data' => [
-                'feedback' => [
-                    'booking_id' => $request->get('booking_id'),
-                    'rating' => $request->get('rating'),
-                    'comment' => $request->get('comment'),
-                    'created_at' => now()
-                ]
-            ]
+            'message' => 'Feedback saved.',
+            'data' => ['feedback' => $this->formatCustomerFeedback($booking)],
         ]);
     }
 
@@ -1563,31 +1529,25 @@ class CustomerController extends Controller
      */
     public function getFeedbackStats(): JsonResponse
     {
-        // Mock feedback statistics
-        $stats = [
-            'total_feedback' => 150,
-            'average_rating' => 4.2,
-            'rating_distribution' => [
-                '5' => 60,
-                '4' => 45,
-                '3' => 30,
-                '2' => 10,
-                '1' => 5
-            ],
-            'recent_feedback' => [
-                [
-                    'id' => 1,
-                    'customer_name' => 'John Doe',
-                    'rating' => 5,
-                    'comment' => 'Excellent service!',
-                    'created_at' => now()->subHours(2)
-                ]
-            ]
-        ];
+        $base = Booking::query()->whereNotNull('customer_rating')->where('status', 'completed');
+        \App\Services\CompanyBookingScope::constrain($base, 'bookings', $this->requireActiveCompanyId());
+        $summary = (clone $base)->selectRaw('COUNT(*) as total_feedback, AVG(customer_rating) as average_rating')->first();
+        $distribution = (clone $base)->select('customer_rating')->selectRaw('COUNT(*) as total')
+            ->groupBy('customer_rating')->pluck('total', 'customer_rating')->all();
+        $total = (int) ($summary->total_feedback ?? 0);
+        $pending = (clone $base)->whereNull('customer_feedback_response')->count();
+        $ratingDistribution = array_fill_keys(['1', '2', '3', '4', '5'], 0);
+        foreach ($distribution as $rating => $count) $ratingDistribution[(string) $rating] = (int) $count;
 
         return response()->json([
             'status' => 'success',
-            'data' => $stats
+            'data' => [
+                'total_feedback' => $total,
+                'average_rating' => round((float) ($summary->average_rating ?? 0), 2),
+                'rating_distribution' => $ratingDistribution,
+                'pending_reviews' => $pending,
+                'response_rate' => $total ? (int) round((($total - $pending) / $total) * 100) : 0,
+            ],
         ]);
     }
 
@@ -1597,40 +1557,19 @@ class CustomerController extends Controller
      */
     public function getAllCustomerFeedback(Request $request): JsonResponse
     {
-        $limit = $request->get('limit', 20);
-        $rating = $request->get('rating');
-
-        // Mock feedback data
-        $feedback = collect([
-            [
-                'id' => 1,
-                'customer_name' => 'John Doe',
-                'booking_id' => 'B001',
-                'booking_number' => 'B001',
-                'rating' => 5,
-                'comment' => 'Excellent service!',
-                'created_at' => now()->subDays(1)
-            ],
-            [
-                'id' => 2,
-                'customer_name' => 'Jane Smith',
-                'booking_id' => 'B002',
-                'booking_number' => 'B002',
-                'rating' => 4,
-                'comment' => 'Good experience',
-                'created_at' => now()->subDays(2)
-            ]
-        ]);
-
-        if ($rating) {
-            $feedback = $feedback->where('rating', $rating);
-        }
+        $data = $request->validate(['rating' => ['nullable', 'integer', 'between:1,5'], 'page' => ['nullable', 'integer', 'min:1'], 'per_page' => ['nullable', 'integer', 'min:1', 'max:100']]);
+        $feedback = Booking::query()->with(['customer.user', 'serviceType'])
+            ->whereNotNull('customer_rating')->where('status', 'completed')
+            ->when(isset($data['rating']), fn ($query) => $query->where('customer_rating', $data['rating']))
+            ->orderByDesc('customer_feedback_submitted_at')->orderByDesc('updated_at');
+        \App\Services\CompanyBookingScope::constrain($feedback, 'bookings', $this->requireActiveCompanyId());
+        $page = $feedback->paginate($data['per_page'] ?? 10, ['*'], 'page', $data['page'] ?? 1);
 
         return response()->json([
             'status' => 'success',
             'data' => [
-                'feedback' => $feedback->take($limit)->values(),
-                'total' => $feedback->count()
+                'feedback' => $page->getCollection()->map(fn (Booking $booking) => $this->formatCustomerFeedback($booking))->values(),
+                'total' => $page->total(), 'current_page' => $page->currentPage(), 'last_page' => $page->lastPage(), 'per_page' => $page->perPage(),
             ]
         ]);
     }
@@ -1641,30 +1580,13 @@ class CustomerController extends Controller
      */
     public function submitCustomerFeedback(Request $request): JsonResponse
     {
-        $data = $request->validate([
-            'customer_id' => 'required|exists:customers,id',
-            'booking_id' => 'required|exists:bookings,id',
-            'rating' => 'required|integer|min:1|max:5',
-            'comment' => 'nullable|string|max:1000'
-        ]);
+        $data = $request->validate(['customer_id' => ['required', 'uuid'], 'booking_id' => ['required', 'uuid'], 'rating' => ['required', 'integer', 'min:1', 'max:5'], 'comment' => ['nullable', 'string', 'max:1000']]);
         $customer = $this->requireCompanyCustomer(Customer::query()->findOrFail($data['customer_id']));
-        $bookingQuery = Booking::query()->whereKey($data['booking_id'])->where('customer_id', $customer->id);
-        \App\Services\CompanyBookingScope::constrain($bookingQuery, 'bookings', $this->requireActiveCompanyId());
-        abort_unless($bookingQuery->exists(), 404);
-
-        // This would typically save to a feedback table
+        $booking = $this->saveBookingFeedback($data['booking_id'], $customer->id, $data);
         return response()->json([
             'status' => 'success',
-            'message' => 'Feedback submitted successfully',
-            'data' => [
-                'feedback' => [
-                    'customer_id' => $data['customer_id'],
-                    'booking_id' => $data['booking_id'],
-                    'rating' => $data['rating'],
-                    'comment' => $data['comment'] ?? null,
-                    'created_at' => now()
-                ]
-            ]
+            'message' => 'Feedback saved.',
+            'data' => ['feedback' => $this->formatCustomerFeedback($booking)],
         ]);
     }
 
@@ -1678,22 +1600,60 @@ class CustomerController extends Controller
             'response' => ['required', 'string', 'min:10', 'max:2000'],
         ]);
 
-        $responseDate = now()->toISOString();
-
+        $bookingQuery = Booking::query()->whereKey($feedbackId)->whereNotNull('customer_rating')->where('status', 'completed');
+        \App\Services\CompanyBookingScope::constrain($bookingQuery, 'bookings', $this->requireActiveCompanyId());
+        $booking = $bookingQuery->firstOrFail();
+        $booking->forceFill([
+            'customer_feedback_response' => trim($data['response']),
+            'customer_feedback_responded_at' => now(),
+            'customer_feedback_responded_by' => $request->user()?->id,
+        ])->save();
         return response()->json([
             'status' => 'success',
-            'message' => 'Feedback response recorded successfully',
-            'data' => [
-                'feedback' => [
-                    'id' => $feedbackId,
-                    'responded' => true,
-                    'response' => $data['response'],
-                    'response_date' => $responseDate,
-                    'responseDate' => $responseDate,
-                    'responded_by' => $request->user()?->id,
-                ],
-            ],
+            'message' => 'Response saved to the booking feedback.',
+            'data' => ['feedback' => $this->formatCustomerFeedback($booking->fresh(['customer.user', 'serviceType']))],
         ]);
+    }
+
+    private function saveBookingFeedback(string $bookingId, string $customerId, array $data): Booking
+    {
+        $companyId = $this->requireActiveCompanyId();
+        return DB::transaction(function () use ($bookingId, $customerId, $data, $companyId): Booking {
+            $query = Booking::query()->whereKey($bookingId)->where('customer_id', $customerId)->lockForUpdate();
+            \App\Services\CompanyBookingScope::constrain($query, 'bookings', $companyId);
+            $booking = $query->firstOrFail();
+            abort_unless($booking->status === 'completed', 409, 'Feedback can only be recorded for a completed booking.');
+            $booking->forceFill([
+                'customer_rating' => $data['rating'],
+                'customer_feedback' => $data['comment'] ?? null,
+                'customer_feedback_submitted_at' => now(),
+                'customer_feedback_response' => null,
+                'customer_feedback_responded_at' => null,
+                'customer_feedback_responded_by' => null,
+            ])->save();
+            return $booking->fresh(['customer.user', 'serviceType']);
+        });
+    }
+
+    private function formatCustomerFeedback(Booking $booking): array
+    {
+        $user = $booking->customer?->user;
+        return [
+            'id' => (string) $booking->id,
+            'booking_id' => (string) $booking->id,
+            'booking_number' => $booking->booking_number,
+            'customer_id' => (string) $booking->customer_id,
+            'customer_name' => trim(($user?->first_name ?? '').' '.($user?->last_name ?? '')) ?: 'Customer',
+            'service_type' => $booking->serviceType?->name,
+            'rating' => (int) $booking->customer_rating,
+            'comment' => $booking->customer_feedback,
+            'created_at' => $booking->customer_feedback_submitted_at ?? $booking->updated_at,
+            'response' => $booking->customer_feedback_response,
+            'response_date' => $booking->customer_feedback_responded_at,
+            'responseDate' => $booking->customer_feedback_responded_at,
+            'responded_by' => $booking->customer_feedback_responded_by,
+            'responded' => (bool) $booking->customer_feedback_response,
+        ];
     }
 
     public function getDocumentStats(): JsonResponse
