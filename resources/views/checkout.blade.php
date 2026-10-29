@@ -937,9 +937,9 @@
         .checkout-customer-option {
             display: flex;
             align-items: flex-start;
-            gap: 14px;
-            min-height: 92px;
-            padding: 18px 20px;
+            gap: 12px;
+            min-height: 76px;
+            padding: 14px 16px;
             border: 1px solid #dbe3ef;
             border-radius: 14px;
             background: #fff;
@@ -950,7 +950,7 @@
         .checkout-customer-options {
             display: grid;
             grid-template-columns: repeat(2, minmax(0, 1fr));
-            gap: 14px;
+            gap: 12px;
         }
 
         .checkout-channel-options {
@@ -1005,6 +1005,32 @@
             margin-bottom: 20px;
         }
 
+        body[class] .checkout-page .checkout-customer-choice,
+        body[class] .checkout-page .checkout-returning-panel {
+            padding: 0;
+        }
+
+        body[class] .checkout-page .checkout-customer-choice .checkout-form-title {
+            margin-bottom: 0;
+        }
+
+        body[class] .checkout-page .checkout-customer-choice .checkout-customer-options {
+            margin: 0 !important;
+            padding: 16px 20px 20px;
+        }
+
+        body[class] .checkout-page .checkout-returning-panel .checkout-form-title {
+            display: grid;
+            align-items: start;
+            justify-content: normal;
+            gap: 8px;
+            margin-bottom: 0;
+        }
+
+        body[class] .checkout-page #checkout-details-layout {
+            --bs-gutter-y: 24px;
+        }
+
         .checkout-customer-choice .checkout-form-title {
             margin-bottom: 16px;
         }
@@ -1015,7 +1041,7 @@
         }
 
         .checkout-returning-panel fieldset {
-            margin-bottom: 22px !important;
+            margin-bottom: 16px !important;
         }
 
         .checkout-returning-panel .form-control {
@@ -1040,8 +1066,9 @@
             .checkout-page { padding: 32px 0 52px; }
             .checkout-form-wrapper { padding: 20px; }
             .checkout-customer-options,
-            .checkout-channel-options { grid-template-columns: minmax(0, 1fr); gap: 12px; }
-            .checkout-customer-option { min-height: auto; padding: 16px; }
+            .checkout-channel-options { grid-template-columns: minmax(0, 1fr); gap: 10px; }
+            .checkout-customer-option { min-height: 68px; padding: 13px 14px; }
+            body[class] .checkout-page .checkout-customer-choice .checkout-customer-options { padding: 14px 16px 16px; }
             .checkout-returning-panel #customer-email-code-panel .d-flex { flex-direction: column; }
         }
 
