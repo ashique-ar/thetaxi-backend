@@ -817,7 +817,16 @@ class MobileAssignmentService
         $payload['driver_message'] = $isOpenPackage
             ? 'Open chauffeur package - destination decided during trip'
             : null;
-        $payload['package'] = $this->mapPackageForMobile($itemMetadata);
+        $payload['package'] = $this->mapPackageForMobile($itemMetadata, $bookingItem);
+        $packageAllowance = $payload['package'] ?? [];
+        $payload['booking_allowance'] = [
+            'included_km_total' => $packageAllowance['included_km_total'] ?? $pricingMetrics['included_km'],
+            'booked_days' => $packageAllowance['booked_days'] ?? $pricingMetrics['included_duration_days'],
+            'booked_hours' => $packageAllowance['booked_hours'] ?? $pricingMetrics['included_duration_hours'],
+            'booked_minutes' => $packageAllowance['booked_minutes'] ?? $pricingMetrics['included_duration_minutes'],
+            'included_hours' => $packageAllowance['included_hours'] ?? $pricingMetrics['included_duration_hours'],
+            'included_minutes' => $packageAllowance['included_minutes'] ?? $pricingMetrics['included_duration_minutes'],
+        ];
         $stops = $this->tripTrackingService->ensureAssignmentStops($assignment);
         $payload['is_multi_stop'] = $stops->count() > 2;
         $payload['route_stops'] = $this->tripTrackingService->mapStopsForMobile($stops);
@@ -1265,7 +1274,7 @@ class MobileAssignmentService
         return null;
     }
 
-    private function mapPackageForMobile(array $metadata): ?array
+    private function mapPackageForMobile(array $metadata, $bookingItem = null): ?array
     {
         $packageId = $metadata['service_package_id'] ?? $metadata['package_id'] ?? null;
         if (!$packageId) {
@@ -1274,7 +1283,7 @@ class MobileAssignmentService
 
         $snapshot = is_array($metadata['package_info'] ?? null) ? $metadata['package_info'] : null;
         if ($snapshot && (string) ($snapshot['id'] ?? '') === (string) $packageId) {
-            return [
+            $package = [
                 'id' => $packageId,
                 'name' => $snapshot['name'] ?? null,
                 'code' => $snapshot['code'] ?? null,
@@ -1287,28 +1296,55 @@ class MobileAssignmentService
                 'rate_type' => $snapshot['rate_type'] ?? null,
                 'snapshot' => true,
             ];
+            $package['charges_extra_hours'] = (bool) ($snapshot['charges_extra_hours'] ?? false);
+            $package['charges_extra_km'] = (bool) ($snapshot['charges_extra_km'] ?? false);
+        } else {
+            $package = \App\Models\Service\ServicePackage::find($packageId);
+            if (!$package) {
+                return ['id' => $packageId];
+            }
+
+            $package = [
+                'id' => $package->id,
+                'name' => $package->name,
+                'code' => $package->code,
+                'description' => $package->description,
+                'included_km_per_day' => $package->max_km_per_day !== null ? (float) $package->max_km_per_day : null,
+                'included_km_per_package' => $package->max_km_per_package !== null ? (float) $package->max_km_per_package : null,
+                'included_hours' => $package->default_duration_hours,
+                'included_minutes' => ((int) $package->default_duration_hours * 60)
+                    + (int) $package->default_duration_minutes,
+                'charges_extra_hours' => (bool) $package->charges_extra_hours,
+                'charges_extra_km' => (bool) $package->charges_extra_km,
+                'rate_type' => $package->rate_type,
+                'snapshot' => false,
+            ];
         }
 
-        $package = \App\Models\Service\ServicePackage::find($packageId);
-        if (!$package) {
-            return ['id' => $packageId];
-        }
+        $days = (int) ($bookingItem?->duration_days ?? 0) > 0 ? (int) $bookingItem->duration_days : null;
+        $bookedMinutes = (int) ($bookingItem?->duration_minutes ?? 0) > 0
+            ? (int) $bookingItem->duration_minutes
+            : ((int) ($bookingItem?->duration_hours ?? 0) > 0
+                ? (int) $bookingItem->duration_hours * 60
+                : null);
+        $pricing = is_array($bookingItem?->pricing_breakdown) ? $bookingItem->pricing_breakdown : [];
+        $distance = $metadata['distance_details']
+            ?? data_get($pricing, 'distance_details')
+            ?? data_get($pricing, 'base_pricing.distance_details')
+            ?? [];
+        $totalKm = $this->firstNumeric([
+            $package['included_km_per_package'] ?? null,
+            is_array($distance) ? ($distance['allowed_total_km'] ?? null) : null,
+            is_array($distance) ? ($distance['allowed_km'] ?? null) : null,
+            isset($package['included_km_per_day'], $days) ? $package['included_km_per_day'] * $days : null,
+        ]);
 
-        return [
-            'id' => $package->id,
-            'name' => $package->name,
-            'code' => $package->code,
-            'description' => $package->description,
-            'included_km_per_day' => $package->max_km_per_day !== null ? (float) $package->max_km_per_day : null,
-            'included_km_per_package' => $package->max_km_per_package !== null ? (float) $package->max_km_per_package : null,
-            'included_hours' => $package->default_duration_hours,
-            'included_minutes' => ((int) $package->default_duration_hours * 60)
-                + (int) $package->default_duration_minutes,
-            'charges_extra_hours' => (bool) $package->charges_extra_hours,
-            'charges_extra_km' => (bool) $package->charges_extra_km,
-            'rate_type' => $package->rate_type,
-            'snapshot' => false,
-        ];
+        $package['included_km_total'] = $totalKm;
+        $package['booked_days'] = $days;
+        $package['booked_hours'] = $bookedMinutes !== null ? intdiv($bookedMinutes, 60) : null;
+        $package['booked_minutes'] = $bookedMinutes;
+
+        return $package;
     }
 
     private function extractLocationLabel(mixed $location): ?string

@@ -15,6 +15,9 @@ class RespondIoInquiryAssignmentSync
         if ($inquiry->source !== 'respond_io') {
             return ['status' => 'not_applicable'];
         }
+        if (! filter_var(app(WebsiteSettingsService::class)->get('feature_respond_io_enabled', false), FILTER_VALIDATE_BOOL)) {
+            return ['status' => 'disabled'];
+        }
 
         $connection = IntegrationConnection::query()->where('company_id', $inquiry->company_id)
             ->where('provider', 'respond_io')->where('enabled', true)->first();

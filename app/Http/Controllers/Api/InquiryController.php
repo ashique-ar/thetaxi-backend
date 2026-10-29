@@ -468,21 +468,27 @@ class InquiryController extends Controller
         $request->validate([
             'confirm_new_person' => ['required', 'accepted'],
             'allow_shared_phone_duplicate' => ['sometimes', 'boolean'],
+            'link_existing_account' => ['sometimes', 'boolean'],
         ]);
         $this->assertInquiryCompany($inquiry);
         $companyId = app(SingleCompanyScope::class)->activeDefaultCompany(true)?->id;
         abort_unless($companyId, 409, 'No active business is configured.');
 
         try {
-            [$inquiry, $created, $createdUserId] = DB::transaction(function () use ($request, $inquiry, $companyId, $contexts): array {
+            [$inquiry, $created, $createdUserId, $linkedExisting] = DB::transaction(function () use ($request, $inquiry, $companyId, $contexts): array {
                 abort_unless(app(SingleCompanyScope::class)->activeDefaultCompany(true)?->id === $companyId, 409, 'Business changed; retry customer creation.');
                 $locked = Inquiry::query()->where('company_id', $companyId)->lockForUpdate()->findOrFail($inquiry->id);
-                if ($locked->customer_id) return [$locked, false, null];
+                if ($locked->customer_id) {
+                    return [$locked, false, null, data_get($locked->payload, 'customer_link.action') === 'linked_existing_customer_account'];
+                }
 
                 $name = trim((string) $locked->name);
                 $phone = trim((string) $locked->phone);
                 abort_if($name === '', 422, 'Add the customer name to the inquiry first.');
-                abort_if($phone === '', 422, 'Add the customer phone number to the inquiry first.');
+                $email = trim((string) $locked->email);
+                $email = $email !== '' ? Str::lower($email) : null;
+                abort_if($request->boolean('link_existing_account') && ! $email && $phone === '', 422, 'An email address or phone number is required to link an existing customer account.');
+                abort_if($phone === '' && ! $email, 422, 'Add a phone number or email address to the inquiry first.');
                 abort_if(strlen($phone) > 20, 422, 'Shorten the phone number to 20 characters or less before creating the customer.');
                 $normalizedPhone = PhoneNumberMatch::normalized($phone);
                 $phoneColumn = PhoneNumberMatch::sqlExpression('users.phone');
@@ -497,12 +503,73 @@ class InquiryController extends Controller
                         'message' => 'A customer in this business already uses this phone. Search and link that person, or confirm this is a different person sharing the number.',
                     ], 409));
                 }
-                $email = trim((string) $locked->email);
-                $email = $email !== '' ? Str::lower($email) : null;
                 if ($email) {
-                    abort_if(User::withTrashed()->whereRaw('LOWER(email) = ?', [$email])->exists(), 409,
-                        'An account already uses this email. Search for its customer record or ask a manager to review it.');
+                    $existingUser = User::withTrashed()->whereRaw('LOWER(email) = ?', [$email])->lockForUpdate()->first();
+                    if ($existingUser) {
+                        $existingCustomer = Customer::query()->where('user_id', $existingUser->id)
+                            ->whereNull('deleted_at')
+                            ->whereHas('user', fn ($user) => $user->whereNull('deleted_at'))
+                            ->whereExists(fn ($context) => $context->selectRaw('1')->from('user_contexts')
+                                ->whereColumn('user_contexts.context_id', 'customers.id')
+                                ->whereColumn('user_contexts.user_id', 'customers.user_id')
+                                ->where('user_contexts.context_type', 'customer')->where('user_contexts.is_active', true)
+                                ->whereNull('user_contexts.deleted_at'))
+                            ->lockForUpdate()->first();
+                        if ($existingCustomer && ! $request->boolean('link_existing_account')) {
+                            throw new HttpResponseException(response()->json([
+                                'status' => 'error',
+                                'code' => 'customer_exists_elsewhere',
+                                'match_type' => 'email',
+                                'message' => 'A customer account already uses this email. Review the inquiry and confirm if you want to link that account to this business.',
+                            ], 409));
+                        }
+                        abort_unless($existingCustomer && $request->boolean('link_existing_account'), 409,
+                            'An account already uses this email, but it cannot be linked as a customer. Ask a manager to review it.');
+
+                        return [$this->linkExistingInquiryCustomer($locked, $existingCustomer, $companyId, (string) $request->user()->id), false, null, true];
+                    }
                 }
+
+                if (! $email && $normalizedPhone !== '' && ! $request->boolean('allow_shared_phone_duplicate')) {
+                    $phoneMatches = DB::table('customers')->join('users', 'users.id', '=', 'customers.user_id')
+                        ->whereNull('customers.deleted_at')->whereNull('users.deleted_at')
+                        ->whereRaw(PhoneNumberMatch::sqlExpression('users.phone').' = ?', [$normalizedPhone])
+                        ->whereExists(fn ($context) => $context->selectRaw('1')->from('user_contexts')
+                            ->whereColumn('user_contexts.context_id', 'customers.id')
+                            ->whereColumn('user_contexts.user_id', 'customers.user_id')
+                            ->where('user_contexts.context_type', 'customer')->where('user_contexts.is_active', true)
+                            ->whereNull('user_contexts.deleted_at'))
+                        ->select(['customers.id', 'customers.user_id'])->limit(2)->get();
+                    if ($phoneMatches->count() > 1) {
+                        throw new HttpResponseException(response()->json([
+                            'status' => 'error', 'code' => 'phone_match_requires_review',
+                            'message' => 'More than one customer account uses this phone number. Ask a manager to review it, or confirm this is a different person sharing the number before creating a separate profile.',
+                        ], 409));
+                    }
+                    if ($phoneMatches->count() === 1) {
+                        if (! $request->boolean('link_existing_account')) {
+                            throw new HttpResponseException(response()->json([
+                                'status' => 'error', 'code' => 'customer_exists_elsewhere', 'match_type' => 'phone',
+                                'message' => 'A customer account already uses this phone number. Review the inquiry and confirm whether to link that customer or create a separate profile for a different person.',
+                            ], 409));
+                        }
+                        $match = $phoneMatches->first();
+                        $existingUser = User::query()->whereKey($match->user_id)->lockForUpdate()->first();
+                        $existingCustomer = $existingUser
+                            ? Customer::query()->whereKey($match->id)->where('user_id', $existingUser->id)
+                                ->whereHas('user', fn ($user) => $user->whereNull('deleted_at'))
+                                ->whereExists(fn ($context) => $context->selectRaw('1')->from('user_contexts')
+                                    ->whereColumn('user_contexts.context_id', 'customers.id')
+                                    ->whereColumn('user_contexts.user_id', 'customers.user_id')
+                                    ->where('user_contexts.context_type', 'customer')->where('user_contexts.is_active', true)
+                                    ->whereNull('user_contexts.deleted_at'))
+                                ->lockForUpdate()->first()
+                            : null;
+                        abort_unless($existingCustomer, 409, 'The matching customer account is no longer available. Search for the customer or ask a manager to review the inquiry.');
+                        return [$this->linkExistingInquiryCustomer($locked, $existingCustomer, $companyId, (string) $request->user()->id), false, null, true];
+                    }
+                }
+                abort_if($request->boolean('link_existing_account'), 409, 'The matching customer account is no longer available. Search for the customer or ask a manager to review the inquiry.');
 
                 [$firstName, $lastName] = array_pad(preg_split('/\s+/', $name, 2) ?: [], 2, null);
                 $user = User::create([
@@ -538,10 +605,26 @@ class InquiryController extends Controller
                 $payload['customer_link'] = $event;
                 $payload['customer_link_history'][] = $event;
                 $locked->update(['customer_id' => $customerId, 'payload' => $payload, 'updated_user_id' => $request->user()->id]);
-                return [$locked->fresh(), true, (string) $user->id];
+                return [$locked->fresh(), true, (string) $user->id, false];
             });
         } catch (QueryException $exception) {
             if ((string) $inquiry->email !== '' && User::withTrashed()->whereRaw('LOWER(email) = ?', [Str::lower(trim((string) $inquiry->email))])->exists()) {
+                $isCustomerAccount = Customer::query()->join('users', 'users.id', '=', 'customers.user_id')
+                    ->whereNull('customers.deleted_at')->whereNull('users.deleted_at')
+                    ->whereRaw('LOWER(users.email) = ?', [Str::lower(trim((string) $inquiry->email))])
+                    ->whereExists(fn ($context) => $context->selectRaw('1')->from('user_contexts')
+                        ->whereColumn('user_contexts.context_id', 'customers.id')
+                        ->whereColumn('user_contexts.user_id', 'customers.user_id')
+                        ->where('user_contexts.context_type', 'customer')->where('user_contexts.is_active', true)
+                        ->whereNull('user_contexts.deleted_at'))->exists();
+                if ($isCustomerAccount) {
+                    throw new HttpResponseException(response()->json([
+                        'status' => 'error',
+                        'code' => 'customer_exists_elsewhere',
+                        'match_type' => 'email',
+                        'message' => 'A customer account already uses this email. Review the inquiry and confirm if you want to link that account to this business.',
+                    ], 409));
+                }
                 abort(409, 'An account already uses this email. Search for its customer record or ask a manager to review it.');
             }
             throw $exception;
@@ -565,6 +648,7 @@ class InquiryController extends Controller
             'inquiry' => new InquiryResource($inquiry->fresh()), 'created' => $created,
             'portal_access' => $created ? 'inactive_pending_verification' : null,
             'verification_email_status' => $verificationEmailStatus,
+            'linked_existing' => $linkedExisting,
         ]], $created ? 201 : 200);
     }
 
@@ -834,6 +918,32 @@ class InquiryController extends Controller
     private function assertInquiryCompany(Inquiry $inquiry): void
     {
         abort_unless($inquiry->company_id && $inquiry->company_id === app(SingleCompanyScope::class)->activeDefaultCompany()?->id, 404);
+    }
+
+    private function linkExistingInquiryCustomer(Inquiry $inquiry, Customer $customer, string $companyId, string $actorId): Inquiry
+    {
+        $hasBusinessLink = DB::table('customer_relationship_owner_assignments')->where('customer_id', $customer->id)
+            ->where('company_id', $companyId)->exists();
+        if (! $hasBusinessLink) {
+            DB::table('customer_relationship_owner_assignments')->insert([
+                'id' => (string) Str::uuid(), 'customer_id' => $customer->id, 'company_id' => $companyId,
+                'owner_sales_profile_id' => null, 'assigned_by_user_id' => $actorId,
+                'reason' => 'Linked from an inquiry; assign a customer owner after review.',
+                'effective_from' => now(), 'created_at' => now(), 'updated_at' => now(),
+            ]);
+        }
+
+        $payload = $inquiry->payload ?? [];
+        $event = [
+            'from_customer_id' => null, 'to_customer_id' => (string) $customer->id,
+            'actor_user_id' => $actorId, 'changed_at' => now()->toIso8601String(),
+            'action' => 'linked_existing_customer_account',
+        ];
+        $payload['customer_link'] = $event;
+        $payload['customer_link_history'][] = $event;
+        $inquiry->update(['customer_id' => $customer->id, 'payload' => $payload, 'updated_user_id' => $actorId]);
+
+        return $inquiry->fresh();
     }
 
     private function assertCustomerInCompany(Customer $customer, string $companyId): void

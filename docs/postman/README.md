@@ -1055,13 +1055,30 @@ Open package assignment response shape:
       "name": "Day Package - 8 Hours / 80 KM",
       "code": "DAY_8H_80KM",
       "included_km_per_day": 80,
-      "included_km_per_package": 80,
+      "included_km_per_package": null,
+      "included_km_total": 160,
       "included_hours": 8,
+      "included_minutes": 480,
+      "booked_days": 2,
+      "booked_hours": 48,
+      "booked_minutes": 2880,
+      "charges_extra_km": true,
+      "charges_extra_hours": true,
       "rate_type": "day"
+    },
+    "booking_allowance": {
+      "included_km_total": 160,
+      "booked_days": 2,
+      "booked_hours": 48,
+      "booked_minutes": 2880,
+      "included_hours": 8,
+      "included_minutes": 480
     }
   }
 }
 ```
+
+`booking_allowance` is returned for all assignment payloads, including bookings without a package. `included_km_total` is the total kilometre allowance for the booked item. Daily kilometre limits are multiplied by the booked days; package-wide limits remain capped at the package limit. `included_hours` and `included_minutes` are the package's included time allowance; `booked_days`, `booked_hours`, and `booked_minutes` report the booked duration. The driver app should show these values on the open-package trip screen. They are part of the assignment payload and are retained by the app's local active-hire cache for crash recovery.
 
 List endpoints return:
 
