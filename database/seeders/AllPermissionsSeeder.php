@@ -614,38 +614,25 @@ class AllPermissionsSeeder extends Seeder
     private function seedBaselineRoles(string $guard, array $allPermissions, array $permissionModels): void
     {
         $rolePermissions = [
-            'staff-operations' => array_values(array_filter(array_diff(array_unique(array_merge(
-                $this->matchingPermissions(
-                    $allPermissions,
-                    '/^(bookings|booking-[a-z-]+|vehicles|vehicle-[a-z-]+|drivers|driver-[a-z-]+|driving-licen[cs]es|driving-licen[cs]e-types)\./'
-                ),
+            'staff-operations' => array_values(array_unique(array_merge(
+                $this->permissionsForResources([
+                    'bookings', 'booking-addons', 'booking-channels', 'booking-form-tabs', 'booking-items', 'booking-statuses',
+                    'vehicles', 'vehicle-addons', 'vehicle-availability', 'vehicle-categories', 'vehicle-classes',
+                    'vehicle-fuel-types', 'vehicle-grades', 'vehicle-groups', 'vehicle-images', 'vehicle-insurance-providers',
+                    'vehicle-insurance-types', 'vehicle-insurances', 'vehicle-maintenance', 'vehicle-maintenance-records',
+                    'vehicle-maintenance-schedules', 'vehicle-makes', 'vehicle-models', 'vehicle-owner-types',
+                    'vehicle-service-types', 'vehicle-transmissions', 'drivers', 'driving-licence-types', 'driving-licences',
+                    'driving-license-types', 'driving-licenses', 'driver-assignments', 'driver-logs', 'logsheets',
+                    'maintenance-records', 'maintenance-schedules',
+                ], ['view', 'create', 'edit', 'update', 'manage']),
                 [
-                    'view_all_bookings',
-                    'create_bookings',
-                    'customers.view',
-                    'customers.create',
-                    'customers.edit',
-                    'service-types.view',
-                    'service-packages.view',
-                    'addons.view',
+                    'bookings.assign', 'bookings.approve', 'bookings.complete', 'bookings.dispatch',
+                    'bookings.process_return', 'bookings.qc_inspect', 'bookings.complete_repairs',
+                    'view_all_bookings', 'create_bookings', 'create_bookings_for_others', 'approve_bookings',
+                    'dashboard.view', 'customers.view', 'customers.create', 'customers.edit',
+                    'service-types.view', 'service-packages.view', 'addons.view',
                 ]
-            )), [
-                // This baseline is assigned to ordinary active Staff accounts.
-                // Booking ownership, approvals and pricing overrides stay with managers.
-                'bookings.assign',
-                'bookings.approve',
-                'bookings.price_override',
-                'bookings.delete',
-                'bookings.export',
-                'bookings.tracking_export',
-                'bookings.tracking_replay',
-                'bookings.tracking_estimate',
-                'approve_bookings',
-                'create_bookings_for_others',
-            ])), fn (string $permission): bool => preg_match(
-                '/^(vehicles|vehicle-[a-z-]+|drivers|driver-[a-z-]+|driving-licen[cs]es|driving-licen[cs]e-types)\.(?!view$)/',
-                $permission
-            ) !== 1),
+            ))),
             'manager' => $this->permissionsForTemplate('manager', $allPermissions),
             'dispatcher' => $this->permissionsForTemplate('dispatcher', $allPermissions),
             'customer-support' => $this->permissionsForTemplate('customer-support', $allPermissions),
@@ -1288,17 +1275,6 @@ class AllPermissionsSeeder extends Seeder
             $role = Role::firstOrCreate(['name' => $roleName, 'guard_name' => $guard]);
             $this->addPermissionsToRole($role, $permissions, $permissionModels);
 
-            if ($roleName === 'staff-operations') {
-                $fleetWritePermissions = array_filter($allPermissions, fn (string $permission): bool => preg_match(
-                    '/^(vehicles|vehicle-[a-z-]+|drivers|driver-[a-z-]+|driving-licen[cs]es|driving-licen[cs]e-types)\.(?!view$)/',
-                    $permission
-                ) === 1);
-                $this->revokePermissionsFromRole($role, array_merge($fleetWritePermissions, [
-                    'bookings.assign', 'bookings.approve', 'bookings.price_override', 'bookings.delete',
-                    'bookings.export', 'bookings.tracking_export', 'bookings.tracking_replay',
-                    'bookings.tracking_estimate', 'approve_bookings', 'create_bookings_for_others',
-                ]), $permissionModels);
-            }
         }
     }
 

@@ -380,10 +380,12 @@ class UserContextService
                 if (is_numeric($roleSpec)) {
                     $roleModel = Role::find((int) $roleSpec);
                 } else {
-                    $roleModel = Role::where('name', (string) $roleSpec)->first();
+                    $roleModel = Role::where('name', (string) $roleSpec)
+                        ->where('guard_name', $user->guardName())
+                        ->first();
                 }
 
-                if (!$roleModel) {
+                if (!$roleModel || !$user->getGuardNames()->contains($roleModel->guard_name)) {
                     continue;
                 }
 
@@ -414,7 +416,7 @@ class UserContextService
                 }
 
                 if ($userContext->is_active && !$globalRoleExists && !$user->hasRole($roleModel->name)) {
-                    $user->assignRole($roleModel->name);
+                    $user->assignRole($roleModel);
                 }
             }
             if ($added) {
