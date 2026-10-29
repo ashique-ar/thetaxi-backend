@@ -199,11 +199,10 @@ class InquiryController extends Controller
         abort_unless(mb_strlen($data['reason']) >= 8, 422, 'Explain why this inquiry belongs to the selected business.');
         $scoped = DB::transaction(function () use ($inquiry, $data, $companyId, $request): Inquiry {
             $locked = Inquiry::query()->whereKey($inquiry->id)->lockForUpdate()->firstOrFail();
-            $existingEvent = DB::table('inquiry_assignment_events')->where('idempotency_key', $data['idempotency_key'])->first();
+            $existingEvent = DB::table('inquiry_company_scope_events')->where('idempotency_key', $data['idempotency_key'])->first();
             if ($existingEvent) {
                 abort_unless((string) $existingEvent->inquiry_id === (string) $locked->id
                     && (string) $existingEvent->company_id === $companyId
-                    && $existingEvent->event_type === 'company_scoped'
                     && $existingEvent->reason === $data['reason'], 409, 'This review key was already used for different details.');
                 abort_unless((string) $locked->company_id === $companyId, 409, 'This inquiry was moved again; refresh the list.');
                 return $locked;
@@ -228,13 +227,20 @@ class InquiryController extends Controller
                 'status' => $locked->status ?: 'open',
                 'updated_user_id' => $request->user()->id,
             ]);
-            DB::table('inquiry_assignment_events')->insert([
+            DB::table('inquiry_company_scope_events')->insert([
                 'id' => (string) Str::uuid(), 'company_id' => $companyId, 'inquiry_id' => $locked->id,
-                'from_user_id' => $fromUserId, 'to_user_id' => $toUserId,
-                'actor_user_id' => $request->user()->id, 'event_type' => 'company_scoped',
-                'reason' => $data['reason'].($fromUserId && ! $assigneeIsInCompany ? ' Previous assignee was not active in this business; inquiry returned to the unassigned queue.' : ''),
+                'actor_user_id' => $request->user()->id, 'reason' => $data['reason'],
                 'idempotency_key' => $data['idempotency_key'], 'occurred_at' => now(), 'created_at' => now(), 'updated_at' => now(),
             ]);
+            if ($fromUserId && ! $assigneeIsInCompany) {
+                DB::table('inquiry_assignment_events')->insert([
+                    'id' => (string) Str::uuid(), 'company_id' => $companyId, 'inquiry_id' => $locked->id,
+                    'from_user_id' => $fromUserId, 'to_user_id' => null, 'actor_user_id' => $request->user()->id,
+                    'event_type' => 'unassigned',
+                    'reason' => 'Previous employee was not active in the selected business; request returned to its unassigned list.',
+                    'idempotency_key' => $data['idempotency_key'], 'occurred_at' => now(), 'created_at' => now(), 'updated_at' => now(),
+                ]);
+            }
 
             return $locked->fresh();
         });

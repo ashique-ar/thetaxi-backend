@@ -42,6 +42,7 @@ class StoreCorporateBookingRequest extends FormRequest
     public function rules(): array
     {
         return [
+            'idempotency_key' => ['required', 'uuid'],
             'booking_party_mode' => ['required', 'string', 'in:employee,general'],
             'payment_collection_method' => ['required', 'string', 'in:monthly_invoice,cash_to_driver,online,advance_then_balance,deposit_then_balance,pay_at_end,account_credit,bank_transfer,card,complimentary'],
             'service_type_id' => ['nullable', 'uuid'],

@@ -17,8 +17,10 @@ use App\Services\BookingObservabilityService;
 use Carbon\Carbon;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
+use Illuminate\Database\QueryException;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Storage;
+use Illuminate\Support\Str;
 use Symfony\Component\HttpFoundation\StreamedResponse;
 
 class CorporateBookingController extends Controller
@@ -86,15 +88,18 @@ class CorporateBookingController extends Controller
             ], 403);
         }
 
-        $booking = $partyMode === 'general'
-            ? $this->bookingService->createGeneralBooking($employee, $request->validated())
-            : $this->bookingService->createBooking($employee, $request->validated());
+        $submission = $this->createIdempotently($request, function (array $data) use ($partyMode, $employee): Booking {
+            return $partyMode === 'general'
+                ? $this->bookingService->createGeneralBooking($employee, $data)
+                : $this->bookingService->createBooking($employee, $data);
+        });
+        $booking = $submission['booking'];
 
         return response()->json([
             'status'  => 'success',
-            'message' => 'Booking created successfully',
+            'message' => $submission['replayed'] ? 'This booking was already created.' : 'Booking created successfully',
             'data'    => $this->bookingService->getCorporateBookingDetails($booking, $this->canViewPayments($request), $this->bookingScope($request)),
-        ], 201);
+        ], $submission['replayed'] ? 200 : 201);
     }
 
     public function storeForEmployee(StoreCorporateBookingRequest $request): JsonResponse
@@ -109,17 +114,64 @@ class CorporateBookingController extends Controller
             ->where('id', $request->employee_id)
             ->firstOrFail();
 
-        $booking = $this->bookingService->createBookingForEmployee(
+        $submission = $this->createIdempotently($request, fn (array $data): Booking => $this->bookingService->createBookingForEmployee(
             $coordinator,
             $targetEmployee,
-            $request->validated()
-        );
+            $data
+        ));
+        $booking = $submission['booking'];
 
         return response()->json([
             'status'  => 'success',
-            'message' => 'Booking created for employee successfully',
+            'message' => $submission['replayed'] ? 'This booking was already created.' : 'Booking created for employee successfully',
             'data'    => $this->bookingService->getCorporateBookingDetails($booking, $this->canViewPayments($request), $this->bookingScope($request)),
-        ], 201);
+        ], $submission['replayed'] ? 200 : 201);
+    }
+
+    private function createIdempotently(StoreCorporateBookingRequest $request, callable $create): array
+    {
+        $payload = $request->validated();
+        $key = (string) $payload['idempotency_key'];
+        unset($payload['idempotency_key']);
+        $corporateId = (string) $request->corporate_id;
+        $actorUserId = (string) $request->user()->id;
+        $requestHash = hash('sha256', json_encode($payload, JSON_THROW_ON_ERROR | JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE));
+
+        $existing = fn () => DB::table('corporate_booking_submission_idempotencies')
+            ->where('corporate_id', $corporateId)->where('actor_user_id', $actorUserId)
+            ->where('idempotency_key', $key)->first();
+        $replay = function (object $record) use ($requestHash, $corporateId): array {
+            abort_unless(hash_equals((string) $record->request_hash, $requestHash), 409, 'This booking submission key was already used for different trip details.');
+            return [
+                'booking' => Booking::query()->where('corporate_account_id', $corporateId)->findOrFail($record->booking_id),
+                'replayed' => true,
+            ];
+        };
+
+        try {
+            return DB::transaction(function () use ($existing, $replay, $create, $payload, $corporateId, $actorUserId, $key, $requestHash): array {
+                $record = $existing();
+                if ($record) return $replay($record);
+
+                $booking = $create($payload);
+                DB::table('corporate_booking_submission_idempotencies')->insert([
+                    'id' => (string) Str::uuid(),
+                    'corporate_id' => $corporateId,
+                    'actor_user_id' => $actorUserId,
+                    'idempotency_key' => $key,
+                    'request_hash' => $requestHash,
+                    'booking_id' => $booking->id,
+                    'created_at' => now(),
+                    'updated_at' => now(),
+                ]);
+
+                return ['booking' => $booking, 'replayed' => false];
+            }, 3);
+        } catch (QueryException $exception) {
+            $record = $existing();
+            if (! $record) throw $exception;
+            return $replay($record);
+        }
     }
 
     public function bookingEmployeeOptions(Request $request): JsonResponse

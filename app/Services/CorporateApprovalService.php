@@ -5,15 +5,16 @@ namespace App\Services;
 use App\Models\AuditLog;
 use App\Models\Booking\Booking;
 use App\Models\Booking\BookingApproval;
-use App\Notifications\BookingRejectedNotification;
-use App\Notifications\BookingLifecycleNotification;
 use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\DB;
-use Illuminate\Support\Facades\Notification;
 use Illuminate\Support\Facades\Log;
 
 class CorporateApprovalService
 {
+    public function __construct(private readonly CorporateBookingNotificationService $corporateBookingNotifications)
+    {
+    }
+
     // ─── Approval Methods ─────────────────────────────────────────────
 
     /**
@@ -62,7 +63,7 @@ class CorporateApprovalService
                 'approved_at' => now()->toISOString(),
             ]);
 
-            $this->notifyCustomerOfApproval($booking);
+            $this->corporateBookingNotifications->notifyPortalParticipants($booking, 'approved');
 
             return $booking->fresh();
         });
@@ -112,8 +113,7 @@ class CorporateApprovalService
                 'rejected_at' => now()->toISOString(),
             ]);
 
-            // Send notification to the employee who created the booking
-            Notification::send($booking->employee, new BookingRejectedNotification($booking, $reason));
+            $this->corporateBookingNotifications->notifyPortalParticipants($booking, 'rejected', $reason);
 
             return $booking->fresh();
         });
@@ -133,21 +133,4 @@ class CorporateApprovalService
         ]);
     }
 
-    private function notifyCustomerOfApproval(Booking $booking): void
-    {
-        try {
-            $booking->loadMissing('customer.user');
-            $booking->customer?->user?->notify(new BookingLifecycleNotification(
-                $booking,
-                'Booking approved',
-                'Your corporate booking request has been approved and is ready for scheduling.',
-                'booking_approved',
-            ));
-        } catch (\Throwable $exception) {
-            Log::warning('Corporate approval customer notification could not be queued', [
-                'booking_id' => $booking->id,
-                'error' => $exception->getMessage(),
-            ]);
-        }
-    }
 }

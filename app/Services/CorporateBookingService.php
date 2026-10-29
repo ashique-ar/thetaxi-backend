@@ -11,7 +11,6 @@ use App\Models\Corporate\CorporateEmployee;
 use App\Models\Corporate\CorporateEmployeeLocation;
 use App\Models\Customer;
 use App\Models\Service\ServicePackage;
-use App\Notifications\BookingLifecycleNotification;
 use Illuminate\Contracts\Pagination\LengthAwarePaginator;
 use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\DB;
@@ -84,9 +83,7 @@ class CorporateBookingService
                 'credit_limit_approval_required' => $creditApprovalRequired,
             ]);
 
-            if ($needsApproval) {
-                $this->notifyApprovalRequested($booking, $employee);
-            }
+            $this->notifyPortalBookingState($booking, $employee, $needsApproval ? 'approval_requested' : 'received');
 
             $this->corporateBookingNotifications->notifyInternalTeam($booking);
 
@@ -142,9 +139,7 @@ class CorporateBookingService
                 'passenger' => data_get($data, 'corporate_contact.name'),
             ]);
 
-            if ($needsApproval) {
-                $this->notifyApprovalRequested($booking, $requester);
-            }
+            $this->notifyPortalBookingState($booking, $requester, $needsApproval ? 'approval_requested' : 'received');
 
             $this->corporateBookingNotifications->notifyInternalTeam($booking);
 
@@ -216,8 +211,9 @@ class CorporateBookingService
                 'coordinator_exempt' => $corporate->exempt_coordinator_from_approval,
             ]);
 
-            if ($needsApproval) {
-                $this->notifyApprovalRequested($booking, $targetEmployee);
+            $this->notifyPortalBookingState($booking, $targetEmployee, $needsApproval ? 'approval_requested' : 'received');
+            if ((string) $coordinator->user_id !== (string) $targetEmployee->user_id) {
+                $this->notifyPortalBookingState($booking, $coordinator, 'submitted_for_employee');
             }
 
             $this->corporateBookingNotifications->notifyInternalTeam($booking);
@@ -503,23 +499,10 @@ class CorporateBookingService
 
     // ─── Booking Queries & Filters ────────────────────────────────────
 
-    private function notifyApprovalRequested(Booking $booking, CorporateEmployee $employee): void
+    private function notifyPortalBookingState(Booking $booking, CorporateEmployee $employee, string $state): void
     {
-        try {
-            $employee->loadMissing('user');
-            $employee->user?->notify(new BookingLifecycleNotification(
-                $booking,
-                'Approval requested',
-                'Your corporate booking request is awaiting approval.',
-                'booking_approval_requested',
-            ));
-        } catch (\Throwable $exception) {
-            Log::warning('Corporate approval request notification could not be queued', [
-                'booking_id' => $booking->id,
-                'employee_id' => $employee->id,
-                'error' => $exception->getMessage(),
-            ]);
-        }
+        $employee->loadMissing('user');
+        $this->corporateBookingNotifications->notifyPortalUser($employee->user, $booking, $state);
     }
 
     /**

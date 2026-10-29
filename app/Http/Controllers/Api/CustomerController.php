@@ -984,6 +984,14 @@ class CustomerController extends Controller
                 ->where('inquiry.customer_id', $customer->id)->whereNull('inquiry.deleted_at')
                 ->selectRaw("CONCAT('inquiry-assignment:', assignment.id) as id, 'inquiry_assignment' as event_type, 'Request employee changed' as title, assignment.event_type as status, assignment.occurred_at as occurred_at, inquiry.inquiry_number as reference, {$inquiryBookingField} as booking_id, CONCAT(COALESCE(NULLIF(CONCAT_WS(' ', from_user.first_name, from_user.last_name), ''), 'Unassigned'), ' → ', COALESCE(NULLIF(CONCAT_WS(' ', to_user.first_name, to_user.last_name), ''), 'Unassigned'), CASE WHEN COALESCE(assignment.reason, '') = '' THEN '' ELSE CONCAT(' · ', assignment.reason) END, CASE WHEN assignment_actor.id IS NULL THEN '' ELSE CONCAT(' · by ', CONCAT_WS(' ', assignment_actor.first_name, assignment_actor.last_name)) END) as detail");
             $events->unionAll($inquiryAssignmentEvents);
+
+            $inquiryScopeEvents = DB::table('inquiry_company_scope_events as scope')
+                ->join('inquiries as inquiry', 'inquiry.id', '=', 'scope.inquiry_id')
+                ->leftJoin('users as scope_actor', 'scope_actor.id', '=', 'scope.actor_user_id')
+                ->where('scope.company_id', $companyId)->where('inquiry.company_id', $companyId)
+                ->where('inquiry.customer_id', $customer->id)->whereNull('inquiry.deleted_at')
+                ->selectRaw("CONCAT('inquiry-scope:', scope.id) as id, 'inquiry_scope' as event_type, 'Request added to this business' as title, NULL as status, scope.occurred_at as occurred_at, inquiry.inquiry_number as reference, {$inquiryBookingField} as booking_id, CONCAT(scope.reason, CASE WHEN scope_actor.id IS NULL THEN '' ELSE CONCAT(' · by ', CONCAT_WS(' ', scope_actor.first_name, scope_actor.last_name)) END) as detail");
+            $events->unionAll($inquiryScopeEvents);
         }
 
         if ($request->user()->can('communication.view')) {

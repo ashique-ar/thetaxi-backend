@@ -109,7 +109,7 @@
                         || !empty($verifiedCheckoutCustomer) || old('email') || old('first_name');
                 @endphp
                 @if ($customerLookupEnabled)
-                    <div id="checkout-customer-choice" class="checkout-form-wrapper checkout-customer-choice mb-4" aria-labelledby="checkout-customer-choice-title">
+                    <div id="checkout-customer-choice" class="checkout-form-wrapper checkout-customer-choice mb-3" aria-labelledby="checkout-customer-choice-title">
                         <div class="checkout-form-title">
                             <div>
                                 <h4 id="checkout-customer-choice-title">Who is booking?</h4>
@@ -129,7 +129,7 @@
                             </label>
                         </div>
                     </div>
-                    <div id="returning-customer-panel" class="checkout-form-wrapper checkout-returning-panel mb-4" aria-labelledby="returning-customer-title" @if ($verifiedCheckoutCustomer || ($canBookAsNewCustomer && !$showCheckoutDetails)) hidden @endif>
+                    <div id="returning-customer-panel" class="checkout-form-wrapper checkout-returning-panel mb-3" aria-labelledby="returning-customer-title" @if ($verifiedCheckoutCustomer || ($canBookAsNewCustomer && !$showCheckoutDetails)) hidden @endif>
                         <div class="checkout-form-title">
                             <h4 id="returning-customer-title">Find your saved details</h4>
                             <p class="small text-muted mb-0">Enter the email or mobile number used for an earlier booking. We’ll send a code before showing your details. @if (!$canBookAsNewCustomer) New customers need to sign in to book. @endif</p>
@@ -172,7 +172,7 @@
                     </div>
                 @endif
                 @if ($canBookAsNewCustomer || Auth::check() || $customerLookupEnabled)
-                <div class="row g-lg-4 gy-5" id="checkout-details-layout" @if (!$showCheckoutDetails || ($customerLookupEnabled && !$verifiedCheckoutCustomer && !old('first_name') && !old('email'))) hidden @endif>
+                <div class="row g-lg-4 gy-4" id="checkout-details-layout" @if (!$showCheckoutDetails || ($customerLookupEnabled && !$verifiedCheckoutCustomer && !old('first_name') && !old('email'))) hidden @endif>
                         <div class="col-lg-7">
                             <form id="checkout-form" method="POST" action="{{ route('checkout.process') }}">
                                 @csrf
@@ -1038,7 +1038,7 @@
         }
 
         body[class] .checkout-page #checkout-details-layout {
-            --bs-gutter-y: 24px;
+            --bs-gutter-y: 20px;
         }
 
         .checkout-customer-choice .checkout-form-title {
@@ -1047,7 +1047,7 @@
 
         .checkout-customer-choice .checkout-customer-options {
             margin-top: 0 !important;
-            gap: 16px;
+            gap: 12px;
         }
 
         .checkout-returning-panel fieldset {
