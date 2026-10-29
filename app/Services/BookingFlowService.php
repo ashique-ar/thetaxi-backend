@@ -2062,7 +2062,8 @@ class BookingFlowService
             ->with('booking.customer')
             ->select('booking_items.*')
             ->get()
-            ->map(fn($item) => $item->booking);
+            ->map(fn($item) => $item->booking)
+            ->filter();
 
         foreach ($existingBookings as $booking) {
             $conflicts[] = [
@@ -2141,7 +2142,8 @@ class BookingFlowService
             ->with('booking.customer', 'booking.vehicle')
             ->select('booking_items.*')
             ->get()
-            ->map(fn($item) => $item->booking);
+            ->map(fn($item) => $item->booking)
+            ->filter();
 
         foreach ($existingBookings as $booking) {
             $conflicts[] = [
