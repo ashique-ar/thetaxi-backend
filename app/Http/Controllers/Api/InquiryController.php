@@ -485,7 +485,7 @@ class InquiryController extends Controller
         $phoneCallingCode = \App\Services\CompanyCustomerScope::phoneCallingCode((string) $companyId);
 
         try {
-            [$inquiry, $created, $createdUserId, $linkedExisting] = DB::transaction(function () use ($request, $inquiry, $companyId, $contexts): array {
+            [$inquiry, $created, $createdUserId, $linkedExisting] = DB::transaction(function () use ($request, $inquiry, $companyId, $phoneCallingCode, $contexts): array {
                 abort_unless(app(SingleCompanyScope::class)->activeDefaultCompany(true)?->id === $companyId, 409, 'Business changed; retry customer creation.');
                 $locked = Inquiry::query()->where('company_id', $companyId)->lockForUpdate()->findOrFail($inquiry->id);
                 if ($locked->customer_id) {
