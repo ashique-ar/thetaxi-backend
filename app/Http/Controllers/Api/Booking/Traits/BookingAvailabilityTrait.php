@@ -548,6 +548,8 @@ trait BookingAvailabilityTrait
                 'data' => $result,
                 'message' => 'Assignments approved successfully'
             ]);
+        } catch (\Symfony\Component\HttpKernel\Exception\HttpExceptionInterface $e) {
+            throw $e;
         } catch (\Exception $e) {
             Log::error('Error approving assignments: ' . $e->getMessage());
             return response()->json([

@@ -396,8 +396,9 @@ class BookingLifecycleService
             ]);
 
             // Create assignments
+            $requiresApproval = false;
             if (isset($assignmentData['vehicle_id'])) {
-                $this->assignmentService->createVehicleAssignment([
+                $vehicleAssignment = $this->assignmentService->createVehicleAssignment([
                     'booking_id' => $booking->id,
                     'vehicle_id' => $assignmentData['vehicle_id'],
                     'assigned_from' => $this->bookingDateTime($booking->from_date, $booking->from_time),
@@ -405,21 +406,26 @@ class BookingLifecycleService
                     'assignment_type' => $assignmentData['assignment_type'] ?? 'primary',
                     'requires_approval' => $assignmentData['requires_approval'] ?? false,
                 ]);
+                $requiresApproval = $requiresApproval || (bool) $vehicleAssignment->requires_approval;
             }
 
             if (isset($assignmentData['driver_id'])) {
-                $this->assignmentService->createDriverAssignment([
+                $driverAssignment = $this->assignmentService->createDriverAssignment([
                     'booking_id' => $booking->id,
                     'driver_id' => $assignmentData['driver_id'],
                     'assigned_from' => $this->bookingDateTime($booking->from_date, $booking->from_time),
                     'assigned_to' => $this->bookingDateTime($booking->to_date, $booking->to_time),
                     'assignment_type' => $assignmentData['assignment_type'] ?? 'primary',
                 ]);
+                $requiresApproval = $requiresApproval || (bool) $driverAssignment->requires_approval;
             }
 
-            $booking->transitionToStatus(BookingLifecycleStatus::ALLOCATION_ASSIGNED, Auth::id(), $assignmentData);
+            $lifecycleStatus = $requiresApproval
+                ? BookingLifecycleStatus::ALLOCATION_CONFLICTS
+                : BookingLifecycleStatus::ALLOCATION_ASSIGNED;
+            $booking->transitionToStatus($lifecycleStatus, Auth::id(), $assignmentData);
 
-            $this->logLifecycleTransition($booking, BookingLifecycleStatus::ALLOCATION_PENDING, BookingLifecycleStatus::ALLOCATION_ASSIGNED, $assignmentData);
+            $this->logLifecycleTransition($booking, BookingLifecycleStatus::ALLOCATION_PENDING, $lifecycleStatus, $assignmentData);
 
             return $booking;
         });
