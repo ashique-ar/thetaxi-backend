@@ -12,6 +12,7 @@ use App\Models\IntegrationWebhookEvent;
 use App\Models\Inquiry;
 use App\Models\Customer;
 use App\Models\User;
+use App\Support\PhoneNumberMatch;
 use App\Services\InquiryAssignmentService;
 use App\Services\InquiryAssignmentNotificationService;
 use App\Services\BookingFlowService;
@@ -380,6 +381,19 @@ class RespondIoIntegrationController extends Controller
 
         $contact = $response->json();
         abort_unless(is_array($contact), 502, 'Respond.io returned an invalid contact response.');
+        $contactEmail = strtolower(trim((string) ($contact['email'] ?? '')));
+        $contactEmail = filter_var($contactEmail, FILTER_VALIDATE_EMAIL) ? $contactEmail : '';
+        $contactPhone = PhoneNumberMatch::normalized((string) ($contact['phone'] ?? ''));
+        $customerMatches = DB::table('customers')->join('users', 'users.id', '=', 'customers.user_id')
+            ->whereNull('customers.deleted_at')->whereNull('users.deleted_at')
+            ->where(function ($identity) use ($contactEmail, $contactPhone): void {
+                if ($contactEmail !== '') $identity->orWhereRaw('LOWER(TRIM(users.email)) = ?', [$contactEmail]);
+                if ($contactPhone !== '') $identity->orWhereRaw(PhoneNumberMatch::sqlExpression('users.phone').' = ?', [$contactPhone]);
+            });
+        \App\Services\CompanyCustomerScope::constrain($customerMatches, 'customers', (string) $connection->company_id);
+        $customerMatches = $contactEmail === '' && $contactPhone === '' ? collect()
+            : $customerMatches->orderBy('customers.id')->limit(2)
+                ->get(['customers.id', 'customers.code', 'users.first_name', 'users.last_name', 'users.email', 'users.phone']);
         $providerAssignee = is_array($contact['assignee'] ?? null) ? $contact['assignee'] : null;
         $providerAssigneeEmail = strtolower(trim((string) ($providerAssignee['email'] ?? '')));
         $providerAssigneeId = $this->respondIoIdentifier($providerAssignee['id'] ?? null);
@@ -404,6 +418,16 @@ class RespondIoIntegrationController extends Controller
             'lastName' => $contact['lastName'] ?? '',
             'email' => $contact['email'] ?? null,
             'phone' => $contact['phone'] ?? null,
+            'matched_customer' => $customerMatches->count() === 1 ? [
+                'id' => (string) $customerMatches[0]->id,
+                'name' => trim($customerMatches[0]->first_name.' '.$customerMatches[0]->last_name),
+                'code' => $customerMatches[0]->code,
+                'matched_by' => array_values(array_filter([
+                    $contactEmail !== '' && strtolower(trim((string) $customerMatches[0]->email)) === $contactEmail ? 'email' : null,
+                    $contactPhone !== '' && PhoneNumberMatch::normalized((string) $customerMatches[0]->phone) === $contactPhone ? 'phone' : null,
+                ])),
+            ] : null,
+            'customer_match_ambiguous' => $customerMatches->count() > 1,
             'assignee' => $providerAssignee ? [
                 'id' => $providerAssigneeId,
                 'firstName' => $providerAssignee['firstName'] ?? '',
