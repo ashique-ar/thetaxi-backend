@@ -1005,6 +1005,15 @@
             margin-bottom: 20px;
         }
 
+        .checkout-customer-choice .checkout-form-title {
+            margin-bottom: 16px;
+        }
+
+        .checkout-customer-choice .checkout-customer-options {
+            margin-top: 0 !important;
+            gap: 16px;
+        }
+
         .checkout-returning-panel fieldset {
             margin-bottom: 22px !important;
         }
@@ -1031,7 +1040,7 @@
             .checkout-page { padding: 32px 0 52px; }
             .checkout-form-wrapper { padding: 20px; }
             .checkout-customer-options,
-            .checkout-channel-options { grid-template-columns: minmax(0, 1fr); gap: 10px; }
+            .checkout-channel-options { grid-template-columns: minmax(0, 1fr); gap: 12px; }
             .checkout-customer-option { min-height: auto; padding: 16px; }
             .checkout-returning-panel #customer-email-code-panel .d-flex { flex-direction: column; }
         }

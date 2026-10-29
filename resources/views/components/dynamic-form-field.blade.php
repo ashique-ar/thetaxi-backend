@@ -446,7 +446,7 @@
         <div class="booking-field">
             <label class="input-label">{{ $label }}</label>
             <div class="single-search-box">
-                <div class="custom-select-dropdown">
+                <div class="custom-select-dropdown booking-number-control">
                     <input type="number" name="{{ $submitAs }}" id="{{ $elementId }}"
                        placeholder="{{ $placeholder }}"
                        value="{{ $fieldValue }}"

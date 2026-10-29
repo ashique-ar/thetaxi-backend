@@ -118,13 +118,16 @@ class CheckoutController extends Controller
                 if ($channel === 'email') {
                     Notification::route('mail', $value)->notify(new \App\Notifications\CheckoutEmailVerificationCodeNotification($code));
                 } else {
-                    $sms->queueSingleMessage([
+                    $smsMessage = $sms->queueSingleMessage([
                         'recipient' => $value,
                         'message' => "Your booking details code is {$code}. It expires in 10 minutes.",
                         'source' => 'manual',
                         'context_type' => 'customer_verification',
                         'event_key' => 'checkout_customer_verification_code',
                     ]);
+                    if ($smsMessage->status === 'failed') {
+                        throw new \RuntimeException('The SMS provider could not send the verification code.');
+                    }
                 }
             } catch (\Throwable $exception) {
                 Cache::forget($this->checkoutCustomerCodeKey($request, $channel, $value));

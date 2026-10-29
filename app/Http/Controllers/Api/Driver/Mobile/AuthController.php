@@ -96,10 +96,13 @@ class AuthController extends Controller
             $message .= "\n{$appHash}";
         }
         try {
-            $sms->queueSingleMessage([
+            $smsMessage = $sms->queueSingleMessage([
                 'recipient' => $mobile, 'message' => $message,
                 'source' => 'manual', 'context_type' => 'driver_authentication', 'event_key' => 'driver_authentication_otp',
             ]);
+            if ($smsMessage->status === 'failed') {
+                throw new \RuntimeException('The SMS provider could not send the OTP.');
+            }
         } catch (\Throwable $exception) {
             Cache::forget($otpKey);
             Cache::forget($cooldownKey);

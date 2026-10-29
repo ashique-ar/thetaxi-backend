@@ -794,6 +794,19 @@ input[type="time"]::-webkit-calendar-picker-indicator {
     max-width: 100% !important;
 }
 
+.filter-wrapper .booking-number-control,
+.t2-filter-wrapper .booking-number-control {
+    display: block !important;
+    width: 100% !important;
+}
+
+.filter-wrapper .booking-number-control input[type="number"],
+.t2-filter-wrapper .booking-number-control input[type="number"] {
+    display: block !important;
+    width: 100% !important;
+    box-sizing: border-box !important;
+}
+
 .filter-wrapper .single-search-box input,
 .filter-wrapper .single-search-box select,
 .filter-wrapper .single-search-box textarea,
