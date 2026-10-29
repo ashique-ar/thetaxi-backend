@@ -24,8 +24,8 @@ class ProcessSalesTasks extends Command
         if (! Schema::hasTable('sales_tasks') || ! Schema::hasTable('sales_company_feature_settings')) return self::SUCCESS;
         $dryRun = (bool) $this->option('dry-run'); $count = 0; $nowUtc = now('UTC');
         SalesTask::query()->whereIn('status', ['open', 'in_progress'])
-            ->whereIn('company_id', DB::table('sales_company_feature_settings')->select('company_id')
-                ->where('feature_key', 'crm')->where('status', 'approved')->where('enabled', true))
+            ->where(fn ($_companyIdScope) => \App\Services\CompanyIdScope::constrainIn($_companyIdScope, 'company_id', DB::table('sales_company_feature_settings')->select('company_id')
+                ->where('feature_key', 'crm')->where('status', 'approved')->where('enabled', true)))
             ->where(fn ($q) => $q->where(fn ($r) => $r->whereNull('reminder_dispatched_at')->whereNotNull('remind_at')->where('remind_at', '<=', $nowUtc))
                 ->orWhere(fn ($r) => $r->whereNull('escalated_at')->whereNotNull('escalate_at')->where('escalate_at', '<=', $nowUtc)))
             ->chunkById(200, function ($tasks) use ($dryRun, &$count, $nowUtc): void {
@@ -60,10 +60,10 @@ class ProcessSalesTasks extends Command
         foreach (SalesPolicySetting::query()->where('policy_kind', 'repeat_booking_followup')
             ->where('status', 'approved')->where('repeat_booking_followup_enabled', true)
             ->whereNotNull('repeat_booking_followup_days')->whereNotNull('approved_at')
-            ->whereIn('company_id', DB::table('sales_company_feature_settings')->select('company_id')
-                ->where('feature_key', 'crm')->where('status', 'approved')->where('enabled', true))
+            ->where(fn ($_companyIdScope) => \App\Services\CompanyIdScope::constrainIn($_companyIdScope, 'company_id', DB::table('sales_company_feature_settings')->select('company_id')
+                ->where('feature_key', 'crm')->where('status', 'approved')->where('enabled', true)))
             ->get() as $policy) {
-            Booking::query()->where('company_id', $policy->company_id)->where('status', 'completed')
+            Booking::query()->where(fn ($_companyIdScope) => \App\Services\CompanyIdScope::constrain($_companyIdScope, 'company_id', $policy->company_id))->where('status', 'completed')
                 ->whereNotNull('customer_id')->whereNotNull('completed_at')->where('completed_at', '>=', $policy->approved_at)
                 ->whereExists(function ($query): void {
                     $query->selectRaw('1')->from('customer_relationship_owner_assignments as current_owner')

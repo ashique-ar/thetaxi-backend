@@ -189,7 +189,7 @@ class SalesCrmService
 
     private function cancelOpenOpportunityTasks(SalesOpportunity $opportunity, ?string $reason, string $transitionKey, string $actorUserId): void
     {
-        SalesTask::query()->where('company_id', $opportunity->company_id)
+        SalesTask::query()->where(fn ($_companyIdScope) => \App\Services\CompanyIdScope::constrain($_companyIdScope, 'company_id', $opportunity->company_id))
             ->where('opportunity_id', $opportunity->id)->whereIn('status', ['open', 'in_progress'])
             ->orderBy('id')->chunkById(100, function ($tasks) use ($reason, $transitionKey, $actorUserId): void {
                 foreach ($tasks as $task) {
@@ -225,7 +225,7 @@ class SalesCrmService
                 continue;
             }
             $setting = DB::table('sales_company_feature_settings')->where('id', $settingId)
-                ->where('company_id', $opportunity->company_id)->where('feature_key', $feature)->first();
+                ->where(fn ($_companyIdScope) => \App\Services\CompanyIdScope::constrain($_companyIdScope, 'company_id', $opportunity->company_id))->where('feature_key', $feature)->first();
             abort_unless($setting, 409, 'Opportunity workflow version is unavailable.');
             $enabled[$stage] = (bool) $setting->enabled;
         }
@@ -343,7 +343,7 @@ class SalesCrmService
                 $bookingStaff = $this->lockBookingOwnerStaff($lockedBooking, (string) $lockedOpportunity->company_id);
                 abort_unless($bookingStaff, 422, 'The draft booking must have an explicit commission owner or creator in the same Sales legal entity.');
                 $bookingOwnerMatches = SalesProfile::query()->whereKey($lockedOpportunity->owner_sales_profile_id)
-                    ->where('staff_id', $bookingStaff->id)->where('company_id', $lockedOpportunity->company_id)
+                    ->where('staff_id', $bookingStaff->id)->where(fn ($_companyIdScope) => \App\Services\CompanyIdScope::constrain($_companyIdScope, 'company_id', $lockedOpportunity->company_id))
                     ->activeAt(now())->lockForUpdate()->exists();
                 abort_unless($bookingOwnerMatches, 422,
                     'The draft booking acquisition owner must match the opportunity owner before linkage.');
@@ -415,7 +415,7 @@ class SalesCrmService
                 $this->lockActiveCompany((string) $data['company_id']);
                 $profile = SalesProfile::query()->lockForUpdate()->findOrFail($data['sales_profile_id']);
                 abort_unless($profile->company_id === $data['company_id'], 422, 'Activity profile and legal entity must match.');
-                $activityStaff = DB::table('staff')->where('id', $profile->staff_id)->where('company_id', $profile->company_id)
+                $activityStaff = DB::table('staff')->where('id', $profile->staff_id)->where(fn ($_companyIdScope) => \App\Services\CompanyIdScope::constrain($_companyIdScope, 'company_id', $profile->company_id))
                     ->whereNull('deleted_at')->lockForUpdate()->first(['id']);
                 abort_unless($activityStaff, 422, 'Activity Profile Staff must belong to the same legal entity.');
                 $opportunity = null;
@@ -428,7 +428,7 @@ class SalesCrmService
                     abort_unless($opportunityOwner && $opportunityOwner->company_id === $opportunity->company_id, 422,
                         'Activity Opportunity owner must belong to the same legal entity.');
                     $opportunityStaff = DB::table('staff')->where('id', $opportunityOwner->staff_id)
-                        ->where('company_id', $opportunity->company_id)->whereNull('deleted_at')
+                        ->where(fn ($_companyIdScope) => \App\Services\CompanyIdScope::constrain($_companyIdScope, 'company_id', $opportunity->company_id))->whereNull('deleted_at')
                         ->lockForUpdate()->first(['id']);
                     abort_unless($opportunityStaff, 422, 'Activity Opportunity Staff must belong to the same legal entity.');
                     abort_unless($authorizedProfileIds === null || in_array($opportunity->owner_sales_profile_id, $authorizedProfileIds, true),
@@ -460,7 +460,7 @@ class SalesCrmService
                         $data['customer_id'] ??= $booking->customer_id;
                     } elseif (! empty($data['inquiry_id'])) {
                         $inquiry = DB::table('inquiries')->where('id', $data['inquiry_id'])
-                            ->where('company_id', $profile->company_id)->whereNull('deleted_at')->lockForUpdate()->first();
+                            ->where(fn ($_companyIdScope) => \App\Services\CompanyIdScope::constrain($_companyIdScope, 'company_id', $profile->company_id))->whereNull('deleted_at')->lockForUpdate()->first();
                         abort_unless($inquiry, 422, 'Select an Inquiry belonging to this legal entity.');
                         abort_unless(empty($data['customer_id']) || $data['customer_id'] === $inquiry->customer_id, 422,
                             'Activity Customer must match the selected Inquiry.');
@@ -470,7 +470,7 @@ class SalesCrmService
                             'Assign the Inquiry to an employee in your Sales scope before logging an activity.');
                     } else {
                         $customer = DB::table('customer_relationship_owner_assignments')->where('customer_id', $data['customer_id'])
-                            ->where('company_id', $profile->company_id)->whereNull('ended_at')->lockForUpdate()->first();
+                            ->where(fn ($_companyIdScope) => \App\Services\CompanyIdScope::constrain($_companyIdScope, 'company_id', $profile->company_id))->whereNull('ended_at')->lockForUpdate()->first();
                         abort_unless($customer?->owner_sales_profile_id, 403, 'Assign this Customer to a Sales employee before logging an activity.');
                         $customerOwner = $this->lockActiveSalesProfile((string) $customer->owner_sales_profile_id, (string) $profile->company_id);
                         abort_unless($authorizedProfileIds === null || in_array($customerOwner->id, $authorizedProfileIds, true), 403,
@@ -518,7 +518,7 @@ class SalesCrmService
                 $this->lockActiveCompany((string) $data['company_id']);
                 if (! empty($data['opportunity_id'])) {
                     $source = SalesOpportunity::query()->whereKey($data['opportunity_id'])
-                        ->where('company_id', $data['company_id'])->firstOrFail();
+                        ->where(fn ($_companyIdScope) => \App\Services\CompanyIdScope::constrain($_companyIdScope, 'company_id', $data['company_id']))->firstOrFail();
                     $data['customer_id'] ??= $source->customer_id;
                     $data['inquiry_id'] ??= $source->inquiry_id;
                     $data['phone_call_id'] ??= $source->source_phone_call_id;
@@ -597,7 +597,7 @@ class SalesCrmService
         $profile = SalesProfile::query()->lockForUpdate()->find($activity->sales_profile_id);
         abort_unless($profile && $profile->company_id === $activity->company_id, 409,
             'Activity Profile must belong to the activity legal entity.');
-        $staff = DB::table('staff')->where('id', $profile->staff_id)->where('company_id', $activity->company_id)
+        $staff = DB::table('staff')->where('id', $profile->staff_id)->where(fn ($_companyIdScope) => \App\Services\CompanyIdScope::constrain($_companyIdScope, 'company_id', $activity->company_id))
             ->whereNull('deleted_at')->lockForUpdate()->first(['id']);
         abort_unless($staff, 409, 'Activity Profile Staff must belong to the activity legal entity.');
         $opportunity = $activity->opportunity_id ? SalesOpportunity::query()->lockForUpdate()->find($activity->opportunity_id) : null;
@@ -607,7 +607,7 @@ class SalesCrmService
             $owner = SalesProfile::query()->lockForUpdate()->find($opportunity->owner_sales_profile_id);
             abort_unless($owner && $owner->company_id === $activity->company_id, 409,
                 'Activity Opportunity owner must belong to the activity legal entity.');
-            $ownerStaff = DB::table('staff')->where('id', $owner->staff_id)->where('company_id', $activity->company_id)
+            $ownerStaff = DB::table('staff')->where('id', $owner->staff_id)->where(fn ($_companyIdScope) => \App\Services\CompanyIdScope::constrain($_companyIdScope, 'company_id', $activity->company_id))
                 ->whereNull('deleted_at')->lockForUpdate()->first(['id']);
             abort_unless($ownerStaff, 409, 'Activity Opportunity Staff must belong to the activity legal entity.');
             foreach (['customer_id' => 'customer_id', 'inquiry_id' => 'inquiry_id', 'phone_call_id' => 'source_phone_call_id'] as $field => $linkedField) {
@@ -627,12 +627,12 @@ class SalesCrmService
                     'Activity Customer must match the linked Booking.');
             } elseif ($activity->inquiry_id) {
                 $inquiry = DB::table('inquiries')->where('id', $activity->inquiry_id)
-                    ->where('company_id', $activity->company_id)->whereNull('deleted_at')->lockForUpdate()->first(['customer_id']);
+                    ->where(fn ($_companyIdScope) => \App\Services\CompanyIdScope::constrain($_companyIdScope, 'company_id', $activity->company_id))->whereNull('deleted_at')->lockForUpdate()->first(['customer_id']);
                 abort_unless($inquiry && (empty($activity->customer_id) || $activity->customer_id === $inquiry->customer_id), 409,
                     'Activity Inquiry must belong to the activity legal entity and selected customer.');
             } elseif ($activity->customer_id) {
                 abort_unless(DB::table('customer_relationship_owner_assignments')->where('customer_id', $activity->customer_id)
-                    ->where('company_id', $activity->company_id)->exists(), 409,
+                    ->where(fn ($_companyIdScope) => \App\Services\CompanyIdScope::constrain($_companyIdScope, 'company_id', $activity->company_id))->exists(), 409,
                     'Activity Customer must be associated with the activity legal entity.');
             }
         }
@@ -697,7 +697,7 @@ class SalesCrmService
                         'Task Customer must match the selected Booking.');
                 } elseif (! empty($data['inquiry_id'])) {
                     $inquiry = DB::table('inquiries')->where('id', $data['inquiry_id'] ?? null)
-                        ->where('company_id', $owner->company_id)->whereNull('deleted_at')->lockForUpdate()->first();
+                        ->where(fn ($_companyIdScope) => \App\Services\CompanyIdScope::constrain($_companyIdScope, 'company_id', $owner->company_id))->whereNull('deleted_at')->lockForUpdate()->first();
                     abort_unless($inquiry, 422, 'Select an available Inquiry.');
                     $sourceUserId = $inquiry->assigned_to ?: $inquiry->created_user_id;
                     abort_unless($sourceUserId && $sourceUserIds !== null && in_array($sourceUserId, $sourceUserIds, true),
@@ -710,7 +710,7 @@ class SalesCrmService
                         ->whereNull('deleted_at')->lockForUpdate()->first(['id']);
                     abort_unless($customer, 422, 'Select an available Customer.');
                     $assignment = DB::table('customer_relationship_owner_assignments')->where('customer_id', $customer->id)
-                        ->where('company_id', $owner->company_id)->whereNull('ended_at')->lockForUpdate()->first();
+                        ->where(fn ($_companyIdScope) => \App\Services\CompanyIdScope::constrain($_companyIdScope, 'company_id', $owner->company_id))->whereNull('ended_at')->lockForUpdate()->first();
                     abort_unless($assignment && $assignment->owner_sales_profile_id,
                         403, 'Assign this Customer to an employee in your Sales scope before creating a follow-up.');
                     $customerOwner = $this->lockActiveSalesProfile((string) $assignment->owner_sales_profile_id, (string) $owner->company_id);
@@ -766,7 +766,7 @@ class SalesCrmService
         if ($existing) return $existing;
 
         $ownerProfileId = DB::table('customer_relationship_owner_assignments')
-            ->where('company_id', $booking->company_id)->where('customer_id', $booking->customer_id)
+            ->where(fn ($_companyIdScope) => \App\Services\CompanyIdScope::constrain($_companyIdScope, 'company_id', $booking->company_id))->where('customer_id', $booking->customer_id)
             ->whereNull('ended_at')->where('effective_from', '<=', now())->value('owner_sales_profile_id');
         if (! $ownerProfileId) return null;
 
@@ -891,17 +891,17 @@ class SalesCrmService
         $owner = SalesProfile::query()->lockForUpdate()->find($task->owner_sales_profile_id);
         abort_unless($owner && $owner->company_id === $task->company_id, 409,
             'Task owner must belong to the task legal entity.');
-        $staff = DB::table('staff')->where('id', $owner->staff_id)->where('company_id', $task->company_id)
+        $staff = DB::table('staff')->where('id', $owner->staff_id)->where(fn ($_companyIdScope) => \App\Services\CompanyIdScope::constrain($_companyIdScope, 'company_id', $task->company_id))
             ->lockForUpdate()->first(['id']);
         abort_unless($staff, 409, 'Task owner Staff must belong to the task legal entity.');
         if (! $task->opportunity_id) {
             if ($task->inquiry_id) {
                 abort_unless(! $task->booking_id, 409, 'An Inquiry task cannot also link to a Booking.');
-                $inquiry = DB::table('inquiries')->where('id', $task->inquiry_id)->where('company_id', $task->company_id)->whereNull('deleted_at')->lockForUpdate()->first();
+                $inquiry = DB::table('inquiries')->where('id', $task->inquiry_id)->where(fn ($_companyIdScope) => \App\Services\CompanyIdScope::constrain($_companyIdScope, 'company_id', $task->company_id))->whereNull('deleted_at')->lockForUpdate()->first();
                 abort_unless($inquiry, 409, 'Task Inquiry is no longer available.');
                 $sourceUserId = $inquiry->assigned_to ?: $inquiry->created_user_id;
                 abort_unless($sourceUserId && DB::table('staff')->where('user_id', $sourceUserId)
-                    ->where('company_id', $task->company_id)->exists(), 409,
+                    ->where(fn ($_companyIdScope) => \App\Services\CompanyIdScope::constrain($_companyIdScope, 'company_id', $task->company_id))->exists(), 409,
                     'Task Inquiry must belong to the task legal entity.');
                 abort_unless(empty($task->customer_id) || $task->customer_id === $inquiry->customer_id, 409,
                     'Task Customer must match the selected Inquiry.');
@@ -913,7 +913,7 @@ class SalesCrmService
                 return;
             }
             abort_unless($task->customer_id && DB::table('customer_relationship_owner_assignments')
-                ->where('customer_id', $task->customer_id)->where('company_id', $task->company_id)->exists(),
+                ->where('customer_id', $task->customer_id)->where(fn ($_companyIdScope) => \App\Services\CompanyIdScope::constrain($_companyIdScope, 'company_id', $task->company_id))->exists(),
                 409, 'A customer-only task must stay linked to its company-scoped Customer.');
             return;
         }
@@ -935,7 +935,7 @@ class SalesCrmService
     private function syncOpportunityNextAction(string $opportunityId, string $actorUserId): void
     {
         $opportunity = SalesOpportunity::query()->lockForUpdate()->findOrFail($opportunityId);
-        $task = SalesTask::query()->where('company_id', $opportunity->company_id)
+        $task = SalesTask::query()->where(fn ($_companyIdScope) => \App\Services\CompanyIdScope::constrain($_companyIdScope, 'company_id', $opportunity->company_id))
             ->where('opportunity_id', $opportunity->id)->whereIn('status', ['open', 'in_progress'])
             ->orderBy('due_at')->orderBy('created_at')->orderBy('id')->first(['title', 'due_at']);
         $nextAction = $task?->title;
@@ -1016,7 +1016,7 @@ class SalesCrmService
         $ids = collect($mappings)->map(fn ($mapping) => $opportunity->{$mapping[0]})->filter()->unique()->values();
         if ($ids->isEmpty()) return $labels;
         $settings = DB::table('sales_company_feature_settings')->whereIn('id', $ids)
-            ->where('company_id', $opportunity->company_id)->get(['id', 'feature_key', 'stage_label'])->keyBy('id');
+            ->where(fn ($_companyIdScope) => \App\Services\CompanyIdScope::constrain($_companyIdScope, 'company_id', $opportunity->company_id))->get(['id', 'feature_key', 'stage_label'])->keyBy('id');
         foreach ($mappings as $stage => [$column, $feature]) {
             $setting = $settings->get($opportunity->{$column});
             if ($setting && $setting->feature_key === $feature && trim((string) $setting->stage_label) !== '') {

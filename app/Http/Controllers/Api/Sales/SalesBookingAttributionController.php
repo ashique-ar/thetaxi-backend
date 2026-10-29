@@ -58,7 +58,7 @@ class SalesBookingAttributionController extends Controller
         $this->applyActorScope($query, $request, 'sales_booking_attributions', $data['company_id'] ?? null);
 
         $rows = $query
-            ->when($data['company_id'] ?? null, fn ($q, $id) => $q->where('company_id', $id))
+            ->when($data['company_id'] ?? null, fn ($q, $id) => $q->where(fn ($_companyIdScope) => \App\Services\CompanyIdScope::constrain($_companyIdScope, 'company_id', $id)))
             ->when($data['sales_profile_id'] ?? null, fn ($q, $id) => $q->where(fn ($owners) => $owners->where('acquisition_sales_profile_id', $id)->orWhere('collection_sales_profile_id', $id)))
             ->when($data['status'] ?? null, fn ($q, $status) => $q->where('status', $status))
             ->when($data['from'] ?? null, fn ($q, $from) => $q->where('secured_at', '>=', $from))
@@ -101,7 +101,7 @@ class SalesBookingAttributionController extends Controller
         $rows = $query
             ->when($data['company_id'] ?? null, function ($q, $id) use ($includeUnassignedOwnerReviews): void {
                 $q->where(function ($scope) use ($id, $includeUnassignedOwnerReviews): void {
-                    $scope->where('attribution.company_id', $id);
+                    $scope->where(fn ($_companyIdScope) => \App\Services\CompanyIdScope::constrain($_companyIdScope, 'attribution.company_id', $id));
                     if ($includeUnassignedOwnerReviews) {
                         $scope->orWhere(fn ($unassigned) => $unassigned->whereNull('attribution.company_id')
                             ->whereNotNull('attribution.id')->whereNull('attribution.acquisition_sales_profile_id')
@@ -180,7 +180,7 @@ class SalesBookingAttributionController extends Controller
         return DB::transaction(function()use($request,$data){
             DB::table('companies')->where('id',$data['company_id'])->lockForUpdate()->firstOrFail();
             $scopeChecksum=hash('sha256',CanonicalJson::encode(collect($data['booking_ids'])->sort()->values()->all()));
-            $prior=DB::table('sales_attribution_migration_batches')->where('company_id',$data['company_id'])->where('idempotency_key',$data['idempotency_key'])->lockForUpdate()->first();
+            $prior=DB::table('sales_attribution_migration_batches')->where(fn ($_companyIdScope) => \App\Services\CompanyIdScope::constrain($_companyIdScope, 'company_id', $data['company_id']))->where('idempotency_key',$data['idempotency_key'])->lockForUpdate()->first();
             if($prior){abort_unless(hash_equals($prior->preview_checksum,$data['preview_checksum'])&&hash_equals($prior->booking_scope_checksum,$scopeChecksum),409,'Historical attribution batch key was reused with different evidence.');return response()->json(['status'=>'success','data'=>json_decode($prior->result_snapshot,true,512,JSON_THROW_ON_ERROR),'idempotent_replay'=>true]);}
             $profileIds=$this->actorProfileIds($request,$data['company_id']);
             $includeUnownedOwnerReviews=$this->scope->hasPermission($request->user(),'sales.attributions.view-all')
@@ -504,7 +504,7 @@ class SalesBookingAttributionController extends Controller
             ->whereHas('staff', fn ($staff) => $staff->whereNull('deleted_at')
                 ->where(fn ($employment) => $employment->whereNull('employment_ended_at')->orWhere('employment_ended_at', '>', $at)))
             ->when($companyId, fn ($profiles) => $profiles->where(fn ($_companyIdScope) => \App\Services\CompanyIdScope::constrain($_companyIdScope, 'sales_profiles.company_id', $companyId)))
-            ->when($companyIds !== null, fn ($profiles) => $profiles->whereIn('sales_profiles.company_id', $companyIds));
+            ->when($companyIds !== null, fn ($profiles) => $profiles->where(fn ($_companyIdScope) => \App\Services\CompanyIdScope::constrainIn($_companyIdScope, 'sales_profiles.company_id', $companyIds)));
 
         if ($companyId) {
             $this->scope->scopeProfiles($query, $request->user(), 'sales.attributions.view-all', 'sales.attributions.view-team', $companyId);

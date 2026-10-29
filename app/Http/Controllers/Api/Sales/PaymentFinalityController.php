@@ -38,7 +38,7 @@ class PaymentFinalityController extends Controller
             ->select(['booking_payment_finality_policies.*', 'companies.name as company_name']);
 
         return response()->json(['status' => 'success', 'data' => $query
-            ->where('booking_payment_finality_policies.company_id', $data['company_id'])
+            ->where(fn ($_companyIdScope) => \App\Services\CompanyIdScope::constrain($_companyIdScope, 'booking_payment_finality_policies.company_id', $data['company_id']))
             ->when($data['payment_method'] ?? null, fn ($q, $method) => $q->where('booking_payment_finality_policies.payment_method', strtolower($method)))
             ->when($data['status'] ?? null, fn ($q, $status) => $q->where('booking_payment_finality_policies.status', $status))
             ->orderBy('booking_payment_finality_policies.payment_method')->orderByDesc('booking_payment_finality_policies.version')->get()]);
@@ -103,7 +103,7 @@ class PaymentFinalityController extends Controller
         $data['company_id'] = $this->resolveCompanyId($request, $data['company_id'] ?? null);
         $this->assertCompanyScope($request, $data['company_id']);
         $query = BookingPaymentReceipt::query()->join('bookings', 'bookings.id', '=', 'booking_payment_receipts.booking_id')
-            ->where('booking_payment_receipts.company_id', $data['company_id'])
+            ->where(fn ($_companyIdScope) => \App\Services\CompanyIdScope::constrain($_companyIdScope, 'booking_payment_receipts.company_id', $data['company_id']))
             ->when($data['finality_status'] ?? null, fn ($q, $status) => $q->where('booking_payment_receipts.finality_status', $status))
             ->select(['booking_payment_receipts.id', 'booking_payment_receipts.company_id', 'booking_payment_receipts.booking_id', 'bookings.booking_number', 'booking_payment_receipts.source_amount', 'booking_payment_receipts.source_currency', 'booking_payment_receipts.lkr_amount', 'booking_payment_receipts.payment_method', 'booking_payment_receipts.reference', 'booking_payment_receipts.received_at', 'booking_payment_receipts.finality_status', 'booking_payment_receipts.finalized_at'])
             ->addSelect([
@@ -166,7 +166,7 @@ class PaymentFinalityController extends Controller
                 ->whereNull('deleted_at')->lockForUpdate()->first();
             abort_unless($company, 422, 'Select an active legal entity.');
             $version = (int) BookingPaymentFinalityPolicy::query()
-                ->where('company_id', $data['company_id'])->where('payment_method', $data['payment_method'])
+                ->where(fn ($_companyIdScope) => \App\Services\CompanyIdScope::constrain($_companyIdScope, 'company_id', $data['company_id']))->where('payment_method', $data['payment_method'])
                 ->lockForUpdate()->max('version') + 1;
             return BookingPaymentFinalityPolicy::create($data + ['version' => $version, 'status' => 'draft', 'created_by' => $request->user()->id]);
         });
@@ -181,7 +181,7 @@ class PaymentFinalityController extends Controller
             $company = DB::table('companies')->where('id', $policy->company_id)->where('is_active', true)
                 ->whereNull('deleted_at')->lockForUpdate()->first();
             abort_unless($company, 422, 'The payment-finality policy legal entity is no longer active.');
-            $policy = BookingPaymentFinalityPolicy::query()->where('company_id', $company->id)->lockForUpdate()->findOrFail($policy->id);
+            $policy = BookingPaymentFinalityPolicy::query()->where(fn ($_companyIdScope) => \App\Services\CompanyIdScope::constrain($_companyIdScope, 'company_id', $company->id))->lockForUpdate()->findOrFail($policy->id);
             if ($policy->status === 'approved') {
                 abort_unless((string) $policy->approved_by === (string) $request->user()->id, 409, 'Finality policy was approved by another user.');
 
@@ -191,7 +191,7 @@ class PaymentFinalityController extends Controller
             $this->validatePendingClearancePolicy($policy->toArray());
             abort_if($policy->created_by === $request->user()->id, 409, 'Finality-policy creator cannot approve the same version.');
             $overlap = BookingPaymentFinalityPolicy::query()
-                ->where('company_id', $policy->company_id)->where('payment_method', $policy->payment_method)
+                ->where(fn ($_companyIdScope) => \App\Services\CompanyIdScope::constrain($_companyIdScope, 'company_id', $policy->company_id))->where('payment_method', $policy->payment_method)
                 ->where('status', 'approved')->where('id', '!=', $policy->id)
                 ->where('effective_from', '<', $policy->effective_until ?? '9999-12-31')
                 ->where(fn ($q) => $q->whereNull('effective_until')->orWhere('effective_until', '>', $policy->effective_from))
@@ -219,7 +219,7 @@ class PaymentFinalityController extends Controller
         ]);
         $this->assertCompanyScope($request, $receipt->company_id);
         $policy = DB::table('booking_payment_finality_policies')
-            ->where('company_id', $receipt->company_id)->where('payment_method', strtolower((string) $receipt->payment_method))
+            ->where(fn ($_companyIdScope) => \App\Services\CompanyIdScope::constrain($_companyIdScope, 'company_id', $receipt->company_id))->where('payment_method', strtolower((string) $receipt->payment_method))
             ->where('status', 'approved')->where('effective_from', '<=', $receipt->received_at)
             ->where(fn ($query) => $query->whereNull('effective_until')->orWhere('effective_until', '>', $receipt->received_at))
             ->orderByDesc('version')->first();

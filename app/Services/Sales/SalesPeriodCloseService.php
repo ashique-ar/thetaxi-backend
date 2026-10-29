@@ -268,7 +268,7 @@ class SalesPeriodCloseService
                 'period_lock_id' => $periodLockId, 'expected_version' => $expectedVersion,
                 'reason' => trim($reason), 'actor_user_id' => $actorUserId,
             ]));
-            $existing = DB::table('sales_period_close_events')->where('company_id', $lock->company_id)
+            $existing = DB::table('sales_period_close_events')->where(fn ($_companyIdScope) => \App\Services\CompanyIdScope::constrain($_companyIdScope, 'company_id', $lock->company_id))
                 ->where('idempotency_key', $idempotencyKey)->first();
             if ($existing) {
                 abort_unless(hash_equals($existing->request_payload_checksum, $requestChecksum), 409,
@@ -294,7 +294,7 @@ class SalesPeriodCloseService
 
     private function createSnapshot(array $preview, string $lockId, ?string $priorId, string $kind, string $key, string $requestChecksum, string $actor): SalesKpiSnapshot
     {
-        $version = (int) SalesKpiSnapshot::query()->where('company_id', $preview['company_id'])
+        $version = (int) SalesKpiSnapshot::query()->where(fn ($_companyIdScope) => \App\Services\CompanyIdScope::constrain($_companyIdScope, 'company_id', $preview['company_id']))
             ->whereDate('period_start', $preview['period_start'])->whereDate('period_end', $preview['period_end'])
             ->lockForUpdate()->max('version') + 1;
         $header = [

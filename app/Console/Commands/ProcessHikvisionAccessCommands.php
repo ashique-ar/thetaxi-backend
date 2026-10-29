@@ -41,19 +41,19 @@ class ProcessHikvisionAccessCommands extends Command
                         ->where('attempt_count', $attempt)->where('status', 'delivering')->lockForUpdate()->first();
                     if (! $locked) return;
 
-                    $device = AttendanceDevice::query()->where('company_id', $locked->company_id)->findOrFail($locked->device_id);
-                    $staff = Staff::withTrashed()->whereKey($locked->staff_id)->where('company_id', $locked->company_id)->lockForUpdate()->first();
+                    $device = AttendanceDevice::query()->where(fn ($_companyIdScope) => \App\Services\CompanyIdScope::constrain($_companyIdScope, 'company_id', $locked->company_id))->findOrFail($locked->device_id);
+                    $staff = Staff::withTrashed()->whereKey($locked->staff_id)->where(fn ($_companyIdScope) => \App\Services\CompanyIdScope::constrain($_companyIdScope, 'company_id', $locked->company_id))->lockForUpdate()->first();
                     if (! $staff || (in_array($locked->command_type, ['grant', 'restore'], true) && ($staff->trashed() || filled($staff->employment_ended_at)))) {
                         $blocked = true;
                         throw new \RuntimeException('Staff is no longer eligible for this physical-access command.');
                     }
                     $today = now($device->timezone)->toDateString();
-                    $mapping = DB::table('hr_attendance_person_mappings')->where('company_id', $locked->company_id)
+                    $mapping = DB::table('hr_attendance_person_mappings')->where(fn ($_companyIdScope) => \App\Services\CompanyIdScope::constrain($_companyIdScope, 'company_id', $locked->company_id))
                         ->where('device_id', $device->id)->where('staff_id', $locked->staff_id)->where('enrollment_status', 'verified')
                         ->whereDate('effective_from', '<=', $today)
                         ->where(fn ($q) => $q->whereNull('effective_until')->orWhereDate('effective_until', '>', $today))->first();
                     if (! $mapping) throw new \RuntimeException('No active verified terminal mapping exists.');
-                    $group = $locked->access_group_code ? DB::table('hr_attendance_access_groups')->where('company_id', $locked->company_id)->where('device_id', $device->id)->where('code', $locked->access_group_code)->where('status', 'active')->first() : null;
+                    $group = $locked->access_group_code ? DB::table('hr_attendance_access_groups')->where(fn ($_companyIdScope) => \App\Services\CompanyIdScope::constrain($_companyIdScope, 'company_id', $locked->company_id))->where('device_id', $device->id)->where('code', $locked->access_group_code)->where('status', 'active')->first() : null;
                     if (in_array($locked->command_type, ['grant', 'restore'], true) && ! $group) throw new \RuntimeException('The approved access group is not active.');
 
                     $providerAttempted = true;

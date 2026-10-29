@@ -42,7 +42,7 @@ class StaffAccessService
         }
 
         if ($actor->can('staff.view-legal-entity')) {
-            return $query->whereIn('company_id', $actorStaff->pluck('company_id')->filter()->unique());
+            return $query->where(fn ($_companyIdScope) => \App\Services\CompanyIdScope::constrainIn($_companyIdScope, 'company_id', $actorStaff->pluck('company_id')->filter()->unique()));
         }
 
         if ($actor->can('staff.view-team')) {

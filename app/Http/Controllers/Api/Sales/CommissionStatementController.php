@@ -116,7 +116,7 @@ class CommissionStatementController extends Controller
             ->select('sales_profiles.*', 'company.name as company_name')
             ->join('companies as company', 'company.id', '=', 'sales_profiles.company_id')
             ->with(['staff:id,user_id,code', 'staff.user:id,first_name,last_name'])
-            ->whereIn('sales_profiles.company_id', $companyIds)
+            ->where(fn ($_companyIdScope) => \App\Services\CompanyIdScope::constrainIn($_companyIdScope, 'sales_profiles.company_id', $companyIds))
             ->whereNull('company.deleted_at')
             ->commissionStatementEligible()
             ->when($data['company_id'] ?? null, fn ($profiles, $companyId) => $profiles->where(fn ($_companyIdScope) => \App\Services\CompanyIdScope::constrain($_companyIdScope, 'sales_profiles.company_id', $companyId)));
@@ -177,7 +177,7 @@ class CommissionStatementController extends Controller
         $companyIds = $this->actorCompanyIds($request);
         abort_unless(in_array($data['company_id'], $companyIds, true), 403,
             'Commission operation is outside your legal entity.');
-        $query = SalesCommissionDispute::query()->whereIn('company_id', $companyIds)
+        $query = SalesCommissionDispute::query()->where(fn ($_companyIdScope) => \App\Services\CompanyIdScope::constrainIn($_companyIdScope, 'company_id', $companyIds))
             ->when($data['company_id'] ?? null, fn ($q, $companyId) => $q->where(fn ($_companyIdScope) => \App\Services\CompanyIdScope::constrain($_companyIdScope, 'company_id', $companyId)));
         $page = $query
             ->when($data['status'] ?? null, fn ($q, $status) => $q->where('status', $status))
@@ -204,7 +204,7 @@ class CommissionStatementController extends Controller
         $companyIds = $this->actorCompanyIds($request);
         abort_unless(in_array($data['company_id'], $companyIds, true), 403,
             'Commission operation is outside your legal entity.');
-        $query = SalesCommissionPayout::query()->whereIn('company_id', $companyIds)
+        $query = SalesCommissionPayout::query()->where(fn ($_companyIdScope) => \App\Services\CompanyIdScope::constrainIn($_companyIdScope, 'company_id', $companyIds))
             ->when($data['company_id'] ?? null, fn ($q, $companyId) => $q->where(fn ($_companyIdScope) => \App\Services\CompanyIdScope::constrain($_companyIdScope, 'company_id', $companyId)));
         $page = $query
             ->when($data['status'] ?? null, fn ($q, $status) => $q->where('status', $status))
@@ -465,19 +465,19 @@ class CommissionStatementController extends Controller
     private function applyScope($query, Request $request): void
     {
         $companyIds = $this->actorCompanyIds($request);
-        $query->whereIn('company_id', $companyIds);
+        $query->where(fn ($_companyIdScope) => \App\Services\CompanyIdScope::constrainIn($_companyIdScope, 'company_id', $companyIds));
         if ($request->user()->can('sales.commission-statements.view-all')) return;
         $staff = app(StaffAccessService::class)->currentActorStaff($request->user());
-        $profile = SalesProfile::query()->where('staff_id', $staff->id)->where('company_id', $staff->company_id)->activeAt(now())->firstOrFail();
+        $profile = SalesProfile::query()->where('staff_id', $staff->id)->where(fn ($_companyIdScope) => \App\Services\CompanyIdScope::constrain($_companyIdScope, 'company_id', $staff->company_id))->activeAt(now())->firstOrFail();
         $ids = [$profile->id];
         if ($request->user()->can('sales.commission-statements.view-team')) {
             $ids = array_merge($ids, DB::table('sales_reporting_assignments as reporting')
                 ->join('sales_profiles as member', 'member.id', '=', 'reporting.member_sales_profile_id')
                 ->where('reporting.manager_sales_profile_id', $profile->id)
-                ->where('reporting.company_id', $staff->company_id)->whereNull('reporting.deleted_at')
+                ->where(fn ($_companyIdScope) => \App\Services\CompanyIdScope::constrain($_companyIdScope, 'reporting.company_id', $staff->company_id))->whereNull('reporting.deleted_at')
                 ->where('reporting.effective_from', '<=', now())
                 ->where(fn ($q) => $q->whereNull('reporting.effective_until')->orWhere('reporting.effective_until', '>', now()))
-                ->where('member.company_id', $staff->company_id)
+                ->where(fn ($_companyIdScope) => \App\Services\CompanyIdScope::constrain($_companyIdScope, 'member.company_id', $staff->company_id))
                 ->pluck('reporting.member_sales_profile_id')->all());
         }
         $query->whereIn('sales_profile_id', array_values(array_unique($ids)));

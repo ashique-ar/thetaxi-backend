@@ -29,7 +29,7 @@ trait ManagesDeviceCredentials
             'masked_reference' => $this->maskCard($card['card_number']),
             'card_type' => $card['card_type'],
         ])->values();
-        $history = DB::table('hr_attendance_credential_events')->where('company_id', $device->company_id)->where('device_id', $device->id)->where('provider_person_id', $employeeNumber)->latest('occurred_at')->limit(50)->get(['id', 'credential_type', 'action', 'masked_reference', 'status', 'reason', 'actor_user_id', 'occurred_at']);
+        $history = DB::table('hr_attendance_credential_events')->where(fn ($_companyIdScope) => \App\Services\CompanyIdScope::constrain($_companyIdScope, 'company_id', $device->company_id))->where('device_id', $device->id)->where('provider_person_id', $employeeNumber)->latest('occurred_at')->limit(50)->get(['id', 'credential_type', 'action', 'masked_reference', 'status', 'reason', 'actor_user_id', 'occurred_at']);
 
         return response()->json(['status' => 'success', 'data' => ['mapping' => $mapping, 'cards' => $cards, 'history' => $history, 'pin' => ['configured' => $history->contains(fn ($row) => $row->credential_type === 'pin' && $row->action === 'set' && $row->status === 'delivered')]]]);
     }
@@ -129,16 +129,16 @@ trait ManagesDeviceCredentials
     {
         $device = $this->authorizedDevice($request, $deviceId);
         abort_unless($device->status === 'active' && $device->integration_mode === 'direct_isapi', 409, 'Credential writes require an active direct-ISAPI device.');
-        $mapping = DB::table('hr_attendance_person_mappings')->where('company_id', $device->company_id)->where('provider_person_id', $employeeNumber)->where('enrollment_status', 'verified')->where(fn ($q) => $q->where('device_id', $device->id)->orWhereNull('device_id'))->whereDate('effective_from', '<=', now())->where(fn ($q) => $q->whereNull('effective_until')->orWhereDate('effective_until', '>', now()))->first();
+        $mapping = DB::table('hr_attendance_person_mappings')->where(fn ($_companyIdScope) => \App\Services\CompanyIdScope::constrain($_companyIdScope, 'company_id', $device->company_id))->where('provider_person_id', $employeeNumber)->where('enrollment_status', 'verified')->where(fn ($q) => $q->where('device_id', $device->id)->orWhereNull('device_id'))->whereDate('effective_from', '<=', now())->where(fn ($q) => $q->whereNull('effective_until')->orWhereDate('effective_until', '>', now()))->first();
         abort_unless($mapping, 422, 'A current verified Staff mapping is required.');
-        abort_unless(Staff::withTrashed()->whereKey($mapping->staff_id)->where('company_id', $device->company_id)->exists(), 404);
+        abort_unless(Staff::withTrashed()->whereKey($mapping->staff_id)->where(fn ($_companyIdScope) => \App\Services\CompanyIdScope::constrain($_companyIdScope, 'company_id', $device->company_id))->exists(), 404);
 
         return [$device, $mapping];
     }
 
     private function requireActiveCredentialOwner(AttendanceDevice $device, object $mapping): void
     {
-        $staff = Staff::withTrashed()->whereKey($mapping->staff_id)->where('company_id', $device->company_id)->lockForUpdate()->firstOrFail();
+        $staff = Staff::withTrashed()->whereKey($mapping->staff_id)->where(fn ($_companyIdScope) => \App\Services\CompanyIdScope::constrain($_companyIdScope, 'company_id', $device->company_id))->lockForUpdate()->firstOrFail();
         abort_if($staff->trashed() || filled($staff->employment_ended_at), 409, 'Former Staff cannot receive attendance credentials.');
     }
 

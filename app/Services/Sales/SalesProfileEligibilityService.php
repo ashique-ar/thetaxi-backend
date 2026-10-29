@@ -41,7 +41,7 @@ class SalesProfileEligibilityService
         $profile = SalesProfile::query()
             ->withTrashed()
             ->whereKey($profileId)
-            ->when($companyId, fn ($query, string $id) => $query->where('company_id', $id))
+            ->when($companyId, fn ($query, string $id) => $query->where(fn ($_companyIdScope) => \App\Services\CompanyIdScope::constrain($_companyIdScope, 'company_id', $id)))
             ->effectiveAt($at)
             ->first();
 

@@ -58,7 +58,7 @@ class FleetTrackingController extends Controller
         ]);
         abort_if(($data['offset'] ?? 0) > 0 && !isset($data['table_index']), 422, 'A table is required when requesting another report page.');
         abort_if(($data['offset'] ?? 0) % 500 !== 0, 422, 'Report pages must be requested in 500-row increments.');
-        $allowedResources = json_decode(DB::table('wialon_integrations')->where('company_id', $vehicle->company_id)->value('resource_ids') ?: '[]', true) ?: [];
+        $allowedResources = json_decode(DB::table('wialon_integrations')->where(fn ($_companyIdScope) => \App\Services\CompanyIdScope::constrain($_companyIdScope, 'company_id', $vehicle->company_id))->value('resource_ids') ?: '[]', true) ?: [];
         abort_unless(in_array((int) $data['resource_id'], array_map('intval', $allowedResources), true), 422, 'Choose a report resource enabled in company GPS settings.');
         abort_if($data['to'] - $data['from'] > 366 * 86400, 422, 'Report intervals cannot exceed one year.');
         try {
@@ -316,7 +316,7 @@ class FleetTrackingController extends Controller
             'offset' => ['sometimes', 'integer', 'min:0', 'max:9900'],
         ]);
         abort_if($data['to'] - $data['from'] > 366 * 86400, 422, 'Message intervals cannot exceed one year.');
-        $vehicle = Vehicle::withInactive()->where('wialon_unit_id', $unitId)->where('company_id', $this->companyId($request))->firstOrFail();
+        $vehicle = Vehicle::withInactive()->where('wialon_unit_id', $unitId)->where(fn ($_companyIdScope) => \App\Services\CompanyIdScope::constrain($_companyIdScope, 'company_id', $this->companyId($request)))->firstOrFail();
         try {
             return response()->json(['status' => 'success', 'data' => $wialon->messages((string) $vehicle->company_id, $unitId, $data['from'], $data['to'], $data['offset'] ?? 0)]);
         } catch (RuntimeException $error) {

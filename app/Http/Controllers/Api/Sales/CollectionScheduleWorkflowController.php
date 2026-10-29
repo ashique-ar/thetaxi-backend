@@ -234,7 +234,7 @@ class CollectionScheduleWorkflowController extends Controller
         $rollingHandlerEligible = $attribution?->collection_sales_profile_id
             ? SalesProfile::query()
                 ->whereKey($attribution->collection_sales_profile_id)
-                ->where('company_id', $attribution->company_id)
+                ->where(fn ($_companyIdScope) => \App\Services\CompanyIdScope::constrain($_companyIdScope, 'company_id', $attribution->company_id))
                 ->eligibleAt('collection', now())
                 ->exists()
             : false;
@@ -654,7 +654,7 @@ class CollectionScheduleWorkflowController extends Controller
             ->leftJoin('staff as staff', 'staff.id', '=', 'profile.staff_id')
             ->whereNull('attribution.deleted_at')
             ->whereNotNull('attribution.collection_sales_profile_id')
-            ->when($companyId, fn ($query, $id) => $query->where('attribution.company_id', $id))
+            ->when($companyId, fn ($query, $id) => $query->where(fn ($_companyIdScope) => \App\Services\CompanyIdScope::constrain($_companyIdScope, 'attribution.company_id', $id)))
             ->when($bookingId, fn ($query, $id) => $query->where('attribution.booking_id', $id))
             ->when($profileIds !== null, fn ($query) => $query->whereIn('attribution.collection_sales_profile_id', $profileIds))
             ->where(fn ($query) => $query->whereNull('profile.id')->orWhereNull('profile.company_id')

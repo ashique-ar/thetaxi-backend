@@ -29,7 +29,7 @@ class CommissionDisputeService
             abort_unless((string) $statement->company_id === (string) $companyId, 409,
                 'The statement legal entity changed before the dispute could be raised.');
             abort_unless($statement->staff_id === $staffId, 403, 'Only the statement beneficiary may dispute this line.');
-            abort_unless(DB::table('staff')->where('id', $staffId)->where('company_id', $statement->company_id)->exists(), 409,
+            abort_unless(DB::table('staff')->where('id', $staffId)->where(fn ($_companyIdScope) => \App\Services\CompanyIdScope::constrain($_companyIdScope, 'company_id', $statement->company_id))->exists(), 409,
                 'The statement beneficiary Staff record does not match its legal entity.');
             $line = SalesCommissionStatementLine::query()->whereKey($line->id)
                 ->where('statement_id', $statement->id)->lockForUpdate()->first();
@@ -124,7 +124,7 @@ class CommissionDisputeService
             $line = SalesCommissionStatementLine::query()->whereKey($dispute->statement_line_id)
                 ->where('statement_id', $statement->id)->lockForUpdate()->first();
             abort_unless($line && $dispute->raised_by_staff_id === $statement->staff_id
-                && DB::table('staff')->where('id', $statement->staff_id)->where('company_id', $statement->company_id)->exists(), 409,
+                && DB::table('staff')->where('id', $statement->staff_id)->where(fn ($_companyIdScope) => \App\Services\CompanyIdScope::constrain($_companyIdScope, 'company_id', $statement->company_id))->exists(), 409,
                 'The dispute line or claimant Staff record does not match its statement and legal entity.');
             $checksum = hash('sha256', json_encode($data, JSON_THROW_ON_ERROR | JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE));
             if ($dispute->resolution_idempotency_key === $data['idempotency_key']) {

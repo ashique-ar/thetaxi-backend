@@ -19,13 +19,13 @@ class RespondIoInquiryAssignmentSync
             return ['status' => 'disabled'];
         }
 
-        $connection = IntegrationConnection::query()->where('company_id', $inquiry->company_id)
+        $connection = IntegrationConnection::query()->where(fn ($_companyIdScope) => \App\Services\CompanyIdScope::constrain($_companyIdScope, 'company_id', $inquiry->company_id))
             ->where('provider', 'respond_io')->where('enabled', true)->first();
         if (! $connection?->respond_io_api_token) {
             return ['status' => 'not_configured'];
         }
 
-        $contactId = IntegrationWebhookEvent::query()->where('company_id', $inquiry->company_id)
+        $contactId = IntegrationWebhookEvent::query()->where(fn ($_companyIdScope) => \App\Services\CompanyIdScope::constrain($_companyIdScope, 'company_id', $inquiry->company_id))
             ->where('connection_id', $connection->id)->where('provider', 'respond_io')
             ->where('linked_inquiry_id', $inquiry->id)->whereNotNull('external_contact_id')
             ->latest('received_at')->value('external_contact_id');

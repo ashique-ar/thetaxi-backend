@@ -40,7 +40,7 @@ trait ManagesDevicePeopleMapping
         $mappings = DB::table('hr_attendance_person_mappings as mapping')
             ->join('staff', 'staff.id', '=', 'mapping.staff_id')
             ->join('users', 'users.id', '=', 'staff.user_id')
-            ->where('mapping.company_id', $device->company_id)
+            ->where(fn ($_companyIdScope) => \App\Services\CompanyIdScope::constrain($_companyIdScope, 'mapping.company_id', $device->company_id))
             ->where(fn ($query) => $query->where('mapping.device_id', $device->id)->orWhereNull('mapping.device_id'))
             ->whereDate('mapping.effective_from', '<=', $today)
             ->where(fn ($query) => $query->whereNull('mapping.effective_until')->orWhereDate('mapping.effective_until', '>', $today))
@@ -65,7 +65,7 @@ trait ManagesDevicePeopleMapping
         return DB::transaction(function () use ($data, $device, $providers) {
             $this->lockActiveAttendanceCompany($device->company_id);
             $device = $this->lockActiveDirectIsapiDevice($device);
-            $staff = Staff::query()->with('user:id,first_name,last_name')->whereKey($data['staff_id'])->where('company_id', $device->company_id)->whereNull('employment_ended_at')->lockForUpdate()->firstOrFail();
+            $staff = Staff::query()->with('user:id,first_name,last_name')->whereKey($data['staff_id'])->where(fn ($_companyIdScope) => \App\Services\CompanyIdScope::constrain($_companyIdScope, 'company_id', $device->company_id))->whereNull('employment_ended_at')->lockForUpdate()->firstOrFail();
             abort_unless(filled($staff->code), 422, 'Set the Staff employee code before provisioning the Hikvision user.');
             abort_unless(preg_match('/^[A-Za-z0-9._-]{1,32}$/', $staff->code) === 1, 422, 'The Staff employee code is not supported by this Hikvision terminal.');
             $name = trim(($staff->user?->first_name ?? '').' '.($staff->user?->last_name ?? '')) ?: $staff->code;
@@ -98,10 +98,10 @@ trait ManagesDevicePeopleMapping
         return DB::transaction(function () use ($request, $data, $device, $employeeNumber, $providers) {
             $this->lockActiveAttendanceCompany($device->company_id);
             $device = $this->lockActiveDirectIsapiDevice($device);
-            $staff = Staff::withTrashed()->with('user:id,first_name,last_name')->whereKey($data['staff_id'])->where('company_id', $device->company_id)->lockForUpdate()->firstOrFail();
+            $staff = Staff::withTrashed()->with('user:id,first_name,last_name')->whereKey($data['staff_id'])->where(fn ($_companyIdScope) => \App\Services\CompanyIdScope::constrain($_companyIdScope, 'company_id', $device->company_id))->lockForUpdate()->firstOrFail();
             abort_if($data['enabled'] && ($staff->trashed() || filled($staff->employment_ended_at)), 422, 'Former Staff cannot be enabled on an attendance terminal.');
             $mappingExists = DB::table('hr_attendance_person_mappings')
-                ->where('company_id', $device->company_id)
+                ->where(fn ($_companyIdScope) => \App\Services\CompanyIdScope::constrain($_companyIdScope, 'company_id', $device->company_id))
                 ->where('staff_id', $staff->id)
                 ->where('provider_person_id', $employeeNumber)
                 ->where('enrollment_status', 'verified')
@@ -145,7 +145,7 @@ trait ManagesDevicePeopleMapping
         return DB::transaction(function () use ($request, $data, $device, $mapping, $employeeNumber, $providers) {
             $this->lockActiveAttendanceCompany($device->company_id);
             $device = $this->lockActiveDirectIsapiDevice($device);
-            $staff = Staff::withTrashed()->whereKey($mapping->staff_id)->where('company_id', $device->company_id)->lockForUpdate()->firstOrFail();
+            $staff = Staff::withTrashed()->whereKey($mapping->staff_id)->where(fn ($_companyIdScope) => \App\Services\CompanyIdScope::constrain($_companyIdScope, 'company_id', $device->company_id))->lockForUpdate()->firstOrFail();
             abort_if($data['enabled'] && ($staff->trashed() || filled($staff->employment_ended_at)), 422, 'Former Staff cannot be enabled on an attendance terminal.');
 
             try {
@@ -187,7 +187,7 @@ trait ManagesDevicePeopleMapping
             $position = $page['next_position'];
         } while ($page['has_more']);
         $directory = collect($people)->keyBy('employee_no');
-        $allStaff = Staff::query()->with('user:id,first_name,last_name')->where('company_id', $device->company_id)->whereNull('employment_ended_at')->get();
+        $allStaff = Staff::query()->with('user:id,first_name,last_name')->where(fn ($_companyIdScope) => \App\Services\CompanyIdScope::constrain($_companyIdScope, 'company_id', $device->company_id))->whereNull('employment_ended_at')->get();
         $staff = $allStaff->whereIn('id', collect($data['rows'])->pluck('staff_id'))->keyBy('id');
         $preview = [];
         foreach ($data['rows'] as $row) {
@@ -328,10 +328,10 @@ trait ManagesDevicePeopleMapping
 
         return DB::transaction(function () use ($request, $data) {
             $this->lockActiveAttendanceCompany($data['company_id']);
-            $staff = Staff::query()->where('company_id', $data['company_id'])->lockForUpdate()->find($data['staff_id']);
+            $staff = Staff::query()->where(fn ($_companyIdScope) => \App\Services\CompanyIdScope::constrain($_companyIdScope, 'company_id', $data['company_id']))->lockForUpdate()->find($data['staff_id']);
             abort_unless($staff, 404);
             if (! empty($data['device_id'])) {
-                $device = AttendanceDevice::query()->where('company_id', $data['company_id'])->find($data['device_id']);
+                $device = AttendanceDevice::query()->where(fn ($_companyIdScope) => \App\Services\CompanyIdScope::constrain($_companyIdScope, 'company_id', $data['company_id']))->find($data['device_id']);
                 abort_unless($device, 404);
             }
             $overlapping = $this->mappingOverlapQuery($data)->lockForUpdate()->get();
@@ -385,17 +385,17 @@ trait ManagesDevicePeopleMapping
         return DB::transaction(function () use ($request, $mappingId) {
             $companyIds = $this->authorizedCompanyIds($request);
             $mapping = DB::table('hr_attendance_person_mappings')->where('id', $mappingId)
-                ->whereIn('company_id', $companyIds)->first();
+                ->where(fn ($_companyIdScope) => \App\Services\CompanyIdScope::constrainIn($_companyIdScope, 'company_id', $companyIds))->first();
             abort_unless($mapping, 404);
             $this->lockActiveAttendanceCompany($mapping->company_id);
             $mapping = DB::table('hr_attendance_person_mappings')->where('id', $mappingId)
-                ->whereIn('company_id', $companyIds)->lockForUpdate()->first();
+                ->where(fn ($_companyIdScope) => \App\Services\CompanyIdScope::constrainIn($_companyIdScope, 'company_id', $companyIds))->lockForUpdate()->first();
             abort_unless($mapping, 404);
             if ($mapping->enrollment_status === 'verified') {
                 return response()->json(['status' => 'success', 'data' => ['mapping' => $mapping, 'resolved_quarantine_count' => 0]]);
             }
             abort_unless($mapping->enrollment_status === 'pending', 409, 'Only pending mappings may be activated.');
-            DB::table('hr_attendance_person_mappings')->where('id', $mappingId)->where('company_id', $mapping->company_id)->update([
+            DB::table('hr_attendance_person_mappings')->where('id', $mappingId)->where(fn ($_companyIdScope) => \App\Services\CompanyIdScope::constrain($_companyIdScope, 'company_id', $mapping->company_id))->update([
                 'enrollment_status' => 'verified',
                 'last_verified_at' => now(),
                 'verified_by' => $request->user()->id,
@@ -411,7 +411,7 @@ trait ManagesDevicePeopleMapping
     private function mappingOverlapQuery(array $data): Builder
     {
         return DB::table('hr_attendance_person_mappings')
-            ->where('company_id', $data['company_id'])
+            ->where(fn ($_companyIdScope) => \App\Services\CompanyIdScope::constrain($_companyIdScope, 'company_id', $data['company_id']))
             ->where(fn ($query) => empty($data['device_id']) ? $query->whereNull('device_id') : $query->where('device_id', $data['device_id']))
             ->where(fn ($query) => $query
                 ->where('provider_person_id', $data['provider_person_id'])
@@ -447,7 +447,7 @@ trait ManagesDevicePeopleMapping
 
     private function reconcileMapping(object $mapping, string $actorUserId, string $reason): int
     {
-        $events = DB::table('hr_attendance_raw_events')->where('company_id', $mapping->company_id)->where('provider_person_id', $mapping->provider_person_id)
+        $events = DB::table('hr_attendance_raw_events')->where(fn ($_companyIdScope) => \App\Services\CompanyIdScope::constrain($_companyIdScope, 'company_id', $mapping->company_id))->where('provider_person_id', $mapping->provider_person_id)
             ->when($mapping->device_id, fn ($query, $id) => $query->where('device_id', $id))->whereDate('occurred_at', '>=', $mapping->effective_from)
             ->when($mapping->effective_until, fn ($query, $until) => $query->whereDate('occurred_at', '<', $until));
         $eventIds = (clone $events)->pluck('id');

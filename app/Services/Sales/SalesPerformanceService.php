@@ -57,7 +57,7 @@ class SalesPerformanceService
             abort_unless($profile->status === 'active' && $profile->effective_from?->lte(now())
                 && (! $profile->effective_until || $profile->effective_until->gt(now())), 422,
                 'A target can only be drafted for a currently active Sales Profile.');
-            $staff = Staff::query()->whereKey($profile->staff_id)->where('company_id', $profile->company_id)
+            $staff = Staff::query()->whereKey($profile->staff_id)->where(fn ($_companyIdScope) => \App\Services\CompanyIdScope::constrain($_companyIdScope, 'company_id', $profile->company_id))
                 ->whereNull('deleted_at')->where(fn ($employment) => $employment->whereNull('employment_ended_at')
                     ->orWhere('employment_ended_at', '>', now()))->lockForUpdate()->first();
             abort_unless($staff, 422, 'The Sales Profile must belong to current Staff in this legal entity.');
@@ -76,7 +76,7 @@ class SalesPerformanceService
                 'actor_user_id' => $actorUserId,
             ];
             $requestChecksum = hash('sha256', CanonicalJson::encode($requestEvidence));
-            $existing = SalesTargetVersion::query()->where('company_id', $profile->company_id)
+            $existing = SalesTargetVersion::query()->where(fn ($_companyIdScope) => \App\Services\CompanyIdScope::constrain($_companyIdScope, 'company_id', $profile->company_id))
                 ->where('draft_idempotency_key', $idempotencyKey)->lockForUpdate()->first();
             if ($existing) {
                 abort_unless(
@@ -196,7 +196,7 @@ class SalesPerformanceService
                 'reason' => trim($reason),
                 'actor_user_id' => $actorUserId,
             ]));
-            $replay = SalesTargetVersion::query()->where('company_id', $locked->company_id)
+            $replay = SalesTargetVersion::query()->where(fn ($_companyIdScope) => \App\Services\CompanyIdScope::constrain($_companyIdScope, 'company_id', $locked->company_id))
                 ->where('approval_idempotency_key', $idempotencyKey)->lockForUpdate()->first();
             if ($replay) {
                 abort_unless(
@@ -243,7 +243,7 @@ class SalesPerformanceService
             $startUtc = CarbonImmutable::parse($locked->period_start->toDateString(), $timezone)->startOfDay()->utc();
             $endExclusiveUtc = CarbonImmutable::parse($locked->period_end->toDateString(), $timezone)->addDay()->startOfDay()->utc();
             abort_if(
-                DB::table('domain_period_locks')->where('domain', 'sales')->where('company_id', $locked->company_id)
+                DB::table('domain_period_locks')->where('domain', 'sales')->where(fn ($_companyIdScope) => \App\Services\CompanyIdScope::constrain($_companyIdScope, 'company_id', $locked->company_id))
                     ->where('period_type', 'month')->where('period_start', $startUtc)->where('period_end', $endExclusiveUtc)
                     ->where('state', 'locked')->exists(),
                 409,
@@ -926,7 +926,7 @@ class SalesPerformanceService
             abort_unless($this->activeAlertOwnerIdentity(
                 $data['company_id'], $data['rules']['evaluation']['owner_user_id'], true,
             ), 422, 'The alert owner must be an active internal Staff user with an active Staff context in the selected legal entity.');
-            $version = (int) SalesAlertPolicyVersion::query()->where('company_id', $data['company_id'])->lockForUpdate()->max('version') + 1;
+            $version = (int) SalesAlertPolicyVersion::query()->where(fn ($_companyIdScope) => \App\Services\CompanyIdScope::constrain($_companyIdScope, 'company_id', $data['company_id']))->lockForUpdate()->max('version') + 1;
             return SalesAlertPolicyVersion::create($data + [
                 'version' => $version,
                 'status' => 'draft',
@@ -964,7 +964,7 @@ class SalesPerformanceService
                 return $locked;
             abort_if($locked->prepared_by === $actorUserId, 403, 'Alert policy maker and approver must be different users.');
             abort_unless($locked->status === 'draft', 422, 'Only draft alert policies can be approved.');
-            SalesAlertPolicyVersion::query()->where('company_id', $locked->company_id)->where('status', 'approved')
+            SalesAlertPolicyVersion::query()->where(fn ($_companyIdScope) => \App\Services\CompanyIdScope::constrain($_companyIdScope, 'company_id', $locked->company_id))->where('status', 'approved')
                 ->whereDate('effective_from', '<=', $locked->effective_until ?? '9999-12-31')
                 ->where(fn($q) => $q->whereNull('effective_until')->orWhereDate('effective_until', '>=', $locked->effective_from))
                 ->update(['status' => 'superseded']);
@@ -999,7 +999,7 @@ class SalesPerformanceService
             ];
             $checksum = hash('sha256', CanonicalJson::encode($payload));
             $replay = DB::table('sales_performance_alert_action_events')
-                ->where('company_id', $locked->company_id)->where('idempotency_key', $key)->first();
+                ->where(fn ($_companyIdScope) => \App\Services\CompanyIdScope::constrain($_companyIdScope, 'company_id', $locked->company_id))->where('idempotency_key', $key)->first();
             if ($replay) {
                 abort_unless(
                     $replay->alert_id === $locked->id && hash_equals($replay->request_payload_checksum, $checksum),
@@ -1386,7 +1386,7 @@ class SalesPerformanceService
             409,
             'The frozen Sales snapshot has no reconciled alert-policy lineage.'
         );
-        $policy = SalesAlertPolicyVersion::query()->whereKey($policyId)->where('company_id', $snapshot->company_id)
+        $policy = SalesAlertPolicyVersion::query()->whereKey($policyId)->where(fn ($_companyIdScope) => \App\Services\CompanyIdScope::constrain($_companyIdScope, 'company_id', $snapshot->company_id))
             ->whereIn('status', ['approved', 'superseded'])->whereDate('effective_from', '<=', $snapshot->period_start)
             ->where(fn($q) => $q->whereNull('effective_until')->orWhere('effective_until', '>=', $snapshot->period_end))->first();
         abort_unless(
@@ -1575,7 +1575,7 @@ class SalesPerformanceService
                 if ($declineRule['enabled']) {
                     $latestFrozenMonthly = DB::table('sales_kpi_snapshots')
                         ->selectRaw('company_id, period_start, period_end, MAX(version) latest_version')
-                        ->where('company_id', $snapshot->company_id)->where('status', 'frozen')
+                        ->where(fn ($_companyIdScope) => \App\Services\CompanyIdScope::constrain($_companyIdScope, 'company_id', $snapshot->company_id))->where('status', 'frozen')
                         ->where('period_type', 'month')->whereDate('period_end', '<', $snapshot->period_start)
                         ->groupBy('company_id', 'period_start', 'period_end');
                     $history = DB::table('sales_kpi_snapshot_rows as row')

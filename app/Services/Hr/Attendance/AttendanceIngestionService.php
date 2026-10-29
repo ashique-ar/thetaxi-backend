@@ -48,7 +48,7 @@ class AttendanceIngestionService
             return DB::transaction(function () use ($connector, $headers, $events, $sourceIp, $checksum) {
                 $company = DB::table('companies')->where('id', $connector->company_id)->where('is_active', true)->whereNull('deleted_at')->lockForUpdate()->first();
                 abort_unless($company, 409, 'Attendance ingestion requires an active legal entity.');
-                $currentConnector = AttendanceConnector::query()->whereKey($connector->id)->where('company_id', $company->id)->where('status', 'active')->lockForUpdate()->firstOrFail();
+                $currentConnector = AttendanceConnector::query()->whereKey($connector->id)->where(fn ($_companyIdScope) => \App\Services\CompanyIdScope::constrain($_companyIdScope, 'company_id', $company->id))->where('status', 'active')->lockForUpdate()->firstOrFail();
                 abort_unless(hash_equals($connector->signing_secret, $currentConnector->signing_secret), 401, 'Attendance connector credentials changed; sign the request again.');
                 $requestId = (string) Str::uuid();
                 DB::table('hr_attendance_ingestion_requests')->insert(['id' => $requestId, 'connector_id' => $connector->id, 'request_id' => $headers['request_id'], 'nonce' => $headers['nonce'], 'signed_at' => CarbonImmutable::parse($headers['signed_at']), 'received_at' => now(), 'payload_checksum' => $checksum, 'event_count' => count($events), 'status' => 'processing', 'source_ip' => $sourceIp, 'created_at' => now(), 'updated_at' => now()]);
@@ -87,7 +87,7 @@ class AttendanceIngestionService
         $sourceOffset = (int) $occurred->setTimezone($event['source_timezone'])->utcOffset();
         abort_unless($sourceOffset === (int) $event['source_utc_offset_minutes'], 422, 'Attendance event timezone and UTC offset evidence do not agree.');
         $occurredDate = $occurred->setTimezone($event['source_timezone'])->toDateString();
-        $mappingQuery = DB::table('hr_attendance_person_mappings')->where('company_id', $connector->company_id)->where('provider_person_id', $event['provider_person_id'])->where('enrollment_status', 'verified')->whereDate('effective_from', '<=', $occurredDate)->where(fn($q) => $q->whereNull('effective_until')->orWhereDate('effective_until', '>', $occurredDate));
+        $mappingQuery = DB::table('hr_attendance_person_mappings')->where(fn ($_companyIdScope) => \App\Services\CompanyIdScope::constrain($_companyIdScope, 'company_id', $connector->company_id))->where('provider_person_id', $event['provider_person_id'])->where('enrollment_status', 'verified')->whereDate('effective_from', '<=', $occurredDate)->where(fn($q) => $q->whereNull('effective_until')->orWhereDate('effective_until', '>', $occurredDate));
         if ($device)
             $mappingQuery->where(fn($q) => $q->where('device_id', $device->id)->orWhereNull('device_id'));
         else

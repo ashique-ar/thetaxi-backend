@@ -33,7 +33,7 @@ class OrganizationAdministrationService
     {
         return DB::transaction(function () use ($unitId, $data, $companyId, $actorUserId) {
             $this->lockActiveCompany($companyId);
-            $row = DB::table('hr_organization_units')->where('id',$unitId)->where('company_id',$companyId)->lockForUpdate()->first();
+            $row = DB::table('hr_organization_units')->where('id',$unitId)->where(fn ($_companyIdScope) => \App\Services\CompanyIdScope::constrain($_companyIdScope, 'company_id', $companyId))->lockForUpdate()->first();
             abort_unless($row, 404, 'Organization unit was not found in your legal entity.');
             $payload = $this->unitPayload($data, $companyId, true);
             $checksum = $this->checksum(['unit_id'=>$unitId,'expected_version'=>$data['expected_version'],'payload'=>$payload,'reason'=>$data['reason']]);
@@ -71,7 +71,7 @@ class OrganizationAdministrationService
     {
         return DB::transaction(function()use($definitionId,$data,$companyId,$actorUserId){
             $this->lockActiveCompany($companyId);
-            $row=DB::table('hr_custom_field_definitions')->where('id',$definitionId)->where('company_id',$companyId)->lockForUpdate()->first();
+            $row=DB::table('hr_custom_field_definitions')->where('id',$definitionId)->where(fn ($_companyIdScope) => \App\Services\CompanyIdScope::constrain($_companyIdScope, 'company_id', $companyId))->lockForUpdate()->first();
             abort_unless($row,404,'Custom-field definition was not found in your legal entity.');
             $payload=$this->definitionPayload($data,$companyId,true);
             $checksum=$this->checksum(['definition_id'=>$definitionId,'expected_version'=>$data['expected_version'],'payload'=>$payload,'reason'=>$data['reason']]);
@@ -93,7 +93,7 @@ class OrganizationAdministrationService
             $payload=$this->payrollGroupPayload($data,$companyId);
             $checksum=$this->checksum(['command'=>'create_payroll_group','payload'=>$payload,'reason'=>$data['reason']]);
             if($replay=$this->replay($data['idempotency_key'],$checksum,$companyId,'payroll_group'))return$replay;
-            abort_if(DB::table('hr_payroll_groups')->where('company_id',$companyId)->where('code',$payload['code'])->exists(),409,'A payroll group with this code already exists in your legal entity.');
+            abort_if(DB::table('hr_payroll_groups')->where(fn ($_companyIdScope) => \App\Services\CompanyIdScope::constrain($_companyIdScope, 'company_id', $companyId))->where('code',$payload['code'])->exists(),409,'A payroll group with this code already exists in your legal entity.');
             $id=(string)Str::uuid();
             DB::table('hr_payroll_groups')->insert($payload+['id'=>$id,'status'=>'active','version'=>1,'created_user_id'=>$actorUserId,'created_at'=>now(),'updated_at'=>now()]);
             $after=$this->snapshot('hr_payroll_groups',$id);
@@ -106,7 +106,7 @@ class OrganizationAdministrationService
     {
         return DB::transaction(function()use($groupId,$data,$companyId,$actorUserId){
             $this->lockActiveCompany($companyId);
-            $row=DB::table('hr_payroll_groups')->where('id',$groupId)->where('company_id',$companyId)->lockForUpdate()->first();
+            $row=DB::table('hr_payroll_groups')->where('id',$groupId)->where(fn ($_companyIdScope) => \App\Services\CompanyIdScope::constrain($_companyIdScope, 'company_id', $companyId))->lockForUpdate()->first();
             abort_unless($row,404,'Payroll group was not found in your legal entity.');
             $payload=$this->payrollGroupPayload($data,$companyId,true);
             $checksum=$this->checksum(['group_id'=>$groupId,'expected_version'=>$data['expected_version'],'payload'=>$payload,'reason'=>$data['reason']]);
@@ -135,7 +135,7 @@ class OrganizationAdministrationService
             $payload=$this->documentTypePayload($data,$companyId);
             $checksum=$this->checksum(['command'=>'create_document_type','payload'=>$payload,'reason'=>$data['reason']]);
             if($replay=$this->replay($data['idempotency_key'],$checksum,$companyId,'document_type'))return$replay;
-            abort_if(DB::table('hr_document_types')->where('company_id',$companyId)->where('code',$payload['code'])->exists(),409,'A document type with this code already exists in your legal entity.');
+            abort_if(DB::table('hr_document_types')->where(fn ($_companyIdScope) => \App\Services\CompanyIdScope::constrain($_companyIdScope, 'company_id', $companyId))->where('code',$payload['code'])->exists(),409,'A document type with this code already exists in your legal entity.');
             $id=(string)Str::uuid();
             DB::table('hr_document_types')->insert($this->json($payload,['required_for_staff_types','required_for_employment_types'])+['id'=>$id,'status'=>'active','version'=>1,'created_user_id'=>$actorUserId,'created_at'=>now(),'updated_at'=>now()]);
             $after=$this->snapshot('hr_document_types',$id);
@@ -148,7 +148,7 @@ class OrganizationAdministrationService
     {
         return DB::transaction(function()use($typeId,$data,$companyId,$actorUserId){
             $this->lockActiveCompany($companyId);
-            $row=DB::table('hr_document_types')->where('id',$typeId)->where('company_id',$companyId)->lockForUpdate()->first();
+            $row=DB::table('hr_document_types')->where('id',$typeId)->where(fn ($_companyIdScope) => \App\Services\CompanyIdScope::constrain($_companyIdScope, 'company_id', $companyId))->lockForUpdate()->first();
             abort_unless($row,404,'Document type was not found in your legal entity.');
             $payload=$this->documentTypePayload($data,$companyId,true);
             $checksum=$this->checksum(['type_id'=>$typeId,'expected_version'=>$data['expected_version'],'payload'=>$payload,'reason'=>$data['reason']]);
@@ -190,7 +190,7 @@ class OrganizationAdministrationService
             $payload=['company_id'=>$companyId,'code'=>$data['code'],'name'=>$data['name'],'timezone'=>$data['timezone'],'weekly_working_days'=>$data['weekly_working_days'],'effective_from'=>$data['effective_from'],'effective_until'=>$data['effective_until']??null];
             $checksum=$this->checksum(['command'=>'create_work_calendar','payload'=>$payload,'reason'=>$data['reason']]);
             if($replay=$this->replay($data['idempotency_key'],$checksum,$companyId,'work_calendar'))return$replay;
-            abort_if(DB::table('hr_work_calendars')->where('company_id',$companyId)->where('code',$payload['code'])->where('effective_from',$payload['effective_from'])->exists(),409,'A work calendar with this code and effective date already exists in your legal entity.');
+            abort_if(DB::table('hr_work_calendars')->where(fn ($_companyIdScope) => \App\Services\CompanyIdScope::constrain($_companyIdScope, 'company_id', $companyId))->where('code',$payload['code'])->where('effective_from',$payload['effective_from'])->exists(),409,'A work calendar with this code and effective date already exists in your legal entity.');
             $id=(string)Str::uuid();
             DB::table('hr_work_calendars')->insert($this->json($payload,['weekly_working_days'])+['id'=>$id,'status'=>'active','created_by'=>$actorUserId,'created_at'=>now(),'updated_at'=>now()]);
             $after=$this->snapshot('hr_work_calendars',$id);
@@ -203,7 +203,7 @@ class OrganizationAdministrationService
     {
         return DB::transaction(function()use($calendarId,$data,$companyId,$actorUserId){
             $this->lockActiveCompany($companyId);
-            $calendar=DB::table('hr_work_calendars')->where('id',$calendarId)->where('company_id',$companyId)->lockForUpdate()->first();
+            $calendar=DB::table('hr_work_calendars')->where('id',$calendarId)->where(fn ($_companyIdScope) => \App\Services\CompanyIdScope::constrain($_companyIdScope, 'company_id', $companyId))->lockForUpdate()->first();
             abort_unless($calendar,404,'Work calendar was not found in your legal entity.');
             $payload=['calendar_date'=>$data['calendar_date'],'day_type'=>$data['day_type'],'name'=>$data['name']??null,'paid'=>$data['paid']];
             $checksum=$this->checksum(['command'=>'create_work_calendar_day','calendar_id'=>$calendarId,'payload'=>$payload,'reason'=>$data['reason']]);
@@ -249,7 +249,7 @@ class OrganizationAdministrationService
         ])));
         if(!$staffIds)return;
 
-        $activeStaff=DB::table('staff')->whereIn('id',$staffIds)->where('company_id',$companyId)
+        $activeStaff=DB::table('staff')->whereIn('id',$staffIds)->where(fn ($_companyIdScope) => \App\Services\CompanyIdScope::constrain($_companyIdScope, 'company_id', $companyId))
             ->whereNull('employment_ended_at')->whereNull('deleted_at')->orderBy('id')->lockForUpdate()->get(['id']);
         abort_unless($activeStaff->count()===count($staffIds),422,'Organization manager and HR partner must be active Staff in the same legal entity.');
     }
@@ -262,7 +262,7 @@ class OrganizationAdministrationService
             abort_if($cursor===$unitId,422,'Organization hierarchy cannot contain a cycle.');
             abort_if(isset($seen[$cursor]),409,'Existing organization hierarchy contains a cycle.');
             $seen[$cursor]=true;
-            $parent=DB::table('hr_organization_units')->where('id',$cursor)->where('company_id',$companyId)->lockForUpdate()->first(['parent_id','status','effective_from','effective_until']);
+            $parent=DB::table('hr_organization_units')->where('id',$cursor)->where(fn ($_companyIdScope) => \App\Services\CompanyIdScope::constrain($_companyIdScope, 'company_id', $companyId))->lockForUpdate()->first(['parent_id','status','effective_from','effective_until']);
             abort_unless($parent,422,'Parent organization unit must belong to your legal entity.');
             if($cursor===$parentId){
                 abort_unless($parent->status==='active'&&$parent->effective_from<=$from&&($parent->effective_until===null||($until!==null&&$parent->effective_until>=$until)),422,'Parent organization unit must be active and cover the child unit interval.');

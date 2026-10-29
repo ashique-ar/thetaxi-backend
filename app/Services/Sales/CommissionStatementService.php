@@ -64,12 +64,12 @@ class CommissionStatementService
                 'The Sales Profile must belong to active Staff in the same legal entity.');
             $facts = $this->facts($profile, $data, true);
             $existing = SalesCommissionStatement::query()
-                ->where('company_id', $profile->company_id)->where('staff_id', $profile->staff_id)
+                ->where(fn ($_companyIdScope) => \App\Services\CompanyIdScope::constrain($_companyIdScope, 'company_id', $profile->company_id))->where('staff_id', $profile->staff_id)
                 ->where('cycle_version_id', $facts['cycle']->id)->whereDate('period_start', $facts['period_start'])
                 ->whereDate('period_end', $facts['period_end'])->where('status', '!=', 'void')->lockForUpdate()->first();
             abort_if($existing, 422, 'A non-void statement already exists for this Staff/cycle period.');
             $version = (int) SalesCommissionStatement::query()
-                ->where('company_id', $profile->company_id)->where('staff_id', $profile->staff_id)
+                ->where(fn ($_companyIdScope) => \App\Services\CompanyIdScope::constrain($_companyIdScope, 'company_id', $profile->company_id))->where('staff_id', $profile->staff_id)
                 ->where('cycle_version_id', $facts['cycle']->id)->whereDate('period_start', $facts['period_start'])
                 ->whereDate('period_end', $facts['period_end'])->max('version') + 1;
             $statement = SalesCommissionStatement::create([
@@ -120,7 +120,7 @@ class CommissionStatementService
                     ->where('generation_idempotency_key', $data['idempotency_key'])->first();
                 if (! $duplicate && $scope && $facts) {
                     $periodConflict = SalesCommissionStatement::query()
-                        ->where('company_id', $scope['company_id'])->where('staff_id', $scope['staff_id'])
+                        ->where(fn ($_companyIdScope) => \App\Services\CompanyIdScope::constrain($_companyIdScope, 'company_id', $scope['company_id']))->where('staff_id', $scope['staff_id'])
                         ->where('cycle_version_id', $facts['cycle']->id)
                         ->whereDate('period_start', $facts['period_start'])->whereDate('period_end', $facts['period_end'])
                         ->where('status', '!=', 'void')->exists();
@@ -227,10 +227,10 @@ class CommissionStatementService
             'settlement_at' => $schedule['settlement_at']->toIso8601String(),
         ];
         $scheduleChecksum = hash('sha256', json_encode($scheduleSnapshot, JSON_THROW_ON_ERROR | JSON_UNESCAPED_SLASHES));
-        $opening = (float) (SalesCommissionStatement::query()->where('company_id', $profile->company_id)
+        $opening = (float) (SalesCommissionStatement::query()->where(fn ($_companyIdScope) => \App\Services\CompanyIdScope::constrain($_companyIdScope, 'company_id', $profile->company_id))
             ->where('staff_id', $profile->staff_id)->whereIn('status', ['approved', 'partially_paid', 'paid'])
             ->whereDate('period_end', '<', $periodStart)->latest('period_end')->value('closing_carry_forward_lkr') ?? 0);
-        $decisionQuery = SalesCommissionDecision::query()->where('company_id', $profile->company_id)
+        $decisionQuery = SalesCommissionDecision::query()->where(fn ($_companyIdScope) => \App\Services\CompanyIdScope::constrain($_companyIdScope, 'company_id', $profile->company_id))
             ->where('beneficiary_staff_id', $profile->staff_id)
             ->where('decision_at', '>=', $cycle->effective_from)->where('decision_at', '<=', $cutoffAt)
             ->whereNotExists(function ($q) {
@@ -243,7 +243,7 @@ class CommissionStatementService
         $decisions = $decisionQuery->get();
         $recoveryQuery = SalesCommissionRecoveryDecision::query()
             ->join('sales_commission_recovery_cases as recovery_case', 'recovery_case.id', '=', 'sales_commission_recovery_decisions.recovery_case_id')
-            ->where('recovery_case.company_id', $profile->company_id)->where('recovery_case.beneficiary_staff_id', $profile->staff_id)
+            ->where(fn ($_companyIdScope) => \App\Services\CompanyIdScope::constrain($_companyIdScope, 'recovery_case.company_id', $profile->company_id))->where('recovery_case.beneficiary_staff_id', $profile->staff_id)
             ->whereIn('sales_commission_recovery_decisions.decision', ['deduct', 'credit'])
             ->where('sales_commission_recovery_decisions.approved_at', '<=', $cutoffAt)
             ->whereNotExists(function ($q) {
@@ -255,7 +255,7 @@ class CommissionStatementService
         if ($lockSources) $recoveryQuery->lockForUpdate();
         $recoveries = $recoveryQuery->get();
         $releaseQuery = SalesCommissionHoldRelease::query()
-            ->where('company_id', $profile->company_id)->where('beneficiary_staff_id', $profile->staff_id)
+            ->where(fn ($_companyIdScope) => \App\Services\CompanyIdScope::constrain($_companyIdScope, 'company_id', $profile->company_id))->where('beneficiary_staff_id', $profile->staff_id)
             ->where('released_at', '>=', $cycle->effective_from)
             ->where('released_at', '<=', $cutoffAt)
             ->whereNotExists(function ($q) {
@@ -267,7 +267,7 @@ class CommissionStatementService
         if ($lockSources) $releaseQuery->lockForUpdate();
         $holdReleases = $releaseQuery->get();
         $holdAdjustmentQuery = SalesCommissionHoldAdjustment::query()
-            ->where('company_id', $profile->company_id)->where('beneficiary_staff_id', $profile->staff_id)
+            ->where(fn ($_companyIdScope) => \App\Services\CompanyIdScope::constrain($_companyIdScope, 'company_id', $profile->company_id))->where('beneficiary_staff_id', $profile->staff_id)
             ->where('adjustment_effective_at', '>=', $cycle->effective_from)
             ->where('adjustment_effective_at', '<=', $cutoffAt)
             ->whereNotExists(function ($query) {
@@ -279,7 +279,7 @@ class CommissionStatementService
         if ($lockSources) $holdAdjustmentQuery->lockForUpdate();
         $holdAdjustments = $holdAdjustmentQuery->get();
         $adjustmentQuery = SalesCommissionStatementAdjustment::query()
-            ->where('company_id', $profile->company_id)->where('staff_id', $profile->staff_id)
+            ->where(fn ($_companyIdScope) => \App\Services\CompanyIdScope::constrain($_companyIdScope, 'company_id', $profile->company_id))->where('staff_id', $profile->staff_id)
             ->where('approved_at', '<=', $cutoffAt)
             ->whereNotExists(function ($q) {
                 $q->selectRaw('1')->from('sales_commission_statement_lines as line')

@@ -956,7 +956,7 @@ class BookingObservabilityService
         $defaultCompanyId = app(SingleCompanyScope::class)->defaultCompany()?->id;
         $smsQuery = SmsMessage::query()->where('booking_id', $booking->id);
         if ($defaultCompanyId) {
-            $smsQuery->where('company_id', $defaultCompanyId);
+            $smsQuery->where(fn ($_companyIdScope) => \App\Services\CompanyIdScope::constrain($_companyIdScope, 'company_id', $defaultCompanyId));
         } else {
             $smsQuery->whereRaw('1 = 0');
         }
@@ -988,7 +988,7 @@ class BookingObservabilityService
         $decisionEvents = BookingActivity::query()->where('booking_id', $booking->id)
             ->whereNull('sms_message_id')
             ->when($defaultCompanyId,
-                fn ($query) => $query->where('company_id', $defaultCompanyId),
+                fn ($query) => $query->where(fn ($_companyIdScope) => \App\Services\CompanyIdScope::constrain($_companyIdScope, 'company_id', $defaultCompanyId)),
                 fn ($query) => $query->whereRaw('1 = 0'))
             ->when($bookingItemId, fn($query) => $query->where(function ($scope) use ($bookingItemId) {
                 $scope->whereNull('booking_item_id')->orWhere('booking_item_id', $bookingItemId);

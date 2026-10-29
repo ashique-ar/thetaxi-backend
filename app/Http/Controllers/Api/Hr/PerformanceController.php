@@ -18,7 +18,7 @@ class PerformanceController extends Controller
     public function index(Request $request): JsonResponse
     {
         $staff = $this->actor($request);
-        $query = DB::table('hr_performance_reviews as r')->join('hr_review_cycles as c', 'c.id', '=', 'r.cycle_id')->leftJoin('staff as s','s.id','=','r.staff_id')->leftJoin('users as u','u.id','=','s.user_id')->where('r.company_id', $staff->company_id)->select(['r.id','r.staff_id','r.manager_staff_id','r.status','r.final_rating','r.acknowledged_at','c.name as cycle_name','c.period_start','c.period_end','s.code as staff_code','u.first_name as staff_first_name','u.last_name as staff_last_name']);
+        $query = DB::table('hr_performance_reviews as r')->join('hr_review_cycles as c', 'c.id', '=', 'r.cycle_id')->leftJoin('staff as s','s.id','=','r.staff_id')->leftJoin('users as u','u.id','=','s.user_id')->where(fn ($_companyIdScope) => \App\Services\CompanyIdScope::constrain($_companyIdScope, 'r.company_id', $staff->company_id))->select(['r.id','r.staff_id','r.manager_staff_id','r.status','r.final_rating','r.acknowledged_at','c.name as cycle_name','c.period_start','c.period_end','s.code as staff_code','u.first_name as staff_first_name','u.last_name as staff_last_name']);
         if ($request->boolean('mine') || ! $request->user()->can('hr.performance.view-all')) $query->where(fn($q)=>$q->where('r.staff_id',$staff->id)->orWhere('r.manager_staff_id',$staff->id));
         return response()->json(['status' => 'success', 'data' => $query->latest('c.period_end')->paginate($this->paginationSize($request, 50))]);
     }
@@ -66,7 +66,7 @@ class PerformanceController extends Controller
     public function respond(Request $request,string $id):JsonResponse
     {
          $actor=$this->actor($request); $data=$request->validate(['respondent_role'=>['required',Rule::in(['self','manager'])],'responses'=>['required','array','min:1'],'rating'=>['nullable','numeric','between:0,100'],'submit'=>['nullable','boolean']]);
-        $review=DB::table('hr_performance_reviews')->where('id',$id)->where('company_id',$actor->company_id)->first(); abort_unless($review,404); abort_unless(($data['respondent_role']==='self'&&$review->staff_id===$actor->id)||($data['respondent_role']==='manager'&&$review->manager_staff_id===$actor->id),403,'You are not the assigned respondent.'); abort_if(in_array($review->status,['finalized','acknowledged'],true),409,'The review is frozen.');
+        $review=DB::table('hr_performance_reviews')->where('id',$id)->where(fn ($_companyIdScope) => \App\Services\CompanyIdScope::constrain($_companyIdScope, 'company_id', $actor->company_id))->first(); abort_unless($review,404); abort_unless(($data['respondent_role']==='self'&&$review->staff_id===$actor->id)||($data['respondent_role']==='manager'&&$review->manager_staff_id===$actor->id),403,'You are not the assigned respondent.'); abort_if(in_array($review->status,['finalized','acknowledged'],true),409,'The review is frozen.');
         $key=['review_id'=>$id,'respondent_role'=>$data['respondent_role'],'respondent_staff_id'=>$actor->id]; $values=['responses'=>json_encode($data['responses'],JSON_THROW_ON_ERROR),'rating'=>$data['rating']??null,'status'=>($data['submit']??false)?'submitted':'draft','submitted_at'=>($data['submit']??false)?now():null,'updated_at'=>now()]; $existing=DB::table('hr_review_responses')->where($key)->first(); if($existing){abort_if($existing->status==='submitted',409,'A submitted response is immutable.');DB::table('hr_review_responses')->where('id',$existing->id)->update($values);}else{DB::table('hr_review_responses')->insert($key+$values+['id'=>(string)Str::uuid(),'created_at'=>now()]);}
         return response()->json(['status'=>'success','data'=>DB::table('hr_review_responses')->where('review_id',$id)->where('respondent_role',$data['respondent_role'])->where('respondent_staff_id',$actor->id)->first()]);
     }
@@ -81,12 +81,12 @@ class PerformanceController extends Controller
         $data=$request->validate(['staff_id'=>['required','uuid'],'review_id'=>['nullable','uuid'],'parent_goal_id'=>['nullable','uuid'],'title'=>['required','string','max:255'],'description'=>['required','string','max:4000'],'weight'=>['required','numeric','between:0.0001,100'],'measurement_kind'=>['required',Rule::in(['numeric','percentage','milestone','rating'])],'target_value'=>['nullable','numeric'],'starts_at'=>['required','date'],'due_at'=>['required','date','after_or_equal:starts_at']]);
 
         $goal=DB::transaction(function()use($data,$actor){
-            $staff=Staff::query()->whereKey($data['staff_id'])->where('company_id',$actor->company_id)->lockForUpdate()->firstOrFail();
+            $staff=Staff::query()->whereKey($data['staff_id'])->where(fn ($_companyIdScope) => \App\Services\CompanyIdScope::constrain($_companyIdScope, 'company_id', $actor->company_id))->lockForUpdate()->firstOrFail();
             if(!empty($data['review_id'])){
-                abort_unless(DB::table('hr_performance_reviews')->where('id',$data['review_id'])->where('company_id',$actor->company_id)->where('staff_id',$staff->id)->exists(),422,'The selected review does not belong to this employee and legal entity.');
+                abort_unless(DB::table('hr_performance_reviews')->where('id',$data['review_id'])->where(fn ($_companyIdScope) => \App\Services\CompanyIdScope::constrain($_companyIdScope, 'company_id', $actor->company_id))->where('staff_id',$staff->id)->exists(),422,'The selected review does not belong to this employee and legal entity.');
             }
             if(!empty($data['parent_goal_id'])){
-                $parent=DB::table('hr_goals')->where('id',$data['parent_goal_id'])->where('company_id',$actor->company_id)->where('staff_id',$staff->id)->first();
+                $parent=DB::table('hr_goals')->where('id',$data['parent_goal_id'])->where(fn ($_companyIdScope) => \App\Services\CompanyIdScope::constrain($_companyIdScope, 'company_id', $actor->company_id))->where('staff_id',$staff->id)->first();
                 abort_unless($parent,422,'The parent goal does not belong to this employee and legal entity.');
                 abort_unless(($parent->review_id??null)===($data['review_id']??null),422,'A parent goal must belong to the same review context.');
             }
@@ -102,7 +102,7 @@ class PerformanceController extends Controller
 
     public function storeAchievement(Request $request):JsonResponse
     {
-         $actor=$this->actor($request); $data=$request->validate(['staff_id'=>['required','uuid'],'category'=>['required','string','max:60'],'title'=>['required','string','max:255'],'description'=>['required','string','max:4000'],'achievement_date'=>['required','date','before_or_equal:today'],'outcome_snapshot'=>['required','array'],'evidence'=>['nullable','array'],'visibility'=>['required',Rule::in(['private','manager','company'])]]); $staff=Staff::query()->whereKey($data['staff_id'])->where('company_id',$actor->company_id)->firstOrFail(); abort_unless($staff->id===$actor->id,403,'Employees can submit only their own achievement.'); $id=(string)Str::uuid(); foreach(['outcome_snapshot','evidence'] as $key)if(array_key_exists($key,$data))$data[$key]=json_encode($data[$key],JSON_THROW_ON_ERROR); DB::table('hr_achievements')->insert($data+['id'=>$id,'company_id'=>$staff->company_id,'status'=>'pending_verification','submitted_by'=>$request->user()->id,'created_at'=>now(),'updated_at'=>now()]); $this->achievementEvent($id,'submitted',null,'pending_verification',null,$request->user()->id); return response()->json(['status'=>'success','data'=>DB::table('hr_achievements')->find($id)],201);
+         $actor=$this->actor($request); $data=$request->validate(['staff_id'=>['required','uuid'],'category'=>['required','string','max:60'],'title'=>['required','string','max:255'],'description'=>['required','string','max:4000'],'achievement_date'=>['required','date','before_or_equal:today'],'outcome_snapshot'=>['required','array'],'evidence'=>['nullable','array'],'visibility'=>['required',Rule::in(['private','manager','company'])]]); $staff=Staff::query()->whereKey($data['staff_id'])->where(fn ($_companyIdScope) => \App\Services\CompanyIdScope::constrain($_companyIdScope, 'company_id', $actor->company_id))->firstOrFail(); abort_unless($staff->id===$actor->id,403,'Employees can submit only their own achievement.'); $id=(string)Str::uuid(); foreach(['outcome_snapshot','evidence'] as $key)if(array_key_exists($key,$data))$data[$key]=json_encode($data[$key],JSON_THROW_ON_ERROR); DB::table('hr_achievements')->insert($data+['id'=>$id,'company_id'=>$staff->company_id,'status'=>'pending_verification','submitted_by'=>$request->user()->id,'created_at'=>now(),'updated_at'=>now()]); $this->achievementEvent($id,'submitted',null,'pending_verification',null,$request->user()->id); return response()->json(['status'=>'success','data'=>DB::table('hr_achievements')->find($id)],201);
     }
 
     public function decideAchievement(Request $request,string $id):JsonResponse
@@ -115,7 +115,7 @@ class PerformanceController extends Controller
     private function visibleReview(Request $request, string $id): object
     {
         $actor = $this->actor($request);
-        $review = DB::table('hr_performance_reviews')->where('id', $id)->where('company_id', $actor->company_id)->first();
+        $review = DB::table('hr_performance_reviews')->where('id', $id)->where(fn ($_companyIdScope) => \App\Services\CompanyIdScope::constrain($_companyIdScope, 'company_id', $actor->company_id))->first();
         abort_unless($review, 404);
         abort_unless($request->user()->can('hr.performance.view-all') || $review->staff_id === $actor->id || $review->manager_staff_id === $actor->id, 403);
 

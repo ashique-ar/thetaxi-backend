@@ -23,9 +23,9 @@ class LeaveWorkflowService
                 }
                 $staff = DB::table('staff')->where('id', $data['staff_id'])->lockForUpdate()->first();
                 abort_unless($staff && $staff->company_id === $data['company_id'] && $staff->employment_ended_at === null && $staff->deleted_at === null, 422, 'Staff is no longer active in this legal entity.');
-                $policy = DB::table('hr_leave_policies')->where('id', $data['policy_id'])->where('company_id', $data['company_id'])->where('status', 'approved')->whereDate('effective_from', '<=', $data['start_date'])->where(fn($q) => $q->whereNull('effective_until')->orWhereDate('effective_until', '>', $data['end_date']))->first();
+                $policy = DB::table('hr_leave_policies')->where('id', $data['policy_id'])->where(fn ($_companyIdScope) => \App\Services\CompanyIdScope::constrain($_companyIdScope, 'company_id', $data['company_id']))->where('status', 'approved')->whereDate('effective_from', '<=', $data['start_date'])->where(fn($q) => $q->whereNull('effective_until')->orWhereDate('effective_until', '>', $data['end_date']))->first();
                 abort_unless($policy, 422, 'No approved leave policy covers the requested interval.');
-                abort_unless(DB::table('hr_leave_policy_assignments')->where('company_id', $data['company_id'])->where('staff_id', $data['staff_id'])->where('policy_id', $policy->id)->whereNotNull('approved_at')->whereDate('effective_from', '<=', $data['start_date'])->where(fn($q) => $q->whereNull('effective_until')->orWhereDate('effective_until', '>', $data['end_date']))->exists(), 422, 'The leave policy is not assigned for the full interval.');
+                abort_unless(DB::table('hr_leave_policy_assignments')->where(fn ($_companyIdScope) => \App\Services\CompanyIdScope::constrain($_companyIdScope, 'company_id', $data['company_id']))->where('staff_id', $data['staff_id'])->where('policy_id', $policy->id)->whereNotNull('approved_at')->whereDate('effective_from', '<=', $data['start_date'])->where(fn($q) => $q->whereNull('effective_until')->orWhereDate('effective_until', '>', $data['end_date']))->exists(), 422, 'The leave policy is not assigned for the full interval.');
                 $rules = json_decode($policy->rules, true, 512, JSON_THROW_ON_ERROR);
                 $days = $this->days($data, $rules);
                 $minutes = array_sum(array_column($days, 'minutes'));
@@ -47,7 +47,7 @@ class LeaveWorkflowService
                 $balance = $this->balance($account->id, $data['start_date']);
                 $negative = (int) ($rules['negative_balance_limit_minutes'] ?? 0);
                 abort_if($balance - $minutes < -$negative, 409, 'Insufficient available leave balance.');
-                $overlap = DB::table('hr_leave_requests')->where('company_id', $data['company_id'])->where('staff_id', $data['staff_id'])->whereIn('status', ['pending_approval', 'approved'])->whereDate('start_date', '<=', $data['end_date'])->whereDate('end_date', '>=', $data['start_date'])->exists();
+                $overlap = DB::table('hr_leave_requests')->where(fn ($_companyIdScope) => \App\Services\CompanyIdScope::constrain($_companyIdScope, 'company_id', $data['company_id']))->where('staff_id', $data['staff_id'])->whereIn('status', ['pending_approval', 'approved'])->whereDate('start_date', '<=', $data['end_date'])->whereDate('end_date', '>=', $data['start_date'])->exists();
                 abort_if($overlap, 409, 'An active leave request overlaps this interval.');
                 $id = (string) Str::uuid();
                 $snapshot = ['policy_id' => $policy->id, 'policy_version' => $policy->version, 'rules' => $rules, 'balance_before_minutes' => $balance, 'calculated_days' => $days];
@@ -81,7 +81,7 @@ class LeaveWorkflowService
             $candidate = DB::table('hr_leave_requests')->where('id', $requestId)->first();
             abort_unless($candidate, 404);
             $this->assertActiveCompany($candidate->company_id);
-            $row = DB::table('hr_leave_requests')->where('id', $requestId)->where('company_id', $candidate->company_id)->lockForUpdate()->first();
+            $row = DB::table('hr_leave_requests')->where('id', $requestId)->where(fn ($_companyIdScope) => \App\Services\CompanyIdScope::constrain($_companyIdScope, 'company_id', $candidate->company_id))->lockForUpdate()->first();
             abort_unless($row, 404);
             $this->assertRequestCompany($row);
             abort_if($row->requested_by === $actorUserId, 409, 'The leave requester cannot decide the same request.');
@@ -97,9 +97,9 @@ class LeaveWorkflowService
                     ->join('staff as delegator', 'delegator.id', '=', 'delegation.delegator_staff_id')
                     ->join('staff as delegate', 'delegate.id', '=', 'delegation.delegate_staff_id')
                     ->join('staff as approver', function ($join) { $join->on('approver.id', '=', 'delegation.approved_by_staff_id')->on('approver.user_id', '=', 'delegation.approved_by'); })
-                    ->where('delegation.company_id', $row->company_id)->where('delegation.delegator_staff_id', $row->current_approver_staff_id)
-                    ->where('delegation.delegate_staff_id', $actorStaffId)->where('delegator.company_id', $row->company_id)
-                    ->where('delegate.company_id', $row->company_id)->where('approver.company_id', $row->company_id)
+                    ->where(fn ($_companyIdScope) => \App\Services\CompanyIdScope::constrain($_companyIdScope, 'delegation.company_id', $row->company_id))->where('delegation.delegator_staff_id', $row->current_approver_staff_id)
+                    ->where('delegation.delegate_staff_id', $actorStaffId)->where(fn ($_companyIdScope) => \App\Services\CompanyIdScope::constrain($_companyIdScope, 'delegator.company_id', $row->company_id))
+                    ->where(fn ($_companyIdScope) => \App\Services\CompanyIdScope::constrain($_companyIdScope, 'delegate.company_id', $row->company_id))->where(fn ($_companyIdScope) => \App\Services\CompanyIdScope::constrain($_companyIdScope, 'approver.company_id', $row->company_id))
                     ->whereNotNull('delegation.approved_by_staff_id')->whereNotNull('delegation.approved_at')
                     ->where('delegation.status', 'approved')->whereDate('delegation.effective_from', '<=', now())
                     ->whereDate('delegation.effective_until', '>=', now())->get(['delegation.request_types'])
@@ -121,7 +121,7 @@ class LeaveWorkflowService
                 $this->event($row->id, 'approval_level_completed', 'pending_approval', 'pending_approval', $reason, $snapshot + ['completed_level' => $row->approval_level], $actorUserId);
                 DB::table('hr_leave_requests')->where('id', $row->id)->update(['approval_level' => $nextLevel, 'current_approver_staff_id' => $nextApprover, 'updated_at' => now()]);
                 return DB::table('hr_leave_requests')->find($row->id);
-            }$locked = DB::table('hr_attendance_periods')->where('company_id', $row->company_id)->where('status', 'locked')->whereDate('period_start', '<=', $row->end_date)->whereDate('period_end', '>=', $row->start_date)->exists();
+            }$locked = DB::table('hr_attendance_periods')->where(fn ($_companyIdScope) => \App\Services\CompanyIdScope::constrain($_companyIdScope, 'company_id', $row->company_id))->where('status', 'locked')->whereDate('period_start', '<=', $row->end_date)->whereDate('period_end', '>=', $row->start_date)->exists();
             abort_if($locked && $action === 'approve', 409, 'Reopen the overlapping locked attendance period before approving leave.');
             $account = $this->account($row->company_id, $row->staff_id, $row->leave_type_id, $row->unit);
             $this->entry($account->id, $row->id, 'reservation_release', $row->reserved_minutes, $row->start_date, 'leave_request', $row->id, 'Release pending reservation', $snapshot, $actorUserId);
@@ -146,7 +146,7 @@ class LeaveWorkflowService
             $this->assertRequestCompany($row);
             abort_unless(in_array($row->status, ['pending_approval', 'approved'], true), 409, 'This leave request cannot be cancelled.');
             abort_if($row->recalled_at !== null, 409, 'This leave request was already recalled; the recalled portion cannot also be cancelled.');
-            $locked = DB::table('hr_attendance_periods')->where('company_id', $row->company_id)->where('status', 'locked')->whereDate('period_start', '<=', $row->end_date)->whereDate('period_end', '>=', $row->start_date)->exists();
+            $locked = DB::table('hr_attendance_periods')->where(fn ($_companyIdScope) => \App\Services\CompanyIdScope::constrain($_companyIdScope, 'company_id', $row->company_id))->where('status', 'locked')->whereDate('period_start', '<=', $row->end_date)->whereDate('period_end', '>=', $row->start_date)->exists();
             abort_if($locked && $row->status === 'approved', 409, 'Reopen the overlapping locked attendance period before cancelling approved leave.');
             $account = $this->account($row->company_id, $row->staff_id, $row->leave_type_id, $row->unit);
             $snapshot = json_decode($row->calculation_snapshot, true, 512, JSON_THROW_ON_ERROR);
@@ -233,11 +233,11 @@ class LeaveWorkflowService
             abort_if($row->unit === 'hour', 422, 'Hourly leave cannot be extended by end date; submit a new request for additional hours.');
             abort_unless($newEndDate > $row->end_date, 422, 'An extension must move the end date later than the current approved end date.');
             $extensionStart = CarbonImmutable::parse($row->end_date)->addDay()->toDateString();
-            $locked = DB::table('hr_attendance_periods')->where('company_id', $row->company_id)->where('status', 'locked')->whereDate('period_start', '<=', $newEndDate)->whereDate('period_end', '>=', $extensionStart)->exists();
+            $locked = DB::table('hr_attendance_periods')->where(fn ($_companyIdScope) => \App\Services\CompanyIdScope::constrain($_companyIdScope, 'company_id', $row->company_id))->where('status', 'locked')->whereDate('period_start', '<=', $newEndDate)->whereDate('period_end', '>=', $extensionStart)->exists();
             abort_if($locked, 409, 'Reopen the overlapping locked attendance period before extending approved leave.');
-            $policy = DB::table('hr_leave_policies')->where('id', $row->policy_id)->where('company_id', $row->company_id)->where('status', 'approved')->whereDate('effective_from', '<=', $row->start_date)->where(fn($q) => $q->whereNull('effective_until')->orWhereDate('effective_until', '>', $newEndDate))->first();
+            $policy = DB::table('hr_leave_policies')->where('id', $row->policy_id)->where(fn ($_companyIdScope) => \App\Services\CompanyIdScope::constrain($_companyIdScope, 'company_id', $row->company_id))->where('status', 'approved')->whereDate('effective_from', '<=', $row->start_date)->where(fn($q) => $q->whereNull('effective_until')->orWhereDate('effective_until', '>', $newEndDate))->first();
             abort_unless($policy, 422, 'No approved leave policy covers the extended interval.');
-            abort_unless(DB::table('hr_leave_policy_assignments')->where('company_id', $row->company_id)->where('staff_id', $row->staff_id)->where('policy_id', $policy->id)->whereNotNull('approved_at')->whereDate('effective_from', '<=', $row->start_date)->where(fn($q) => $q->whereNull('effective_until')->orWhereDate('effective_until', '>', $newEndDate))->exists(), 422, 'The leave policy is not assigned for the full extended interval.');
+            abort_unless(DB::table('hr_leave_policy_assignments')->where(fn ($_companyIdScope) => \App\Services\CompanyIdScope::constrain($_companyIdScope, 'company_id', $row->company_id))->where('staff_id', $row->staff_id)->where('policy_id', $policy->id)->whereNotNull('approved_at')->whereDate('effective_from', '<=', $row->start_date)->where(fn($q) => $q->whereNull('effective_until')->orWhereDate('effective_until', '>', $newEndDate))->exists(), 422, 'The leave policy is not assigned for the full extended interval.');
             $rules = json_decode($policy->rules, true, 512, JSON_THROW_ON_ERROR);
             $newDays = $this->days(['company_id' => $row->company_id, 'unit' => $row->unit, 'start_date' => $extensionStart, 'end_date' => $newEndDate], $rules);
             $addedMinutes = array_sum(array_column($newDays, 'minutes'));
@@ -246,7 +246,7 @@ class LeaveWorkflowService
             abort_if($existingDayCount + count($newDays) > (int) ($rules['maximum_consecutive_days'] ?? 366), 422, 'The extension exceeds the policy consecutive-day limit.');
             $blackouts = $rules['blackout_dates'] ?? [];
             abort_if(collect($newDays)->contains(fn($day) => in_array($day['date'], $blackouts, true)), 422, 'The extension includes a policy blackout date.');
-            $overlap = DB::table('hr_leave_requests')->where('company_id', $row->company_id)->where('staff_id', $row->staff_id)->where('id', '!=', $row->id)->whereIn('status', ['pending_approval', 'approved'])->whereDate('start_date', '<=', $newEndDate)->whereDate('end_date', '>=', $extensionStart)->exists();
+            $overlap = DB::table('hr_leave_requests')->where(fn ($_companyIdScope) => \App\Services\CompanyIdScope::constrain($_companyIdScope, 'company_id', $row->company_id))->where('staff_id', $row->staff_id)->where('id', '!=', $row->id)->whereIn('status', ['pending_approval', 'approved'])->whereDate('start_date', '<=', $newEndDate)->whereDate('end_date', '>=', $extensionStart)->exists();
             abort_if($overlap, 409, 'Another active leave request overlaps the extension interval.');
             $account = $this->account($row->company_id, $row->staff_id, $row->leave_type_id, $row->unit);
             $balance = $this->balance($account->id, $row->start_date);
@@ -338,8 +338,8 @@ class LeaveWorkflowService
     }
     private function account(string $company, string $staff, string $type, string $unit): object
     {
-        abort_unless(DB::table('staff')->where('id', $staff)->where('company_id', $company)->exists(), 422, 'Staff does not belong to this legal entity.');
-        abort_unless(DB::table('hr_leave_types')->where('id', $type)->where('company_id', $company)->exists(), 422, 'Leave type does not belong to this legal entity.');
+        abort_unless(DB::table('staff')->where('id', $staff)->where(fn ($_companyIdScope) => \App\Services\CompanyIdScope::constrain($_companyIdScope, 'company_id', $company))->exists(), 422, 'Staff does not belong to this legal entity.');
+        abort_unless(DB::table('hr_leave_types')->where('id', $type)->where(fn ($_companyIdScope) => \App\Services\CompanyIdScope::constrain($_companyIdScope, 'company_id', $company))->exists(), 422, 'Leave type does not belong to this legal entity.');
         $row = DB::table('hr_leave_balance_accounts')->where('staff_id', $staff)->where('leave_type_id', $type)->lockForUpdate()->first();
         if ($row) {
             abort_unless($row->company_id === $company && $row->unit === $unit, 409, 'Leave balance account does not match the request legal entity or unit.');
@@ -357,8 +357,8 @@ class LeaveWorkflowService
         $this->assertActiveCompany($companyId);
         $account = DB::table('hr_leave_balance_accounts')->where('id', $id)->lockForUpdate()->first();
         abort_unless($account && (string) $account->company_id === $companyId, 409, 'Leave balance account changed legal entities.');
-        abort_unless(DB::table('staff')->where('id', $account->staff_id)->where('company_id', $account->company_id)->exists()
-            && DB::table('hr_leave_types')->where('id', $account->leave_type_id)->where('company_id', $account->company_id)->exists(), 409,
+        abort_unless(DB::table('staff')->where('id', $account->staff_id)->where(fn ($_companyIdScope) => \App\Services\CompanyIdScope::constrain($_companyIdScope, 'company_id', $account->company_id))->exists()
+            && DB::table('hr_leave_types')->where('id', $account->leave_type_id)->where(fn ($_companyIdScope) => \App\Services\CompanyIdScope::constrain($_companyIdScope, 'company_id', $account->company_id))->exists(), 409,
             'Leave balance account company links are inconsistent.');
         return $account;
     }
@@ -370,7 +370,7 @@ class LeaveWorkflowService
         $out = [];
         for ($day = $start; $day->lte($end); $day = $day->addDay()) {
             $weekend = in_array(strtolower($day->format('l')), array_map('strtolower', $rules['weekend_days'] ?? ['saturday', 'sunday']), true);
-            $holiday = DB::table('hr_work_calendar_days as d')->join('hr_work_calendars as c', 'c.id', '=', 'd.calendar_id')->where('c.company_id', $data['company_id'])->whereDate('d.calendar_date', $day)->whereIn('d.day_type', ['holiday', 'rest_day'])->exists();
+            $holiday = DB::table('hr_work_calendar_days as d')->join('hr_work_calendars as c', 'c.id', '=', 'd.calendar_id')->where(fn ($_companyIdScope) => \App\Services\CompanyIdScope::constrain($_companyIdScope, 'c.company_id', $data['company_id']))->whereDate('d.calendar_date', $day)->whereIn('d.day_type', ['holiday', 'rest_day'])->exists();
             $include = (!$weekend && !$holiday) || ($rules['sandwich_rule_enabled'] ?? false);
             if ($include)
                 $out[] = ['date' => $day->toDateString(), 'minutes' => $data['unit'] === 'half_day' ? (int) floor($minutes / 2) : ($data['unit'] === 'hour' ? (int) $data['requested_minutes'] : $minutes), 'kind' => $weekend || $holiday ? 'sandwich' : 'working'];
@@ -417,8 +417,8 @@ class LeaveWorkflowService
     }
     private function payrollFact(string $company, string $staff, string $kind, string $date, int $minutes, string $sourceType, string $sourceId, array $snapshot, string $actor, ?string $sourceRequestId = null): PayrollInputFact
     {
-        abort_unless(DB::table('staff')->where('id', $staff)->where('company_id', $company)->exists(), 422, 'Payroll fact Staff does not belong to this legal entity.');
-        abort_unless(DB::table('hr_leave_requests')->where('id', $sourceRequestId ?? $sourceId)->where('company_id', $company)->where('staff_id', $staff)->exists(), 422, 'Payroll fact source does not match the request legal entity and Staff.');
+        abort_unless(DB::table('staff')->where('id', $staff)->where(fn ($_companyIdScope) => \App\Services\CompanyIdScope::constrain($_companyIdScope, 'company_id', $company))->exists(), 422, 'Payroll fact Staff does not belong to this legal entity.');
+        abort_unless(DB::table('hr_leave_requests')->where('id', $sourceRequestId ?? $sourceId)->where(fn ($_companyIdScope) => \App\Services\CompanyIdScope::constrain($_companyIdScope, 'company_id', $company))->where('staff_id', $staff)->exists(), 422, 'Payroll fact source does not match the request legal entity and Staff.');
         if ($sourceRequestId !== null)
             abort_unless(DB::table('hr_leave_request_events')->where('id', $sourceId)->where('leave_request_id', $sourceRequestId)->where('event_type', 'extended')->exists(), 422, 'Payroll fact source event does not match the leave request.');
         $payload = compact('company', 'staff', 'kind', 'date', 'minutes', 'sourceType', 'sourceId', 'sourceRequestId', 'snapshot');
@@ -427,9 +427,9 @@ class LeaveWorkflowService
     private function assertRequestCompany(object $row): void
     {
         $this->assertActiveCompany($row->company_id);
-        abort_unless(DB::table('staff')->where('id', $row->staff_id)->where('company_id', $row->company_id)->exists(), 422, 'Leave request Staff does not belong to its legal entity.');
-        abort_unless(DB::table('hr_leave_types')->where('id', $row->leave_type_id)->where('company_id', $row->company_id)->exists(), 422, 'Leave request type does not belong to its legal entity.');
-        abort_unless(DB::table('hr_leave_policies')->where('id', $row->policy_id)->where('company_id', $row->company_id)->where('leave_type_id', $row->leave_type_id)->exists(), 422, 'Leave request policy does not match its legal entity and type.');
+        abort_unless(DB::table('staff')->where('id', $row->staff_id)->where(fn ($_companyIdScope) => \App\Services\CompanyIdScope::constrain($_companyIdScope, 'company_id', $row->company_id))->exists(), 422, 'Leave request Staff does not belong to its legal entity.');
+        abort_unless(DB::table('hr_leave_types')->where('id', $row->leave_type_id)->where(fn ($_companyIdScope) => \App\Services\CompanyIdScope::constrain($_companyIdScope, 'company_id', $row->company_id))->exists(), 422, 'Leave request type does not belong to its legal entity.');
+        abort_unless(DB::table('hr_leave_policies')->where('id', $row->policy_id)->where(fn ($_companyIdScope) => \App\Services\CompanyIdScope::constrain($_companyIdScope, 'company_id', $row->company_id))->where('leave_type_id', $row->leave_type_id)->exists(), 422, 'Leave request policy does not match its legal entity and type.');
     }
     private function assertActiveCompany(string $companyId): void
     {

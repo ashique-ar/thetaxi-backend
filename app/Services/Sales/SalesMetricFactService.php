@@ -53,12 +53,12 @@ class SalesMetricFactService
                 && in_array($timezone, DateTimeZone::listIdentifiers(), true);
             if (! $timezoneIsApproved) {
                 abort_if(DB::table('domain_period_locks')->where('domain', 'sales')
-                    ->where('company_id', $payload['company_id'])->where('state', 'locked')->exists(), 409,
+                    ->where(fn ($_companyIdScope) => \App\Services\CompanyIdScope::constrain($_companyIdScope, 'company_id', $payload['company_id']))->where('state', 'locked')->exists(), 409,
                     'An approved Sales business timezone is required before writing facts after a period close.');
             } else {
                 $occurredAt = CarbonImmutable::parse($payload['occurred_on'], $timezone)->startOfDay()->addHours(12)->utc();
                 abort_if(DB::table('domain_period_locks')->where('domain', 'sales')
-                    ->where('company_id', $payload['company_id'])->where('state', 'locked')
+                    ->where(fn ($_companyIdScope) => \App\Services\CompanyIdScope::constrain($_companyIdScope, 'company_id', $payload['company_id']))->where('state', 'locked')
                     ->where('period_start', '<=', $occurredAt)->where('period_end', '>', $occurredAt)->exists(), 409,
                     'The Sales performance period is locked; use the governed reopen and rebuild workflow.');
             }

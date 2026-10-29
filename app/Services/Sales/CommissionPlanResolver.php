@@ -185,13 +185,13 @@ class CommissionPlanResolver
     {
         $staff = $profile->staff;
         return SalesCommissionPlanAssignment::query()
-            ->where('sales_commission_plan_assignments.company_id', $attribution->company_id)
+            ->where(fn ($_companyIdScope) => \App\Services\CompanyIdScope::constrain($_companyIdScope, 'sales_commission_plan_assignments.company_id', $attribution->company_id))
             ->where('sales_commission_plan_assignments.status', 'approved')
             ->where('sales_commission_plan_assignments.effective_from', '<=', $attribution->secured_at)
             ->where(fn ($q) => $q->whereNull('sales_commission_plan_assignments.effective_until')
                 ->orWhere('sales_commission_plan_assignments.effective_until', '>', $attribution->secured_at))
             ->with('planFamily:id,company_id,code,name,commission_category,status')
-            ->whereHas('planFamily', fn ($q) => $q->where('company_id', $attribution->company_id)
+            ->whereHas('planFamily', fn ($q) => $q->where(fn ($_companyIdScope) => \App\Services\CompanyIdScope::constrain($_companyIdScope, 'company_id', $attribution->company_id))
                 ->where('status', 'approved')
                 ->where('commission_category', $attribution->commission_category))
             ->where(function ($q) use ($profile, $staff) {

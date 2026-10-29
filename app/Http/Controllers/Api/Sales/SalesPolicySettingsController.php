@@ -78,16 +78,16 @@ class SalesPolicySettingsController extends Controller
             $categoryColumns[] = 'reason';
         }
         $byKind = collect(SalesPolicySettingsService::KINDS)
-            ->mapWithKeys(fn(string $kind) => [$kind => SalesPolicySetting::query()->where('company_id', $data['company_id'])
+            ->mapWithKeys(fn(string $kind) => [$kind => SalesPolicySetting::query()->where(fn ($_companyIdScope) => \App\Services\CompanyIdScope::constrain($_companyIdScope, 'company_id', $data['company_id']))
                 ->where('policy_kind', $kind)->orderByDesc('version')->get($policyColumns)]);
 
         return response()->json([
             'status' => 'success',
             'data' => [
                 'policy_settings' => $byKind,
-                'staff_categories' => SalesStaffCategoryDefinition::query()->where('company_id', $data['company_id'])
+                'staff_categories' => SalesStaffCategoryDefinition::query()->where(fn ($_companyIdScope) => \App\Services\CompanyIdScope::constrain($_companyIdScope, 'company_id', $data['company_id']))
                     ->orderBy('category_name')->get($categoryColumns),
-                'company_features' => SalesCompanyFeatureSetting::query()->where('company_id', $data['company_id'])
+                'company_features' => SalesCompanyFeatureSetting::query()->where(fn ($_companyIdScope) => \App\Services\CompanyIdScope::constrain($_companyIdScope, 'company_id', $data['company_id']))
                     ->orderBy('feature_key')->orderByDesc('version')->get($featureColumns),
                 'deployment_feature_availability' => $this->settings->featureAvailability(),
             ]

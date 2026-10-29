@@ -183,7 +183,7 @@ class ThreeCxCrmController extends Controller
         $connection = $this->authorizeCrmRequest($request);
         $customer = ! empty($data['entity_id']) ? $this->contacts($connection)->whereKey($data['entity_id'])->first() : null;
         $agent = ! empty($data['agent_email']) ? User::query()->whereRaw('LOWER(email) = ?', [Str::lower($data['agent_email'])])
-            ->where('is_active', true)->whereHas('staff', fn ($query) => $query->where('company_id', $connection->company_id)
+            ->where('is_active', true)->whereHas('staff', fn ($query) => $query->where(fn ($_companyIdScope) => \App\Services\CompanyIdScope::constrain($_companyIdScope, 'company_id', $connection->company_id))
                 ->whereNull('deleted_at')->whereNull('employment_ended_at'))->first() : null;
         $startedAt = Carbon::parse($data['started_at'])->utc();
         $endedAt = Carbon::parse($data['ended_at'])->utc();
@@ -196,7 +196,7 @@ class ThreeCxCrmController extends Controller
         $keys = [$legacyKey, hash('sha256', $connection->company_id.'|'.$legacyKey)];
         $key = $keys[1];
 
-        $existing = PhoneCall::query()->where('company_id', $connection->company_id)->where('external_provider', '3cx')
+        $existing = PhoneCall::query()->where(fn ($_companyIdScope) => \App\Services\CompanyIdScope::constrain($_companyIdScope, 'company_id', $connection->company_id))->where('external_provider', '3cx')
             ->whereIn('external_call_key', $keys)->first();
         if ($existing) return response()->json(['status' => 'success', 'duplicate' => true, 'call_id' => $existing->id]);
 
@@ -224,11 +224,11 @@ class ThreeCxCrmController extends Controller
                 // shortcut: only exact CRM matches with an active owner get callback tasks; supervisors route other calls after review.
                 if ($customer && $data['direction'] === 'Inbound' && in_array($data['call_type'], ['Missed', 'Notanswered'], true)) {
                     $assignment = DB::table('customer_relationship_owner_assignments')
-                        ->where('customer_id', $customer->id)->where('company_id', $connection->company_id)
+                        ->where('customer_id', $customer->id)->where(fn ($_companyIdScope) => \App\Services\CompanyIdScope::constrain($_companyIdScope, 'company_id', $connection->company_id))
                         ->whereNull('ended_at')->whereNotNull('owner_sales_profile_id')->latest('effective_from')->first();
                     $owner = $assignment ? SalesProfile::query()->whereKey($assignment->owner_sales_profile_id)
-                        ->where('company_id', $connection->company_id)->activeAt(now())
-                        ->whereHas('staff', fn ($query) => $query->where('company_id', $connection->company_id)
+                        ->where(fn ($_companyIdScope) => \App\Services\CompanyIdScope::constrain($_companyIdScope, 'company_id', $connection->company_id))->activeAt(now())
+                        ->whereHas('staff', fn ($query) => $query->where(fn ($_companyIdScope) => \App\Services\CompanyIdScope::constrain($_companyIdScope, 'company_id', $connection->company_id))
                             ->whereNull('deleted_at')->where(fn ($employment) => $employment->whereNull('employment_ended_at')
                                 ->orWhere('employment_ended_at', '>', now()))
                             ->whereHas('user', fn ($user) => $user->where('is_active', true)->whereNull('deleted_at')))
@@ -262,7 +262,7 @@ class ThreeCxCrmController extends Controller
             if (! $call->assigned_user_id) $this->notifyCallManagers($connection, $call);
             return response()->json(['status' => 'success', 'duplicate' => false, 'call_id' => $call->id], 201);
         } catch (QueryException $error) {
-            $existing = PhoneCall::query()->where('company_id', $connection->company_id)->where('external_provider', '3cx')
+            $existing = PhoneCall::query()->where(fn ($_companyIdScope) => \App\Services\CompanyIdScope::constrain($_companyIdScope, 'company_id', $connection->company_id))->where('external_provider', '3cx')
                 ->whereIn('external_call_key', $keys)->first();
             if (! $existing) throw $error;
             return response()->json(['status' => 'success', 'duplicate' => true, 'call_id' => $existing->id]);
@@ -318,7 +318,7 @@ class ThreeCxCrmController extends Controller
     {
         try {
             $recipients = User::permission('phone-calls.view')->permission('phone-calls.edit')->where('is_active', true)->whereNull('deleted_at')
-                ->whereHas('staff', fn ($query) => $query->where('company_id', $connection->company_id)
+                ->whereHas('staff', fn ($query) => $query->where(fn ($_companyIdScope) => \App\Services\CompanyIdScope::constrain($_companyIdScope, 'company_id', $connection->company_id))
                     ->whereNull('deleted_at')->whereNull('employment_ended_at'))->get();
             foreach ($recipients as $recipient) $recipient->notify(new PhoneCallNeedsOwnerNotification($call));
         } catch (\Throwable $exception) {

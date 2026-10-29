@@ -64,7 +64,7 @@ class SalesProfileController extends Controller
 
         $profiles = SalesProfile::query()
             ->with('staff.user')
-            ->when($companyId, fn (Builder $query, string $id) => $query->where('company_id', $id))
+            ->when($companyId, fn (Builder $query, string $id) => $query->where(fn ($_companyIdScope) => \App\Services\CompanyIdScope::constrain($_companyIdScope, 'company_id', $id)))
             ->when($data['status'] ?? null, fn (Builder $query, string $status) => $query->where('status', $status))
             ->when(trim((string) ($data['search'] ?? '')), function (Builder $query, string $search): void {
                 $term = '%'.trim($search).'%';
@@ -111,7 +111,7 @@ class SalesProfileController extends Controller
         $data['company_id'] = $this->resolveCompanyId($data['company_id'] ?? null);
 
         $query = SalesProfile::query()
-            ->where('company_id', $data['company_id'])
+            ->where(fn ($_companyIdScope) => \App\Services\CompanyIdScope::constrain($_companyIdScope, 'company_id', $data['company_id']))
             ->when($data['status'] ?? null, fn (Builder $builder, string $status) => $builder->where('status', $status));
         $query = $this->scope->scopeProfiles(
             $query,
@@ -313,7 +313,7 @@ class SalesProfileController extends Controller
 
             $overlap = SalesProfile::query()
                 ->where('staff_id', $data['staff_id'])
-                ->where('company_id', $data['company_id'])
+                ->where(fn ($_companyIdScope) => \App\Services\CompanyIdScope::constrain($_companyIdScope, 'company_id', $data['company_id']))
                 ->where('effective_from', '<', $data['effective_until'] ?? '9999-12-31')
                 ->where(fn (Builder $query) => $query
                     ->whereNull('effective_until')
@@ -541,7 +541,7 @@ class SalesProfileController extends Controller
         abort_unless(DB::table('companies')->where('id', $data['company_id'])->where('is_active', true)->whereNull('deleted_at')->exists(), 422, 'Select an active legal entity.');
         $this->scope->assertCompany($request->user(), $data['company_id'], 'sales.profiles.manage-all');
         $categories = $this->salesStaffCategories($data['company_id']);
-        $query = Staff::query()->with('user:id,first_name,last_name')->where('company_id', $data['company_id'])
+        $query = Staff::query()->with('user:id,first_name,last_name')->where(fn ($_companyIdScope) => \App\Services\CompanyIdScope::constrain($_companyIdScope, 'company_id', $data['company_id']))
             ->whereNull('deleted_at')->whereNotNull('user_id')->whereIn('staff_type', $categories)
             ->whereHas('user', fn (Builder $user) => $user->where('is_active', true)->whereHas('contexts', fn (Builder $context) => $context
                 ->where('context_type', 'staff')->whereColumn('context_id', 'staff.id')->where('is_active', true)))
@@ -577,7 +577,7 @@ class SalesProfileController extends Controller
         $this->scope->assertCompany($request->user(), $data['company_id'], 'sales.profiles.manage-all');
 
         $query = SalesProfile::query()->with('staff.user:id,first_name,last_name')
-            ->where('company_id', $data['company_id'])->activeAt(now())->configured()
+            ->where(fn ($_companyIdScope) => \App\Services\CompanyIdScope::constrain($_companyIdScope, 'company_id', $data['company_id']))->activeAt(now())->configured()
             ->whereHas('staff', fn (Builder $staff) => $staff->whereNull('deleted_at')
                 ->where(fn (Builder $employment) => $employment->whereNull('employment_ended_at')->orWhere('employment_ended_at', '>', now())));
         $query = $this->scope->scopeProfiles($query, $request->user(), 'sales.profiles.manage-all', 'sales.profiles.manage-team', $data['company_id']);

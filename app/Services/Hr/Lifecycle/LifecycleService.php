@@ -18,15 +18,15 @@ class LifecycleService
     public function openCase(array $data, string $actor): object
     {
         return DB::transaction(function () use ($data, $actor) {
-            $template = DB::table('hr_lifecycle_templates')->where('id', $data['template_id'])->where('company_id', $data['company_id'])->where('status', 'approved')->first();
+            $template = DB::table('hr_lifecycle_templates')->where('id', $data['template_id'])->where(fn ($_companyIdScope) => \App\Services\CompanyIdScope::constrain($_companyIdScope, 'company_id', $data['company_id']))->where('status', 'approved')->first();
             abort_unless($template, 422, 'An approved lifecycle template is required.');
             $hasStaff = ! empty($data['staff_id']);
             $hasApplication = ! empty($data['application_id']);
             abort_unless(($hasStaff xor $hasApplication), 422, 'Select exactly one lifecycle Staff member or candidate application.');
             if ($hasStaff) {
-                abort_unless(Staff::query()->whereKey($data['staff_id'])->where('company_id', $data['company_id'])->exists(), 422, 'The lifecycle Staff member is outside the selected legal entity.');
+                abort_unless(Staff::query()->whereKey($data['staff_id'])->where(fn ($_companyIdScope) => \App\Services\CompanyIdScope::constrain($_companyIdScope, 'company_id', $data['company_id']))->exists(), 422, 'The lifecycle Staff member is outside the selected legal entity.');
             } else {
-                abort_unless(DB::table('hr_candidate_applications')->where('id', $data['application_id'])->where('company_id', $data['company_id'])->exists(), 422, 'The lifecycle application is outside the selected legal entity.');
+                abort_unless(DB::table('hr_candidate_applications')->where('id', $data['application_id'])->where(fn ($_companyIdScope) => \App\Services\CompanyIdScope::constrain($_companyIdScope, 'company_id', $data['company_id']))->exists(), 422, 'The lifecycle application is outside the selected legal entity.');
             }
             $taskDefinitions = json_decode($template->task_definitions, true, 512, JSON_THROW_ON_ERROR);
             $ownerIds = collect($taskDefinitions)->pluck('owner_staff_id')->filter(fn ($id) => $id !== null && $id !== '')->unique()->values();
@@ -34,7 +34,7 @@ class LifecycleService
                 abort_unless(Str::isUuid((string) $ownerId), 422, 'Lifecycle task owners must be valid Staff records.');
             }
             if ($ownerIds->isNotEmpty()) {
-                $activeOwnerIds = Staff::query()->whereIn('id', $ownerIds)->where('company_id', $data['company_id'])
+                $activeOwnerIds = Staff::query()->whereIn('id', $ownerIds)->where(fn ($_companyIdScope) => \App\Services\CompanyIdScope::constrain($_companyIdScope, 'company_id', $data['company_id']))
                     ->whereNull('employment_ended_at')->lockForUpdate()->pluck('id')->map(fn ($id) => (string) $id);
                 abort_unless($activeOwnerIds->count() === $ownerIds->count(), 422, 'Every lifecycle task owner must be active Staff in the selected legal entity.');
             }
@@ -106,7 +106,7 @@ class LifecycleService
             $ownerStaffId = null;
             if (! empty($data['approver_staff_id'])) {
                 $owner = Staff::query()->whereKey($data['approver_staff_id'])
-                    ->where('company_id', $staff->company_id)
+                    ->where(fn ($_companyIdScope) => \App\Services\CompanyIdScope::constrain($_companyIdScope, 'company_id', $staff->company_id))
                     ->where(fn ($employment) => $employment->whereNull('employment_ended_at')->orWhere('employment_ended_at', '>', now()))
                     ->lockForUpdate()->first();
                 abort_unless($owner, 422, 'The selected approver must be active Staff in the employee legal entity.');

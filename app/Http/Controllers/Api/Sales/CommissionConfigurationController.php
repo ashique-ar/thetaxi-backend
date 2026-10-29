@@ -58,7 +58,7 @@ class CommissionConfigurationController extends Controller
         $data['company_id'] = $this->resolveCompanyId($data['company_id'] ?? null);
         $this->assertCompanyScope($request, $data['company_id']);
         if ($data['record_type'] === 'plan_family') {
-            $query = SalesCommissionPlanFamily::query()->where('company_id', $data['company_id'])->where('status', 'approved');
+            $query = SalesCommissionPlanFamily::query()->where(fn ($_companyIdScope) => \App\Services\CompanyIdScope::constrain($_companyIdScope, 'company_id', $data['company_id']))->where('status', 'approved');
             if (! empty($data['selected_id'])) $query->whereKey($data['selected_id']);
             elseif (! empty($data['search'])) {
                 $term = '%' . addcslashes($data['search'], '%_\\') . '%';
@@ -73,7 +73,7 @@ class CommissionConfigurationController extends Controller
             return response()->json(['status' => 'success', 'data' => $rows]);
         }
         if ($data['record_type'] === 'cycle_version') {
-            $query = SalesCommissionCycleVersion::query()->where('company_id', $data['company_id'])->where('status', 'approved');
+            $query = SalesCommissionCycleVersion::query()->where(fn ($_companyIdScope) => \App\Services\CompanyIdScope::constrain($_companyIdScope, 'company_id', $data['company_id']))->where('status', 'approved');
             if (! empty($data['selected_id'])) $query->whereKey($data['selected_id']);
             elseif (! empty($data['search'])) {
                 $term = '%' . addcslashes($data['search'], '%_\\') . '%';
@@ -88,7 +88,7 @@ class CommissionConfigurationController extends Controller
         }
         if (in_array($data['record_type'], ['approved_calendar', 'draft_calendar'], true)) {
             $status = $data['record_type'] === 'approved_calendar' ? 'approved' : 'draft';
-            $query = SalesCommissionBusinessCalendar::query()->where('company_id', $data['company_id'])->where('status', $status);
+            $query = SalesCommissionBusinessCalendar::query()->where(fn ($_companyIdScope) => \App\Services\CompanyIdScope::constrain($_companyIdScope, 'company_id', $data['company_id']))->where('status', $status);
             if (! empty($data['selected_id'])) $query->whereKey($data['selected_id']);
             elseif (! empty($data['search'])) {
                 $term = '%' . addcslashes($data['search'], '%_\\') . '%';
@@ -103,10 +103,10 @@ class CommissionConfigurationController extends Controller
             return response()->json(['status' => 'success', 'data' => $rows]);
         }
         $query = $data['record_type'] === 'sales_profile'
-            ? SalesProfile::query()->with('staff.user')->where('company_id', $data['company_id'])->activeAt(now())
+            ? SalesProfile::query()->with('staff.user')->where(fn ($_companyIdScope) => \App\Services\CompanyIdScope::constrain($_companyIdScope, 'company_id', $data['company_id']))->activeAt(now())
                 ->whereHas('staff', fn ($staff) => $staff->whereNull('deleted_at')
                     ->where(fn ($employment) => $employment->whereNull('employment_ended_at')->orWhere('employment_ended_at', '>', now())))
-            : Staff::query()->with('user:id,first_name,last_name')->where('company_id', $data['company_id'])
+            : Staff::query()->with('user:id,first_name,last_name')->where(fn ($_companyIdScope) => \App\Services\CompanyIdScope::constrain($_companyIdScope, 'company_id', $data['company_id']))
                 ->whereNull('deleted_at')->where(fn ($employment) => $employment->whereNull('employment_ended_at')->orWhere('employment_ended_at', '>', now()));
         if (! empty($data['selected_id'])) $query->whereKey($data['selected_id']);
         elseif (! empty($data['search'])) {
@@ -140,7 +140,7 @@ class CommissionConfigurationController extends Controller
         $this->assertCompanyScope($request, $data['company_id']);
         $query = DB::table('sales_commission_plan_versions as version')
             ->join('sales_commission_plan_families as family', 'family.id', '=', 'version.plan_family_id')
-            ->where('family.company_id', $data['company_id']);
+            ->where(fn ($_companyIdScope) => \App\Services\CompanyIdScope::constrain($_companyIdScope, 'family.company_id', $data['company_id']));
         if (! empty($data['selected_id'])) $query->where('version.id', $data['selected_id']);
         elseif (! empty($data['search'])) {
             $term = '%' . addcslashes($data['search'], '%_\\') . '%';
@@ -165,14 +165,14 @@ class CommissionConfigurationController extends Controller
         $data = $request->validate(['company_id' => ['nullable', 'uuid', 'exists:companies,id']]);
         $data['company_id'] = $this->resolveCompanyId($data['company_id'] ?? null);
         $this->assertCompanyScope($request, $data['company_id']);
-        $familyIds = SalesCommissionPlanFamily::query()->where('company_id', $data['company_id'])->select('id');
+        $familyIds = SalesCommissionPlanFamily::query()->where(fn ($_companyIdScope) => \App\Services\CompanyIdScope::constrain($_companyIdScope, 'company_id', $data['company_id']))->select('id');
         $versionIds = SalesCommissionPlanVersion::query()->whereIn('plan_family_id', $familyIds)->select('id');
-        $assignments = SalesCommissionPlanAssignment::query()->where('company_id', $data['company_id'])->orderByDesc('effective_from')->get();
-        $overrides = SalesCommissionStaffOverride::query()->where('company_id', $data['company_id'])->orderByDesc('effective_from')->get();
-        $cycleAssignments = SalesCommissionCycleAssignment::query()->where('company_id', $data['company_id'])->orderByDesc('effective_from')->get();
-        $profiles = SalesProfile::query()->with('staff')->where('company_id', $data['company_id'])
+        $assignments = SalesCommissionPlanAssignment::query()->where(fn ($_companyIdScope) => \App\Services\CompanyIdScope::constrain($_companyIdScope, 'company_id', $data['company_id']))->orderByDesc('effective_from')->get();
+        $overrides = SalesCommissionStaffOverride::query()->where(fn ($_companyIdScope) => \App\Services\CompanyIdScope::constrain($_companyIdScope, 'company_id', $data['company_id']))->orderByDesc('effective_from')->get();
+        $cycleAssignments = SalesCommissionCycleAssignment::query()->where(fn ($_companyIdScope) => \App\Services\CompanyIdScope::constrain($_companyIdScope, 'company_id', $data['company_id']))->orderByDesc('effective_from')->get();
+        $profiles = SalesProfile::query()->with('staff')->where(fn ($_companyIdScope) => \App\Services\CompanyIdScope::constrain($_companyIdScope, 'company_id', $data['company_id']))
             ->whereIn('id', $assignments->concat($cycleAssignments)->pluck('sales_profile_id')->filter()->unique())->get()->keyBy('id');
-        $staff = Staff::query()->where('company_id', $data['company_id'])->whereNull('deleted_at')
+        $staff = Staff::query()->where(fn ($_companyIdScope) => \App\Services\CompanyIdScope::constrain($_companyIdScope, 'company_id', $data['company_id']))->whereNull('deleted_at')
             ->whereIn('id', $assignments->concat($cycleAssignments)->pluck('staff_id')->merge($overrides->pluck('staff_id'))->filter()->unique())->get()->keyBy('id');
         foreach ($assignments->concat($cycleAssignments)->concat($overrides) as $row) {
             $row->setAttribute('target_type', $row->sales_profile_id ? 'sales_profile' : ($row->staff_id ? 'employee' : $row->scope_type));
@@ -180,13 +180,13 @@ class CommissionConfigurationController extends Controller
                 ? (($profile = $profiles->get($row->sales_profile_id)) ? trim($profile->sales_code . ' · ' . ($profile->staff?->code ?? '')) : null)
                 : (($person = $staff->get($row->staff_id)) ? trim($person->code . ' · ' . $person->staff_type) : null));
         }
-        $families = SalesCommissionPlanFamily::query()->where('company_id', $data['company_id'])->orderBy('code')->get();
+        $families = SalesCommissionPlanFamily::query()->where(fn ($_companyIdScope) => \App\Services\CompanyIdScope::constrain($_companyIdScope, 'company_id', $data['company_id']))->orderBy('code')->get();
         $versions = SalesCommissionPlanVersion::query()->whereIn('plan_family_id', $familyIds)->orderByDesc('effective_from')->get();
         $tiers = SalesCommissionPlanTier::query()->whereIn('plan_version_id', $versionIds)->orderBy('sequence')->get();
-        $cycles = SalesCommissionCycleVersion::query()->where('company_id', $data['company_id'])->orderBy('code')->orderByDesc('version')->get();
-        $calendars = SalesCommissionBusinessCalendar::query()->where('company_id', $data['company_id'])->orderBy('code')->orderByDesc('effective_from')->get();
+        $cycles = SalesCommissionCycleVersion::query()->where(fn ($_companyIdScope) => \App\Services\CompanyIdScope::constrain($_companyIdScope, 'company_id', $data['company_id']))->orderBy('code')->orderByDesc('version')->get();
+        $calendars = SalesCommissionBusinessCalendar::query()->where(fn ($_companyIdScope) => \App\Services\CompanyIdScope::constrain($_companyIdScope, 'company_id', $data['company_id']))->orderBy('code')->orderByDesc('effective_from')->get();
         $calendarDates = SalesCommissionBusinessCalendarDate::query()
-            ->whereIn('calendar_id', SalesCommissionBusinessCalendar::query()->where('company_id', $data['company_id'])->select('id'))
+            ->whereIn('calendar_id', SalesCommissionBusinessCalendar::query()->where(fn ($_companyIdScope) => \App\Services\CompanyIdScope::constrain($_companyIdScope, 'company_id', $data['company_id']))->select('id'))
             ->orderBy('calendar_date')->get();
         $hideInternal = static fn ($rows, array $extra = []) => $rows->each(
             fn ($row) => $row->makeHidden(array_merge(['company_id', 'created_by', 'updated_by', 'approved_by', 'approved_at', 'created_at', 'updated_at'], $extra)),
@@ -213,7 +213,7 @@ class CommissionConfigurationController extends Controller
             'business_calendars' => $calendars,
             'business_calendar_dates' => $calendarDates,
             'references' => [
-                'staff_categories' => DB::table('staff')->where('company_id', $data['company_id'])
+                'staff_categories' => DB::table('staff')->where(fn ($_companyIdScope) => \App\Services\CompanyIdScope::constrain($_companyIdScope, 'company_id', $data['company_id']))
                     ->where(fn ($q) => $q->whereNull('employment_ended_at')->orWhere('employment_ended_at', '>', now()))->whereNull('deleted_at')
                     ->whereNotNull('staff_type')->distinct()->orderBy('staff_type')->pluck('staff_type'),
             ],
@@ -339,7 +339,7 @@ class CommissionConfigurationController extends Controller
             $family = SalesCommissionPlanFamily::query()->lockForUpdate()->findOrFail($locked->plan_family_id);
             abort_unless($family->status === 'approved' && (string) $family->company_id === (string) $locked->company_id,
                 422, 'The assigned family must be approved in the same legal entity.');
-            $overlap = SalesCommissionPlanAssignment::query()->where('company_id', $locked->company_id)
+            $overlap = SalesCommissionPlanAssignment::query()->where(fn ($_companyIdScope) => \App\Services\CompanyIdScope::constrain($_companyIdScope, 'company_id', $locked->company_id))
                 ->where('scope_type', $locked->scope_type)->where('status', 'approved')->where('id', '!=', $locked->id)
                 ->where('sales_profile_id', $locked->sales_profile_id)->where('staff_id', $locked->staff_id)
                 ->where('staff_category', $locked->staff_category)
@@ -398,7 +398,7 @@ class CommissionConfigurationController extends Controller
         abort_unless($calendar->timezone === $data['timezone'], 422, 'Cycle and business calendar timezones must match.');
         $cycle = DB::transaction(function () use ($request, $data) {
             DB::table('companies')->where('id', $data['company_id'])->lockForUpdate()->first();
-            $version = (int) SalesCommissionCycleVersion::query()->where('company_id', $data['company_id'])->where('code', $data['code'])->lockForUpdate()->max('version') + 1;
+            $version = (int) SalesCommissionCycleVersion::query()->where(fn ($_companyIdScope) => \App\Services\CompanyIdScope::constrain($_companyIdScope, 'company_id', $data['company_id']))->where('code', $data['code'])->lockForUpdate()->max('version') + 1;
             return SalesCommissionCycleVersion::create($data + ['version' => $version, 'payout_currency' => 'LKR', 'status' => 'draft', 'created_by' => $request->user()->id]);
         });
         return $this->confirmation($cycle, 201);
@@ -415,7 +415,7 @@ class CommissionConfigurationController extends Controller
             abort_if($calendar->effective_from->gt($locked->effective_from)
                 || ($calendar->effective_until && (! $locked->effective_until || $calendar->effective_until->lt($locked->effective_until))), 422,
                 'The business calendar effective interval must cover the complete cycle interval.');
-            $overlap = SalesCommissionCycleVersion::query()->where('company_id', $locked->company_id)
+            $overlap = SalesCommissionCycleVersion::query()->where(fn ($_companyIdScope) => \App\Services\CompanyIdScope::constrain($_companyIdScope, 'company_id', $locked->company_id))
                 ->where('code', $locked->code)->where('status', 'approved')->where('id', '!=', $locked->id)
                 ->where('effective_from', '<', $locked->effective_until ?? '9999-12-31')
                 ->where(fn ($q) => $q->whereNull('effective_until')->orWhere('effective_until', '>', $locked->effective_from))->exists();
@@ -469,7 +469,7 @@ class CommissionConfigurationController extends Controller
     {
         $this->assertCompanyScope($request, $calendar->company_id);
         $calendar = $this->approveDraft($calendar, $request, $calendar->company_id, 'business calendar', function ($locked) {
-            $overlap = SalesCommissionBusinessCalendar::query()->where('company_id', $locked->company_id)
+            $overlap = SalesCommissionBusinessCalendar::query()->where(fn ($_companyIdScope) => \App\Services\CompanyIdScope::constrain($_companyIdScope, 'company_id', $locked->company_id))
                 ->where('code', $locked->code)->where('status', 'approved')->where('id', '!=', $locked->id)
                 ->whereDate('effective_from', '<', $locked->effective_until?->toDateString() ?? '9999-12-31')
                 ->where(fn ($query) => $query->whereNull('effective_until')->orWhereDate('effective_until', '>', $locked->effective_from))
@@ -520,7 +520,7 @@ class CommissionConfigurationController extends Controller
             $cycle = SalesCommissionCycleVersion::query()->whereKey($locked->cycle_version_id)->lockForUpdate()->firstOrFail();
             abort_unless($cycle->status === 'approved' && (string) $cycle->company_id === (string) $locked->company_id,
                 422, 'The assigned cycle must be approved in the same legal entity.');
-            $overlap = SalesCommissionCycleAssignment::query()->where('company_id', $locked->company_id)
+            $overlap = SalesCommissionCycleAssignment::query()->where(fn ($_companyIdScope) => \App\Services\CompanyIdScope::constrain($_companyIdScope, 'company_id', $locked->company_id))
                 ->where('scope_type', $locked->scope_type)->where('status', 'approved')->where('id', '!=', $locked->id)
                 ->where('sales_profile_id', $locked->sales_profile_id)->where('staff_id', $locked->staff_id)
                 ->where('staff_category', $locked->staff_category)
@@ -573,7 +573,7 @@ class CommissionConfigurationController extends Controller
             abort_if($present !== in_array($field, $expected, true), 422, 'Provide only the target that matches the selected scope.');
         }
         if (! empty($data['sales_profile_id'])) {
-            abort_unless(SalesProfile::query()->whereKey($data['sales_profile_id'])->where('company_id', $data['company_id'])->activeAt(now())
+            abort_unless(SalesProfile::query()->whereKey($data['sales_profile_id'])->where(fn ($_companyIdScope) => \App\Services\CompanyIdScope::constrain($_companyIdScope, 'company_id', $data['company_id']))->activeAt(now())
                 ->whereHas('staff', fn ($staff) => $staff->whereNull('deleted_at')
                     ->where(fn ($employment) => $employment->whereNull('employment_ended_at')->orWhere('employment_ended_at', '>', now())))
                 ->exists(), 422, 'Sales Profile and Staff must be active in this legal entity.');
@@ -582,7 +582,7 @@ class CommissionConfigurationController extends Controller
             abort_unless($this->activeStaffExists($data['staff_id'], $data['company_id']), 422, 'Staff must be active in this legal entity.');
         }
         if (! empty($data['staff_category'])) {
-            abort_unless(Staff::query()->where('company_id', $data['company_id'])->where('staff_type', $data['staff_category'])
+            abort_unless(Staff::query()->where(fn ($_companyIdScope) => \App\Services\CompanyIdScope::constrain($_companyIdScope, 'company_id', $data['company_id']))->where('staff_type', $data['staff_category'])
                 ->where(fn ($q) => $q->whereNull('employment_ended_at')->orWhere('employment_ended_at', '>', now()))->exists(), 422, 'Staff category has no active Staff in this legal entity.');
         }
     }

@@ -84,7 +84,7 @@ class CollectionScheduleWorkflowService
                 : null;
             $effectiveCollectionProfile = $effectiveCollectionProfileId
                 ? SalesProfile::query()->whereKey($effectiveCollectionProfileId)
-                    ->where('company_id', $attribution?->company_id)
+                    ->where(fn ($_companyIdScope) => \App\Services\CompanyIdScope::constrain($_companyIdScope, 'company_id', $attribution?->company_id))
                     ->eligibleAt('collection', $effectiveAt)
                     ->first()
                 : null;
@@ -335,12 +335,12 @@ class CollectionScheduleWorkflowService
                 $schedule = BookingPaymentSchedule::query()
                     ->whereKey($submission->booking_payment_schedule_id)
                     ->where('booking_id', $booking->id)
-                    ->where('company_id', $attribution->company_id)
+                    ->where(fn ($_companyIdScope) => \App\Services\CompanyIdScope::constrain($_companyIdScope, 'company_id', $attribution->company_id))
                     ->lockForUpdate()
                     ->firstOrFail();
                 BookingCollectionWorkItem::query()->where('booking_payment_schedule_id', $schedule->id)
                     ->where('booking_id', $booking->id)
-                    ->where('company_id', $attribution->company_id)
+                    ->where(fn ($_companyIdScope) => \App\Services\CompanyIdScope::constrain($_companyIdScope, 'company_id', $attribution->company_id))
                     ->whereIn('status', ['open', 'upcoming', 'due', 'overdue'])
                     ->update($schedule->status === 'paid'
                         ? ['status' => 'completed', 'completed_at' => now(), 'updated_at' => now()]
@@ -500,7 +500,7 @@ class CollectionScheduleWorkflowService
         $effectiveCollectionProfileId = $attribution ? $this->collectionProfileAt($attribution, $effectiveAt) : null;
         $effectiveCollectionProfile = $effectiveCollectionProfileId
             ? SalesProfile::query()->whereKey($effectiveCollectionProfileId)
-                ->where('company_id', $attribution?->company_id)
+                ->where(fn ($_companyIdScope) => \App\Services\CompanyIdScope::constrain($_companyIdScope, 'company_id', $attribution?->company_id))
                 ->eligibleAt('collection', $effectiveAt)
                 ->first()
             : null;

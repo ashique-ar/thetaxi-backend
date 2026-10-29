@@ -129,7 +129,7 @@ class CommissionDecisionService
                 );
             }
             $overrides = SalesCommissionStaffOverride::query()
-                ->where('company_id', $attribution->company_id)->where('staff_id', $profile->staff_id)
+                ->where(fn ($_companyIdScope) => \App\Services\CompanyIdScope::constrain($_companyIdScope, 'company_id', $attribution->company_id))->where('staff_id', $profile->staff_id)
                 ->where('status', 'approved')->where('effective_from', '<=', $receipt->received_at)
                 ->where(fn ($q) => $q->whereNull('effective_until')->orWhere('effective_until', '>', $receipt->received_at))->get();
             if ($overrides->count() > 1) {
@@ -274,7 +274,7 @@ class CommissionDecisionService
     private function finalityPolicy(BookingPaymentReceipt $receipt): ?BookingPaymentFinalityPolicy
     {
         return BookingPaymentFinalityPolicy::query()
-            ->where('company_id', $receipt->company_id)
+            ->where(fn ($_companyIdScope) => \App\Services\CompanyIdScope::constrain($_companyIdScope, 'company_id', $receipt->company_id))
             ->where('payment_method', strtolower((string) $receipt->payment_method))
             ->where('status', 'approved')
             ->where('effective_from', '<=', $receipt->received_at)

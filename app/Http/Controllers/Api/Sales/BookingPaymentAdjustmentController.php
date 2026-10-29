@@ -74,7 +74,7 @@ class BookingPaymentAdjustmentController extends Controller
             })
             ->whereNull('component.deleted_at')->whereNull('receipt.deleted_at')->whereNull('attribution.deleted_at')
             ->whereNotNull('receipt.company_id')
-            ->where('receipt.company_id', $data['company_id'])
+            ->where(fn ($_companyIdScope) => \App\Services\CompanyIdScope::constrain($_companyIdScope, 'receipt.company_id', $data['company_id']))
             ->whereColumn('receipt.company_id', 'attribution.company_id')
             ->where('receipt.finality_status', 'confirmed');
         if ($profileIds !== null) $query->whereIn('attribution.collection_sales_profile_id', $profileIds);

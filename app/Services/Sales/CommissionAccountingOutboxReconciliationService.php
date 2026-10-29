@@ -69,7 +69,7 @@ class CommissionAccountingOutboxReconciliationService
         $expectedAmount = ($isReversal ? '-' : '').number_format(abs((float) $payout->amount_lkr), 4, '.', '');
         $expectedAllocations = DB::table('sales_commission_payout_allocations as allocation')
             ->join('sales_commission_statements as statement', 'statement.id', '=', 'allocation.statement_id')
-            ->where('statement.company_id', $payout->company_id)
+            ->where(fn ($_companyIdScope) => \App\Services\CompanyIdScope::constrain($_companyIdScope, 'statement.company_id', $payout->company_id))
             ->where('allocation.payout_id', $payout->id)
             ->orderBy('statement.period_start')->orderBy('statement.id')
             ->get(['statement.statement_number', 'allocation.amount_lkr'])

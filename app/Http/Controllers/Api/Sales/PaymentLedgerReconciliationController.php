@@ -36,7 +36,7 @@ class PaymentLedgerReconciliationController extends Controller
         $limit = $data['limit'] ?? 250;
         $paidWithoutReceipt = Booking::query()
             ->whereIn('payment_status', ['paid', 'success', 'online_paid'])
-            ->whereHas('salesAttribution', fn($query) => $query->where('company_id', $data['company_id']))
+            ->whereHas('salesAttribution', fn($query) => $query->where(fn ($_companyIdScope) => \App\Services\CompanyIdScope::constrain($_companyIdScope, 'company_id', $data['company_id'])))
             ->whereDoesntHave('paymentReceipts')
             ->when($data['booking_number'] ?? null, fn($query, $number) => $query->where('booking_number', $number))
             ->orderBy('booking_number')->limit($limit + 1)
@@ -54,7 +54,7 @@ class PaymentLedgerReconciliationController extends Controller
         $receiptExceptions = DB::table('booking_payment_receipts as receipt')
             ->join('bookings as booking', 'booking.id', '=', 'receipt.booking_id')
             ->join('sales_booking_attributions as attribution', 'attribution.booking_id', '=', 'booking.id')
-            ->where('attribution.company_id', $data['company_id'])
+            ->where(fn ($_companyIdScope) => \App\Services\CompanyIdScope::constrain($_companyIdScope, 'attribution.company_id', $data['company_id']))
             ->whereNull('attribution.deleted_at')
             ->where(fn($query) => $query->whereNull('receipt.company_id')
                 ->orWhereColumn('receipt.company_id', '!=', 'attribution.company_id')
@@ -116,8 +116,8 @@ class PaymentLedgerReconciliationController extends Controller
         $query = DB::table('booking_payment_receipts as receipt')
             ->join('bookings as booking', 'booking.id', '=', 'receipt.booking_id')
             ->join('sales_booking_attributions as attribution', 'attribution.booking_id', '=', 'booking.id')
-            ->where('receipt.company_id', $data['company_id'])
-            ->where('attribution.company_id', $data['company_id'])
+            ->where(fn ($_companyIdScope) => \App\Services\CompanyIdScope::constrain($_companyIdScope, 'receipt.company_id', $data['company_id']))
+            ->where(fn ($_companyIdScope) => \App\Services\CompanyIdScope::constrain($_companyIdScope, 'attribution.company_id', $data['company_id']))
             ->whereNull('attribution.deleted_at')
             ->whereIn('receipt.payment_purpose', ['booking_payment', 'service_deposit', 'security_deposit'])
             ->whereNotExists(fn ($components) => $components->selectRaw('1')
@@ -159,7 +159,7 @@ class PaymentLedgerReconciliationController extends Controller
             ->join('sales_booking_attributions as attribution', 'attribution.booking_id', '=', 'booking.id')
             ->whereNull('booking.deleted_at')
             ->whereNull('attribution.deleted_at')
-            ->where('attribution.company_id', $data['company_id'])
+            ->where(fn ($_companyIdScope) => \App\Services\CompanyIdScope::constrain($_companyIdScope, 'attribution.company_id', $data['company_id']))
             ->where(function ($paid): void {
                 $paid->where('booking.payment_collected_amount', '>', 0)
                     ->orWhere(function ($fullyPaid): void {
@@ -224,7 +224,7 @@ class PaymentLedgerReconciliationController extends Controller
             ->leftJoin('domain_evidence_files as evidence', function ($join) use ($data): void {
                 $join->on('evidence.id', '=', 'receipt.legacy_repair_evidence_file_id')
                     ->where('evidence.domain', 'sales')
-                    ->where('evidence.company_id', $data['company_id'])
+                    ->where(fn ($_companyIdScope) => \App\Services\CompanyIdScope::constrain($_companyIdScope, 'evidence.company_id', $data['company_id']))
                     ->where('evidence.subject_type', 'booking')
                     ->whereColumn('evidence.subject_id', 'booking.id')
                     ->where('evidence.evidence_type', 'legacy_paid_receipt_repair')
@@ -232,11 +232,11 @@ class PaymentLedgerReconciliationController extends Controller
                     ->whereNull('evidence.deleted_at');
             })
             ->where('event.domain', 'sales')
-            ->where('event.company_id', $data['company_id'])
+            ->where(fn ($_companyIdScope) => \App\Services\CompanyIdScope::constrain($_companyIdScope, 'event.company_id', $data['company_id']))
             ->where('event.subject_type', 'booking_payment')
             ->where('event.event_type', 'legacy_payment_receipt_repaired')
             ->whereColumn('event.booking_id', 'booking.id')
-            ->where('attribution.company_id', $data['company_id'])
+            ->where(fn ($_companyIdScope) => \App\Services\CompanyIdScope::constrain($_companyIdScope, 'attribution.company_id', $data['company_id']))
             ->whereNull('booking.deleted_at')
             ->whereNull('attribution.deleted_at')
             ->where('receipt.metadata->reconciliation_repair', true)
@@ -250,7 +250,7 @@ class PaymentLedgerReconciliationController extends Controller
             ])
             ->selectSub(DB::table('financial_audit_events as matching_event')->selectRaw('COUNT(*)')
                 ->where('matching_event.domain', 'sales')
-                ->where('matching_event.company_id', $data['company_id'])
+                ->where(fn ($_companyIdScope) => \App\Services\CompanyIdScope::constrain($_companyIdScope, 'matching_event.company_id', $data['company_id']))
                 ->where('matching_event.subject_type', 'booking_payment')
                 ->whereColumn('matching_event.subject_id', 'receipt.id')
                 ->whereColumn('matching_event.booking_id', 'booking.id')
@@ -368,7 +368,7 @@ class PaymentLedgerReconciliationController extends Controller
                     'Original restricted component repair evidence is missing or unavailable.');
                 $afterChecksum = $this->componentRepairChecksum($duplicate);
                 $events = DB::table('domain_audit_events')->where('domain', 'sales')
-                    ->where('company_id', $attribution->company_id)
+                    ->where(fn ($_companyIdScope) => \App\Services\CompanyIdScope::constrain($_companyIdScope, 'company_id', $attribution->company_id))
                     ->where('event_type', 'sales.payment.component.repaired')
                     ->where('correlation_id', $data['idempotency_key'])
                     ->where('subject_type', 'booking_payment_receipt_component')
@@ -382,7 +382,7 @@ class PaymentLedgerReconciliationController extends Controller
                 return [...$this->componentRepairResult($duplicate), 'replayed' => true];
             }
             abort_if(DB::table('domain_audit_events')->where('domain', 'sales')
-                ->where('company_id', $attribution->company_id)
+                ->where(fn ($_companyIdScope) => \App\Services\CompanyIdScope::constrain($_companyIdScope, 'company_id', $attribution->company_id))
                 ->where('event_type', 'sales.payment.component.repaired')
                 ->where('correlation_id', $data['idempotency_key'])->exists(), 409,
                 'Component repair audit evidence exists without its source row; replay is held.');

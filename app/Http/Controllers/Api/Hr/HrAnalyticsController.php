@@ -19,7 +19,7 @@ class HrAnalyticsController extends Controller
     public function definitions(Request $request): JsonResponse
     {
         $actor = $this->actor($request);
-        return response()->json(['status' => 'success', 'data' => DB::table('hr_analytics_definition_versions')->where('company_id', $actor->company_id)->select(['id', 'metric_code', 'version', 'name', 'definition', 'dimension_policy', 'minimum_group_size', 'effective_from', 'effective_until', 'status', 'definition_checksum'])->orderBy('metric_code')->orderByDesc('version')->paginate($this->paginationSize($request, 50))]);
+        return response()->json(['status' => 'success', 'data' => DB::table('hr_analytics_definition_versions')->where(fn ($_companyIdScope) => \App\Services\CompanyIdScope::constrain($_companyIdScope, 'company_id', $actor->company_id))->select(['id', 'metric_code', 'version', 'name', 'definition', 'dimension_policy', 'minimum_group_size', 'effective_from', 'effective_until', 'status', 'definition_checksum'])->orderBy('metric_code')->orderByDesc('version')->paginate($this->paginationSize($request, 50))]);
     }
 
     public function storeDefinition(Request $request): JsonResponse
@@ -45,9 +45,9 @@ class HrAnalyticsController extends Controller
     {
          $actor = $this->actor($request);
         return DB::transaction(function () use ($request, $actor, $id) {
-            $row = DB::table('hr_analytics_definition_versions')->where('id', $id)->where('company_id', $actor->company_id)->lockForUpdate()->first(); abort_unless($row, 404);
+            $row = DB::table('hr_analytics_definition_versions')->where('id', $id)->where(fn ($_companyIdScope) => \App\Services\CompanyIdScope::constrain($_companyIdScope, 'company_id', $actor->company_id))->lockForUpdate()->first(); abort_unless($row, 404);
             abort_unless($row->status === 'pending_approval', 409); abort_if($row->created_by === $request->user()->id, 409, 'Definition creator cannot approve the same version.');
-            $overlap = DB::table('hr_analytics_definition_versions')->where('company_id', $actor->company_id)->where('metric_code', $row->metric_code)->where('status', 'approved')->where('effective_from', '<=', $row->effective_until ?? '9999-12-31')->where(fn ($q) => $q->whereNull('effective_until')->orWhere('effective_until', '>=', $row->effective_from))->exists();
+            $overlap = DB::table('hr_analytics_definition_versions')->where(fn ($_companyIdScope) => \App\Services\CompanyIdScope::constrain($_companyIdScope, 'company_id', $actor->company_id))->where('metric_code', $row->metric_code)->where('status', 'approved')->where('effective_from', '<=', $row->effective_until ?? '9999-12-31')->where(fn ($q) => $q->whereNull('effective_until')->orWhere('effective_until', '>=', $row->effective_from))->exists();
             abort_if($overlap, 409, 'Approved metric definition effective dates cannot overlap.');
             DB::table('hr_analytics_definition_versions')->where('id', $id)->update(['status' => 'approved', 'approved_by' => $request->user()->id, 'approved_at' => now(), 'updated_at' => now()]);
             return response()->json(['status' => 'success', 'data' => DB::table('hr_analytics_definition_versions')->find($id)]);
@@ -58,7 +58,7 @@ class HrAnalyticsController extends Controller
     {
          $actor = $this->actor($request); $data = $request->validate(['reason' => ['required', 'string', 'max:3000']]);
         return DB::transaction(function () use ($request, $actor, $data, $id) {
-            $row = DB::table('hr_analytics_definition_versions')->where('id', $id)->where('company_id', $actor->company_id)->lockForUpdate()->first(); abort_unless($row, 404);
+            $row = DB::table('hr_analytics_definition_versions')->where('id', $id)->where(fn ($_companyIdScope) => \App\Services\CompanyIdScope::constrain($_companyIdScope, 'company_id', $actor->company_id))->lockForUpdate()->first(); abort_unless($row, 404);
             abort_unless($row->status === 'pending_approval', 409); abort_if($row->created_by === $request->user()->id, 409, 'Definition creator cannot reject the same version.');
             DB::table('hr_analytics_definition_versions')->where('id', $id)->update(['status' => 'rejected', 'approved_by' => $request->user()->id, 'approved_at' => now(), 'decision_reason' => $data['reason'], 'updated_at' => now()]);
             return response()->json(['status' => 'success', 'data' => DB::table('hr_analytics_definition_versions')->find($id)]);
@@ -69,7 +69,7 @@ class HrAnalyticsController extends Controller
     {
          $actor = $this->actor($request);
         $data = $request->validate(['as_of_date' => ['required', 'date'], 'dimension' => ['nullable', Rule::in(['organization_unit', 'location', 'staff_type', 'tenure_band'])]]);
-        $definition = DB::table('hr_analytics_definition_versions')->where('id', $id)->where('company_id', $actor->company_id)->where('status', 'approved')->whereDate('effective_from', '<=', $data['as_of_date'])->where(fn ($q) => $q->whereNull('effective_until')->orWhereDate('effective_until', '>=', $data['as_of_date']))->first(); abort_unless($definition, 404);
+        $definition = DB::table('hr_analytics_definition_versions')->where('id', $id)->where(fn ($_companyIdScope) => \App\Services\CompanyIdScope::constrain($_companyIdScope, 'company_id', $actor->company_id))->where('status', 'approved')->whereDate('effective_from', '<=', $data['as_of_date'])->where(fn ($q) => $q->whereNull('effective_until')->orWhereDate('effective_until', '>=', $data['as_of_date']))->first(); abort_unless($definition, 404);
         $built = $this->snapshots->build($definition, $data['as_of_date'], ['dimension' => $data['dimension'] ?? null]);
         $snapshotPayload = ['definition_checksum' => $definition->definition_checksum, 'as_of_date' => $data['as_of_date'], 'filter' => $built['filter_snapshot'], 'aggregate' => $built['aggregate_payload'], 'suppression' => $built['suppression_snapshot'], 'source_checksum' => $built['source_checksum']];
         $snapshotChecksum = hash('sha256', json_encode($snapshotPayload, JSON_UNESCAPED_SLASHES | JSON_THROW_ON_ERROR));
@@ -83,7 +83,7 @@ class HrAnalyticsController extends Controller
     public function snapshotIndex(Request $request): JsonResponse
     {
         $actor = $this->actor($request);
-        $query = DB::table('hr_analytics_snapshots as s')->join('hr_analytics_definition_versions as d', 'd.id', '=', 's.definition_version_id')->where('s.company_id', $actor->company_id);
+        $query = DB::table('hr_analytics_snapshots as s')->join('hr_analytics_definition_versions as d', 'd.id', '=', 's.definition_version_id')->where(fn ($_companyIdScope) => \App\Services\CompanyIdScope::constrain($_companyIdScope, 's.company_id', $actor->company_id));
         if ($request->filled('metric_code')) $query->where('d.metric_code', $request->string('metric_code'));
         return response()->json(['status' => 'success', 'data' => $query->select(['s.id', 's.definition_version_id', 'd.metric_code', 'd.name', 's.as_of_date', 's.cutoff_at', 's.filter_snapshot', 's.aggregate_payload', 's.suppression_snapshot', 's.source_checksum', 's.snapshot_checksum', 's.generated_at'])->latest('s.generated_at')->paginate($this->paginationSize($request, 50))]);
     }

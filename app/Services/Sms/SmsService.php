@@ -496,7 +496,7 @@ class SmsService
         }
 
         $query = SmsMessage::query()
-            ->where('company_id', $defaultCompanyId)
+            ->where(fn ($_companyIdScope) => \App\Services\CompanyIdScope::constrain($_companyIdScope, 'company_id', $defaultCompanyId))
             ->when($transactionId, fn($q) => $q->where('provider_transaction_id', $transactionId))
             ->when($messageId, fn($q) => $q->where('provider_message_id', $messageId));
         if ((clone $query)->count() > 1) {

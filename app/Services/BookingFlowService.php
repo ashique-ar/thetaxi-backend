@@ -8471,7 +8471,7 @@ class BookingFlowService
         try {
             // Find users in this company who can approve bookings
             $approvers = User::permission('bookings.approve')
-                ->when($booking->company_id, fn($q) => $q->where('company_id', $booking->company_id))
+                ->when($booking->company_id, fn($q) => $q->where(fn ($_companyIdScope) => \App\Services\CompanyIdScope::constrain($_companyIdScope, 'company_id', $booking->company_id)))
                 ->get();
 
             $bookingNumber = $booking->booking_number ?? (string) $booking->id;

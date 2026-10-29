@@ -322,7 +322,7 @@ class FinancialSettlementController extends Controller
         $bookingIds = $settlement->items()->pluck('booking_id');
         $scopedCount = SalesBookingAttribution::query()
             ->whereIn('booking_id', $bookingIds)
-            ->whereIn('company_id', $companyIds)
+            ->where(fn ($_companyIdScope) => \App\Services\CompanyIdScope::constrainIn($_companyIdScope, 'company_id', $companyIds))
             ->count();
 
         abort_unless($bookingIds->isNotEmpty() && $scopedCount === $bookingIds->count(), 404,

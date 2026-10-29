@@ -852,7 +852,7 @@ class PaymentController extends Controller
             $attribution->selectRaw('1')->from('sales_booking_attributions')
                 ->whereColumn('sales_booking_attributions.booking_id', 'payment_transactions.booking_id')
                 ->whereNull('sales_booking_attributions.deleted_at')
-                ->when($companyIds !== null, fn ($scope) => $scope->whereIn('sales_booking_attributions.company_id', $companyIds));
+                ->when($companyIds !== null, fn ($scope) => $scope->where(fn ($_companyIdScope) => \App\Services\CompanyIdScope::constrainIn($_companyIdScope, 'sales_booking_attributions.company_id', $companyIds)));
         });
 
         $transactions = $query->orderBy('payment_transactions.created_at', 'desc')
@@ -898,7 +898,7 @@ class PaymentController extends Controller
             ->whereIn('refunds.status', ($data['status'] ?? null) ? [$data['status']] : ['pending', 'manual_required'])
             ->where('companies.is_active', true)
             ->whereNull('companies.deleted_at')
-            ->when($companyIds !== null, fn ($query) => $query->whereIn('attribution.company_id', $companyIds))
+            ->when($companyIds !== null, fn ($query) => $query->where(fn ($_companyIdScope) => \App\Services\CompanyIdScope::constrainIn($_companyIdScope, 'attribution.company_id', $companyIds)))
             ->orderByRaw("CASE refunds.status WHEN 'manual_required' THEN 0 ELSE 1 END")
             ->orderBy('refunds.created_at')
             ->select([
@@ -947,7 +947,7 @@ class PaymentController extends Controller
             ->where('transactions.status', 'pending')
             ->where('companies.is_active', true)
             ->whereNull('companies.deleted_at')
-            ->when($companyIds !== null, fn ($query) => $query->whereIn('attribution.company_id', $companyIds))
+            ->when($companyIds !== null, fn ($query) => $query->where(fn ($_companyIdScope) => \App\Services\CompanyIdScope::constrainIn($_companyIdScope, 'attribution.company_id', $companyIds)))
             ->when(($data['reservation_state'] ?? 'unverified') === 'unverified', fn ($query) => $query
                 ->where(function ($reservation): void {
                     $reservation->whereNull('transactions.requested_amount')

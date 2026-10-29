@@ -33,7 +33,7 @@ class SalesPortfolioStatusService
             DB::table('companies')->where('id', $payload['company_id'])->where('is_active', true)
                 ->whereNull('deleted_at')->lockForUpdate()->firstOrFail();
             $existing = SalesPortfolioStatusPolicyVersion::query()
-                ->where('company_id', $payload['company_id'])->where('idempotency_key', $data['idempotency_key'])
+                ->where(fn ($_companyIdScope) => \App\Services\CompanyIdScope::constrain($_companyIdScope, 'company_id', $payload['company_id']))->where('idempotency_key', $data['idempotency_key'])
                 ->lockForUpdate()->first();
             if ($existing) {
                 abort_unless(hash_equals($existing->request_checksum, $checksum), 409,
@@ -42,7 +42,7 @@ class SalesPortfolioStatusService
             }
 
             $version = (int) SalesPortfolioStatusPolicyVersion::query()
-                ->where('company_id', $payload['company_id'])->lockForUpdate()->max('version') + 1;
+                ->where(fn ($_companyIdScope) => \App\Services\CompanyIdScope::constrain($_companyIdScope, 'company_id', $payload['company_id']))->lockForUpdate()->max('version') + 1;
             $policy = SalesPortfolioStatusPolicyVersion::create($payload + [
                 'version' => $version, 'status' => 'draft', 'idempotency_key' => $data['idempotency_key'],
                 'request_checksum' => $checksum, 'prepared_by' => $actorUserId,
@@ -73,7 +73,7 @@ class SalesPortfolioStatusService
                 'Portfolio status policy maker and approver must be different users.');
             abort_unless($locked->status === 'draft', 422, 'Only a draft portfolio status policy can be approved.');
 
-            SalesPortfolioStatusPolicyVersion::query()->where('company_id', $locked->company_id)
+            SalesPortfolioStatusPolicyVersion::query()->where(fn ($_companyIdScope) => \App\Services\CompanyIdScope::constrain($_companyIdScope, 'company_id', $locked->company_id))
                 ->where('status', 'approved')->whereDate('effective_from', '<=', $locked->effective_until ?? '9999-12-31')
                 ->where(fn ($query) => $query->whereNull('effective_until')
                     ->orWhereDate('effective_until', '>=', $locked->effective_from))

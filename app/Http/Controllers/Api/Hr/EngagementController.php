@@ -21,22 +21,22 @@ class EngagementController extends Controller
         if(in_array($data['record_type'],['staff','organization_unit'],true))$request->validate(['selected_ids.*'=>['uuid','distinct']]);
         $term=trim((string)($data['search']??''));$selected=$data['selected_ids']??[];
         if($data['record_type']==='staff'){
-            $query=DB::table('staff')->leftJoin('users','users.id','=','staff.user_id')->where('staff.company_id',$actor->company_id)->whereNull('staff.deleted_at')->whereNull('staff.employment_ended_at')
+            $query=DB::table('staff')->leftJoin('users','users.id','=','staff.user_id')->where(fn ($_companyIdScope) => \App\Services\CompanyIdScope::constrain($_companyIdScope, 'staff.company_id', $actor->company_id))->whereNull('staff.deleted_at')->whereNull('staff.employment_ended_at')
                 ->when($selected,fn($q)=>$q->whereIn('staff.id',$selected))->when($term!==''&&!$selected,fn($q)=>$q->where(fn($m)=>$m->whereRaw('LOWER(staff.code) LIKE ?',['%'.mb_strtolower($term).'%'])->orWhereRaw('LOWER(users.first_name) LIKE ?',['%'.mb_strtolower($term).'%'])->orWhereRaw('LOWER(users.last_name) LIKE ?',['%'.mb_strtolower($term).'%'])))
                 ->select(['staff.id','staff.code','staff.staff_type','users.first_name','users.last_name'])->orderBy('users.first_name')->orderBy('users.last_name')->orderBy('staff.id');
             $map=fn($row)=>['value'=>(string)$row->id,'label'=>trim(trim(($row->first_name??'').' '.($row->last_name??'')).' · '.($row->code?:'No Staff code')),'metadata'=>['staff_type'=>$row->staff_type],'status'=>'active'];
         }elseif($data['record_type']==='organization_unit'){
-            $query=DB::table('hr_organization_units')->where('company_id',$actor->company_id)->where('status','active')
+            $query=DB::table('hr_organization_units')->where(fn ($_companyIdScope) => \App\Services\CompanyIdScope::constrain($_companyIdScope, 'company_id', $actor->company_id))->where('status','active')
                 ->when($selected,fn($q)=>$q->whereIn('id',$selected))->when($term!==''&&!$selected,fn($q)=>$q->where(fn($m)=>$m->whereRaw('LOWER(code) LIKE ?',['%'.mb_strtolower($term).'%'])->orWhereRaw('LOWER(name) LIKE ?',['%'.mb_strtolower($term).'%'])))
                 ->select(['id','code','name','unit_type','status'])->orderBy('name')->orderBy('id');
             $map=fn($row)=>['value'=>(string)$row->id,'label'=>$row->name.' · '.$row->code,'metadata'=>['unit_type'=>$row->unit_type],'status'=>$row->status];
         }elseif($data['record_type']==='location'){
-            $query=DB::table('hr_employment_assignments')->where('company_id',$actor->company_id)->whereNotNull('location_code')->where('location_code','<>','')
+            $query=DB::table('hr_employment_assignments')->where(fn ($_companyIdScope) => \App\Services\CompanyIdScope::constrain($_companyIdScope, 'company_id', $actor->company_id))->whereNotNull('location_code')->where('location_code','<>','')
                 ->when($selected,fn($q)=>$q->whereIn('location_code',$selected))->when($term!==''&&!$selected,fn($q)=>$q->whereLike('location_code','%'.$term.'%'))
                 ->select('location_code')->distinct()->orderBy('location_code');
             $map=fn($row)=>['value'=>$row->location_code,'label'=>$row->location_code,'metadata'=>[],'status'=>'active'];
         }else{
-            $query=DB::table('staff')->where('company_id',$actor->company_id)->whereNull('deleted_at')->whereNull('employment_ended_at')->whereNotNull('staff_type')->where('staff_type','<>','')
+            $query=DB::table('staff')->where(fn ($_companyIdScope) => \App\Services\CompanyIdScope::constrain($_companyIdScope, 'company_id', $actor->company_id))->whereNull('deleted_at')->whereNull('employment_ended_at')->whereNotNull('staff_type')->where('staff_type','<>','')
                 ->when($selected,fn($q)=>$q->whereIn('staff_type',$selected))->when($term!==''&&!$selected,fn($q)=>$q->whereLike('staff_type','%'.$term.'%'))
                 ->select('staff_type')->distinct()->orderBy('staff_type');
             $map=fn($row)=>['value'=>$row->staff_type,'label'=>$row->staff_type,'metadata'=>[],'status'=>'active'];
@@ -48,7 +48,7 @@ class EngagementController extends Controller
     public function announcements(Request $request): JsonResponse
     {
         $actor = $this->actor($request);
-        $query = DB::table('hr_announcements')->where('company_id', $actor->company_id)
+        $query = DB::table('hr_announcements')->where(fn ($_companyIdScope) => \App\Services\CompanyIdScope::constrain($_companyIdScope, 'company_id', $actor->company_id))
             ->where('status', 'published')->where('publish_at', '<=', now())
             ->where(fn ($q) => $q->whereNull('expires_at')->orWhere('expires_at', '>=', now()));
         $this->audience($query, $actor);
@@ -111,7 +111,7 @@ class EngagementController extends Controller
     {
         
         $actor = $this->actor($request);
-        $query = DB::table('hr_announcements')->where('id', $id)->where('company_id', $actor->company_id)->where('status', 'published');
+        $query = DB::table('hr_announcements')->where('id', $id)->where(fn ($_companyIdScope) => \App\Services\CompanyIdScope::constrain($_companyIdScope, 'company_id', $actor->company_id))->where('status', 'published');
         $this->audience($query, $actor);
         $row = $query->first(); abort_unless($row, 404);
         DB::table('hr_announcement_acknowledgements')->insertOrIgnore([
@@ -147,7 +147,7 @@ class EngagementController extends Controller
     public function surveys(Request $request): JsonResponse
     {
         $actor = $this->actor($request);
-        $query = DB::table('hr_survey_versions')->where('company_id', $actor->company_id)->where('status', 'approved')->where('opens_at', '<=', now())->where('closes_at', '>=', now());
+        $query = DB::table('hr_survey_versions')->where(fn ($_companyIdScope) => \App\Services\CompanyIdScope::constrain($_companyIdScope, 'company_id', $actor->company_id))->where('status', 'approved')->where('opens_at', '<=', now())->where('closes_at', '>=', now());
         $this->audience($query, $actor);
         $page = $query->select(['id', 'code', 'version', 'title', 'survey_type', 'anonymous', 'questions', 'opens_at', 'closes_at', 'survey_checksum'])->latest('opens_at')->paginate($this->paginationSize($request, 50));
         $page->setCollection($page->getCollection()->map(function ($survey) use ($actor) {
@@ -186,7 +186,7 @@ class EngagementController extends Controller
     {
          $actor = $this->actor($request);
         $data = $request->validate(['responses' => ['required', 'array']]);
-        $query = DB::table('hr_survey_versions')->where('id', $id)->where('company_id', $actor->company_id)
+        $query = DB::table('hr_survey_versions')->where('id', $id)->where(fn ($_companyIdScope) => \App\Services\CompanyIdScope::constrain($_companyIdScope, 'company_id', $actor->company_id))
             ->where('status', 'approved')->where('opens_at', '<=', now())->where('closes_at', '>=', now());
         $this->audience($query, $actor);
         $survey = $query->first(); abort_unless($survey, 404);
@@ -213,7 +213,7 @@ class EngagementController extends Controller
     public function surveyResults(Request $request, string $id): JsonResponse
     {
          $actor = $this->actor($request);
-        $survey = DB::table('hr_survey_versions')->where('id', $id)->where('company_id', $actor->company_id)->first();
+        $survey = DB::table('hr_survey_versions')->where('id', $id)->where(fn ($_companyIdScope) => \App\Services\CompanyIdScope::constrain($_companyIdScope, 'company_id', $actor->company_id))->first();
         abort_unless($survey, 404);
         $data = $request->validate(['dimension' => ['nullable', Rule::in(['organization_unit', 'location', 'staff_type', 'tenure_band'])]]);
         $dimension = $data['dimension'] ?? null;
@@ -238,7 +238,7 @@ class EngagementController extends Controller
             'citation' => ['required', 'string', 'max:10000'], 'evidence' => ['nullable', 'array', 'max:20'], 'evidence.*' => ['required', 'string', 'max:500'], 'visibility' => ['required', Rule::in(['private', 'team', 'company'])],
             'reward_proposal' => ['nullable', 'array'], 'reward_proposal.kind' => ['required_with:reward_proposal', Rule::in(['non_monetary', 'monetary'])], 'reward_proposal.description' => ['required_with:reward_proposal', 'string', 'max:2000'], 'reward_proposal.amount' => ['nullable', 'required_if:reward_proposal.kind,monetary', 'numeric', 'min:0.01'], 'reward_proposal.currency' => ['nullable', 'required_if:reward_proposal.kind,monetary', 'string', 'size:3', 'regex:/^[A-Za-z]{3}$/'],
         ]);
-        $nominee = Staff::query()->whereKey($data['nominee_staff_id'])->where('company_id', $actor->company_id)->whereNull('employment_ended_at')->firstOrFail(); abort_if($nominee->id === $actor->id, 422, 'Self-nomination is not permitted.');
+        $nominee = Staff::query()->whereKey($data['nominee_staff_id'])->where(fn ($_companyIdScope) => \App\Services\CompanyIdScope::constrain($_companyIdScope, 'company_id', $actor->company_id))->whereNull('employment_ended_at')->firstOrFail(); abort_if($nominee->id === $actor->id, 422, 'Self-nomination is not permitted.');
         if (isset($data['achievement_id'])) abort_unless(DB::table('hr_achievements')->where('id', $data['achievement_id'])->where('staff_id', $nominee->id)->where('status', 'verified')->exists(), 422, 'Only a verified achievement may be linked.');
         $id = (string) Str::uuid(); $evidence = array_values(array_unique($data['evidence'] ?? [])); $reward = $data['reward_proposal'] ?? null; if ($reward && ($reward['kind'] ?? null) === 'monetary') $reward['currency'] = strtoupper($reward['currency']); $snapshot = ['nominee_staff_id' => $nominee->id, 'nominator_staff_id' => $actor->id, 'achievement_id' => $data['achievement_id'] ?? null, 'category' => $data['category'], 'citation' => $data['citation'], 'evidence' => $evidence, 'visibility' => $data['visibility'], 'reward_proposal' => $reward]; $checksum = hash('sha256', json_encode($snapshot, JSON_UNESCAPED_SLASHES | JSON_THROW_ON_ERROR));
         DB::table('hr_recognition_nominations')->insert([
@@ -259,7 +259,7 @@ class EngagementController extends Controller
             'page' => ['nullable', 'integer', 'min:1'], 'per_page' => ['nullable', 'integer', 'min:1', 'max:50'],
         ]);
         $query = DB::table('staff as s')->join('users as u', 'u.id', '=', 's.user_id')
-            ->where('s.company_id', $actor->company_id)->where('s.id', '<>', $actor->id)
+            ->where(fn ($_companyIdScope) => \App\Services\CompanyIdScope::constrain($_companyIdScope, 's.company_id', $actor->company_id))->where('s.id', '<>', $actor->id)
             ->whereNull('s.employment_ended_at')->whereNull('s.deleted_at')->where('u.is_active', true);
         if (isset($data['selected_id'])) {
             $query->where('s.id', $data['selected_id']);
@@ -285,7 +285,7 @@ class EngagementController extends Controller
 
     public function recognitionNominations(Request $request): JsonResponse
     {
-        $actor = $this->actor($request); $assignment = DB::table('hr_employment_assignments')->where('staff_id', $actor->id)->whereDate('effective_from', '<=', now())->where(fn ($q) => $q->whereNull('effective_until')->orWhereDate('effective_until', '>=', now()))->latest('effective_from')->first(); $query = DB::table('hr_recognition_nominations as n')->leftJoin('staff as nominee', 'nominee.id', '=', 'n.nominee_staff_id')->leftJoin('users as nominee_user', 'nominee_user.id', '=', 'nominee.user_id')->where('n.company_id', $actor->company_id)->where(function ($scope) use ($actor, $assignment) { $scope->where('n.nominator_staff_id', $actor->id)->orWhere(function ($approved) use ($actor, $assignment) { $approved->where('n.status', 'approved')->where(function ($visible) use ($actor, $assignment) { $visible->where('n.nominee_staff_id', $actor->id)->orWhere('n.visibility', 'company'); if ($assignment?->organization_unit_id) $visible->orWhere(function ($team) use ($assignment) { $team->where('n.visibility', 'team')->whereExists(fn ($q) => $q->selectRaw('1')->from('hr_employment_assignments as nominee_assignment')->whereColumn('nominee_assignment.staff_id', 'n.nominee_staff_id')->where('nominee_assignment.organization_unit_id', $assignment->organization_unit_id)->whereDate('nominee_assignment.effective_from', '<=', now())->where(fn ($dates) => $dates->whereNull('nominee_assignment.effective_until')->orWhereDate('nominee_assignment.effective_until', '>=', now()))); }); }); }); }); $page = $query->select(['n.id', 'n.nominee_staff_id', 'nominee.code as nominee_code', 'nominee_user.first_name as nominee_first_name', 'nominee_user.last_name as nominee_last_name', 'n.nominator_staff_id', 'n.category', 'n.citation', 'n.visibility', 'n.status', 'n.nomination_checksum', 'n.approved_at', 'n.decision_reason', 'n.created_at'])->latest('n.created_at')->paginate($this->paginationSize($request, 50)); return response()->json(['status' => 'success', 'data' => $page]);
+        $actor = $this->actor($request); $assignment = DB::table('hr_employment_assignments')->where('staff_id', $actor->id)->whereDate('effective_from', '<=', now())->where(fn ($q) => $q->whereNull('effective_until')->orWhereDate('effective_until', '>=', now()))->latest('effective_from')->first(); $query = DB::table('hr_recognition_nominations as n')->leftJoin('staff as nominee', 'nominee.id', '=', 'n.nominee_staff_id')->leftJoin('users as nominee_user', 'nominee_user.id', '=', 'nominee.user_id')->where(fn ($_companyIdScope) => \App\Services\CompanyIdScope::constrain($_companyIdScope, 'n.company_id', $actor->company_id))->where(function ($scope) use ($actor, $assignment) { $scope->where('n.nominator_staff_id', $actor->id)->orWhere(function ($approved) use ($actor, $assignment) { $approved->where('n.status', 'approved')->where(function ($visible) use ($actor, $assignment) { $visible->where('n.nominee_staff_id', $actor->id)->orWhere('n.visibility', 'company'); if ($assignment?->organization_unit_id) $visible->orWhere(function ($team) use ($assignment) { $team->where('n.visibility', 'team')->whereExists(fn ($q) => $q->selectRaw('1')->from('hr_employment_assignments as nominee_assignment')->whereColumn('nominee_assignment.staff_id', 'n.nominee_staff_id')->where('nominee_assignment.organization_unit_id', $assignment->organization_unit_id)->whereDate('nominee_assignment.effective_from', '<=', now())->where(fn ($dates) => $dates->whereNull('nominee_assignment.effective_until')->orWhereDate('nominee_assignment.effective_until', '>=', now()))); }); }); }); }); $page = $query->select(['n.id', 'n.nominee_staff_id', 'nominee.code as nominee_code', 'nominee_user.first_name as nominee_first_name', 'nominee_user.last_name as nominee_last_name', 'n.nominator_staff_id', 'n.category', 'n.citation', 'n.visibility', 'n.status', 'n.nomination_checksum', 'n.approved_at', 'n.decision_reason', 'n.created_at'])->latest('n.created_at')->paginate($this->paginationSize($request, 50)); return response()->json(['status' => 'success', 'data' => $page]);
     }
 
     public function decideRecognition(Request $request, string $id): JsonResponse
@@ -318,7 +318,7 @@ class EngagementController extends Controller
             'search' => ['nullable', 'string', 'max:120'], 'selected_id' => ['nullable', 'uuid'],
             'page' => ['nullable', 'integer', 'min:1'], 'per_page' => ['nullable', 'integer', 'min:1', 'max:50'],
         ]);
-        $query = DB::table('hr_wellness_programs')->where('company_id', $actor->company_id)
+        $query = DB::table('hr_wellness_programs')->where(fn ($_companyIdScope) => \App\Services\CompanyIdScope::constrain($_companyIdScope, 'company_id', $actor->company_id))
             ->where('status', 'active')->whereDate('starts_at', '<=', now())
             ->where(fn ($q) => $q->whereNull('ends_at')->orWhereDate('ends_at', '>=', now()));
         $this->audience($query, $actor);
@@ -343,7 +343,7 @@ class EngagementController extends Controller
          $actor = $this->actor($request);
         $data = $request->validate(['program_id' => ['nullable', 'uuid'], 'referral_type' => ['required', Rule::in(['self_referral', 'assistance', 'wellness', 'occupational_support'])], 'details' => ['required', 'string', 'max:10000']]);
         if (isset($data['program_id'])) {
-            $query = DB::table('hr_wellness_programs')->where('id', $data['program_id'])->where('company_id', $actor->company_id)->where('status', 'active')->whereDate('starts_at', '<=', now())->where(fn ($q) => $q->whereNull('ends_at')->orWhereDate('ends_at', '>=', now()));
+            $query = DB::table('hr_wellness_programs')->where('id', $data['program_id'])->where(fn ($_companyIdScope) => \App\Services\CompanyIdScope::constrain($_companyIdScope, 'company_id', $actor->company_id))->where('status', 'active')->whereDate('starts_at', '<=', now())->where(fn ($q) => $q->whereNull('ends_at')->orWhereDate('ends_at', '>=', now()));
             $this->audience($query, $actor); abort_unless($query->exists(), 422, 'The selected programme is not available to this employee.');
         }
         $id = (string) Str::uuid(); $at = now();
@@ -358,7 +358,7 @@ class EngagementController extends Controller
     public function wellnessReferrals(Request $request): JsonResponse
     {
         $actor = $this->actor($request);
-        $query = DB::table('hr_wellness_referrals')->where('company_id', $actor->company_id);
+        $query = DB::table('hr_wellness_referrals')->where(fn ($_companyIdScope) => \App\Services\CompanyIdScope::constrain($_companyIdScope, 'company_id', $actor->company_id));
         if (!$request->user()->can('hr.wellness.case.manage')) $query->where('staff_id', $actor->id);
         return response()->json(['status' => 'success', 'data' => $query->select(['id', 'staff_id', 'program_id', 'referral_type', 'status', 'consent_status', 'case_owner_staff_id', 'closed_at', 'created_at'])->latest()->paginate($this->paginationSize($request, 50))]);
     }
@@ -375,7 +375,7 @@ class EngagementController extends Controller
         abort_unless($data['company_id'] === $actor->company_id, 403, 'Wellness handlers are outside your legal entity.');
 
         $query = Staff::query()->with('user:id,first_name,last_name,is_active')
-            ->where('company_id', $actor->company_id)->whereNull('employment_ended_at')
+            ->where(fn ($_companyIdScope) => \App\Services\CompanyIdScope::constrain($_companyIdScope, 'company_id', $actor->company_id))->whereNull('employment_ended_at')
             ->whereHas('user', fn ($user) => $user->where('is_active', true)->permission('hr.wellness.case.manage'));
         if (isset($data['selected_id'])) {
             $query->whereKey($data['selected_id']);
@@ -406,7 +406,7 @@ class EngagementController extends Controller
             'search' => ['nullable', 'string', 'max:120'], 'selected_id' => ['nullable', 'uuid'],
             'page' => ['nullable', 'integer', 'min:1'], 'per_page' => ['nullable', 'integer', 'min:1', 'max:50'],
         ]);
-        $referral = DB::table('hr_wellness_referrals')->where('id', $id)->where('company_id', $actor->company_id)->first();
+        $referral = DB::table('hr_wellness_referrals')->where('id', $id)->where(fn ($_companyIdScope) => \App\Services\CompanyIdScope::constrain($_companyIdScope, 'company_id', $actor->company_id))->first();
         abort_unless($referral, 404);
         activity('hr-wellness-sensitive-access')->causedBy($request->user())->withProperties([
             'referral_id' => $id, 'company_id' => $referral->company_id, 'ip' => $request->ip(),
@@ -433,7 +433,7 @@ class EngagementController extends Controller
     public function wellnessReferral(Request $request, string $id): JsonResponse
     {
         $actor = $this->actor($request);
-        $row = DB::table('hr_wellness_referrals')->where('id', $id)->where('company_id', $actor->company_id)->first(); abort_unless($row, 404);
+        $row = DB::table('hr_wellness_referrals')->where('id', $id)->where(fn ($_companyIdScope) => \App\Services\CompanyIdScope::constrain($_companyIdScope, 'company_id', $actor->company_id))->first(); abort_unless($row, 404);
         $caseAccess = $request->user()->can('hr.wellness.case.manage');
         abort_unless($caseAccess || $row->staff_id === $actor->id, 403);
         if ($caseAccess) activity('hr-wellness-sensitive-access')->causedBy($request->user())->withProperties(['referral_id' => $id, 'company_id' => $row->company_id, 'ip' => $request->ip()])->log('restricted_wellness_case_viewed');
@@ -443,7 +443,7 @@ class EngagementController extends Controller
         ]);
         $consents = DB::table('hr_wellness_referral_consents')->where('referral_id', $id)->orderBy('version')->select(['id', 'version', 'decision', 'consent_scope', 'notice_version', 'consent_checksum', 'recorded_at'])->get()->map(fn ($c) => ['id' => $c->id, 'version' => $c->version, 'decision' => $c->decision, 'consent_scope' => json_decode($c->consent_scope, true) ?: [], 'notice_version' => $c->notice_version, 'consent_checksum' => $c->consent_checksum, 'recorded_at' => $c->recorded_at]);
         $ownerIds=DB::table('hr_wellness_followups')->where('referral_id',$id)->pluck('owner_staff_id')->push($row->case_owner_staff_id)->filter()->unique();
-        $ownerLabels=Staff::withTrashed()->with('user:id,first_name,last_name')->where('company_id',$actor->company_id)->whereIn('id',$ownerIds)->get()->mapWithKeys(fn($staff)=>[(string)$staff->id=>trim(($staff->user?->first_name??'').' '.($staff->user?->last_name??''))?:($staff->code?:'Unavailable Staff record')]);
+        $ownerLabels=Staff::withTrashed()->with('user:id,first_name,last_name')->where(fn ($_companyIdScope) => \App\Services\CompanyIdScope::constrain($_companyIdScope, 'company_id', $actor->company_id))->whereIn('id',$ownerIds)->get()->mapWithKeys(fn($staff)=>[(string)$staff->id=>trim(($staff->user?->first_name??'').' '.($staff->user?->last_name??''))?:($staff->code?:'Unavailable Staff record')]);
         $followups = DB::table('hr_wellness_followups')->where('referral_id', $id)->when(!$caseAccess, fn ($q) => $q->where('employee_visible', true))->orderBy('due_at')->get()->map(fn ($f) => ['id' => $f->id, 'due_at' => $f->due_at, 'timezone' => $f->timezone, 'owner_staff_id' => $caseAccess ? $f->owner_staff_id : null, 'owner_label'=>$caseAccess?($ownerLabels[(string)$f->owner_staff_id]??'Unavailable Staff record'):null, 'purpose' => decrypt($f->encrypted_purpose), 'employee_visible' => (bool) $f->employee_visible, 'status' => $f->status, 'completion_note' => $caseAccess && $f->encrypted_completion_note ? decrypt($f->encrypted_completion_note) : null, 'completed_at' => $f->completed_at]);
         return response()->json(['status' => 'success', 'data' => [
             'referral' => collect((array) $row)->except(['encrypted_details'])->merge(['case_owner_label'=>$row->case_owner_staff_id?($ownerLabels[(string)$row->case_owner_staff_id]??'Unavailable Staff record'):null])->all(),
@@ -456,7 +456,7 @@ class EngagementController extends Controller
          $actor = $this->actor($request);
         $data = $request->validate(['decision' => ['required', Rule::in(['granted', 'declined', 'withdrawn'])], 'consent_scope' => ['present', 'array'], 'consent_scope.*' => ['required', Rule::in(['internal_case_handling', 'provider_referral', 'appointment_coordination', 'follow_up'])], 'notice_version' => ['required', 'string', 'max:80']]);
         return DB::transaction(function () use ($request, $actor, $data, $id) {
-            $row = DB::table('hr_wellness_referrals')->where('id', $id)->where('company_id', $actor->company_id)->where('staff_id', $actor->id)->lockForUpdate()->first(); abort_unless($row, 404); $noticeVersion = config('hr.wellness_consent_notice_version'); abort_unless($noticeVersion, 409, 'An approved wellness consent notice version must be configured.'); abort_unless(hash_equals((string) $noticeVersion, $data['notice_version']), 409, 'Consent notice version is stale or not approved.');
+            $row = DB::table('hr_wellness_referrals')->where('id', $id)->where(fn ($_companyIdScope) => \App\Services\CompanyIdScope::constrain($_companyIdScope, 'company_id', $actor->company_id))->where('staff_id', $actor->id)->lockForUpdate()->first(); abort_unless($row, 404); $noticeVersion = config('hr.wellness_consent_notice_version'); abort_unless($noticeVersion, 409, 'An approved wellness consent notice version must be configured.'); abort_unless(hash_equals((string) $noticeVersion, $data['notice_version']), 409, 'Consent notice version is stale or not approved.');
             $allowed = ['pending' => ['granted', 'declined'], 'granted' => ['withdrawn'], 'declined' => ['granted'], 'withdrawn' => ['granted']]; abort_unless(in_array($data['decision'], $allowed[$row->consent_status] ?? [], true), 409, 'Consent decision is not valid from the current state.');
             abort_if($data['decision'] === 'granted' && count($data['consent_scope']) === 0, 422, 'Granted consent requires at least one explicit scope.');
             $version = ((int) DB::table('hr_wellness_referral_consents')->where('referral_id', $id)->max('version')) + 1; $at = now(); $scope = array_values(array_unique($data['consent_scope']));
@@ -473,10 +473,10 @@ class EngagementController extends Controller
          $actor = $this->actor($request);
         $data = $request->validate(['status' => ['required', Rule::in(['assigned', 'in_support', 'closed'])], 'case_owner_staff_id' => ['nullable', 'uuid'], 'case_note' => ['required', 'string', 'max:10000']]);
         return DB::transaction(function () use ($request, $actor, $data, $id) {
-            $row = DB::table('hr_wellness_referrals')->where('id', $id)->where('company_id', $actor->company_id)->lockForUpdate()->first(); abort_unless($row, 404);
+            $row = DB::table('hr_wellness_referrals')->where('id', $id)->where(fn ($_companyIdScope) => \App\Services\CompanyIdScope::constrain($_companyIdScope, 'company_id', $actor->company_id))->lockForUpdate()->first(); abort_unless($row, 404);
             $allowed = ['requested' => ['assigned', 'closed'], 'assigned' => ['in_support', 'closed'], 'in_support' => ['closed']]; abort_unless(in_array($data['status'], $allowed[$row->status] ?? [], true), 409, 'Wellness case transition is not valid from the current state.');
             $owner = $data['case_owner_staff_id'] ?? $row->case_owner_staff_id; abort_unless($owner || $data['status'] === 'closed', 422, 'An eligible confidential case owner is required.');
-            if ($owner) { $ownerStaff = Staff::query()->with('user')->whereKey($owner)->where('company_id', $actor->company_id)->whereNull('employment_ended_at')->first(); abort_unless($ownerStaff?->user?->is_active && $ownerStaff->user->can('hr.wellness.case.manage'), 422, 'Case owner must be active and hold confidential wellness-case permission.'); }
+            if ($owner) { $ownerStaff = Staff::query()->with('user')->whereKey($owner)->where(fn ($_companyIdScope) => \App\Services\CompanyIdScope::constrain($_companyIdScope, 'company_id', $actor->company_id))->whereNull('employment_ended_at')->first(); abort_unless($ownerStaff?->user?->is_active && $ownerStaff->user->can('hr.wellness.case.manage'), 422, 'Case owner must be active and hold confidential wellness-case permission.'); }
             if ($data['status'] === 'in_support') abort_unless($row->consent_status === 'granted', 409, 'Active support requires current granted consent.');
             $at = now(); DB::table('hr_wellness_referrals')->where('id', $id)->update(['status' => $data['status'], 'case_owner_staff_id' => $owner, 'assigned_by' => $owner && $owner !== $row->case_owner_staff_id ? $request->user()->id : $row->assigned_by, 'assigned_at' => $owner && $owner !== $row->case_owner_staff_id ? $at : $row->assigned_at, 'closed_at' => $data['status'] === 'closed' ? $at : null, 'updated_at' => $at]);
             $event = ['referral_id' => $id, 'event_type' => 'case_status_changed', 'from' => $row->status, 'to' => $data['status'], 'owner_staff_id' => $owner, 'actor' => $request->user()->id, 'at' => $at->toIso8601String()]; DB::table('hr_wellness_referral_events')->insert(['id' => (string) Str::uuid(), 'referral_id' => $id, 'event_type' => 'case_status_changed', 'from_status' => $row->status, 'to_status' => $data['status'], 'encrypted_case_note' => encrypt($data['case_note']), 'employee_visible' => false, 'event_checksum' => hash('sha256', json_encode($event, JSON_UNESCAPED_SLASHES | JSON_THROW_ON_ERROR)), 'actor_user_id' => $request->user()->id, 'occurred_at' => $at]);
@@ -489,8 +489,8 @@ class EngagementController extends Controller
          $actor = $this->actor($request);
         $data = $request->validate(['due_at' => ['required', 'date'], 'timezone' => ['required', 'timezone'], 'owner_staff_id' => ['nullable', 'uuid'], 'purpose' => ['required', 'string', 'max:10000'], 'employee_visible' => ['required', 'boolean']]);
         return DB::transaction(function () use ($request, $actor, $data, $id) {
-            $row = DB::table('hr_wellness_referrals')->where('id', $id)->where('company_id', $actor->company_id)->lockForUpdate()->first(); abort_unless($row, 404); abort_unless($row->status === 'in_support' && $row->consent_status === 'granted', 409, 'Follow-ups require active support and current granted consent.');
-            $ownerId = $data['owner_staff_id'] ?? $row->case_owner_staff_id; $owner = Staff::query()->with('user')->whereKey($ownerId)->where('company_id', $actor->company_id)->whereNull('employment_ended_at')->first(); abort_unless($owner?->user?->is_active && $owner->user->can('hr.wellness.case.manage'), 422, 'Follow-up owner must be an active confidential wellness-case handler.');
+            $row = DB::table('hr_wellness_referrals')->where('id', $id)->where(fn ($_companyIdScope) => \App\Services\CompanyIdScope::constrain($_companyIdScope, 'company_id', $actor->company_id))->lockForUpdate()->first(); abort_unless($row, 404); abort_unless($row->status === 'in_support' && $row->consent_status === 'granted', 409, 'Follow-ups require active support and current granted consent.');
+            $ownerId = $data['owner_staff_id'] ?? $row->case_owner_staff_id; $owner = Staff::query()->with('user')->whereKey($ownerId)->where(fn ($_companyIdScope) => \App\Services\CompanyIdScope::constrain($_companyIdScope, 'company_id', $actor->company_id))->whereNull('employment_ended_at')->first(); abort_unless($owner?->user?->is_active && $owner->user->can('hr.wellness.case.manage'), 422, 'Follow-up owner must be an active confidential wellness-case handler.');
             $local = \Carbon\CarbonImmutable::parse($data['due_at'], $data['timezone']); abort_unless($local->isFuture(), 422, 'Follow-up due time must be in the future.'); $dueAt = $local->utc(); $followupId = (string) Str::uuid(); $at = now();
             DB::table('hr_wellness_followups')->insert(['id' => $followupId, 'referral_id' => $id, 'due_at' => $dueAt, 'timezone' => $data['timezone'], 'owner_staff_id' => $ownerId, 'encrypted_purpose' => encrypt($data['purpose']), 'employee_visible' => $data['employee_visible'], 'status' => 'scheduled', 'created_by' => $request->user()->id, 'created_at' => $at, 'updated_at' => $at]);
             $event = ['referral_id' => $id, 'event_type' => 'followup_scheduled', 'from' => $row->status, 'to' => $row->status, 'followup_id' => $followupId, 'due_at_utc' => $dueAt->toIso8601String(), 'source_timezone' => $data['timezone'], 'actor' => $request->user()->id, 'at' => $at->toIso8601String()]; DB::table('hr_wellness_referral_events')->insert(['id' => (string) Str::uuid(), 'referral_id' => $id, 'event_type' => 'followup_scheduled', 'from_status' => $row->status, 'to_status' => $row->status, 'encrypted_case_note' => encrypt($data['employee_visible'] ? $data['purpose'] : 'A private follow-up was scheduled.'), 'employee_visible' => $data['employee_visible'], 'event_checksum' => hash('sha256', json_encode($event, JSON_UNESCAPED_SLASHES | JSON_THROW_ON_ERROR)), 'actor_user_id' => $request->user()->id, 'occurred_at' => $at]);
@@ -502,7 +502,7 @@ class EngagementController extends Controller
     {
          $actor = $this->actor($request); $data = $request->validate(['completion_note' => ['required', 'string', 'max:10000']]);
         return DB::transaction(function () use ($request, $actor, $data, $id) {
-            $followup = DB::table('hr_wellness_followups as f')->join('hr_wellness_referrals as r', 'r.id', '=', 'f.referral_id')->where('f.id', $id)->where('r.company_id', $actor->company_id)->select('f.*', 'r.status as referral_status')->lockForUpdate()->first(); abort_unless($followup, 404); abort_unless($followup->status === 'scheduled', 409); abort_unless($followup->owner_staff_id === $actor->id || $request->user()->can('hr.wellness.case.manage'), 403); $at = now();
+            $followup = DB::table('hr_wellness_followups as f')->join('hr_wellness_referrals as r', 'r.id', '=', 'f.referral_id')->where('f.id', $id)->where(fn ($_companyIdScope) => \App\Services\CompanyIdScope::constrain($_companyIdScope, 'r.company_id', $actor->company_id))->select('f.*', 'r.status as referral_status')->lockForUpdate()->first(); abort_unless($followup, 404); abort_unless($followup->status === 'scheduled', 409); abort_unless($followup->owner_staff_id === $actor->id || $request->user()->can('hr.wellness.case.manage'), 403); $at = now();
             DB::table('hr_wellness_followups')->where('id', $id)->update(['status' => 'completed', 'encrypted_completion_note' => encrypt($data['completion_note']), 'completed_by' => $request->user()->id, 'completed_at' => $at, 'updated_at' => $at]);
             $event = ['referral_id' => $followup->referral_id, 'event_type' => 'followup_completed', 'from' => $followup->referral_status, 'to' => $followup->referral_status, 'followup_id' => $id, 'actor' => $request->user()->id, 'at' => $at->toIso8601String()]; DB::table('hr_wellness_referral_events')->insert(['id' => (string) Str::uuid(), 'referral_id' => $followup->referral_id, 'event_type' => 'followup_completed', 'from_status' => $followup->referral_status, 'to_status' => $followup->referral_status, 'encrypted_case_note' => encrypt($followup->employee_visible ? $data['completion_note'] : 'A private follow-up was completed.'), 'employee_visible' => $followup->employee_visible, 'event_checksum' => hash('sha256', json_encode($event, JSON_UNESCAPED_SLASHES | JSON_THROW_ON_ERROR)), 'actor_user_id' => $request->user()->id, 'occurred_at' => $at]);
             return response()->json(['status' => 'success', 'data' => ['id' => $id, 'status' => 'completed', 'completed_at' => $at]]);
@@ -517,13 +517,13 @@ class EngagementController extends Controller
         foreach (['staff_types', 'location_codes'] as $key) foreach ($audience[$key] as $value) abort_unless(is_string($value) && trim($value) !== '' && mb_strlen($value) <= 100, 422, "Audience {$key} contains an invalid value.");
         abort_unless($audience['all'] || collect(array_slice($audience, 1))->flatten()->isNotEmpty(), 422, 'Audience must select all staff or at least one explicit group.');
         $staffIds=array_values(array_unique($audience['staff_ids']));
-        if($staffIds)abort_unless(DB::table('staff')->whereIn('id',$staffIds)->where('company_id',$companyId)->whereNull('deleted_at')->whereNull('employment_ended_at')->count()===count($staffIds),422,'Every audience Staff member must be active in your legal entity.');
+        if($staffIds)abort_unless(DB::table('staff')->whereIn('id',$staffIds)->where(fn ($_companyIdScope) => \App\Services\CompanyIdScope::constrain($_companyIdScope, 'company_id', $companyId))->whereNull('deleted_at')->whereNull('employment_ended_at')->count()===count($staffIds),422,'Every audience Staff member must be active in your legal entity.');
         $unitIds=array_values(array_unique($audience['organization_unit_ids']));
-        if($unitIds)abort_unless(DB::table('hr_organization_units')->whereIn('id',$unitIds)->where('company_id',$companyId)->where('status','active')->count()===count($unitIds),422,'Every audience organization unit must be active in your legal entity.');
+        if($unitIds)abort_unless(DB::table('hr_organization_units')->whereIn('id',$unitIds)->where(fn ($_companyIdScope) => \App\Services\CompanyIdScope::constrain($_companyIdScope, 'company_id', $companyId))->where('status','active')->count()===count($unitIds),422,'Every audience organization unit must be active in your legal entity.');
         $staffTypes=array_values(array_unique($audience['staff_types']));
-        if($staffTypes)abort_unless(DB::table('staff')->where('company_id',$companyId)->whereNull('deleted_at')->whereNull('employment_ended_at')->whereIn('staff_type',$staffTypes)->distinct()->pluck('staff_type')->count()===count($staffTypes),422,'Every audience Staff type must be active in your legal entity.');
+        if($staffTypes)abort_unless(DB::table('staff')->where(fn ($_companyIdScope) => \App\Services\CompanyIdScope::constrain($_companyIdScope, 'company_id', $companyId))->whereNull('deleted_at')->whereNull('employment_ended_at')->whereIn('staff_type',$staffTypes)->distinct()->pluck('staff_type')->count()===count($staffTypes),422,'Every audience Staff type must be active in your legal entity.');
         $locations=array_values(array_unique($audience['location_codes']));
-        if($locations)abort_unless(DB::table('hr_employment_assignments')->where('company_id',$companyId)->whereIn('location_code',$locations)->distinct()->pluck('location_code')->count()===count($locations),422,'Every audience location must be configured in your legal entity.');
+        if($locations)abort_unless(DB::table('hr_employment_assignments')->where(fn ($_companyIdScope) => \App\Services\CompanyIdScope::constrain($_companyIdScope, 'company_id', $companyId))->whereIn('location_code',$locations)->distinct()->pluck('location_code')->count()===count($locations),422,'Every audience location must be configured in your legal entity.');
     }
 
     private function assertQuestions(array $questions): void

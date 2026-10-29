@@ -66,12 +66,12 @@ class CollectionCommissionController extends Controller
         $staff = app(StaffAccessService::class)->currentActorStaff($request->user());
         $ids = [$staff->id];
         if ($request->user()->can('collection-commissions.view-team')) {
-            $profile = SalesProfile::query()->where('staff_id', $staff->id)->where('company_id', $staff->company_id)->activeAt(now())->first();
+            $profile = SalesProfile::query()->where('staff_id', $staff->id)->where(fn ($_companyIdScope) => \App\Services\CompanyIdScope::constrain($_companyIdScope, 'company_id', $staff->company_id))->activeAt(now())->first();
             if ($profile) {
                 $memberProfileIds = DB::table('sales_reporting_assignments')->where('manager_sales_profile_id', $profile->id)
                     ->where('effective_from', '<=', now())->where(fn ($q) => $q->whereNull('effective_until')->orWhere('effective_until', '>', now()))
                     ->pluck('member_sales_profile_id');
-                $ids = array_merge($ids, SalesProfile::query()->whereIn('id', $memberProfileIds)->where('company_id', $staff->company_id)->pluck('staff_id')->all());
+                $ids = array_merge($ids, SalesProfile::query()->whereIn('id', $memberProfileIds)->where(fn ($_companyIdScope) => \App\Services\CompanyIdScope::constrain($_companyIdScope, 'company_id', $staff->company_id))->pluck('staff_id')->all());
             }
         }
         $query->whereIn('beneficiary_staff_id', array_values(array_unique($ids)));

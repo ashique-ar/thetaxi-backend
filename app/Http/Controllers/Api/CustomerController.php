@@ -1179,17 +1179,17 @@ class CustomerController extends Controller
             $stageEvents = DB::table('sales_opportunity_stage_events as stage_event')
                 ->join('sales_opportunities as opportunity', 'opportunity.id', '=', 'stage_event.opportunity_id')
                 ->leftJoin('sales_profiles as from_profile', function ($join) use ($companyId): void {
-                    $join->on('from_profile.id', '=', 'stage_event.from_owner_sales_profile_id')->where('from_profile.company_id', '=', $companyId);
+                    $join->on('from_profile.id', '=', 'stage_event.from_owner_sales_profile_id')->where(fn ($_companyIdScope) => \App\Services\CompanyIdScope::constrain($_companyIdScope, 'from_profile.company_id', $companyId));
                 })
                 ->leftJoin('staff as from_staff', function ($join) use ($companyId): void {
-                    $join->on('from_staff.id', '=', 'from_profile.staff_id')->where('from_staff.company_id', '=', $companyId);
+                    $join->on('from_staff.id', '=', 'from_profile.staff_id')->where(fn ($_companyIdScope) => \App\Services\CompanyIdScope::constrain($_companyIdScope, 'from_staff.company_id', $companyId));
                 })
                 ->leftJoin('users as from_user', 'from_user.id', '=', 'from_staff.user_id')
                 ->join('sales_profiles as to_profile', function ($join) use ($companyId): void {
-                    $join->on('to_profile.id', '=', 'stage_event.to_owner_sales_profile_id')->where('to_profile.company_id', '=', $companyId);
+                    $join->on('to_profile.id', '=', 'stage_event.to_owner_sales_profile_id')->where(fn ($_companyIdScope) => \App\Services\CompanyIdScope::constrain($_companyIdScope, 'to_profile.company_id', $companyId));
                 })
                 ->join('staff as to_staff', function ($join) use ($companyId): void {
-                    $join->on('to_staff.id', '=', 'to_profile.staff_id')->where('to_staff.company_id', '=', $companyId);
+                    $join->on('to_staff.id', '=', 'to_profile.staff_id')->where(fn ($_companyIdScope) => \App\Services\CompanyIdScope::constrain($_companyIdScope, 'to_staff.company_id', $companyId));
                 })
                 ->join('users as to_user', 'to_user.id', '=', 'to_staff.user_id')
                 ->leftJoin('users as actor', 'actor.id', '=', 'stage_event.actor_user_id')

@@ -371,7 +371,7 @@ class SmsManagementController extends Controller
         $company = $this->campaignCompany($request);
         $data = $request->validate(['search' => ['nullable', 'string', 'max:120'], 'selected_id' => ['nullable', 'uuid'], 'page' => ['nullable', 'integer', 'min:1'], 'per_page' => ['nullable', 'integer', 'min:1', 'max:50']]);
         $companyBookingIds = DB::table('sales_booking_attributions')
-            ->where('company_id', $company->id)
+            ->where(fn ($_companyIdScope) => \App\Services\CompanyIdScope::constrain($_companyIdScope, 'company_id', $company->id))
             ->whereNull('deleted_at')
             ->select('booking_id');
         $query = Booking::query()->whereIn('id', $companyBookingIds)
@@ -398,7 +398,7 @@ class SmsManagementController extends Controller
 
         return Booking::query()->whereKey($bookingId)
             ->whereIn('id', DB::table('sales_booking_attributions')
-                ->where('company_id', $company->id)
+                ->where(fn ($_companyIdScope) => \App\Services\CompanyIdScope::constrain($_companyIdScope, 'company_id', $company->id))
                 ->whereNull('deleted_at')
                 ->select('booking_id'))
             ->firstOrFail();

@@ -1839,14 +1839,14 @@ class AssignmentController extends Controller
                 $newVehicleId = $request->new_vehicle_id;
                 $newDriverId = $request->new_driver_id;
                 if ($newVehicleId && in_array($request->swap_type, ['vehicle', 'both'], true)) {
-                    $eligibleVehicle = DB::table('vehicles')->where('id', $newVehicleId)->where('company_id', $company->id)->where('is_active', true)->whereNull('deleted_at')->exists();
+                    $eligibleVehicle = DB::table('vehicles')->where('id', $newVehicleId)->where(fn ($_companyIdScope) => \App\Services\CompanyIdScope::constrain($_companyIdScope, 'company_id', $company->id))->where('is_active', true)->whereNull('deleted_at')->exists();
                     if (! $eligibleVehicle) throw \Illuminate\Validation\ValidationException::withMessages(['new_vehicle_id' => 'Choose an active vehicle in the current company.']);
                 }
                 if ($newDriverId && in_array($request->swap_type, ['driver', 'both'], true)) {
                     $eligibleDriver = DB::table('drivers as driver')->join('staff', 'staff.user_id', '=', 'driver.user_id')
                         ->join('users', 'users.id', '=', 'driver.user_id')->where('driver.id', $newDriverId)
                         ->whereNull('driver.deleted_at')
-                        ->where('staff.company_id', $company->id)->whereNull('staff.deleted_at')->whereNull('staff.employment_ended_at')
+                        ->where(fn ($_companyIdScope) => \App\Services\CompanyIdScope::constrain($_companyIdScope, 'staff.company_id', $company->id))->whereNull('staff.deleted_at')->whereNull('staff.employment_ended_at')
                         ->whereNull('users.deleted_at')->where('users.is_active', true)->exists();
                     if (! $eligibleDriver) throw \Illuminate\Validation\ValidationException::withMessages(['new_driver_id' => 'Choose an active driver in the current company.']);
                 }
@@ -2240,7 +2240,7 @@ class AssignmentController extends Controller
                 if ($request->filled('booking_item_id') && ! $booking->bookingItems->contains('id', $request->booking_item_id)) {
                     throw \Illuminate\Validation\ValidationException::withMessages(['booking_item_id' => 'Select an item from this booking.']);
                 }
-                if ($request->replacement_vehicle_id && ! DB::table('vehicles')->where('id', $request->replacement_vehicle_id)->where('company_id', $company->id)->where('is_active', true)->whereNull('deleted_at')->exists()) {
+                if ($request->replacement_vehicle_id && ! DB::table('vehicles')->where('id', $request->replacement_vehicle_id)->where(fn ($_companyIdScope) => \App\Services\CompanyIdScope::constrain($_companyIdScope, 'company_id', $company->id))->where('is_active', true)->whereNull('deleted_at')->exists()) {
                     throw \Illuminate\Validation\ValidationException::withMessages(['replacement_vehicle_id' => 'Choose an active vehicle in the current company.']);
                 }
                 $addons = [];

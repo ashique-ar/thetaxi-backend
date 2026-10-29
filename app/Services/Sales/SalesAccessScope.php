@@ -76,7 +76,7 @@ class SalesAccessScope
     {
         $staffCompanyId = $this->staffCompanyId($user, $companyId);
         if ($staffCompanyId && $this->hasPermission($user, $allPermission)) {
-            return SalesProfile::query()->where('company_id', $staffCompanyId)->activeAt(now())->configured()->pluck('id')->all();
+            return SalesProfile::query()->where(fn ($_companyIdScope) => \App\Services\CompanyIdScope::constrain($_companyIdScope, 'company_id', $staffCompanyId))->activeAt(now())->configured()->pluck('id')->all();
         }
         if ($this->hasPermission($user, $allPermission)) {
             return null;
@@ -90,7 +90,7 @@ class SalesAccessScope
         $ids = $profiles->pluck('id')->all();
         if ($this->hasPermission($user, $teamPermission)) {
             $assignments = DB::table('sales_reporting_assignments')
-                ->whereIn('company_id', $profiles->pluck('company_id')->unique()->all())
+                ->where(fn ($_companyIdScope) => \App\Services\CompanyIdScope::constrainIn($_companyIdScope, 'company_id', $profiles->pluck('company_id')->unique()->all()))
                 ->whereNull('deleted_at')
                 ->where('effective_from', '<=', now())
                 ->where(fn ($query) => $query->whereNull('effective_until')->orWhere('effective_until', '>', now()))
@@ -115,7 +115,7 @@ class SalesAccessScope
             }
 
             $ids = SalesProfile::query()
-                ->whereIn('company_id', $profiles->pluck('company_id')->unique()->all())
+                ->where(fn ($_companyIdScope) => \App\Services\CompanyIdScope::constrainIn($_companyIdScope, 'company_id', $profiles->pluck('company_id')->unique()->all()))
                 ->whereIn('id', $ids)
                 ->activeAt(now())
                 ->configured()
@@ -143,7 +143,7 @@ class SalesAccessScope
         }
         $staffCompanyId = $this->staffCompanyId($user, $companyId);
         if ($staffCompanyId && $this->hasPermission($user, $allPermission)) {
-            return SalesProfile::query()->where('company_id', $staffCompanyId)->activeAt(now())->configured()->pluck('id')->all();
+            return SalesProfile::query()->where(fn ($_companyIdScope) => \App\Services\CompanyIdScope::constrain($_companyIdScope, 'company_id', $staffCompanyId))->activeAt(now())->configured()->pluck('id')->all();
         }
         if ($this->hasPermission($user, $allPermission)) {
             return null;

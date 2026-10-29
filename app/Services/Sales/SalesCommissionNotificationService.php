@@ -63,7 +63,7 @@ class SalesCommissionNotificationService
             }
 
             $policies = DB::table('sales_commission_notification_policy_versions')
-                ->where('company_id', $decision->company_id)
+                ->where(fn ($_companyIdScope) => \App\Services\CompanyIdScope::constrain($_companyIdScope, 'company_id', $decision->company_id))
                 ->where('event_type', $notificationEvent['event_type'])
                 ->where('channel', 'in_app')
                 ->where('recipient_scope', 'beneficiary')
@@ -133,7 +133,7 @@ class SalesCommissionNotificationService
         $rows = DB::table('sales_commission_notification_deliveries')
             ->whereIn('status', ['blocked_configuration', 'blocked_recipient', 'blocked_preference'])
             ->where('blocked_code', '!=', 'feature_disabled')
-            ->whereIn('company_id', $this->enabledCompanyIds())
+            ->where(fn ($_companyIdScope) => \App\Services\CompanyIdScope::constrainIn($_companyIdScope, 'company_id', $this->enabledCompanyIds()))
             ->oldest('created_at')->limit($limit)->get();
         foreach ($rows as $row) {
             $event = DB::table('domain_outbox_events')->where('id', $row->source_outbox_event_id)->first();
@@ -150,7 +150,7 @@ class SalesCommissionNotificationService
         return Schema::hasTable('sales_commission_notification_deliveries')
             && Schema::hasTable('sales_company_feature_settings')
             ? DB::table('sales_commission_notification_deliveries')->where('status', 'queued')
-                ->whereIn('company_id', $this->enabledCompanyIds())->where('available_at', '<=', now())->count()
+                ->where(fn ($_companyIdScope) => \App\Services\CompanyIdScope::constrainIn($_companyIdScope, 'company_id', $this->enabledCompanyIds()))->where('available_at', '<=', now())->count()
             : 0;
     }
 
@@ -162,7 +162,7 @@ class SalesCommissionNotificationService
         }
 
         $ids = DB::table('sales_commission_notification_deliveries')->where('status', 'queued')
-            ->whereIn('company_id', $this->enabledCompanyIds())
+            ->where(fn ($_companyIdScope) => \App\Services\CompanyIdScope::constrainIn($_companyIdScope, 'company_id', $this->enabledCompanyIds()))
             ->where('available_at', '<=', now())->oldest('available_at')->limit($limit)->pluck('id');
         $delivered = 0;
         foreach ($ids as $id) {
@@ -285,8 +285,8 @@ class SalesCommissionNotificationService
             ->join('users as user', 'user.id', '=', 'staff.user_id')
             ->where('profile.id', $decision->beneficiary_sales_profile_id)
             ->where('profile.staff_id', $decision->beneficiary_staff_id)
-            ->where('profile.company_id', $decision->company_id)
-            ->where('staff.company_id', $decision->company_id)
+            ->where(fn ($_companyIdScope) => \App\Services\CompanyIdScope::constrain($_companyIdScope, 'profile.company_id', $decision->company_id))
+            ->where(fn ($_companyIdScope) => \App\Services\CompanyIdScope::constrain($_companyIdScope, 'staff.company_id', $decision->company_id))
             ->where('profile.status', 'active')->where('profile.commission_eligible', true)
             ->where('profile.effective_from', '<=', now())
             ->where(fn ($query) => $query->whereNull('profile.effective_until')->orWhere('profile.effective_until', '>', now()))

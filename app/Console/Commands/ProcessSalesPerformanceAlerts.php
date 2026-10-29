@@ -17,8 +17,8 @@ class ProcessSalesPerformanceAlerts extends Command
         
         $limit = max(1, min(500, (int) $this->option('limit')));
         $snapshots = SalesKpiSnapshot::query()->where('status', 'frozen')->where('period_type', 'month')
-            ->whereIn('company_id', DB::table('sales_company_feature_settings')->select('company_id')
-                ->where('feature_key', 'performance_alert_evaluations')->where('status', 'approved')->where('enabled', true))
+            ->where(fn ($_companyIdScope) => \App\Services\CompanyIdScope::constrainIn($_companyIdScope, 'company_id', DB::table('sales_company_feature_settings')->select('company_id')
+                ->where('feature_key', 'performance_alert_evaluations')->where('status', 'approved')->where('enabled', true)))
             ->whereNotExists(fn ($query) => $query->selectRaw('1')->from('sales_alert_evaluation_runs as run')
                 ->whereColumn('run.snapshot_id', 'sales_kpi_snapshots.id'))
             ->orderBy('period_end')->orderBy('id')->limit($limit)->get();

@@ -126,7 +126,7 @@ class SalesCollectionCompanyIntegrity
                 ->where(fn ($scope) => $scope->whereNull('attribution.company_id')
                     ->orWhereNull('source.company_id')
                     ->orWhereColumn('source.company_id', '!=', 'attribution.company_id'))
-                ->when($companyId, fn ($scope, $id) => $scope->where('attribution.company_id', $id))
+                ->when($companyId, fn ($scope, $id) => $scope->where(fn ($_companyIdScope) => \App\Services\CompanyIdScope::constrain($_companyIdScope, 'attribution.company_id', $id)))
                 ->when($bookingNumber, fn ($scope, $number) => $scope->where('booking.booking_number', $number))
                 ->orderBy('booking.booking_number')
                 ->select([
@@ -180,7 +180,7 @@ class SalesCollectionCompanyIntegrity
                 ->where(fn ($scope) => $scope->whereNull('attribution.company_id')
                     ->orWhereNull('profile.company_id')
                     ->orWhereColumn('profile.company_id', '!=', 'attribution.company_id'))
-                ->when($companyId, fn ($scope, $id) => $scope->where('attribution.company_id', $id))
+                ->when($companyId, fn ($scope, $id) => $scope->where(fn ($_companyIdScope) => \App\Services\CompanyIdScope::constrain($_companyIdScope, 'attribution.company_id', $id)))
                 ->when($bookingNumber, fn ($scope, $number) => $scope->where('booking.booking_number', $number))
                 ->orderBy('booking.booking_number')
                 ->select([

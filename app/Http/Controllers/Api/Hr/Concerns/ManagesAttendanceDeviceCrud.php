@@ -233,10 +233,10 @@ trait ManagesAttendanceDeviceCrud
         ]);
         $data['company_id'] = $this->authorizedCompanyId($request, $data['company_id'] ?? null);
         if (! empty($data['connector_id'])) {
-            abort_unless(AttendanceConnector::query()->where('company_id', $data['company_id'])->whereKey($data['connector_id'])->exists(), 404);
+            abort_unless(AttendanceConnector::query()->where(fn ($_companyIdScope) => \App\Services\CompanyIdScope::constrain($_companyIdScope, 'company_id', $data['company_id']))->whereKey($data['connector_id'])->exists(), 404);
         }
         if (! empty($data['organization_unit_id'])) {
-            abort_unless(DB::table('hr_organization_units')->where('id', $data['organization_unit_id'])->where('company_id', $data['company_id'])->exists(), 404);
+            abort_unless(DB::table('hr_organization_units')->where('id', $data['organization_unit_id'])->where(fn ($_companyIdScope) => \App\Services\CompanyIdScope::constrain($_companyIdScope, 'company_id', $data['company_id']))->exists(), 404);
         }
 
         if ($data['integration_mode'] === 'direct_isapi') {
@@ -306,10 +306,10 @@ trait ManagesAttendanceDeviceCrud
             'status' => ['required', Rule::in(['active', 'inactive'])],
         ]);
         if (! empty($data['connector_id'])) {
-            abort_unless(AttendanceConnector::query()->where('company_id', $device->company_id)->whereKey($data['connector_id'])->exists(), 404);
+            abort_unless(AttendanceConnector::query()->where(fn ($_companyIdScope) => \App\Services\CompanyIdScope::constrain($_companyIdScope, 'company_id', $device->company_id))->whereKey($data['connector_id'])->exists(), 404);
         }
         if (! empty($data['organization_unit_id'])) {
-            abort_unless(DB::table('hr_organization_units')->where('id', $data['organization_unit_id'])->where('company_id', $device->company_id)->exists(), 404);
+            abort_unless(DB::table('hr_organization_units')->where('id', $data['organization_unit_id'])->where(fn ($_companyIdScope) => \App\Services\CompanyIdScope::constrain($_companyIdScope, 'company_id', $device->company_id))->exists(), 404);
         }
         // encrypted_configuration (which may hold the ISAPI password) is never sent back to the
         // client by health()/index(), so a client-supplied value only ever carries the fields the

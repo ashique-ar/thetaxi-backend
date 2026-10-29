@@ -80,7 +80,7 @@ class RollingPaymentScheduleService
             }
 
             $handler = SalesProfile::query()->whereKey($attribution->collection_sales_profile_id)
-                ->where('company_id', $attribution->company_id)
+                ->where(fn ($_companyIdScope) => \App\Services\CompanyIdScope::constrain($_companyIdScope, 'company_id', $attribution->company_id))
                 ->eligibleAt('collection', now())
                 ->first();
             abort_unless($handler, 422, 'The current handler is not an active configured collection-eligible Sales Profile.');
@@ -133,7 +133,7 @@ class RollingPaymentScheduleService
             $this->companyIntegrity->assertConsistent($booking, $attribution->company_id);
             $handler = $attribution?->collection_sales_profile_id
                 ? SalesProfile::query()->whereKey($attribution->collection_sales_profile_id)
-                    ->where('company_id', $rule->company_id)->eligibleAt('collection', $asOf)->first()
+                    ->where(fn ($_companyIdScope) => \App\Services\CompanyIdScope::constrain($_companyIdScope, 'company_id', $rule->company_id))->eligibleAt('collection', $asOf)->first()
                 : null;
             if (! $handler) {
                 throw ValidationException::withMessages([
@@ -210,7 +210,7 @@ class RollingPaymentScheduleService
                 $attribution = SalesBookingAttribution::query()->where('booking_id', $booking->id)->first();
                 $handler = $attribution?->collection_sales_profile_id
                     ? SalesProfile::query()->whereKey($attribution->collection_sales_profile_id)
-                        ->where('company_id', $rule->company_id)->eligibleAt('collection', now())->first()
+                        ->where(fn ($_companyIdScope) => \App\Services\CompanyIdScope::constrain($_companyIdScope, 'company_id', $rule->company_id))->eligibleAt('collection', now())->first()
                     : null;
                 abort_unless($handler, 422, 'A current configured collection-eligible handler is required to resume this rule.');
                 $generated = $this->extendLocked($rule->refresh(), now(), $handler->id, $actorUserId);

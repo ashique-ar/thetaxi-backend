@@ -42,7 +42,7 @@ class Inquiry extends BaseModel
     {
         static::creating(function (Inquiry $inquiry): void {
             if (! $inquiry->company_id || ! Schema::hasColumn('inquiries', 'first_response_due_at')) return;
-            $policy = SalesPolicySetting::query()->where('company_id', $inquiry->company_id)
+            $policy = SalesPolicySetting::query()->where(fn ($_companyIdScope) => \App\Services\CompanyIdScope::constrain($_companyIdScope, 'company_id', $inquiry->company_id))
                 ->where('policy_kind', 'inquiry_response')->where('status', 'approved')->orderByDesc('version')->first();
             if (! $policy?->inquiry_first_response_minutes) return;
 

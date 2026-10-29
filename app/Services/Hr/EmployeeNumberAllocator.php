@@ -21,7 +21,7 @@ class EmployeeNumberAllocator
                 return $this->reserveAlias($staff, $manualNumber, 'manual_canonical', $actorUserId, $reason);
             }
             if ($staff->code) return $this->reserveAlias($staff, $staff->code, 'canonical', $actorUserId, $reason);
-            $sequence = HrEmployeeNumberSequence::query()->where('company_id', $staff->company_id)->lockForUpdate()->first();
+            $sequence = HrEmployeeNumberSequence::query()->where(fn ($_companyIdScope) => \App\Services\CompanyIdScope::constrain($_companyIdScope, 'company_id', $staff->company_id))->lockForUpdate()->first();
             if (! $sequence) $sequence = HrEmployeeNumberSequence::create(['company_id'=>$staff->company_id,'template'=>'EMP-{NNNN}','start_value'=>1001,'next_value'=>1001,'padding'=>4,'status'=>'active','version'=>1,'updated_user_id'=>$actorUserId]);
             abort_unless($sequence->status === 'active', 422, 'Employee-number sequence is not active.');
             do {

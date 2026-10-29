@@ -461,7 +461,7 @@ class BookingPaymentAdjustmentService
             $rateAt = CarbonImmutable::parse($data['fx_rate_at']);
             $effectiveAt = CarbonImmutable::parse($data['adjustment_effective_at']);
             if (
-                DB::table('domain_period_locks')->where('domain', 'sales')->where('company_id', $component->receipt->company_id)
+                DB::table('domain_period_locks')->where('domain', 'sales')->where(fn ($_companyIdScope) => \App\Services\CompanyIdScope::constrain($_companyIdScope, 'company_id', $component->receipt->company_id))
                     ->where('state', 'locked')->where('period_start', '<=', $effectiveAt)->where('period_end', '>', $effectiveAt)->exists()
             ) {
                 throw ValidationException::withMessages(['adjustment_effective_at' => ['The Sales period is locked; use the governed period-reopen and new-snapshot workflow first.']]);

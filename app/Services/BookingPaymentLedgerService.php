@@ -1334,7 +1334,7 @@ class BookingPaymentLedgerService
                     || ! in_array($receipt->finality_status, $knownStatuses, true))
                 && $toStatus === 'confirmed') {
                 $policies = BookingPaymentFinalityPolicy::query()
-                    ->where('company_id', $receipt->company_id)
+                    ->where(fn ($_companyIdScope) => \App\Services\CompanyIdScope::constrain($_companyIdScope, 'company_id', $receipt->company_id))
                     ->where('payment_method', strtolower((string) $receipt->payment_method))
                     ->where('status', 'approved')
                     ->whereNotNull('approved_by')->whereNotNull('approved_at')

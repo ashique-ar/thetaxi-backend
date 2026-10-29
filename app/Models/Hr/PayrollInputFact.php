@@ -27,7 +27,7 @@ class PayrollInputFact extends NonSoftDeletableModel
             $company = DB::table('companies')->where('id', $fact->company_id)->where('is_active', true)
                 ->whereNull('deleted_at')->lockForUpdate()->first();
             abort_unless($company, 409, 'Payroll input facts require an active legal entity.');
-            $staff = DB::table('staff')->where('id', $fact->staff_id)->where('company_id', $fact->company_id)
+            $staff = DB::table('staff')->where('id', $fact->staff_id)->where(fn ($_companyIdScope) => \App\Services\CompanyIdScope::constrain($_companyIdScope, 'company_id', $fact->company_id))
                 ->lockForUpdate()->first();
             abort_unless($staff, 422, 'Payroll fact Staff does not belong to its legal entity.');
         });

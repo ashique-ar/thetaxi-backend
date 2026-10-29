@@ -91,10 +91,10 @@ class PeopleCoreController extends Controller
         
         $data=$request->validate(['search'=>['nullable','string','max:120'],'selected_id'=>['nullable','uuid'],'page'=>['nullable','integer','min:1'],'per_page'=>['nullable','integer','min:1','max:50']]);
         $companyId=$this->access->actorCompanyId($request->user());
-        $review=HrPeopleDuplicateReview::query()->whereKey($reviewId)->where('company_id',$companyId)->where('status','pending_review')->firstOrFail();
+        $review=HrPeopleDuplicateReview::query()->whereKey($reviewId)->where(fn ($_companyIdScope) => \App\Services\CompanyIdScope::constrain($_companyIdScope, 'company_id', $companyId))->where('status','pending_review')->firstOrFail();
         $search=trim((string)($data['search']??''));
         $options=Staff::withTrashed()->leftJoin('users','users.id','=','staff.user_id')
-            ->where('staff.company_id',$companyId)->whereIn('staff.id',$review->candidate_staff_ids??[])
+            ->where(fn ($_companyIdScope) => \App\Services\CompanyIdScope::constrain($_companyIdScope, 'staff.company_id', $companyId))->whereIn('staff.id',$review->candidate_staff_ids??[])
             ->when($data['selected_id']??null,fn($query,$id)=>$query->where('staff.id',$id))
             ->when($search!=='',fn($query)=>$query->where(fn($match)=>$match->whereLikeInsensitive('staff.code',$search)->orWhereLikeInsensitive('users.first_name',$search)->orWhereLikeInsensitive('users.last_name',$search)))
             ->select('staff.id','staff.code','staff.employment_ended_at','staff.deleted_at','users.first_name','users.last_name')
@@ -182,10 +182,10 @@ class PeopleCoreController extends Controller
         $employmentHistory = $this->employmentHistorySummary($staff->employmentSpells);
         $at = now()->toDateString();
         $reportingLines = DB::table('hr_reporting_lines as line')->join('staff as manager_staff', 'manager_staff.id', '=', 'line.manager_staff_id')->leftJoin('users as manager_user', 'manager_user.id', '=', 'manager_staff.user_id')
-            ->where('line.company_id', $staff->company_id)->where('line.member_staff_id', $staff->id)->where('line.effective_from', '<=', $at)->where(fn($query) => $query->whereNull('line.effective_until')->orWhere('line.effective_until', '>', $at))
+            ->where(fn ($_companyIdScope) => \App\Services\CompanyIdScope::constrain($_companyIdScope, 'line.company_id', $staff->company_id))->where('line.member_staff_id', $staff->id)->where('line.effective_from', '<=', $at)->where(fn($query) => $query->whereNull('line.effective_until')->orWhere('line.effective_until', '>', $at))
             ->select(['line.id', 'line.line_type', 'line.effective_from', 'line.effective_until', 'line.version', 'manager_staff.code as manager_employee_number', 'manager_user.first_name as manager_first_name', 'manager_user.last_name as manager_last_name'])->orderBy('line.line_type')->get();
         $actingAppointments = DB::table('hr_acting_appointments as appointment')->join('hr_positions as position', 'position.id', '=', 'appointment.acting_position_id')
-            ->where('appointment.company_id', $staff->company_id)->where('appointment.staff_id', $staff->id)
+            ->where(fn ($_companyIdScope) => \App\Services\CompanyIdScope::constrain($_companyIdScope, 'appointment.company_id', $staff->company_id))->where('appointment.staff_id', $staff->id)
             ->select(['appointment.id', 'appointment.effective_from', 'appointment.effective_until', 'appointment.status', 'appointment.version', 'position.position_number', 'position.title as position_title'])
             ->selectRaw('CASE WHEN appointment.restoration_assignment_id IS NULL THEN 0 ELSE 1 END as has_restoration')
             ->orderByDesc('appointment.effective_from')->get();
@@ -671,7 +671,7 @@ class PeopleCoreController extends Controller
         $staff = Staff::withTrashed()->findOrFail($staffId);
         $this->access->authorize($request->user(), $staff);
         $search = trim((string) ($data['search'] ?? ''));
-        $options = HrEmploymentSpell::query()->where('staff_id', $staff->id)->where('company_id', $staff->company_id)
+        $options = HrEmploymentSpell::query()->where('staff_id', $staff->id)->where(fn ($_companyIdScope) => \App\Services\CompanyIdScope::constrain($_companyIdScope, 'company_id', $staff->company_id))
             ->when($data['selected_id'] ?? null, fn($query, $id) => $query->whereKey($id))
             ->when($search !== '', fn($query) => $query->where(fn($match) => $match->where('spell_number', 'like', '%' . $search . '%')->orWhere('status', 'like', '%' . $search . '%')))
             ->orderByDesc('spell_number')->paginate((int) ($data['per_page'] ?? 25));
@@ -687,7 +687,7 @@ class PeopleCoreController extends Controller
         $staff = Staff::withTrashed()->findOrFail($staffId);
         $this->access->authorize($request->user(), $staff);
         if (!empty($data['employment_spell_id']))
-            abort_unless(HrEmploymentSpell::query()->whereKey($data['employment_spell_id'])->where('staff_id', $staff->id)->where('company_id', $staff->company_id)->exists(), 422, 'The timeline employment spell does not belong to this employee.');
+            abort_unless(HrEmploymentSpell::query()->whereKey($data['employment_spell_id'])->where('staff_id', $staff->id)->where(fn ($_companyIdScope) => \App\Services\CompanyIdScope::constrain($_companyIdScope, 'company_id', $staff->company_id))->exists(), 422, 'The timeline employment spell does not belong to this employee.');
         $query = HrEmployeeTimelineEvent::query()->where('staff_id', $staff->id);
         if (!$request->user()->can('hr.people.timeline-confidential'))
             $query->whereIn('confidentiality', ['employee', 'manager', 'internal']);
@@ -713,11 +713,11 @@ class PeopleCoreController extends Controller
         $assignment = $request->validate(['employment_type_id' => ['nullable', 'uuid', 'exists:hr_employment_types,id'], 'position_id' => ['nullable', 'uuid', 'exists:hr_positions,id'], 'organization_unit_id' => ['nullable', 'uuid', 'exists:hr_organization_units,id'], 'manager_staff_id' => ['nullable', 'uuid', 'exists:staff,id'], 'cost_centre_code' => ['nullable', 'string', 'max:80'], 'location_code' => ['nullable', 'string', 'max:80'], 'payroll_group_code' => ['nullable', 'string', 'max:80'], 'default_shift_code' => ['nullable', 'string', 'max:80'], 'work_pattern_code' => ['nullable', 'string', 'max:80']]);
         foreach (['employment_type_id' => 'hr_employment_types', 'position_id' => 'hr_positions', 'organization_unit_id' => 'hr_organization_units'] as $field => $table) {
             if (!empty($assignment[$field]))
-                abort_unless(DB::table($table)->where('id', $assignment[$field])->where('company_id', $case->company_id)->exists(), 422, "{$field} must belong to the employee legal entity.");
+                abort_unless(DB::table($table)->where('id', $assignment[$field])->where(fn ($_companyIdScope) => \App\Services\CompanyIdScope::constrain($_companyIdScope, 'company_id', $case->company_id))->exists(), 422, "{$field} must belong to the employee legal entity.");
         }
         if (!empty($assignment['manager_staff_id'])) {
             abort_if($assignment['manager_staff_id'] === $staff->id, 422, 'A rehired employee cannot manage their own assignment.');
-            abort_unless(Staff::query()->whereKey($assignment['manager_staff_id'])->where('company_id', $case->company_id)->whereNull('employment_ended_at')->exists(), 422, 'An active manager must belong to the employee legal entity.');
+            abort_unless(Staff::query()->whereKey($assignment['manager_staff_id'])->where(fn ($_companyIdScope) => \App\Services\CompanyIdScope::constrain($_companyIdScope, 'company_id', $case->company_id))->whereNull('employment_ended_at')->exists(), 422, 'An active manager must belong to the employee legal entity.');
         }
         return response()->json(['status' => 'success', 'data' => $this->people->approveRehire($case, $assignment, (string) $request->user()->id)]);
     }
@@ -765,9 +765,9 @@ class PeopleCoreController extends Controller
         $this->access->authorize($request->user(), $staff);
         $data = $request->validate(['employment_spell_id' => ['nullable', 'uuid', 'exists:hr_employment_spells,id'], 'record_type' => ['required', Rule::in(['emergency_contact', 'dependent', 'beneficiary', 'qualification', 'skill', 'language', 'membership', 'licence', 'certification', 'career', 'achievement', 'award', 'note'])], 'title' => ['required', 'string', 'max:255'], 'data' => ['required', 'array'], 'effective_date' => ['nullable', 'date'], 'expiry_date' => ['nullable', 'date', 'after_or_equal:effective_date'], 'confidentiality' => ['required', Rule::in(['employee', 'manager', 'internal', 'hr_private', 'legal'])], 'source' => ['required', 'string', 'max:60'], 'employee_submitted' => ['nullable', 'boolean'], 'evidence_file_id' => ['nullable', 'uuid', 'exists:domain_evidence_files,id']]);
         if (!empty($data['employment_spell_id']))
-            abort_unless(HrEmploymentSpell::query()->whereKey($data['employment_spell_id'])->where('staff_id', $staff->id)->where('company_id', $staff->company_id)->exists(), 422, 'The employment spell does not belong to this employee.');
+            abort_unless(HrEmploymentSpell::query()->whereKey($data['employment_spell_id'])->where('staff_id', $staff->id)->where(fn ($_companyIdScope) => \App\Services\CompanyIdScope::constrain($_companyIdScope, 'company_id', $staff->company_id))->exists(), 422, 'The employment spell does not belong to this employee.');
         if (!empty($data['evidence_file_id']))
-            abort_unless(DB::table('domain_evidence_files')->where('id', $data['evidence_file_id'])->where('company_id', $staff->company_id)->where('domain', 'hr')->whereNull('deleted_at')->exists(), 422, 'Employee-record evidence must be an active HR file from the same legal entity.');
+            abort_unless(DB::table('domain_evidence_files')->where('id', $data['evidence_file_id'])->where(fn ($_companyIdScope) => \App\Services\CompanyIdScope::constrain($_companyIdScope, 'company_id', $staff->company_id))->where('domain', 'hr')->whereNull('deleted_at')->exists(), 422, 'Employee-record evidence must be an active HR file from the same legal entity.');
         $payload = $data;
         $payload['encrypted_data'] = $payload['data'];
         unset($payload['data']);
@@ -1040,7 +1040,7 @@ class PeopleCoreController extends Controller
             ? DB::table('hr_employment_types')->where('id', $currentSpell->employment_type_id)->value('code')
             : null;
         $today = now()->toDateString();
-        $types = DB::table('hr_document_types')->where('company_id', $staff->company_id)->where('status', 'active')
+        $types = DB::table('hr_document_types')->where(fn ($_companyIdScope) => \App\Services\CompanyIdScope::constrain($_companyIdScope, 'company_id', $staff->company_id))->where('status', 'active')
             ->where('effective_from', '<=', $today)
             ->where(fn($range) => $range->whereNull('effective_until')->orWhere('effective_until', '>=', $today))
             ->orderBy('category')->orderBy('name')->get();

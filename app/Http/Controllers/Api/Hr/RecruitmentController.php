@@ -21,7 +21,7 @@ class RecruitmentController extends Controller
         $company = $this->company($r, $r->input('company_id'));
 
         return response()->json(['status' => 'success', 'data' => DB::table('hr_job_requisitions')
-            ->where('company_id', $company)->latest()->paginate($this->paginationSize($r, 50))]);
+            ->where(fn ($_companyIdScope) => \App\Services\CompanyIdScope::constrain($_companyIdScope, 'company_id', $company))->latest()->paginate($this->paginationSize($r, 50))]);
     }
 
     public function positionOptions(Request $r): JsonResponse
@@ -29,7 +29,7 @@ class RecruitmentController extends Controller
         $company = $this->company($r, null);
         $data = $r->validate(['search' => ['nullable', 'string', 'max:120'], 'selected_id' => ['nullable', 'uuid']]);
         $search = trim($data['search'] ?? '');
-        $rows = DB::table('hr_positions')->where('company_id', $company)->where('status', '!=', 'inactive')
+        $rows = DB::table('hr_positions')->where(fn ($_companyIdScope) => \App\Services\CompanyIdScope::constrain($_companyIdScope, 'company_id', $company))->where('status', '!=', 'inactive')
             ->where('effective_from', '<=', today()->toDateString())
             ->where(fn ($q) => $q->whereNull('effective_until')->orWhere('effective_until', '>', today()->toDateString()))
             ->when($data['selected_id'] ?? null, fn ($q, $id) => $q->where('id', $id))
@@ -66,7 +66,7 @@ class RecruitmentController extends Controller
 
         try {
             return DB::transaction(function () use ($r, $d, $company, $checksum): JsonResponse {
-                $existing = DB::table('hr_job_requisitions')->where('company_id', $company)
+                $existing = DB::table('hr_job_requisitions')->where(fn ($_companyIdScope) => \App\Services\CompanyIdScope::constrain($_companyIdScope, 'company_id', $company))
                     ->where('idempotency_key', $d['idempotency_key'])->lockForUpdate()->first();
                 if ($existing) {
                     abort_unless(hash_equals((string) $existing->request_payload_checksum, $checksum), 409,
@@ -74,14 +74,14 @@ class RecruitmentController extends Controller
                     return response()->json(['status' => 'success', 'data' => ['id' => $existing->id, 'status' => $existing->status]]);
                 }
 
-                $position = DB::table('hr_positions')->where('id', $d['position_id'])->where('company_id', $company)
+                $position = DB::table('hr_positions')->where('id', $d['position_id'])->where(fn ($_companyIdScope) => \App\Services\CompanyIdScope::constrain($_companyIdScope, 'company_id', $company))
                     ->where('status', '!=', 'inactive')->where('effective_from', '<=', today()->toDateString())
                     ->where(fn ($q) => $q->whereNull('effective_until')->orWhere('effective_until', '>', today()->toDateString()))
                     ->lockForUpdate()->first();
                 abort_unless($position, 422, 'Select an active position in the current legal entity.');
                 if (! empty($d['organization_unit_id'])) {
                     abort_unless(DB::table('hr_organization_units')->where('id', $d['organization_unit_id'])
-                        ->where('company_id', $company)->where('status', 'active')
+                        ->where(fn ($_companyIdScope) => \App\Services\CompanyIdScope::constrain($_companyIdScope, 'company_id', $company))->where('status', 'active')
                         ->where('effective_from', '<=', today()->toDateString())
                         ->where(fn ($q) => $q->whereNull('effective_until')->orWhere('effective_until', '>', today()->toDateString()))
                         ->lockForUpdate()->exists(), 422, 'Organization unit must be active in the current legal entity.');
@@ -108,7 +108,7 @@ class RecruitmentController extends Controller
                 return response()->json(['status' => 'success', 'data' => ['id' => $id, 'status' => 'pending_approval']], 201);
             });
         } catch (QueryException $e) {
-            $existing = DB::table('hr_job_requisitions')->where('company_id', $company)
+            $existing = DB::table('hr_job_requisitions')->where(fn ($_companyIdScope) => \App\Services\CompanyIdScope::constrain($_companyIdScope, 'company_id', $company))
                 ->where('idempotency_key', $d['idempotency_key'])->first();
             if ($existing) {
                 abort_unless(hash_equals((string) $existing->request_payload_checksum, $checksum), 409,
@@ -122,8 +122,8 @@ class RecruitmentController extends Controller
         }
     }
     public function approveRequisition(Request$r,string$id):JsonResponse{return DB::transaction(function()use($r,$id){$row=DB::table('hr_job_requisitions')->where('id',$id)->lockForUpdate()->first();abort_unless($row,404);$this->company($r,$row->company_id);abort_if($row->requested_by===$r->user()->id,409,'Requester cannot approve the same requisition.');abort_unless($row->status==='pending_approval',409);DB::table('hr_job_requisitions')->where('id',$id)->update(['status'=>'approved','approved_by'=>$r->user()->id,'approved_at'=>now(),'updated_at'=>now()]);return response()->json(['status'=>'success','data'=>DB::table('hr_job_requisitions')->find($id)]);});}
-    public function candidates(Request$r):JsonResponse{$company=$this->company($r,$r->input('company_id'));$rows=DB::table('hr_candidates')->where('company_id',$company)->select(['id','candidate_code','source_type','source_reference','consent_at','consent_expires_at','status','created_at'])->latest()->paginate($this->paginationSize($r, 50));return response()->json(['status'=>'success','data'=>$rows]);}
-    public function storeCandidate(Request$r):JsonResponse{$d=$r->validate(['company_id'=>['nullable','uuid'],'profile'=>['required','array'],'profile.first_name'=>['required','string','max:120'],'profile.last_name'=>['nullable','string','max:120'],'profile.email'=>['required','email','max:255'],'profile.phone'=>['nullable','string','max:40'],'profile.nic'=>['nullable','string','max:40'],'profile.cv_document_id'=>['nullable','uuid'],'source_type'=>['required',Rule::in(['career_site','referral','agency','direct','talent_pool','import'])],'source_reference'=>['nullable','string','max:160'],'consent_at'=>['required','date'],'consent_expires_at'=>['nullable','date','after:consent_at']]);$d['company_id']=$this->company($r,$d['company_id']??null);$fingerprint=hash('sha256',strtolower(trim($d['profile']['email'])).'|'.preg_replace('/\W/','',$d['profile']['nic']??''));if($duplicate=DB::table('hr_candidates')->where('company_id',$d['company_id'])->where('identity_fingerprint',$fingerprint)->first())return response()->json(['status'=>'conflict','message'=>'A potential duplicate candidate requires review.','data'=>['candidate_id'=>$duplicate->id]],409);$id=(string)Str::uuid();DB::table('hr_candidates')->insert(['id'=>$id,'company_id'=>$d['company_id'],'candidate_code'=>'CAN-'.strtoupper(Str::random(12)),'encrypted_profile'=>Crypt::encryptString(json_encode($d['profile'],JSON_THROW_ON_ERROR)),'identity_fingerprint'=>$fingerprint,'source_type'=>$d['source_type'],'source_reference'=>$d['source_reference']??null,'consent_at'=>$d['consent_at'],'consent_expires_at'=>$d['consent_expires_at']??null,'status'=>'active','created_by'=>$r->user()->id,'created_at'=>now(),'updated_at'=>now()]);return response()->json(['status'=>'success','data'=>DB::table('hr_candidates')->select(['id','candidate_code','status'])->find($id)],201);}
+    public function candidates(Request$r):JsonResponse{$company=$this->company($r,$r->input('company_id'));$rows=DB::table('hr_candidates')->where(fn ($_companyIdScope) => \App\Services\CompanyIdScope::constrain($_companyIdScope, 'company_id', $company))->select(['id','candidate_code','source_type','source_reference','consent_at','consent_expires_at','status','created_at'])->latest()->paginate($this->paginationSize($r, 50));return response()->json(['status'=>'success','data'=>$rows]);}
+    public function storeCandidate(Request$r):JsonResponse{$d=$r->validate(['company_id'=>['nullable','uuid'],'profile'=>['required','array'],'profile.first_name'=>['required','string','max:120'],'profile.last_name'=>['nullable','string','max:120'],'profile.email'=>['required','email','max:255'],'profile.phone'=>['nullable','string','max:40'],'profile.nic'=>['nullable','string','max:40'],'profile.cv_document_id'=>['nullable','uuid'],'source_type'=>['required',Rule::in(['career_site','referral','agency','direct','talent_pool','import'])],'source_reference'=>['nullable','string','max:160'],'consent_at'=>['required','date'],'consent_expires_at'=>['nullable','date','after:consent_at']]);$d['company_id']=$this->company($r,$d['company_id']??null);$fingerprint=hash('sha256',strtolower(trim($d['profile']['email'])).'|'.preg_replace('/\W/','',$d['profile']['nic']??''));if($duplicate=DB::table('hr_candidates')->where(fn ($_companyIdScope) => \App\Services\CompanyIdScope::constrain($_companyIdScope, 'company_id', $d['company_id']))->where('identity_fingerprint',$fingerprint)->first())return response()->json(['status'=>'conflict','message'=>'A potential duplicate candidate requires review.','data'=>['candidate_id'=>$duplicate->id]],409);$id=(string)Str::uuid();DB::table('hr_candidates')->insert(['id'=>$id,'company_id'=>$d['company_id'],'candidate_code'=>'CAN-'.strtoupper(Str::random(12)),'encrypted_profile'=>Crypt::encryptString(json_encode($d['profile'],JSON_THROW_ON_ERROR)),'identity_fingerprint'=>$fingerprint,'source_type'=>$d['source_type'],'source_reference'=>$d['source_reference']??null,'consent_at'=>$d['consent_at'],'consent_expires_at'=>$d['consent_expires_at']??null,'status'=>'active','created_by'=>$r->user()->id,'created_at'=>now(),'updated_at'=>now()]);return response()->json(['status'=>'success','data'=>DB::table('hr_candidates')->select(['id','candidate_code','status'])->find($id)],201);}
     public function apply(Request $request): JsonResponse
     {
         
@@ -174,7 +174,7 @@ class RecruitmentController extends Controller
         $company=$this->company($r,$r->input('company_id'));
         $d=$r->validate(['from'=>['nullable','date'],'to'=>['nullable','date','after_or_equal:from']]);
         $applications=DB::table('hr_candidate_applications as app')->join('hr_candidates as candidate','candidate.id','=','app.candidate_id')
-            ->where('app.company_id',$company)->when($d['from']??null,fn($q,$v)=>$q->whereDate('app.created_at','>=',$v))->when($d['to']??null,fn($q,$v)=>$q->whereDate('app.created_at','<=',$v))
+            ->where(fn ($_companyIdScope) => \App\Services\CompanyIdScope::constrain($_companyIdScope, 'app.company_id', $company))->when($d['from']??null,fn($q,$v)=>$q->whereDate('app.created_at','>=',$v))->when($d['to']??null,fn($q,$v)=>$q->whereDate('app.created_at','<=',$v))
             ->select(['app.id','app.stage','app.status','app.created_at','candidate.source_type'])->get();
         $hiredEvents=DB::table('hr_candidate_application_events')->whereIn('application_id',$applications->pluck('id'))->where('to_stage','hired')
             ->orderBy('occurred_at')->get()->keyBy('application_id');
@@ -185,7 +185,7 @@ class RecruitmentController extends Controller
             return['applications'=>$group->count(),'hired'=>$hired,'hire_rate_percent'=>$group->count()>0?round($hired/$group->count()*100,2):null];
         });
         $offers=DB::table('hr_candidate_offers as offer')->join('hr_candidate_applications as app','app.id','=','offer.application_id')
-            ->where('app.company_id',$company)->when($d['from']??null,fn($q,$v)=>$q->whereDate('offer.created_at','>=',$v))->when($d['to']??null,fn($q,$v)=>$q->whereDate('offer.created_at','<=',$v))
+            ->where(fn ($_companyIdScope) => \App\Services\CompanyIdScope::constrain($_companyIdScope, 'app.company_id', $company))->when($d['from']??null,fn($q,$v)=>$q->whereDate('offer.created_at','>=',$v))->when($d['to']??null,fn($q,$v)=>$q->whereDate('offer.created_at','<=',$v))
             ->pluck('offer.status');
         $offersByStatus=$offers->countBy();$decided=(int)$offersByStatus->get('accepted',0)+(int)$offersByStatus->get('declined',0);
         return response()->json(['status'=>'success','data'=>[
@@ -205,7 +205,7 @@ class RecruitmentController extends Controller
      * Deliberately mirrors candidates()'s privacy stance: candidate identity
      * stays behind candidate_code, never the encrypted profile.
      */
-    public function applications(Request$r):JsonResponse{$company=$this->company($r,$r->input('company_id'));$rows=DB::table('hr_candidate_applications as app')->join('hr_job_requisitions as req','req.id','=','app.requisition_id')->join('hr_candidates as candidate','candidate.id','=','app.candidate_id')->where('app.company_id',$company)->when($r->filled('requisition_id'),fn($q)=>$q->where('app.requisition_id',$r->input('requisition_id')))->when($r->filled('stage'),fn($q)=>$q->where('app.stage',$r->input('stage')))->select(['app.id','app.candidate_id','candidate.candidate_code','app.requisition_id','req.code as requisition_code','req.title as requisition_title','app.stage','app.status','app.owner_staff_id','app.converted_staff_id','app.created_at'])->latest('app.created_at')->paginate($this->paginationSize($r, 50));return response()->json(['status'=>'success','data'=>$rows]);}
+    public function applications(Request$r):JsonResponse{$company=$this->company($r,$r->input('company_id'));$rows=DB::table('hr_candidate_applications as app')->join('hr_job_requisitions as req','req.id','=','app.requisition_id')->join('hr_candidates as candidate','candidate.id','=','app.candidate_id')->where(fn ($_companyIdScope) => \App\Services\CompanyIdScope::constrain($_companyIdScope, 'app.company_id', $company))->when($r->filled('requisition_id'),fn($q)=>$q->where('app.requisition_id',$r->input('requisition_id')))->when($r->filled('stage'),fn($q)=>$q->where('app.stage',$r->input('stage')))->select(['app.id','app.candidate_id','candidate.candidate_code','app.requisition_id','req.code as requisition_code','req.title as requisition_title','app.stage','app.status','app.owner_staff_id','app.converted_staff_id','app.created_at'])->latest('app.created_at')->paginate($this->paginationSize($r, 50));return response()->json(['status'=>'success','data'=>$rows]);}
     /**
      * §5.14 "Interview scheduling integration boundary, panel feedback
      * confidentiality." `hr_candidate_interviews`/`hr_candidate_feedback`
@@ -220,8 +220,8 @@ class RecruitmentController extends Controller
         $company=$this->company($r,null);
         $d=$r->validate(['search'=>['nullable','string','max:120'],'selected_ids'=>['nullable','array','max:50'],'selected_ids.*'=>['uuid','distinct'],'page'=>['nullable','integer','min:1'],'per_page'=>['nullable','integer','min:1','max:50']]);
         $term=trim((string)($d['search']??''));
-        $query=DB::table('staff')->leftJoin('users','users.id','=','staff.user_id')->where('staff.company_id',$company)
-            ->whereNull('staff.deleted_at')->whereNull('staff.employment_ended_at')->whereExists(fn($spell)=>$spell->selectRaw('1')->from('hr_employment_spells')->whereColumn('hr_employment_spells.staff_id','staff.id')->where('hr_employment_spells.company_id',$company)->where('hr_employment_spells.status','active')->whereNull('hr_employment_spells.terminated_at'))
+        $query=DB::table('staff')->leftJoin('users','users.id','=','staff.user_id')->where(fn ($_companyIdScope) => \App\Services\CompanyIdScope::constrain($_companyIdScope, 'staff.company_id', $company))
+            ->whereNull('staff.deleted_at')->whereNull('staff.employment_ended_at')->whereExists(fn($spell)=>$spell->selectRaw('1')->from('hr_employment_spells')->whereColumn('hr_employment_spells.staff_id','staff.id')->where(fn ($_companyIdScope) => \App\Services\CompanyIdScope::constrain($_companyIdScope, 'hr_employment_spells.company_id', $company))->where('hr_employment_spells.status','active')->whereNull('hr_employment_spells.terminated_at'))
             ->when($d['selected_ids']??null,fn($q,$ids)=>$q->whereIn('staff.id',$ids))
             ->when($term!==''&&empty($d['selected_ids']),fn($q)=>$q->where(fn($match)=>$match->whereRaw('LOWER(staff.code) LIKE ?',['%'.mb_strtolower($term).'%'])->orWhereRaw('LOWER(users.first_name) LIKE ?',['%'.mb_strtolower($term).'%'])->orWhereRaw('LOWER(users.last_name) LIKE ?',['%'.mb_strtolower($term).'%'])))
             ->select(['staff.id','staff.code','staff.staff_type','users.first_name','users.last_name'])->orderBy('users.first_name')->orderBy('users.last_name')->orderBy('staff.id');
@@ -239,8 +239,8 @@ class RecruitmentController extends Controller
             $app=DB::table('hr_candidate_applications')->where('id',$id)->lockForUpdate()->first();abort_unless($app,404);$this->company($r,$app->company_id);
             abort_unless($app->stage==='interview'&&$app->status==='active',409,'Application must be active in the interview stage before scheduling an interview.');
             $panel=array_values(array_unique($d['panel_staff_ids']));
-            $activePanel=DB::table('staff')->whereIn('id',$panel)->where('company_id',$app->company_id)->whereNull('deleted_at')->whereNull('employment_ended_at')
-                ->whereExists(fn($spell)=>$spell->selectRaw('1')->from('hr_employment_spells')->whereColumn('hr_employment_spells.staff_id','staff.id')->where('hr_employment_spells.company_id',$app->company_id)->where('hr_employment_spells.status','active')->whereNull('hr_employment_spells.terminated_at'))
+            $activePanel=DB::table('staff')->whereIn('id',$panel)->where(fn ($_companyIdScope) => \App\Services\CompanyIdScope::constrain($_companyIdScope, 'company_id', $app->company_id))->whereNull('deleted_at')->whereNull('employment_ended_at')
+                ->whereExists(fn($spell)=>$spell->selectRaw('1')->from('hr_employment_spells')->whereColumn('hr_employment_spells.staff_id','staff.id')->where(fn ($_companyIdScope) => \App\Services\CompanyIdScope::constrain($_companyIdScope, 'hr_employment_spells.company_id', $app->company_id))->where('hr_employment_spells.status','active')->whereNull('hr_employment_spells.terminated_at'))
                 ->orderBy('id')->lockForUpdate()->get(['id']);
             abort_unless($activePanel->count()===count($panel),422,'Every panel member must be active Staff with an active employment spell in the application legal entity.');
             $interviewId=(string)Str::uuid();
@@ -256,7 +256,7 @@ class RecruitmentController extends Controller
      * department permission. Panel membership itself (checked at schedule
      * time against the application's legal entity) is the authorization.
      */
-    public function myInterviews(Request$r):JsonResponse{$staff=$this->actor($r);$this->company($r,$staff->company_id);$rows=DB::table('hr_candidate_interviews as interview')->join('hr_candidate_applications as app','app.id','=','interview.application_id')->where('app.company_id',$staff->company_id)->whereJsonContains('interview.panel_staff_ids',$staff->id)->orderByDesc('interview.scheduled_at')->get(['interview.*'])->map(function($row)use($staff){$feedback=DB::table('hr_candidate_feedback')->where('interview_id',$row->id)->where('reviewer_staff_id',$staff->id)->first();return['id'=>$row->id,'application_id'=>$row->application_id,'interview_type'=>$row->interview_type,'scheduled_at'=>$row->scheduled_at,'timezone'=>$row->timezone,'status'=>$row->status,'schedule_details'=>$row->encrypted_schedule_details?json_decode(Crypt::decryptString($row->encrypted_schedule_details),true,512,JSON_THROW_ON_ERROR):null,'my_feedback_submitted'=>(bool)$feedback,'my_recommendation'=>$feedback->recommendation??null];});return response()->json(['status'=>'success','data'=>$rows]);}
+    public function myInterviews(Request$r):JsonResponse{$staff=$this->actor($r);$this->company($r,$staff->company_id);$rows=DB::table('hr_candidate_interviews as interview')->join('hr_candidate_applications as app','app.id','=','interview.application_id')->where(fn ($_companyIdScope) => \App\Services\CompanyIdScope::constrain($_companyIdScope, 'app.company_id', $staff->company_id))->whereJsonContains('interview.panel_staff_ids',$staff->id)->orderByDesc('interview.scheduled_at')->get(['interview.*'])->map(function($row)use($staff){$feedback=DB::table('hr_candidate_feedback')->where('interview_id',$row->id)->where('reviewer_staff_id',$staff->id)->first();return['id'=>$row->id,'application_id'=>$row->application_id,'interview_type'=>$row->interview_type,'scheduled_at'=>$row->scheduled_at,'timezone'=>$row->timezone,'status'=>$row->status,'schedule_details'=>$row->encrypted_schedule_details?json_decode(Crypt::decryptString($row->encrypted_schedule_details),true,512,JSON_THROW_ON_ERROR):null,'my_feedback_submitted'=>(bool)$feedback,'my_recommendation'=>$feedback->recommendation??null];});return response()->json(['status'=>'success','data'=>$rows]);}
     public function storeInterviewFeedback(Request$r,string$interviewId):JsonResponse{$d=$r->validate(['recommendation'=>['required',Rule::in(['strong_hire','hire','no_hire','strong_no_hire'])],'scorecard'=>['required','array']]);$interview=DB::table('hr_candidate_interviews')->find($interviewId);abort_unless($interview,404);$app=DB::table('hr_candidate_applications')->find($interview->application_id);$this->company($r,$app->company_id);abort_unless($interview->status!=='cancelled',409,'A cancelled interview cannot receive feedback.');$staffId=$this->actor($r)->id;$panel=json_decode($interview->panel_staff_ids,true)??[];abort_unless(in_array($staffId,$panel,true),403,'Only an assigned panel member may submit feedback for this interview.');abort_if(DB::table('hr_candidate_feedback')->where('interview_id',$interviewId)->where('reviewer_staff_id',$staffId)->exists(),409,'Feedback was already submitted for this interview.');$id=(string)Str::uuid();DB::table('hr_candidate_feedback')->insert(['id'=>$id,'interview_id'=>$interviewId,'reviewer_staff_id'=>$staffId,'encrypted_scorecard'=>Crypt::encryptString(json_encode($d['scorecard'],JSON_THROW_ON_ERROR)),'recommendation'=>$d['recommendation'],'submitted_at'=>now(),'created_at'=>now(),'updated_at'=>now()]);$this->event($app->id,'interview_feedback_submitted',$app->stage,$app->stage,'Panel feedback submitted.',$r->user()->id,['interview_id'=>$interviewId,'reviewer_staff_id'=>$staffId,'recommendation'=>$d['recommendation']]);return response()->json(['status'=>'success','data'=>['id'=>$id,'interview_id'=>$interviewId,'recommendation'=>$d['recommendation']]],201);}
     /**
      * Confidential aggregate view: gated by `hr.recruitment.approve` at the

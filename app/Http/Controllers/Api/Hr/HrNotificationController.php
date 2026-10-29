@@ -1,12 +1,12 @@
 <?php
 namespace App\Http\Controllers\Api\Hr;use App\Http\Controllers\Controller;use App\Models\Staff;use App\Services\Hr\HrNotificationService;use App\Services\StaffAccessService;use App\Support\ObservabilitySanitizer;use Illuminate\Http\JsonResponse;use Illuminate\Http\Request;use Illuminate\Support\Facades\DB;use Illuminate\Support\Str;use Illuminate\Validation\Rule;
 class HrNotificationController extends Controller{
-public function templates(Request$r):JsonResponse{$a=$this->actor($r);return response()->json(['status'=>'success','data'=>DB::table('hr_notification_template_versions')->where('company_id',$a->company_id)->select(['id','code','version','event_type','channel','allowed_placeholders','mandatory','effective_from','effective_until','status','template_checksum'])->orderBy('code')->orderByDesc('version')->paginate($this->paginationSize($r, 50))]);}
+public function templates(Request$r):JsonResponse{$a=$this->actor($r);return response()->json(['status'=>'success','data'=>DB::table('hr_notification_template_versions')->where(fn ($_companyIdScope) => \App\Services\CompanyIdScope::constrain($_companyIdScope, 'company_id', $a->company_id))->select(['id','code','version','event_type','channel','allowed_placeholders','mandatory','effective_from','effective_until','status','template_checksum'])->orderBy('code')->orderByDesc('version')->paginate($this->paginationSize($r, 50))]);}
 public function storeTemplate(Request$r):JsonResponse{$a=$this->actor($r);$d=$r->validate(['code'=>['required','string','max:100'],'version'=>['required','integer','min:1'],'event_type'=>['required','string','max:100'],'channel'=>['required',Rule::in(['in_app','email','sms'])],'subject_template'=>['nullable','required_if:channel,email','string','max:500'],'body_template'=>['required','string','max:20000'],'allowed_placeholders'=>['present','array'],'allowed_placeholders.*'=>['required','string','regex:/^[a-zA-Z0-9_.-]+$/','distinct'],'mandatory'=>['required','boolean'],'effective_from'=>['required','date'],'effective_until'=>['nullable','date','after_or_equal:effective_from']]);preg_match_all('/\{\{\s*([a-zA-Z0-9_.-]+)\s*\}\}/',($d['subject_template']??'').' '.$d['body_template'],$matches);abort_if(array_diff(array_unique($matches[1]),$d['allowed_placeholders']),422,'Every template placeholder must be explicitly allowed.');$checksum=hash('sha256',json_encode($d,JSON_UNESCAPED_SLASHES|JSON_THROW_ON_ERROR));$id=(string)Str::uuid();$d['allowed_placeholders']=json_encode(array_values($d['allowed_placeholders']),JSON_THROW_ON_ERROR);DB::table('hr_notification_template_versions')->insert($d+['id'=>$id,'company_id'=>$a->company_id,'status'=>'pending_approval','template_checksum'=>$checksum,'created_by'=>$r->user()->id,'created_at'=>now(),'updated_at'=>now()]);return response()->json(['status'=>'success','data'=>['id'=>$id,'status'=>'pending_approval']],201);}
-public function approveTemplate(Request$r,string$id):JsonResponse{$a=$this->actor($r);return DB::transaction(function()use($r,$a,$id){$t=DB::table('hr_notification_template_versions')->where('id',$id)->where('company_id',$a->company_id)->lockForUpdate()->first();abort_unless($t,404);abort_unless($t->status==='pending_approval',409);abort_if($t->created_by===$r->user()->id,409,'Template creator cannot approve the same version.');$overlap=DB::table('hr_notification_template_versions')->where('company_id',$a->company_id)->where('event_type',$t->event_type)->where('channel',$t->channel)->where('status','approved')->whereDate('effective_from','<=',$t->effective_until??'9999-12-31')->where(fn($q)=>$q->whereNull('effective_until')->orWhereDate('effective_until','>=',$t->effective_from))->exists();abort_if($overlap,409,'Approved notification templates cannot overlap for an event and channel.');DB::table('hr_notification_template_versions')->where('id',$id)->update(['status'=>'approved','approved_by'=>$r->user()->id,'approved_at'=>now(),'updated_at'=>now()]);return response()->json(['status'=>'success','data'=>['id'=>$id,'status'=>'approved']]);});}
-public function rejectTemplate(Request$r,string$id):JsonResponse{$a=$this->actor($r);$d=$r->validate(['reason'=>['required','string','max:3000']]);return DB::transaction(function()use($r,$a,$d,$id){$t=DB::table('hr_notification_template_versions')->where('id',$id)->where('company_id',$a->company_id)->lockForUpdate()->first();abort_unless($t,404);abort_unless($t->status==='pending_approval',409);abort_if($t->created_by===$r->user()->id,409,'Template creator cannot reject the same version.');DB::table('hr_notification_template_versions')->where('id',$id)->update(['status'=>'rejected','approved_by'=>$r->user()->id,'approved_at'=>now(),'decision_reason'=>$d['reason'],'updated_at'=>now()]);return response()->json(['status'=>'success','data'=>['id'=>$id,'status'=>'rejected']]);});}
-public function preferences(Request$r):JsonResponse{$a=$this->actor($r);return response()->json(['status'=>'success','data'=>DB::table('hr_notification_preferences')->where('staff_id',$a->id)->where('company_id',$a->company_id)->select(['event_type','channel','enabled','updated_at'])->get()]);}
-public function savePreference(Request$r):JsonResponse{$a=$this->actor($r);$d=$r->validate(['event_type'=>['required','string','max:100'],'channel'=>['required',Rule::in(['in_app','email','sms'])],'enabled'=>['required','boolean']]);if(!$d['enabled'])abort_if(DB::table('hr_notification_template_versions')->where('company_id',$a->company_id)->where('event_type',$d['event_type'])->where('channel',$d['channel'])->where('status','approved')->where('mandatory',true)->whereDate('effective_from','<=',now())->where(fn($q)=>$q->whereNull('effective_until')->orWhereDate('effective_until','>=',now()))->exists(),422,'Mandatory HR notifications cannot be disabled.');$key=['staff_id'=>$a->id,'event_type'=>$d['event_type'],'channel'=>$d['channel']];DB::transaction(function()use($key,$a,$d,$r){$existing=DB::table('hr_notification_preferences')->where($key)->lockForUpdate()->first();if($existing)abort_unless((string)$existing->company_id===(string)$a->company_id,409,'Notification preference company does not match the selected Staff.');$values=['enabled'=>$d['enabled'],'updated_by'=>$r->user()->id,'updated_at'=>now()];if(!$existing){$inserted=DB::table('hr_notification_preferences')->insertOrIgnore($key+$values+['id'=>(string)Str::uuid(),'company_id'=>$a->company_id,'created_at'=>now()]);if($inserted===1)return;$existing=DB::table('hr_notification_preferences')->where($key)->lockForUpdate()->first();abort_unless($existing&&(string)$existing->company_id===(string)$a->company_id,409,'Notification preference company does not match the selected Staff.');}DB::table('hr_notification_preferences')->where($key)->where('company_id',$a->company_id)->update($values);});return response()->json(['status'=>'success']);}
+public function approveTemplate(Request$r,string$id):JsonResponse{$a=$this->actor($r);return DB::transaction(function()use($r,$a,$id){$t=DB::table('hr_notification_template_versions')->where('id',$id)->where(fn ($_companyIdScope) => \App\Services\CompanyIdScope::constrain($_companyIdScope, 'company_id', $a->company_id))->lockForUpdate()->first();abort_unless($t,404);abort_unless($t->status==='pending_approval',409);abort_if($t->created_by===$r->user()->id,409,'Template creator cannot approve the same version.');$overlap=DB::table('hr_notification_template_versions')->where(fn ($_companyIdScope) => \App\Services\CompanyIdScope::constrain($_companyIdScope, 'company_id', $a->company_id))->where('event_type',$t->event_type)->where('channel',$t->channel)->where('status','approved')->whereDate('effective_from','<=',$t->effective_until??'9999-12-31')->where(fn($q)=>$q->whereNull('effective_until')->orWhereDate('effective_until','>=',$t->effective_from))->exists();abort_if($overlap,409,'Approved notification templates cannot overlap for an event and channel.');DB::table('hr_notification_template_versions')->where('id',$id)->update(['status'=>'approved','approved_by'=>$r->user()->id,'approved_at'=>now(),'updated_at'=>now()]);return response()->json(['status'=>'success','data'=>['id'=>$id,'status'=>'approved']]);});}
+public function rejectTemplate(Request$r,string$id):JsonResponse{$a=$this->actor($r);$d=$r->validate(['reason'=>['required','string','max:3000']]);return DB::transaction(function()use($r,$a,$d,$id){$t=DB::table('hr_notification_template_versions')->where('id',$id)->where(fn ($_companyIdScope) => \App\Services\CompanyIdScope::constrain($_companyIdScope, 'company_id', $a->company_id))->lockForUpdate()->first();abort_unless($t,404);abort_unless($t->status==='pending_approval',409);abort_if($t->created_by===$r->user()->id,409,'Template creator cannot reject the same version.');DB::table('hr_notification_template_versions')->where('id',$id)->update(['status'=>'rejected','approved_by'=>$r->user()->id,'approved_at'=>now(),'decision_reason'=>$d['reason'],'updated_at'=>now()]);return response()->json(['status'=>'success','data'=>['id'=>$id,'status'=>'rejected']]);});}
+public function preferences(Request$r):JsonResponse{$a=$this->actor($r);return response()->json(['status'=>'success','data'=>DB::table('hr_notification_preferences')->where('staff_id',$a->id)->where(fn ($_companyIdScope) => \App\Services\CompanyIdScope::constrain($_companyIdScope, 'company_id', $a->company_id))->select(['event_type','channel','enabled','updated_at'])->get()]);}
+public function savePreference(Request$r):JsonResponse{$a=$this->actor($r);$d=$r->validate(['event_type'=>['required','string','max:100'],'channel'=>['required',Rule::in(['in_app','email','sms'])],'enabled'=>['required','boolean']]);if(!$d['enabled'])abort_if(DB::table('hr_notification_template_versions')->where(fn ($_companyIdScope) => \App\Services\CompanyIdScope::constrain($_companyIdScope, 'company_id', $a->company_id))->where('event_type',$d['event_type'])->where('channel',$d['channel'])->where('status','approved')->where('mandatory',true)->whereDate('effective_from','<=',now())->where(fn($q)=>$q->whereNull('effective_until')->orWhereDate('effective_until','>=',now()))->exists(),422,'Mandatory HR notifications cannot be disabled.');$key=['staff_id'=>$a->id,'event_type'=>$d['event_type'],'channel'=>$d['channel']];DB::transaction(function()use($key,$a,$d,$r){$existing=DB::table('hr_notification_preferences')->where($key)->lockForUpdate()->first();if($existing)abort_unless((string)$existing->company_id===(string)$a->company_id,409,'Notification preference company does not match the selected Staff.');$values=['enabled'=>$d['enabled'],'updated_by'=>$r->user()->id,'updated_at'=>now()];if(!$existing){$inserted=DB::table('hr_notification_preferences')->insertOrIgnore($key+$values+['id'=>(string)Str::uuid(),'company_id'=>$a->company_id,'created_at'=>now()]);if($inserted===1)return;$existing=DB::table('hr_notification_preferences')->where($key)->lockForUpdate()->first();abort_unless($existing&&(string)$existing->company_id===(string)$a->company_id,409,'Notification preference company does not match the selected Staff.');}DB::table('hr_notification_preferences')->where($key)->where(fn ($_companyIdScope) => \App\Services\CompanyIdScope::constrain($_companyIdScope, 'company_id', $a->company_id))->update($values);});return response()->json(['status'=>'success']);}
 public function outbox(Request $request): JsonResponse
 {
     $actor = $this->actor($request);
@@ -15,7 +15,7 @@ public function outbox(Request $request): JsonResponse
             ->on('staff.company_id', '=', 'outbox.company_id')
             ->on('staff.user_id', '=', 'outbox.recipient_user_id'))
         ->leftJoin('users', 'users.id', '=', 'staff.user_id')
-        ->where('outbox.company_id', $actor->company_id)
+        ->where(fn ($_companyIdScope) => \App\Services\CompanyIdScope::constrain($_companyIdScope, 'outbox.company_id', $actor->company_id))
         ->select([
             'outbox.id', 'outbox.event_type', 'outbox.channel', 'outbox.source_type',
             'outbox.payload_checksum', 'outbox.status', 'outbox.attempt_count',
@@ -39,7 +39,7 @@ public function deliveryQueue(Request $request): JsonResponse
     
     $actor = $this->actor($request);
     $maxAttempts = max(1, (int) config('hr.notification_max_attempts', 5));
-    $query = DB::table('hr_notification_outbox')->where('company_id', $actor->company_id);
+    $query = DB::table('hr_notification_outbox')->where(fn ($_companyIdScope) => \App\Services\CompanyIdScope::constrain($_companyIdScope, 'company_id', $actor->company_id));
     $rows = $query
         ->where(function ($available) use ($maxAttempts): void {
             $available->where(function ($ready) use ($maxAttempts): void {
@@ -57,7 +57,7 @@ public function deliveryQueue(Request $request): JsonResponse
 
     return response()->json(['status' => 'success', 'data' => $rows]);
 }
-public function receiptQueue(Request$r):JsonResponse{$a=$this->actor($r);$query=DB::table('hr_notification_outbox')->where('company_id',$a->company_id);$this->scopeRecipientCompanyLink($query);$rows=$query->where('status','accepted_pending_receipt')->select(['id','channel','event_type','payload_checksum','attempt_count','accepted_at','external_reference'])->orderBy('accepted_at')->paginate(min(100,max(1,$r->integer('per_page',50))));return response()->json(['status'=>'success','data'=>$rows]);}
+public function receiptQueue(Request$r):JsonResponse{$a=$this->actor($r);$query=DB::table('hr_notification_outbox')->where(fn ($_companyIdScope) => \App\Services\CompanyIdScope::constrain($_companyIdScope, 'company_id', $a->company_id));$this->scopeRecipientCompanyLink($query);$rows=$query->where('status','accepted_pending_receipt')->select(['id','channel','event_type','payload_checksum','attempt_count','accepted_at','external_reference'])->orderBy('accepted_at')->paginate(min(100,max(1,$r->integer('per_page',50))));return response()->json(['status'=>'success','data'=>$rows]);}
 public function claimDelivery(Request $request, string $id, HrNotificationService $notifications): JsonResponse
 {
     
@@ -65,7 +65,7 @@ public function claimDelivery(Request $request, string $id, HrNotificationServic
 
     return DB::transaction(function () use ($request, $actor, $id, $notifications) {
         $outbox = DB::table('hr_notification_outbox')->where('id', $id)
-            ->where('company_id', $actor->company_id)->lockForUpdate()->first();
+            ->where(fn ($_companyIdScope) => \App\Services\CompanyIdScope::constrain($_companyIdScope, 'company_id', $actor->company_id))->lockForUpdate()->first();
         abort_unless($outbox, 404);
         if (! $notifications->companyIsActive($outbox->company_id)) {
             return $this->failDeliveryForRecipient($request, $outbox, 'Notification company is no longer active.');
@@ -145,7 +145,7 @@ public function acknowledge(Request $r, string $id, HrNotificationService $notif
 
     return DB::transaction(function () use ($r, $actor, $id, $data, $notifications) {
         $outbox = DB::table('hr_notification_outbox')->where('id', $id)
-            ->where('company_id', $actor->company_id)->lockForUpdate()->first();
+            ->where(fn ($_companyIdScope) => \App\Services\CompanyIdScope::constrain($_companyIdScope, 'company_id', $actor->company_id))->lockForUpdate()->first();
         abort_unless($outbox, 404);
         abort_unless($notifications->recipientMatchesCompany($outbox->company_id, $outbox->recipient_staff_id, $outbox->recipient_user_id), 409, 'Notification recipient does not match its company.');
 
@@ -182,7 +182,7 @@ public function acknowledge(Request $r, string $id, HrNotificationService $notif
         ]);
 
         $updated = DB::table('hr_notification_outbox')->where('id', $id)
-            ->where('company_id', $actor->company_id)->first();
+            ->where(fn ($_companyIdScope) => \App\Services\CompanyIdScope::constrain($_companyIdScope, 'company_id', $actor->company_id))->first();
 
         return $this->outboxResponse($updated);
     });
@@ -227,7 +227,7 @@ public function recordReceipt(Request $r, string $id, HrNotificationService $not
 
     return DB::transaction(function () use ($r, $actor, $id, $data, $notifications) {
         $outbox = DB::table('hr_notification_outbox')->where('id', $id)
-            ->where('company_id', $actor->company_id)->lockForUpdate()->first();
+            ->where(fn ($_companyIdScope) => \App\Services\CompanyIdScope::constrain($_companyIdScope, 'company_id', $actor->company_id))->lockForUpdate()->first();
         abort_unless($outbox, 404);
         abort_unless($notifications->recipientMatchesCompany($outbox->company_id, $outbox->recipient_staff_id, $outbox->recipient_user_id), 409, 'Notification recipient does not match its company.');
 
@@ -265,7 +265,7 @@ public function recordReceipt(Request $r, string $id, HrNotificationService $not
         ]);
 
         return $this->outboxResponse(DB::table('hr_notification_outbox')
-            ->where('id', $id)->where('company_id', $actor->company_id)->first());
+            ->where('id', $id)->where(fn ($_companyIdScope) => \App\Services\CompanyIdScope::constrain($_companyIdScope, 'company_id', $actor->company_id))->first());
     });
 }
 private function assertReceiptReplay(?object $prior, string $id, array $data): void

@@ -275,11 +275,11 @@ class InquiryController extends Controller
         $this->assertInquiryCompany($inquiry);
         $inquiry->load(['cmsContent', 'inquiryServicePage', 'assignedUser.staff', 'firstResponseSavedBy', 'booking']);
         if ($inquiry->source === 'respond_io') {
-            $replyEvent = IntegrationWebhookEvent::query()->where('company_id', $inquiry->company_id)
+            $replyEvent = IntegrationWebhookEvent::query()->where(fn ($_companyIdScope) => \App\Services\CompanyIdScope::constrain($_companyIdScope, 'company_id', $inquiry->company_id))
                 ->where('linked_inquiry_id', $inquiry->id)->incomingMessage()->latest('received_at')->first();
             $inquiry->setAttribute('respond_io_reply_status', $replyEvent?->outbound_status);
         } else {
-            $emailResponse = InquiryOutboundResponse::query()->where('company_id', $inquiry->company_id)
+            $emailResponse = InquiryOutboundResponse::query()->where(fn ($_companyIdScope) => \App\Services\CompanyIdScope::constrain($_companyIdScope, 'company_id', $inquiry->company_id))
                 ->where('inquiry_id', $inquiry->id)->latest('created_at')->first(['status', 'sent_at', 'idempotency_key']);
             $inquiry->setAttribute('email_response_status', $emailResponse?->status);
             $inquiry->setAttribute('email_response_sent_at', $emailResponse?->sent_at);
@@ -289,7 +289,7 @@ class InquiryController extends Controller
         }
         if ($request->user()->can('sales.crm.view')) {
             $inquiry->setAttribute('linked_opportunity_id', DB::table('sales_opportunities')->where('inquiry_id', $inquiry->id)
-                ->where('company_id', $inquiry->company_id)->whereNull('deleted_at')->value('id'));
+                ->where(fn ($_companyIdScope) => \App\Services\CompanyIdScope::constrain($_companyIdScope, 'company_id', $inquiry->company_id))->whereNull('deleted_at')->value('id'));
         }
         return response()->json([
             'status' => 'success',
@@ -775,7 +775,7 @@ class InquiryController extends Controller
             'status' => ['required', 'in:open,in_progress,closed,archived'],
         ]);
         $inquiry = DB::transaction(function () use ($request, $inquiry, $data): Inquiry {
-            $locked = Inquiry::query()->where('company_id', $inquiry->company_id)->lockForUpdate()->findOrFail($inquiry->id);
+            $locked = Inquiry::query()->where(fn ($_companyIdScope) => \App\Services\CompanyIdScope::constrain($_companyIdScope, 'company_id', $inquiry->company_id))->lockForUpdate()->findOrFail($inquiry->id);
             $fromStatus = $locked->status;
             $locked->update(['status' => $data['status'], 'updated_user_id' => $request->user()->id]);
             app(\App\Services\InquiryStatusHistoryService::class)->record(
@@ -913,7 +913,7 @@ class InquiryController extends Controller
     {
         $this->assertInquiryCompany($inquiry);
         $inquiry = DB::transaction(function () use ($request, $inquiry): Inquiry {
-            $locked = Inquiry::query()->where('company_id', $inquiry->company_id)->lockForUpdate()->findOrFail($inquiry->id);
+            $locked = Inquiry::query()->where(fn ($_companyIdScope) => \App\Services\CompanyIdScope::constrain($_companyIdScope, 'company_id', $inquiry->company_id))->lockForUpdate()->findOrFail($inquiry->id);
             $fromStatus = $locked->status;
             $locked->update(['status' => $locked->status ?: 'read', 'updated_user_id' => $request->user()->id]);
             app(\App\Services\InquiryStatusHistoryService::class)->record(

@@ -32,7 +32,7 @@ class SyncHikvisionPeople extends Command
             $today = CarbonImmutable::now($device->timezone)->toDateString();
             $rows = DB::table('hr_attendance_person_mappings as mapping')
                 ->join('staff', 'staff.id', '=', 'mapping.staff_id')
-                ->where('mapping.company_id', $device->company_id)
+                ->where(fn ($_companyIdScope) => \App\Services\CompanyIdScope::constrain($_companyIdScope, 'mapping.company_id', $device->company_id))
                 ->where('mapping.enrollment_status', 'verified')
                 ->where(fn ($query) => $query->where('mapping.device_id', $device->id)->orWhereNull('mapping.device_id'))
                 ->whereDate('mapping.effective_from', '<=', $today)
@@ -58,7 +58,7 @@ class SyncHikvisionPeople extends Command
                     DB::transaction(function () use ($device, $row, $today, $providers) {
                         $company = DB::table('companies')->where('id', $device->company_id)->lockForUpdate()->first();
                         if (! $company) return;
-                        $mappings = DB::table('hr_attendance_person_mappings')->where('company_id', $device->company_id)
+                        $mappings = DB::table('hr_attendance_person_mappings')->where(fn ($_companyIdScope) => \App\Services\CompanyIdScope::constrain($_companyIdScope, 'company_id', $device->company_id))
                             ->where('provider_person_id', $row->provider_person_id)->where('enrollment_status', 'verified')
                             ->where(fn ($query) => $query->where('device_id', $device->id)->orWhereNull('device_id'))
                             ->whereDate('effective_from', '<=', $today)
@@ -73,7 +73,7 @@ class SyncHikvisionPeople extends Command
                         }
 
                         $staff = Staff::withTrashed()->whereKey($mapping->staff_id)
-                            ->where('company_id', $device->company_id)->lockForUpdate()->first();
+                            ->where(fn ($_companyIdScope) => \App\Services\CompanyIdScope::constrain($_companyIdScope, 'company_id', $device->company_id))->lockForUpdate()->first();
                         if (! $staff) return;
 
                         $enabled = $staff->employment_ended_at === null && ! $staff->trashed();

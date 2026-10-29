@@ -136,7 +136,7 @@ class SalesCollectionCompanyRepairService
                 'evidence_file_id' => $data['evidence_file_id'], 'reason' => trim($data['reason']),
             ], JSON_THROW_ON_ERROR | JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE));
             $duplicate = DB::table('sales_collection_company_repair_rollbacks')
-                ->where('company_id', $attribution->company_id)->where('idempotency_hash', $keyHash)->first();
+                ->where(fn ($_companyIdScope) => \App\Services\CompanyIdScope::constrain($_companyIdScope, 'company_id', $attribution->company_id))->where('idempotency_hash', $keyHash)->first();
             if ($duplicate) {
                 abort_unless((string) $duplicate->booking_id === (string) $booking->id
                     && (string) $duplicate->company_id === (string) $attribution->company_id, 409,
@@ -149,7 +149,7 @@ class SalesCollectionCompanyRepairService
                             ->on('repair.source_table', '=', 'item.source_table')
                             ->on('repair.source_record_id', '=', 'item.source_record_id')
                             ->where('repair.booking_id', $booking->id)
-                            ->where('repair.company_id', $attribution->company_id);
+                            ->where(fn ($_companyIdScope) => \App\Services\CompanyIdScope::constrain($_companyIdScope, 'repair.company_id', $attribution->company_id));
                     })
                     ->where('item.rollback_id', $duplicate->id)->get('item.*');
                 abort_unless($rollbackItems->count() === (int) $duplicate->record_count, 409,
@@ -181,7 +181,7 @@ class SalesCollectionCompanyRepairService
             foreach ($snapshot['rows'] as $row) {
                 $updatedAt = now();
                 $query = DB::table($row['source_table'])->where('id', $row['source_record_id'])
-                    ->where('booking_id', $booking->id)->where('company_id', $row['after_company_id']);
+                    ->where('booking_id', $booking->id)->where(fn ($_companyIdScope) => \App\Services\CompanyIdScope::constrain($_companyIdScope, 'company_id', $row['after_company_id']));
                 abort_unless($query->update(['company_id' => $row['before_company_id'], 'updated_at' => $updatedAt]) === 1,
                     409, 'A collection record changed during rollback; refresh the preview.');
 
@@ -226,7 +226,7 @@ class SalesCollectionCompanyRepairService
                 'evidence_file_id' => $data['evidence_file_id'],
                 'reason' => trim($data['reason']),
             ], JSON_THROW_ON_ERROR | JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE));
-            $duplicate = DB::table('sales_collection_company_repairs')->where('company_id', $attribution->company_id)
+            $duplicate = DB::table('sales_collection_company_repairs')->where(fn ($_companyIdScope) => \App\Services\CompanyIdScope::constrain($_companyIdScope, 'company_id', $attribution->company_id))
                 ->where('idempotency_hash', $keyHash)->first();
             if ($duplicate) {
                 abort_unless((string) $duplicate->booking_id === (string) $booking->id
@@ -234,7 +234,7 @@ class SalesCollectionCompanyRepairService
                     'This repair key belongs to another booking or legal entity.');
                 abort_unless(hash_equals($duplicate->request_checksum, $requestChecksum), 409,
                     'This repair key was already used with different facts.');
-                $repairRows = DB::table('sales_collection_company_repairs')->where('company_id', $attribution->company_id)
+                $repairRows = DB::table('sales_collection_company_repairs')->where(fn ($_companyIdScope) => \App\Services\CompanyIdScope::constrain($_companyIdScope, 'company_id', $attribution->company_id))
                     ->where('idempotency_hash', $keyHash)->get();
                 abort_unless($duplicate->request_record_count !== null
                     && $repairRows->count() === (int) $duplicate->request_record_count
@@ -261,7 +261,7 @@ class SalesCollectionCompanyRepairService
                 $query = DB::table($row['table'])->where('id', $row['id'])->where('booking_id', $booking->id);
                 $row['before_company_id'] === null
                     ? $query->whereNull('company_id')
-                    : $query->where('company_id', $row['before_company_id']);
+                    : $query->where(fn ($_companyIdScope) => \App\Services\CompanyIdScope::constrain($_companyIdScope, 'company_id', $row['before_company_id']));
                 abort_unless($query->update(['company_id' => $attribution->company_id, 'updated_at' => $updatedAt]) === 1,
                     409, 'A collection record changed during repair; refresh the preview.');
 
@@ -320,7 +320,7 @@ class SalesCollectionCompanyRepairService
     private function rollbackSnapshot(Booking $booking, SalesBookingAttribution $attribution, bool $lock = false): array
     {
         $incomplete = DB::table('sales_collection_company_repairs as repair')
-            ->where('repair.booking_id', $booking->id)->where('repair.company_id', $attribution->company_id)
+            ->where('repair.booking_id', $booking->id)->where(fn ($_companyIdScope) => \App\Services\CompanyIdScope::constrain($_companyIdScope, 'repair.company_id', $attribution->company_id))
             ->whereNull('repair.after_checksum')
             ->whereNotExists(fn ($scope) => $scope->selectRaw('1')
                 ->from('sales_collection_company_repair_rollback_items as item')->whereColumn('item.repair_id', 'repair.id'))
@@ -329,7 +329,7 @@ class SalesCollectionCompanyRepairService
             'Historical collection repair checksum is missing; approved historical disposition is required before rollback.');
 
         $query = DB::table('sales_collection_company_repairs as repair')
-            ->where('repair.booking_id', $booking->id)->where('repair.company_id', $attribution->company_id)
+            ->where('repair.booking_id', $booking->id)->where(fn ($_companyIdScope) => \App\Services\CompanyIdScope::constrain($_companyIdScope, 'repair.company_id', $attribution->company_id))
             ->whereNotNull('repair.after_checksum')
             ->whereNotExists(fn ($scope) => $scope->selectRaw('1')
                 ->from('sales_collection_company_repair_rollback_items as item')->whereColumn('item.repair_id', 'repair.id'))

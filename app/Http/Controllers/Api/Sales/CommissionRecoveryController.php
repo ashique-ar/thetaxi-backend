@@ -79,7 +79,7 @@ class CommissionRecoveryController extends Controller
         $profileIds = $this->profileIds($request, $data['company_id'] ?? null);
         if ($profileIds !== null) $query->whereIn('beneficiary_sales_profile_id', $profileIds);
         $cases = $query
-            ->when($data['company_id'] ?? null, fn ($q, $id) => $q->where('company_id', $id))
+            ->when($data['company_id'] ?? null, fn ($q, $id) => $q->where(fn ($_companyIdScope) => \App\Services\CompanyIdScope::constrain($_companyIdScope, 'company_id', $id)))
             ->when($data['status'] ?? null, fn ($q, $status) => $q->where('status', $status))
             ->when($data['recovery_kind'] ?? null, fn ($q, $kind) => $q->where('recovery_kind', $kind))
             ->latest('opened_at')->paginate($this->paginationSize($request, 25));

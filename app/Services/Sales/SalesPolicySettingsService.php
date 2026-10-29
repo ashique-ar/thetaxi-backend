@@ -105,7 +105,7 @@ class SalesPolicySettingsService
             $setting = SalesCompanyFeatureSetting::query()->lockForUpdate()->findOrFail($id);
             abort_unless($setting->status === 'draft', 422, 'Only a draft company feature setting can be approved.');
             abort_if($setting->created_by === $actorUserId, 409, 'The feature-setting creator cannot approve the same version.');
-            SalesCompanyFeatureSetting::query()->where('company_id', $setting->company_id)
+            SalesCompanyFeatureSetting::query()->where(fn ($_companyIdScope) => \App\Services\CompanyIdScope::constrain($_companyIdScope, 'company_id', $setting->company_id))
                 ->where('feature_key', $setting->feature_key)->where('status', 'approved')->lockForUpdate()
                 ->update(['status' => 'retired']);
             $setting->update(['status' => 'approved', 'approved_by' => $actorUserId, 'approved_at' => now()]);
@@ -198,7 +198,7 @@ class SalesPolicySettingsService
             abort_unless($setting->status === 'draft', 422, 'Only a draft governed policy setting can be approved.');
             abort_if($setting->created_by === $actorUserId, 409, 'The policy-setting creator cannot approve the same version.');
 
-            SalesPolicySetting::query()->where('company_id', $setting->company_id)->where('policy_kind', $setting->policy_kind)->where('status', 'approved')
+            SalesPolicySetting::query()->where(fn ($_companyIdScope) => \App\Services\CompanyIdScope::constrain($_companyIdScope, 'company_id', $setting->company_id))->where('policy_kind', $setting->policy_kind)->where('status', 'approved')
                 ->lockForUpdate()->update(['status' => 'retired']);
             $setting->update(['status' => 'approved', 'approved_by' => $actorUserId, 'approved_at' => now()]);
 

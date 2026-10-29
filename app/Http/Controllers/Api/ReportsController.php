@@ -58,7 +58,7 @@ class ReportsController extends Controller
                     ->groupBy('currency')->orderBy('currency')->get(),
             'total_customers'  => $this->companyCustomers($filters)->where('created_at', '>=', TimezoneService::userDateStartUtc($filters['date_from']))
                     ->where('created_at', '<', $this->exclusiveDateEnd($filters['date_to']))->count(),
-            'total_vehicles'   => Vehicle::withInactive()->where('company_id', $filters['company_id'])->count(),
+            'total_vehicles'   => Vehicle::withInactive()->where(fn ($_companyIdScope) => \App\Services\CompanyIdScope::constrain($_companyIdScope, 'company_id', $filters['company_id']))->count(),
                 'booking_trends'   => $this->getBookingTrends($filters),
                 'revenue_trends'   => $this->getRevenueTrends($filters),
             ];
@@ -261,9 +261,9 @@ class ReportsController extends Controller
         $filters = $this->parseFilters($request);
 
         $analytics = [
-            'total_vehicles'          => Vehicle::withInactive()->where('company_id', $filters['company_id'])->count(),
+            'total_vehicles'          => Vehicle::withInactive()->where(fn ($_companyIdScope) => \App\Services\CompanyIdScope::constrain($_companyIdScope, 'company_id', $filters['company_id']))->count(),
             'active_vehicles'         => Vehicle::where('company_id', $filters['company_id'])->where('is_active', true)->count(),
-            'maintenance_vehicles'    => Vehicle::withInactive()->where('company_id', $filters['company_id'])->where('availability_status', 'unavailable_maintenance')->count(),
+            'maintenance_vehicles'    => Vehicle::withInactive()->where(fn ($_companyIdScope) => \App\Services\CompanyIdScope::constrain($_companyIdScope, 'company_id', $filters['company_id']))->where('availability_status', 'unavailable_maintenance')->count(),
             'fleet_metrics'           => $this->getFleetMetrics($filters),
             'performance_by_category' => $this->getPerformanceByCategory($filters),
             'maintenance_metrics'     => $this->getMaintenanceMetrics($filters),
@@ -538,7 +538,7 @@ class ReportsController extends Controller
         $filters = $this->parseFilters($request);
         $direction = $pagination['sort_direction'] ?? 'asc';
         $sortBy = $pagination['vehicle_sort_by'] ?? 'registration_number';
-        $vehicles = Vehicle::withInactive()->where('company_id', $filters['company_id'])->with('group')
+        $vehicles = Vehicle::withInactive()->where(fn ($_companyIdScope) => \App\Services\CompanyIdScope::constrain($_companyIdScope, 'company_id', $filters['company_id']))->with('group')
             ->when(!empty($filters['vehicle_id']), fn ($query) => $query->whereKey($filters['vehicle_id']))
             ->when(!empty($filters['search']), function ($query) use ($filters) {
                 $search = '%' . mb_strtolower($filters['search']) . '%';
@@ -588,7 +588,7 @@ class ReportsController extends Controller
                 'last_page' => $vehicles->lastPage(),
                 'to' => $vehicles->lastItem(),
                 'total' => $vehicles->total(),
-                'summary' => ['total_vehicles' => Vehicle::withInactive()->where('company_id', $filters['company_id'])->when(!empty($filters['vehicle_id']), fn ($query) => $query->whereKey($filters['vehicle_id']))->count(), 'revenue_by_currency' => $summaryByCurrency],
+                'summary' => ['total_vehicles' => Vehicle::withInactive()->where(fn ($_companyIdScope) => \App\Services\CompanyIdScope::constrain($_companyIdScope, 'company_id', $filters['company_id']))->when(!empty($filters['vehicle_id']), fn ($query) => $query->whereKey($filters['vehicle_id']))->count(), 'revenue_by_currency' => $summaryByCurrency],
             ],
         ]);
     }
@@ -744,7 +744,7 @@ class ReportsController extends Controller
         $query = DB::table('booking_items')
             ->join('bookings', 'bookings.id', '=', 'booking_items.booking_id')
             ->join('vehicles', 'vehicles.id', '=', 'booking_items.vehicle_id')
-            ->where('vehicles.company_id', $filters['company_id'])
+            ->where(fn ($_companyIdScope) => \App\Services\CompanyIdScope::constrain($_companyIdScope, 'vehicles.company_id', $filters['company_id']))
             ->whereNotNull('booking_items.vehicle_id')
             ->whereNotNull('booking_items.from_date')
             ->when($vehicleIds !== null, fn ($q) => $q->whereIn('booking_items.vehicle_id', $vehicleIds))
@@ -1448,7 +1448,7 @@ class ReportsController extends Controller
 
     private function getFleetMetrics(array $filters): array
     {
-        $totalVehicles  = Vehicle::withInactive()->where('company_id', $filters['company_id'])->count();
+        $totalVehicles  = Vehicle::withInactive()->where(fn ($_companyIdScope) => \App\Services\CompanyIdScope::constrain($_companyIdScope, 'company_id', $filters['company_id']))->count();
         $totalActive    = Vehicle::where('company_id', $filters['company_id'])->where('is_active', true)->count();
 
         // Utilisation: vehicles with at least 1 completed booking in the period
@@ -1456,7 +1456,7 @@ class ReportsController extends Controller
             ->join('bookings', 'booking_items.booking_id', '=', 'bookings.id')
             ->join('vehicles', 'booking_items.vehicle_id', '=', 'vehicles.id')
             ->where('bookings.status', 'completed')
-            ->where('vehicles.company_id', $filters['company_id'])
+            ->where(fn ($_companyIdScope) => \App\Services\CompanyIdScope::constrain($_companyIdScope, 'vehicles.company_id', $filters['company_id']))
             ->where('vehicles.is_active', true)
             ->when(!empty($filters['date_from']), fn ($q) => $q->whereRaw('COALESCE(booking_items.to_date, booking_items.from_date) >= ?', [TimezoneService::userDateStartUtc($filters['date_from'])]))
             ->when(!empty($filters['date_to']),   fn ($q) => $q->where('booking_items.from_date', '<', TimezoneService::userDateEndExclusiveUtc($filters['date_to'])))
@@ -1473,7 +1473,7 @@ class ReportsController extends Controller
         return [
             'total'            => $totalVehicles,
             'active'           => $totalActive,
-            'in_maintenance'   => Vehicle::withInactive()->where('company_id', $filters['company_id'])->where('availability_status', 'unavailable_maintenance')->count(),
+            'in_maintenance'   => Vehicle::withInactive()->where(fn ($_companyIdScope) => \App\Services\CompanyIdScope::constrain($_companyIdScope, 'company_id', $filters['company_id']))->where('availability_status', 'unavailable_maintenance')->count(),
             'utilisation_rate' => $utilisationRate,
         ];
     }
@@ -1497,7 +1497,7 @@ class ReportsController extends Controller
             ->when(!empty($filters['date_from']), fn ($q) => $q->whereRaw('COALESCE(booking_items.to_date, booking_items.from_date) >= ?', [TimezoneService::userDateStartUtc($filters['date_from'])]))
             ->when(!empty($filters['date_to']),   fn ($q) => $q->where('booking_items.from_date', '<', TimezoneService::userDateEndExclusiveUtc($filters['date_to'])))
             ->whereNotNull('booking_items.from_date')
-            ->where('vehicles.company_id', $filters['company_id'])
+            ->where(fn ($_companyIdScope) => \App\Services\CompanyIdScope::constrain($_companyIdScope, 'vehicles.company_id', $filters['company_id']))
             ->groupBy('vehicle_groups.id', 'vehicle_groups.name')
             ->orderByDesc('bookings');
         CompanyBookingScope::constrain($query, 'bookings', (string) $filters['company_id']);
@@ -1513,7 +1513,7 @@ class ReportsController extends Controller
 
         return DB::table('vehicle_maintenance_records as vmr')
             ->join('vehicles as v', 'v.id', '=', 'vmr.vehicle_id')
-            ->where('v.company_id', $filters['company_id'])
+            ->where(fn ($_companyIdScope) => \App\Services\CompanyIdScope::constrain($_companyIdScope, 'v.company_id', $filters['company_id']))
             ->selectRaw("vmr.status, COALESCE(NULLIF(UPPER(vmr.currency), ''), '" . strtoupper((string) config('booking.base_currency', 'LKR')) . "') as currency, COUNT(*) as count, SUM(COALESCE(vmr.cost, 0)) as total_cost")
             ->whereNull('vmr.deleted_at')
             ->when(!empty($filters['date_from']), fn ($q) => $q->whereDate('vmr.performed_date', '>=', $filters['date_from']))
@@ -1529,7 +1529,7 @@ class ReportsController extends Controller
             ->join('vehicles as v', 'v.id', '=', 'vmr.vehicle_id')
             ->leftJoin('vehicle_groups as vg', 'vg.id', '=', 'v.vehicle_group_id')
             ->leftJoin('vehicle_maintenance_schedules as vms', 'vms.id', '=', 'vmr.schedule_id')
-            ->where('v.company_id', $filters['company_id'])
+            ->where(fn ($_companyIdScope) => \App\Services\CompanyIdScope::constrain($_companyIdScope, 'v.company_id', $filters['company_id']))
             ->whereNull('vmr.deleted_at')
             ->when(!empty($filters['date_from']), fn ($q) => $q->whereDate('vmr.performed_date', '>=', $filters['date_from']))
             ->when(!empty($filters['date_to']), fn ($q) => $q->whereDate('vmr.performed_date', '<=', $filters['date_to']))

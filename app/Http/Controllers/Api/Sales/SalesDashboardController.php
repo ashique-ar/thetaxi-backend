@@ -504,7 +504,7 @@ class SalesDashboardController extends Controller
         $facts = DB::table('sales_metric_facts as fact')
             ->join('sales_profiles as profile', 'profile.id', '=', 'fact.sales_profile_id')
             ->join('staff', 'staff.id', '=', 'profile.staff_id')
-            ->where('fact.company_id', $frozen->company_id)->whereIn('fact.sales_profile_id', $authorizedIds)
+            ->where(fn ($_companyIdScope) => \App\Services\CompanyIdScope::constrain($_companyIdScope, 'fact.company_id', $frozen->company_id))->whereIn('fact.sales_profile_id', $authorizedIds)
             ->whereIn('fact.metric_type', $metricTypes)
             ->whereBetween('fact.occurred_on', [$frozen->period_start, $frozen->period_end])
             ->where('fact.occurred_at', '<=', $frozen->cutoff_at)
@@ -750,7 +750,7 @@ class SalesDashboardController extends Controller
         $facts = DB::table('sales_metric_facts as fact')
             ->join('sales_profiles as profile', 'profile.id', '=', 'fact.sales_profile_id')
             ->join('staff', 'staff.id', '=', 'profile.staff_id')
-            ->where('fact.company_id', $data['company_id'])
+            ->where(fn ($_companyIdScope) => \App\Services\CompanyIdScope::constrain($_companyIdScope, 'fact.company_id', $data['company_id']))
             ->whereIn('fact.sales_profile_id', $authorizedIds)
             ->whereIn('fact.metric_type', $metricTypes)
             ->when(in_array($data['metric'], ['new_sales', 'new_bookings', 'new_customers'], true),
@@ -861,7 +861,7 @@ class SalesDashboardController extends Controller
         $query = DB::table('sales_opportunities as opportunity')
             ->join('sales_profiles as profile', 'profile.id', '=', 'opportunity.owner_sales_profile_id')
             ->join('staff', 'staff.id', '=', 'profile.staff_id')
-            ->where('opportunity.company_id', $data['company_id'])
+            ->where(fn ($_companyIdScope) => \App\Services\CompanyIdScope::constrain($_companyIdScope, 'opportunity.company_id', $data['company_id']))
             ->whereIn('opportunity.owner_sales_profile_id', $authorizedIds)
             ->where('opportunity.stage', $data['stage']);
         $sourceCount = (clone $query)->count();
@@ -939,7 +939,7 @@ class SalesDashboardController extends Controller
             ->leftJoinSub($paid, 'paid', fn ($join) => $join->on('paid.booking_payment_schedule_id', '=', 'schedule.id'))
             ->where('schedule.id', $schedule)->whereNull('schedule.deleted_at')
             ->where('schedule.status', '!=', 'superseded')
-            ->where('attribution.company_id', $data['company_id'])
+            ->where(fn ($_companyIdScope) => \App\Services\CompanyIdScope::constrain($_companyIdScope, 'attribution.company_id', $data['company_id']))
             ->whereIn('attribution.collection_sales_profile_id', $authorizedIds)
             ->first([
                 'schedule.id', 'schedule.booking_id', 'booking.booking_number', 'schedule.sequence',
@@ -1005,7 +1005,7 @@ class SalesDashboardController extends Controller
             $request->user(), 'sales.performance.view-all', 'sales.performance.view-team', $companyId,
         );
         $profiles = SalesProfile::query()->where('staff_id', $staffId)
-            ->when($companyId, fn ($query, string $id) => $query->where('company_id', $id))
+            ->when($companyId, fn ($query, string $id) => $query->where(fn ($_companyIdScope) => \App\Services\CompanyIdScope::constrain($_companyIdScope, 'company_id', $id)))
             ->when($authorizedIds !== null, fn ($query) => $query->whereIn('id', $authorizedIds))
             ->orderByDesc('effective_from')->limit(2)->get();
         abort_if($profiles->isEmpty(), 404, 'Sales Staff dashboard not found.');
@@ -1024,7 +1024,7 @@ class SalesDashboardController extends Controller
     {
         $ids = $this->scope->profileIds($request->user(), 'sales.performance.view-all', 'sales.performance.view-team');
         $query = SalesBookingAttribution::query()->with(['booking.customer.user'])
-            ->whereIn('company_id', DB::table('companies')->select('id')->where('is_active', true)->whereNull('deleted_at'))
+            ->where(fn ($_companyIdScope) => \App\Services\CompanyIdScope::constrainIn($_companyIdScope, 'company_id', DB::table('companies')->select('id')->where('is_active', true)->whereNull('deleted_at')))
             ->where(fn ($q) => $ids === null ? $q : $q->whereIn('acquisition_sales_profile_id', $ids)->orWhereIn('collection_sales_profile_id', $ids));
         $page = $query->latest('secured_at')->paginate($this->paginationSize($request, 25));
         return response()->json(['status' => 'success', 'data' => $page->through(fn (SalesBookingAttribution $row) => [

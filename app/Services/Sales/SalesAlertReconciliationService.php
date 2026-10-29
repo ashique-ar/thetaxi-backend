@@ -118,11 +118,11 @@ class SalesAlertReconciliationService
         $companyEvidence = null;
         if ($includeCompanyEvidence) {
             $source = $snapshot->source_reconciliation_snapshot ?? [];
-            $factChecksums = SalesMetricFact::query()->where('company_id', $alert->company_id)
+            $factChecksums = SalesMetricFact::query()->where(fn ($_companyIdScope) => \App\Services\CompanyIdScope::constrain($_companyIdScope, 'company_id', $alert->company_id))
                 ->whereBetween('occurred_on', [$snapshot->period_start->toDateString(), $snapshot->period_end->toDateString()])
                 ->where('occurred_at', '<=', $snapshot->cutoff_at)->orderBy('occurred_at')->orderBy('id')
                 ->pluck('fact_checksum')->all();
-            $targetChecksums = SalesTargetVersion::query()->where('company_id', $alert->company_id)->where('status', 'approved')
+            $targetChecksums = SalesTargetVersion::query()->where(fn ($_companyIdScope) => \App\Services\CompanyIdScope::constrain($_companyIdScope, 'company_id', $alert->company_id))->where('status', 'approved')
                 ->whereDate('period_start', '<=', $snapshot->period_end)->whereDate('period_end', '>=', $snapshot->period_start)
                 ->orderBy('sales_profile_id')->orderBy('period_start')->pluck('payload_checksum')->all();
             $current = [

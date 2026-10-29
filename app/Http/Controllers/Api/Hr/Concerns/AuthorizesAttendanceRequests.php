@@ -68,7 +68,7 @@ trait AuthorizesAttendanceRequests
         $companyIds = $companyId
             ? collect([$this->authorizedCompanyId($request, $companyId)])
             : $this->authorizedCompanyIds($request);
-        $device = AttendanceDevice::query()->whereIn('company_id', $companyIds)->find($deviceId);
+        $device = AttendanceDevice::query()->where(fn ($_companyIdScope) => \App\Services\CompanyIdScope::constrainIn($_companyIdScope, 'company_id', $companyIds))->find($deviceId);
         abort_unless($device, 404);
 
         return $device;
@@ -81,7 +81,7 @@ trait AuthorizesAttendanceRequests
 
     private function lockActiveDirectIsapiDevice(AttendanceDevice $device): AttendanceDevice
     {
-        $locked = AttendanceDevice::query()->where('company_id', $device->company_id)->where('status', 'active')
+        $locked = AttendanceDevice::query()->where(fn ($_companyIdScope) => \App\Services\CompanyIdScope::constrain($_companyIdScope, 'company_id', $device->company_id))->where('status', 'active')
             ->where('integration_mode', 'direct_isapi')->lockForUpdate()->find($device->id);
         abort_unless($locked, 409, 'The attendance device must remain active for direct ISAPI writes.');
 

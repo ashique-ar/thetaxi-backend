@@ -15,7 +15,7 @@ class StaffCustomFieldValueService
 
     public function listForStaff(Staff $staff, User $actor): array
     {
-        $definitions = DB::table('hr_custom_field_definitions')->where('company_id', $staff->company_id)->where('applies_to', 'staff')->where('active', true)
+        $definitions = DB::table('hr_custom_field_definitions')->where(fn ($_companyIdScope) => \App\Services\CompanyIdScope::constrain($_companyIdScope, 'company_id', $staff->company_id))->where('applies_to', 'staff')->where('active', true)
             ->orderBy('label')->orderBy('id')->get();
         $values = DB::table('hr_custom_field_values')->where('owner_type', 'staff')->where('owner_id', $staff->id)->get()->keyBy('definition_id');
         $requestId = (string) Str::uuid();
@@ -51,8 +51,8 @@ class StaffCustomFieldValueService
     {
         return DB::transaction(function () use ($staff, $definitionId, $data, $actor) {
             abort_unless(DB::table('companies')->where('id', $staff->company_id)->lockForUpdate()->first(), 404, 'Staff legal entity was not found.');
-            $staff = Staff::withTrashed()->whereKey($staff->id)->where('company_id', $staff->company_id)->lockForUpdate()->firstOrFail();
-            $definition = DB::table('hr_custom_field_definitions')->where('id', $definitionId)->where('company_id', $staff->company_id)->where('applies_to', 'staff')->lockForUpdate()->first();
+            $staff = Staff::withTrashed()->whereKey($staff->id)->where(fn ($_companyIdScope) => \App\Services\CompanyIdScope::constrain($_companyIdScope, 'company_id', $staff->company_id))->lockForUpdate()->firstOrFail();
+            $definition = DB::table('hr_custom_field_definitions')->where('id', $definitionId)->where(fn ($_companyIdScope) => \App\Services\CompanyIdScope::constrain($_companyIdScope, 'company_id', $staff->company_id))->where('applies_to', 'staff')->lockForUpdate()->first();
             abort_unless($definition, 404, 'Staff custom-field definition was not found in your legal entity.');
             abort_unless((bool) $definition->active, 409, 'Inactive custom-field definitions cannot accept values.');
             abort_unless((int) $definition->version === (int) $data['definition_version'], 409, 'Custom-field definition version is stale.');
@@ -103,7 +103,7 @@ class StaffCustomFieldValueService
 
     private function assertEmploymentCovers(Staff $staff, string $date): void
     {
-        abort_unless(DB::table('hr_employment_spells')->where('staff_id', $staff->id)->where('company_id', $staff->company_id)->where('joined_at', '<=', $date)
+        abort_unless(DB::table('hr_employment_spells')->where('staff_id', $staff->id)->where(fn ($_companyIdScope) => \App\Services\CompanyIdScope::constrain($_companyIdScope, 'company_id', $staff->company_id))->where('joined_at', '<=', $date)
             ->where(fn ($range) => $range->whereNull('terminated_at')->orWhere('terminated_at', '>=', $date))->exists(), 422, 'A Staff custom-field effective date must be covered by retained employment.');
     }
 

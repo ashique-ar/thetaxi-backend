@@ -45,7 +45,7 @@ class SalesPerformanceController extends Controller
             ->select(['sales_target_versions.*', 'target_profile.sales_code as profile_sales_code',
                 'target_staff.code as staff_code'])
             ->when($ids !== null, fn ($target) => $target->whereIn('sales_target_versions.sales_profile_id', $ids))
-            ->where('sales_target_versions.company_id', $data['company_id'])
+            ->where(fn ($_companyIdScope) => \App\Services\CompanyIdScope::constrain($_companyIdScope, 'sales_target_versions.company_id', $data['company_id']))
             ->when($data['sales_profile_id'] ?? null, fn ($target, string $profileId) => $target->where('sales_target_versions.sales_profile_id', $profileId))
             ->when($data['month'] ?? null, fn ($target, string $month) => $target->whereDate('sales_target_versions.period_start', $month.'-01'))
             ->when($data['status'] ?? null, fn ($target, string $status) => $target->where('sales_target_versions.status', $status))
@@ -72,7 +72,7 @@ class SalesPerformanceController extends Controller
             app(CompanySettingsAccessService::class)->assertCanAccess($request->user(), (string) $activeCompanyId);
         }
         $companyIds = SalesProfile::query()->where('status', 'active')->activeAt(now())
-            ->when($activeCompanyId && $request->header('X-Active-Context-Type') === 'staff', fn ($query) => $query->where('company_id', $activeCompanyId))
+            ->when($activeCompanyId && $request->header('X-Active-Context-Type') === 'staff', fn ($query) => $query->where(fn ($_companyIdScope) => \App\Services\CompanyIdScope::constrain($_companyIdScope, 'company_id', $activeCompanyId)))
             ->whereHas('staff', fn ($query) => $query->where(fn ($active) => $active->whereNull('employment_ended_at')->orWhere('employment_ended_at', '>', now())))
             ->when($ids !== null, fn ($query) => $query->whereIn('id', $ids))
             ->select('company_id')->distinct()->pluck('company_id');
@@ -80,11 +80,11 @@ class SalesPerformanceController extends Controller
             ->map(fn ($company) => ['id' => $company->id, 'name' => $company->name, 'is_active' => (bool) $company->is_active]);
         $defaultCompanyId = $activeCompanyId;
         if ($defaultCompanyId && ! $companyIds->contains($defaultCompanyId)) $defaultCompanyId = null;
-        $policies = SalesAlertPolicyVersion::query()->whereIn('company_id', $companyIds)->orderByDesc('effective_from')->orderByDesc('version')->get();
+        $policies = SalesAlertPolicyVersion::query()->where(fn ($_companyIdScope) => \App\Services\CompanyIdScope::constrainIn($_companyIdScope, 'company_id', $companyIds))->orderByDesc('effective_from')->orderByDesc('version')->get();
         $portfolioStatusPolicies = collect();
         if ($ids === null && ($request->user()->can('sales.performance.portfolio-status-policies.manage')
             || $request->user()->can('sales.performance.portfolio-status-policies.approve'))) {
-            $portfolioStatusPolicies = SalesPortfolioStatusPolicyVersion::query()->whereIn('company_id', $companyIds)
+            $portfolioStatusPolicies = SalesPortfolioStatusPolicyVersion::query()->where(fn ($_companyIdScope) => \App\Services\CompanyIdScope::constrainIn($_companyIdScope, 'company_id', $companyIds))
                 ->orderByDesc('effective_from')->orderByDesc('version')->get([
                     'id', 'company_id', 'version', 'active_booking_statuses', 'effective_from', 'effective_until', 'status', 'reason',
                 ]);
@@ -110,10 +110,10 @@ class SalesPerformanceController extends Controller
                 'Select an available legal entity.');
         }
         $query = SalesProfile::query()->with('staff:id,user_id,code')->where('status', 'active')->activeAt(now())
-            ->whereIn('company_id', DB::table('companies')->whereNull('deleted_at')->select('id'))
+            ->where(fn ($_companyIdScope) => \App\Services\CompanyIdScope::constrainIn($_companyIdScope, 'company_id', DB::table('companies')->whereNull('deleted_at')->select('id')))
             ->whereHas('staff', fn ($staff) => $staff->whereNull('deleted_at')
                 ->where(fn ($employment) => $employment->whereNull('employment_ended_at')->orWhere('employment_ended_at', '>', now())))
-            ->where('company_id', $data['company_id']);
+            ->where(fn ($_companyIdScope) => \App\Services\CompanyIdScope::constrain($_companyIdScope, 'company_id', $data['company_id']));
         $query = $this->scope->scopeProfiles($query, $request->user(),
             'sales.performance.view-all', 'sales.performance.view-team', $data['company_id']);
         if (array_key_exists('selected_ids', $data)) {
@@ -152,7 +152,7 @@ class SalesPerformanceController extends Controller
         $data['company_id'] = $this->resolveCompanyId($data['company_id'] ?? null);
         $this->assertCompanyWideScope($request, $data['company_id']);
         $query = DB::table('staff')->join('users', 'users.id', '=', 'staff.user_id')
-            ->where('staff.company_id', $data['company_id'])->whereNull('staff.deleted_at')
+            ->where(fn ($_companyIdScope) => \App\Services\CompanyIdScope::constrain($_companyIdScope, 'staff.company_id', $data['company_id']))->whereNull('staff.deleted_at')
             ->whereNull('users.deleted_at')->where('users.is_active', true)
             ->whereExists(fn ($context) => $context->selectRaw('1')->from('user_contexts as staff_context')
                 ->whereColumn('staff_context.user_id', 'users.id')->whereColumn('staff_context.context_id', 'staff.id')
@@ -192,7 +192,7 @@ class SalesPerformanceController extends Controller
             app(CompanySettingsAccessService::class)->assertCanAccess($request->user(), (string) $activeCompanyId);
         }
         $companyIds = SalesProfile::query()->where('status', 'active')->activeAt(now())
-            ->when($activeCompanyId && $request->header('X-Active-Context-Type') === 'staff', fn ($query) => $query->where('company_id', $activeCompanyId))
+            ->when($activeCompanyId && $request->header('X-Active-Context-Type') === 'staff', fn ($query) => $query->where(fn ($_companyIdScope) => \App\Services\CompanyIdScope::constrain($_companyIdScope, 'company_id', $activeCompanyId)))
             ->whereHas('staff', fn ($query) => $query->where(fn ($active) => $active
                 ->whereNull('employment_ended_at')->orWhere('employment_ended_at', '>', now())))
             ->when($profileIds !== null, fn ($query) => $query->whereIn('id', $profileIds))
@@ -238,7 +238,7 @@ class SalesPerformanceController extends Controller
         $preview = $performance->previewTargetCopy(
             $data['company_id'], $data['source_period_start'], $data['target_period_start'], $data['profile_ids'],
         );
-        $labels = SalesProfile::query()->with('staff:id,user_id,code')->where('company_id', $data['company_id'])
+        $labels = SalesProfile::query()->with('staff:id,user_id,code')->where(fn ($_companyIdScope) => \App\Services\CompanyIdScope::constrain($_companyIdScope, 'company_id', $data['company_id']))
             ->whereIn('id', $data['profile_ids'])->get()->keyBy('id');
         foreach ($preview['rows'] as &$row) {
             $profile = $labels->get($row['sales_profile_id']);
@@ -354,7 +354,7 @@ class SalesPerformanceController extends Controller
             ->leftJoin('sales_kpi_snapshots as snapshot', function ($join) {
                 $join->on('snapshot.period_lock_id', '=', 'period_lock.id')->where('snapshot.status', '=', 'frozen');
             })
-            ->where('period_lock.domain', 'sales')->where('period_lock.company_id', $data['company_id'])
+            ->where('period_lock.domain', 'sales')->where(fn ($_companyIdScope) => \App\Services\CompanyIdScope::constrain($_companyIdScope, 'period_lock.company_id', $data['company_id']))
             ->select(['period_lock.id', 'period_lock.company_id', 'period_lock.period_type', 'period_lock.period_start',
                 'period_lock.period_end', 'period_lock.state', 'period_lock.lock_version', 'period_lock.reason',
                 'period_lock.locked_at', 'period_lock.reopened_at', 'snapshot.id as current_snapshot_id',
@@ -389,7 +389,7 @@ class SalesPerformanceController extends Controller
         if ($ids !== null) {
             $query->whereHas('rows', fn ($q) => $q->whereIn('sales_profile_id', $ids));
         }
-        $page = $query->where('company_id', $data['company_id'])
+        $page = $query->where(fn ($_companyIdScope) => \App\Services\CompanyIdScope::constrain($_companyIdScope, 'company_id', $data['company_id']))
             ->latest('period_end')->paginate($this->paginationSize($request, 12));
         if ($ids !== null) {
             $page->getCollection()->each(fn (SalesKpiSnapshot $snapshot) => $snapshot->makeHidden([
@@ -563,7 +563,7 @@ class SalesPerformanceController extends Controller
         ]);
         $data['company_id'] = $this->resolveCompanyId($data['company_id'] ?? null);
         $this->assertCompanyWideScope($request, $data['company_id']);
-        $rows = SalesPortfolioStatusPolicyVersion::query()->where('company_id', $data['company_id'])
+        $rows = SalesPortfolioStatusPolicyVersion::query()->where(fn ($_companyIdScope) => \App\Services\CompanyIdScope::constrain($_companyIdScope, 'company_id', $data['company_id']))
             ->orderByDesc('version')->paginate((int) ($data['per_page'] ?? 25), [
                 'id', 'company_id', 'version', 'active_booking_statuses', 'effective_from', 'effective_until', 'status', 'reason',
             ]);

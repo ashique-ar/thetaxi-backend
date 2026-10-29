@@ -34,7 +34,7 @@ class StaffIdentityService
     {
         return DB::transaction(function () use ($staff, $actor, $reason, $idempotencyKey) {
             abort_unless(DB::table('companies')->where('id', $staff->company_id)->where('is_active', true)->whereNull('deleted_at')->lockForUpdate()->first(), 409, 'Staff termination requires an active legal entity.');
-            $lockedStaff = Staff::withTrashed()->where('company_id', $staff->company_id)->lockForUpdate()->findOrFail($staff->id);
+            $lockedStaff = Staff::withTrashed()->where(fn ($_companyIdScope) => \App\Services\CompanyIdScope::constrain($_companyIdScope, 'company_id', $staff->company_id))->lockForUpdate()->findOrFail($staff->id);
             $requestChecksum = hash('sha256', json_encode([
                 'staff_id' => (string) $lockedStaff->id,
                 'reason' => trim($reason),
@@ -160,7 +160,7 @@ class StaffIdentityService
         $profileIds = $salesProfiles->pluck('id')->map(fn ($id): string => (string) $id)->all();
         if ($profileIds === []) return ['reassigned' => 0, 'needs_manager_review' => 0];
 
-        $opportunities = SalesOpportunity::query()->where('company_id', $staff->company_id)
+        $opportunities = SalesOpportunity::query()->where(fn ($_companyIdScope) => \App\Services\CompanyIdScope::constrain($_companyIdScope, 'company_id', $staff->company_id))
             ->whereIn('owner_sales_profile_id', $profileIds)->whereNotIn('stage', ['won', 'lost'])->orderBy('id')->get();
         $managerCache = [];
         $reassigned = 0;
@@ -212,7 +212,7 @@ class StaffIdentityService
         $profileIds = $salesProfiles->pluck('id')->map(fn ($id): string => (string) $id)->all();
         if ($profileIds === []) return ['reassigned' => 0, 'needs_manager_review' => 0];
 
-        $tasks = SalesTask::query()->where('company_id', $staff->company_id)
+        $tasks = SalesTask::query()->where(fn ($_companyIdScope) => \App\Services\CompanyIdScope::constrain($_companyIdScope, 'company_id', $staff->company_id))
             ->whereIn('owner_sales_profile_id', $profileIds)->whereIn('status', ['open', 'in_progress'])
             ->orderBy('id')->get();
         $managerCache = [];
@@ -310,12 +310,12 @@ class StaffIdentityService
 
     private function releaseMissedCalls(Staff $staff, User $departingUser, User $actor): int
     {
-        $calls = PhoneCall::query()->where('company_id', $staff->company_id)
+        $calls = PhoneCall::query()->where(fn ($_companyIdScope) => \App\Services\CompanyIdScope::constrain($_companyIdScope, 'company_id', $staff->company_id))
             ->where('assigned_user_id', $departingUser->id)->whereIn('call_status', ['Missed', 'Notanswered'])
             ->orderBy('id')->get(['id']);
         $released = 0;
         foreach ($calls as $call) {
-            $locked = PhoneCall::query()->where('company_id', $staff->company_id)
+            $locked = PhoneCall::query()->where(fn ($_companyIdScope) => \App\Services\CompanyIdScope::constrain($_companyIdScope, 'company_id', $staff->company_id))
                 ->whereKey($call->id)->where('assigned_user_id', $departingUser->id)
                 ->whereIn('call_status', ['Missed', 'Notanswered'])->lockForUpdate()->first();
             if (! $locked) continue;
@@ -342,7 +342,7 @@ class StaffIdentityService
         }
 
         $customerIds = DB::table('customer_relationship_owner_assignments')
-            ->where('company_id', $salesProfiles->first()->company_id)
+            ->where(fn ($_companyIdScope) => \App\Services\CompanyIdScope::constrain($_companyIdScope, 'company_id', $salesProfiles->first()->company_id))
             ->whereIn('owner_sales_profile_id', $profileIds)
             ->whereNull('ended_at')
             ->distinct()->pluck('customer_id');
@@ -351,7 +351,7 @@ class StaffIdentityService
         foreach ($customerIds as $customerId) {
             DB::table('customers')->where('id', $customerId)->lockForUpdate()->first();
             $current = DB::table('customer_relationship_owner_assignments')
-                ->where('company_id', $salesProfiles->first()->company_id)
+                ->where(fn ($_companyIdScope) => \App\Services\CompanyIdScope::constrain($_companyIdScope, 'company_id', $salesProfiles->first()->company_id))
                 ->where('customer_id', $customerId)
                 ->whereIn('owner_sales_profile_id', $profileIds)
                 ->whereNull('ended_at')->lockForUpdate()->first();
@@ -385,7 +385,7 @@ class StaffIdentityService
     private function releaseInquiries(Staff $staff, User $departingUser, User $actor): int
     {
         $released = 0;
-        DB::table('inquiries')->where('company_id', $staff->company_id)
+        DB::table('inquiries')->where(fn ($_companyIdScope) => \App\Services\CompanyIdScope::constrain($_companyIdScope, 'company_id', $staff->company_id))
             ->where('assigned_to', $departingUser->id)->whereIn('status', ['open', 'in_progress'])
             ->orderBy('id')->chunkById(100, function ($inquiries) use ($staff, $departingUser, $actor, &$released): void {
                 foreach ($inquiries as $inquiry) {

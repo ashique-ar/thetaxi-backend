@@ -24,7 +24,7 @@ class EssController extends Controller
             })
             ->leftJoin('users as owner_user', 'owner_user.id', '=', 'owner.user_id')
             ->where('i.requester_staff_id', $staff->id)
-            ->where('i.company_id', $staff->company_id)
+            ->where(fn ($_companyIdScope) => \App\Services\CompanyIdScope::constrain($_companyIdScope, 'i.company_id', $staff->company_id))
             ->where(fn ($query) => $query->whereNull('i.current_owner_staff_id')->orWhere('owner.company_id', $staff->company_id))
             ->select(['i.id', 'i.request_type', 'i.source_type', 'i.source_id', 'i.status', 'i.summary', 'i.current_owner_staff_id', 'i.due_at', 'i.result_type', 'i.result_id', 'i.submitted_at', 'i.closed_at', 'owner.code as current_owner_staff_code', 'owner_user.first_name as current_owner_first_name', 'owner_user.last_name as current_owner_last_name'])
             ->latest('i.submitted_at');
@@ -35,7 +35,7 @@ class EssController extends Controller
     public function requestHistory(Request $r, string $id): JsonResponse
     {
         $staff = $this->currentStaff($r);
-        $index = DB::table('hr_request_index')->where('id', $id)->where('company_id', $staff->company_id)
+        $index = DB::table('hr_request_index')->where('id', $id)->where(fn ($_companyIdScope) => \App\Services\CompanyIdScope::constrain($_companyIdScope, 'company_id', $staff->company_id))
             ->where('requester_staff_id', $staff->id)->first();
         abort_unless($index, 404);
         $events = DB::table('hr_request_events')->where('request_index_id', $id)
@@ -52,8 +52,8 @@ class EssController extends Controller
             ->join('staff as delegator', 'delegator.id', '=', 'delegation.delegator_staff_id')
             ->join('staff as delegate', 'delegate.id', '=', 'delegation.delegate_staff_id')
             ->join('staff as approver', function ($join) { $join->on('approver.id', '=', 'delegation.approved_by_staff_id')->on('approver.user_id', '=', 'delegation.approved_by'); })
-            ->where('delegation.company_id', $staff->company_id)->where('delegator.company_id', $staff->company_id)
-            ->where('delegate.company_id', $staff->company_id)->where('delegate.id', $staff->id)->where('approver.company_id', $staff->company_id)
+            ->where(fn ($_companyIdScope) => \App\Services\CompanyIdScope::constrain($_companyIdScope, 'delegation.company_id', $staff->company_id))->where(fn ($_companyIdScope) => \App\Services\CompanyIdScope::constrain($_companyIdScope, 'delegator.company_id', $staff->company_id))
+            ->where(fn ($_companyIdScope) => \App\Services\CompanyIdScope::constrain($_companyIdScope, 'delegate.company_id', $staff->company_id))->where('delegate.id', $staff->id)->where(fn ($_companyIdScope) => \App\Services\CompanyIdScope::constrain($_companyIdScope, 'approver.company_id', $staff->company_id))
             ->whereNotNull('delegation.approved_by_staff_id')->whereNotNull('delegation.approved_at')
             ->where('delegation.status', 'approved')->whereDate('delegation.effective_from', '<=', now())
             ->whereDate('delegation.effective_until', '>=', now())->get(['delegation.delegator_staff_id', 'delegation.request_types']);
@@ -66,8 +66,8 @@ class EssController extends Controller
         }
         $query = DB::table('hr_request_index')->leftJoin('staff as requester_staff', 'requester_staff.id', '=', 'hr_request_index.requester_staff_id')
             ->leftJoin('users as requester_user', 'requester_user.id', '=', 'requester_staff.user_id')
-            ->where('hr_request_index.company_id', $staff->company_id)
-            ->where('requester_staff.company_id', $staff->company_id)
+            ->where(fn ($_companyIdScope) => \App\Services\CompanyIdScope::constrain($_companyIdScope, 'hr_request_index.company_id', $staff->company_id))
+            ->where(fn ($_companyIdScope) => \App\Services\CompanyIdScope::constrain($_companyIdScope, 'requester_staff.company_id', $staff->company_id))
             ->whereIn('hr_request_index.status', ['pending', 'pending_approval', 'returned'])
             ->where(function ($q) use ($staff, $delegatedOwnersByType) {
                 $q->where('hr_request_index.current_owner_staff_id', $staff->id);
@@ -87,7 +87,7 @@ class EssController extends Controller
         $data = $r->validate(['search' => ['nullable', 'string', 'max:120']]);
         $search = trim($data['search'] ?? '');
         $rows = Staff::query()->join('users', 'users.id', '=', 'staff.user_id')
-            ->where('staff.company_id', $staff->company_id)->where('staff.id', '!=', $staff->id)
+            ->where(fn ($_companyIdScope) => \App\Services\CompanyIdScope::constrain($_companyIdScope, 'staff.company_id', $staff->company_id))->where('staff.id', '!=', $staff->id)
             ->whereNull('staff.deleted_at')->whereNull('staff.employment_ended_at')->where('users.is_active', true)
             ->where(fn ($query) => $query->whereHas('user.permissions', fn ($permission) => $permission->where('name', 'hr.mss.approve'))
                 ->orWhereHas('user.roles.permissions', fn ($permission) => $permission->where('name', 'hr.mss.approve')))
@@ -122,7 +122,7 @@ class EssController extends Controller
                     ->on('delegate.company_id', '=', 'delegation.company_id');
             })
             ->leftJoin('users as delegate_user', 'delegate_user.id', '=', 'delegate.user_id')
-            ->where('delegation.company_id', $staff->company_id)
+            ->where(fn ($_companyIdScope) => \App\Services\CompanyIdScope::constrain($_companyIdScope, 'delegation.company_id', $staff->company_id))
             ->where(function ($query) use ($staff, $canApprove): void {
                 $query->where('delegation.delegator_staff_id', $staff->id)->orWhere('delegation.delegate_staff_id', $staff->id);
                 if ($canApprove) $query->orWhere('delegation.status', 'pending_approval');
@@ -162,9 +162,9 @@ class EssController extends Controller
         ], JSON_UNESCAPED_SLASHES | JSON_THROW_ON_ERROR));
         try {
             return DB::transaction(function () use ($d, $r, $staff, $checksum): JsonResponse {
-                $actor = Staff::query()->whereKey($staff->id)->where('company_id', $staff->company_id)
+                $actor = Staff::query()->whereKey($staff->id)->where(fn ($_companyIdScope) => \App\Services\CompanyIdScope::constrain($_companyIdScope, 'company_id', $staff->company_id))
                     ->whereNull('employment_ended_at')->lockForUpdate()->firstOrFail();
-                $existing = DB::table('hr_approval_delegations')->where('company_id', $actor->company_id)
+                $existing = DB::table('hr_approval_delegations')->where(fn ($_companyIdScope) => \App\Services\CompanyIdScope::constrain($_companyIdScope, 'company_id', $actor->company_id))
                     ->where('idempotency_key', $d['idempotency_key'])->lockForUpdate()->first();
                 if ($existing) {
                     abort_unless(hash_equals((string) $existing->request_payload_checksum, $checksum), 409,
@@ -176,7 +176,7 @@ class EssController extends Controller
                 }
 
                 $delegate = Staff::query()->with('user')->whereKey($d['delegate_staff_id'])
-                    ->where('company_id', $actor->company_id)->whereNull('deleted_at')->whereNull('employment_ended_at')
+                    ->where(fn ($_companyIdScope) => \App\Services\CompanyIdScope::constrain($_companyIdScope, 'company_id', $actor->company_id))->whereNull('deleted_at')->whereNull('employment_ended_at')
                     ->whereHas('user', fn ($user) => $user->where('is_active', true))
                     ->where(fn ($query) => $query->whereHas('user.permissions', fn ($permission) => $permission->where('name', 'hr.mss.approve'))
                         ->orWhereHas('user.roles.permissions', fn ($permission) => $permission->where('name', 'hr.mss.approve')))
@@ -199,7 +199,7 @@ class EssController extends Controller
                 ]], 201);
             });
         } catch (QueryException $e) {
-            $existing = DB::table('hr_approval_delegations')->where('company_id', $staff->company_id)
+            $existing = DB::table('hr_approval_delegations')->where(fn ($_companyIdScope) => \App\Services\CompanyIdScope::constrain($_companyIdScope, 'company_id', $staff->company_id))
                 ->where('idempotency_key', $d['idempotency_key'])->first();
             if (! $existing) throw $e;
             abort_unless(hash_equals((string) $existing->request_payload_checksum, $checksum), 409,
@@ -216,10 +216,10 @@ class EssController extends Controller
         $staff = $this->currentStaff($r);
 
         return DB::transaction(function () use ($r, $id, $staff) {
-            $row = DB::table('hr_approval_delegations')->where('id', $id)->where('company_id', $staff->company_id)->lockForUpdate()->first();
+            $row = DB::table('hr_approval_delegations')->where('id', $id)->where(fn ($_companyIdScope) => \App\Services\CompanyIdScope::constrain($_companyIdScope, 'company_id', $staff->company_id))->lockForUpdate()->first();
             abort_unless($row, 404);
             $approver = Staff::query()->whereKey($staff->id)->where('user_id', $r->user()->id)
-                ->where('company_id', $row->company_id)->whereNull('employment_ended_at')->lockForUpdate()->first();
+                ->where(fn ($_companyIdScope) => \App\Services\CompanyIdScope::constrain($_companyIdScope, 'company_id', $row->company_id))->whereNull('employment_ended_at')->lockForUpdate()->first();
             abort_unless($approver, 403, 'Select an active Staff approver in this legal entity.');
             abort_if($row->created_by === $r->user()->id, 409, 'Delegator cannot approve the same delegation.');
             if ($row->status === 'approved') {
@@ -232,7 +232,7 @@ class EssController extends Controller
                 ]]);
             }
             abort_unless($row->status === 'pending_approval', 409);
-            abort_unless(Staff::query()->whereKey($row->delegate_staff_id)->where('company_id', $staff->company_id)
+            abort_unless(Staff::query()->whereKey($row->delegate_staff_id)->where(fn ($_companyIdScope) => \App\Services\CompanyIdScope::constrain($_companyIdScope, 'company_id', $staff->company_id))
                 ->whereNull('deleted_at')->whereNull('employment_ended_at')->whereHas('user', fn ($user) => $user->where('is_active', true))
                 ->where(fn ($query) => $query->whereHas('user.permissions', fn ($permission) => $permission->where('name', 'hr.mss.approve'))
                     ->orWhereHas('user.roles.permissions', fn ($permission) => $permission->where('name', 'hr.mss.approve')))
@@ -240,7 +240,7 @@ class EssController extends Controller
                     ->orWhereHas('user.roles.permissions', fn ($permission) => $permission->where('name', 'hr.leave.approve')))
                 ->lockForUpdate()->first(['staff.id']),
                 409, 'The selected delegate is no longer active and authorized in this legal entity.');
-            DB::table('hr_approval_delegations')->where('id', $id)->where('company_id', $staff->company_id)
+            DB::table('hr_approval_delegations')->where('id', $id)->where(fn ($_companyIdScope) => \App\Services\CompanyIdScope::constrain($_companyIdScope, 'company_id', $staff->company_id))
                 ->update(['status' => 'approved', 'approved_by' => $r->user()->id, 'approved_by_staff_id' => $approver->id, 'approved_at' => now(), 'updated_at' => now()]);
             activity('hr-self-service')->causedBy($r->user())->withProperties([
                 'delegation_id' => $row->id, 'company_id' => $row->company_id,

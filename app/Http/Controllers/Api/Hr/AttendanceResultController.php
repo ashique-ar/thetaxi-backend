@@ -60,9 +60,9 @@ class AttendanceResultController extends Controller
         $companyIds = Staff::query()->whereIn('id', clone $staffIds)->distinct()->pluck('company_id');
         $readiness = [
             'mapped_event_count' => DB::table('hr_attendance_raw_events')->where(fn ($_companyIdScope) => \App\Services\CompanyIdScope::constrain($_companyIdScope, 'company_id', $companyId))->whereIn('staff_id', clone $staffIds)->where('mapping_status', 'mapped')->when($data['from'] ?? null, fn($q, $v) => $q->whereDate('occurred_at', '>=', $v))->when($data['to'] ?? null, fn($q, $v) => $q->whereDate('occurred_at', '<=', $v))->count(),
-            'active_calendar_count' => DB::table('hr_work_calendars')->whereIn('company_id', $companyIds)->where('status', 'active')->count(),
-            'active_shift_count' => DB::table('hr_shift_definitions')->whereIn('company_id', $companyIds)->where('status', 'active')->count(),
-            'approved_policy_count' => DB::table('hr_attendance_policies')->whereIn('company_id', $companyIds)->where('status', 'approved')->count(),
+            'active_calendar_count' => DB::table('hr_work_calendars')->where(fn ($_companyIdScope) => \App\Services\CompanyIdScope::constrainIn($_companyIdScope, 'company_id', $companyIds))->where('status', 'active')->count(),
+            'active_shift_count' => DB::table('hr_shift_definitions')->where(fn ($_companyIdScope) => \App\Services\CompanyIdScope::constrainIn($_companyIdScope, 'company_id', $companyIds))->where('status', 'active')->count(),
+            'approved_policy_count' => DB::table('hr_attendance_policies')->where(fn ($_companyIdScope) => \App\Services\CompanyIdScope::constrainIn($_companyIdScope, 'company_id', $companyIds))->where('status', 'approved')->count(),
             'approved_roster_count' => DB::table('hr_roster_assignments')->where(fn ($_companyIdScope) => \App\Services\CompanyIdScope::constrain($_companyIdScope, 'company_id', $companyId))->whereIn('staff_id', clone $staffIds)->whereNotNull('approved_at')->count(),
         ];
         return response()->json(['status' => 'success', 'data' => $page, 'meta' => ['readiness' => $readiness, 'filters' => ['from' => $data['from'] ?? null, 'to' => $data['to'] ?? null, 'status' => $data['status'] ?? null]]]);
@@ -166,7 +166,7 @@ class AttendanceResultController extends Controller
 
     public function calendarDays(Request $request, string $calendarId): JsonResponse
     {
-        $calendar = DB::table('hr_work_calendars')->whereIn('company_id', $this->authorizedCompanyIds($request))->find($calendarId);
+        $calendar = DB::table('hr_work_calendars')->where(fn ($_companyIdScope) => \App\Services\CompanyIdScope::constrainIn($_companyIdScope, 'company_id', $this->authorizedCompanyIds($request)))->find($calendarId);
         abort_unless($calendar, 404);
         return response()->json(['status' => 'success', 'data' => DB::table('hr_work_calendar_days')->where('calendar_id', $calendarId)->orderBy('calendar_date')->get()]);
     }
@@ -186,17 +186,17 @@ class AttendanceResultController extends Controller
 
     public function updateCalendar(Request $request, string $calendarId): JsonResponse
     {
-        $row = DB::table('hr_work_calendars')->whereIn('company_id', $this->authorizedCompanyIds($request))->find($calendarId);
+        $row = DB::table('hr_work_calendars')->where(fn ($_companyIdScope) => \App\Services\CompanyIdScope::constrainIn($_companyIdScope, 'company_id', $this->authorizedCompanyIds($request)))->find($calendarId);
         abort_unless($row, 404);
-        $data = $request->validate(['code' => ['required', 'string', 'max:80', Rule::unique('hr_work_calendars', 'code')->where('company_id', $row->company_id)->ignore($calendarId)], 'name' => ['required', 'string', 'max:255'], 'timezone' => ['required', 'timezone'], 'weekly_working_days' => ['required', 'array', 'min:1'], 'weekly_working_days.*' => ['required', Rule::in(['monday', 'tuesday', 'wednesday', 'thursday', 'friday', 'saturday', 'sunday'])], 'effective_from' => ['required', 'date'], 'effective_until' => ['nullable', 'date', 'after:effective_from'], 'status' => ['required', Rule::in(['active', 'inactive'])]]);
+        $data = $request->validate(['code' => ['required', 'string', 'max:80', Rule::unique('hr_work_calendars', 'code')->where(fn ($_companyIdScope) => \App\Services\CompanyIdScope::constrain($_companyIdScope, 'company_id', $row->company_id))->ignore($calendarId)], 'name' => ['required', 'string', 'max:255'], 'timezone' => ['required', 'timezone'], 'weekly_working_days' => ['required', 'array', 'min:1'], 'weekly_working_days.*' => ['required', Rule::in(['monday', 'tuesday', 'wednesday', 'thursday', 'friday', 'saturday', 'sunday'])], 'effective_from' => ['required', 'date'], 'effective_until' => ['nullable', 'date', 'after:effective_from'], 'status' => ['required', Rule::in(['active', 'inactive'])]]);
         return DB::transaction(function () use ($request, $calendarId, $data) {
             $candidate = DB::table('hr_work_calendars')->where('id', $calendarId)
-                ->whereIn('company_id', $this->authorizedCompanyIds($request))->first();
+                ->where(fn ($_companyIdScope) => \App\Services\CompanyIdScope::constrainIn($_companyIdScope, 'company_id', $this->authorizedCompanyIds($request)))->first();
             abort_unless($candidate, 404);
             $this->lockActiveCompany($candidate->company_id);
-            $calendar = DB::table('hr_work_calendars')->where('id', $calendarId)->where('company_id', $candidate->company_id)->lockForUpdate()->first();
+            $calendar = DB::table('hr_work_calendars')->where('id', $calendarId)->where(fn ($_companyIdScope) => \App\Services\CompanyIdScope::constrain($_companyIdScope, 'company_id', $candidate->company_id))->lockForUpdate()->first();
             abort_unless($calendar, 404);
-            DB::table('hr_work_calendars')->where('id', $calendarId)->where('company_id', $calendar->company_id)->update($this->json($data, ['weekly_working_days']) + ['updated_at' => now()]);
+            DB::table('hr_work_calendars')->where('id', $calendarId)->where(fn ($_companyIdScope) => \App\Services\CompanyIdScope::constrain($_companyIdScope, 'company_id', $calendar->company_id))->update($this->json($data, ['weekly_working_days']) + ['updated_at' => now()]);
             activity('hr-attendance')->causedBy($request->user())->withProperties(['company_id' => $calendar->company_id, 'status' => $data['status'], 'changed_fields' => array_keys($data)])->log('attendance_calendar_updated');
             return response()->json(['status' => 'success', 'data' => DB::table('hr_work_calendars')->find($calendarId)]);
         });
@@ -204,14 +204,14 @@ class AttendanceResultController extends Controller
 
     public function storeCalendarDay(Request $request, string $calendarId): JsonResponse
     {
-        abort_unless(DB::table('hr_work_calendars')->whereIn('company_id', $this->authorizedCompanyIds($request))->where('id', $calendarId)->exists(), 404);
+        abort_unless(DB::table('hr_work_calendars')->where(fn ($_companyIdScope) => \App\Services\CompanyIdScope::constrainIn($_companyIdScope, 'company_id', $this->authorizedCompanyIds($request)))->where('id', $calendarId)->exists(), 404);
         $data = $request->validate(['calendar_date' => ['required', 'date'], 'day_type' => ['required', Rule::in(['working', 'holiday', 'rest_day', 'special_leave'])], 'name' => ['nullable', 'string', 'max:255'], 'paid' => ['required', 'boolean']]);
         $id = (string) Str::uuid();
         return DB::transaction(function () use ($request, $calendarId, $data, $id) {
-            $candidate = DB::table('hr_work_calendars')->whereIn('company_id', $this->authorizedCompanyIds($request))->where('id', $calendarId)->first();
+            $candidate = DB::table('hr_work_calendars')->where(fn ($_companyIdScope) => \App\Services\CompanyIdScope::constrainIn($_companyIdScope, 'company_id', $this->authorizedCompanyIds($request)))->where('id', $calendarId)->first();
             abort_unless($candidate, 404);
             $this->lockActiveCompany($candidate->company_id);
-            $calendar = DB::table('hr_work_calendars')->where('id', $calendarId)->where('company_id', $candidate->company_id)->lockForUpdate()->first();
+            $calendar = DB::table('hr_work_calendars')->where('id', $calendarId)->where(fn ($_companyIdScope) => \App\Services\CompanyIdScope::constrain($_companyIdScope, 'company_id', $candidate->company_id))->lockForUpdate()->first();
             abort_unless($calendar, 404);
             DB::table('hr_work_calendar_days')->insert($data + ['id' => $id, 'calendar_id' => $calendarId, 'created_at' => now(), 'updated_at' => now()]);
             activity('hr-attendance')->causedBy($request->user())->withProperties(['company_id' => $calendar->company_id, 'status' => $calendar->status, 'day_type' => $data['day_type']])->log('attendance_calendar_day_created');
@@ -221,14 +221,14 @@ class AttendanceResultController extends Controller
 
     public function updateCalendarDay(Request $request, string $calendarId, string $dayId): JsonResponse
     {
-        abort_unless(DB::table('hr_work_calendars')->whereIn('company_id', $this->authorizedCompanyIds($request))->where('id', $calendarId)->exists(), 404);
+        abort_unless(DB::table('hr_work_calendars')->where(fn ($_companyIdScope) => \App\Services\CompanyIdScope::constrainIn($_companyIdScope, 'company_id', $this->authorizedCompanyIds($request)))->where('id', $calendarId)->exists(), 404);
         abort_unless(DB::table('hr_work_calendar_days')->where('id', $dayId)->where('calendar_id', $calendarId)->exists(), 404);
         $data = $request->validate(['calendar_date' => ['required', 'date', Rule::unique('hr_work_calendar_days', 'calendar_date')->where('calendar_id', $calendarId)->ignore($dayId)], 'day_type' => ['required', Rule::in(['working', 'holiday', 'rest_day', 'special_leave'])], 'name' => ['nullable', 'string', 'max:255'], 'paid' => ['required', 'boolean']]);
         return DB::transaction(function () use ($request, $calendarId, $dayId, $data) {
-            $candidate = DB::table('hr_work_calendars')->whereIn('company_id', $this->authorizedCompanyIds($request))->where('id', $calendarId)->first();
+            $candidate = DB::table('hr_work_calendars')->where(fn ($_companyIdScope) => \App\Services\CompanyIdScope::constrainIn($_companyIdScope, 'company_id', $this->authorizedCompanyIds($request)))->where('id', $calendarId)->first();
             abort_unless($candidate, 404);
             $this->lockActiveCompany($candidate->company_id);
-            $calendar = DB::table('hr_work_calendars')->where('id', $calendarId)->where('company_id', $candidate->company_id)->lockForUpdate()->first();
+            $calendar = DB::table('hr_work_calendars')->where('id', $calendarId)->where(fn ($_companyIdScope) => \App\Services\CompanyIdScope::constrain($_companyIdScope, 'company_id', $candidate->company_id))->lockForUpdate()->first();
             abort_unless($calendar, 404);
             $day = DB::table('hr_work_calendar_days')->where('id', $dayId)->where('calendar_id', $calendarId)->lockForUpdate()->first();
             abort_unless($day, 404);
@@ -261,25 +261,25 @@ class AttendanceResultController extends Controller
 
     public function updateShift(Request $request, string $shiftId, AttendanceResultService $results): JsonResponse
     {
-        $row = DB::table('hr_shift_definitions')->whereIn('company_id', $this->authorizedCompanyIds($request))->find($shiftId);
+        $row = DB::table('hr_shift_definitions')->where(fn ($_companyIdScope) => \App\Services\CompanyIdScope::constrainIn($_companyIdScope, 'company_id', $this->authorizedCompanyIds($request)))->find($shiftId);
         abort_unless($row, 404);
-        $data = $request->validate(['code' => ['required', 'string', 'max:80', Rule::unique('hr_shift_definitions', 'code')->where('company_id', $row->company_id)->ignore($shiftId)], 'name' => ['required', 'string', 'max:255'], 'start_time' => ['required', 'date_format:H:i'], 'end_time' => ['required', 'date_format:H:i'], 'ends_next_day' => ['required', 'boolean'], 'unpaid_break_minutes' => ['required', 'integer', 'min:0', 'max:600'], 'grace_in_minutes' => ['required', 'integer', 'min:0', 'max:180'], 'grace_out_minutes' => ['required', 'integer', 'min:0', 'max:180'], 'minimum_half_day_minutes' => ['required', 'integer', 'min:1', 'max:1440'], 'minimum_full_day_minutes' => ['required', 'integer', 'min:1', 'max:1440'], 'timezone' => ['required', 'timezone'], 'effective_from' => ['required', 'date'], 'effective_until' => ['nullable', 'date', 'after:effective_from'], 'status' => ['required', Rule::in(['active', 'inactive'])]]);
+        $data = $request->validate(['code' => ['required', 'string', 'max:80', Rule::unique('hr_shift_definitions', 'code')->where(fn ($_companyIdScope) => \App\Services\CompanyIdScope::constrain($_companyIdScope, 'company_id', $row->company_id))->ignore($shiftId)], 'name' => ['required', 'string', 'max:255'], 'start_time' => ['required', 'date_format:H:i'], 'end_time' => ['required', 'date_format:H:i'], 'ends_next_day' => ['required', 'boolean'], 'unpaid_break_minutes' => ['required', 'integer', 'min:0', 'max:600'], 'grace_in_minutes' => ['required', 'integer', 'min:0', 'max:180'], 'grace_out_minutes' => ['required', 'integer', 'min:0', 'max:180'], 'minimum_half_day_minutes' => ['required', 'integer', 'min:1', 'max:1440'], 'minimum_full_day_minutes' => ['required', 'integer', 'min:1', 'max:1440'], 'timezone' => ['required', 'timezone'], 'effective_from' => ['required', 'date'], 'effective_until' => ['nullable', 'date', 'after:effective_from'], 'status' => ['required', Rule::in(['active', 'inactive'])]]);
         abort_if($data['minimum_half_day_minutes'] > $data['minimum_full_day_minutes'], 422, 'Half-day minutes cannot exceed full-day minutes.');
         $row = DB::transaction(function () use ($request, $shiftId, $data) {
             $candidate = DB::table('hr_shift_definitions')->where('id', $shiftId)
-                ->whereIn('company_id', $this->authorizedCompanyIds($request))->first();
+                ->where(fn ($_companyIdScope) => \App\Services\CompanyIdScope::constrainIn($_companyIdScope, 'company_id', $this->authorizedCompanyIds($request)))->first();
             abort_unless($candidate, 404);
             $this->lockActiveCompany($candidate->company_id);
-            $shift = DB::table('hr_shift_definitions')->where('id', $shiftId)->where('company_id', $candidate->company_id)->lockForUpdate()->first();
+            $shift = DB::table('hr_shift_definitions')->where('id', $shiftId)->where(fn ($_companyIdScope) => \App\Services\CompanyIdScope::constrain($_companyIdScope, 'company_id', $candidate->company_id))->lockForUpdate()->first();
             abort_unless($shift, 404);
-            DB::table('hr_shift_definitions')->where('id', $shiftId)->where('company_id', $shift->company_id)->update($data + ['updated_at' => now()]);
+            DB::table('hr_shift_definitions')->where('id', $shiftId)->where(fn ($_companyIdScope) => \App\Services\CompanyIdScope::constrain($_companyIdScope, 'company_id', $shift->company_id))->update($data + ['updated_at' => now()]);
             activity('hr-attendance')->causedBy($request->user())->withProperties(['company_id' => $shift->company_id, 'status' => $data['status'], 'changed_fields' => array_keys($data)])->log('attendance_shift_updated');
             return $shift;
         });
         $to = CarbonImmutable::today($data['timezone']);
         $from = $to->subDays(30)->max(CarbonImmutable::parse($data['effective_from'], $data['timezone']));
         $recalculated = 0;
-        $rosters = DB::table('hr_roster_assignments')->where('company_id', $row->company_id)->where('shift_id', $shiftId)->whereNotNull('approved_at')->whereDate('effective_from', '<=', $to)->where(fn($query) => $query->whereNull('effective_until')->orWhereDate('effective_until', '>', $from))->get();
+        $rosters = DB::table('hr_roster_assignments')->where(fn ($_companyIdScope) => \App\Services\CompanyIdScope::constrain($_companyIdScope, 'company_id', $row->company_id))->where('shift_id', $shiftId)->whereNotNull('approved_at')->whereDate('effective_from', '<=', $to)->where(fn($query) => $query->whereNull('effective_until')->orWhereDate('effective_until', '>', $from))->get();
         foreach ($rosters as $roster) {
             for ($date = $from; $date->lessThanOrEqualTo($to); $date = $date->addDay()) {
                 if ($date->lt(CarbonImmutable::parse($roster->effective_from)) || ($roster->effective_until && $date->gte(CarbonImmutable::parse($roster->effective_until))))
@@ -319,18 +319,18 @@ class AttendanceResultController extends Controller
 
     public function updatePolicy(Request $request, string $policyId): JsonResponse
     {
-        $row = DB::table('hr_attendance_policies')->whereIn('company_id', $this->authorizedCompanyIds($request))->find($policyId);
+        $row = DB::table('hr_attendance_policies')->where(fn ($_companyIdScope) => \App\Services\CompanyIdScope::constrainIn($_companyIdScope, 'company_id', $this->authorizedCompanyIds($request)))->find($policyId);
         abort_unless($row, 404);
-        $data = $request->validate(['code' => ['required', 'string', 'max:80', Rule::unique('hr_attendance_policies', 'code')->where('company_id', $row->company_id)->ignore($policyId)], 'name' => ['required', 'string', 'max:255'], 'rules' => ['required', 'array'], 'rules.maximum_payable_minutes' => ['nullable', 'integer', 'min:1', 'max:1440'], 'rules.correction_mappings' => ['sometimes', 'array', 'max:20'], 'rules.correction_mappings.*.type' => ['required', 'string', 'alpha_dash', 'max:50', 'distinct'], 'rules.correction_mappings.*.field' => ['required', Rule::in(self::CORRECTION_FIELDS)], 'effective_from' => ['required', 'date'], 'effective_until' => ['nullable', 'date', 'after:effective_from']]);
+        $data = $request->validate(['code' => ['required', 'string', 'max:80', Rule::unique('hr_attendance_policies', 'code')->where(fn ($_companyIdScope) => \App\Services\CompanyIdScope::constrain($_companyIdScope, 'company_id', $row->company_id))->ignore($policyId)], 'name' => ['required', 'string', 'max:255'], 'rules' => ['required', 'array'], 'rules.maximum_payable_minutes' => ['nullable', 'integer', 'min:1', 'max:1440'], 'rules.correction_mappings' => ['sometimes', 'array', 'max:20'], 'rules.correction_mappings.*.type' => ['required', 'string', 'alpha_dash', 'max:50', 'distinct'], 'rules.correction_mappings.*.field' => ['required', Rule::in(self::CORRECTION_FIELDS)], 'effective_from' => ['required', 'date'], 'effective_until' => ['nullable', 'date', 'after:effective_from']]);
         return DB::transaction(function () use ($request, $policyId, $data) {
             $candidate = DB::table('hr_attendance_policies')->where('id', $policyId)
-                ->whereIn('company_id', $this->authorizedCompanyIds($request))->first();
+                ->where(fn ($_companyIdScope) => \App\Services\CompanyIdScope::constrainIn($_companyIdScope, 'company_id', $this->authorizedCompanyIds($request)))->first();
             abort_unless($candidate, 404);
             $this->lockActiveCompany($candidate->company_id);
-            $locked = DB::table('hr_attendance_policies')->where('id', $policyId)->where('company_id', $candidate->company_id)->lockForUpdate()->first();
+            $locked = DB::table('hr_attendance_policies')->where('id', $policyId)->where(fn ($_companyIdScope) => \App\Services\CompanyIdScope::constrain($_companyIdScope, 'company_id', $candidate->company_id))->lockForUpdate()->first();
             abort_unless($locked, 404);
             abort_unless(in_array($locked->status, ['draft', 'pending_approval'], true), 409, 'Approved attendance policies cannot be changed.');
-            DB::table('hr_attendance_policies')->where('id', $policyId)->where('company_id', $locked->company_id)->update($this->json($data, ['rules']) + ['updated_at' => now()]);
+            DB::table('hr_attendance_policies')->where('id', $policyId)->where(fn ($_companyIdScope) => \App\Services\CompanyIdScope::constrain($_companyIdScope, 'company_id', $locked->company_id))->update($this->json($data, ['rules']) + ['updated_at' => now()]);
             activity('hr-attendance')->causedBy($request->user())
                 ->withProperties(['policy_id' => $policyId, 'changed_fields' => array_keys($data)])
                 ->log('attendance_policy_updated');
@@ -342,17 +342,17 @@ class AttendanceResultController extends Controller
     {
         return DB::transaction(function () use ($request, $policyId) {
             $candidate = DB::table('hr_attendance_policies')->where('id', $policyId)
-                ->whereIn('company_id', $this->authorizedCompanyIds($request))->first();
+                ->where(fn ($_companyIdScope) => \App\Services\CompanyIdScope::constrainIn($_companyIdScope, 'company_id', $this->authorizedCompanyIds($request)))->first();
             abort_unless($candidate, 404);
             $this->lockActiveCompany($candidate->company_id);
-            $row = DB::table('hr_attendance_policies')->where('id', $policyId)->where('company_id', $candidate->company_id)->lockForUpdate()->first();
+            $row = DB::table('hr_attendance_policies')->where('id', $policyId)->where(fn ($_companyIdScope) => \App\Services\CompanyIdScope::constrain($_companyIdScope, 'company_id', $candidate->company_id))->lockForUpdate()->first();
             abort_unless($row, 404);
             abort_if($row->created_by === $request->user()->id, 409, 'Policy creator cannot approve the same policy.');
             if ($row->status === 'approved' && (string) $row->approved_by === (string) $request->user()->id) {
                 return response()->json(['status' => 'success', 'data' => $row]);
             }
             abort_unless($row->status === 'pending_approval', 409, 'Only a pending policy may be approved.');
-            DB::table('hr_attendance_policies')->where('id', $policyId)->where('company_id', $row->company_id)->update(['status' => 'approved', 'approved_by' => $request->user()->id, 'approved_at' => now(), 'updated_at' => now()]);
+            DB::table('hr_attendance_policies')->where('id', $policyId)->where(fn ($_companyIdScope) => \App\Services\CompanyIdScope::constrain($_companyIdScope, 'company_id', $row->company_id))->update(['status' => 'approved', 'approved_by' => $request->user()->id, 'approved_at' => now(), 'updated_at' => now()]);
             activity('hr-attendance')->causedBy($request->user())
                 ->withProperties(['company_id' => $row->company_id, 'status' => 'approved', 'effective_from' => $row->effective_from])
                 ->log('attendance_policy_approved');
@@ -376,7 +376,7 @@ class AttendanceResultController extends Controller
         return DB::transaction(function () use ($request, $data) {
             $this->lockActiveCompany($data['company_id']);
             foreach (['staff' => 'staff_id', 'hr_work_calendars' => 'calendar_id', 'hr_shift_definitions' => 'shift_id', 'hr_attendance_policies' => 'policy_id'] as $table => $field)
-                abort_unless(DB::table($table)->where('id', $data[$field])->where('company_id', $data['company_id'])->exists(), 422, 'Roster references must belong to one legal entity.');
+                abort_unless(DB::table($table)->where('id', $data[$field])->where(fn ($_companyIdScope) => \App\Services\CompanyIdScope::constrain($_companyIdScope, 'company_id', $data['company_id']))->exists(), 422, 'Roster references must belong to one legal entity.');
             $overlap = DB::table('hr_roster_assignments')->where('staff_id', $data['staff_id'])->whereDate('effective_from', '<', $data['effective_until'] ?? '9999-12-31')->where(fn($q) => $q->whereNull('effective_until')->orWhereDate('effective_until', '>', $data['effective_from']))->exists();
             abort_if($overlap, 409, 'An overlapping roster already exists.');
             $id = (string) Str::uuid();
@@ -389,17 +389,17 @@ class AttendanceResultController extends Controller
     {
         return DB::transaction(function () use ($request, $rosterId) {
             $candidate = DB::table('hr_roster_assignments')->where('id', $rosterId)
-                ->whereIn('company_id', $this->authorizedCompanyIds($request))->first();
+                ->where(fn ($_companyIdScope) => \App\Services\CompanyIdScope::constrainIn($_companyIdScope, 'company_id', $this->authorizedCompanyIds($request)))->first();
             abort_unless($candidate, 404);
             $this->lockActiveCompany($candidate->company_id);
-            $row = DB::table('hr_roster_assignments')->where('id', $rosterId)->where('company_id', $candidate->company_id)->lockForUpdate()->first();
+            $row = DB::table('hr_roster_assignments')->where('id', $rosterId)->where(fn ($_companyIdScope) => \App\Services\CompanyIdScope::constrain($_companyIdScope, 'company_id', $candidate->company_id))->lockForUpdate()->first();
             abort_unless($row, 404);
             $data = $request->validate(['staff_id' => ['required', 'uuid'], 'calendar_id' => ['required', 'uuid'], 'shift_id' => ['required', 'uuid'], 'policy_id' => ['required', 'uuid'], 'effective_from' => ['required', 'date'], 'effective_until' => ['nullable', 'date', 'after:effective_from'], 'reason' => ['required', 'string', 'max:500']]);
             foreach (['staff' => 'staff_id', 'hr_work_calendars' => 'calendar_id', 'hr_shift_definitions' => 'shift_id', 'hr_attendance_policies' => 'policy_id'] as $table => $field)
-                abort_unless(DB::table($table)->where('id', $data[$field])->where('company_id', $row->company_id)->exists(), 422, 'Roster references must belong to one legal entity.');
+                abort_unless(DB::table($table)->where('id', $data[$field])->where(fn ($_companyIdScope) => \App\Services\CompanyIdScope::constrain($_companyIdScope, 'company_id', $row->company_id))->exists(), 422, 'Roster references must belong to one legal entity.');
             $overlap = DB::table('hr_roster_assignments')->where('staff_id', $data['staff_id'])->where('id', '!=', $rosterId)->whereDate('effective_from', '<', $data['effective_until'] ?? '9999-12-31')->where(fn($q) => $q->whereNull('effective_until')->orWhereDate('effective_until', '>', $data['effective_from']))->exists();
             abort_if($overlap, 409, 'An overlapping roster already exists.');
-            DB::table('hr_roster_assignments')->where('id', $rosterId)->where('company_id', $row->company_id)->update($data + ['approved_by' => null, 'approved_at' => null, 'created_by' => $request->user()->id, 'updated_at' => now()]);
+            DB::table('hr_roster_assignments')->where('id', $rosterId)->where(fn ($_companyIdScope) => \App\Services\CompanyIdScope::constrain($_companyIdScope, 'company_id', $row->company_id))->update($data + ['approved_by' => null, 'approved_at' => null, 'created_by' => $request->user()->id, 'updated_at' => now()]);
             return response()->json(['status' => 'success', 'data' => DB::table('hr_roster_assignments')->find($rosterId)]);
         });
     }
@@ -418,11 +418,11 @@ class AttendanceResultController extends Controller
         return DB::transaction(function () use ($request, $data) {
             $this->lockActiveCompany($data['company_id']);
             foreach (['hr_work_calendars' => 'calendar_id', 'hr_shift_definitions' => 'shift_id', 'hr_attendance_policies' => 'policy_id'] as $table => $field)
-                abort_unless(DB::table($table)->where('id', $data[$field])->where('company_id', $data['company_id'])->exists(), 422, 'Roster references must belong to one legal entity.');
+                abort_unless(DB::table($table)->where('id', $data[$field])->where(fn ($_companyIdScope) => \App\Services\CompanyIdScope::constrain($_companyIdScope, 'company_id', $data['company_id']))->exists(), 422, 'Roster references must belong to one legal entity.');
             $created = [];
             $skipped = [];
             foreach ($data['staff_ids'] as $staffId) {
-                if (!DB::table('staff')->where('id', $staffId)->where('company_id', $data['company_id'])->exists()) {
+                if (!DB::table('staff')->where('id', $staffId)->where(fn ($_companyIdScope) => \App\Services\CompanyIdScope::constrain($_companyIdScope, 'company_id', $data['company_id']))->exists()) {
                     $skipped[] = ['staff_id' => $staffId, 'reason' => 'Staff does not belong to this legal entity.'];
                     continue;
                 }
@@ -443,10 +443,10 @@ class AttendanceResultController extends Controller
     {
         return DB::transaction(function () use ($request, $rosterId) {
             $candidate = DB::table('hr_roster_assignments')->where('id', $rosterId)
-                ->whereIn('company_id', $this->authorizedCompanyIds($request))->first();
+                ->where(fn ($_companyIdScope) => \App\Services\CompanyIdScope::constrainIn($_companyIdScope, 'company_id', $this->authorizedCompanyIds($request)))->first();
             abort_unless($candidate, 404);
             $this->lockActiveCompany($candidate->company_id);
-            $row = DB::table('hr_roster_assignments')->where('id', $rosterId)->where('company_id', $candidate->company_id)->lockForUpdate()->first();
+            $row = DB::table('hr_roster_assignments')->where('id', $rosterId)->where(fn ($_companyIdScope) => \App\Services\CompanyIdScope::constrain($_companyIdScope, 'company_id', $candidate->company_id))->lockForUpdate()->first();
             abort_unless($row, 404);
             abort_if($row->created_by === $request->user()->id, 409, 'Roster creator cannot approve the same roster.');
             if ($row->approved_at) {
@@ -454,11 +454,11 @@ class AttendanceResultController extends Controller
 
                 return response()->json(['status' => 'success', 'data' => $row]);
             }
-            $calendar = DB::table('hr_work_calendars')->where('id', $row->calendar_id)->where('company_id', $row->company_id)->lockForUpdate()->first();
-            $shift = DB::table('hr_shift_definitions')->where('id', $row->shift_id)->where('company_id', $row->company_id)->lockForUpdate()->first();
-            $policy = DB::table('hr_attendance_policies')->where('id', $row->policy_id)->where('company_id', $row->company_id)->lockForUpdate()->first();
+            $calendar = DB::table('hr_work_calendars')->where('id', $row->calendar_id)->where(fn ($_companyIdScope) => \App\Services\CompanyIdScope::constrain($_companyIdScope, 'company_id', $row->company_id))->lockForUpdate()->first();
+            $shift = DB::table('hr_shift_definitions')->where('id', $row->shift_id)->where(fn ($_companyIdScope) => \App\Services\CompanyIdScope::constrain($_companyIdScope, 'company_id', $row->company_id))->lockForUpdate()->first();
+            $policy = DB::table('hr_attendance_policies')->where('id', $row->policy_id)->where(fn ($_companyIdScope) => \App\Services\CompanyIdScope::constrain($_companyIdScope, 'company_id', $row->company_id))->lockForUpdate()->first();
             abort_unless($calendar?->status === 'active' && $shift?->status === 'active' && $policy?->status === 'approved', 422, 'Roster requires an active calendar and shift and an approved policy.');
-            DB::table('hr_roster_assignments')->where('id', $rosterId)->where('company_id', $row->company_id)->update(['approved_by' => $request->user()->id, 'approved_at' => now(), 'updated_at' => now()]);
+            DB::table('hr_roster_assignments')->where('id', $rosterId)->where(fn ($_companyIdScope) => \App\Services\CompanyIdScope::constrain($_companyIdScope, 'company_id', $row->company_id))->update(['approved_by' => $request->user()->id, 'approved_at' => now(), 'updated_at' => now()]);
             activity('hr-attendance')->causedBy($request->user())
                 ->withProperties(['company_id' => $row->company_id, 'status' => 'approved', 'effective_from' => $row->effective_from])
                 ->log('attendance_roster_approved');
@@ -593,7 +593,7 @@ class AttendanceResultController extends Controller
     {
         $data = $request->validate(['decision_note' => ['required', 'string', 'max:2000']]);
         $row = DB::table('hr_attendance_correction_requests')->where('id', $correctionId)
-            ->whereIn('company_id', $this->authorizedCompanyIds($request))->first();
+            ->where(fn ($_companyIdScope) => \App\Services\CompanyIdScope::constrainIn($_companyIdScope, 'company_id', $this->authorizedCompanyIds($request)))->first();
         abort_unless($row, 404);
         $result = $service->approveCorrection($correctionId, $request->user()->id, $data['decision_note']);
         $projection->attendanceCorrection(DB::table('hr_attendance_correction_requests')->find($correctionId), $request->user()->id);
@@ -604,7 +604,7 @@ class AttendanceResultController extends Controller
     {
         $data = $request->validate(['decision_note' => ['required', 'string', 'max:2000']]);
         $row = DB::table('hr_attendance_correction_requests')->where('id', $correctionId)
-            ->whereIn('company_id', $this->authorizedCompanyIds($request))->first();
+            ->where(fn ($_companyIdScope) => \App\Services\CompanyIdScope::constrainIn($_companyIdScope, 'company_id', $this->authorizedCompanyIds($request)))->first();
         abort_unless($row, 404);
         $result = $service->rejectCorrection($correctionId, (string) $row->company_id, (string) $request->user()->id, $data['decision_note']);
         $projection->attendanceCorrection($result, $request->user()->id);
@@ -629,11 +629,11 @@ class AttendanceResultController extends Controller
         $data = $request->validate(['resolution_note' => ['required', 'string', 'max:2000']]);
         return DB::transaction(function () use ($request, $exceptionId, $data) {
             $candidate = DB::table('hr_attendance_exceptions')->where('id', $exceptionId)
-                ->whereIn('company_id', $this->authorizedCompanyIds($request))->first();
+                ->where(fn ($_companyIdScope) => \App\Services\CompanyIdScope::constrainIn($_companyIdScope, 'company_id', $this->authorizedCompanyIds($request)))->first();
             abort_unless($candidate, 404);
             $this->lockActiveCompany($candidate->company_id);
             $row = DB::table('hr_attendance_exceptions')->where('id', $exceptionId)
-                ->where('company_id', $candidate->company_id)->lockForUpdate()->first();
+                ->where(fn ($_companyIdScope) => \App\Services\CompanyIdScope::constrain($_companyIdScope, 'company_id', $candidate->company_id))->lockForUpdate()->first();
             abort_unless($row, 404);
             if ($row->status === 'resolved' && (string) $row->resolved_by === (string) $request->user()->id
                 && hash_equals((string) $row->resolution_note, $data['resolution_note'])) {
@@ -644,8 +644,8 @@ class AttendanceResultController extends Controller
                 ]]);
             }
             abort_unless($row->status === 'open', 409, 'Only open exceptions may be resolved.');
-            $staff = DB::table('staff')->where('id', $row->staff_id)->where('company_id', $row->company_id)->lockForUpdate()->first();
-            $result = DB::table('hr_attendance_daily_results')->where('id', $row->daily_result_id)->where('company_id', $row->company_id)->where('staff_id', $row->staff_id)->first();
+            $staff = DB::table('staff')->where('id', $row->staff_id)->where(fn ($_companyIdScope) => \App\Services\CompanyIdScope::constrain($_companyIdScope, 'company_id', $row->company_id))->lockForUpdate()->first();
+            $result = DB::table('hr_attendance_daily_results')->where('id', $row->daily_result_id)->where(fn ($_companyIdScope) => \App\Services\CompanyIdScope::constrain($_companyIdScope, 'company_id', $row->company_id))->where('staff_id', $row->staff_id)->first();
             abort_unless($staff && $result, 422, 'Exception Staff and result must match its legal entity.');
             $resolvedAt = now();
             DB::table('hr_attendance_exceptions')->where('id', $exceptionId)->update(['status' => 'resolved', 'resolved_at' => $resolvedAt, 'resolved_by' => $request->user()->id, 'resolution_note' => $data['resolution_note'], 'updated_at' => $resolvedAt]);
@@ -674,7 +674,7 @@ class AttendanceResultController extends Controller
         return DB::transaction(function () use ($request, $data) {
             $this->sameCompany($request, $data['company_id']);
             $this->lockActiveCompany($data['company_id']);
-            $overlap = DB::table('hr_attendance_periods')->where('company_id', $data['company_id'])->whereDate('period_start', '<=', $data['period_end'])->whereDate('period_end', '>=', $data['period_start'])->exists();
+            $overlap = DB::table('hr_attendance_periods')->where(fn ($_companyIdScope) => \App\Services\CompanyIdScope::constrain($_companyIdScope, 'company_id', $data['company_id']))->whereDate('period_start', '<=', $data['period_end'])->whereDate('period_end', '>=', $data['period_start'])->exists();
             abort_if($overlap, 409, 'Attendance periods cannot overlap.');
             $id = (string) Str::uuid();
             DB::table('hr_attendance_periods')->insert($data + ['id' => $id, 'status' => 'open', 'version' => 1, 'created_at' => now(), 'updated_at' => now()]);
@@ -690,10 +690,10 @@ class AttendanceResultController extends Controller
         $data = $request->validate(['action' => ['required', Rule::in(['review', 'lock', 'reopen'])], 'reason' => ['required', 'string', 'max:2000'], 'expected_version' => ['required', 'integer', 'min:1']]);
         return DB::transaction(function () use ($request, $periodId, $data) {
             $candidate = DB::table('hr_attendance_periods')->where('id', $periodId)
-                ->whereIn('company_id', $this->authorizedCompanyIds($request))->first();
+                ->where(fn ($_companyIdScope) => \App\Services\CompanyIdScope::constrainIn($_companyIdScope, 'company_id', $this->authorizedCompanyIds($request)))->first();
             abort_unless($candidate, 404);
             $this->lockActiveCompany($candidate->company_id);
-            $row = DB::table('hr_attendance_periods')->where('id', $periodId)->where('company_id', $candidate->company_id)->lockForUpdate()->first();
+            $row = DB::table('hr_attendance_periods')->where('id', $periodId)->where(fn ($_companyIdScope) => \App\Services\CompanyIdScope::constrain($_companyIdScope, 'company_id', $candidate->company_id))->lockForUpdate()->first();
             abort_unless($row, 404);
             abort_unless($row->version === $data['expected_version'], 409, 'Attendance period version is stale.');
             $next = ['open' => ['review' => 'reviewed'], 'reviewed' => ['lock' => 'locked'], 'locked' => ['reopen' => 'open']][$row->status][$data['action']] ?? null;
@@ -705,7 +705,7 @@ class AttendanceResultController extends Controller
             }
             if ($next === 'locked') {
                 abort_unless($row->reviewed_by !== $request->user()->id, 409, 'The period reviewer cannot lock the same period.');
-                $open = DB::table('hr_attendance_exceptions as exception')->join('hr_attendance_daily_results as result', fn($join) => $join->on('result.id', '=', 'exception.daily_result_id')->on('result.company_id', '=', 'exception.company_id')->on('result.staff_id', '=', 'exception.staff_id'))->where('exception.company_id', $row->company_id)->where('exception.status', 'open')->where('exception.severity', 'high')->whereBetween('result.work_date', [$row->period_start, $row->period_end])->exists();
+                $open = DB::table('hr_attendance_exceptions as exception')->join('hr_attendance_daily_results as result', fn($join) => $join->on('result.id', '=', 'exception.daily_result_id')->on('result.company_id', '=', 'exception.company_id')->on('result.staff_id', '=', 'exception.staff_id'))->where(fn ($_companyIdScope) => \App\Services\CompanyIdScope::constrain($_companyIdScope, 'exception.company_id', $row->company_id))->where('exception.status', 'open')->where('exception.severity', 'high')->whereBetween('result.work_date', [$row->period_start, $row->period_end])->exists();
                 abort_if($open, 409, 'High-severity attendance exceptions must be resolved before lock.');
             }$version = $row->version + 1;
             DB::table('hr_attendance_periods')->where('id', $periodId)->update(['status' => $next, 'version' => $version, 'reviewed_at' => $next === 'reviewed' ? now() : $row->reviewed_at, 'reviewed_by' => $next === 'reviewed' ? $request->user()->id : $row->reviewed_by, 'locked_at' => $next === 'locked' ? now() : ($next === 'open' ? null : $row->locked_at), 'locked_by' => $next === 'locked' ? $request->user()->id : ($next === 'open' ? null : $row->locked_by), 'state_reason' => $data['reason'], 'updated_at' => now()]);

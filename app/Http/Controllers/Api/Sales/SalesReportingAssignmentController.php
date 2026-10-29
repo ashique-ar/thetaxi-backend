@@ -36,7 +36,7 @@ class SalesReportingAssignmentController extends Controller
         );
         $rows = SalesReportingAssignment::query()
             ->with(['manager.staff.user', 'member.staff.user'])
-            ->where('company_id', $data['company_id'])
+            ->where(fn ($_companyIdScope) => \App\Services\CompanyIdScope::constrain($_companyIdScope, 'company_id', $data['company_id']))
             ->when($profileIds !== null, fn ($query) => $query
                 ->whereIn('manager_sales_profile_id', $profileIds)
                 ->whereIn('member_sales_profile_id', $profileIds))
@@ -101,7 +101,7 @@ class SalesReportingAssignmentController extends Controller
                 ->first(['id']);
             abort_if($overlap, 422, 'The member already has an overlapping reporting assignment.');
             $edges = SalesReportingAssignment::query()
-                ->where('company_id', $data['company_id'])
+                ->where(fn ($_companyIdScope) => \App\Services\CompanyIdScope::constrain($_companyIdScope, 'company_id', $data['company_id']))
                 ->where('effective_from', '<', $data['effective_until'] ?? '9999-12-31')
                 ->where(fn ($query) => $query->whereNull('effective_until')->orWhere('effective_until', '>', $data['effective_from']))
                 ->lockForUpdate()->get(['manager_sales_profile_id', 'member_sales_profile_id']);

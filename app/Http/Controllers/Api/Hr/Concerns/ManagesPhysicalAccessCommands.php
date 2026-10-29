@@ -49,14 +49,14 @@ trait ManagesPhysicalAccessCommands
                     return response()->json(['status' => 'success', 'data' => $existing]);
                 }
 
-                $staff = Staff::withTrashed()->whereKey($data['staff_id'])->where('company_id', $data['company_id'])->lockForUpdate()->first();
+                $staff = Staff::withTrashed()->whereKey($data['staff_id'])->where(fn ($_companyIdScope) => \App\Services\CompanyIdScope::constrain($_companyIdScope, 'company_id', $data['company_id']))->lockForUpdate()->first();
                 abort_unless($staff, 404);
                 abort_if(in_array($data['command_type'], ['grant', 'restore'], true) && ($staff->trashed() || filled($staff->employment_ended_at)), 409, 'Former Staff cannot receive physical access.');
-                $device = AttendanceDevice::query()->where('company_id', $data['company_id'])->find($data['device_id']);
+                $device = AttendanceDevice::query()->where(fn ($_companyIdScope) => \App\Services\CompanyIdScope::constrain($_companyIdScope, 'company_id', $data['company_id']))->find($data['device_id']);
                 abort_unless($device, 404);
                 abort_unless(! in_array($data['command_type'], ['grant', 'restore'], true) || filled($data['access_group_code'] ?? null), 422, 'Grant and restore commands require an access group.');
                 if (filled($data['access_group_code'] ?? null)) {
-                    abort_unless(DB::table('hr_attendance_access_groups')->where('company_id', $data['company_id'])->where('device_id', $data['device_id'])->where('code', $data['access_group_code'])->where('status', 'active')->exists(), 422, 'The selected access group is not active for this device.');
+                    abort_unless(DB::table('hr_attendance_access_groups')->where(fn ($_companyIdScope) => \App\Services\CompanyIdScope::constrain($_companyIdScope, 'company_id', $data['company_id']))->where('device_id', $data['device_id'])->where('code', $data['access_group_code'])->where('status', 'active')->exists(), 422, 'The selected access group is not active for this device.');
                 }
                 $id = (string) Str::uuid();
                 DB::table('hr_attendance_access_commands')->insert([
@@ -87,7 +87,7 @@ trait ManagesPhysicalAccessCommands
 
         return DB::transaction(function () use ($request, $commandId) {
             $command = DB::table('hr_attendance_access_commands')->where('id', $commandId)
-                ->whereIn('company_id', $this->authorizedCompanyIds($request))->lockForUpdate()->first();
+                ->where(fn ($_companyIdScope) => \App\Services\CompanyIdScope::constrainIn($_companyIdScope, 'company_id', $this->authorizedCompanyIds($request)))->lockForUpdate()->first();
             abort_unless($command, 404);
             $companyId = $command->company_id;
             abort_if($command->requested_by === $request->user()->id, 409, 'The requester cannot approve the same physical-access command.');

@@ -86,7 +86,7 @@ class CommissionHoldController extends Controller
             ])]);
         $this->scope($query, $request, $data['company_id'] ?? null);
         $resolution = $data['resolution'] ?? 'open';
-        $query->when($data['company_id'] ?? null, fn ($q, $id) => $q->where('company_id', $id))
+        $query->when($data['company_id'] ?? null, fn ($q, $id) => $q->where(fn ($_companyIdScope) => \App\Services\CompanyIdScope::constrain($_companyIdScope, 'company_id', $id)))
             ->when($data['hold_code'] ?? null, fn ($q, $code) => $q->where('hold_code', $code))
             ->when($data['category'] ?? null, function ($q, $category) {
                 return $category === 'unclassified'
@@ -173,7 +173,7 @@ class CommissionHoldController extends Controller
             app(CompanySettingsAccessService::class)->assertCanAccess($request->user(), $activeCompanyId);
             abort_unless($companyId === null || (string) $companyId === $activeCompanyId, 403,
                 'Commission holds are outside your selected Staff business.');
-            $query->where('company_id', $activeCompanyId);
+            $query->where(fn ($_companyIdScope) => \App\Services\CompanyIdScope::constrain($_companyIdScope, 'company_id', $activeCompanyId));
         }
         $ids = $this->scope->profileIds($request->user(), 'sales.commission-decisions.view-all',
             'sales.commission-decisions.view-team', $companyId);

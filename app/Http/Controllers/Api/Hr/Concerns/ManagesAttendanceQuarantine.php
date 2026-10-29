@@ -58,7 +58,7 @@ trait ManagesAttendanceQuarantine
             'per_page' => ['nullable', 'integer', 'min:1', 'max:50'],
         ]);
         $item = DB::table('hr_attendance_quarantine_items')->where('id', $itemId)
-            ->whereIn('company_id', $this->authorizedCompanyIds($request))->first();
+            ->where(fn ($_companyIdScope) => \App\Services\CompanyIdScope::constrainIn($_companyIdScope, 'company_id', $this->authorizedCompanyIds($request)))->first();
         abort_unless($item, 404);
         $companyId = $item->company_id;
         abort_unless($item->status === 'open', 409, 'Only open quarantine items can be resolved.');
@@ -108,7 +108,7 @@ trait ManagesAttendanceQuarantine
 
         return DB::transaction(function () use ($request, $itemId, $data) {
             $item = DB::table('hr_attendance_quarantine_items')->where('id', $itemId)
-                ->whereIn('company_id', $this->authorizedCompanyIds($request))->lockForUpdate()->first();
+                ->where(fn ($_companyIdScope) => \App\Services\CompanyIdScope::constrainIn($_companyIdScope, 'company_id', $this->authorizedCompanyIds($request)))->lockForUpdate()->first();
             abort_unless($item, 404);
             if ($item->status === 'resolved') {
                 abort_unless((string) $item->resolved_by === (string) $request->user()->id
@@ -122,11 +122,11 @@ trait ManagesAttendanceQuarantine
                 ]]);
             }
             $mapping = DB::table('hr_attendance_person_mappings')->where('id', $data['person_mapping_id'])
-                ->where('company_id', $item->company_id)->lockForUpdate()->first();
+                ->where(fn ($_companyIdScope) => \App\Services\CompanyIdScope::constrain($_companyIdScope, 'company_id', $item->company_id))->lockForUpdate()->first();
             abort_unless($mapping, 404);
             $event = DB::table('hr_attendance_raw_events')->where('id', $item->raw_event_id)->first();
             abort_unless($event && $event->company_id === $item->company_id && $mapping && $mapping->company_id === $item->company_id, 422, 'Event, mapping, and quarantine legal entities must match.');
-            abort_unless(! $event->device_id || DB::table('hr_attendance_devices')->where('id', $event->device_id)->where('company_id', $item->company_id)->exists(), 422, 'The event device must belong to the quarantine legal entity.');
+            abort_unless(! $event->device_id || DB::table('hr_attendance_devices')->where('id', $event->device_id)->where(fn ($_companyIdScope) => \App\Services\CompanyIdScope::constrain($_companyIdScope, 'company_id', $item->company_id))->exists(), 422, 'The event device must belong to the quarantine legal entity.');
             $staff = DB::table('staff')->where('id', $mapping->staff_id)->lockForUpdate()->first();
             abort_unless($staff && $staff->company_id === $item->company_id, 422, 'The mapping Staff member must belong to the quarantine legal entity.');
             abort_unless($mapping->enrollment_status === 'verified', 422, 'Only a verified mapping can resolve quarantined evidence.');
@@ -135,7 +135,7 @@ trait ManagesAttendanceQuarantine
             $occurred = CarbonImmutable::parse($event->occurred_at)->toDateString();
             abort_unless($occurred >= $mapping->effective_from && ($mapping->effective_until === null || $occurred < $mapping->effective_until), 422, 'The mapping was not effective when the event occurred.');
             $resolvedAt = now();
-            DB::table('hr_attendance_quarantine_items')->where('id', $itemId)->where('company_id', $item->company_id)->update([
+            DB::table('hr_attendance_quarantine_items')->where('id', $itemId)->where(fn ($_companyIdScope) => \App\Services\CompanyIdScope::constrain($_companyIdScope, 'company_id', $item->company_id))->update([
                 'status' => 'resolved', 'resolved_staff_id' => $mapping->staff_id, 'resolved_mapping_id' => $mapping->id,
                 'resolved_by' => $request->user()->id, 'resolved_at' => $resolvedAt, 'resolution_reason' => $data['reason'], 'updated_at' => $resolvedAt,
             ]);

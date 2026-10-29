@@ -22,7 +22,7 @@ class ProjectHrRequests extends Command
         ];
         $counts = [];
         foreach ($sources as [$table, $method, $excluded]) {
-            $query = DB::table($table)->when($this->option('company'), fn ($q, $company) => $q->where('company_id', $company));
+            $query = DB::table($table)->when($this->option('company'), fn ($q, $company) => $q->where(fn ($_companyIdScope) => \App\Services\CompanyIdScope::constrain($_companyIdScope, 'company_id', $company)));
             if ($excluded) $query->whereNotIn('status', $excluded);
             $counts[$table] = $query->count();
         }
@@ -32,7 +32,7 @@ class ProjectHrRequests extends Command
         $actor = User::query()->find(config('hr.system_user_id'));
         if (! $actor) { $this->error('HR_SYSTEM_USER_ID must identify an existing system actor.'); return self::FAILURE; }
         foreach ($sources as [$table, $method, $excluded]) {
-            DB::table($table)->when($this->option('company'), fn ($q, $company) => $q->where('company_id', $company))->when($excluded, fn ($q) => $q->whereNotIn('status', $excluded))->orderBy('id')->chunk(250, function ($rows) use ($projection, $method, $actor) { foreach ($rows as $row) $projection->{$method}($row, $actor->id); });
+            DB::table($table)->when($this->option('company'), fn ($q, $company) => $q->where(fn ($_companyIdScope) => \App\Services\CompanyIdScope::constrain($_companyIdScope, 'company_id', $company)))->when($excluded, fn ($q) => $q->whereNotIn('status', $excluded))->orderBy('id')->chunk(250, function ($rows) use ($projection, $method, $actor) { foreach ($rows as $row) $projection->{$method}($row, $actor->id); });
         }
         return self::SUCCESS;
     }
