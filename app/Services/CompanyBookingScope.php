@@ -30,7 +30,10 @@ class CompanyBookingScope
                                 ->join('staff as driver_staff', 'driver_staff.user_id', '=', 'driver.user_id')
                                 ->whereColumn('driver.id', 'item.driver_id')->where('driver_staff.company_id', $companyId)
                                 ->whereNull('driver_staff.deleted_at'));
-                    }));
+                    }))
+                ->orWhereExists(fn ($defaultCompany) => $defaultCompany->selectRaw('1')->from('companies as company')
+                    ->where('company.id', $companyId)->where('company.is_default', true)
+                    ->where('company.is_active', true)->whereNull('company.deleted_at'));
         });
     }
 }

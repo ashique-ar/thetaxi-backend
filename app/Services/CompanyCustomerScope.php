@@ -29,7 +29,10 @@ class CompanyCustomerScope
                     $booking->selectRaw('1')->from('bookings as booking')
                         ->whereColumn('booking.customer_id', "{$customerAlias}.id")->whereNull('booking.deleted_at');
                     CompanyBookingScope::constrain($booking, 'booking', $companyId);
-                });
+                })
+                ->orWhereExists(fn ($defaultCompany) => $defaultCompany->selectRaw('1')->from('companies as company')
+                    ->where('company.id', $companyId)->where('company.is_default', true)
+                    ->where('company.is_active', true)->whereNull('company.deleted_at'));
         });
     }
 }
