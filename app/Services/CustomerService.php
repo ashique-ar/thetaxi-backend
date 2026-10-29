@@ -62,6 +62,11 @@ class CustomerService
 
                 $savedCustomer = Customer::withTrashed()->where('user_id', $user->id)->first();
                 $mergedCustomer = $this->customerForUser($user);
+                if ($this->hasActiveStaffContext($user) && ! $mergedCustomer) {
+                    throw ValidationException::withMessages([
+                        'email' => ['Employee accounts cannot be registered as customer accounts from checkout. Use a customer account or a different email address.'],
+                    ]);
+                }
                 if ($savedCustomer?->trashed() && ! $mergedCustomer) {
                     throw ValidationException::withMessages([
                         'email' => ['This customer profile is inactive. Please contact the business before booking with this email.'],
@@ -163,9 +168,17 @@ class CustomerService
             }
 
             $customer = $this->customerForUser($user);
-            return $customer
-                ? $this->updateCustomerProfile($customer, $data)->load('user')
-                : $this->createCustomerForUser($user, $data);
+            if ($customer) {
+                return $this->updateCustomerProfile($customer, $data)->load('user');
+            }
+
+            if ($this->hasActiveStaffContext($user) || (! $user->is_guest && ! $user->hasRole('customer'))) {
+                throw ValidationException::withMessages([
+                    'email' => ['Employee accounts cannot be registered as customer accounts from checkout. Use a customer account or a different email address.'],
+                ]);
+            }
+
+            return $this->createCustomerForUser($user, $data);
         }
 
         if (!empty($data['customer_email'])) {
@@ -345,6 +358,12 @@ class CustomerService
             'updated_user_id' => Auth::id() ?? $user->id,
         ]);
         $context->save();
+    }
+
+    private function hasActiveStaffContext(User $user): bool
+    {
+        return DB::table('user_contexts')->where('user_id', $user->id)
+            ->where('context_type', 'staff')->where('is_active', true)->whereNull('deleted_at')->exists();
     }
 
     private function findUserByEmail(string $email, bool $lock = false): ?User

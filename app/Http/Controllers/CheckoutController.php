@@ -27,6 +27,7 @@ use App\Services\Sms\SmsAutomationService;
 use App\Services\PaymentEventService;
 use App\Services\BookingPaymentLedgerService;
 use App\Services\Sms\SmsService;
+use App\Support\PhoneNumberMatch;
 use App\Helpers\BookingLinkHelper;
 use Carbon\Carbon;
 use Illuminate\Http\Request;
@@ -162,8 +163,12 @@ class CheckoutController extends Controller
             throw ValidationException::withMessages(['code' => ['The code is invalid or expired. Request a new code and try again.']]);
         }
 
-        $customer = Customer::query()->with(['user', 'country'])->whereKey($challenge['customer_id'])->first();
-        abort_unless($this->isEligibleCheckoutCustomer($customer), 422, 'We could not confirm those details. Please try again or enter your details below.');
+        $customer = $this->findCheckoutCustomer($channel, $value);
+        if (! $customer || (string) $customer->id !== (string) $challenge['customer_id'] || ! $this->isEligibleCheckoutCustomer($customer)) {
+            Cache::forget($key);
+            abort(422, 'We could not confirm those details. Please try again or enter your details below.');
+        }
+        $customer->load(['user', 'country']);
         Cache::forget($key);
         $email = mb_strtolower(trim((string) $customer->user->email));
         $mobile = $this->normalizeCheckoutMobile((string) $customer->user->phone);
@@ -237,14 +242,14 @@ class CheckoutController extends Controller
                 $phoneCandidates[] = '0'.$nationalNumber;
                 $phoneCandidates[] = $nationalNumber;
             }
-            $normalizedPhoneSql = "REPLACE(REPLACE(REPLACE(REPLACE(REPLACE(REPLACE(phone, '+', ''), ' ', ''), '-', ''), '(', ''), ')', ''), '.', '')";
             $phoneCandidates = array_values(array_unique($phoneCandidates));
             $placeholders = implode(',', array_fill(0, count($phoneCandidates), '?'));
-            $userQuery->whereRaw("{$normalizedPhoneSql} IN ({$placeholders})", $phoneCandidates);
+            $userQuery->whereRaw(PhoneNumberMatch::sqlExpression('users.phone')." IN ({$placeholders})", $phoneCandidates);
         }
 
-        $user = $userQuery->first();
-        if (! $user) return null;
+        $users = $userQuery->limit(2)->get(['users.*']);
+        if ($users->count() !== 1) return null;
+        $user = $users->first();
 
         $customer = $this->customerService->customerForUser($user);
         if ($customer) return $customer->load('user');
