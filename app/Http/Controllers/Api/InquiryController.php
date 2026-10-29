@@ -59,8 +59,8 @@ class InquiryController extends Controller
                 ->whereHas('inquiries', fn ($query) => $query->where(fn ($_companyIdScope) => \App\Services\CompanyIdScope::constrain($_companyIdScope, 'company_id', $companyId)))->orderBy('title')->get(['id', 'title']),
             'forms' => InquiryForm::withInactive()->withTrashed()
                 ->whereHas('cmsServices.inquiries', fn ($query) => $query->where(fn ($_companyIdScope) => \App\Services\CompanyIdScope::constrain($_companyIdScope, 'company_id', $companyId)))->orderBy('name')->get(['id', 'name']),
-            'workflows' => Inquiry::where('company_id', $companyId)->distinct()->whereNotNull('inquiry_type')->pluck('inquiry_type'),
-            'statuses' => Inquiry::where('company_id', $companyId)->distinct()->whereNotNull('status')->pluck('status'),
+            'workflows' => Inquiry::where(fn ($query) => \App\Services\CompanyIdScope::constrain($query, 'company_id', $companyId))->distinct()->whereNotNull('inquiry_type')->pluck('inquiry_type'),
+            'statuses' => Inquiry::where(fn ($query) => \App\Services\CompanyIdScope::constrain($query, 'company_id', $companyId))->distinct()->whereNotNull('status')->pluck('status'),
         ]]);
     }
 
@@ -83,7 +83,7 @@ class InquiryController extends Controller
             'per_page' => ['nullable', 'integer', 'min:1', 'max:100'],
         ]);
         $companyId = $this->currentCompanyId();
-        $q = Inquiry::where('company_id', $companyId)->with(['cmsContent', 'inquiryServicePage', 'assignedUser.staff', 'firstResponseSavedBy']);
+        $q = Inquiry::where(fn ($query) => \App\Services\CompanyIdScope::constrain($query, 'company_id', $companyId))->with(['cmsContent', 'inquiryServicePage', 'assignedUser.staff', 'firstResponseSavedBy']);
         $q->addSelect([
             'email_response_status' => InquiryOutboundResponse::query()->select('status')
                 ->whereColumn('company_id', 'inquiries.company_id')->whereColumn('inquiry_id', 'inquiries.id')->latest('created_at')->limit(1),

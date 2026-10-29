@@ -262,7 +262,7 @@ class ReportsController extends Controller
 
         $analytics = [
             'total_vehicles'          => Vehicle::withInactive()->where(fn ($_companyIdScope) => \App\Services\CompanyIdScope::constrain($_companyIdScope, 'company_id', $filters['company_id']))->count(),
-            'active_vehicles'         => Vehicle::where('company_id', $filters['company_id'])->where('is_active', true)->count(),
+            'active_vehicles'         => Vehicle::where(fn ($query) => \App\Services\CompanyIdScope::constrain($query, 'company_id', $filters['company_id']))->where('is_active', true)->count(),
             'maintenance_vehicles'    => Vehicle::withInactive()->where(fn ($_companyIdScope) => \App\Services\CompanyIdScope::constrain($_companyIdScope, 'company_id', $filters['company_id']))->where('availability_status', 'unavailable_maintenance')->count(),
             'fleet_metrics'           => $this->getFleetMetrics($filters),
             'performance_by_category' => $this->getPerformanceByCategory($filters),
@@ -719,7 +719,7 @@ class ReportsController extends Controller
     {
         $metrics = $this->vehicleReportMetrics($filters)->get()->groupBy(fn ($row) => (string) $row->vehicle_id);
 
-        return Vehicle::where('company_id', $filters['company_id'])->with('group')
+        return Vehicle::where(fn ($query) => \App\Services\CompanyIdScope::constrain($query, 'company_id', $filters['company_id']))->with('group')
             ->when(!empty($filters['vehicle_id']), fn ($query) => $query->whereKey($filters['vehicle_id']))
             ->orderBy('title')
             ->get()
@@ -1449,7 +1449,7 @@ class ReportsController extends Controller
     private function getFleetMetrics(array $filters): array
     {
         $totalVehicles  = Vehicle::withInactive()->where(fn ($_companyIdScope) => \App\Services\CompanyIdScope::constrain($_companyIdScope, 'company_id', $filters['company_id']))->count();
-        $totalActive    = Vehicle::where('company_id', $filters['company_id'])->where('is_active', true)->count();
+        $totalActive    = Vehicle::where(fn ($query) => \App\Services\CompanyIdScope::constrain($query, 'company_id', $filters['company_id']))->where('is_active', true)->count();
 
         // Utilisation: vehicles with at least 1 completed booking in the period
         $usedVehicleIds = DB::table('booking_items')
