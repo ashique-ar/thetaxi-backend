@@ -4,14 +4,17 @@ namespace App\Support;
 
 final class PhoneNumberMatch
 {
-    // shortcut: remove display punctuation only; use a server-side numbering plan parser to match local and international forms.
     public static function normalized(string $phone): string
     {
-        return str_replace(['+', '-', ' ', '(', ')', '.', '/'], '', $phone);
+        $digits = str_replace(['+', '-', ' ', '(', ')', '.', '/'], '', $phone);
+
+        return str_starts_with($digits, '00') ? substr($digits, 2) : $digits;
     }
 
     public static function sqlExpression(string $column): string
     {
-        return "REPLACE(REPLACE(REPLACE(REPLACE(REPLACE(REPLACE(REPLACE({$column}, '+', ''), '-', ''), ' ', ''), '(', ''), ')', ''), '.', ''), '/', '')";
+        $digits = "REPLACE(REPLACE(REPLACE(REPLACE(REPLACE(REPLACE(REPLACE({$column}, '+', ''), '-', ''), ' ', ''), '(', ''), ')', ''), '.', ''), '/', '')";
+
+        return "CASE WHEN {$digits} LIKE '00%' THEN SUBSTR({$digits}, 3) ELSE {$digits} END";
     }
 }

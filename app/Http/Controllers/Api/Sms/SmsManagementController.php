@@ -18,6 +18,7 @@ use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Validator;
+use Illuminate\Support\Str;
 use Illuminate\Validation\Rule;
 use RuntimeException;
 use Throwable;
@@ -488,7 +489,27 @@ class SmsManagementController extends Controller
     {
         abort_unless($smsCampaign->company_id === $this->campaignCompany($request)->id, 404);
 
-        $this->smsService->scheduleCampaignLaunch($smsCampaign);
+        $taskId = (string) Str::uuid();
+        DB::table('system_background_tasks')->insert([
+            'id' => $taskId,
+            'user_id' => $request->user()->getAuthIdentifier(),
+            'related_id' => $smsCampaign->id,
+            'type' => 'sms_campaign_launch',
+            'label' => 'SMS campaign: ' . $smsCampaign->name,
+            'status' => 'queued',
+            'progress' => 0,
+            'created_at' => now(),
+            'updated_at' => now(),
+        ]);
+
+        try {
+            $this->smsService->scheduleCampaignLaunch($smsCampaign);
+        } catch (Throwable $exception) {
+            DB::table('system_background_tasks')->where('id', $taskId)->update([
+                'status' => 'failed', 'error' => 'Campaign launch could not be scheduled.', 'updated_at' => now(),
+            ]);
+            throw $exception;
+        }
 
         return response()->json([
             'status' => 'success',

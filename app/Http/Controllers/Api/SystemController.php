@@ -78,12 +78,18 @@ class SystemController extends Controller
 
     public function performance(): JsonResponse
     {
+        $startedAt = microtime(true);
+        $metrics = $this->buildPerformanceMetrics();
+        $cache = $this->buildCacheStats();
+        $recommendations = $this->buildRecommendations();
+        $metrics['average_response_time'] = round((microtime(true) - $startedAt) * 1000, 2);
+
         return response()->json([
             'status' => 'success',
             'data' => [
-                'metrics' => $this->buildPerformanceMetrics(),
-                'cache' => $this->buildCacheStats(),
-                'recommendations' => $this->buildRecommendations(),
+                'metrics' => $metrics,
+                'cache' => $cache,
+                'recommendations' => $recommendations,
             ],
         ]);
     }
@@ -107,7 +113,7 @@ class SystemController extends Controller
             'clear_laravel' => ['required', 'boolean'],
             'clear_portal' => ['required', 'boolean'],
             'scope' => ['required', 'in:all,selected'],
-            'user_ids' => ['required_if:scope,selected', 'array', 'min:1', 'max:500'],
+            'user_ids' => ['required_if:scope,selected', 'array', 'max:500'],
             'user_ids.*' => ['uuid', 'exists:users,id'],
             'clear_storage' => ['sometimes', 'boolean'],
         ]);
@@ -204,9 +210,7 @@ class SystemController extends Controller
         return [
             'cache_hit_rate' => null,
             'average_response_time' => $databaseQueryTime,
-            'page_load_times' => [
-                'api_health' => round($databaseQueryTime / 1000, 3),
-            ],
+            'page_load_times' => [],
             'database_query_time' => $databaseQueryTime,
             'memory_usage' => [
                 'current' => memory_get_usage(true),
@@ -219,13 +223,28 @@ class SystemController extends Controller
 
     private function buildCacheStats(): array
     {
+        $driver = config('cache.default');
+        $totalKeys = null;
+        $totalSize = 'Unavailable';
+
+        if ($driver === 'database') {
+            $cacheDatabase = DB::connection(config('cache.stores.database.connection'));
+            $table = config('cache.stores.database.table', 'cache');
+            if ($cacheDatabase->getSchemaBuilder()->hasTable($table)) {
+                $entries = $cacheDatabase->table($table)->where('expiration', '>', now()->timestamp);
+                $totalKeys = (clone $entries)->count();
+                $bytes = (clone $entries)->sum($cacheDatabase->raw('LENGTH(value)'));
+                $totalSize = $this->formatBytes((int) $bytes);
+            }
+        }
+
         return [
-            'total_keys' => null,
-            'total_size' => 'Unavailable',
+            'total_keys' => $totalKeys,
+            'total_size' => $totalSize,
             'hit_rate' => null,
             'miss_rate' => null,
             'top_keys' => [],
-            'driver' => config('cache.default'),
+            'driver' => $driver,
         ];
     }
 

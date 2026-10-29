@@ -7,6 +7,8 @@ use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Storage;
+use Illuminate\Support\Str;
+use App\Jobs\CreateSystemBackup;
 use JsonException;
 use Symfony\Component\HttpFoundation\StreamedResponse;
 
@@ -38,13 +40,35 @@ class SystemBackupController extends Controller
 
     public function store(Request $request): JsonResponse
     {
+        return response()->json([
+            'status' => 'success',
+            'message' => 'Backup created successfully.',
+            'data' => $this->createBackupPayload($request->user()?->id),
+        ], 201);
+    }
+
+    public function queue(Request $request): JsonResponse
+    {
+        $id = (string) Str::uuid();
+        DB::table('system_background_tasks')->insert([
+            'id' => $id, 'user_id' => $request->user()->id, 'type' => 'database_backup',
+            'label' => 'Create database backup', 'status' => 'queued', 'progress' => 0,
+            'created_at' => now(), 'updated_at' => now(),
+        ]);
+        CreateSystemBackup::dispatch($id);
+
+        return response()->json(['status' => 'success', 'data' => ['id' => $id, 'status' => 'queued']], 202);
+    }
+
+    public function createBackupPayload(int|string|null $userId): array
+    {
         $tables = $this->tableNames();
         $payload = [
             'version' => self::VERSION,
             'created_at' => now()->toIso8601String(),
             'connection' => DB::connection()->getDriverName(),
             'database' => DB::connection()->getDatabaseName(),
-            'created_by' => $request->user()?->id,
+            'created_by' => $userId,
             'scope' => 'database',
             'storage' => [
                 'disk' => self::DISK,
@@ -63,7 +87,7 @@ class SystemBackupController extends Controller
 
         $payload['manifest'] = $this->buildManifest($payload['tables']);
 
-        $path = 'database-backup-' . now()->format('Ymd-His') . self::EXTENSION;
+        $path = 'database-backup-' . now()->format('Ymd-His') . '-' . Str::lower(Str::random(8)) . self::EXTENSION;
         $written = Storage::disk(self::DISK)->put(
             $path,
             gzencode(json_encode($payload, JSON_THROW_ON_ERROR)),
@@ -76,11 +100,7 @@ class SystemBackupController extends Controller
             abort(500, 'Backup failed its post-write integrity verification.');
         }
 
-        return response()->json([
-            'status' => 'success',
-            'message' => 'Backup created successfully.',
-            'data' => $this->backupItem($path),
-        ], 201);
+        return $this->backupItem($path);
     }
 
     public function show(string $backup): JsonResponse

@@ -21,13 +21,16 @@ class InquiryFirstResponseDeadlineService
         } else {
             foreach ($businessHours['days'] as $day) $hoursByDay[(int) $day['day']] = $day;
         }
-        $minutesPerWeek = array_sum(array_map(fn ($hours) => (int) ((strtotime($hours['closes_at']) - strtotime($hours['opens_at'])) / 60), $hoursByDay));
-        if ($minutesPerWeek < 1) throw new \InvalidArgumentException('The approved inquiry-response business hours are invalid.');
+        if ($targetMinutes < 1 || $hoursByDay === []) throw new \InvalidArgumentException('The approved inquiry-response business hours are invalid.');
+        foreach ($hoursByDay as $day => $hours) {
+            if ($day < 1 || $day > 7 || strtotime($hours['closes_at']) <= strtotime($hours['opens_at'])) {
+                throw new \InvalidArgumentException('The approved inquiry-response business hours are invalid.');
+            }
+        }
         $remaining = $targetMinutes;
         $cursor = $receivedAt->copy()->setTimezone($timezone);
-        $weekEnd = $cursor->copy()->startOfWeek(Carbon::MONDAY)->startOfDay()->addWeek();
 
-        while ($cursor->lt($weekEnd)) {
+        while ($remaining > 0) {
             $day = $cursor->dayOfWeekIso;
             if (isset($hoursByDay[$day])) {
                 $start = Carbon::parse($cursor->toDateString().' '.$hoursByDay[$day]['opens_at'], $timezone);
@@ -41,28 +44,6 @@ class InquiryFirstResponseDeadlineService
             }
             $cursor = $cursor->copy()->startOfDay()->addDay();
         }
-
-        $wholeWeeks = intdiv($remaining - 1, $minutesPerWeek);
-        if ($wholeWeeks > 0) {
-            $cursor->addWeeks($wholeWeeks);
-            $remaining -= $wholeWeeks * $minutesPerWeek;
-        }
-        $weekEnd = $cursor->copy()->addWeek();
-        while ($cursor->lt($weekEnd)) {
-            $day = $cursor->dayOfWeekIso;
-            if (isset($hoursByDay[$day])) {
-                $start = Carbon::parse($cursor->toDateString().' '.$hoursByDay[$day]['opens_at'], $timezone);
-                $end = Carbon::parse($cursor->toDateString().' '.$hoursByDay[$day]['closes_at'], $timezone);
-                if ($cursor->lt($start)) $cursor = $start;
-                if ($cursor->lt($end)) {
-                    $available = intdiv($end->getTimestamp() - $cursor->getTimestamp(), 60);
-                    if ($remaining <= $available) return $cursor->addMinutes($remaining);
-                    $remaining -= $available;
-                }
-            }
-            $cursor = $cursor->copy()->startOfDay()->addDay();
-        }
-
         return $cursor;
     }
 

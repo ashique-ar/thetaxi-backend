@@ -214,16 +214,22 @@ class RespondIoIntegrationController extends Controller
 
         $inquiries = Inquiry::query()->where('company_id', $connection->company_id)->whereNull('deleted_at')
             ->when(empty($data['selected_id']), fn ($query) => $query->where(fn ($active) => $active->whereIn('status', ['open', 'in_progress'])
-                ->orWhereHas('booking', fn ($booking) => $booking->where('company_id', $connection->company_id))))
+                ->orWhereHas('booking', fn ($booking) => \App\Services\CompanyBookingScope::constrain($booking, 'bookings', (string) $connection->company_id))))
             ->when(! empty($data['customer_id']), fn ($query) => $query->where('customer_id', $data['customer_id']))
             ->when(! empty($data['selected_id']), fn ($query) => $query->whereKey($data['selected_id']))
             ->when(empty($data['selected_id']) && ! empty($data['search']), function ($query) use ($data, $connection): void {
                 $term = '%'.addcslashes(trim($data['search']), '%_\\').'%';
                 $query->where(fn ($search) => $search->where('name', 'like', $term)
                     ->orWhere('email', 'like', $term)->orWhere('phone', 'like', $term)->orWhere('subject', 'like', $term)
-                    ->orWhereHas('booking', fn ($booking) => $booking->where('company_id', $connection->company_id)->where('booking_number', 'like', $term)));
+                    ->orWhereHas('booking', function ($booking) use ($connection, $term): void {
+                        $booking->where('booking_number', 'like', $term);
+                        \App\Services\CompanyBookingScope::constrain($booking, 'bookings', (string) $connection->company_id);
+                    }));
             })
-            ->with(['booking' => fn ($booking) => $booking->where('company_id', $connection->company_id)->select(['id', 'booking_number'])])
+            ->with(['booking' => function ($booking) use ($connection): void {
+                \App\Services\CompanyBookingScope::constrain($booking, 'bookings', (string) $connection->company_id);
+                $booking->select(['id', 'booking_number']);
+            }])
             ->select(['id', 'name', 'subject', 'status', 'customer_id', 'booking_id', 'created_at'])
             ->orderByDesc('created_at')->paginate($data['per_page'] ?? 25);
 
@@ -252,7 +258,7 @@ class RespondIoIntegrationController extends Controller
             abort_unless($lockedEvent->status === 'received' && $this->isRespondIoMessageEvent($lockedEvent->event_type, $lockedEvent->message_direction), 409, 'This message has already been reviewed.');
             $inquiry = Inquiry::query()->where('company_id', $connection->company_id)->whereNull('deleted_at')
                 ->where(fn ($active) => $active->whereIn('status', ['open', 'in_progress'])
-                    ->orWhereHas('booking', fn ($booking) => $booking->where('company_id', $connection->company_id)))
+                    ->orWhereHas('booking', fn ($booking) => \App\Services\CompanyBookingScope::constrain($booking, 'bookings', (string) $connection->company_id)))
                 ->lockForUpdate()->findOrFail($data['inquiry_id']);
             $lockedEvent->forceFill([
                 'linked_inquiry_id' => $inquiry->id,
@@ -972,7 +978,7 @@ class RespondIoIntegrationController extends Controller
     private function isRespondIoMessageEvent(?string $eventType, ?string $direction = null): bool
     {
         $eventType = strtolower((string) $eventType);
-        if ($direction === 'outgoing' || str_contains($eventType, 'status')
+        if (! str_contains($eventType, 'message') || $direction === 'outgoing' || str_contains($eventType, 'status')
             || str_contains($eventType, 'outgoing') || str_contains($eventType, 'outbound')
             || str_contains($eventType, 'echo')) return false;
         return $direction === 'incoming' || (str_contains($eventType, 'message')

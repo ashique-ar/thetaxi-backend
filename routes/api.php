@@ -150,6 +150,7 @@ use App\Http\Controllers\Api\Sms\SmsManagementController;
 use App\Http\Controllers\Api\StaffSensitivePaymentMethodController;
 use App\Http\Controllers\Api\StateController;
 use App\Http\Controllers\Api\SystemBackupController;
+use App\Http\Controllers\Api\BackgroundTaskController;
 use App\Http\Controllers\Api\SystemController;
 use App\Http\Controllers\Api\TermsController;
 use App\Http\Controllers\Api\UserContextController;
@@ -1708,12 +1709,15 @@ Route::middleware(['auth:api'])->group(function () {
         Route::post('system/manage-cache-clear', [SystemController::class, 'manageCacheClear']);
         Route::get('system/backups', [SystemBackupController::class, 'index']);
         Route::post('system/backups', [SystemBackupController::class, 'store']);
+        Route::post('system/backups/queue', [SystemBackupController::class, 'queue']);
         Route::get('system/backups/{backup}', [SystemBackupController::class, 'show']);
         Route::get('system/backups/{backup}/download', [SystemBackupController::class, 'download']);
         Route::post('system/backups/{backup}/verify', [SystemBackupController::class, 'verify']);
         Route::post('system/backups/{backup}/restore', [SystemBackupController::class, 'restore']);
         Route::delete('system/backups/{backup}', [SystemBackupController::class, 'destroy']);
     });
+    Route::get('system/background-tasks', [BackgroundTaskController::class, 'index']);
+    Route::delete('system/background-tasks/{task}', [BackgroundTaskController::class, 'dismiss']);
 
     // CMS content management (protected by controller permissions)
     Route::get('pages/stats', [PageController::class, 'stats'])->middleware('permission:pages.view');
