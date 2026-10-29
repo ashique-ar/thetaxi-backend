@@ -65,7 +65,7 @@ class SalesPolicySettingsController extends Controller
             || $request->user()->can('sales.policy-settings.approve');
         $policyColumns = [
             'id', 'policy_kind', 'version', 'status', 'fx_quote_base', 'fx_calculation_mode', 'fx_max_rate_age_hours',
-            'fx_rounding_scale', 'dispute_response_days', 'profile_export_retention_days', 'business_timezone', 'inquiry_first_response_minutes', 'booking_assignment_target_minutes', 'approved_at',
+            'fx_rounding_scale', 'dispute_response_days', 'profile_export_retention_days', 'business_timezone', 'inquiry_first_response_minutes', 'booking_assignment_target_minutes', 'repeat_booking_followup_enabled', 'repeat_booking_followup_days', 'approved_at',
         ];
         if (Schema::hasColumn('sales_policy_settings', 'inquiry_response_business_hours')) $policyColumns[] = 'inquiry_response_business_hours';
         $featureColumns = ['id', 'feature_key', 'version', 'enabled', 'status'];
@@ -122,6 +122,8 @@ class SalesPolicySettingsController extends Controller
             'inquiry_response_business_hours.days.*.opens_at' => ['required', 'date_format:H:i'],
             'inquiry_response_business_hours.days.*.closes_at' => ['required', 'date_format:H:i'],
             'booking_assignment_target_minutes' => ['required_if:policy_kind,booking_assignment', 'nullable', 'integer', 'min:1', 'max:10080'],
+            'repeat_booking_followup_enabled' => ['required_if:policy_kind,repeat_booking_followup', 'nullable', 'boolean'],
+            'repeat_booking_followup_days' => ['required_if:repeat_booking_followup_enabled,1', 'nullable', 'integer', 'min:1', 'max:3650'],
             'reason' => ['required', 'string', 'max:2000'],
         ]);
         foreach ($data['inquiry_response_business_hours']['days'] ?? [] as $index => $day) {

@@ -19,7 +19,7 @@ use Illuminate\Validation\ValidationException;
  */
 class SalesPolicySettingsService
 {
-    public const KINDS = ['fx_corrections', 'commission_dispute', 'profile_export_retention', 'business_timezone', 'inquiry_response', 'booking_assignment'];
+    public const KINDS = ['fx_corrections', 'commission_dispute', 'profile_export_retention', 'business_timezone', 'inquiry_response', 'booking_assignment', 'repeat_booking_followup'];
     public const STAGE_LABEL_DEFAULTS = ['new' => 'New', 'contacted' => 'Contacted', 'qualified' => 'Qualified', 'quotation' => 'Quotation', 'negotiation' => 'Negotiation', 'won' => 'Won', 'lost' => 'Lost'];
     public const STAGE_FEATURES = ['crm_contact_stage' => 'contacted', 'crm_qualification_stage' => 'qualified', 'crm_quotation_stage' => 'quotation', 'crm_negotiation_stage' => 'negotiation'];
     // Expose a tenant toggle only after every runtime path for it is company-aware.
@@ -220,6 +220,10 @@ class SalesPolicySettingsService
             'business_timezone' => ['business_timezone' => (string) $data['business_timezone']],
             'inquiry_response' => ['inquiry_first_response_minutes' => (int) $data['inquiry_first_response_minutes']],
             'booking_assignment' => ['booking_assignment_target_minutes' => (int) $data['booking_assignment_target_minutes']],
+            'repeat_booking_followup' => [
+                'repeat_booking_followup_enabled' => (bool) $data['repeat_booking_followup_enabled'],
+                'repeat_booking_followup_days' => ! empty($data['repeat_booking_followup_enabled']) ? (int) $data['repeat_booking_followup_days'] : null,
+            ],
         };
         if ($kind === 'inquiry_response' && Schema::hasColumn('sales_policy_settings', 'inquiry_response_business_hours')) {
             $values['inquiry_response_business_hours'] = $data['inquiry_response_business_hours'] ?? null;

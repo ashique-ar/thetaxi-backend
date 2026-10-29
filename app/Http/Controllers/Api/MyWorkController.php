@@ -26,7 +26,18 @@ class MyWorkController extends Controller
         $userId = (string) $request->user()->id;
         $queues = [];
         $attention = [];
+        $employeeWorkload = [];
         $activeBookingStatuses = array_merge(['inquiry', 'inquiry_qualified'], BookingLifecycleStatus::activeOperationalValues());
+
+        if ($request->user()->can('inquiries.view') && $request->user()->can('inquiries.edit')
+            && $request->user()->can('companies.view')) {
+            $unscopedInquiries = (int) DB::table('inquiries')->whereNull('company_id')->whereNull('deleted_at')->count();
+            if ($unscopedInquiries > 0) {
+                $queues[] = ['group' => 'assignment', 'title' => 'Older inquiries need a business',
+                    'help' => 'Review the request and choose which business should manage it.', 'icon' => 'rule_folder',
+                    'link' => '/communication/inquiries/review-unscoped', 'count' => $unscopedInquiries];
+            }
+        }
 
         if ($request->user()->can('bookings.view') && !Schema::hasColumn('bookings', 'responsible_user_id')) {
             return response()->json([
@@ -55,7 +66,9 @@ class MyWorkController extends Controller
         }
 
         if ($request->user()->can('bookings.view') && $request->user()->can('bookings.assign')) {
-            $eligibleOwners = app(BookingResponsibilityService::class)->eligibleEmployees($companyId)->pluck('id')->map(fn ($id) => (string) $id)->all();
+            $employeeWorkload = app(BookingResponsibilityService::class)
+                ->eligibleEmployeesWithOpenBookingCounts($companyId);
+            $eligibleOwners = collect($employeeWorkload)->pluck('id')->all();
             $unassigned = DB::table('bookings as booking')->whereNull('booking.deleted_at')
                 ->whereIn('booking.status', $activeBookingStatuses)
                 ->where(fn ($owner) => $owner->whereNull('booking.responsible_user_id')->orWhereNotIn('booking.responsible_user_id', $eligibleOwners));
@@ -209,18 +222,19 @@ class MyWorkController extends Controller
         }
 
         if ($request->user()->can('communication.manage')) {
-            foreach ([['received', 'Respond.io events to review', 'New events waiting for a manager to identify the right work'],
-                ['reply_failed', 'Respond.io replies to check', 'Replies Respond.io did not accept; review before retrying']] as [$status, $title, $help]) {
+            foreach ([['received', 'New messages or updates', 'Review new information from Respond.io before linking it to customer work'],
+                ['reply_failed', 'Replies that need checking', 'Respond.io reported a sending problem; check the conversation before trying again']] as [$status, $title, $help]) {
                 $events = DB::table('integration_webhook_events')->where('company_id', $companyId)
                     ->where('provider', 'respond_io')
                     ->when($status === 'reply_failed', fn ($query) => $query->where('outbound_status', 'failed'))
                     ->when($status !== 'reply_failed', fn ($query) => $query->where('status', $status));
                 $queues[] = ['group' => 'integration', 'title' => $title, 'help' => $help, 'icon' => 'sync_problem',
                     'link' => '/admin/system/integrations/respond-io?status='.$status, 'count' => (int) (clone $events)->count()];
-                foreach ($events->orderBy('received_at')->limit(4)->get(['id', 'event_type', 'received_at']) as $row) {
+                foreach ($events->orderBy('received_at')->limit(4)->get(['id', 'received_at']) as $row) {
                     $attention[] = ['id' => 'respond-io:'.$status.':'.$row->id, 'group' => 'integration',
-                        'type' => $status === 'received' ? 'Respond.io review' : 'Respond.io reply failed',
-                        'title' => $row->event_type ?: 'Unidentified event', 'detail' => $status === 'received' ? 'Review this event' : 'Check the reply before retrying',
+                        'type' => $status === 'received' ? 'New message or update' : 'Reply did not send',
+                        'title' => $status === 'received' ? 'Check this new information' : 'Check the conversation before retrying',
+                        'detail' => $status === 'received' ? 'Open to review and link it to the right customer work' : 'Check whether the customer received it first',
                         'when' => $row->received_at, 'link' => '/admin/system/integrations/respond-io?status='.$status,
                         'sort_at' => strtotime((string) $row->received_at) ?: PHP_INT_MAX];
                 }
@@ -261,6 +275,7 @@ class MyWorkController extends Controller
 
         return response()->json(['status' => 'success', 'data' => [
             'as_of' => now()->toIso8601String(), 'queues' => $queues, 'attention' => $attention,
+            'employee_workload' => $employeeWorkload,
         ]]);
     }
 }

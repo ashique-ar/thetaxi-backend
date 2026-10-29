@@ -2,11 +2,15 @@
 
 namespace App\Console\Commands;
 
+use App\Models\Booking\Booking;
+use App\Models\Sales\SalesPolicySetting;
 use App\Models\Sales\SalesReportingAssignment;
 use App\Models\Sales\SalesTask;
+use App\Services\Sales\SalesCrmService;
 use Illuminate\Console\Command;
 use Illuminate\Notifications\DatabaseNotification;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Facades\Schema;
 use Illuminate\Support\Str;
 
@@ -17,8 +21,7 @@ class ProcessSalesTasks extends Command
 
     public function handle(): int
     {
-        if (! Schema::hasTable('sales_tasks') || ! Schema::hasTable('sales_company_feature_settings')
-            ) return self::SUCCESS;
+        if (! Schema::hasTable('sales_tasks') || ! Schema::hasTable('sales_company_feature_settings')) return self::SUCCESS;
         $dryRun = (bool) $this->option('dry-run'); $count = 0; $nowUtc = now('UTC');
         SalesTask::query()->whereIn('status', ['open', 'in_progress'])
             ->whereIn('company_id', DB::table('sales_company_feature_settings')->select('company_id')
@@ -42,8 +45,86 @@ class ProcessSalesTasks extends Command
                     }
                 }
             });
-        $this->info("Processed {$count} Sales task notification(s).");
+        $followUpCount = $this->queueMissingRepeatBookingFollowups($dryRun);
+        $this->info("Processed {$count} Sales task notification(s) and {$followUpCount} repeat-customer follow-up task(s)." . ($dryRun ? ' (dry run)' : ''));
         return self::SUCCESS;
+    }
+
+    private function queueMissingRepeatBookingFollowups(bool $dryRun): int
+    {
+        if (! Schema::hasTable('sales_policy_settings') || ! Schema::hasTable('customer_relationship_owner_assignments')
+            || ! Schema::hasColumn('sales_policy_settings', 'repeat_booking_followup_enabled')
+            || ! Schema::hasColumn('sales_tasks', 'creation_idempotency_key')) return 0;
+
+        $count = 0;
+        foreach (SalesPolicySetting::query()->where('policy_kind', 'repeat_booking_followup')
+            ->where('status', 'approved')->where('repeat_booking_followup_enabled', true)
+            ->whereNotNull('repeat_booking_followup_days')->whereNotNull('approved_at')
+            ->whereIn('company_id', DB::table('sales_company_feature_settings')->select('company_id')
+                ->where('feature_key', 'crm')->where('status', 'approved')->where('enabled', true))
+            ->get() as $policy) {
+            Booking::query()->where('company_id', $policy->company_id)->where('status', 'completed')
+                ->whereNotNull('customer_id')->whereNotNull('completed_at')->where('completed_at', '>=', $policy->approved_at)
+                ->whereExists(function ($query): void {
+                    $query->selectRaw('1')->from('customer_relationship_owner_assignments as current_owner')
+                        ->whereColumn('current_owner.customer_id', 'bookings.customer_id')
+                        ->whereColumn('current_owner.company_id', 'bookings.company_id')
+                        ->whereNotNull('current_owner.owner_sales_profile_id')->whereNull('current_owner.ended_at')
+                        ->where('current_owner.effective_from', '<=', now());
+                })
+                ->where(function ($eligible) use ($policy): void {
+                    $eligible->whereExists(function ($query): void {
+                        $query->selectRaw('1')->from('customer_relationship_owner_assignments as owner')
+                            ->whereColumn('owner.customer_id', 'bookings.customer_id')
+                            ->whereColumn('owner.company_id', 'bookings.company_id')
+                            ->whereNotNull('owner.owner_sales_profile_id')
+                            ->whereColumn('owner.effective_from', '<=', 'bookings.completed_at')
+                            ->where(fn ($activeAtCompletion) => $activeAtCompletion->whereNull('owner.ended_at')
+                                ->orWhereColumn('owner.ended_at', '>=', 'bookings.completed_at'));
+                    })->orWhereExists(function ($ownerAfter): void {
+                        $ownerAfter->selectRaw('1')->from('customer_relationship_owner_assignments as later_owner')
+                            ->whereColumn('later_owner.customer_id', 'bookings.customer_id')
+                            ->whereColumn('later_owner.company_id', 'bookings.company_id')
+                            ->whereNotNull('later_owner.owner_sales_profile_id')
+                            ->whereColumn('later_owner.effective_from', '>', 'bookings.completed_at')
+                            ->whereNotExists(function ($newer): void {
+                                $newer->selectRaw('1')->from('bookings as newer')
+                                    ->whereColumn('newer.company_id', 'bookings.company_id')
+                                    ->whereColumn('newer.customer_id', 'bookings.customer_id')
+                                    ->where('newer.status', 'completed')->whereNotNull('newer.completed_at')
+                                    ->whereColumn('newer.completed_at', '>', 'bookings.completed_at')
+                                    ->whereColumn('newer.completed_at', '<=', 'later_owner.effective_from');
+                            });
+                    });
+                })
+                ->whereNotExists(function ($query): void {
+                    $query->selectRaw('1')->from('sales_tasks as task')
+                        ->whereColumn('task.company_id', 'bookings.company_id')
+                        ->whereColumn('task.booking_id', 'bookings.id')
+                        ->whereRaw("task.creation_idempotency_key = CONCAT('repeat-booking-follow-up:', bookings.id)");
+                })
+                ->chunkById(100, function ($bookings) use ($dryRun, $policy, &$count): void {
+                    foreach ($bookings as $booking) {
+                        $actorUserId = $booking->updated_user_id ?? $booking->created_user_id ?? $policy->approved_by;
+                        if (! $actorUserId) continue;
+                        if ($dryRun) {
+                            $count++;
+                            continue;
+                        }
+                        try {
+                            if (app(SalesCrmService::class)->createRepeatBookingFollowup($booking, (string) $actorUserId)) $count++;
+                        } catch (\Throwable $e) {
+                            Log::error('Scheduled retry could not create a repeat-booking follow-up task', [
+                                'booking_id' => $booking->id,
+                                'company_id' => $booking->company_id,
+                                'error' => $e->getMessage(),
+                            ]);
+                        }
+                    }
+                });
+        }
+
+        return $count;
     }
 
     private function notify(string $userId, SalesTask $task, string $type): void

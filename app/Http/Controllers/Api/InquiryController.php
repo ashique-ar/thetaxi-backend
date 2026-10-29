@@ -5,6 +5,7 @@ namespace App\Http\Controllers\Api;
 
 use App\Http\Controllers\Controller;
 use App\Models\Inquiry;
+use App\Models\Company;
 use App\Support\PhoneNumberMatch;
 use App\Models\InquiryOutboundResponse;
 use App\Models\IntegrationWebhookEvent;
@@ -17,6 +18,7 @@ use App\Services\AuthService;
 use App\Services\MailDispatchService;
 use App\Mail\InquiryResponseMail;
 use App\Services\SingleCompanyScope;
+use App\Services\CompanyBookingScope;
 use App\Services\Sales\SalesPolicySettingsService;
 use App\Services\Sales\InquiryFirstResponseDeadlineService;
 use App\Models\Website\CmsContent;
@@ -37,7 +39,9 @@ class InquiryController extends Controller
 {
     public function __construct()
     {
-        $this->middleware('permission:inquiries.view')->only(['index', 'show', 'filterOptions', 'assigneeOptions', 'responseMetrics']);
+        $this->middleware('permission:inquiries.view')->only(['index', 'show', 'filterOptions', 'assigneeOptions', 'responseMetrics', 'unscoped']);
+        $this->middleware('permission:inquiries.edit')->only(['scopeUnassigned']);
+        $this->middleware('permission:companies.view')->only(['unscoped', 'scopeUnassigned', 'companyOptions']);
         $this->middleware('permission:inquiries.view|communication.manage')->only(['customerOptions', 'bookingOptions']);
         $this->middleware('permission:inquiries.create')->only(['store']);
         $this->middleware('permission:inquiries.edit')->only(['update', 'assign', 'updateStatus', 'respond', 'sendEmailResponse', 'markRead', 'createCustomerFromInquiry']);
@@ -153,6 +157,90 @@ class InquiryController extends Controller
             $q->latest();
         }
         return InquiryResource::collection($q->paginate($filters['per_page'] ?? 15));
+    }
+
+    public function unscoped(Request $request): JsonResponse
+    {
+        $rows = DB::table('inquiries')->leftJoin('users as assignee', 'assignee.id', '=', 'inquiries.assigned_to')
+            ->whereNull('inquiries.company_id')->whereNull('inquiries.deleted_at')
+            ->orderBy('inquiries.created_at')->orderBy('inquiries.id')
+            ->paginate(min(max((int) $request->integer('per_page', 25), 1), 100), [
+                'inquiries.id', 'inquiries.inquiry_number', 'inquiries.name', 'inquiries.email', 'inquiries.phone', 'inquiries.subject',
+                'inquiries.message', 'inquiries.customer_id', 'inquiries.booking_id', 'inquiries.assigned_to', 'inquiries.status', 'inquiries.created_at',
+                'assignee.first_name as assigned_first_name', 'assignee.last_name as assigned_last_name',
+            ]);
+
+        return response()->json(['status' => 'success', 'data' => $rows]);
+    }
+
+    public function companyOptions(Request $request): JsonResponse
+    {
+        $data = $request->validate(['search' => ['nullable', 'string', 'max:100']]);
+        $query = Company::query()->where('is_active', true)->whereNull('deleted_at');
+        if (! empty($data['search'])) {
+            $query->whereLikeInsensitive('name', trim($data['search']));
+        }
+        $options = $query->orderByDesc('is_default')->orderBy('name')->limit(25)->get(['id', 'name'])
+            ->map(fn ($company) => ['value' => (string) $company->id, 'label' => $company->name, 'status' => 'active']);
+
+        return response()->json(['status' => 'success', 'data' => $options]);
+    }
+
+    public function scopeUnassigned(Request $request, Inquiry $inquiry): JsonResponse
+    {
+        $data = $request->validate([
+            'company_id' => ['required', 'uuid', 'exists:companies,id'],
+            'reason' => ['required', 'string', 'min:8', 'max:350'],
+            'idempotency_key' => ['required', 'uuid'],
+        ]);
+        $companyId = (string) $data['company_id'];
+        $data['reason'] = trim($data['reason']);
+        abort_unless(mb_strlen($data['reason']) >= 8, 422, 'Explain why this inquiry belongs to the selected business.');
+        $scoped = DB::transaction(function () use ($inquiry, $data, $companyId, $request): Inquiry {
+            $locked = Inquiry::query()->whereKey($inquiry->id)->lockForUpdate()->firstOrFail();
+            $existingEvent = DB::table('inquiry_assignment_events')->where('idempotency_key', $data['idempotency_key'])->first();
+            if ($existingEvent) {
+                abort_unless((string) $existingEvent->inquiry_id === (string) $locked->id
+                    && (string) $existingEvent->company_id === $companyId
+                    && $existingEvent->event_type === 'company_scoped'
+                    && $existingEvent->reason === $data['reason'], 409, 'This review key was already used for different details.');
+                abort_unless((string) $locked->company_id === $companyId, 409, 'This inquiry was moved again; refresh the list.');
+                return $locked;
+            }
+            abort_unless($locked->company_id === null, 409, 'This inquiry already has a company. Refresh the list.');
+            $company = Company::query()->whereKey($companyId)->where('is_active', true)->whereNull('deleted_at')->lockForUpdate()->first();
+            abort_unless($company, 422, 'Choose an active business.');
+
+            if ($locked->booking_id) {
+                $booking = DB::table('bookings as booking')->where('booking.id', $locked->booking_id);
+                CompanyBookingScope::constrain($booking, 'booking', $companyId);
+                abort_unless($booking->exists(), 422, 'The linked booking does not belong to this business.');
+            }
+
+            $fromUserId = $locked->assigned_to;
+            $assigneeIsInCompany = $fromUserId && $this->eligibleAssignees($companyId)
+                ->where('users.id', $fromUserId)->exists();
+            $toUserId = $assigneeIsInCompany ? $fromUserId : null;
+            $locked->update([
+                'company_id' => $companyId,
+                'assigned_to' => $toUserId,
+                'status' => $locked->status ?: 'open',
+                'updated_user_id' => $request->user()->id,
+            ]);
+            DB::table('inquiry_assignment_events')->insert([
+                'id' => (string) Str::uuid(), 'company_id' => $companyId, 'inquiry_id' => $locked->id,
+                'from_user_id' => $fromUserId, 'to_user_id' => $toUserId,
+                'actor_user_id' => $request->user()->id, 'event_type' => 'company_scoped',
+                'reason' => $data['reason'].($fromUserId && ! $assigneeIsInCompany ? ' Previous assignee was not active in this business; inquiry returned to the unassigned queue.' : ''),
+                'idempotency_key' => $data['idempotency_key'], 'occurred_at' => now(), 'created_at' => now(), 'updated_at' => now(),
+            ]);
+
+            return $locked->fresh();
+        });
+
+        return response()->json(['status' => 'success', 'message' => 'Inquiry added to the selected business.', 'data' => [
+            'id' => (string) $scoped->id, 'company_id' => (string) $scoped->company_id, 'assigned_to' => $scoped->assigned_to,
+        ]]);
     }
 
     public function store(CreateInquiryRequest $request): JsonResponse

@@ -21,6 +21,8 @@ class SalesPolicySetting extends BaseModel
         'inquiry_first_response_minutes',
         'inquiry_response_business_hours',
         'booking_assignment_target_minutes',
+        'repeat_booking_followup_enabled',
+        'repeat_booking_followup_days',
         'reason',
         'created_by',
         'approved_by',
@@ -36,6 +38,8 @@ class SalesPolicySetting extends BaseModel
         'inquiry_first_response_minutes' => 'integer',
         'inquiry_response_business_hours' => 'array',
         'booking_assignment_target_minutes' => 'integer',
+        'repeat_booking_followup_enabled' => 'boolean',
+        'repeat_booking_followup_days' => 'integer',
         'approved_at' => 'datetime',
     ];
 }

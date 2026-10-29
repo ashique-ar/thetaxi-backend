@@ -740,10 +740,10 @@ trait BookingSubmissionTrait
         $company = app(SingleCompanyScope::class)->activeDefaultCompany();
         abort_unless($company, 409, 'Set one active default company before assigning bookings.');
 
-        $rows = app(\App\Services\BookingResponsibilityService::class)->eligibleEmployees()
-            ->map(fn ($row) => ['id' => (string) $row->id, 'name' => trim($row->first_name.' '.$row->last_name), 'code' => $row->code]);
+        $employees = app(\App\Services\BookingResponsibilityService::class)
+            ->eligibleEmployeesWithOpenBookingCounts((string) $company->id);
 
-        return response()->json(['status' => 'success', 'data' => $rows]);
+        return response()->json(['status' => 'success', 'data' => $employees]);
     }
 
     public function assignResponsibleUser(Request $request, string $bookingId): JsonResponse

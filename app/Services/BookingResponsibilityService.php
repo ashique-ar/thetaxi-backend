@@ -30,6 +30,27 @@ class BookingResponsibilityService
         return $employees->whereIn('id', $canViewBookings)->values();
     }
 
+    public function eligibleEmployeesWithOpenBookingCounts(string $companyId): array
+    {
+        $employees = $this->eligibleEmployees($companyId);
+        $employeeIds = $employees->pluck('id')->map(fn ($id) => (string) $id)->all();
+        $workload = collect();
+        if ($employeeIds) {
+            $query = Booking::query()->selectRaw('responsible_user_id, COUNT(*) as open_booking_count')
+                ->whereIn('responsible_user_id', $employeeIds)
+                ->whereIn('status', array_merge(['inquiry', 'inquiry_qualified'], BookingLifecycleStatus::activeOperationalValues()));
+            CompanyBookingScope::constrain($query, 'bookings', $companyId);
+            $workload = $query->groupBy('responsible_user_id')->pluck('open_booking_count', 'responsible_user_id');
+        }
+
+        return $employees->map(fn ($employee) => [
+            'id' => (string) $employee->id,
+            'name' => trim($employee->first_name.' '.$employee->last_name),
+            'code' => $employee->code,
+            'open_booking_count' => (int) ($workload[$employee->id] ?? 0),
+        ])->all();
+    }
+
     public function eligibleEmployeeId(?string $userId, ?string $companyId = null): ?string
     {
         if (!$userId) {

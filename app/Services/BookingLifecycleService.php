@@ -3846,6 +3846,21 @@ class BookingLifecycleService
             ],
         ]);
 
+        if ($toStatus === BookingLifecycleStatus::COMPLETED) {
+            $actorUserId = Auth::id() ?? $booking->updated_user_id ?? $booking->created_user_id;
+            if ($actorUserId) {
+                try {
+                    app(\App\Services\Sales\SalesCrmService::class)
+                        ->createRepeatBookingFollowup($booking, (string) $actorUserId);
+                } catch (\Throwable $e) {
+                    Log::error('Repeat-booking follow-up task could not be created after completion', [
+                        'booking_id' => $booking->id,
+                        'error' => $e->getMessage(),
+                    ]);
+                }
+            }
+        }
+
         $this->notifyCustomerOfLifecycleTransition($booking, $toStatus);
     }
 

@@ -750,6 +750,39 @@ class SalesCrmService
         }
     }
 
+    public function createRepeatBookingFollowup(Booking $booking, string $actorUserId): ?SalesTask
+    {
+        if (! $booking->company_id || ! $booking->customer_id || ! $booking->completed_at
+            || ! $this->policySettings->featureEnabled((string) $booking->company_id, 'crm')) {
+            return null;
+        }
+
+        $policy = $this->policySettings->current((string) $booking->company_id, 'repeat_booking_followup');
+        if (! $policy?->repeat_booking_followup_enabled || ! $policy->repeat_booking_followup_days
+            || ($policy->approved_at && $booking->completed_at->lt($policy->approved_at))) return null;
+
+        $key = 'repeat-booking-follow-up:'.$booking->id;
+        $existing = SalesTask::query()->where('creation_idempotency_key', $key)->first();
+        if ($existing) return $existing;
+
+        $ownerProfileId = DB::table('customer_relationship_owner_assignments')
+            ->where('company_id', $booking->company_id)->where('customer_id', $booking->customer_id)
+            ->whereNull('ended_at')->where('effective_from', '<=', now())->value('owner_sales_profile_id');
+        if (! $ownerProfileId) return null;
+
+        return $this->createTask([
+            'company_id' => (string) $booking->company_id,
+            'owner_sales_profile_id' => (string) $ownerProfileId,
+            'booking_id' => (string) $booking->id,
+            'customer_id' => (string) $booking->customer_id,
+            'creation_idempotency_key' => $key,
+            'title' => 'Check in after completed trip',
+            'description' => 'Ask whether another booking would be useful. Follow the company’s approved customer contact and consent rules.',
+            'priority' => 'normal',
+            'due_at' => $booking->completed_at->copy()->utc()->addDays((int) $policy->repeat_booking_followup_days)->toIso8601String(),
+        ], $actorUserId, null);
+    }
+
     private function sameTaskRequest(SalesTask $task, array $data, string $actorUserId): bool
     {
         foreach ([

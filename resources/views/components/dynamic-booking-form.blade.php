@@ -391,7 +391,7 @@
         @endphp
         <div class="dynamic-field-layout dynamic-field-width-{{ $configuredWidth }} dynamic-field-tablet-{{ $configuredTabletWidth }} dynamic-field-mobile-{{ $configuredMobileWidth }} {{ $isConfiguredDateDuration ? 'dynamic-field-layout--date-duration' : '' }}"
              data-field-row="{{ $configuredRow }}"
-             style="{{ $isReturnConditional && !$showConditional ? 'display: none !important;' : '' }}{{ $configuredWidth === 'auto' ? 'grid-column: span ' . $autoDesktopSpan . ';' : '' }}"
+             style="{{ $isReturnConditional && !$showConditional ? 'display: none !important;' : '' }}{{ $isConfiguredDateDuration ? 'grid-column: 1 / -1 !important;' : ($configuredWidth === 'auto' ? 'grid-column: span ' . $autoDesktopSpan . ';' : '') }}"
              @if($isReturnConditional)
                  data-conditional-parent="is_return_trip"
              @endif>

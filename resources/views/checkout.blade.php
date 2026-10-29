@@ -921,6 +921,10 @@
             padding: 56px 0 84px;
         }
 
+        .checkout-page [hidden] {
+            display: none !important;
+        }
+
         .checkout-form-wrapper,
         .checkout-page .order-sum-area,
         .checkout-page .inquiry-form {
@@ -1012,11 +1016,12 @@
 
         body[class] .checkout-page .checkout-customer-choice .checkout-form-title {
             margin-bottom: 0;
+            padding: 24px 24px 16px;
         }
 
         body[class] .checkout-page .checkout-customer-choice .checkout-customer-options {
             margin: 0 !important;
-            padding: 16px 20px 20px;
+            padding: 0 24px 24px;
         }
 
         body[class] .checkout-page .checkout-returning-panel .checkout-form-title {
@@ -1025,6 +1030,11 @@
             justify-content: normal;
             gap: 8px;
             margin-bottom: 0;
+            padding: 24px 24px 16px;
+        }
+
+        body[class] .checkout-page .checkout-returning-panel .checkout-form {
+            padding: 0 24px 24px;
         }
 
         body[class] .checkout-page #checkout-details-layout {
@@ -1068,7 +1078,10 @@
             .checkout-customer-options,
             .checkout-channel-options { grid-template-columns: minmax(0, 1fr); gap: 10px; }
             .checkout-customer-option { min-height: 68px; padding: 13px 14px; }
-            body[class] .checkout-page .checkout-customer-choice .checkout-customer-options { padding: 14px 16px 16px; }
+            body[class] .checkout-page .checkout-customer-choice .checkout-form-title,
+            body[class] .checkout-page .checkout-returning-panel .checkout-form-title { padding: 18px 18px 14px; }
+            body[class] .checkout-page .checkout-customer-choice .checkout-customer-options { padding: 0 18px 18px; }
+            body[class] .checkout-page .checkout-returning-panel .checkout-form { padding: 0 18px 18px; }
             .checkout-returning-panel #customer-email-code-panel .d-flex { flex-direction: column; }
         }
 

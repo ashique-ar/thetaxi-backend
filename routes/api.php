@@ -2219,6 +2219,9 @@ Route::middleware(['auth:api'])->group(function () {
     */
 
     // Inquiry routes use their own view/create/edit/delete permissions in the controller.
+    Route::get('inquiries/unscoped', [InquiryController::class, 'unscoped']);
+    Route::get('inquiries/company-options', [InquiryController::class, 'companyOptions']);
+    Route::put('inquiries/{inquiry}/company-scope', [InquiryController::class, 'scopeUnassigned'])->whereUuid('inquiry');
     Route::get('inquiries/filter-options', [InquiryController::class, 'filterOptions']);
     Route::get('inquiries/assignee-options', [InquiryController::class, 'assigneeOptions']);
     Route::get('inquiries/customer-options', [InquiryController::class, 'customerOptions']);

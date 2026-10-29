@@ -23,6 +23,7 @@ use Illuminate\Http\Resources\Json\AnonymousResourceCollection;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Database\QueryException;
 use Illuminate\Support\Facades\Storage;
+use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Str;
 use App\Services\PaymentMethodSyncService;
 use App\Services\Sales\SalesAccessScope;
@@ -631,6 +632,24 @@ class CustomerController extends Controller
             ]);
             return $this->currentRelationshipOwner($customer);
         });
+
+        if ($ownerId) {
+            $latestCompletedBooking = Booking::query()->where('company_id', $companyId)
+                ->where('customer_id', $customer->id)->where('status', 'completed')->whereNotNull('completed_at')
+                ->orderByDesc('completed_at')->first();
+            if ($latestCompletedBooking) {
+                try {
+                    app(\App\Services\Sales\SalesCrmService::class)
+                        ->createRepeatBookingFollowup($latestCompletedBooking, (string) $request->user()->id);
+                } catch (\Throwable $e) {
+                    Log::error('Repeat-booking follow-up task could not be created after customer assignment', [
+                        'customer_id' => $customer->id,
+                        'booking_id' => $latestCompletedBooking->id,
+                        'error' => $e->getMessage(),
+                    ]);
+                }
+            }
+        }
 
         return response()->json(['status' => 'success', 'data' => [
             'relationship_owner' => $owner,
