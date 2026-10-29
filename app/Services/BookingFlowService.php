@@ -2345,6 +2345,7 @@ class BookingFlowService
             $booking->customer_id = $this->resolveBookingCustomerId($params);
             $this->applyCorporateBookingFields($booking, $params);
             $this->applyPortalBookingSource($booking, $params);
+            $this->assignCreatingStaffAsResponsible($booking);
             $this->applyBookingPaymentFields($booking, $params);
             $this->applyRecurringBookingFields($booking, $params);
 
@@ -3054,6 +3055,7 @@ class BookingFlowService
             $booking->booking_date = now();
             $this->applyCorporateBookingFields($booking, $params);
             $this->applyPortalBookingSource($booking, $params);
+            $this->assignCreatingStaffAsResponsible($booking);
             $this->applyBookingPaymentFields($booking, $params);
             $this->applyRecurringBookingFields($booking, $params);
 
@@ -13143,6 +13145,7 @@ class BookingFlowService
             $booking->status = 'draft';
             $this->applyCorporateBookingFields($booking, $params);
             $this->applyPortalBookingSource($booking, $params);
+            $this->assignCreatingStaffAsResponsible($booking);
             $this->applyBookingPaymentFields($booking, $params);
 
             // An incomplete draft may be saved before any trip or vehicle
@@ -13531,6 +13534,13 @@ class BookingFlowService
         } elseif (!$booking->booking_channel_id) {
             $booking->booking_channel_id = \App\Models\Booking\BookingChannel::query()
                 ->where('is_active', true)->where('is_default', true)->value('id');
+        }
+    }
+
+    private function assignCreatingStaffAsResponsible(Booking $booking): void
+    {
+        if ($booking->booking_origin === 'staff' && !$booking->responsible_user_id) {
+            $booking->responsible_user_id = $booking->created_by_user_id ?? Auth::id();
         }
     }
 
