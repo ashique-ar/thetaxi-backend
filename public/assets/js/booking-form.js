@@ -683,8 +683,8 @@
                 }
             };
 
-            start.addEventListener('change', syncEnd);
-            end.addEventListener('change', syncDays);
+            $(start).on('change', syncEnd);
+            $(end).on('change', syncDays);
             days.addEventListener('input', syncEnd);
             syncDays();
         });

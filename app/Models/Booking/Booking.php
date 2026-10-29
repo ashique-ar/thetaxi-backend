@@ -85,6 +85,10 @@ use Carbon\Carbon;
  * @property \Illuminate\Support\Carbon|null $location_updated_at
  * @property int|null $customer_rating
  * @property string|null $customer_feedback
+ * @property \Illuminate\Support\Carbon|null $customer_feedback_submitted_at
+ * @property string|null $customer_feedback_response
+ * @property \Illuminate\Support\Carbon|null $customer_feedback_responded_at
+ * @property string|null $customer_feedback_responded_by
  * @property int|null $driver_rating
  * @property string|null $driver_feedback
  * @property float|null $base_price_override

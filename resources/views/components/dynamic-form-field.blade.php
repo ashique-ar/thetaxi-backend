@@ -446,10 +446,11 @@
         <div class="booking-field">
             <label class="input-label">{{ $label }}</label>
             <div class="single-search-box">
-                <div class="custom-select-dropdown booking-number-control">
+                <div class="custom-select-dropdown" style="display: block !important; width: 100% !important; max-width: 100% !important;">
                     <input type="number" name="{{ $submitAs }}" id="{{ $elementId }}"
                        placeholder="{{ $placeholder }}"
                        value="{{ $fieldValue }}"
+                       style="width: 100% !important; max-width: 100% !important; box-sizing: border-box !important;"
                        class="@error($submitAs) is-invalid @enderror"
                        {{ $required ? 'required' : '' }}
                        @if($minimum !== null && $minimum !== '') min="{{ $minimum }}" @endif

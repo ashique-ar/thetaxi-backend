@@ -1235,7 +1235,7 @@ class CustomerController extends Controller
         $customer = $this->requireCompanyCustomer($customer);
         $feedback = Booking::query()->where('customer_id', $customer->id)
             ->whereNotNull('customer_rating')->where('status', 'completed')
-            ->with('serviceType')->orderByDesc('customer_feedback_submitted_at')->orderByDesc('updated_at');
+            ->with(['customer.user', 'serviceType'])->orderByDesc('customer_feedback_submitted_at')->orderByDesc('updated_at');
         \App\Services\CompanyBookingScope::constrain($feedback, 'bookings', $this->requireActiveCompanyId());
 
         return response()->json([
@@ -1600,14 +1600,23 @@ class CustomerController extends Controller
             'response' => ['required', 'string', 'min:10', 'max:2000'],
         ]);
 
-        $bookingQuery = Booking::query()->whereKey($feedbackId)->whereNotNull('customer_rating')->where('status', 'completed');
-        \App\Services\CompanyBookingScope::constrain($bookingQuery, 'bookings', $this->requireActiveCompanyId());
-        $booking = $bookingQuery->firstOrFail();
-        $booking->forceFill([
-            'customer_feedback_response' => trim($data['response']),
-            'customer_feedback_responded_at' => now(),
-            'customer_feedback_responded_by' => $request->user()?->id,
-        ])->save();
+        $companyId = $this->requireActiveCompanyId();
+        $booking = DB::transaction(function () use ($feedbackId, $data, $request, $companyId): Booking {
+            $bookingQuery = Booking::query()->whereKey($feedbackId)->whereNotNull('customer_rating')->where('status', 'completed')->lockForUpdate();
+            \App\Services\CompanyBookingScope::constrain($bookingQuery, 'bookings', $companyId);
+            $booking = $bookingQuery->firstOrFail();
+            $response = trim($data['response']);
+            if ($booking->customer_feedback_response) {
+                abort_unless($booking->customer_feedback_response === $response, 409, 'A response is already saved for this feedback.');
+                return $booking->fresh(['customer.user', 'serviceType']);
+            }
+            $booking->forceFill([
+                'customer_feedback_response' => $response,
+                'customer_feedback_responded_at' => now(),
+                'customer_feedback_responded_by' => $request->user()?->id,
+            ])->save();
+            return $booking->fresh(['customer.user', 'serviceType']);
+        });
         return response()->json([
             'status' => 'success',
             'message' => 'Response saved to the booking feedback.',
@@ -1623,13 +1632,16 @@ class CustomerController extends Controller
             \App\Services\CompanyBookingScope::constrain($query, 'bookings', $companyId);
             $booking = $query->firstOrFail();
             abort_unless($booking->status === 'completed', 409, 'Feedback can only be recorded for a completed booking.');
+            if ($booking->customer_rating !== null) {
+                abort_unless((int) $booking->customer_rating === (int) $data['rating']
+                    && (string) ($booking->customer_feedback ?? '') === (string) ($data['comment'] ?? ''),
+                    409, 'Feedback is already recorded for this booking. Contact a manager if it needs correction.');
+                return $booking->fresh(['customer.user', 'serviceType']);
+            }
             $booking->forceFill([
                 'customer_rating' => $data['rating'],
                 'customer_feedback' => $data['comment'] ?? null,
                 'customer_feedback_submitted_at' => now(),
-                'customer_feedback_response' => null,
-                'customer_feedback_responded_at' => null,
-                'customer_feedback_responded_by' => null,
             ])->save();
             return $booking->fresh(['customer.user', 'serviceType']);
         });
