@@ -198,12 +198,12 @@
                                 </div>
                                 <div class="checkout-form">
                                     <div class="row">
-                                        <div class="col-12" id="checkout-contact-method">
+                                        <div class="col-12" id="checkout-contact-method" @if (Auth::user()?->email) hidden @endif>
                                             <fieldset class="border-0 p-0 m-0">
                                                 <legend class="form-label fw-semibold mb-2">How should we contact you?</legend>
                                                 <div class="d-flex flex-wrap gap-2">
-                                                    <label class="btn btn-outline-secondary rounded-pill px-3"><input class="form-check-input me-1" type="radio" name="contact_method" value="mobile" @checked(old('contact_method', 'mobile') === 'mobile')> Mobile</label>
-                                                    <label class="btn btn-outline-secondary rounded-pill px-3"><input class="form-check-input me-1" type="radio" name="contact_method" value="email" @checked(old('contact_method') === 'email')> Email</label>
+                                                    <label class="btn btn-outline-secondary rounded-pill px-3"><input class="form-check-input me-1" type="radio" name="contact_method" value="mobile" @checked(old('contact_method', Auth::user()?->email ? 'email' : 'mobile') === 'mobile')> Mobile</label>
+                                                    <label class="btn btn-outline-secondary rounded-pill px-3"><input class="form-check-input me-1" type="radio" name="contact_method" value="email" @checked(old('contact_method', Auth::user()?->email ? 'email' : 'mobile') === 'email')> Email</label>
                                                 </div>
                                             </fieldset>
                                         </div>
@@ -596,6 +596,10 @@
                                                         </div>
                                                     </div>
                                                 </div>
+                                            </div>
+
+                                            <div class="alert alert-warning mb-3" id="payment-contact-requirement" role="status" hidden>
+                                                Online payment needs both an email address and mobile number. Choose Request Quotation or Pay on Check-in, if available, to continue with one contact detail.
                                             </div>
 
                                             <!-- Payment Type Alert -->
@@ -3122,6 +3126,7 @@
             });
 
             document.querySelector('#checkout-form')?.addEventListener('submit', function(e) {
+                if (phoneInput.disabled) return;
                 if (!validatePhoneNumber()) {
                     e.preventDefault();
                     e.stopImmediatePropagation();
@@ -3164,6 +3169,10 @@
             const status = document.getElementById('customer-email-code-status');
             const customerChoice = document.getElementById('checkout-customer-choice');
             const customerKindInputs = document.querySelectorAll('input[name="checkout_customer_kind"]');
+            const contactMethodInputs = document.querySelectorAll('input[name="contact_method"]');
+            const contactMethodPanel = document.getElementById('checkout-contact-method');
+            const checkoutPhoneField = document.getElementById('checkout-phone-field');
+            const checkoutEmailField = document.getElementById('checkout-email-field');
             const returningPanel = document.getElementById('returning-customer-panel');
             const detailsLayout = document.getElementById('checkout-details-layout');
             const lookupChannelInputs = document.querySelectorAll('input[name="checkout_lookup_channel"]');
@@ -3174,6 +3183,11 @@
             const csrf = document.querySelector('meta[name="csrf-token"]')?.content;
             let activeChannel = 'email';
             let hasVerifiedCustomer = @json((bool) $verifiedCheckoutCustomer);
+            const accountContactMethod = @json(Auth::user()?->email ? 'email' : null);
+            const accountHasPhone = @json(filled(Auth::user()?->phone));
+            const onlinePaymentAvailable = @json($paymentMethods->has('online'));
+            const paymentContactRequirement = document.getElementById('payment-contact-requirement');
+            const checkoutSubmitButton = document.getElementById('checkout-submit-btn');
             const cooldownUntil = { email: 0, mobile: 0 };
             let cooldownTimer = null;
 
@@ -3208,6 +3222,36 @@
                 if (detailsLayout) detailsLayout.hidden = false;
             };
             const selectedCustomerKind = () => document.querySelector('input[name="checkout_customer_kind"]:checked')?.value;
+            const syncPaymentContactRequirement = () => {
+                const paymentType = document.querySelector('input[name="payment_type"]:checked')?.value || 'full';
+                const requiresOnlineContact = onlinePaymentAvailable && ['full', 'advance'].includes(paymentType);
+                const hasEmail = Boolean(emailInput.value.trim() || accountContactMethod);
+                const hasPhone = Boolean(phoneInternationalInput.value.trim() || (accountContactMethod && accountHasPhone));
+                const blocked = requiresOnlineContact && !(hasEmail && hasPhone);
+                if (paymentContactRequirement) paymentContactRequirement.hidden = !blocked;
+                if (checkoutSubmitButton) checkoutSubmitButton.disabled = blocked;
+            };
+            const syncContactMethod = () => {
+                const method = hasVerifiedCustomer
+                    ? (emailInput.value ? 'email' : 'mobile')
+                    : (accountContactMethod || document.querySelector('input[name="contact_method"]:checked')?.value || 'mobile');
+                if (hasVerifiedCustomer || accountContactMethod) {
+                    contactMethodInputs.forEach(input => { input.checked = input.value === method; });
+                }
+                const showPhone = hasVerifiedCustomer || method === 'mobile';
+                const showEmail = hasVerifiedCustomer || method === 'email';
+                if (contactMethodPanel) contactMethodPanel.hidden = hasVerifiedCustomer || Boolean(accountContactMethod);
+                if (checkoutPhoneField) checkoutPhoneField.hidden = !showPhone;
+                if (checkoutEmailField) checkoutEmailField.hidden = !showEmail;
+                phoneInput.disabled = !showPhone;
+                emailInput.disabled = !showEmail;
+                phoneInput.required = !hasVerifiedCustomer && method === 'mobile';
+                emailInput.required = !hasVerifiedCustomer && method === 'email';
+                phoneInternationalInput.disabled = !showPhone;
+                const countryCode = document.getElementById('phone-country-code');
+                if (countryCode) countryCode.disabled = !showPhone;
+                syncPaymentContactRequirement();
+            };
             const renderCooldown = () => {
                 if (!sendCodeButton) return;
                 const remaining = Math.max(0, Math.ceil((cooldownUntil[activeChannel] - Date.now()) / 1000));
@@ -3261,12 +3305,13 @@
                     }
                 }
                 emailInput.value = customer.email || '';
-                emailInput.readOnly = true;
+                emailInput.readOnly = Boolean(customer.email);
                 const phone = window.checkoutIntlTelInput;
                 if (phone && customer.phone) phone.setNumber(customer.phone);
                 else phoneInput.value = customer.phone || '';
                 phoneInput.readOnly = Boolean(customer.phone);
                 if (window.validateCheckoutPhoneNumber) window.validateCheckoutPhoneNumber();
+                syncContactMethod();
                 resetButton.hidden = false;
                 showSavedDetailsMessage('Saved details loaded. Check them and update anything that has changed.');
             };
@@ -3286,6 +3331,9 @@
                 phoneInput.readOnly = false;
                 if (window.checkoutIntlTelInput) window.checkoutIntlTelInput.setNumber('');
                 else phoneInput.value = '';
+                const mobileChoice = document.querySelector('input[name="contact_method"][value="mobile"]');
+                if (mobileChoice) mobileChoice.checked = true;
+                syncContactMethod();
                 resetButton.hidden = true;
                 if (verifiedStatus) verifiedStatus.hidden = true;
                 const newCustomerOption = document.querySelector('input[name="checkout_customer_kind"][value="new"]');
@@ -3348,7 +3396,13 @@
                 syncCustomerChoice();
             }));
             lookupChannelInputs.forEach(input => input.addEventListener('change', syncLookupChannel));
+            contactMethodInputs.forEach(input => input.addEventListener('change', syncContactMethod));
+            document.querySelectorAll('input[name="payment_type"]').forEach(input => input.addEventListener('change', syncPaymentContactRequirement));
+            emailInput.addEventListener('input', syncPaymentContactRequirement);
+            phoneInput.addEventListener('input', syncPaymentContactRequirement);
+            phoneInternationalInput.addEventListener('change', syncPaymentContactRequirement);
             syncLookupChannel();
+            syncContactMethod();
             syncCustomerChoice();
             sendCodeButton?.addEventListener('click', requestCode);
 

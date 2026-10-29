@@ -396,53 +396,37 @@ class CheckoutController extends Controller
         );
 
         $paymentSettings = $this->resolvePaymentSettings();
-        $paymentType = $request->old('payment_type', $request->query('type', 'full'));
-        $offlinePaymentEnabled = $this->normalizeBoolean($paymentSettings['payment_offline_enabled'] ?? null, false);
+        $paymentMethods = $this->getAvailablePaymentMethods(
+            $paymentSettings['webxpay_enabled'],
+            $paymentSettings['payment_online_enabled'],
+            $paymentSettings['payment_offline_enabled']
+        );
+        $onlinePaymentEnabled = $paymentMethods->has('online');
+        $offlinePaymentEnabled = $paymentMethods->has('offline');
+        $advancePaymentEnabled = $onlinePaymentEnabled && $paymentSettings['advance_payment_enabled'];
+        $allowedPaymentTypes = ['quotation'];
+        if ($onlinePaymentEnabled) {
+            $allowedPaymentTypes[] = 'full';
+            if ($advancePaymentEnabled) $allowedPaymentTypes[] = 'advance';
+        }
+        if ($offlinePaymentEnabled) $allowedPaymentTypes[] = 'checkin';
 
-        // Validate payment type
-        $allowedPaymentTypes = ['full', 'quotation'];
-        if ($paymentSettings['advance_payment_enabled']) {
-            $allowedPaymentTypes[] = 'advance';
-        }
-        if ($offlinePaymentEnabled) {
-            $allowedPaymentTypes[] = 'checkin';
-        }
-        if (!in_array($paymentType, $allowedPaymentTypes, true)) {
-            $paymentType = 'full';
-        }
-        if (!$paymentSettings['advance_payment_enabled'] && $paymentType === 'advance') {
-            $paymentType = 'full';
-        }
-        if (!$offlinePaymentEnabled && $paymentType === 'checkin') {
-            $paymentType = 'full';
+        $paymentType = $request->old('payment_type', $request->query('type', 'full'));
+        if (! in_array($paymentType, $allowedPaymentTypes, true)) {
+            $paymentType = $onlinePaymentEnabled ? 'full' : ($offlinePaymentEnabled ? 'checkin' : 'quotation');
         }
 
         // Get dynamic T&C grouped by service type and payment type based on cart items
         $termsByService = $this->getCheckoutServiceTerms($cart);
         $termsByPaymentType = [];
 
-        $availablePaymentTypes = ['full', 'quotation'];
-        if ($paymentSettings['advance_payment_enabled']) {
-            $availablePaymentTypes[] = 'advance';
-        }
-        if ($offlinePaymentEnabled) {
-            $availablePaymentTypes[] = 'checkin';
-        }
-
-        foreach ($availablePaymentTypes as $type) {
+        foreach ($allowedPaymentTypes as $type) {
             $paymentTerms = TermsAndCondition::getPaymentTermsForCheckout($type);
             if ($paymentTerms && $paymentTerms->count()) {
                 $termsByPaymentType[$type] = $paymentTerms;
             }
         }
 
-        $paymentMethods = $this->getAvailablePaymentMethods(
-            $paymentSettings['webxpay_enabled'],
-            $paymentSettings['payment_online_enabled'],
-            $paymentSettings['payment_offline_enabled']
-        );
-
-        $advancePaymentEnabled = $paymentSettings['advance_payment_enabled'];
         $advancePercentage = $paymentSettings['advance_payment_percentage'];
         $advanceMinAmount = $this->currencyService->convertFromLKR(
             $paymentSettings['advance_payment_min_amount'],
@@ -582,7 +566,9 @@ class CheckoutController extends Controller
         if (is_string($request->input('email'))) {
             $request->merge(['email' => strtolower($request->input('email'))]);
         }
-        $contactMethod = Auth::check() ? 'email' : $request->input('contact_method', 'mobile');
+        $contactMethod = Auth::check() && filled(Auth::user()->email)
+            ? 'email'
+            : $request->input('contact_method', 'mobile');
         if (! in_array($contactMethod, ['email', 'mobile'], true)) {
             $contactMethod = 'mobile';
         }
@@ -652,12 +638,16 @@ class CheckoutController extends Controller
         $messages = [
             'first_name.required' => 'Please enter your first name.',
             'phone.required' => 'Please enter your phone number.',
+            'phone.required_if' => 'Please enter your mobile number.',
             'phone.min' => 'Phone number is too short.',
             'phone.regex' => 'Enter a valid phone number with at least five digits.',
             'phone_country_code.required' => 'Please select a valid country for your phone number.',
+            'phone_country_code.required_if' => 'Please select the country for your mobile number.',
             'phone_international.required' => 'Please enter a valid international phone number.',
+            'phone_international.required_if' => 'Please enter a valid mobile number.',
             'phone_international.regex' => 'Please enter a valid international phone number format with country code.',
             'email.required' => 'Please enter your email address.',
+            'email.required_if' => 'Please enter your email address.',
             'email.email' => 'Please enter a valid email address.',
             'first_name.regex' => 'Enter a name containing at least one letter. Numbers or punctuation alone are not accepted.',
             'last_name.regex' => 'Enter a name containing at least one letter. Numbers or punctuation alone are not accepted.',
@@ -687,6 +677,15 @@ class CheckoutController extends Controller
                     || $this->normalizeCheckoutMobile((string) $verifiedCustomer->user->phone, $phoneCallingCode) === $submittedMobile))) {
                 throw ValidationException::withMessages(['email' => ['For a returning customer, keep the saved email and mobile number. You can update the other details below.']]);
             }
+        }
+
+        if (in_array($validated['payment_type'], ['full', 'advance'], true)
+            && in_array('online', $allowedPaymentMethodKeys, true)
+            && (! filled($validated['email'] ?? Auth::user()?->email)
+                || ! filled($validated['phone_international'] ?? $validated['phone'] ?? Auth::user()?->phone))) {
+            throw ValidationException::withMessages([
+                'payment_type' => ['Online payment needs both an email address and mobile number. Choose Request Quotation or Pay on Check-in if available.'],
+            ]);
         }
 
         // Automatically set payment method based on payment type
@@ -738,14 +737,14 @@ class CheckoutController extends Controller
         // Recalculate totals and revalidate any applied portal-owned promo code
         // against the current cart and existing customer before creating a booking.
         $checkoutEmail = mb_strtolower(trim((string) ($validated['email'] ?? '')));
-        $emailIdentityConfirmed = (Auth::check()
+        $emailIdentityConfirmed = filled($checkoutEmail) && ((Auth::check()
                 && mb_strtolower(trim((string) Auth::user()->email)) === $checkoutEmail)
             || ($customerLookupEnabled
                 && mb_strtolower(trim((string) session('checkout_verified_email'))) === $checkoutEmail
-                && now()->timestamp - (int) session('checkout_verified_email_at', 0) <= 1800);
-        $existingCustomer = $emailIdentityConfirmed
-            ? $this->customerService->getCustomerByEmail($validated['email'])
-            : null;
+                && now()->timestamp - (int) session('checkout_verified_email_at', 0) <= 1800));
+        $existingCustomer = Auth::check()
+            ? $this->customerService->customerForUser(Auth::user())
+            : ($emailIdentityConfirmed ? $this->customerService->getCustomerByEmail($validated['email']) : null);
         if (! $existingCustomer && $customerLookupEnabled && $this->hasRecentCheckoutVerification()) {
             $existingCustomer = Customer::query()->find(session('checkout_verified_customer_id'));
         }
@@ -790,7 +789,7 @@ class CheckoutController extends Controller
             $validated['customer_name'] = trim($validated['first_name'] . ' ' . $validated['last_name']);
             $validated['customer_email'] = $validated['email'] ?? null;
             // Use international format phone number for payment gateway
-            $validated['customer_phone'] = $validated['phone_international'] ?? $validated['phone'] ?? null;
+            $validated['customer_phone'] = $validated['phone_international'] ?? $validated['phone'] ?? Auth::user()?->phone;
             $validated['customer_address'] = $validated['address'];
             $validated['customer_city'] = $validated['city'];
             $validated['customer_country'] = $validated['country'];

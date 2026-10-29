@@ -9,6 +9,7 @@ use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Str;
 use Illuminate\Validation\ValidationException;
+use App\Support\PhoneNumberMatch;
 
 /**
  * CustomerService - Manages customer creation and profile management
@@ -89,7 +90,7 @@ class CustomerService
             }
 
             // No existing user or customer - create new ones
-            if ($phone && $this->getCustomerByPhone($phone)) {
+            if ($phone && $this->getCustomerByPhone($phone, $data['phone_country_code'] ?? null)) {
                 throw ValidationException::withMessages([
                     'phone' => ['This mobile number is linked to an existing customer. Choose “Returning customer” and verify it, or use a different number.'],
                 ]);
@@ -219,7 +220,7 @@ class CustomerService
             }
         }
 
-        $phoneCustomer = $this->getCustomerByPhone((string) ($data['customer_phone'] ?? ''));
+        $phoneCustomer = $this->getCustomerByPhone((string) ($data['customer_phone'] ?? ''), $data['phone_country_code'] ?? null);
         if ($phoneCustomer) {
             $verifiedCustomerId = (string) session('checkout_verified_customer_id', '');
             $verifiedMobile = preg_replace('/\D+/', '', (string) session('checkout_verified_customer_mobile', ''));
@@ -234,6 +235,9 @@ class CustomerService
 
             if (! $phoneCustomer->user || $phoneCustomer->user->trashed() || ! $phoneCustomer->user->is_active) {
                 throw ValidationException::withMessages(['phone' => ['This customer profile is inactive. Please contact the business before booking with this number.']]);
+            }
+            if (! $phoneCustomer->user->is_guest && ! $phoneCustomer->user->hasRole('customer')) {
+                throw ValidationException::withMessages(['phone' => ['This mobile number belongs to a non-customer account. Please contact the business or use a different number.']]);
             }
             return $this->updateCustomerProfile($phoneCustomer, $data)->load('user');
         }
@@ -263,14 +267,30 @@ class CustomerService
         return $customerId ? Customer::query()->with('user')->find($customerId) : null;
     }
 
-    private function getCustomerByPhone(string $phone): ?Customer
+    private function getCustomerByPhone(string $phone, ?string $callingCode = null): ?Customer
     {
         $digits = preg_replace('/\D+/', '', trim($phone)) ?? '';
         if (str_starts_with($digits, '00')) $digits = substr($digits, 2);
         if ($digits === '') return null;
 
-        $user = User::query()->whereIn('phone', ['+'.$digits, '00'.$digits, $digits])->first();
-        return $user ? $this->customerForUser($user)?->load('user') : null;
+        $callingCode = preg_replace('/\D+/', '', (string) $callingCode) ?: null;
+        $nationalNumber = $callingCode && str_starts_with($digits, $callingCode) ? substr($digits, strlen($callingCode)) : '';
+        $candidates = array_values(array_filter(array_unique([$digits, $nationalNumber])));
+        $users = User::query()->whereRaw(
+            PhoneNumberMatch::sqlExpression('users.phone', $callingCode).' IN ('.implode(',', array_fill(0, count($candidates), '?')).')',
+            $candidates
+        )->limit(2)->get();
+        if ($users->isEmpty()) return null;
+        if ($users->count() !== 1) {
+            throw ValidationException::withMessages(['phone' => ['This mobile number is shared by more than one profile. Please contact the booking team so they can find the right customer.']]);
+        }
+
+        $user = $users->first();
+        $customer = $this->customerForUser($user);
+        if (! $customer) {
+            throw ValidationException::withMessages(['phone' => ['This mobile number is already used by another account. Please contact the booking team or use a different number.']]);
+        }
+        return $customer->load('user');
     }
 
     /**
