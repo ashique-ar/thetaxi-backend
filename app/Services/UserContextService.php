@@ -37,6 +37,7 @@ class UserContextService
         'customer' => ['customer'],
         'driver' => ['driver'],
         'staff' => ['staff'],
+        'staff-operations' => ['staff'],
         'accountant' => ['staff'],
         'admin-mkt' => ['staff'],
         'data-entry' => ['staff'],

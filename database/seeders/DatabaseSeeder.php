@@ -29,6 +29,7 @@ class DatabaseSeeder extends Seeder
             ThemeOneCompanySeeder::class,
             ThemeFourCompanySeeder::class,
             StaffSeeder::class,
+            StaffOperationalAccessSeeder::class,
             StaffRoleContextSeeder::class,
 
             // HR module defaults. Each is idempotent and safe to re-run; order

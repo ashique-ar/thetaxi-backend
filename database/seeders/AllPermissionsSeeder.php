@@ -614,6 +614,24 @@ class AllPermissionsSeeder extends Seeder
     private function seedBaselineRoles(string $guard, array $allPermissions, array $permissionModels): void
     {
         $rolePermissions = [
+            'staff-operations' => array_values(array_unique(array_merge(
+                $this->matchingPermissions(
+                    $allPermissions,
+                    '/^(bookings|booking-[a-z-]+|vehicles|vehicle-[a-z-]+|drivers|driver-[a-z-]+|driving-licen[cs]es|driving-licen[cs]e-types)\./'
+                ),
+                [
+                    'view_all_bookings',
+                    'create_bookings',
+                    'create_bookings_for_others',
+                    'approve_bookings',
+                    'customers.view',
+                    'customers.create',
+                    'customers.edit',
+                    'service-types.view',
+                    'service-packages.view',
+                    'addons.view',
+                ]
+            ))),
             'manager' => $this->permissionsForTemplate('manager', $allPermissions),
             'dispatcher' => $this->permissionsForTemplate('dispatcher', $allPermissions),
             'customer-support' => $this->permissionsForTemplate('customer-support', $allPermissions),
