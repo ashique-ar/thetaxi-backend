@@ -806,7 +806,8 @@ trait BookingSubmissionTrait
 
             if ($newOwnerId !== null) {
                 $eligible = DB::table('staff')->join('users', 'users.id', '=', 'staff.user_id')
-                    ->where('staff.company_id', $companyId)->where('users.id', $newOwnerId)
+                    ->where(fn ($company) => \\App\\Services\\CompanyIdScope::constrain($company, 'staff.company_id', $companyId))
+                    ->where('users.id', $newOwnerId)
                     ->whereNull('staff.deleted_at')->whereNull('staff.employment_ended_at')
                     ->whereNull('users.deleted_at')->where('users.is_active', true)
                     ->lockForUpdate()->exists()

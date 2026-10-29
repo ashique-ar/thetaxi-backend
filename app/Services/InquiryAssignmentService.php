@@ -10,7 +10,8 @@ class InquiryAssignmentService
     public function eligibleAssignees(string $companyId)
     {
         return DB::table('staff')->join('users', 'users.id', '=', 'staff.user_id')
-            ->where('staff.company_id', $companyId)->whereNull('staff.deleted_at')->whereNull('staff.employment_ended_at')
+            ->where('staff.company_id', $companyId)->whereNull('staff.deleted_at')
+            ->where(fn ($employment) => $employment->whereNull('staff.employment_ended_at')->orWhere('staff.employment_ended_at', '>', now()))
             ->whereNull('users.deleted_at')->where('users.is_active', true)
             ->whereIn('users.id', User::permission('inquiries.view')->select('id'));
     }

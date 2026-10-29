@@ -10,6 +10,7 @@ use App\Models\Agent\Agent;
 use App\Models\Vehicle\Vehicle;
 use App\Models\Booking\Booking;
 use App\Services\CompanyBookingScope;
+use App\Services\CompanyIdScope;
 use App\Services\CompanyCustomerScope;
 use App\Services\CompanySettingsAccessService;
 use App\Services\WebsiteSettingsService;
@@ -436,13 +437,14 @@ class AnalyticsController extends Controller
     private function companyDriverQuery(string $companyId)
     {
         return Driver::query()->whereExists(fn ($staff) => $staff->selectRaw('1')->from('staff')
-            ->whereColumn('staff.user_id', 'drivers.user_id')->where('staff.company_id', $companyId)
+            ->whereColumn('staff.user_id', 'drivers.user_id')
+            ->where(fn ($company) => CompanyIdScope::constrain($company, 'staff.company_id', $companyId))
             ->whereNull('staff.deleted_at')->whereNull('staff.employment_ended_at'));
     }
 
     private function companyVehicleQuery(string $companyId)
     {
-        return Vehicle::query()->where('vehicles.company_id', $companyId);
+        return Vehicle::query()->where(fn ($company) => CompanyIdScope::constrain($company, 'vehicles.company_id', $companyId));
     }
 
     private function companyAgentQuery(string $companyId)

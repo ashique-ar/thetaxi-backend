@@ -20,7 +20,7 @@ class CompanySettingsAccessService
                 ->where('context.is_active', true)
                 ->whereNull('context.deleted_at')
                 ->where('staff.user_id', $user->id)
-                ->where('staff.company_id', $companyId)
+                ->where(fn ($company) => CompanyIdScope::constrain($company, 'staff.company_id', $companyId))
                 ->whereNull('staff.deleted_at')
                 ->where(fn ($employment) => $employment->whereNull('staff.employment_ended_at')->orWhere('staff.employment_ended_at', '>', now()))
                 ->exists();
@@ -48,7 +48,7 @@ class CompanySettingsAccessService
             ->where('context.is_active', true)
             ->whereNull('context.deleted_at')
             ->where('staff.user_id', $user->id)
-            ->where('staff.company_id', $companyId)
+            ->where(fn ($company) => CompanyIdScope::constrain($company, 'staff.company_id', $companyId))
             ->whereNull('staff.deleted_at')
             ->where(fn ($employment) => $employment->whereNull('staff.employment_ended_at')->orWhere('staff.employment_ended_at', '>', now()));
 

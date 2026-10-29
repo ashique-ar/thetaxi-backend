@@ -6,6 +6,7 @@ use App\Models\Sales\SalesProfile;
 use App\Models\User;
 use App\Services\PermissionEvaluator;
 use App\Services\CompanySettingsAccessService;
+use App\Services\CompanyIdScope;
 use App\Services\SingleCompanyScope;
 use App\Services\WebsiteSettingsService;
 use Illuminate\Database\Eloquent\Builder;
@@ -269,7 +270,6 @@ class SalesAccessScope
             return false;
         }
 
-        $defaultCompanyId = app(SingleCompanyScope::class)->activeDefaultCompany()?->id;
         return DB::table('user_contexts as context')
             ->join('staff', 'staff.id', '=', 'context.context_id')
             ->where('context.user_id', $user->id)
@@ -280,8 +280,7 @@ class SalesAccessScope
             ->where('staff.user_id', $user->id)
             ->whereNull('staff.deleted_at')
             ->where(fn ($query) => $query->whereNull('staff.employment_ended_at')->orWhere('staff.employment_ended_at', '>', now()))
-            ->where(fn ($query) => $query->where('staff.company_id', $companyId)
-                ->orWhere(fn ($unassigned) => $unassigned->whereNull('staff.company_id')->whereRaw('? = ?', [$defaultCompanyId, $companyId])))
+            ->where(fn ($company) => CompanyIdScope::constrain($company, 'staff.company_id', $companyId))
             ->exists();
     }
 
