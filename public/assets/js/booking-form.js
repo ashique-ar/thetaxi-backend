@@ -61,23 +61,26 @@
      * Initialize the booking form
      */
     function init() {
-        setupServiceSwitcher();
-        setupAirportTransfer();
-        setupDropPickup();
-        setupCustomTour();
-        setupFormValidation();
-        setupDateTimePickers();
-        setupFormAnimations();
-        initializeLocationPlaceholderExamples();
-        loadMapsAPI();
-        initializeDatePickers();
-        document.querySelectorAll('.filter-input[data-field-defaults]').forEach(applyConfiguredSearchDefaults);
-        setDefaultDatesAndLocations();
-        hideFreshDynamicFormDefaults();
-        setupAdvanceBookingConstraints();
-        setupDefaultEndDates();
-        setupEndTimeConstraints();
-        setupConfiguredDateDurations();
+        try {
+            setupServiceSwitcher();
+            setupAirportTransfer();
+            setupDropPickup();
+            setupCustomTour();
+            setupFormValidation();
+            setupDateTimePickers();
+            setupFormAnimations();
+            initializeLocationPlaceholderExamples();
+            loadMapsAPI();
+            initializeDatePickers();
+            document.querySelectorAll('.filter-input[data-field-defaults]').forEach(applyConfiguredSearchDefaults);
+            setDefaultDatesAndLocations();
+            hideFreshDynamicFormDefaults();
+            setupAdvanceBookingConstraints();
+            setupDefaultEndDates();
+            setupEndTimeConstraints();
+        } finally {
+            setupConfiguredDateDurations();
+        }
     }
 
     /**

@@ -443,9 +443,9 @@
             $minimum = data_get($field, 'validation.min');
             $maximum = data_get($field, 'validation.max');
         @endphp
-        <div class="booking-field">
+        <div class="booking-field" style="width: 100% !important; min-width: 0 !important;">
             <label class="input-label">{{ $label }}</label>
-            <div class="single-search-box">
+            <div class="single-search-box" style="width: 100% !important; min-width: 0 !important;">
                 <div class="custom-select-dropdown" style="display: block !important; width: 100% !important; max-width: 100% !important;">
                     <input type="number" name="{{ $submitAs }}" id="{{ $elementId }}"
                        placeholder="{{ $placeholder }}"

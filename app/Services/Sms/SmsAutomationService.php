@@ -9,6 +9,7 @@ use App\Models\DriverAssignment;
 use App\Models\Inquiry;
 use App\Models\Sms\SmsMessage;
 use Illuminate\Support\Carbon;
+use Illuminate\Support\Facades\URL;
 
 class SmsAutomationService
 {
@@ -702,6 +703,9 @@ class SmsAutomationService
                 ?? $booking->amount_to_pay
                 ?? $items->sum('total_price')
             ), 2, '.', ','),
+            'feedback_url' => $booking->status === 'completed'
+                ? URL::temporarySignedRoute('booking.feedback.show', now()->addDays(30), ['booking' => $booking->id])
+                : '',
         ];
     }
 

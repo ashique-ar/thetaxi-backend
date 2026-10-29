@@ -3,6 +3,7 @@
 use App\Http\Controllers\Api\FileUploadController;
 use App\Http\Controllers\Api\Service\ServicePackageController;
 use App\Http\Controllers\BookingController;
+use App\Http\Controllers\CustomerBookingFeedbackController;
 use App\Http\Controllers\CustomerBookingStatusController;
 use App\Http\Controllers\CartController;
 use App\Http\Controllers\CheckoutController;
@@ -41,6 +42,11 @@ Route::post('/newsletter/subscribe', function (Request $request, WebsiteSettings
 
 // Short URL redirects - must be early in routes to avoid conflicts
 Route::get('/s/{code}', [ShortUrlController::class, 'redirect'])->name('short-url.redirect');
+
+Route::get('/booking/feedback/{booking}', [CustomerBookingFeedbackController::class, 'show'])
+    ->middleware('signed')->whereUuid('booking')->name('booking.feedback.show');
+Route::post('/booking/feedback/{booking}', [CustomerBookingFeedbackController::class, 'store'])
+    ->middleware(['signed', 'throttle:10,1'])->whereUuid('booking')->name('booking.feedback.store');
 
 // Dynamic robots.txt based on SEO_INDEXABLE environment variable
 Route::get('/robots.txt', function () {
