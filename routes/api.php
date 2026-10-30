@@ -2144,10 +2144,12 @@ Route::middleware(['auth:api'])->group(function () {
     |--------------------------------------------------------------------------
     */
 
+    Route::middleware(['business.module:driver', 'permission:drivers.onboarding.view'])
+        ->get('driver-onboarding-applications', [OnboardingController::class, 'index']);
+    Route::post('driver-onboarding-applications/{application}/review', [OnboardingController::class, 'review'])
+        ->middleware(['business.module:driver', 'permission:drivers.onboarding.view', 'permission:drivers.onboarding.manage']);
+
     Route::middleware(['business.module:driver', 'permission:drivers.view'])->group(function () {
-        Route::get('driver-onboarding-applications', [OnboardingController::class, 'index']);
-        Route::post('driver-onboarding-applications/{application}/review', [OnboardingController::class, 'review'])
-            ->middleware('permission:drivers.edit');
         // Driver status and location endpoints (place specific routes before resource registration)
         Route::get('drivers/locations', [DriverController::class, 'locations']);
         Route::get('drivers/realtime-status', [DriverController::class, 'realTimeStatus']);

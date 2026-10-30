@@ -2,6 +2,7 @@
 
 namespace Database\Seeders;
 
+use App\Services\PermissionRegistry;
 use Illuminate\Database\Seeder;
 use Spatie\Permission\Models\Permission;
 use Spatie\Permission\Models\Role;
@@ -192,6 +193,8 @@ class AllPermissionsSeeder extends Seeder
         'customers.feedback',
         'customers.loyalty',
         'drivers.onboarding-drafts.view',
+        'drivers.onboarding.view',
+        'drivers.onboarding.manage',
         'gamification.bulk-give-points',
         'gamification.give-points',
         'gamification.reset-points',
@@ -558,15 +561,23 @@ class AllPermissionsSeeder extends Seeder
         }
 
         foreach (self::GUARDS as $guard) {
+            $permissionModels[$guard] = Permission::query()
+                ->where('guard_name', $guard)
+                ->get()
+                ->keyBy('name')
+                ->all();
+            $allGuardPermissionNames = array_keys($permissionModels[$guard]);
+
             $admin = Role::firstOrCreate(['name' => 'admin', 'guard_name' => $guard]);
-            $this->addPermissionsToRole($admin, $permissionNames, $permissionsByGuard[$guard]);
+            $this->addPermissionsToRole($admin, $allGuardPermissionNames, $permissionModels[$guard]);
             $this->revokePermissionsFromRole($admin, $this->adminOnlyRestrictions($permissionNames), $permissionsByGuard[$guard]);
+            $this->revokeAnyAdminOnlyPermissions($admin);
 
             $masterAdmin = Role::firstOrCreate(['name' => 'super-admin', 'guard_name' => $guard]);
-            $this->addPermissionsToRole($masterAdmin, $permissionNames, $permissionsByGuard[$guard]);
+            $this->addPermissionsToRole($masterAdmin, $allGuardPermissionNames, $permissionModels[$guard]);
 
-            $this->seedBaselineRoles($guard, $permissionNames, $permissionsByGuard[$guard]);
-            $this->mapLegacyCommunicationPermissions($guard, $permissionsByGuard[$guard]);
+            $this->seedBaselineRoles($guard, $permissionNames, $permissionModels[$guard]);
+            $this->mapLegacyCommunicationPermissions($guard, $permissionModels[$guard]);
         }
 
         $registrar->forgetCachedPermissions();
@@ -636,6 +647,7 @@ class AllPermissionsSeeder extends Seeder
                     'bookings.process_return', 'bookings.qc_inspect', 'bookings.complete_repairs',
                     'view_all_bookings', 'create_bookings', 'create_bookings_for_others', 'approve_bookings',
                     'dashboard.view', 'customers.view', 'customers.create', 'customers.edit',
+                    'drivers.onboarding.view', 'drivers.onboarding.manage', 'drivers.onboarding-drafts.view',
                     'service-types.view', 'service-packages.view', 'addons.view',
                 ]
             ))),
@@ -1585,12 +1597,21 @@ class AllPermissionsSeeder extends Seeder
         }
     }
 
+    private function revokeAnyAdminOnlyPermissions(Role $role): void
+    {
+        $restricted = $role->permissions()
+            ->get()
+            ->filter(fn (Permission $permission) => PermissionRegistry::isAdminOnlyPermissionName($permission->name))
+            ->values();
+
+        if ($restricted->isNotEmpty()) {
+            $role->revokePermissionTo($restricted);
+        }
+    }
+
     private function adminOnlyRestrictions(array $permissions): array
     {
-        return array_values(array_filter($permissions, fn (string $permission) =>
-            preg_match('/^(system|website-settings)\./', $permission) === 1
-            || $permission === 'view_audit_log'
-        ));
+        return array_values(array_filter($permissions, PermissionRegistry::isAdminOnlyPermissionName(...)));
     }
 
     private function permissionsForTemplate(string $templateName, array $permissions): array

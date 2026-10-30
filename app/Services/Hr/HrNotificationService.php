@@ -74,7 +74,7 @@ class HrNotificationService
 
             $id = (string) Str::uuid();
             $outbox = [
-                'id' => $id, 'company_id' => null, 'template_version_id' => $template->id,
+                'id' => $id, 'template_version_id' => $template->id,
                 'recipient_staff_id' => $staffId, 'recipient_user_id' => $staff->user_id,
                 'event_type' => $eventType, 'channel' => $channel, 'source_type' => $sourceType,
                 'source_id' => $sourceId, 'encrypted_rendered_payload' => encrypt($payload),

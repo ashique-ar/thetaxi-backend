@@ -137,6 +137,13 @@ class AppServiceProvider extends ServiceProvider
         // "This action is unauthorized." errors where older code checks use the
         // hyphen naming convention while permissions are stored as resource.operation.
         Gate::before(function ($user, $ability) {
+            if (is_string($ability)
+                && \App\Services\PermissionRegistry::isAdminOnlyPermissionName($ability)
+                && ! $user->roles()->where('name', 'super-admin')
+                    ->where('guard_name', config('permissions.canonical_guard', 'api'))->exists()) {
+                return false;
+            }
+
             if (!is_string($ability)) {
                 return null;
             }

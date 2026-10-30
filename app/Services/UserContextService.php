@@ -1149,12 +1149,29 @@ class UserContextService
             ->unique('id')
             ->values();
 
+        $isMasterAdmin = $user->roles()
+            ->where('name', 'super-admin')
+            ->where('guard_name', config('permissions.canonical_guard', 'api'))
+            ->exists();
+        if (! $isMasterAdmin) {
+            $permissions = $permissions->reject(fn ($permission) =>
+                PermissionRegistry::isAdminOnlyPermissionName((string) $permission->name)
+            );
+        }
+
         if ($permissions->isNotEmpty()) {
             return $this->formatPermissionCollection($permissions);
         }
 
         if ($this->shouldFallbackToGlobalPermissions($user, $userContext)) {
-            return $this->formatPermissionCollection($user->getAllPermissions());
+            $permissions = $user->getAllPermissions();
+            if (! $isMasterAdmin) {
+                $permissions = $permissions->reject(fn ($permission) =>
+                    PermissionRegistry::isAdminOnlyPermissionName((string) $permission->name)
+                );
+            }
+
+            return $this->formatPermissionCollection($permissions);
         }
 
         return [];

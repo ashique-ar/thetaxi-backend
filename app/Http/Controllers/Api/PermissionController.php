@@ -6,15 +6,26 @@ use App\Http\Controllers\Controller;
 use App\Http\Requests\Permission\CreatePermissionRequest;
 use App\Http\Requests\Permission\UpdatePermissionRequest;
 use App\Http\Resources\PermissionResource;
+use App\Services\PermissionAssignmentService;
 use App\Services\PermissionRegistry;
 use Spatie\Permission\Models\Permission;
+use Spatie\Permission\Models\Role;
 use Spatie\Permission\PermissionRegistrar;
 use Illuminate\Http\Request;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Resources\Json\AnonymousResourceCollection;
+use Illuminate\Validation\ValidationException;
 
 class PermissionController extends Controller
 {
+    public function __construct(private PermissionAssignmentService $assignmentService)
+    {
+        $this->middleware('permission:permissions.view')->only(['index', 'show']);
+        $this->middleware('permission:permissions.create')->only(['store']);
+        $this->middleware('permission:permissions.edit')->only(['update']);
+        $this->middleware('permission:permissions.delete')->only(['destroy']);
+    }
+
     public function registry(Request $request, PermissionRegistry $registry): JsonResponse
     {
         $guard = config('permissions.canonical_guard', 'api');
@@ -23,14 +34,6 @@ class PermissionController extends Controller
             'status' => 'success',
             'data' => $registry->grouped($guard),
         ]);
-    }
-
-    public function __construct()
-    {
-        $this->middleware('permission:permissions.view')->only(['index', 'show']);
-        $this->middleware('permission:permissions.create')->only(['store']);
-        $this->middleware('permission:permissions.edit')->only(['update']);
-        $this->middleware('permission:permissions.delete')->only(['destroy']);
     }
 
     /**
@@ -75,6 +78,7 @@ class PermissionController extends Controller
             $data = $request->validated();
 
             $data['guard_name'] = $data['guard_name'] ?? config('permissions.canonical_guard', 'api');
+            $this->assignmentService->assertCanManageProtectedPermissions([$data['name']]);
 
             \DB::beginTransaction();
             try {
@@ -85,6 +89,19 @@ class PermissionController extends Controller
                     'display_name' => $data['display_name'] ?? null,
                     'description' => $data['description'] ?? null,
                 ]);
+
+                $masterAdmin = Role::firstOrCreate([
+                    'name' => 'super-admin',
+                    'guard_name' => $data['guard_name'],
+                ]);
+                $masterAdmin->givePermissionTo($permission);
+
+                if (! PermissionRegistry::isAdminOnlyPermissionName($permission->name)) {
+                    Role::firstOrCreate([
+                        'name' => 'admin',
+                        'guard_name' => $data['guard_name'],
+                    ])->givePermissionTo($permission);
+                }
 
                 \DB::commit();
             } catch (\Exception $e) {
@@ -101,6 +118,8 @@ class PermissionController extends Controller
                     'permission' => new PermissionResource($permission),
                 ]
             ], 201);
+        } catch (ValidationException $e) {
+            throw $e;
         } catch (\Exception $e) {
             return response()->json([
                 'status' => 'error',
@@ -138,9 +157,14 @@ class PermissionController extends Controller
     public function update(UpdatePermissionRequest $request, Permission $permission): JsonResponse
     {
         $this->protectCanonicalPermission($permission);
+        $data = $request->validated();
+        $this->assignmentService->assertCanManageProtectedPermissions(array_filter([
+            $permission->name,
+            $data['name'] ?? null,
+        ]));
 
         try {
-            $permission->update($request->validated());
+            $permission->update($data);
             app(PermissionRegistrar::class)->forgetCachedPermissions();
 
             return response()->json([
@@ -168,6 +192,7 @@ class PermissionController extends Controller
     public function destroy(Permission $permission): JsonResponse
     {
         $this->protectCanonicalPermission($permission);
+        $this->assignmentService->assertCanManageProtectedPermissions([$permission->name]);
 
         try {
             // Check if permission is being used by any roles or users

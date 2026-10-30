@@ -13,6 +13,7 @@ use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Resources\Json\AnonymousResourceCollection;
 use Illuminate\Http\Request;
 use Illuminate\Support\Collection;
+use Illuminate\Support\Facades\DB;
 use Illuminate\Validation\Rule;
 use Illuminate\Validation\ValidationException;
 use Spatie\Permission\Models\Permission;
@@ -48,6 +49,8 @@ class RoleController extends Controller
         $query = Role::with('permissions');
         $query->whereRaw('LOWER(name) NOT LIKE ?', ['corporate%'])
             ->whereRaw('LOWER(name) NOT IN (?, ?)', ['transport_coordinator', 'approval_manager']);
+        $query->where(fn ($roles) => $roles->whereNull('context_types')
+            ->orWhereJsonDoesntContain('context_types', 'corporate'));
 
         if ($request->filled('search')) {
             $query->where('name', 'like', '%' . $request->search . '%');
@@ -147,6 +150,10 @@ class RoleController extends Controller
 
         try {
             $data = $request->validated();
+            if (in_array($role->name, ['admin', 'super-admin'], true)
+                && isset($data['name']) && $data['name'] !== $role->name) {
+                throw ValidationException::withMessages(['name' => 'The canonical system role name cannot be changed.']);
+            }
             if (isset($data['name']) && CorporateRoleStarterService::isCorporateRoleName($data['name'])) {
                 throw ValidationException::withMessages(['name' => 'Corporate roles must be managed in Corporate Management.']);
             }
@@ -205,7 +212,10 @@ class RoleController extends Controller
 
         try {
             // Check if role is being used by any users
-            if ($role->users()->exists()) {
+            if ($role->users()->exists()
+                || DB::table('model_has_roles')->where('role_id', $role->id)->exists()
+                || DB::table('user_context_roles')->where('role_id', $role->id)->exists()
+                || DB::table('user_direct_role_grants')->where('role_id', $role->id)->exists()) {
                 return response()->json([
                     'status' => 'error',
                     'message' => 'Cannot delete role that is assigned to users'
@@ -313,6 +323,8 @@ class RoleController extends Controller
                 'status' => 'success',
                 'message' => 'Permissions revoked successfully'
             ]);
+        } catch (ValidationException $e) {
+            throw $e;
         } catch (\Exception $e) {
             return response()->json([
                 'status' => 'error',
@@ -496,6 +508,7 @@ class RoleController extends Controller
     {
         abort_unless($role->guard_name === config('permissions.canonical_guard', 'api'), 404, 'Role not found.');
         abort_if(CorporateRoleStarterService::isCorporateRoleName($role->name), 404, 'Role not found.');
+        abort_if($this->isCorporateScopedRole($role), 404, 'Role not found.');
 
         if (in_array($role->name, ['admin', 'super-admin'], true)) {
             $actorRoles = request()->user()?->roles()
@@ -508,6 +521,16 @@ class RoleController extends Controller
 
             abort_unless($canManage, 403, 'You are not allowed to manage this system role.');
         }
+    }
+
+    private function isCorporateScopedRole(Role $role): bool
+    {
+        $contextTypes = $role->context_types;
+        if (is_string($contextTypes)) {
+            $contextTypes = json_decode($contextTypes, true);
+        }
+
+        return is_array($contextTypes) && in_array('corporate', $contextTypes, true);
     }
 
     private function extractContextData(array &$data): array

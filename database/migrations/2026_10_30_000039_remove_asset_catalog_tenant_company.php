@@ -22,33 +22,62 @@ return new class extends Migration
             }
             $existingColumnSets = array_map(static fn (array $index): array => $index['columns'], Schema::getIndexes($tableName));
             foreach (Schema::getIndexes($tableName) as $index) {
-                if ($index['type'] === 'primary' || ! in_array('company_id', $index['columns'], true)) {
+                if (($index['primary'] ?? false) || $index['type'] === 'primary' || ! in_array('company_id', $index['columns'], true)) {
                     continue;
                 }
                 TenantIndexDropper::drop($tableName, $index);
                 $columns = array_values(array_diff($index['columns'], ['company_id']));
-                if ($index['type'] === 'unique' || $columns === [] || in_array($columns, $existingColumnSets, true)) {
+                if (($index['unique'] ?? false) || $index['type'] === 'unique' || $columns === [] || in_array($columns, $existingColumnSets, true)) {
                     continue;
                 }
-                Schema::table($tableName, fn (Blueprint $table) => $table->index($columns, $tableName.'_installation_lookup_idx'));
+                $this->createIndex($tableName, $columns, $tableName.'_installation_lookup_idx');
                 $existingColumnSets[] = $columns;
             }
             Schema::table($tableName, fn (Blueprint $table) => $table->dropColumn('company_id'));
         }
 
         $typeCodeCollision = DB::table('hr_asset_types')->select('code')->groupBy('code')->havingRaw('COUNT(*) > 1')->exists();
-        Schema::table('hr_asset_types', function (Blueprint $table) use ($typeCodeCollision): void {
-            $typeCodeCollision
-                ? $table->index('code', 'hr_asset_types_installation_code_idx')
-                : $table->unique('code', 'hr_asset_types_installation_code_unique');
-        });
+        $this->createIndex('hr_asset_types', ['code'], $typeCodeCollision
+            ? 'hr_asset_types_installation_code_idx'
+            : 'hr_asset_types_installation_code_unique', ! $typeCodeCollision);
 
         $assetTagCollision = DB::table('hr_asset_items')->select('asset_tag')->groupBy('asset_tag')->havingRaw('COUNT(*) > 1')->exists();
-        Schema::table('hr_asset_items', function (Blueprint $table) use ($assetTagCollision): void {
-            $assetTagCollision
-                ? $table->index('asset_tag', 'hr_asset_items_installation_tag_idx')
-                : $table->unique('asset_tag', 'hr_asset_items_installation_tag_unique');
+        $this->createIndex('hr_asset_items', ['asset_tag'], $assetTagCollision
+            ? 'hr_asset_items_installation_tag_idx'
+            : 'hr_asset_items_installation_tag_unique', ! $assetTagCollision);
+    }
+
+    private function createIndex(string $tableName, array $columns, string $baseName, bool $unique = false): void
+    {
+        foreach (Schema::getIndexes($tableName) as $index) {
+            $isUnique = ($index['unique'] ?? false) || ($index['type'] ?? null) === 'unique';
+            if ($index['columns'] === $columns && (! $unique || $isUnique)) {
+                return;
+            }
+        }
+
+        $name = $baseName;
+        $suffix = 1;
+        while ($this->relationExists($name, $tableName)) {
+            $name = $baseName.'_'.$suffix;
+            $suffix++;
+        }
+
+        Schema::table($tableName, function (Blueprint $table) use ($columns, $name, $unique): void {
+            $unique ? $table->unique($columns, $name) : $table->index($columns, $name);
         });
+    }
+
+    private function relationExists(string $name, string $tableName): bool
+    {
+        if (DB::getDriverName() === 'pgsql') {
+            return DB::table('pg_class as c')
+                ->where('c.relname', $name)
+                ->whereRaw('c.relnamespace = (SELECT relnamespace FROM pg_class WHERE oid = to_regclass(?))', [$tableName])
+                ->exists();
+        }
+
+        return Schema::hasIndex($tableName, $name);
     }
 
     public function down(): void

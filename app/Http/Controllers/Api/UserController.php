@@ -13,6 +13,7 @@ use App\Services\UserService;
 use App\Services\UserContextService;
 use App\Services\PermissionAssignmentService;
 use App\Services\CorporateRoleStarterService;
+use App\Services\PermissionRegistry;
 use App\Services\BusinessCodeGenerator;
 use Illuminate\Http\Request;
 use Illuminate\Http\JsonResponse;
@@ -194,6 +195,7 @@ class UserController extends Controller
             'role' => ['nullable', 'required_if:action,assign_role', 'string', Rule::exists('roles', 'name')->where('guard_name', config('permissions.canonical_guard', 'api'))],
         ]);
         if ($data['action'] === 'assign_role') {
+            abort_if($this->containsCorporateRole([$data['role']]), 422, 'Corporate roles must be assigned within Corporate Management.');
             $this->assertCanChangePrivilegedRoles([$data['role']]);
         }
         abort_if(in_array(auth()->id(), $data['user_ids'], true) && in_array($data['action'], ['deactivate', 'delete'], true), 422, 'You cannot deactivate or delete your own account.');
@@ -248,6 +250,8 @@ class UserController extends Controller
                     'user' => new UserResource($user)
                 ]
             ], 201);
+        } catch (ValidationException $e) {
+            throw $e;
         } catch (\Exception $e) {
             return response()->json([
                 'status' => 'error',
@@ -303,6 +307,8 @@ class UserController extends Controller
                     'user' => new UserResource($updatedUser)
                 ]
             ]);
+        } catch (ValidationException $e) {
+            throw $e;
         } catch (\Exception $e) {
             return response()->json([
                 'status' => 'error',
@@ -452,6 +458,15 @@ class UserController extends Controller
         )->pluck('name')->unique();
         $roleNames = $rolePermissions->pluck('name')->unique();
         $permissions = $directPermissions->merge($rolePermissions)->unique('name')->values();
+        $isMasterAdmin = $user->roles()
+            ->where('name', 'super-admin')
+            ->where('guard_name', config('permissions.canonical_guard', 'api'))
+            ->exists();
+        if (! $isMasterAdmin) {
+            $permissions = $permissions->reject(fn (Permission $permission) =>
+                PermissionRegistry::isAdminOnlyPermissionName($permission->name)
+            )->values();
+        }
         
         return response()->json([
             'status' => 'success',
@@ -490,6 +505,7 @@ class UserController extends Controller
             'permissions' => ['required', 'array'],
             'permissions.*' => ['required', 'string', Rule::exists('permissions', 'name')->where('guard_name', config('permissions.canonical_guard', 'api'))],
         ]);
+        $this->assertCanChangePrivilegedRoles([], true);
 
         try {
             $this->permissionAssignmentService->grantDirectUserPermissions($user, $request->permissions);
@@ -520,6 +536,7 @@ class UserController extends Controller
             'permissions' => ['required', 'array'],
             'permissions.*' => ['required', 'string', Rule::exists('permissions', 'name')->where('guard_name', config('permissions.canonical_guard', 'api'))],
         ]);
+        $this->assertCanChangePrivilegedRoles([], true);
 
         try {
             $this->permissionAssignmentService->revokeDirectUserPermissions($user, $request->permissions);
@@ -625,6 +642,7 @@ class UserController extends Controller
             'permissions' => ['present', 'array'],
             'permissions.*' => ['string'],
         ]);
+        $this->assertCanChangePrivilegedRoles([], true);
 
         $permissions = $this->permissionAssignmentService->syncDirectUserPermissions($user, $request->permissions);
 
@@ -708,7 +726,9 @@ class UserController extends Controller
             'roles.*' => ['required', Rule::exists('roles', 'id')->where('guard_name', config('permissions.canonical_guard', 'api'))],
             'auto_assign_permissions' => ['sometimes', 'boolean']
         ]);
-        $this->assertCanChangePrivilegedRoles($this->roleIdentifiers($request->all()));
+        $roleNames = $this->roleIdentifiers($request->all());
+        abort_if($this->containsCorporateRole($roleNames), 422, 'Corporate roles must be assigned within Corporate Management.');
+        $this->assertCanChangePrivilegedRoles($roleNames);
 
         try {
             $activeContexts = DB::transaction(function () use ($user, $contextId, $request): ?\Illuminate\Support\Collection {
@@ -856,6 +876,7 @@ class UserController extends Controller
         ]);
         $role = Role::query()->where('guard_name', config('permissions.canonical_guard', 'api'))
             ->find($request->input('role_id'));
+        abort_if($role && $this->containsCorporateRole([$role->name]), 422, 'Corporate roles must be managed within Corporate Management.');
         $this->assertCanChangePrivilegedRoles($role ? [$role->name] : []);
 
         try {
@@ -926,11 +947,31 @@ class UserController extends Controller
         $request->validate([
             'context_type' => 'required|string|in:customer,vehicle_owner,staff,agent,driver',
             'context_data' => 'sometimes|array',
+            'context_data.roles' => 'sometimes|array',
+            'context_data.roles.*' => ['required', function ($attribute, $value, $fail) {
+                if (!is_string($value) && !is_int($value)) {
+                    $fail('Each selected role must be a role name or ID.');
+                    return;
+                }
+
+                $query = Role::query()->where('guard_name', config('permissions.canonical_guard', 'api'));
+                $exists = is_int($value) || ctype_digit($value)
+                    ? $query->whereKey($value)->exists()
+                    : $query->where('name', $value)->exists();
+                if (!$exists) $fail('One or more selected roles are invalid.');
+            }],
         ]);
 
         try {
             $contextType = $request->get('context_type');
             $contextData = $request->get('context_data', []);
+            $contextRoles = $contextData['roles'] ?? [];
+            $roleNames = $this->roleIdentifiers(['roles' => $contextRoles]);
+            if (count($roleNames) !== count(array_unique(array_map('strval', $contextRoles)))) {
+                throw ValidationException::withMessages(['context_data.roles' => 'One or more selected roles are invalid.']);
+            }
+            abort_if($this->containsCorporateRole($roleNames), 422, 'Corporate roles must be managed within Corporate Management.');
+            $this->assertCanChangePrivilegedRoles($roleNames);
             if ($contextType === 'staff') {
                 unset($contextData['company_id']);
             }

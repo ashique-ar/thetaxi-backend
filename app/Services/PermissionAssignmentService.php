@@ -104,6 +104,8 @@ class PermissionAssignmentService
 
     public function assertRolePermissionPolicy(string $roleName, string $guardName, array $permissionNames, bool $allowExistingRestrictions = false): void
     {
+        $this->assertCanManageProtectedPermissions($permissionNames);
+
         if (strtolower(trim($roleName)) !== 'admin' || $guardName !== $this->registry->canonicalGuard()) {
             return;
         }
@@ -113,6 +115,28 @@ class PermissionAssignmentService
         if ($restricted !== [] && ! $allowExistingRestrictions) {
             throw ValidationException::withMessages([
                 'permissions' => 'The Admin role cannot receive system or website settings permissions.',
+            ]);
+        }
+    }
+
+    public function assertCanManageProtectedPermissions(array $permissionNames): void
+    {
+        $protected = collect($permissionNames)
+            ->filter(fn (string $name) => PermissionRegistry::isAdminOnlyPermissionName($name));
+        $actor = request()->user();
+
+        if ($protected->isEmpty() || ! $actor) {
+            return;
+        }
+
+        $isMasterAdmin = $actor->roles()
+            ->where('name', 'super-admin')
+            ->where('guard_name', $this->registry->canonicalGuard())
+            ->exists();
+
+        if (! $isMasterAdmin) {
+            throw ValidationException::withMessages([
+                'permissions' => 'Only a Master Admin can manage system and website settings permissions.',
             ]);
         }
     }

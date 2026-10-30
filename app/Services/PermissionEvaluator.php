@@ -26,6 +26,13 @@ class PermissionEvaluator
 
     public function userHasAnyForRequest(User $user, array $permissions, ?string $contextType, ?string $contextId): bool
     {
+        $permissions = array_values(array_filter($permissions, fn ($permission) =>
+            $this->mayUseProtectedPermission($user, (string) $permission)
+        ));
+        if ($permissions === []) {
+            return false;
+        }
+
         if ($contextType === 'internal') {
             return $this->userHasAnyForInternalContext($user, $permissions);
         }
@@ -90,6 +97,13 @@ class PermissionEvaluator
     public function userHasAnyForInternalContext(User $user, array $permissions): bool
     {
         if (! $this->hasActiveStaffIdentity($user)) {
+            return false;
+        }
+
+        $permissions = array_values(array_filter($permissions, fn ($permission) =>
+            $this->mayUseProtectedPermission($user, (string) $permission)
+        ));
+        if ($permissions === []) {
             return false;
         }
 
@@ -162,9 +176,13 @@ class PermissionEvaluator
 
     public function permissionsForInternalContext(User $user): Collection
     {
+        $canUseProtectedPermissions = $this->isMasterAdmin($user);
+
         return $this->rolesForInternalContext($user)
             ->flatMap(fn ($role) => $role->permissions)
             ->merge($user->getDirectPermissions()->where('guard_name', $this->registry->canonicalGuard()))
+            ->reject(fn ($permission) => ! $canUseProtectedPermissions
+                && PermissionRegistry::isAdminOnlyPermissionName($this->registry->resolveKey((string) $permission->name)))
             ->unique('name')
             ->values();
     }
@@ -208,6 +226,10 @@ class PermissionEvaluator
     public function userHas(User $user, string $permission): bool
     {
         $permission = $this->registry->resolveKey($permission);
+        if (! $this->mayUseProtectedPermission($user, $permission)) {
+            return false;
+        }
+
         $guards = array_values(array_unique(array_merge(
             [$this->registry->canonicalGuard()],
             $this->registry->legacyGuards()
@@ -220,5 +242,19 @@ class PermissionEvaluator
         }
 
         return false;
+    }
+
+    private function mayUseProtectedPermission(User $user, string $permission): bool
+    {
+        return ! PermissionRegistry::isAdminOnlyPermissionName($this->registry->resolveKey($permission))
+            || $this->isMasterAdmin($user);
+    }
+
+    private function isMasterAdmin(User $user): bool
+    {
+        return $user->roles()
+            ->where('name', 'super-admin')
+            ->where('guard_name', $this->registry->canonicalGuard())
+            ->exists();
     }
 }

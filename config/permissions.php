@@ -3,6 +3,7 @@
 return [
     'canonical_guard' => 'api',
     'legacy_guards' => [],
+    'admin_only_permissions' => ['system.*', 'website-settings.*', 'view_audit_log'],
 
     'modules' => [
         'admin' => ['label' => 'Administration', 'description' => 'Users, roles, permissions, and system controls.'],

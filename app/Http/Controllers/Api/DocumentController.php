@@ -7,6 +7,7 @@ use App\Models\Agreement;
 use App\Models\Customer;
 use App\Models\Document;
 use App\Models\Driver\Driver;
+use App\Models\Driver\DriverOnboardingApplication;
 use App\Models\MedicalRecord;
 use App\Models\Staff;
 use App\Models\Vehicle\Vehicle;
@@ -33,6 +34,7 @@ class DocumentController extends Controller
         'agreement' => Agreement::class,
         'customer' => Customer::class,
         'driver' => Driver::class,
+        'driver_onboarding_application' => DriverOnboardingApplication::class,
         'staff' => Staff::class,
         'vehicle' => Vehicle::class,
         'vehicle_lease' => VehicleLease::class,
@@ -41,7 +43,7 @@ class DocumentController extends Controller
 
     public function __construct(private readonly StaffAccessService $staffAccess)
     {
-        $this->middleware('permission:documents.view|system.view|agreements.view|customers.view|drivers.view|staff-sensitive-documents.view|hr.medical-records.view|vehicles.view|vehicle-owners.view|vehicle-leases.view')->only(['index', 'show', 'download', 'stats']);
+        $this->middleware('permission:documents.view|system.view|agreements.view|customers.view|drivers.view|drivers.onboarding.view|staff-sensitive-documents.view|hr.medical-records.view|vehicles.view|vehicle-owners.view|vehicle-leases.view')->only(['index', 'show', 'download', 'stats']);
         $this->middleware('permission:documents.create|uploads.manage|customers.edit|drivers.edit|staff-sensitive-documents.create|vehicles.edit|vehicle-owners.edit|vehicle-leases.edit')->only(['store']);
         $this->middleware('permission:documents.create|uploads.manage|customers.edit|drivers.edit|staff-sensitive-documents.create|vehicles.edit|vehicle-owners.edit|vehicle-leases.edit')->only(['ownerOptions']);
         $this->middleware('permission:documents.edit|uploads.manage|customers.edit|drivers.edit|staff-sensitive-documents.verify|vehicles.edit|vehicle-owners.edit|vehicle-leases.manage')->only(['verify', 'reject', 'setLegalHold']);
@@ -499,7 +501,7 @@ class DocumentController extends Controller
     {
         $owner = $document->documentable;
         $ownerType = array_search($document->documentable_type, self::OWNER_TYPES, true) ?: $document->documentable_type;
-        $isStaffDocument = $ownerType === 'staff';
+        $isRestrictedDocument = in_array($ownerType, ['staff', 'driver_onboarding_application'], true);
 
         return [
             'id' => $document->id,
@@ -512,8 +514,8 @@ class DocumentController extends Controller
             'document_type' => $document->document_type,
             'document_number' => $document->document_number,
             'expiry_date' => $document->expiry_date?->toDateString(),
-            'file_url' => $isStaffDocument ? null : $this->storageUrl($document->disk, $document->path),
-            'download_url' => $isStaffDocument ? "/api/documents/{$document->id}/download" : null,
+            'file_url' => $isRestrictedDocument ? null : $this->storageUrl($document->disk, $document->path),
+            'download_url' => $isRestrictedDocument ? "/api/documents/{$document->id}/download" : null,
             'file_name' => $document->file_name,
             'file_size' => $document->file_size,
             'file_type' => $document->file_type,
@@ -609,13 +611,14 @@ class DocumentController extends Controller
                 'agreement' => $action === 'view' ? 'agreements.view' : 'documents.create',
                 'customer' => $action === 'view' ? 'customers.view' : 'customers.edit',
                 'driver' => $action === 'view' ? 'drivers.view' : 'drivers.edit',
+                'driver_onboarding_application' => $action === 'view' ? 'drivers.onboarding.view' : 'drivers.edit',
                 'vehicle' => $action === 'view' ? 'vehicles.view' : 'vehicles.edit',
                 'vehicle_owner' => $action === 'view' ? 'vehicle-owners.view' : 'vehicle-owners.edit',
                 'vehicle_lease' => $action === 'view' ? 'vehicle-leases.view' : ($action === 'create' ? 'vehicle-leases.edit' : 'vehicle-leases.manage'),
             };
 
             abort_unless(
-                collect([...$globalPermission, $domainPermission])->contains(fn (string $permission) => $request->user()?->can($permission)),
+                collect([...$globalPermission, $domainPermission])->contains(fn (string $permission) => $this->userCan($request, $permission)),
                 Response::HTTP_FORBIDDEN,
                 'You are not authorized to access documents for this owner type.'
             );
@@ -637,6 +640,19 @@ class DocumentController extends Controller
             $scopeAction = in_array($action, ['create', 'verify', 'delete'], true) ? 'edit' : 'view';
             $this->staffAccess->authorize($request->user(), $staff, $scopeAction);
         }
+    }
+
+    private function userCan(Request $request, string $permission): bool
+    {
+        $user = $request->user();
+        if (!$user) return false;
+
+        return app(\App\Services\PermissionEvaluator::class)->userHasAnyForRequest(
+            $user,
+            [$permission],
+            $request->attributes->get('resolved_active_context_type', $request->header('X-Active-Context-Type')),
+            $request->attributes->get('resolved_active_context_id', $request->header('X-Active-Context-Id'))
+        );
     }
 
     private function audit(Request $request, Document $document, string $event): void

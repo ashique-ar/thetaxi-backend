@@ -34,14 +34,12 @@ class SuperAdminSeeder extends Seeder
                 ]
             );
 
-            $roles = collect(['api', 'web'])->map(
-                fn (string $guard) => Role::where('name', 'super-admin')->where('guard_name', $guard)->firstOrFail()
-            );
-
-            foreach ($roles as $role) {
-                $user->assignRole($role);
-            }
-
+            $roles = collect([
+                Role::where('name', 'super-admin')
+                    ->where('guard_name', config('permissions.canonical_guard', 'api'))
+                    ->firstOrFail(),
+            ]);
+            $user->assignRole($roles->first());
             app(\App\Services\UserService::class)->grantDirectRoleGrants($user, $roles);
         });
 

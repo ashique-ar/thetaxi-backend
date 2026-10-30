@@ -70,7 +70,8 @@ return new class extends Migration
                     $apiRoleId = DB::table('roles')->insertGetId($attributes);
                 }
 
-                if (Schema::hasColumn('users', 'role_id')) {
+                if (Schema::hasColumn('users', 'role_id')
+                    && Schema::getColumnType('users', 'role_id') === Schema::getColumnType('roles', 'id')) {
                     DB::table('users')->where('role_id', $webRole->id)->update(['role_id' => $apiRoleId]);
                 }
 

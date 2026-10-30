@@ -29,7 +29,7 @@ class CreateRoleRequest extends FormRequest
             'description' => ['nullable', 'string', 'max:1000'],
             'guard_name' => ['required', 'string', Rule::in($guards)],
             'context_types' => ['nullable', 'array'],
-            'context_types.*' => ['string', 'in:customer,vehicle_owner,staff,agent,driver,corporate,internal'],
+            'context_types.*' => ['string', 'in:customer,vehicle_owner,staff,agent,driver,internal'],
             'auto_assign_contexts' => ['sometimes', 'boolean'],
             'permissions' => ['nullable', 'array'],
             'permissions.*' => ['required', 'string'],

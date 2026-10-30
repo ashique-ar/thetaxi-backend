@@ -19,6 +19,14 @@ class PermissionRegistry
         return config('permissions.legacy_guards', []);
     }
 
+    public static function isAdminOnlyPermissionName(string $permission): bool
+    {
+        $permission = config('permissions.aliases', [])[$permission] ?? $permission;
+
+        return collect(config('permissions.admin_only_permissions', []))
+            ->contains(fn (string $pattern) => Str::is($pattern, $permission));
+    }
+
     public function resolveKey(string $key): string
     {
         $key = trim($key);

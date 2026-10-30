@@ -5,6 +5,7 @@ namespace App\Models;
 use App\Models\Agent\Agent;
 use App\Models\Booking\Booking;
 use App\Traits\UUID;
+use App\Services\PermissionRegistry;
 use Illuminate\Database\Eloquent\Collection;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
@@ -340,6 +341,16 @@ class User extends Authenticatable
      */
     public function hasAnyPermission(array $permissions)
     {
+        if (! $this->isMasterAdmin()) {
+            $permissions = array_values(array_filter($permissions, fn ($permission) =>
+                ! PermissionRegistry::isAdminOnlyPermissionName((string) $permission)
+            ));
+        }
+
+        if ($permissions === []) {
+            return false;
+        }
+
         return $this->hasAnyDirectPermission($permissions) || $this->hasAnyRolePermission($permissions);
     }
 
@@ -379,7 +390,21 @@ class User extends Authenticatable
             ->where('model_has_roles.model_id', $this->id)
             ->pluck('permissions.name');
 
-        return $directPermissions->merge($rolePermissions)->unique()->values()->toArray();
+        $permissions = $directPermissions->merge($rolePermissions)->unique()->values();
+
+        if (! $this->isMasterAdmin()) {
+            $permissions = $permissions->reject(fn (string $permission) => PermissionRegistry::isAdminOnlyPermissionName($permission));
+        }
+
+        return $permissions->values()->toArray();
+    }
+
+    private function isMasterAdmin(): bool
+    {
+        return $this->roles()
+            ->where('name', 'super-admin')
+            ->where('guard_name', config('permissions.canonical_guard', 'api'))
+            ->exists();
     }
 
     /**
