@@ -52,7 +52,7 @@ class BookingAttributionService
             $currency = strtoupper((string) ($booking->currency ?: 'LKR'));
             $category = ($booking->is_recurring || $rootAttribution) ? 'long_term' : 'one_time';
             $classification = $rootAttribution ? 'recurring_fulfilment' : 'new_business';
-            $newCustomerStatus = $this->newCustomerStatus($booking, $companyId, $securedAt, $rootAttribution);
+            $newCustomerStatus = $this->newCustomerStatus($booking, $securedAt, $rootAttribution);
 
             $attribution = SalesBookingAttribution::create([
                 'booking_id' => $booking->id,
@@ -164,7 +164,7 @@ class BookingAttributionService
             'collection_sales_profile_id' => $collectionProfileId,
             'commission_category' => ($booking->is_recurring || $root) ? 'long_term' : 'one_time',
             'business_classification' => $root ? 'recurring_fulfilment' : 'new_business',
-            'new_customer_status' => $this->newCustomerStatus($booking, $companyId, $securedAt, $root),
+            'new_customer_status' => $this->newCustomerStatus($booking, $securedAt, $root),
             'source_currency' => $currency,
             'requires_fx' => $currency !== 'LKR',
             'holds' => array_values(array_filter([
@@ -221,7 +221,7 @@ class BookingAttributionService
     {
         $root = $this->rootAttribution($booking);
         if ($root) {
-            $companyId = $booking->company_id ?: app(SingleCompanyScope::class)->activeDefaultCompany()?->id;
+            $companyId = $booking->company_id;
             $acquisitionProfileId = $root->acquisition_sales_profile_id;
             $acquisitionProfile = $this->profileEligibility->byIdAt(
                 $acquisitionProfileId,
@@ -245,14 +245,11 @@ class BookingAttributionService
             ];
         }
 
-        $companyId = $booking->company_id ?: app(SingleCompanyScope::class)->activeDefaultCompany()?->id;
+        $companyId = $booking->company_id;
         $staff = $this->resolveAcquisitionStaff($booking);
         $acquisitionProfile = $staff
             ? $this->profileEligibility->forStaffAt($staff, 'acquisition', $securedAt)
             : null;
-        if ($acquisitionProfile && ! \App\Services\CompanyIdScope::sameCompanyId((string) ($acquisitionProfile->company_id), (string) ($companyId))) {
-            $acquisitionProfile = null;
-        }
         $collectionProfile = $acquisitionProfile
             && $this->profileEligibility->isEligibleAt($acquisitionProfile, ['collection'], $securedAt)
                 ? $acquisitionProfile
@@ -299,17 +296,16 @@ class BookingAttributionService
         return $confirmed ? $confirmed->to_sales_profile_id : $attribution->collection_sales_profile_id;
     }
 
-    private function newCustomerStatus(Booking $booking, ?string $companyId, $securedAt, ?SalesBookingAttribution $root): string
+    private function newCustomerStatus(Booking $booking, $securedAt, ?SalesBookingAttribution $root): string
     {
         if ($root) {
             return 'existing';
         }
-        if (! $companyId || ! $booking->customer_id) {
+        if (! $booking->customer_id) {
             return 'pending';
         }
 
         return SalesBookingAttribution::query()
-            ->where(fn ($_companyIdScope) => \App\Services\CompanyIdScope::constrain($_companyIdScope, 'company_id', $companyId))
             ->where('customer_id', $booking->customer_id)
             ->where('secured_at', '<', $securedAt)
             ->exists() ? 'existing' : 'new';
