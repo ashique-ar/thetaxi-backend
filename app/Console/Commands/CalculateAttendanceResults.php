@@ -24,7 +24,7 @@ class CalculateAttendanceResults extends Command
             ->whereNotNull('approved_at')
             ->whereDate('effective_from', '<=', $to)
             ->where(fn ($query) => $query->whereNull('effective_until')->orWhereDate('effective_until', '>', $from))
-            ->get(['company_id', 'staff_id', 'effective_from', 'effective_until']);
+            ->get(['staff_id', 'effective_from', 'effective_until']);
 
         $calculated = 0;
         $skipped = 0;
@@ -34,7 +34,7 @@ class CalculateAttendanceResults extends Command
                     continue;
                 }
                 try {
-                    $results->calculate($roster->company_id, $roster->staff_id, $date->toDateString());
+                    $results->calculate($roster->staff_id, $date->toDateString());
                     $calculated++;
                 } catch (\Symfony\Component\HttpKernel\Exception\HttpException $exception) {
                     $skipped++;

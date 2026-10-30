@@ -10,25 +10,22 @@ use Illuminate\Support\Str;
 
 class AttendanceResultService
 {
-    public function calculate(string $companyId, string $staffId, string $workDate, ?string $actorUserId = null): AttendanceDailyResult
+    public function calculate(string $staffId, string $workDate, ?string $actorUserId = null): AttendanceDailyResult
     {
         
         $date = CarbonImmutable::parse($workDate)->startOfDay();
 
-        return DB::transaction(function () use ($companyId, $staffId, $date, $actorUserId) {
-            $company = DB::table('companies')->where('id', $companyId)->where('is_active', true)
-                ->whereNull('deleted_at')->lockForUpdate()->first();
-            abort_unless($company, 409, 'Attendance result writes require an active legal entity.');
+        return DB::transaction(function () use ($staffId, $date, $actorUserId) {
             $period = DB::table('hr_attendance_periods')->whereDate('period_start', '<=', $date)->whereDate('period_end', '>=', $date)->lockForUpdate()->first();
             abort_if($period && $period->status === 'locked', 409, 'The attendance period is locked.');
-            $staff = DB::table('staff')->where('id', $staffId)->where(fn ($_companyIdScope) => \App\Services\CompanyIdScope::constrain($_companyIdScope, 'company_id', $companyId))->lockForUpdate()->first();
-            abort_unless($staff, 422, 'Staff does not belong to this legal entity.');
-            $roster = DB::table('hr_roster_assignments')->where(fn ($_companyIdScope) => \App\Services\CompanyIdScope::constrain($_companyIdScope, 'company_id', $companyId))->where('staff_id', $staffId)->whereNotNull('approved_at')
+            $staff = DB::table('staff')->where('id', $staffId)->lockForUpdate()->first();
+            abort_unless($staff, 404, 'Staff record is unavailable.');
+            $roster = DB::table('hr_roster_assignments')->where('staff_id', $staffId)->whereNotNull('approved_at')
                 ->whereDate('effective_from', '<=', $date)->where(fn($query) => $query->whereNull('effective_until')->orWhereDate('effective_until', '>', $date))->latest('effective_from')->first();
             abort_unless($roster, 422, 'No approved roster applies to this Staff work date.');
-            $calendar = DB::table('hr_work_calendars')->where(fn ($_companyIdScope) => \App\Services\CompanyIdScope::constrain($_companyIdScope, 'company_id', $companyId))->find($roster->calendar_id);
-            $shift = DB::table('hr_shift_definitions')->where(fn ($_companyIdScope) => \App\Services\CompanyIdScope::constrain($_companyIdScope, 'company_id', $companyId))->find($roster->shift_id);
-            $policy = DB::table('hr_attendance_policies')->where(fn ($_companyIdScope) => \App\Services\CompanyIdScope::constrain($_companyIdScope, 'company_id', $companyId))->find($roster->policy_id);
+            $calendar = DB::table('hr_work_calendars')->find($roster->calendar_id);
+            $shift = DB::table('hr_shift_definitions')->find($roster->shift_id);
+            $policy = DB::table('hr_attendance_policies')->find($roster->policy_id);
             abort_unless($calendar && $shift && $policy && $calendar->status === 'active' && $shift->status === 'active' && $policy->status === 'approved', 422, 'The roster configuration is not fully approved and active.');
             $timezone = $shift->timezone;
             $dayOverride = DB::table('hr_work_calendar_days')->where('calendar_id', $calendar->id)->whereDate('calendar_date', $date)->first();
@@ -39,9 +36,9 @@ class AttendanceResultService
             $windowStart = $scheduledStart->subHours(6)->utc();
             $windowEnd = $scheduledEnd->addHours(6)->utc();
             $events = DB::table('hr_attendance_raw_events as raw')->leftJoin('hr_attendance_quarantine_items as quarantine', 'quarantine.raw_event_id', '=', 'raw.id')
-                ->where(fn ($_companyIdScope) => \App\Services\CompanyIdScope::constrain($_companyIdScope, 'raw.company_id', $companyId))->where(fn($query) => $query
+                ->where(fn($query) => $query
                     ->where(fn($query) => $query->where('raw.staff_id', $staffId)->where('raw.mapping_status', 'mapped'))
-                    ->orWhere(fn($query) => $query->where(fn ($_companyIdScope) => \App\Services\CompanyIdScope::constrain($_companyIdScope, 'quarantine.company_id', $companyId))->where('quarantine.status', 'resolved')->where('quarantine.resolved_staff_id', $staffId)))
+                    ->orWhere(fn($query) => $query->where('quarantine.status', 'resolved')->where('quarantine.resolved_staff_id', $staffId)))
                 ->whereBetween('raw.occurred_at', [$windowStart, $windowEnd])->whereIn('raw.event_kind', ['punch', 'access_control'])->where(fn($query) => $query->whereNull('raw.verification_result')->orWhereIn('raw.verification_result', ['success', 'verified', 'accepted']))
                 ->select(['raw.id', 'raw.occurred_at', 'raw.direction', 'raw.payload_checksum'])->orderBy('raw.occurred_at')->get();
             $in = $events->first(fn($event) => in_array($event->direction, ['in', 'unknown', null], true));
@@ -58,9 +55,9 @@ class AttendanceResultService
             $payable = $isWorking ? min($worked, (int) ($rules['maximum_payable_minutes'] ?? $shift->minimum_full_day_minutes)) : 0;
             $leave = DB::table('hr_leave_request_days as day')
                 ->join('hr_leave_requests as request', 'request.id', '=', 'day.leave_request_id')
-                ->join('hr_leave_types as type', fn ($join) => $join->on('type.id', '=', 'request.leave_type_id')->where(fn ($sameCompany) => \App\Services\CompanyIdScope::sameCompany($sameCompany, 'type.company_id', 'request.company_id')))
-                ->join('hr_leave_policies as leave_policy', fn ($join) => $join->on('leave_policy.id', '=', 'request.policy_id')->where(fn ($sameCompany) => \App\Services\CompanyIdScope::sameCompany($sameCompany, 'leave_policy.company_id', 'request.company_id')))
-                ->where(fn ($_companyIdScope) => \App\Services\CompanyIdScope::constrain($_companyIdScope, 'request.company_id', $companyId))->where('request.staff_id', $staffId)
+                ->join('hr_leave_types as type', 'type.id', '=', 'request.leave_type_id')
+                ->join('hr_leave_policies as leave_policy', 'leave_policy.id', '=', 'request.policy_id')
+                ->where('request.staff_id', $staffId)
                 ->where('request.status', 'approved')->whereDate('day.leave_date', $date)
                 ->select(['request.id', 'day.minutes', 'day.day_kind', 'type.code as leave_type_code', 'type.paid'])->first();
             if ($leave) {
@@ -73,24 +70,23 @@ class AttendanceResultService
             // Configuration values belong to the calculation input. Using only
             // record IDs made an edited shift look unchanged and returned the
             // previous result version.
-            $input = ['company_id' => $companyId, 'staff_id' => $staffId, 'date' => $date->toDateString(), 'roster' => (array) $roster, 'calendar' => (array) $calendar, 'shift' => (array) $shift, 'policy' => (array) $policy, 'day_override' => $dayOverride ? (array) $dayOverride : null, 'leave' => $leave, 'events' => $events->map(fn($event) => [$event->id, $event->payload_checksum])->values()->all()];
+            $input = ['staff_id' => $staffId, 'date' => $date->toDateString(), 'roster' => (array) $roster, 'calendar' => (array) $calendar, 'shift' => (array) $shift, 'policy' => (array) $policy, 'day_override' => $dayOverride ? (array) $dayOverride : null, 'leave' => $leave, 'events' => $events->map(fn($event) => [$event->id, $event->payload_checksum])->values()->all()];
             $inputChecksum = hash('sha256', json_encode($input, JSON_UNESCAPED_SLASHES | JSON_THROW_ON_ERROR));
             $latest = AttendanceDailyResult::query()->where('staff_id', $staffId)->whereDate('work_date', $date)->latest('result_version')->lockForUpdate()->first();
-            abort_if($latest && !\App\Services\CompanyIdScope::sameCompanyId((string) ((string) $latest->company_id), (string) ((string) $companyId)), 409, 'The latest attendance result does not belong to the selected legal entity.');
             if ($latest && $latest->source_kind === 'calculated' && hash_equals($latest->input_checksum, $inputChecksum))
                 return $latest;
             if ($latest && $latest->source_kind === 'manual_correction'
                 && hash_equals((string) ($latest->rule_snapshot['approved_correction']['source_input_checksum'] ?? ''), $inputChecksum))
                 return $latest;
             $resultData = ['day_status' => $status, 'scheduled_start_at' => $scheduledStart->utc()->toIso8601String(), 'scheduled_end_at' => $scheduledEnd->utc()->toIso8601String(), 'first_in_at' => $firstIn?->toIso8601String(), 'last_out_at' => $lastOut?->toIso8601String(), 'worked_minutes' => $worked, 'late_minutes' => $late, 'early_leave_minutes' => $early, 'payable_minutes' => $payable];
-            $result = AttendanceDailyResult::create(['company_id' => $companyId, 'staff_id' => $staffId, 'work_date' => $date, 'result_version' => ($latest?->result_version ?? 0) + 1, 'supersedes_id' => $latest?->id, 'roster_assignment_id' => $roster->id, 'period_id' => $period?->id] + $resultData + ['source_kind' => 'calculated', 'calculated_at' => now(), 'calculated_by' => $actorUserId, 'input_checksum' => $inputChecksum, 'result_checksum' => hash('sha256', json_encode($resultData, JSON_UNESCAPED_SLASHES | JSON_THROW_ON_ERROR)), 'rule_snapshot' => ['calendar' => $calendar, 'shift' => $shift, 'policy' => $policy, 'day_override' => $dayOverride, 'approved_leave' => $leave]]);
+            $result = AttendanceDailyResult::create(['staff_id' => $staffId, 'work_date' => $date, 'result_version' => ($latest?->result_version ?? 0) + 1, 'supersedes_id' => $latest?->id, 'roster_assignment_id' => $roster->id, 'period_id' => $period?->id] + $resultData + ['source_kind' => 'calculated', 'calculated_at' => now(), 'calculated_by' => $actorUserId, 'input_checksum' => $inputChecksum, 'result_checksum' => hash('sha256', json_encode($resultData, JSON_UNESCAPED_SLASHES | JSON_THROW_ON_ERROR)), 'rule_snapshot' => ['calendar' => $calendar, 'shift' => $shift, 'policy' => $policy, 'day_override' => $dayOverride, 'approved_leave' => $leave]]);
             if ($latest) {
                 DB::table('hr_attendance_exceptions')->where('daily_result_id', $latest->id)->where('status', 'open')->update(['status' => 'superseded', 'resolved_at' => now(), 'resolved_by' => $actorUserId, 'resolution_note' => 'Superseded by recalculated attendance result ' . $result->id, 'updated_at' => now()]);
             }
             foreach ($events as $event)
                 DB::table('hr_attendance_daily_result_sources')->insert(['id' => (string) Str::uuid(), 'daily_result_id' => $result->id, 'raw_event_id' => $event->id, 'role' => $in && $event->id === $in->id ? 'first_in' : ($out && $event->id === $out->id ? 'last_out' : 'supporting'), 'created_at' => now(), 'updated_at' => now()]);
             foreach ($this->exceptions($status, $late, $early, $resultData) as $exception)
-                DB::table('hr_attendance_exceptions')->insert(['id' => (string) Str::uuid(), 'company_id' => $companyId, 'staff_id' => $staffId, 'daily_result_id' => $result->id] + $exception + ['status' => 'open', 'evidence' => json_encode($resultData, JSON_THROW_ON_ERROR), 'created_at' => now(), 'updated_at' => now()]);
+                DB::table('hr_attendance_exceptions')->insert(['id' => (string) Str::uuid(), 'staff_id' => $staffId, 'daily_result_id' => $result->id] + $exception + ['status' => 'open', 'evidence' => json_encode($resultData, JSON_THROW_ON_ERROR), 'created_at' => now(), 'updated_at' => now()]);
             return $result;
         });
     }
@@ -148,7 +144,7 @@ class AttendanceResultService
             $sourceInputChecksum = $snapshot['approved_correction']['source_input_checksum'] ?? $current->input_checksum;
             $snapshot['approved_correction'] = ['request_id' => $correction->id, 'request_checksum' => $correction->request_checksum, 'source_input_checksum' => $sourceInputChecksum, 'mapping' => $mappingSnapshot, 'approved_by' => $actorUserId, 'decision_note' => $decisionNote];
             $result = AttendanceDailyResult::query()->create([
-                'company_id' => $current->company_id, 'staff_id' => $current->staff_id, 'work_date' => $current->work_date,
+                'staff_id' => $current->staff_id, 'work_date' => $current->work_date,
                 'result_version' => $current->result_version + 1, 'supersedes_id' => $current->id,
                 'roster_assignment_id' => $current->roster_assignment_id, 'period_id' => $current->period_id,
             ] + $resultData + [
@@ -161,7 +157,7 @@ class AttendanceResultService
             }
             DB::table('hr_attendance_exceptions')->where('daily_result_id', $current->id)->where('status', 'open')->update(['status' => 'superseded', 'resolved_at' => now(), 'resolved_by' => $actorUserId, 'resolution_note' => 'Superseded by approved attendance correction '.$correction->id, 'updated_at' => now()]);
             foreach ($this->exceptions($result->day_status, (int) $result->late_minutes, (int) $result->early_leave_minutes, $resultData) as $exception) {
-                DB::table('hr_attendance_exceptions')->insert(['id' => (string) Str::uuid(), 'company_id' => $result->company_id, 'staff_id' => $result->staff_id, 'daily_result_id' => $result->id] + $exception + ['status' => 'open', 'evidence' => json_encode($resultData, JSON_THROW_ON_ERROR), 'created_at' => now(), 'updated_at' => now()]);
+                DB::table('hr_attendance_exceptions')->insert(['id' => (string) Str::uuid(), 'staff_id' => $result->staff_id, 'daily_result_id' => $result->id] + $exception + ['status' => 'open', 'evidence' => json_encode($resultData, JSON_THROW_ON_ERROR), 'created_at' => now(), 'updated_at' => now()]);
             }
             DB::table('hr_attendance_correction_requests')->where('id', $correction->id)->update(['status' => 'approved', 'decided_by' => $actorUserId, 'decided_at' => now(), 'decision_note' => $decisionNote, 'result_id' => $result->id, 'updated_at' => now()]);
             activity('hr-attendance')->causedBy(User::query()->findOrFail($actorUserId))->withProperties(['correction_id' => $correction->id, 'staff_id' => $correction->staff_id, 'result_id' => $result->id, 'supersedes_id' => $current->id, 'field' => $field, 'mapping_policy_id' => $policy->id])->log('attendance_correction_approved');

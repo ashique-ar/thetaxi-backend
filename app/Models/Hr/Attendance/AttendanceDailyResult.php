@@ -10,12 +10,12 @@ class AttendanceDailyResult extends NonSoftDeletableTrackedModel
 {
     protected $table = 'hr_attendance_daily_results';
     protected $hidden = ['created_user_id', 'updated_user_id', 'calculated_by'];
-    protected $fillable = ['company_id', 'staff_id', 'work_date', 'result_version', 'supersedes_id', 'roster_assignment_id', 'period_id', 'day_status', 'scheduled_start_at', 'scheduled_end_at', 'first_in_at', 'last_out_at', 'worked_minutes', 'late_minutes', 'early_leave_minutes', 'payable_minutes', 'source_kind', 'calculated_at', 'calculated_by', 'input_checksum', 'result_checksum', 'rule_snapshot'];
+    protected $fillable = ['staff_id', 'work_date', 'result_version', 'supersedes_id', 'roster_assignment_id', 'period_id', 'day_status', 'scheduled_start_at', 'scheduled_end_at', 'first_in_at', 'last_out_at', 'worked_minutes', 'late_minutes', 'early_leave_minutes', 'payable_minutes', 'source_kind', 'calculated_at', 'calculated_by', 'input_checksum', 'result_checksum', 'rule_snapshot'];
     protected $casts = ['work_date' => 'date', 'scheduled_start_at' => 'immutable_datetime', 'scheduled_end_at' => 'immutable_datetime', 'first_in_at' => 'immutable_datetime', 'last_out_at' => 'immutable_datetime', 'calculated_at' => 'immutable_datetime', 'rule_snapshot' => 'array'];
 
     public function getActivitylogOptions(): LogOptions
     {
-        return LogOptions::defaults()->logOnly(['company_id', 'day_status', 'source_kind'])
+        return LogOptions::defaults()->logOnly(['day_status', 'source_kind'])
             ->logOnlyDirty()->dontLogEmptyChanges()->dontLogIfAttributesChangedOnly(['updated_at', 'created_at'])
             ->useLogName('AttendanceDailyResult');
     }
