@@ -19,7 +19,7 @@ class AttendanceResultService
             $company = DB::table('companies')->where('id', $companyId)->where('is_active', true)
                 ->whereNull('deleted_at')->lockForUpdate()->first();
             abort_unless($company, 409, 'Attendance result writes require an active legal entity.');
-            $period = DB::table('hr_attendance_periods')->where(fn ($_companyIdScope) => \App\Services\CompanyIdScope::constrain($_companyIdScope, 'company_id', $companyId))->whereDate('period_start', '<=', $date)->whereDate('period_end', '>=', $date)->lockForUpdate()->first();
+            $period = DB::table('hr_attendance_periods')->whereDate('period_start', '<=', $date)->whereDate('period_end', '>=', $date)->lockForUpdate()->first();
             abort_if($period && $period->status === 'locked', 409, 'The attendance period is locked.');
             $staff = DB::table('staff')->where('id', $staffId)->where(fn ($_companyIdScope) => \App\Services\CompanyIdScope::constrain($_companyIdScope, 'company_id', $companyId))->lockForUpdate()->first();
             abort_unless($staff, 422, 'Staff does not belong to this legal entity.');
@@ -119,7 +119,7 @@ class AttendanceResultService
             $mapping = collect($policyRules['correction_mappings'] ?? [])->first(fn ($item) => ($item['type'] ?? null) === $correction->correction_type && ($item['field'] ?? null) === ($mappingSnapshot['field'] ?? null));
             abort_unless($mapping && $policy->id === $mappingSnapshot['policy_id'], 409, 'The request no longer matches its approved correction mapping.');
             abort_unless(in_array($mapping['field'], ['day_status', 'first_in_at', 'last_out_at', 'worked_minutes', 'late_minutes', 'early_leave_minutes', 'payable_minutes'], true), 409, 'The approved correction mapping contains an unsupported result field.');
-            $period = DB::table('hr_attendance_periods')->where(fn ($_companyIdScope) => \App\Services\CompanyIdScope::constrain($_companyIdScope, 'company_id', $correction->company_id))->whereDate('period_start', '<=', $correction->work_date)->whereDate('period_end', '>=', $correction->work_date)->lockForUpdate()->first();
+            $period = DB::table('hr_attendance_periods')->whereDate('period_start', '<=', $correction->work_date)->whereDate('period_end', '>=', $correction->work_date)->lockForUpdate()->first();
             abort_if($period?->status === 'locked', 409, 'The attendance period is locked.');
             $current = AttendanceDailyResult::query()->where('id', $correction->current_result_id)->where(fn ($_companyIdScope) => \App\Services\CompanyIdScope::constrain($_companyIdScope, 'company_id', $correction->company_id))->where('staff_id', $correction->staff_id)->whereDate('work_date', $correction->work_date)->lockForUpdate()->first();
             abort_unless($current, 409, 'The attendance result changed or is no longer available.');

@@ -12,8 +12,6 @@ use App\Models\Booking\Booking;
 use App\Services\CompanyBookingScope;
 use App\Services\CompanyIdScope;
 use App\Services\CompanyCustomerScope;
-use App\Services\CompanySettingsAccessService;
-use App\Services\WebsiteSettingsService;
 use Illuminate\Http\Request;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Support\Facades\Cache;
@@ -40,7 +38,7 @@ class AnalyticsController extends Controller
      */
     public function getDashboardStats(Request $request): JsonResponse
     {
-        $companyId = $this->selectedCompany($request);
+        $companyId = 'installation';
         $stats = Cache::remember('dashboard_stats.' . $companyId, 300, function () use ($companyId) {
             $customers = $this->companyCustomerQuery($companyId);
             $drivers = $this->companyDriverQuery($companyId);
@@ -107,7 +105,7 @@ class AnalyticsController extends Controller
      */
     public function getBookingTrends(Request $request): JsonResponse
     {
-        $companyId = $this->selectedCompany($request);
+        $companyId = 'installation';
         $filters = $request->validate([
             'period' => ['sometimes', 'in:day,week,month,year'],
             'limit' => ['sometimes', 'integer', 'min:1', 'max:365'],
@@ -146,7 +144,7 @@ class AnalyticsController extends Controller
      */
     public function getRevenueStats(Request $request): JsonResponse
     {
-        $companyId = $this->selectedCompany($request);
+        $companyId = 'installation';
         $filters = $request->validate(['period' => ['sometimes', 'in:day,week,month,year']]);
         $period = $filters['period'] ?? 'month';
         $cacheKey = "revenue_stats_{$companyId}_{$period}";
@@ -210,7 +208,7 @@ class AnalyticsController extends Controller
      */
     public function getCustomerAnalytics(Request $request): JsonResponse
     {
-        $companyId = $this->selectedCompany($request);
+        $companyId = 'installation';
         $stats = Cache::remember('customer_analytics.' . $companyId, 300, function () use ($companyId) {
             $customers = $this->companyCustomerQuery($companyId);
             return [
@@ -259,7 +257,7 @@ class AnalyticsController extends Controller
      */
     public function getDriverPerformance(Request $request): JsonResponse
     {
-        $companyId = $this->selectedCompany($request);
+        $companyId = 'installation';
         $stats = Cache::remember('driver_performance.' . $companyId, 300, function () use ($companyId) {
             $driverBookings = \Illuminate\Support\Facades\DB::table('booking_items')
                 ->select('driver_id', 'booking_id')
@@ -309,7 +307,7 @@ class AnalyticsController extends Controller
      */
     public function getVehicleUtilization(Request $request): JsonResponse
     {
-        $companyId = $this->selectedCompany($request);
+        $companyId = 'installation';
         $stats = Cache::remember('vehicle_utilization.' . $companyId, 300, function () use ($companyId) {
             $mostBooked = $this->companyVehicleQuery($companyId)->select(
                 'vehicles.id', 'vehicles.registration_number', 'vehicle_makes.name as make', 'vehicle_models.name as model',
@@ -362,7 +360,7 @@ class AnalyticsController extends Controller
      */
     public function getAgentPerformance(Request $request): JsonResponse
     {
-        $companyId = $this->selectedCompany($request);
+        $companyId = 'installation';
         $stats = Cache::remember('agent_performance.' . $companyId, 300, function () use ($companyId) {
             $commissionsByBooking = \Illuminate\Support\Facades\DB::table('agent_commissions')
                 ->selectRaw('booking_id, agent_id, SUM(amount) as amount')
@@ -408,15 +406,6 @@ class AnalyticsController extends Controller
             'status' => 'success',
             'data' => $stats
         ]);
-    }
-
-    private function selectedCompany(Request $request): string
-    {
-        $companyId = app(WebsiteSettingsService::class)->resolveCurrentCompanyId();
-        abort_unless($companyId, 409, 'Select a business to view analytics.');
-        app(CompanySettingsAccessService::class)->assertCanAccess($request->user(), (string) $companyId);
-
-        return (string) $companyId;
     }
 
     private function companyBookingQuery($query, string $companyId)

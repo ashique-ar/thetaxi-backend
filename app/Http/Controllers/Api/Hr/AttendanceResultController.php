@@ -476,7 +476,7 @@ class AttendanceResultController extends Controller
         $workDate = CarbonImmutable::parse($result->work_date)->toDateString();
         $latestVersion = DB::table('hr_attendance_daily_results')->where(fn ($_companyIdScope) => \App\Services\CompanyIdScope::constrain($_companyIdScope, 'company_id', $companyId))->where('staff_id', $result->staff_id)->whereDate('work_date', $workDate)->max('result_version');
         abort_unless((int) $latestVersion === (int) $result->result_version, 409, 'Only the latest attendance result can be corrected.');
-        $period = DB::table('hr_attendance_periods')->where(fn ($_companyIdScope) => \App\Services\CompanyIdScope::constrain($_companyIdScope, 'company_id', $companyId))->whereDate('period_start', '<=', $workDate)->whereDate('period_end', '>=', $workDate)->first();
+        $period = DB::table('hr_attendance_periods')->whereDate('period_start', '<=', $workDate)->whereDate('period_end', '>=', $workDate)->first();
         abort_if($period?->status === 'locked', 409, 'The attendance period is locked.');
         $roster = DB::table('hr_roster_assignments')->where(fn ($_companyIdScope) => \App\Services\CompanyIdScope::constrain($_companyIdScope, 'company_id', $companyId))->where('staff_id', $result->staff_id)->whereNotNull('approved_at')
             ->whereDate('effective_from', '<=', $workDate)->where(fn ($q) => $q->whereNull('effective_until')->orWhereDate('effective_until', '>', $workDate))->latest('effective_from')->first();
@@ -538,7 +538,7 @@ class AttendanceResultController extends Controller
             }
             $latestVersion = DB::table('hr_attendance_daily_results')->where(fn ($_companyIdScope) => \App\Services\CompanyIdScope::constrain($_companyIdScope, 'company_id', $companyId))->where('staff_id', $staff->id)->whereDate('work_date', $workDate)->max('result_version');
             abort_unless((int) $latestVersion === (int) $latest->result_version, 409, 'Only the latest attendance result can be corrected.');
-            $period = DB::table('hr_attendance_periods')->where(fn ($_companyIdScope) => \App\Services\CompanyIdScope::constrain($_companyIdScope, 'company_id', $companyId))->whereDate('period_start', '<=', $workDate)->whereDate('period_end', '>=', $workDate)->first();
+            $period = DB::table('hr_attendance_periods')->whereDate('period_start', '<=', $workDate)->whereDate('period_end', '>=', $workDate)->first();
             abort_if($period?->status === 'locked', 409, 'The attendance period is locked.');
             $id = (string) Str::uuid();
             DB::table('hr_attendance_correction_requests')->insert([
@@ -662,24 +662,20 @@ class AttendanceResultController extends Controller
 
     public function periods(Request $request): JsonResponse
     {
-        $data = $request->validate(['company_id' => ['nullable', 'uuid'], 'status' => ['nullable', Rule::in(['open', 'reviewed', 'locked'])]]);
-        $companyId = $this->actorCompany($request, $data['company_id'] ?? null);
-        return response()->json(['status' => 'success', 'data' => DB::table('hr_attendance_periods')->where(fn ($_companyIdScope) => \App\Services\CompanyIdScope::constrain($_companyIdScope, 'company_id', $companyId))->when($data['status'] ?? null, fn($q, $v) => $q->where('status', $v))->orderByDesc('period_start')->get()]);
+        $data = $request->validate(['status' => ['nullable', Rule::in(['open', 'reviewed', 'locked'])]]);
+        return response()->json(['status' => 'success', 'data' => DB::table('hr_attendance_periods')->when($data['status'] ?? null, fn($q, $v) => $q->where('status', $v))->orderByDesc('period_start')->get()]);
     }
 
     public function storePeriod(Request $request): JsonResponse
     {
-        $data = $request->validate(['company_id' => ['nullable', 'uuid'], 'period_start' => ['required', 'date'], 'period_end' => ['required', 'date', 'after_or_equal:period_start'], 'timezone' => ['required', 'timezone']]);
-        $data['company_id'] = $this->actorCompany($request, $data['company_id'] ?? null);
+        $data = $request->validate(['period_start' => ['required', 'date'], 'period_end' => ['required', 'date', 'after_or_equal:period_start'], 'timezone' => ['required', 'timezone']]);
         return DB::transaction(function () use ($request, $data) {
-            $this->sameCompany($request, $data['company_id']);
-            $this->lockActiveCompany($data['company_id']);
-            $overlap = DB::table('hr_attendance_periods')->where(fn ($_companyIdScope) => \App\Services\CompanyIdScope::constrain($_companyIdScope, 'company_id', $data['company_id']))->whereDate('period_start', '<=', $data['period_end'])->whereDate('period_end', '>=', $data['period_start'])->exists();
+            $overlap = DB::table('hr_attendance_periods')->whereDate('period_start', '<=', $data['period_end'])->whereDate('period_end', '>=', $data['period_start'])->exists();
             abort_if($overlap, 409, 'Attendance periods cannot overlap.');
             $id = (string) Str::uuid();
             DB::table('hr_attendance_periods')->insert($data + ['id' => $id, 'status' => 'open', 'version' => 1, 'created_at' => now(), 'updated_at' => now()]);
             activity('hr-attendance')->causedBy($request->user())
-                ->withProperties(['period_id' => $id, 'company_id' => $data['company_id'], 'period_start' => $data['period_start'], 'period_end' => $data['period_end'], 'timezone' => $data['timezone']])
+                ->withProperties(['period_id' => $id, 'period_start' => $data['period_start'], 'period_end' => $data['period_end'], 'timezone' => $data['timezone']])
                 ->log('attendance_period_created');
             return response()->json(['status' => 'success', 'data' => DB::table('hr_attendance_periods')->find($id)], 201);
         });
@@ -689,11 +685,7 @@ class AttendanceResultController extends Controller
     {
         $data = $request->validate(['action' => ['required', Rule::in(['review', 'lock', 'reopen'])], 'reason' => ['required', 'string', 'max:2000'], 'expected_version' => ['required', 'integer', 'min:1']]);
         return DB::transaction(function () use ($request, $periodId, $data) {
-            $candidate = DB::table('hr_attendance_periods')->where('id', $periodId)
-                ->where(fn ($_companyIdScope) => \App\Services\CompanyIdScope::constrainIn($_companyIdScope, 'company_id', $this->authorizedCompanyIds($request)))->first();
-            abort_unless($candidate, 404);
-            $this->lockActiveCompany($candidate->company_id);
-            $row = DB::table('hr_attendance_periods')->where('id', $periodId)->where(fn ($_companyIdScope) => \App\Services\CompanyIdScope::constrain($_companyIdScope, 'company_id', $candidate->company_id))->lockForUpdate()->first();
+            $row = DB::table('hr_attendance_periods')->where('id', $periodId)->lockForUpdate()->first();
             abort_unless($row, 404);
             abort_unless($row->version === $data['expected_version'], 409, 'Attendance period version is stale.');
             $next = ['open' => ['review' => 'reviewed'], 'reviewed' => ['lock' => 'locked'], 'locked' => ['reopen' => 'open']][$row->status][$data['action']] ?? null;
@@ -705,7 +697,7 @@ class AttendanceResultController extends Controller
             }
             if ($next === 'locked') {
                 abort_unless($row->reviewed_by !== $request->user()->id, 409, 'The period reviewer cannot lock the same period.');
-                $open = DB::table('hr_attendance_exceptions as exception')->join('hr_attendance_daily_results as result', fn($join) => $join->on('result.id', '=', 'exception.daily_result_id')->where(fn ($sameCompany) => \App\Services\CompanyIdScope::sameCompany($sameCompany, 'result.company_id', 'exception.company_id'))->on('result.staff_id', '=', 'exception.staff_id'))->where(fn ($_companyIdScope) => \App\Services\CompanyIdScope::constrain($_companyIdScope, 'exception.company_id', $row->company_id))->where('exception.status', 'open')->where('exception.severity', 'high')->whereBetween('result.work_date', [$row->period_start, $row->period_end])->exists();
+                $open = DB::table('hr_attendance_exceptions as exception')->join('hr_attendance_daily_results as result', fn($join) => $join->on('result.id', '=', 'exception.daily_result_id')->on('result.staff_id', '=', 'exception.staff_id'))->where('exception.status', 'open')->where('exception.severity', 'high')->whereBetween('result.work_date', [$row->period_start, $row->period_end])->exists();
                 abort_if($open, 409, 'High-severity attendance exceptions must be resolved before lock.');
             }$version = $row->version + 1;
             DB::table('hr_attendance_periods')->where('id', $periodId)->update(['status' => $next, 'version' => $version, 'reviewed_at' => $next === 'reviewed' ? now() : $row->reviewed_at, 'reviewed_by' => $next === 'reviewed' ? $request->user()->id : $row->reviewed_by, 'locked_at' => $next === 'locked' ? now() : ($next === 'open' ? null : $row->locked_at), 'locked_by' => $next === 'locked' ? $request->user()->id : ($next === 'open' ? null : $row->locked_by), 'state_reason' => $data['reason'], 'updated_at' => now()]);

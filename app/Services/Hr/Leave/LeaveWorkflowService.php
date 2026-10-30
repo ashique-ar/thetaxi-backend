@@ -121,7 +121,7 @@ class LeaveWorkflowService
                 $this->event($row->id, 'approval_level_completed', 'pending_approval', 'pending_approval', $reason, $snapshot + ['completed_level' => $row->approval_level], $actorUserId);
                 DB::table('hr_leave_requests')->where('id', $row->id)->update(['approval_level' => $nextLevel, 'current_approver_staff_id' => $nextApprover, 'updated_at' => now()]);
                 return DB::table('hr_leave_requests')->find($row->id);
-            }$locked = DB::table('hr_attendance_periods')->where(fn ($_companyIdScope) => \App\Services\CompanyIdScope::constrain($_companyIdScope, 'company_id', $row->company_id))->where('status', 'locked')->whereDate('period_start', '<=', $row->end_date)->whereDate('period_end', '>=', $row->start_date)->exists();
+            }$locked = DB::table('hr_attendance_periods')->where('status', 'locked')->whereDate('period_start', '<=', $row->end_date)->whereDate('period_end', '>=', $row->start_date)->exists();
             abort_if($locked && $action === 'approve', 409, 'Reopen the overlapping locked attendance period before approving leave.');
             $account = $this->account($row->company_id, $row->staff_id, $row->leave_type_id, $row->unit);
             $this->entry($account->id, $row->id, 'reservation_release', $row->reserved_minutes, $row->start_date, 'leave_request', $row->id, 'Release pending reservation', $snapshot, $actorUserId);
@@ -146,7 +146,7 @@ class LeaveWorkflowService
             $this->assertRequestCompany($row);
             abort_unless(in_array($row->status, ['pending_approval', 'approved'], true), 409, 'This leave request cannot be cancelled.');
             abort_if($row->recalled_at !== null, 409, 'This leave request was already recalled; the recalled portion cannot also be cancelled.');
-            $locked = DB::table('hr_attendance_periods')->where(fn ($_companyIdScope) => \App\Services\CompanyIdScope::constrain($_companyIdScope, 'company_id', $row->company_id))->where('status', 'locked')->whereDate('period_start', '<=', $row->end_date)->whereDate('period_end', '>=', $row->start_date)->exists();
+            $locked = DB::table('hr_attendance_periods')->where('status', 'locked')->whereDate('period_start', '<=', $row->end_date)->whereDate('period_end', '>=', $row->start_date)->exists();
             abort_if($locked && $row->status === 'approved', 409, 'Reopen the overlapping locked attendance period before cancelling approved leave.');
             $account = $this->account($row->company_id, $row->staff_id, $row->leave_type_id, $row->unit);
             $snapshot = json_decode($row->calculation_snapshot, true, 512, JSON_THROW_ON_ERROR);
@@ -233,7 +233,7 @@ class LeaveWorkflowService
             abort_if($row->unit === 'hour', 422, 'Hourly leave cannot be extended by end date; submit a new request for additional hours.');
             abort_unless($newEndDate > $row->end_date, 422, 'An extension must move the end date later than the current approved end date.');
             $extensionStart = CarbonImmutable::parse($row->end_date)->addDay()->toDateString();
-            $locked = DB::table('hr_attendance_periods')->where(fn ($_companyIdScope) => \App\Services\CompanyIdScope::constrain($_companyIdScope, 'company_id', $row->company_id))->where('status', 'locked')->whereDate('period_start', '<=', $newEndDate)->whereDate('period_end', '>=', $extensionStart)->exists();
+            $locked = DB::table('hr_attendance_periods')->where('status', 'locked')->whereDate('period_start', '<=', $newEndDate)->whereDate('period_end', '>=', $extensionStart)->exists();
             abort_if($locked, 409, 'Reopen the overlapping locked attendance period before extending approved leave.');
             $policy = DB::table('hr_leave_policies')->where('id', $row->policy_id)->where(fn ($_companyIdScope) => \App\Services\CompanyIdScope::constrain($_companyIdScope, 'company_id', $row->company_id))->where('status', 'approved')->whereDate('effective_from', '<=', $row->start_date)->where(fn($q) => $q->whereNull('effective_until')->orWhereDate('effective_until', '>', $newEndDate))->first();
             abort_unless($policy, 422, 'No approved leave policy covers the extended interval.');
