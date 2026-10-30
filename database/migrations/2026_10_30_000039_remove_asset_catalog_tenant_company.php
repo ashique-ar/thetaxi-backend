@@ -63,7 +63,7 @@ return new class extends Migration
             $suffix++;
         }
 
-        Schema::table($tableName, function (Blueprint $table) use ($columns, $name, $unique): void {
+        Schema::table($tableName, function (Blueprint $table) use ($tableName, $columns, $name, $unique): void {
             if (DB::getDriverName() === 'pgsql') {
                 $grammar = DB::connection()->getQueryGrammar();
                 $indexType = $unique ? 'UNIQUE ' : '';
