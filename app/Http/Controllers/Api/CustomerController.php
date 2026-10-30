@@ -62,13 +62,11 @@ class CustomerController extends Controller
             ->leftJoin('users as customer_phone', 'customer_phone.id', '=', 'customers.user_id')
             ->with(['user', 'state', 'paymentMethods']);
         $companyId = $this->currentCompanyId();
-        abort_unless($companyId, 409, 'Select an active company before viewing customers.');
-        \App\Services\CompanyCustomerScope::constrain($q, 'customers', $companyId);
-        $phoneCallingCode = \App\Services\CompanyCustomerScope::phoneCallingCode($companyId);
+        $phoneCallingCode = $companyId ? \App\Services\CompanyCustomerScope::phoneCallingCode($companyId) : null;
         $completedBookingCount = DB::table('bookings as completed_booking')->selectRaw('COUNT(*)')
             ->whereColumn('completed_booking.customer_id', 'customers.id')->whereNotNull('completed_booking.completed_at')
             ->whereNull('completed_booking.deleted_at');
-        $this->constrainBookingsToCompany($completedBookingCount, 'completed_booking', $companyId);
+        if ($companyId) $this->constrainBookingsToCompany($completedBookingCount, 'completed_booking', $companyId);
         $q->addSelect(['completed_booking_count' => $completedBookingCount]);
         // Ignore common display punctuation; shared numbers still require human review, never an automatic merge.
         $normalizedPhoneSql = fn (string $column): string => PhoneNumberMatch::sqlExpression($column, $phoneCallingCode);
@@ -84,8 +82,6 @@ class CustomerController extends Controller
             ->limit(1);
         if ($companyId) {
             \App\Services\CompanyCustomerScope::constrain($phoneMatches, 'other_customer', $companyId);
-        } else {
-            $phoneMatches->whereRaw('1 = 0');
         }
         $normalizedEmailSql = static fn (string $column): string => "LOWER(TRIM({$column}))";
         $emailMatches = DB::table('customers as other_customer')
@@ -100,8 +96,6 @@ class CustomerController extends Controller
             ->limit(1);
         if ($companyId) {
             \App\Services\CompanyCustomerScope::constrain($emailMatches, 'other_customer', $companyId);
-        } else {
-            $emailMatches->whereRaw('1 = 0');
         }
         $possibleDuplicates = DB::query()->selectRaw('1')
             ->where(fn ($matches) => $matches->whereExists(clone $phoneMatches)->orWhereExists(clone $emailMatches))
@@ -250,12 +244,7 @@ class CustomerController extends Controller
         $search = $request->get('q', '');
         $limit = (int) $request->get('limit', 20);
 
-        $companyId = $this->currentCompanyId();
-        abort_unless($companyId, 409, 'Select an active company before searching customers.');
         $customers = Customer::with('user')
-            ->where(function ($query) use ($companyId): void {
-                \App\Services\CompanyCustomerScope::constrain($query, 'customers', $companyId);
-            })
             ->when($search !== '', function ($query) use ($search) {
                 $query->whereHas('user', function ($userQuery) use ($search) {
                     $userQuery->whereLikeInsensitive('first_name', $search)
@@ -286,12 +275,9 @@ class CustomerController extends Controller
 
         $email = strtolower(trim($data['email']));
 
-        $companyId = $this->currentCompanyId();
-        abort_unless($companyId, 409, 'Select an active company before checking customer email.');
         $customerQuery = Customer::with('user')
             ->whereHas('user', fn ($query) => $query->whereRaw('LOWER(email) = ?', [$email]))
             ->when(!empty($data['except_customer_id']), fn ($query) => $query->where('id', '!=', $data['except_customer_id']));
-        \App\Services\CompanyCustomerScope::constrain($customerQuery, 'customers', $companyId);
         $customer = $customerQuery->first();
 
         return response()->json([

@@ -8,8 +8,6 @@ use App\Models\Booking\BookingActivity;
 use App\Models\Booking\BookingItem;
 use App\Models\UserMedia;
 use App\Services\BookingLifecycleService;
-use App\Services\CompanySettingsAccessService;
-use App\Services\WebsiteSettingsService;
 use App\Services\Sms\SmsAutomationService;
 use Illuminate\Http\Request;
 use Illuminate\Http\JsonResponse;
@@ -277,13 +275,8 @@ class BookingLifecycleController extends Controller
             'notes' => ['required', 'string', 'min:3', 'max:3000'],
         ]);
         $data['notes'] = trim($data['notes']);
-        $companyId = app(WebsiteSettingsService::class)->resolveCurrentCompanyId();
-        abort_unless($companyId, 409, 'Select an active business before recording a missed return.');
-        app(CompanySettingsAccessService::class)->assertCanAccess($request->user(), (string) $companyId);
-
-        $activity = DB::transaction(function () use ($data, $companyId, $request) {
+        $activity = DB::transaction(function () use ($data, $request) {
             $bookingQuery = Booking::query()->whereKey($data['booking_id'])->whereNull('deleted_at');
-            \App\Services\CompanyBookingScope::constrain($bookingQuery, 'bookings', (string) $companyId);
             $booking = $bookingQuery->lockForUpdate()->firstOrFail();
             $item = BookingItem::query()->where('booking_id', $booking->id)->whereKey($data['booking_item_id'])->lockForUpdate()->firstOrFail();
             $contract = $this->lifecycleService->getLifecycleContract($booking, (string) $item->id);
@@ -295,7 +288,7 @@ class BookingLifecycleController extends Controller
             return BookingActivity::firstOrCreate(
                 ['idempotency_key' => 'return-no-show-'.$item->id.'-'.$scheduledReturn->format('YmdHis')],
                 [
-                    'company_id' => $companyId,
+                    'company_id' => $booking->company_id,
                     'booking_id' => $booking->id,
                     'booking_item_id' => $item->id,
                     'event_key' => 'rental_return_no_show',
@@ -611,12 +604,7 @@ class BookingLifecycleController extends Controller
             throw ValidationException::withMessages(['notes' => 'Describe the completed work in at least 3 characters.']);
         }
 
-        $companyId = app(WebsiteSettingsService::class)->resolveCurrentCompanyId();
-        abort_unless($companyId, 409, 'Select an active business before completing maintenance.');
-        app(CompanySettingsAccessService::class)->assertCanAccess($request->user(), (string) $companyId);
-        $bookingQuery = Booking::query()->whereKey($data['booking_id'])->whereNull('deleted_at');
-        \App\Services\CompanyBookingScope::constrain($bookingQuery, 'bookings', (string) $companyId);
-        $bookingQuery->firstOrFail();
+        Booking::query()->whereKey($data['booking_id'])->whereNull('deleted_at')->firstOrFail();
 
         try {
             $activity = $this->lifecycleService->completePostTripMaintenance(

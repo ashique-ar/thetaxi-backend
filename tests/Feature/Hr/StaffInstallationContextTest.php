@@ -17,7 +17,7 @@ it('creates a Staff context without a selected or default location', function ()
     $context = app(UserContextService::class)->switchContext($user, 'staff');
     $staff = Staff::query()->findOrFail($context->context_id);
 
-    expect($staff->getAttributes())->not->toHaveKey('company_id');
+    expect($staff->company_id)->toBeNull();
 });
 
 it('allows HR access by role when the active staff identity has no company ID', function () {
@@ -33,6 +33,7 @@ it('allows HR access by role when the active staff identity has no company ID', 
 it('allocates employee numbers from one installation-wide sequence', function () {
     $actor = User::factory()->create();
     $staff = Staff::factory()->create(['code' => null]);
+    $staff->forceFill(['code' => null])->saveQuietly();
 
     expect(app(EmployeeNumberAllocator::class)->allocate($staff, (string) $actor->id))->toBe('EMP-1001');
     $this->assertDatabaseHas('hr_employee_number_sequences', ['installation_key' => 'installation']);

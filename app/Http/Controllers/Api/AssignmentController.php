@@ -10,7 +10,6 @@ use App\Services\BookingPaymentLedgerService;
 use App\Services\Sales\SalesAccessScope;
 use App\Services\Sales\SalesCollectionCompanyIntegrity;
 use App\Models\Booking\Booking;
-use App\Models\Company;
 use App\Models\Booking\BookingActivity;
 use App\Models\Booking\BookingPaymentReceipt;
 use App\Enums\BookingLifecycleStatus;
@@ -18,8 +17,6 @@ use App\Models\Driver\RoutePoint;
 use App\Models\Driver\DriverSession;
 use App\Models\Driver\Driver;
 use App\Services\Driver\NotificationTriggerService;
-use App\Services\CompanySettingsAccessService;
-use App\Services\WebsiteSettingsService;
 use App\Models\Vehicle\VehicleAddon;
 use App\Notifications\BookingLifecycleNotification;
 use App\Models\Booking\BookingAddon;
@@ -530,13 +527,9 @@ class AssignmentController extends Controller
             'idempotency_key' => ['required', 'uuid'],
         ]);
         $summary = DB::transaction(function () use ($request, $bookingId, $data) {
-            $company = $this->selectedActiveCompanyForUpdate($request);
-            $bookingQuery = Booking::query()->whereKey($bookingId);
-            \App\Services\CompanyBookingScope::constrain($bookingQuery, 'bookings', (string) $company->id);
-            $booking = $bookingQuery->lockForUpdate()->firstOrFail();
+            $booking = Booking::query()->whereKey($bookingId)->lockForUpdate()->firstOrFail();
             $item = \App\Models\Booking\BookingItem::query()->where('booking_id', $booking->id)->whereKey($data['booking_item_id'])->lockForUpdate()->firstOrFail();
-            $existing = BookingActivity::query()->where(fn ($scope) => \App\Services\CompanyIdScope::constrain($scope, 'company_id', (string) $company->id))
-                ->where('booking_id', $booking->id)
+            $existing = BookingActivity::query()->where('booking_id', $booking->id)
                 ->where('idempotency_key', 'additional-rental-charge-'.$data['idempotency_key'])->first();
             if ($existing) {
                 abort_unless(
@@ -578,7 +571,7 @@ class AssignmentController extends Controller
                 'payment_collection_status' => $summary['due_amount'] <= 0 ? 'paid' : ($summary['paid_amount'] > 0 ? 'partially_paid' : 'pending'),
             ]);
             BookingActivity::create([
-                'company_id' => $company->id,
+                'company_id' => $booking->company_id,
                 'booking_id' => $booking->id,
                 'booking_item_id' => $item->id,
                 'event_key' => 'additional_rental_charge_added',
@@ -1887,9 +1880,7 @@ class AssignmentController extends Controller
 
         try {
             return DB::transaction(function () use ($request) {
-                $company = $this->selectedActiveCompanyForUpdate($request);
                 $bookingQuery = Booking::with(['customer', 'bookingItems'])->whereKey($request->booking_id);
-                \App\Services\CompanyBookingScope::constrain($bookingQuery, 'bookings', (string) $company->id);
                 $booking = $bookingQuery->lockForUpdate()->firstOrFail();
                 $selectedBookingItem = null;
 
@@ -1916,16 +1907,16 @@ class AssignmentController extends Controller
                 $newVehicleId = $request->new_vehicle_id;
                 $newDriverId = $request->new_driver_id;
                 if ($newVehicleId && in_array($request->swap_type, ['vehicle', 'both'], true)) {
-                    $eligibleVehicle = DB::table('vehicles')->where('id', $newVehicleId)->where(fn ($_companyIdScope) => \App\Services\CompanyIdScope::constrain($_companyIdScope, 'company_id', $company->id))->where('is_active', true)->whereNull('deleted_at')->exists();
-                    if (! $eligibleVehicle) throw \Illuminate\Validation\ValidationException::withMessages(['new_vehicle_id' => 'Choose an active vehicle in the current company.']);
+                    $eligibleVehicle = DB::table('vehicles')->where('id', $newVehicleId)->where('is_active', true)->whereNull('deleted_at')->exists();
+                    if (! $eligibleVehicle) throw \Illuminate\Validation\ValidationException::withMessages(['new_vehicle_id' => 'Choose an active vehicle.']);
                 }
                 if ($newDriverId && in_array($request->swap_type, ['driver', 'both'], true)) {
                     $eligibleDriver = DB::table('drivers as driver')->join('staff', 'staff.user_id', '=', 'driver.user_id')
                         ->join('users', 'users.id', '=', 'driver.user_id')->where('driver.id', $newDriverId)
                         ->whereNull('driver.deleted_at')
-                        ->where(fn ($_companyIdScope) => \App\Services\CompanyIdScope::constrain($_companyIdScope, 'staff.company_id', $company->id))->whereNull('staff.deleted_at')->whereNull('staff.employment_ended_at')
+                        ->whereNull('staff.deleted_at')->whereNull('staff.employment_ended_at')
                         ->whereNull('users.deleted_at')->where('users.is_active', true)->exists();
-                    if (! $eligibleDriver) throw \Illuminate\Validation\ValidationException::withMessages(['new_driver_id' => 'Choose an active driver in the current company.']);
+                    if (! $eligibleDriver) throw \Illuminate\Validation\ValidationException::withMessages(['new_driver_id' => 'Choose an active driver.']);
                 }
                 $reason = $request->reason;
                 $serviceTypeId = $selectedBookingItem?->service_type_id ?? $booking->service_type_id ?? $booking->service_type;
@@ -2310,15 +2301,13 @@ class AssignmentController extends Controller
 
         try {
             return DB::transaction(function () use ($request) {
-                $company = $this->selectedActiveCompanyForUpdate($request);
                 $bookingQuery = Booking::with('bookingItems')->whereKey($request->booking_id);
-                \App\Services\CompanyBookingScope::constrain($bookingQuery, 'bookings', (string) $company->id);
                 $booking = $bookingQuery->lockForUpdate()->firstOrFail();
                 if ($request->filled('booking_item_id') && ! $booking->bookingItems->contains('id', $request->booking_item_id)) {
                     throw \Illuminate\Validation\ValidationException::withMessages(['booking_item_id' => 'Select an item from this booking.']);
                 }
-                if ($request->replacement_vehicle_id && ! DB::table('vehicles')->where('id', $request->replacement_vehicle_id)->where(fn ($_companyIdScope) => \App\Services\CompanyIdScope::constrain($_companyIdScope, 'company_id', $company->id))->where('is_active', true)->whereNull('deleted_at')->exists()) {
-                    throw \Illuminate\Validation\ValidationException::withMessages(['replacement_vehicle_id' => 'Choose an active vehicle in the current company.']);
+                if ($request->replacement_vehicle_id && ! DB::table('vehicles')->where('id', $request->replacement_vehicle_id)->where('is_active', true)->whereNull('deleted_at')->exists()) {
+                    throw \Illuminate\Validation\ValidationException::withMessages(['replacement_vehicle_id' => 'Choose an active vehicle.']);
                 }
                 $addons = [];
 
@@ -2430,16 +2419,6 @@ class AssignmentController extends Controller
     /**
      * Calculate vehicle pricing for a specific period (helper method)
      */
-    private function selectedActiveCompanyForUpdate(Request $request): Company
-    {
-        $companyId = app(WebsiteSettingsService::class)->resolveCurrentCompanyId();
-        abort_unless($companyId, 409, 'Select an active business before managing a booking.');
-        app(CompanySettingsAccessService::class)->assertCanAccess($request->user(), (string) $companyId);
-
-        return Company::query()->whereKey($companyId)->where('is_active', true)
-            ->whereNull('deleted_at')->lockForUpdate()->firstOrFail();
-    }
-
     private function calculateVehiclePricingForPeriod(string $vehicleId, Carbon $from, Carbon $to): float
     {
         try {
