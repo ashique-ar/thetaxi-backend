@@ -18,11 +18,9 @@ trait ManagesAttendanceQuarantine
 {
     public function rawEvents(Request $request): JsonResponse
     {
-        $data = $request->validate(['company_id' => ['nullable', 'uuid'], 'staff_id' => ['nullable', 'uuid'], 'from' => ['nullable', 'date'], 'to' => ['nullable', 'date', 'after_or_equal:from'], 'per_page' => ['nullable', 'integer', 'min:1', 'max:100']]);
-        $companyId = $this->authorizedCompanyId($request, $data['company_id'] ?? null);
+        $data = $request->validate(['staff_id' => ['nullable', 'uuid'], 'from' => ['nullable', 'date'], 'to' => ['nullable', 'date', 'after_or_equal:from'], 'per_page' => ['nullable', 'integer', 'min:1', 'max:100']]);
         $query = DB::table('hr_attendance_raw_events')
-            ->select(['id', 'company_id', 'device_id', 'staff_id', 'provider_event_id', 'provider_person_id', 'employee_number', 'occurred_at', 'source_timezone', 'event_kind', 'direction', 'authentication_method', 'verification_result', 'payload_checksum', 'mapping_status', 'received_at'])
-            ->where(fn ($_companyIdScope) => \App\Services\CompanyIdScope::constrain($_companyIdScope, 'company_id', $companyId))
+            ->select(['id', 'device_id', 'staff_id', 'provider_event_id', 'provider_person_id', 'employee_number', 'occurred_at', 'source_timezone', 'event_kind', 'direction', 'authentication_method', 'verification_result', 'payload_checksum', 'mapping_status', 'received_at'])
             ->when($data['staff_id'] ?? null, fn ($builder, $value) => $builder->where('staff_id', $value))
             ->when($data['from'] ?? null, fn ($builder, $value) => $builder->whereDate('occurred_at', '>=', $value))
             ->when($data['to'] ?? null, fn ($builder, $value) => $builder->whereDate('occurred_at', '<=', $value))
@@ -34,15 +32,12 @@ trait ManagesAttendanceQuarantine
     public function quarantine(Request $request): JsonResponse
     {
         $data = $request->validate([
-            'company_id' => ['nullable', 'uuid'],
             'status' => ['nullable', 'string', 'in:open,resolved'],
             'per_page' => ['nullable', 'integer', 'min:1', 'max:100'],
         ]);
-        $companyId = $this->authorizedCompanyId($request, $data['company_id'] ?? null);
         $query = DB::table('hr_attendance_quarantine_items as item')
             ->join('hr_attendance_raw_events as event', 'event.id', '=', 'item.raw_event_id')
-            ->select('item.*', 'event.provider_event_id', 'event.provider_person_id', 'event.employee_number', 'event.occurred_at', 'event.device_id')
-            ->where(fn ($_companyIdScope) => \App\Services\CompanyIdScope::constrain($_companyIdScope, 'item.company_id', $companyId))
+            ->select(['item.id', 'item.raw_event_id', 'item.reason_code', 'item.details', 'item.status', 'item.resolved_staff_id', 'item.resolved_mapping_id', 'item.resolved_by', 'item.resolved_at', 'item.resolution_reason', 'item.created_at', 'item.updated_at', 'event.provider_event_id', 'event.provider_person_id', 'event.employee_number', 'event.occurred_at', 'event.device_id'])
             ->where('item.status', $data['status'] ?? 'open')
             ->orderBy('event.occurred_at');
 
@@ -57,22 +52,17 @@ trait ManagesAttendanceQuarantine
             'page' => ['nullable', 'integer', 'min:1'],
             'per_page' => ['nullable', 'integer', 'min:1', 'max:50'],
         ]);
-        $item = DB::table('hr_attendance_quarantine_items')->where('id', $itemId)
-            ->where(fn ($_companyIdScope) => \App\Services\CompanyIdScope::constrainIn($_companyIdScope, 'company_id', $this->authorizedCompanyIds($request)))->first();
+        $item = DB::table('hr_attendance_quarantine_items')->where('id', $itemId)->first();
         abort_unless($item, 404);
-        $companyId = $item->company_id;
         abort_unless($item->status === 'open', 409, 'Only open quarantine items can be resolved.');
         $event = DB::table('hr_attendance_raw_events')->where('id', $item->raw_event_id)->first();
-        abort_unless($event && \App\Services\CompanyIdScope::sameCompanyId((string) ($event->company_id), (string) ($companyId)), 409, 'Quarantine and raw event legal entities must match.');
-        abort_unless(! $event->device_id || DB::table('hr_attendance_devices')->where('id', $event->device_id)->where(fn ($_companyIdScope) => \App\Services\CompanyIdScope::constrain($_companyIdScope, 'company_id', $companyId))->exists(), 409, 'The event device must belong to the quarantine legal entity.');
+        abort_unless($event, 409, 'The quarantine item has no raw attendance event.');
 
         $occurred = CarbonImmutable::parse($event->occurred_at)->toDateString();
         $search = trim((string) ($data['search'] ?? ''));
         $query = DB::table('hr_attendance_person_mappings as mapping')
             ->join('staff', 'staff.id', '=', 'mapping.staff_id')
             ->leftJoin('users', 'users.id', '=', 'staff.user_id')
-            ->where(fn ($_companyIdScope) => \App\Services\CompanyIdScope::constrain($_companyIdScope, 'mapping.company_id', $companyId))
-            ->where(fn ($_companyIdScope) => \App\Services\CompanyIdScope::constrain($_companyIdScope, 'staff.company_id', $companyId))
             ->where('mapping.enrollment_status', 'verified')
             ->where('mapping.provider_person_id', $event->provider_person_id)
             ->where(fn ($builder) => $builder->whereNull('mapping.device_id')->orWhere('mapping.device_id', $event->device_id))
@@ -108,7 +98,7 @@ trait ManagesAttendanceQuarantine
 
         return DB::transaction(function () use ($request, $itemId, $data) {
             $item = DB::table('hr_attendance_quarantine_items')->where('id', $itemId)
-                ->where(fn ($_companyIdScope) => \App\Services\CompanyIdScope::constrainIn($_companyIdScope, 'company_id', $this->authorizedCompanyIds($request)))->lockForUpdate()->first();
+                ->lockForUpdate()->first();
             abort_unless($item, 404);
             if ($item->status === 'resolved') {
                 abort_unless((string) $item->resolved_by === (string) $request->user()->id
@@ -122,25 +112,24 @@ trait ManagesAttendanceQuarantine
                 ]]);
             }
             $mapping = DB::table('hr_attendance_person_mappings')->where('id', $data['person_mapping_id'])
-                ->where(fn ($_companyIdScope) => \App\Services\CompanyIdScope::constrain($_companyIdScope, 'company_id', $item->company_id))->lockForUpdate()->first();
+                ->lockForUpdate()->first();
             abort_unless($mapping, 404);
             $event = DB::table('hr_attendance_raw_events')->where('id', $item->raw_event_id)->first();
-            abort_unless($event && \App\Services\CompanyIdScope::sameCompanyId((string) ($event->company_id), (string) ($item->company_id)) && $mapping && \App\Services\CompanyIdScope::sameCompanyId((string) ($mapping->company_id), (string) ($item->company_id)), 422, 'Event, mapping, and quarantine legal entities must match.');
-            abort_unless(! $event->device_id || DB::table('hr_attendance_devices')->where('id', $event->device_id)->where(fn ($_companyIdScope) => \App\Services\CompanyIdScope::constrain($_companyIdScope, 'company_id', $item->company_id))->exists(), 422, 'The event device must belong to the quarantine legal entity.');
+            abort_unless($event, 422, 'The quarantine item has no raw attendance event.');
             $staff = DB::table('staff')->where('id', $mapping->staff_id)->lockForUpdate()->first();
-            abort_unless($staff && \App\Services\CompanyIdScope::sameCompanyId((string) ($staff->company_id), (string) ($item->company_id)), 422, 'The mapping Staff member must belong to the quarantine legal entity.');
+            abort_unless($staff, 422, 'The selected mapping has no Staff member.');
             abort_unless($mapping->enrollment_status === 'verified', 422, 'Only a verified mapping can resolve quarantined evidence.');
             abort_unless($mapping->provider_person_id === $event->provider_person_id, 422, 'The provider person does not match the selected mapping.');
             abort_unless($mapping->device_id === null || $mapping->device_id === $event->device_id, 422, 'The event device does not match the selected mapping.');
             $occurred = CarbonImmutable::parse($event->occurred_at)->toDateString();
             abort_unless($occurred >= $mapping->effective_from && ($mapping->effective_until === null || $occurred < $mapping->effective_until), 422, 'The mapping was not effective when the event occurred.');
             $resolvedAt = now();
-            DB::table('hr_attendance_quarantine_items')->where('id', $itemId)->where(fn ($_companyIdScope) => \App\Services\CompanyIdScope::constrain($_companyIdScope, 'company_id', $item->company_id))->update([
+            DB::table('hr_attendance_quarantine_items')->where('id', $itemId)->update([
                 'status' => 'resolved', 'resolved_staff_id' => $mapping->staff_id, 'resolved_mapping_id' => $mapping->id,
                 'resolved_by' => $request->user()->id, 'resolved_at' => $resolvedAt, 'resolution_reason' => $data['reason'], 'updated_at' => $resolvedAt,
             ]);
             activity('hr-attendance')->causedBy($request->user())
-                ->withProperties(['company_id' => $item->company_id, 'status' => 'resolved'])
+                ->withProperties(['status' => 'resolved'])
                 ->log('attendance_quarantine_resolved');
 
             return response()->json(['status' => 'success', 'data' => [

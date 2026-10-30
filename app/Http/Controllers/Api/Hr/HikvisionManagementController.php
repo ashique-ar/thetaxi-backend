@@ -118,9 +118,9 @@ class HikvisionManagementController extends Controller
 
     public function alerts(Request $r): JsonResponse
     {
-        $company = $this->authorizedCompanyId($r, $r->input('company_id'));
-
-        return response()->json(['status' => 'success', 'data' => DB::table('hr_attendance_device_alerts')->where(fn ($_companyIdScope) => \App\Services\CompanyIdScope::constrain($_companyIdScope, 'company_id', $company))->latest('detected_at')->paginate($this->paginationSize($r, 50))]);
+        return response()->json(['status' => 'success', 'data' => DB::table('hr_attendance_device_alerts')
+            ->select(['id', 'device_id', 'alert_type', 'severity', 'status', 'message', 'dedupe_key', 'detected_at', 'resolved_at', 'resolved_by', 'resolution_note', 'created_at', 'updated_at'])
+            ->latest('detected_at')->paginate($this->paginationSize($r, 50))]);
     }
 
     public function resolveAlert(Request $r, string $id): JsonResponse
@@ -128,7 +128,7 @@ class HikvisionManagementController extends Controller
         $d = $r->validate(['note' => ['required', 'string', 'max:2000']]);
         return DB::transaction(function () use ($r, $id, $d): JsonResponse {
             $row = DB::table('hr_attendance_device_alerts')->where('id', $id)
-                ->where(fn ($_companyIdScope) => \App\Services\CompanyIdScope::constrainIn($_companyIdScope, 'company_id', $this->authorizedCompanyIds($r)))->lockForUpdate()->first();
+                ->lockForUpdate()->first();
             abort_unless($row, 404);
             if ($row->status === 'resolved') {
                 abort_unless((string) $row->resolved_by === (string) $r->user()->id
@@ -136,9 +136,8 @@ class HikvisionManagementController extends Controller
 
                 return response()->json(['status' => 'success']);
             }
-            $company = $row->company_id;
             abort_unless($row->status === 'open', 409, 'Only open device alerts may be resolved.');
-            DB::table('hr_attendance_device_alerts')->where('id', $id)->where(fn ($_companyIdScope) => \App\Services\CompanyIdScope::constrain($_companyIdScope, 'company_id', $company))->update([
+            DB::table('hr_attendance_device_alerts')->where('id', $id)->update([
                 'status' => 'resolved',
                 'resolved_at' => now(),
                 'resolved_by' => $r->user()->id,
@@ -146,7 +145,7 @@ class HikvisionManagementController extends Controller
                 'updated_at' => now(),
             ]);
             activity('hr-attendance')->causedBy($r->user())
-                ->withProperties(['company_id' => $company, 'status' => 'resolved', 'alert_type' => $row->alert_type])
+                ->withProperties(['status' => 'resolved', 'alert_type' => $row->alert_type])
                 ->log('attendance_device_alert_resolved');
 
             return response()->json(['status' => 'success']);

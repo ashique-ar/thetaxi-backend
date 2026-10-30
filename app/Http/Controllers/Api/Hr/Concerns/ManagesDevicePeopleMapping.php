@@ -226,7 +226,6 @@ trait ManagesDevicePeopleMapping
     public function mappingCandidates(Request $request): JsonResponse
     {
         $data = $request->validate([
-            'company_id' => ['nullable', 'uuid'],
             'record_type' => ['nullable', Rule::in(['staff', 'calendar', 'shift', 'policy'])],
             'search' => ['nullable', 'string', 'max:120'],
             'selected_id' => ['nullable', 'uuid'],
@@ -236,7 +235,6 @@ trait ManagesDevicePeopleMapping
             'page' => ['nullable', 'integer', 'min:1'],
             'per_page' => ['nullable', 'integer', 'min:1', 'max:50'],
         ]);
-        $companyId = $this->authorizedCompanyId($request, $data['company_id'] ?? null);
         $search = trim((string) ($data['search'] ?? ''));
         $recordType = $data['record_type'] ?? 'staff';
         if ($recordType !== 'staff') {
@@ -246,7 +244,6 @@ trait ManagesDevicePeopleMapping
                 'policy' => ['table' => 'hr_attendance_policies', 'status' => 'approved'],
             };
             $records = DB::table($definition['table'])
-                ->where(fn ($_companyIdScope) => \App\Services\CompanyIdScope::constrain($_companyIdScope, 'company_id', $companyId))
                 ->where('status', $definition['status'])
                 ->when($data['selected_id'] ?? null, fn ($query, $id) => $query->where('id', $id))
                 ->when($search !== '', fn ($query) => $query->where(function ($match) use ($search) {
@@ -267,7 +264,6 @@ trait ManagesDevicePeopleMapping
         $includeFormer = ($data['include_former'] ?? false) && $request->user()->can('hr.attendance.access.request');
         $staff = DB::table('staff')
             ->join('users', 'users.id', '=', 'staff.user_id')
-            ->where(fn ($_companyIdScope) => \App\Services\CompanyIdScope::constrain($_companyIdScope, 'staff.company_id', $companyId))
             ->when(! $includeFormer, fn ($query) => $query->whereNull('staff.deleted_at')
                 ->where(fn ($employment) => $employment
                     ->whereNull('staff.employment_ended_at')
