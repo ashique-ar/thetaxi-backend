@@ -24,24 +24,22 @@ class WorkforceWorkflowService
         try {
             return DB::transaction(function () use ($data, $actor, $checksum, $minutes, $starts, $ends) {
                 if ($existing = DB::table('hr_work_requests')->where('idempotency_key', $data['idempotency_key'])->lockForUpdate()->first()) {
-                    $this->assertActiveCompany($existing->company_id);
                     return $this->matchingWorkRequest($existing, $checksum, $actor);
                 }
-                $this->assertActiveCompany($data['company_id']);
                 $staff = DB::table('staff')->where('id', $data['staff_id'])->lockForUpdate()->first();
-                abort_unless($staff && \App\Services\CompanyIdScope::sameCompanyId((string) ($staff->company_id), (string) ($data['company_id'])) && $staff->employment_ended_at === null && $staff->deleted_at === null, 422, 'Staff is no longer active in this legal entity.');
+                abort_unless($staff && $staff->employment_ended_at === null && $staff->deleted_at === null, 422, 'Staff is no longer active.');
 
                 $policy = DB::table('hr_work_request_policies')->where('id', $data['policy_id'])->where('request_kind', $data['request_kind'])->where('status', 'approved')->whereDate('effective_from', '<=', $starts)->where(fn ($q) => $q->whereNull('effective_until')->orWhereDate('effective_until', '>', $ends))->first();
                 abort_unless($policy, 422, 'No approved work-request policy covers this interval.');
                 $rules = json_decode($policy->rules, true, 512, JSON_THROW_ON_ERROR);
                 abort_if($minutes > (int) ($rules['maximum_request_minutes'] ?? 10080), 422, 'Requested duration exceeds the policy cap.');
-                $overlap = DB::table('hr_work_requests')->where(fn ($_companyIdScope) => \App\Services\CompanyIdScope::constrain($_companyIdScope, 'company_id', $data['company_id']))->where('staff_id', $data['staff_id'])->whereIn('status', ['pending_approval', 'approved'])->where('starts_at', '<', $data['ends_at'])->where('ends_at', '>', $data['starts_at'])->exists();
+                $overlap = DB::table('hr_work_requests')->where('staff_id', $data['staff_id'])->whereIn('status', ['pending_approval', 'approved'])->where('starts_at', '<', $data['ends_at'])->where('ends_at', '>', $data['starts_at'])->exists();
                 abort_if($overlap, 409, 'An active work request overlaps this interval.');
 
                 $id = (string) Str::uuid();
                 $snapshot = ['policy_id' => $policy->id, 'policy_version' => $policy->version, 'rules' => $rules, 'requested' => $data];
                 DB::table('hr_work_requests')->insert([
-                    'id' => $id, 'company_id' => $data['company_id'], 'staff_id' => $data['staff_id'], 'policy_id' => $policy->id,
+                    'id' => $id, 'staff_id' => $data['staff_id'], 'policy_id' => $policy->id,
                     'request_kind' => $data['request_kind'], 'starts_at' => $data['starts_at'], 'ends_at' => $data['ends_at'],
                     'requested_minutes' => $minutes, 'rate_category' => $data['rate_category'] ?? ($rules['default_rate_category'] ?? null),
                     'settlement_kind' => $data['settlement_kind'] ?? ($rules['default_settlement_kind'] ?? null), 'status' => 'pending_approval',
@@ -65,7 +63,7 @@ class WorkforceWorkflowService
         return DB::transaction(function () use ($id, $action, $note, $actor) {
             $row = DB::table('hr_work_requests')->where('id', $id)->lockForUpdate()->first();
             abort_unless($row, 404);
-            $this->assertWorkRequestCompany($row);
+            $this->assertWorkRequest($row);
             abort_unless(in_array($action, ['approve', 'reject'], true), 422);
             if ($this->exactDecisionReplay($row, $action, $note, $actor)) return $row;
             abort_if($row->requested_by === $actor, 409, 'The requester cannot decide the same work request.');
@@ -77,7 +75,7 @@ class WorkforceWorkflowService
             $next = $action === 'approve' ? 'approved' : 'rejected';
             $snapshot = json_decode($row->request_snapshot, true, 512, JSON_THROW_ON_ERROR);
             if ($next === 'approved' && $row->request_kind === 'overtime') {
-                $attendance = $this->attendanceMinutes($row->company_id, $row->staff_id,
+                $attendance = $this->attendanceMinutes($row->staff_id,
                     CarbonImmutable::parse($row->starts_at)->toDateString(), CarbonImmutable::parse($row->ends_at)->toDateString());
                 $snapshot['attendance_reconciliation'] = [
                     'worked_minutes' => $attendance, 'requested_overtime_minutes' => $row->requested_minutes,
@@ -95,43 +93,88 @@ class WorkforceWorkflowService
         });
     }
 
-    public function saveTimesheet(array$data,string$actor):object
+    public function saveTimesheet(array $data, string $actor): object
     {
-        return DB::transaction(function()use($data,$actor){$this->assertActiveCompany($data['company_id']);$staff=DB::table('staff')->where('id',$data['staff_id'])->lockForUpdate()->first();abort_unless($staff&&\App\Services\CompanyIdScope::sameCompanyId((string) ((string)$staff->company_id), (string) ((string)$data['company_id'])),422,'Staff and timesheet legal entities must match.');$sheet=DB::table('hr_timesheets')->where('staff_id',$data['staff_id'])->where('period_start',$data['period_start'])->where('period_end',$data['period_end'])->lockForUpdate()->first();if(!$sheet){$id=(string)Str::uuid();DB::table('hr_timesheets')->insert(['id'=>$id,'company_id'=>$data['company_id'],'staff_id'=>$data['staff_id'],'period_start'=>$data['period_start'],'period_end'=>$data['period_end'],'status'=>'draft','version'=>1,'created_at'=>now(),'updated_at'=>now()]);$sheet=DB::table('hr_timesheets')->find($id);}abort_unless(\App\Services\CompanyIdScope::sameCompanyId((string) ((string)$sheet->company_id), (string) ((string)$data['company_id'])),409,'The existing timesheet belongs to another legal entity.');abort_unless(in_array($sheet->status,['draft','returned'],true),409,'Only draft or returned timesheets may be edited.');DB::table('hr_timesheet_entries')->where('timesheet_id',$sheet->id)->delete();$daily=[];foreach($data['entries']as$entry){abort_unless($entry['work_date']>=$sheet->period_start&&$entry['work_date']<=$sheet->period_end,422,'Timesheet entry is outside its period.');if(!empty($entry['booking_id']))abort_unless(DB::table('sales_booking_attributions')->where('booking_id',$entry['booking_id'])->where(fn ($_companyIdScope) => \App\Services\CompanyIdScope::constrain($_companyIdScope, 'company_id', $data['company_id']))->exists(),422,'Timesheet booking must have a frozen attribution to the same legal entity.');if(($entry['entry_mode']??'manual')==='timer'){abort_unless(!empty($entry['started_at'])&&!empty($entry['ended_at']),422,'Timer entries require start and end.');$started=CarbonImmutable::parse($entry['started_at']);$ended=CarbonImmutable::parse($entry['ended_at']);abort_unless($ended->gt($started),422,'Timer end must be after start.');$entry['minutes']=$started->diffInMinutes($ended);}$daily[$entry['work_date']]=($daily[$entry['work_date']]??0)+(int)$entry['minutes'];abort_if($daily[$entry['work_date']]>1440,422,'Timesheet entries exceed 24 hours for a work date.');abort_if((int)$entry['minutes']<=0,422,'Timesheet minutes must be positive.');$payload=array_intersect_key($entry,array_flip(['work_date','started_at','ended_at','minutes','entry_mode','cost_centre_code','project_code','booking_id','job_reference','activity_code','billable','notes']));DB::table('hr_timesheet_entries')->insert($payload+['id'=>(string)Str::uuid(),'timesheet_id'=>$sheet->id,'entry_checksum'=>hash('sha256',json_encode($payload,JSON_UNESCAPED_SLASHES|JSON_THROW_ON_ERROR)),'created_at'=>now(),'updated_at'=>now()]);}DB::table('hr_timesheets')->where('id',$sheet->id)->update(['updated_at'=>now()]);return DB::table('hr_timesheets')->find($sheet->id);});
+        return DB::transaction(function () use ($data, $actor) {
+            $staff = DB::table('staff')->where('id', $data['staff_id'])->lockForUpdate()->first();
+            abort_unless($staff && $staff->employment_ended_at === null && $staff->deleted_at === null, 422, 'Staff is no longer active.');
+            $sheet = DB::table('hr_timesheets')->where('staff_id', $data['staff_id'])->where('period_start', $data['period_start'])->where('period_end', $data['period_end'])->lockForUpdate()->first();
+            if (! $sheet) {
+                $id = (string) Str::uuid();
+                DB::table('hr_timesheets')->insert(['id' => $id, 'staff_id' => $data['staff_id'], 'period_start' => $data['period_start'], 'period_end' => $data['period_end'], 'status' => 'draft', 'version' => 1, 'created_at' => now(), 'updated_at' => now()]);
+                $sheet = DB::table('hr_timesheets')->find($id);
+            }
+            abort_unless(in_array($sheet->status, ['draft', 'returned'], true), 409, 'Only draft or returned timesheets may be edited.');
+            DB::table('hr_timesheet_entries')->where('timesheet_id', $sheet->id)->delete();
+            $daily = [];
+            foreach ($data['entries'] as $entry) {
+                abort_unless($entry['work_date'] >= $sheet->period_start && $entry['work_date'] <= $sheet->period_end, 422, 'Timesheet entry is outside its period.');
+                if (! empty($entry['booking_id'])) abort_unless(DB::table('bookings')->where('id', $entry['booking_id'])->exists(), 422, 'Timesheet booking does not exist.');
+                if (($entry['entry_mode'] ?? 'manual') === 'timer') {
+                    abort_unless(! empty($entry['started_at']) && ! empty($entry['ended_at']), 422, 'Timer entries require start and end.');
+                    $started = CarbonImmutable::parse($entry['started_at']);
+                    $ended = CarbonImmutable::parse($entry['ended_at']);
+                    abort_unless($ended->gt($started), 422, 'Timer end must be after start.');
+                    $entry['minutes'] = $started->diffInMinutes($ended);
+                }
+                $daily[$entry['work_date']] = ($daily[$entry['work_date']] ?? 0) + (int) $entry['minutes'];
+                abort_if($daily[$entry['work_date']] > 1440, 422, 'Timesheet entries exceed 24 hours for a work date.');
+                abort_if((int) $entry['minutes'] <= 0, 422, 'Timesheet minutes must be positive.');
+                $payload = array_intersect_key($entry, array_flip(['work_date', 'started_at', 'ended_at', 'minutes', 'entry_mode', 'cost_centre_code', 'project_code', 'booking_id', 'job_reference', 'activity_code', 'billable', 'notes']));
+                DB::table('hr_timesheet_entries')->insert($payload + ['id' => (string) Str::uuid(), 'timesheet_id' => $sheet->id, 'entry_checksum' => hash('sha256', json_encode($payload, JSON_UNESCAPED_SLASHES | JSON_THROW_ON_ERROR)), 'created_at' => now(), 'updated_at' => now()]);
+            }
+            DB::table('hr_timesheets')->where('id', $sheet->id)->update(['updated_at' => now()]);
+            return DB::table('hr_timesheets')->find($sheet->id);
+        });
     }
 
-    public function transitionTimesheet(string$id,string$action,string$reason,string$actor):object
+    public function transitionTimesheet(string $id, string $action, string $reason, string $actor): object
     {
-        return DB::transaction(function()use($id,$action,$reason,$actor){$candidate=DB::table('hr_timesheets')->where('id',$id)->first();abort_unless($candidate,404);$this->assertActiveCompany($candidate->company_id);$staff=DB::table('staff')->where('id',$candidate->staff_id)->lockForUpdate()->first();$sheet=DB::table('hr_timesheets')->where('id',$id)->lockForUpdate()->first();abort_unless($sheet,404);abort_unless($staff&&\App\Services\CompanyIdScope::sameCompanyId((string) ((string)$staff->company_id), (string) ((string)$sheet->company_id)),409,'Staff and timesheet legal entities must match.');$map=['draft'=>['submit'=>'submitted'],'returned'=>['submit'=>'submitted'],'submitted'=>['approve'=>'approved','return'=>'returned'],'approved'=>['lock'=>'locked'],'locked'=>['reopen'=>'returned']];$next=$map[$sheet->status][$action]??null;abort_unless($next,409,'Invalid timesheet transition.');if(in_array($action,['approve','lock'],true))abort_if($sheet->submitted_by===$actor,409,'The submitter cannot approve or lock the same timesheet.');if($action==='lock')abort_unless(DB::table('hr_attendance_periods')->where('status','locked')->whereDate('period_start','<=',$sheet->period_start)->whereDate('period_end','>=',$sheet->period_end)->exists(),409,'A covering attendance period must be locked before the timesheet can be locked.');$entries=DB::table('hr_timesheet_entries')->where('timesheet_id',$id)->orderBy('work_date')->orderBy('id')->get();abort_if($action==='submit'&&$entries->isEmpty(),422,'An empty timesheet cannot be submitted.');$checksum=hash('sha256',json_encode($entries,JSON_UNESCAPED_SLASHES|JSON_THROW_ON_ERROR));$reconciliation=null;if($action==='submit'){$attendance=$this->attendanceMinutes($sheet->company_id,$sheet->staff_id,$sheet->period_start,$sheet->period_end);$reconciliation=['timesheet_minutes'=>(int)$entries->sum('minutes'),'attendance_worked_minutes'=>$attendance,'variance_minutes'=>(int)$entries->sum('minutes')-(int)$attendance,'not_assumed_equal'=>true];}$version=$sheet->version+1;DB::table('hr_timesheets')->where('id',$id)->update(['status'=>$next,'version'=>$version,'content_checksum'=>$checksum,'reconciliation_snapshot'=>$reconciliation?json_encode($reconciliation,JSON_THROW_ON_ERROR):$sheet->reconciliation_snapshot,'submitted_by'=>$action==='submit'?$actor:$sheet->submitted_by,'submitted_at'=>$action==='submit'?now():$sheet->submitted_at,'decided_by'=>in_array($action,['approve','return','lock','reopen'],true)?$actor:$sheet->decided_by,'decided_at'=>in_array($action,['approve','return','lock','reopen'],true)?now():$sheet->decided_at,'decision_note'=>$reason,'updated_at'=>now()]);DB::table('hr_timesheet_events')->insert(['id'=>(string)Str::uuid(),'timesheet_id'=>$id,'event_type'=>$action,'from_status'=>$sheet->status,'to_status'=>$next,'version'=>$version,'reason'=>$reason,'content_checksum'=>$checksum,'actor_user_id'=>$actor,'occurred_at'=>now(),'created_at'=>now(),'updated_at'=>now()]);return DB::table('hr_timesheets')->find($id);});
+        return DB::transaction(function () use ($id, $action, $reason, $actor) {
+            $candidate = DB::table('hr_timesheets')->where('id', $id)->first();
+            abort_unless($candidate, 404);
+            $staff = DB::table('staff')->where('id', $candidate->staff_id)->lockForUpdate()->first();
+            $sheet = DB::table('hr_timesheets')->where('id', $id)->lockForUpdate()->first();
+            abort_unless($sheet, 404);
+            abort_unless($staff, 409, 'Timesheet Staff does not exist.');
+            $map = ['draft' => ['submit' => 'submitted'], 'returned' => ['submit' => 'submitted'], 'submitted' => ['approve' => 'approved', 'return' => 'returned'], 'approved' => ['lock' => 'locked'], 'locked' => ['reopen' => 'returned']];
+            $next = $map[$sheet->status][$action] ?? null;
+            abort_unless($next, 409, 'Invalid timesheet transition.');
+            if (in_array($action, ['approve', 'lock'], true)) abort_if($sheet->submitted_by === $actor, 409, 'The submitter cannot approve or lock the same timesheet.');
+            if ($action === 'lock') abort_unless(DB::table('hr_attendance_periods')->where('status', 'locked')->whereDate('period_start', '<=', $sheet->period_start)->whereDate('period_end', '>=', $sheet->period_end)->exists(), 409, 'A covering attendance period must be locked before the timesheet can be locked.');
+            $entries = DB::table('hr_timesheet_entries')->where('timesheet_id', $id)->orderBy('work_date')->orderBy('id')->get();
+            abort_if($action === 'submit' && $entries->isEmpty(), 422, 'An empty timesheet cannot be submitted.');
+            $checksum = hash('sha256', json_encode($entries, JSON_UNESCAPED_SLASHES | JSON_THROW_ON_ERROR));
+            $reconciliation = null;
+            if ($action === 'submit') {
+                $attendance = $this->attendanceMinutes($sheet->staff_id, $sheet->period_start, $sheet->period_end);
+                $reconciliation = ['timesheet_minutes' => (int) $entries->sum('minutes'), 'attendance_worked_minutes' => $attendance, 'variance_minutes' => (int) $entries->sum('minutes') - $attendance, 'not_assumed_equal' => true];
+            }
+            $version = $sheet->version + 1;
+            DB::table('hr_timesheets')->where('id', $id)->update(['status' => $next, 'version' => $version, 'content_checksum' => $checksum, 'reconciliation_snapshot' => $reconciliation ? json_encode($reconciliation, JSON_THROW_ON_ERROR) : $sheet->reconciliation_snapshot, 'submitted_by' => $action === 'submit' ? $actor : $sheet->submitted_by, 'submitted_at' => $action === 'submit' ? now() : $sheet->submitted_at, 'decided_by' => in_array($action, ['approve', 'return', 'lock', 'reopen'], true) ? $actor : $sheet->decided_by, 'decided_at' => in_array($action, ['approve', 'return', 'lock', 'reopen'], true) ? now() : $sheet->decided_at, 'decision_note' => $reason, 'updated_at' => now()]);
+            DB::table('hr_timesheet_events')->insert(['id' => (string) Str::uuid(), 'timesheet_id' => $id, 'event_type' => $action, 'from_status' => $sheet->status, 'to_status' => $next, 'version' => $version, 'reason' => $reason, 'content_checksum' => $checksum, 'actor_user_id' => $actor, 'occurred_at' => now(), 'created_at' => now(), 'updated_at' => now()]);
+            return DB::table('hr_timesheets')->find($id);
+        });
     }
 
-    private function attendanceMinutes(string $companyId, string $staffId, string $from, string $to): int
+    private function attendanceMinutes(string $staffId, string $from, string $to): int
     {
-        $latest = DB::table('hr_attendance_daily_results')
-            ->select('company_id', 'staff_id', 'work_date')
-            ->selectRaw('MAX(result_version) as result_version')
-            ->where(fn ($_companyIdScope) => \App\Services\CompanyIdScope::constrain($_companyIdScope, 'company_id', $companyId))->where('staff_id', $staffId)->whereBetween('work_date', [$from, $to])
-            ->groupBy('company_id', 'staff_id', 'work_date');
+        $latest = DB::table('hr_attendance_daily_results')->select('staff_id', 'work_date')
+            ->selectRaw('MAX(result_version) as result_version')->where('staff_id', $staffId)
+            ->whereBetween('work_date', [$from, $to])->groupBy('staff_id', 'work_date');
 
         return (int) DB::table('hr_attendance_daily_results as result')->joinSub($latest, 'latest', fn ($join) => $join
-            ->where(fn ($sameCompany) => \App\Services\CompanyIdScope::sameCompany($sameCompany, 'latest.company_id', 'result.company_id'))->on('latest.staff_id', '=', 'result.staff_id')
-            ->on('latest.work_date', '=', 'result.work_date')->on('latest.result_version', '=', 'result.result_version'))
-            ->sum('result.worked_minutes');
-    }
-    private function creditTimeOff(object$row,array$snapshot,string$actor):void{$this->assertWorkRequestCompany($row);$type=$snapshot['rules']['time_off_leave_type_id']??null;abort_unless($type,422,'Time-off settlement requires a configured leave type.');abort_unless(DB::table('hr_leave_types')->where('id',$type)->exists(),422,'Time-off leave type does not exist.');$account=DB::table('hr_leave_balance_accounts')->where('staff_id',$row->staff_id)->where('leave_type_id',$type)->lockForUpdate()->first();abort_unless($account,422,'Time-off balance account is not configured.');abort_unless(\App\Services\CompanyIdScope::sameCompanyId((string) ($account->company_id), (string) ($row->company_id)),409,'Time-off balance account belongs to another legal entity.');$payload=['work_request_id'=>$row->id,'minutes'=>$row->requested_minutes,'rules'=>$snapshot];LeaveBalanceEntry::create(['account_id'=>$account->id,'leave_request_id'=>null,'entry_type'=>'time_off_credit','minutes'=>$row->requested_minutes,'effective_date'=>CarbonImmutable::parse($row->ends_at)->toDateString(),'source_type'=>'work_request','source_id'=>$row->id,'reason'=>'Approved overtime converted to time off','rule_snapshot'=>$snapshot,'entry_checksum'=>hash('sha256',json_encode($payload,JSON_UNESCAPED_SLASHES|JSON_THROW_ON_ERROR)),'posted_by'=>$actor,'posted_at'=>now()]);}
-    private function fact(object$row,string$kind,int$minutes,array$snapshot,string$actor):void{$this->assertWorkRequestCompany($row);abort_unless(DB::table('hr_work_requests')->where('id',$row->id)->where(fn ($_companyIdScope) => \App\Services\CompanyIdScope::constrain($_companyIdScope, 'company_id', $row->company_id))->where('staff_id',$row->staff_id)->exists(),422,'Payroll fact source does not match its work request.');$payload=['row'=>$row,'kind'=>$kind,'minutes'=>$minutes,'snapshot'=>$snapshot];PayrollInputFact::create(['company_id'=>$row->company_id,'staff_id'=>$row->staff_id,'fact_kind'=>$kind,'effective_date'=>CarbonImmutable::parse($row->ends_at)->toDateString(),'quantity_minutes'=>$minutes,'rate_category'=>$row->rate_category,'source_type'=>'work_request','source_id'=>$row->id,'status'=>'staged','source_snapshot'=>$snapshot,'fact_checksum'=>hash('sha256',json_encode($payload,JSON_UNESCAPED_SLASHES|JSON_THROW_ON_ERROR)),'created_by'=>$actor]);}
-    private function assertActiveCompany(string $companyId): void
-    {
-        $company = DB::table('companies')->where('id', $companyId)->where('is_active', true)
-            ->whereNull('deleted_at')->lockForUpdate()->first();
-        abort_unless($company, 409, 'Workforce operations require an active legal entity.');
+            ->on('latest.staff_id', '=', 'result.staff_id')->on('latest.work_date', '=', 'result.work_date')
+            ->on('latest.result_version', '=', 'result.result_version'))->sum('result.worked_minutes');
     }
 
-    private function assertWorkRequestCompany(object $row): void
+    private function creditTimeOff(object$row,array$snapshot,string$actor):void{$this->assertWorkRequest($row);$type=$snapshot['rules']['time_off_leave_type_id']??null;abort_unless($type,422,'Time-off settlement requires a configured leave type.');abort_unless(DB::table('hr_leave_types')->where('id',$type)->exists(),422,'Time-off leave type does not exist.');$account=DB::table('hr_leave_balance_accounts')->where('staff_id',$row->staff_id)->where('leave_type_id',$type)->lockForUpdate()->first();abort_unless($account,422,'Time-off balance account is not configured.');$payload=['work_request_id'=>$row->id,'minutes'=>$row->requested_minutes,'rules'=>$snapshot];LeaveBalanceEntry::create(['account_id'=>$account->id,'leave_request_id'=>null,'entry_type'=>'time_off_credit','minutes'=>$row->requested_minutes,'effective_date'=>CarbonImmutable::parse($row->ends_at)->toDateString(),'source_type'=>'work_request','source_id'=>$row->id,'reason'=>'Approved overtime converted to time off','rule_snapshot'=>$snapshot,'entry_checksum'=>hash('sha256',json_encode($payload,JSON_UNESCAPED_SLASHES|JSON_THROW_ON_ERROR)),'posted_by'=>$actor,'posted_at'=>now()]);}
+    private function fact(object$row,string$kind,int$minutes,array$snapshot,string$actor):void{$this->assertWorkRequest($row);abort_unless(DB::table('hr_work_requests')->where('id',$row->id)->where('staff_id',$row->staff_id)->exists(),422,'Payroll fact source does not match its work request.');$payload=['row'=>$row,'kind'=>$kind,'minutes'=>$minutes,'snapshot'=>$snapshot];PayrollInputFact::create(['staff_id'=>$row->staff_id,'fact_kind'=>$kind,'effective_date'=>CarbonImmutable::parse($row->ends_at)->toDateString(),'quantity_minutes'=>$minutes,'rate_category'=>$row->rate_category,'source_type'=>'work_request','source_id'=>$row->id,'status'=>'staged','source_snapshot'=>$snapshot,'fact_checksum'=>hash('sha256',json_encode($payload,JSON_UNESCAPED_SLASHES|JSON_THROW_ON_ERROR)),'created_by'=>$actor]);}
+
+    private function assertWorkRequest(object $row): void
     {
-        $this->assertActiveCompany($row->company_id);
         $staff = DB::table('staff')->where('id', $row->staff_id)->lockForUpdate()->first();
-        abort_unless($staff && \App\Services\CompanyIdScope::sameCompanyId((string) ($staff->company_id), (string) ($row->company_id)), 422, 'Work request Staff does not belong to its legal entity.');
+        abort_unless($staff, 422, 'Work request Staff does not exist.');
         $policy = DB::table('hr_work_request_policies')->where('id', $row->policy_id)->lockForUpdate()->first();
         abort_unless($policy && $policy->request_kind === $row->request_kind, 422, 'Work request policy does not match its request kind.');
     }
@@ -140,7 +183,6 @@ class WorkforceWorkflowService
         return DB::transaction(function () use ($key, $checksum, $actor): ?object {
             $existing = DB::table('hr_work_requests')->where('idempotency_key', $key)->lockForUpdate()->first();
             if (! $existing) return null;
-            $this->assertActiveCompany($existing->company_id);
             return $this->matchingWorkRequest($existing, $checksum, $actor);
         });
     }
@@ -160,7 +202,7 @@ class WorkforceWorkflowService
             && $event->to_status === $status && $event->actor_user_id === $actor && $event->reason === $note,
             409, 'Work-request retry does not match the original action, note and actor.');
         if ($status === 'approved' && $row->request_kind === 'overtime' && $row->settlement_kind === 'pay') {
-            $fact = DB::table('hr_payroll_input_facts')->where(fn ($_companyIdScope) => \App\Services\CompanyIdScope::constrain($_companyIdScope, 'company_id', $row->company_id))->where('staff_id', $row->staff_id)
+            $fact = DB::table('hr_payroll_input_facts')->where('staff_id', $row->staff_id)
                 ->where('source_type', 'work_request')->where('source_id', $row->id)->where('fact_kind', 'approved_overtime')->first();
             abort_unless($fact && (int) $fact->quantity_minutes === (int) $row->requested_minutes
                 && CarbonImmutable::parse($fact->effective_date)->toDateString() === CarbonImmutable::parse($row->ends_at)->toDateString()
@@ -175,7 +217,7 @@ class WorkforceWorkflowService
                 ->join('hr_leave_balance_accounts as account', 'account.id', '=', 'entry.account_id')
                 ->join('hr_leave_types as type', 'type.id', '=', 'account.leave_type_id')
                 ->where('entry.source_type', 'work_request')->where('entry.source_id', $row->id)
-                ->where('entry.entry_type', 'time_off_credit')->where(fn ($_companyIdScope) => \App\Services\CompanyIdScope::constrain($_companyIdScope, 'account.company_id', $row->company_id))
+                ->where('entry.entry_type', 'time_off_credit')
                 ->where('account.staff_id', $row->staff_id)->where('account.leave_type_id', $leaveTypeId)
                 
                 ->first(['entry.minutes', 'entry.effective_date', 'entry.rule_snapshot', 'entry.entry_checksum']);

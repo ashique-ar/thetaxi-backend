@@ -2,6 +2,7 @@
 
 namespace App\Http\Resources;
 
+use App\Services\CorporateRoleStarterService;
 use Illuminate\Http\Request;
 use Illuminate\Http\Resources\Json\JsonResource;
 
@@ -19,7 +20,7 @@ class RoleResource extends JsonResource
             'id' => $this->id,
             'name' => $this->name,
             'guard_name' => $this->guard_name,
-            'display_name' => $this->display_name ?? ($this->name === 'super-admin' ? 'Master Admin' : ucfirst($this->name)),
+            'display_name' => $this->display_name ?? CorporateRoleStarterService::displayName($this->name),
             'description' => $this->description,
             'context_types' => $this->decodeContextTypes(),
             'auto_assign_contexts' => (bool) ($this->auto_assign_contexts ?? true),

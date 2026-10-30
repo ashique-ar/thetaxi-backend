@@ -214,6 +214,9 @@ class UserService
                 $role = Role::with('permissions')->where('guard_name', config('permissions.canonical_guard', 'api'))
                     ->find($userData['role_id']);
                 if ($role) {
+                    if (CorporateRoleStarterService::isCorporateRoleName($role->name)) {
+                        throw ValidationException::withMessages(['role_id' => 'Corporate roles must be assigned within the employee corporate context.']);
+                    }
                     $user->assignRole($role);
                     $this->grantDirectRoleGrants($user, collect([$role]));
                 }
@@ -275,6 +278,9 @@ class UserService
                 $role = Role::with('permissions')->where('guard_name', config('permissions.canonical_guard', 'api'))
                     ->find($userData['role_id']);
                 if ($role) {
+                    if (CorporateRoleStarterService::isCorporateRoleName($role->name)) {
+                        throw ValidationException::withMessages(['role_id' => 'Corporate roles must be assigned within the employee corporate context.']);
+                    }
                     $user->assignRole($role);
                     $this->grantDirectRoleGrants($user, collect([$role]));
                 }
@@ -315,7 +321,9 @@ class UserService
             ->where('guard_name', config('permissions.canonical_guard', 'api'))
             ->whereIn('name', $names)
             ->with('permissions')
-            ->get();
+            ->get()
+            ->reject(fn (Role $role) => CorporateRoleStarterService::isCorporateRoleName($role->name))
+            ->values();
         $missing = $names->diff($roles->pluck('name'));
 
         if ($missing->isNotEmpty()) {

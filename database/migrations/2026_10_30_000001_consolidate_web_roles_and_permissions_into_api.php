@@ -70,6 +70,10 @@ return new class extends Migration
                     $apiRoleId = DB::table('roles')->insertGetId($attributes);
                 }
 
+                if (Schema::hasColumn('users', 'role_id')) {
+                    DB::table('users')->where('role_id', $webRole->id)->update(['role_id' => $apiRoleId]);
+                }
+
                 foreach (DB::table('role_has_permissions')->where('role_id', $webRole->id)->get() as $grant) {
                     $apiPermissionId = $apiPermissionIds[$grant->permission_id] ?? null;
                     if ($apiPermissionId) {

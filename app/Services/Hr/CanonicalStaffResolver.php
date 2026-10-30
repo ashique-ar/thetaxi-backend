@@ -7,14 +7,14 @@ use App\Models\Staff;
 
 class CanonicalStaffResolver
 {
-    public function id(string $staffId, string $companyId): string
+    public function id(string $staffId): string
     {
-        $link = HrPeopleIdentityLink::query()->where(fn ($_companyIdScope) => \App\Services\CompanyIdScope::constrain($_companyIdScope, 'company_id', $companyId))->where('alias_staff_id', $staffId)->where('status', 'active')->first();
+        $link = HrPeopleIdentityLink::query()->where('alias_staff_id', $staffId)->where('status', 'active')->first();
         return (string) ($link?->canonical_staff_id ?? $staffId);
     }
 
-    public function resolve(string $staffId, string $companyId): Staff
+    public function resolve(string $staffId): Staff
     {
-        return Staff::withTrashed()->whereKey($this->id($staffId, $companyId))->where(fn ($_companyIdScope) => \App\Services\CompanyIdScope::constrain($_companyIdScope, 'company_id', $companyId))->firstOrFail();
+        return Staff::withTrashed()->whereKey($this->id($staffId))->firstOrFail();
     }
 }

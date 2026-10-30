@@ -140,6 +140,22 @@ class CorporateRoleStarterService
         return 'Corporate_'.$corporateId.'_'.$key;
     }
 
+    public static function isCorporateRoleName(string $name): bool
+    {
+        $name = strtolower(str_replace([' ', '-'], '_', trim($name)));
+
+        return $name === 'corporate'
+            || str_starts_with($name, 'corporate_')
+            || in_array($name, ['transport_coordinator', 'approval_manager'], true);
+    }
+
+    public static function displayName(string $name): string
+    {
+        $name = preg_replace('/^corporate_[0-9a-f-]{36}_/i', '', $name) ?? $name;
+
+        return $name === 'super-admin' ? 'Master Admin' : \Illuminate\Support\Str::headline($name);
+    }
+
     private function permissions(array $names): array
     {
         return collect($names)

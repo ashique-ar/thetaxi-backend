@@ -579,6 +579,7 @@ class UserController extends Controller
                     return [
                         'id' => $role->id,
                         'name' => $role->name,
+                        'display_name' => $role->display_name ?? CorporateRoleStarterService::displayName($role->name),
                         'guard_name' => $role->guard_name,
                         'sources' => $sources,
                         'created_at' => $role->created_at,
@@ -723,7 +724,7 @@ class UserController extends Controller
                 }
 
                 return $user->getActiveContexts()->map(function ($ctx) {
-                    return array_merge($ctx->toArray(), ['roles' => $ctx->roles()->get()->map(fn($role) => ['id' => $role->id, 'name' => $role->name, 'display_name' => $role->display_name ?? ($role->name === 'super-admin' ? 'Master Admin' : $role->name)])]);
+                    return array_merge($ctx->toArray(), ['roles' => $ctx->roles()->get()->map(fn($role) => ['id' => $role->id, 'name' => $role->name, 'display_name' => $role->display_name ?? CorporateRoleStarterService::displayName($role->name)])]);
                 });
             });
             if ($activeContexts === null) {
@@ -873,7 +874,7 @@ class UserController extends Controller
             }
 
             $activeContexts = $user->getActiveContexts()->map(function($ctx){
-                return array_merge($ctx->toArray(), ['roles' => $ctx->roles()->get()->map(function($r){ return ['id' => $r->id, 'name' => $r->name, 'display_name' => $r->display_name ?? ($r->name === 'super-admin' ? 'Master Admin' : $r->name)]; })]);
+                return array_merge($ctx->toArray(), ['roles' => $ctx->roles()->get()->map(function($r){ return ['id' => $r->id, 'name' => $r->name, 'display_name' => $r->display_name ?? CorporateRoleStarterService::displayName($r->name)]; })]);
             });
 
             return response()->json(['status' => 'success', 'message' => 'Role revoked from context', 'data' => ['contexts' => $activeContexts]]);
@@ -1289,14 +1290,7 @@ class UserController extends Controller
 
     private function containsCorporateRole(array $roleNames): bool
     {
-        $corporateTemplateNames = collect(array_keys(CorporateRoleStarterService::TEMPLATES))
-            ->map(fn (string $name) => strtolower(str_replace([' ', '-'], '_', $name)));
-
-        return collect($roleNames)->contains(function (string $name) use ($corporateTemplateNames): bool {
-            $normalized = strtolower(str_replace([' ', '-'], '_', trim($name)));
-
-            return Str::startsWith($normalized, 'corporate_') || $corporateTemplateNames->contains($normalized);
-        });
+        return collect($roleNames)->contains(CorporateRoleStarterService::isCorporateRoleName(...));
     }
 
     private function buildUserResponse(User $user, Request $request): array
@@ -1400,7 +1394,7 @@ class UserController extends Controller
         return Role::query()
             ->where(function ($query) use ($identifiers) {
                 $query->whereIn('name', $identifiers)
-                    ->orWhereIn('id', $identifiers->filter(fn ($value) => ctype_digit($value)));
+                    ->orWhereIn('id', $identifiers);
             })
             ->where('guard_name', config('permissions.canonical_guard', 'api'))
             ->pluck('name')
@@ -1410,13 +1404,18 @@ class UserController extends Controller
     private function assertCanChangePrivilegedRoles(array $roleNames, bool $changesDirectPermissions = false): void
     {
         $actor = request()->user();
-        $isMasterAdmin = $actor?->roles()->where('name', 'super-admin')
-            ->where('guard_name', config('permissions.canonical_guard', 'api'))->exists() ?? false;
+        $actorRoles = $actor?->roles()
+            ->whereIn('name', ['admin', 'super-admin'])
+            ->where('guard_name', config('permissions.canonical_guard', 'api'))
+            ->pluck('name') ?? collect();
+        $isMasterAdmin = $actorRoles->contains('super-admin');
+        $isAdmin = $isMasterAdmin || $actorRoles->contains('admin');
         abort_if($changesDirectPermissions && ! $isMasterAdmin, 403, 'Only a Master Admin can grant direct permissions.');
         abort_if(
-            ! $isMasterAdmin && collect($roleNames)->intersect(['admin', 'super-admin'])->isNotEmpty(),
+            ! $isAdmin && collect($roleNames)->intersect(['admin', 'super-admin'])->isNotEmpty(),
             403,
-            'Only a Master Admin can assign or remove Admin roles.'
+            'Only an Admin can assign or manage Admin roles.'
         );
+        abort_if(! $isMasterAdmin && collect($roleNames)->contains('super-admin'), 403, 'Only a Master Admin can assign or manage the Master Admin role.');
     }
 }

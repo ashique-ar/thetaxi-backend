@@ -8,7 +8,9 @@ final class TenantIndexDropper
 {
     public static function drop(string $tableName, array $index): void
     {
-        if ($index['type'] === 'unique' && DB::getDriverName() === 'pgsql') {
+        $isUnique = ($index['unique'] ?? false) || ($index['type'] ?? null) === 'unique';
+
+        if ($isUnique && DB::getDriverName() === 'pgsql') {
             $grammar = DB::connection()->getQueryGrammar();
             $isConstraint = DB::table('pg_constraint as c')
                 ->join('pg_class as r', 'r.oid', '=', 'c.conrelid')
@@ -28,7 +30,7 @@ final class TenantIndexDropper
             return;
         }
 
-        $dropMethod = $index['type'] === 'unique' ? 'dropUnique' : 'dropIndex';
+        $dropMethod = $isUnique ? 'dropUnique' : 'dropIndex';
         Schema::table($tableName, fn (Blueprint $table) => $table->{$dropMethod}($index['name']));
     }
 }

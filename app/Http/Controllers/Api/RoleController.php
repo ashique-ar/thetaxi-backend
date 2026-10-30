@@ -7,6 +7,7 @@ use App\Http\Requests\Role\CreateRoleRequest;
 use App\Http\Requests\Role\UpdateRoleRequest;
 use App\Http\Resources\RoleResource;
 use App\Services\PermissionAssignmentService;
+use App\Services\CorporateRoleStarterService;
 use App\Services\UserContextService;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Resources\Json\AnonymousResourceCollection;
@@ -45,6 +46,8 @@ class RoleController extends Controller
     public function index(Request $request): AnonymousResourceCollection
     {
         $query = Role::with('permissions');
+        $query->whereRaw('LOWER(name) NOT LIKE ?', ['corporate%'])
+            ->whereRaw('LOWER(name) NOT IN (?, ?)', ['transport_coordinator', 'approval_manager']);
 
         if ($request->filled('search')) {
             $query->where('name', 'like', '%' . $request->search . '%');
@@ -76,11 +79,15 @@ class RoleController extends Controller
     {
         try {
             $data = $request->validated();
+            if (CorporateRoleStarterService::isCorporateRoleName($data['name'])) {
+                throw ValidationException::withMessages(['name' => 'Corporate roles must be managed in Corporate Management.']);
+            }
             $permissions = $data['permissions'] ?? null;
             unset($data['permissions']);
 
             if ($permissions !== null) {
                 $permissions = $this->resolvePermissionNames($permissions, $data['guard_name']);
+                $this->assignmentService->assertRolePermissionPolicy($data['name'], $data['guard_name'], $permissions);
             }
 
             $contextData = $this->extractContextData($data);
@@ -140,12 +147,20 @@ class RoleController extends Controller
 
         try {
             $data = $request->validated();
+            if (isset($data['name']) && CorporateRoleStarterService::isCorporateRoleName($data['name'])) {
+                throw ValidationException::withMessages(['name' => 'Corporate roles must be managed in Corporate Management.']);
+            }
             $permissions = $data['permissions'] ?? null;
             unset($data['permissions']);
 
             if ($permissions !== null) {
                 $permissions = $this->resolvePermissionNames($permissions, $role->guard_name);
             }
+            $this->assignmentService->assertRolePermissionPolicy(
+                $data['name'] ?? $role->name,
+                $role->guard_name,
+                $permissions ?? $role->permissions()->pluck('name')->all()
+            );
 
             $contextData = $this->extractContextData($data);
             $role->update($data);
@@ -186,7 +201,7 @@ class RoleController extends Controller
     public function destroy(Role $role): JsonResponse
     {
         $this->protectManagedRole($role);
-        abort_if(in_array($role->name, ['admin', 'super-admin'], true), 403, 'System roles cannot be deleted.');
+        abort_if($role->name === 'super-admin', 403, 'The Master Admin role cannot be deleted.');
 
         try {
             // Check if role is being used by any users
@@ -263,6 +278,8 @@ class RoleController extends Controller
                 'status' => 'success',
                 'message' => 'Permissions assigned successfully'
             ]);
+        } catch (ValidationException $e) {
+            throw $e;
         } catch (\Exception $e) {
             return response()->json([
                 'status' => 'error',
@@ -454,7 +471,12 @@ class RoleController extends Controller
             ->map(fn ($value) => (string) $value)
             ->unique();
 
-        $invalid = $identifiers->diff($resolvedIdentifiers)->values();
+        $normalizedIdentifiers = $identifiers->map(
+            fn (string $identifier) => ctype_digit($identifier)
+                ? $identifier
+                : config("permissions.aliases.{$identifier}", $identifier)
+        );
+        $invalid = $normalizedIdentifiers->diff($resolvedIdentifiers)->values();
 
         if ($invalid->isNotEmpty()) {
             throw ValidationException::withMessages([
@@ -473,7 +495,19 @@ class RoleController extends Controller
     private function protectManagedRole(Role $role): void
     {
         abort_unless($role->guard_name === config('permissions.canonical_guard', 'api'), 404, 'Role not found.');
-        abort_if($role->name === 'super-admin', 403, 'The Master Admin role cannot be changed or deleted.');
+        abort_if(CorporateRoleStarterService::isCorporateRoleName($role->name), 404, 'Role not found.');
+
+        if (in_array($role->name, ['admin', 'super-admin'], true)) {
+            $actorRoles = request()->user()?->roles()
+                ->whereIn('name', ['admin', 'super-admin'])
+                ->where('guard_name', config('permissions.canonical_guard', 'api'))
+                ->pluck('name') ?? collect();
+            $canManage = $role->name === 'admin'
+                ? $actorRoles->contains('admin') || $actorRoles->contains('super-admin')
+                : $actorRoles->contains('super-admin');
+
+            abort_unless($canManage, 403, 'You are not allowed to manage this system role.');
+        }
     }
 
     private function extractContextData(array &$data): array

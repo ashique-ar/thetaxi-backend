@@ -53,14 +53,6 @@ class PeopleAccessService
         abort_unless($allowed, Response::HTTP_FORBIDDEN, 'The requested employee is outside your authorized People scope.');
     }
 
-    public function actorCompanyId(User $actor): string
-    {
-        $actorStaff = $this->actorStaff($actor);
-        abort_unless($actorStaff?->company_id, Response::HTTP_FORBIDDEN, 'An active internal Staff identity is required.');
-
-        return $actorStaff->company_id;
-    }
-
     private function actorStaff(User $actor): Staff
     {
         return app(StaffAccessService::class)->currentActorStaff($actor);

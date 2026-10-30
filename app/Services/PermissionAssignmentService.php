@@ -104,7 +104,7 @@ class PermissionAssignmentService
 
     public function assertRolePermissionPolicy(string $roleName, string $guardName, array $permissionNames, bool $allowExistingRestrictions = false): void
     {
-        if ($roleName !== 'admin' || $guardName !== $this->registry->canonicalGuard()) {
+        if (strtolower(trim($roleName)) !== 'admin' || $guardName !== $this->registry->canonicalGuard()) {
             return;
         }
 
