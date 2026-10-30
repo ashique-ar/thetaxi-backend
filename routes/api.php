@@ -32,7 +32,6 @@ use App\Http\Controllers\Api\AvailabilityController;
 use App\Http\Controllers\Api\Booking\BookingChannelController;
 use App\Http\Controllers\Api\Booking\BookingStatusController;
 use App\Http\Controllers\Api\BookingObservabilityController;
-use App\Http\Controllers\Api\BookingCompanyScopeReviewController;
 use App\Http\Controllers\Api\BusinessSettingController;
 use App\Http\Controllers\Api\CMS\FooterLinkController;
 use App\Http\Controllers\Api\CMS\NavigationMenuController;
@@ -1624,11 +1623,6 @@ Route::middleware(['auth:api'])->group(function () {
         Route::get('companies/stats', [CompanyController::class, 'stats']);
         Route::get('companies/options', [CompanyController::class, 'options']);
         Route::get('companies/{company}/option', [CompanyController::class, 'option'])->whereUuid('company');
-        Route::get('companies/booking-scope-review', [BookingCompanyScopeReviewController::class, 'index'])
-            ->middleware(['ensure.internal', 'permission:companies.view']);
-        Route::post('companies/booking-scope-review/{booking}/assign', [BookingCompanyScopeReviewController::class, 'assign'])
-            ->whereUuid('booking')
-            ->middleware(['ensure.internal', 'permission:companies.edit']);
         Route::apiResource('companies', CompanyController::class)->whereUuid('company');
 
         // Public CMS routes (no authentication required)

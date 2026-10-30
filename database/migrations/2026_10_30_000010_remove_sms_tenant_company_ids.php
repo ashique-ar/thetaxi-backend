@@ -57,7 +57,7 @@ return new class extends Migration
 
         Schema::table($tableName, function (Blueprint $table) use ($tableName, $retainedIndexColumn): void {
             $table->dropColumn('company_id');
-            if (Schema::hasColumn($tableName, $retainedIndexColumn) && ! Schema::hasIndex($tableName, $retainedIndexColumn)) {
+            if (Schema::hasColumn($tableName, $retainedIndexColumn) && ! Schema::hasIndex($tableName, [$retainedIndexColumn])) {
                 $table->index($retainedIndexColumn);
             }
         });
