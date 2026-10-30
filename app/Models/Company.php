@@ -52,7 +52,6 @@ class Company extends BaseModel
         'region_id',
         'country_id',
         'state_id',
-        'is_default',
         'city',
         'is_active',
         'created_user_id',
@@ -68,7 +67,6 @@ class Company extends BaseModel
         'latitude' => 'decimal:8',
         'longitude' => 'decimal:8',
         'is_active' => 'boolean',
-        'is_default' => 'boolean',
     ];
 
     // Relations
@@ -123,6 +121,11 @@ class Company extends BaseModel
         return $this->belongsTo(\App\Models\User::class, 'updated_user_id');
     }
 
+    public static function getDefaultCompany(): ?self
+    {
+        return null;
+    }
+
     /**
      * Get all vehicles belonging to this company.
      *
@@ -141,16 +144,6 @@ class Company extends BaseModel
     public function users()
     {
         return $this->hasMany(\App\Models\User::class);
-    }
-
-    /**
-     * Get the configured active default company, independent of its map coordinates.
-     *
-     * @return self|null
-     */
-    public static function getDefaultCompany()
-    {
-        return app(\App\Services\SingleCompanyScope::class)->activeDefaultCompany();
     }
 
     /**

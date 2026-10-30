@@ -29,12 +29,14 @@ class BusinessSetting extends BaseModel
         'feature_vehicle_return_management_enabled',
         'assignment_enable_qc_stage',
         'assignment_enable_maintenance_stage',
+        'booking_signed_agreement_required',
     ];
 
     public const COMPANY_SCOPED_KEYS = [
         'feature_vehicle_return_management_enabled',
         'assignment_enable_qc_stage',
         'assignment_enable_maintenance_stage',
+        'booking_signed_agreement_required',
         'corporate_booking_notification_email',
     ];
     

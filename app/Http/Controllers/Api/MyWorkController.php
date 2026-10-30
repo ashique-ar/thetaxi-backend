@@ -44,7 +44,7 @@ class MyWorkController extends Controller
                 ->where('booking.responsible_user_id', $userId)
                 ->whereIn('booking.status', array_merge(['draft'], $activeBookingStatuses));
             CompanyBookingScope::constrain($bookings, 'booking', $companyId);
-            $queues[] = ['group' => 'mine', 'title' => 'My open bookings', 'help' => 'Bookings assigned to you that are still in progress', 'icon' => 'directions_car',
+            $queues[] = ['group' => 'mine', 'title' => 'My bookings in progress', 'help' => 'Bookings assigned to you that are not finished yet', 'icon' => 'directions_car',
                 'link' => '/bookings/list?mine_only=true&work_only=true', 'count' => (int) $bookings->distinct('booking.id')->count('booking.id')];
             $rows = DB::table('bookings as booking')->whereNull('booking.deleted_at')
                 ->where('booking.responsible_user_id', $userId)
@@ -138,11 +138,21 @@ class MyWorkController extends Controller
                 ->whereIn('booking.payment_type', ['full', 'advance'])->where('booking.payment_status', 'pending')
                 ->whereIn('booking.status', ['pending', 'payment_processing']);
             CompanyBookingScope::constrain($paymentsAwaitingConfirmation, 'booking', $companyId);
-            $paymentCount = (int) $paymentsAwaitingConfirmation->distinct('booking.id')->count('booking.id');
+            $paymentCount = (int) (clone $paymentsAwaitingConfirmation)->distinct('booking.id')->count('booking.id');
             if ($paymentCount > 0) {
                 $queues[] = ['group' => 'assignment', 'title' => 'Website payments to follow up',
                     'help' => 'Online bookings still waiting for payment confirmation. Check the payment and contact the customer before releasing the vehicle.',
                     'icon' => 'payments', 'link' => '/bookings/list?queue=payment_confirmation_pending', 'count' => $paymentCount];
+                foreach ($this->withBookingAttentionContext(clone $paymentsAwaitingConfirmation)
+                    ->selectRaw("booking.workflow_data->'gateway_payment'->>'fx_rate_at' as payment_started_at")
+                    ->orderBy('booking.created_at')->limit(4)->get() as $row) {
+                    $paymentStartedAt = $row->payment_started_at ?: $row->created_at;
+                    $attention[] = ['id' => 'payment-follow-up:'.$row->id, 'group' => 'assignment', 'type' => 'Payment to check',
+                        'title' => $this->bookingAttentionTitle($row),
+                        'detail' => $this->bookingAttentionDetail($row, 'Payment started '.\Illuminate\Support\Carbon::parse($paymentStartedAt)->diffForHumans().'; check before allocating the vehicle'),
+                        'when' => $paymentStartedAt, 'link' => '/bookings/'.$row->id,
+                        'sort_at' => strtotime((string) $paymentStartedAt) ?: PHP_INT_MAX];
+                }
             }
 
             if (Schema::hasTable('booking_extension_requests')) {
@@ -162,7 +172,7 @@ class MyWorkController extends Controller
                 }
             }
 
-            $assignmentTargetMinutes = app(SalesPolicySettingsService::class)->bookingAssignmentTargetMinutes($companyId);
+            $assignmentTargetMinutes = app(SalesPolicySettingsService::class)->bookingAssignmentTargetMinutes();
             if ($assignmentTargetMinutes !== null) {
                 $pastTarget = DB::table('bookings as booking')->whereNull('booking.deleted_at')
                     ->whereIn('booking.status', $activeBookingStatuses)
@@ -188,7 +198,7 @@ class MyWorkController extends Controller
         }
 
         if ($request->user()->can('inquiries.view')) {
-            $queues[] = ['group' => 'mine', 'title' => 'My open inquiries', 'help' => 'Customer requests assigned to you that need action', 'icon' => 'chat',
+            $queues[] = ['group' => 'mine', 'title' => 'Customer requests to answer', 'help' => 'Requests assigned to you that still need a reply', 'icon' => 'chat',
                 'link' => '/communication/inquiries?mine_only=true&actionable_only=true', 'count' => (int) DB::table('inquiries')
                     ->where(fn ($_companyIdScope) => \App\Services\CompanyIdScope::constrain($_companyIdScope, 'company_id', $companyId))->whereNull('deleted_at')->where('assigned_to', $userId)
                     ->whereIn('status', ['open', 'in_progress'])->count()];
@@ -275,7 +285,7 @@ class MyWorkController extends Controller
                 ->where(fn ($_companyIdScope) => \App\Services\CompanyIdScope::constrain($_companyIdScope, 'owner_staff.company_id', $companyId))->whereNull('owner_staff.deleted_at')
                 ->where(fn ($query) => $query->whereNull('owner_staff.employment_ended_at')->orWhere('owner_staff.employment_ended_at', '>', now()))
                 ->where('owner_user.is_active', true)->whereNull('owner_user.deleted_at');
-            $queues[] = ['group' => 'assignment', 'title' => 'Customers needing an owner', 'help' => 'Existing and new customers without a relationship owner', 'icon' => 'group_add',
+            $queues[] = ['group' => 'assignment', 'title' => 'Customers to assign', 'help' => 'Choose a staff member to look after each customer', 'icon' => 'group_add',
                 'link' => '/customers?owner_status=unassigned', 'count' => (int) $customers->whereNotExists($unassignedOwner)->count()];
             $waitingCustomers = DB::table('customers')->whereNull('customers.deleted_at');
             CompanyCustomerScope::constrain($waitingCustomers, 'customers', $companyId);
@@ -286,7 +296,7 @@ class MyWorkController extends Controller
                 $customerName = trim((string) $row->first_name.' '.(string) $row->last_name);
                 $customerTitle = $customerName ?: ($row->code ?: 'Customer');
                 $attention[] = ['id' => 'customer-owner:'.$row->id, 'group' => 'assignment', 'type' => 'Customer owner',
-                    'title' => $customerTitle, 'detail' => implode(' · ', array_filter([$row->code, $row->phone, 'Choose a relationship owner'])), 'when' => $row->created_at,
+                    'title' => $customerTitle, 'detail' => implode(' · ', array_filter([$row->code, $row->phone, 'Choose a staff member'])), 'when' => $row->created_at,
                     'link' => '/customers?owner_status=unassigned', 'sort_at' => strtotime((string) $row->created_at) ?: PHP_INT_MAX];
             }
         }
@@ -359,8 +369,8 @@ class MyWorkController extends Controller
                     ->whereColumn('sent_quote.booking_id', 'booking.id')->where(fn ($_companyIdScope) => \App\Services\CompanyIdScope::constrain($_companyIdScope, 'sent_quote.company_id', $companyId))->whereNull('sent_quote.deleted_at')
                     ->where('sent_quote.event_key', 'quotation_email_sent')->where('sent_quote.result_status', 'sent'));
             CompanyBookingScope::constrain($quotes, 'booking', $companyId);
-            $queues[] = ['group' => 'mine', 'title' => 'Quotes awaiting a reply',
-                'help' => 'Quotations you sent that are still waiting for the customer', 'icon' => 'request_quote',
+            $queues[] = ['group' => 'mine', 'title' => 'Quotes waiting for an answer',
+                'help' => 'Quotes you sent that the customer has not answered yet', 'icon' => 'request_quote',
                 'link' => '/bookings/list?status=quotation_requested', 'count' => (int) (clone $quotes)->distinct('booking.id')->count('booking.id')];
 
             $sentAt = DB::table('booking_activities as sent_quote')->select('sent_quote.event_at')
@@ -392,7 +402,7 @@ class MyWorkController extends Controller
                 $count = DB::table('sales_tasks as task')->where(fn ($_companyIdScope) => \App\Services\CompanyIdScope::constrain($_companyIdScope, 'task.company_id', $companyId))
                     ->where('task.owner_sales_profile_id', $profile)->whereIn('task.status', ['open', 'in_progress'])
                     ->where('task.due_at', '<=', $workdayEndUtc)->count();
-                $queues[] = ['group' => 'mine', 'title' => 'My follow-ups', 'help' => 'Sales tasks due today or overdue', 'icon' => 'task_alt',
+                $queues[] = ['group' => 'mine', 'title' => 'My follow-up tasks', 'help' => 'Tasks due today or late', 'icon' => 'task_alt',
                     'link' => '/sales/work', 'count' => (int) $count];
                 foreach (DB::table('sales_tasks')->where(fn ($_companyIdScope) => \App\Services\CompanyIdScope::constrain($_companyIdScope, 'company_id', $companyId))->where('owner_sales_profile_id', $profile)
                     ->whereIn('status', ['open', 'in_progress'])->where('due_at', '<=', $workdayEndUtc)->orderBy('due_at')->limit(5)

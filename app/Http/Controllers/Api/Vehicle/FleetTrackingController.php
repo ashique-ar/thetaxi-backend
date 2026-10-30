@@ -5,12 +5,10 @@ namespace App\Http\Controllers\Api\Vehicle;
 use App\Http\Controllers\Controller;
 use App\Models\Vehicle\Vehicle;
 use App\Services\WialonService;
-use App\Services\SingleCompanyScope;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Validation\Rule;
 use Illuminate\Support\Facades\DB;
-use Illuminate\Support\Str;
 use RuntimeException;
 
 class FleetTrackingController extends Controller
@@ -18,7 +16,7 @@ class FleetTrackingController extends Controller
     public function units(Request $request, WialonService $wialon): JsonResponse
     {
         try {
-            return response()->json(['status' => 'success', 'data' => $wialon->units($this->companyId($request))]);
+            return response()->json(['status' => 'success', 'data' => $wialon->units()]);
         } catch (RuntimeException $error) {
             return response()->json(['status' => 'error', 'message' => $error->getMessage()], 503);
         }
@@ -27,7 +25,7 @@ class FleetTrackingController extends Controller
     public function sync(Request $request, WialonService $wialon): JsonResponse
     {
         try {
-            return response()->json(['status' => 'success', 'data' => ['synced' => $wialon->syncVehicles($this->companyId($request))]]);
+            return response()->json(['status' => 'success', 'data' => ['synced' => $wialon->syncVehicles()]]);
         } catch (RuntimeException $error) {
             return response()->json(['status' => 'error', 'message' => $error->getMessage()], 503);
         }
@@ -36,9 +34,8 @@ class FleetTrackingController extends Controller
     public function reportTemplates(Request $request, WialonService $wialon): JsonResponse
     {
         try {
-            $companyId = $this->companyId($request);
-            $selected = json_decode(DB::table('wialon_integrations')->where(fn ($_companyIdScope) => \App\Services\CompanyIdScope::constrain($_companyIdScope, 'company_id', $companyId))->value('resource_ids') ?: '[]', true) ?: [];
-            return response()->json(['status' => 'success', 'data' => collect($wialon->reportTemplates($companyId))->whereIn('id', $selected)->values()]);
+            $selected = json_decode(DB::table('wialon_installation_settings')->where('id', 'installation')->value('resource_ids') ?: '[]', true) ?: [];
+            return response()->json(['status' => 'success', 'data' => collect($wialon->reportTemplates())->whereIn('id', $selected)->values()]);
         } catch (RuntimeException $error) {
             return response()->json(['status' => 'error', 'message' => $error->getMessage()], 503);
         }
@@ -46,7 +43,6 @@ class FleetTrackingController extends Controller
 
     public function runReport(Request $request, Vehicle $vehicle, WialonService $wialon): JsonResponse
     {
-        abort_unless(\App\Services\CompanyIdScope::sameCompanyId((string) ((string) $vehicle->company_id), (string) ($this->companyId($request))), 403);
         abort_unless($vehicle->wialon_unit_id, 422, 'Link a GPS device before running a report.');
         $data = $request->validate([
             'resource_id' => ['required', 'integer', 'min:1'],
@@ -58,14 +54,13 @@ class FleetTrackingController extends Controller
         ]);
         abort_if(($data['offset'] ?? 0) > 0 && !isset($data['table_index']), 422, 'A table is required when requesting another report page.');
         abort_if(($data['offset'] ?? 0) % 500 !== 0, 422, 'Report pages must be requested in 500-row increments.');
-        $allowedResources = json_decode(DB::table('wialon_integrations')->where(fn ($_companyIdScope) => \App\Services\CompanyIdScope::constrain($_companyIdScope, 'company_id', $vehicle->company_id))->value('resource_ids') ?: '[]', true) ?: [];
-        abort_unless(in_array((int) $data['resource_id'], array_map('intval', $allowedResources), true), 422, 'Choose a report resource enabled in company GPS settings.');
+        $allowedResources = json_decode(DB::table('wialon_installation_settings')->where('id', 'installation')->value('resource_ids') ?: '[]', true) ?: [];
+        abort_unless(in_array((int) $data['resource_id'], array_map('intval', $allowedResources), true), 422, 'Choose a report resource enabled in installation GPS settings.');
         abort_if($data['to'] - $data['from'] > 366 * 86400, 422, 'Report intervals cannot exceed one year.');
         try {
             return response()->json([
                 'status' => 'success',
                 'data' => $wialon->runReport(
-                    (string) $vehicle->company_id,
                     (int) $vehicle->wialon_unit_id,
                     $data['resource_id'],
                     $data['template_id'],
@@ -84,7 +79,6 @@ class FleetTrackingController extends Controller
 
     public function mileage(Request $request, Vehicle $vehicle, WialonService $wialon): JsonResponse
     {
-        abort_unless(\App\Services\CompanyIdScope::sameCompanyId((string) ((string) $vehicle->company_id), (string) ($this->companyId($request))), 403);
         abort_unless($vehicle->wialon_unit_id, 422, 'Link a GPS device before changing its odometer.');
         $data = $request->validate(['mileage_km' => ['required', 'integer', 'min:0', 'max:' . WialonService::MAX_COUNTER_KILOMETERS]]);
         $vehicle->current_mileage = $data['mileage_km'];
@@ -92,7 +86,7 @@ class FleetTrackingController extends Controller
         $message = 'Mileage saved in the portal.';
         $wialonSynced = false;
         try {
-            $wialon->setMileage((string) $vehicle->company_id, (int) $vehicle->wialon_unit_id, $data['mileage_km']);
+            $wialon->setMileage((int) $vehicle->wialon_unit_id, $data['mileage_km']);
             $wialonSynced = true;
         } catch (RuntimeException $error) {
             $message .= ' GPS counter sync failed: ' . $error->getMessage();
@@ -103,10 +97,9 @@ class FleetTrackingController extends Controller
 
     public function telemetry(Request $request, Vehicle $vehicle, WialonService $wialon): JsonResponse
     {
-        abort_unless(\App\Services\CompanyIdScope::sameCompanyId((string) ((string) $vehicle->company_id), (string) ($this->companyId($request))), 403);
         abort_unless($vehicle->wialon_unit_id, 422, 'Link a GPS device before requesting telemetry.');
         try {
-            return response()->json(['status' => 'success', 'data' => $wialon->telemetry((string) $vehicle->company_id, (int) $vehicle->wialon_unit_id)]);
+            return response()->json(['status' => 'success', 'data' => $wialon->telemetry((int) $vehicle->wialon_unit_id)]);
         } catch (RuntimeException $error) {
             return response()->json(['status' => 'error', 'message' => $error->getMessage()], 503);
         }
@@ -114,10 +107,9 @@ class FleetTrackingController extends Controller
 
     public function diagnostics(Request $request, Vehicle $vehicle, WialonService $wialon): JsonResponse
     {
-        abort_unless(\App\Services\CompanyIdScope::sameCompanyId((string) ((string) $vehicle->company_id), (string) ($this->companyId($request))), 403);
         abort_unless($vehicle->wialon_unit_id, 422, 'Link a GPS device before requesting diagnostics.');
         try {
-            return response()->json(['status' => 'success', 'data' => $wialon->diagnostics((string) $vehicle->company_id, (int) $vehicle->wialon_unit_id)]);
+            return response()->json(['status' => 'success', 'data' => $wialon->diagnostics((int) $vehicle->wialon_unit_id)]);
         } catch (RuntimeException $error) {
             return response()->json(['status' => 'error', 'message' => $error->getMessage()], 503);
         }
@@ -125,11 +117,10 @@ class FleetTrackingController extends Controller
 
     public function engineHours(Request $request, Vehicle $vehicle, WialonService $wialon): JsonResponse
     {
-        abort_unless(\App\Services\CompanyIdScope::sameCompanyId((string) ((string) $vehicle->company_id), (string) ($this->companyId($request))), 403);
         abort_unless($vehicle->wialon_unit_id, 422, 'Link a GPS device before changing engine hours.');
         $data = $request->validate(['engine_hours' => ['required', 'integer', 'min:0', 'max:4294967295']]);
         try {
-            $hours = $wialon->setEngineHours((string) $vehicle->company_id, (int) $vehicle->wialon_unit_id, (int) $data['engine_hours']);
+            $hours = $wialon->setEngineHours((int) $vehicle->wialon_unit_id, (int) $data['engine_hours']);
             return response()->json(['status' => 'success', 'data' => ['engine_hours' => $hours]]);
         } catch (RuntimeException $error) {
             return response()->json(['status' => 'error', 'message' => $error->getMessage()], 503);
@@ -138,10 +129,9 @@ class FleetTrackingController extends Controller
 
     public function commands(Request $request, Vehicle $vehicle, WialonService $wialon): JsonResponse
     {
-        abort_unless(\App\Services\CompanyIdScope::sameCompanyId((string) ((string) $vehicle->company_id), (string) ($this->companyId($request))), 403);
         abort_unless($vehicle->wialon_unit_id, 422, 'Link a GPS device before requesting commands.');
         try {
-            return response()->json(['status' => 'success', 'data' => $wialon->commands((string) $vehicle->company_id, (int) $vehicle->wialon_unit_id)]);
+            return response()->json(['status' => 'success', 'data' => $wialon->commands((int) $vehicle->wialon_unit_id)]);
         } catch (RuntimeException $error) {
             return response()->json(['status' => 'error', 'message' => $error->getMessage()], 503);
         }
@@ -149,11 +139,10 @@ class FleetTrackingController extends Controller
 
     public function executeCommand(Request $request, Vehicle $vehicle, int $commandId, WialonService $wialon): JsonResponse
     {
-        abort_unless(\App\Services\CompanyIdScope::sameCompanyId((string) ((string) $vehicle->company_id), (string) ($this->companyId($request))), 403);
         abort_unless($vehicle->wialon_unit_id, 422, 'Link a GPS device before executing commands.');
         $data = $request->validate(['parameter' => ['nullable', 'string', 'max:2000']]);
         try {
-            return response()->json(['status' => 'success', 'data' => $wialon->executeCommand((string) $vehicle->company_id, (int) $vehicle->wialon_unit_id, $commandId, $data['parameter'] ?? null)]);
+            return response()->json(['status' => 'success', 'data' => $wialon->executeCommand((int) $vehicle->wialon_unit_id, $commandId, $data['parameter'] ?? null)]);
         } catch (RuntimeException $error) {
             return response()->json(['status' => 'error', 'message' => $error->getMessage()], 503);
         }
@@ -161,7 +150,6 @@ class FleetTrackingController extends Controller
 
     public function alerts(Request $request, Vehicle $vehicle, WialonService $wialon): JsonResponse
     {
-        abort_unless(\App\Services\CompanyIdScope::sameCompanyId((string) ((string) $vehicle->company_id), (string) ($this->companyId($request))), 403);
         abort_unless($vehicle->wialon_unit_id, 422, 'Link a GPS device before requesting alerts.');
         $defaultFrom = now()->subDays(7)->timestamp;
         $data = $request->validate([
@@ -173,7 +161,7 @@ class FleetTrackingController extends Controller
         abort_unless($to > $from, 422, 'Alert end must be after start.');
         abort_if($to - $from > 366 * 86400, 422, 'Alert intervals cannot exceed one year.');
         try {
-            return response()->json(['status' => 'success', 'data' => $wialon->alertEvents((string) $vehicle->company_id, (int) $vehicle->wialon_unit_id, $from, $to)]);
+            return response()->json(['status' => 'success', 'data' => $wialon->alertEvents((int) $vehicle->wialon_unit_id, $from, $to)]);
         } catch (RuntimeException $error) {
             return response()->json(['status' => 'error', 'message' => $error->getMessage()], 503);
         }
@@ -181,11 +169,10 @@ class FleetTrackingController extends Controller
 
     public function position(Request $request, Vehicle $vehicle, WialonService $wialon): JsonResponse
     {
-        abort_unless(\App\Services\CompanyIdScope::sameCompanyId((string) ((string) $vehicle->company_id), (string) ($this->companyId($request))), 403);
         if (!$vehicle->wialon_unit_id)
             return response()->json(['status' => 'success', 'data' => null]);
         try {
-            $unit = collect($wialon->units((string) $vehicle->company_id))->firstWhere('id', (int) $vehicle->wialon_unit_id);
+            $unit = collect($wialon->units())->firstWhere('id', (int) $vehicle->wialon_unit_id);
             return response()->json(['status' => 'success', 'data' => $unit]);
         } catch (RuntimeException $error) {
             return response()->json(['status' => 'error', 'message' => $error->getMessage()], 503);
@@ -194,16 +181,14 @@ class FleetTrackingController extends Controller
 
     public function index(Request $request, WialonService $wialon): JsonResponse
     {
-        $companyId = $this->companyId($request);
         $units = [];
         $wialonError = null;
         try {
-            $units = $wialon->units($companyId);
+            $units = $wialon->units();
         } catch (RuntimeException $error) {
             $wialonError = $error->getMessage();
         }
         $vehicles = Vehicle::withInactive()
-            ->where(fn ($_companyIdScope) => \App\Services\CompanyIdScope::constrain($_companyIdScope, 'company_id', $companyId))
             ->select('id', 'title', 'license_plate', 'registration_no', 'wialon_unit_id', 'current_mileage', 'is_active', 'availability_status', 'wialon_mileage', 'wialon_mileage_sync_pending', 'wialon_last_message_at', 'wialon_last_synced_at')
             ->orderBy('title')
             ->get();
@@ -241,24 +226,21 @@ class FleetTrackingController extends Controller
 
     public function link(Request $request, Vehicle $vehicle, WialonService $wialon): JsonResponse
     {
-        $companyId = $this->companyId($request);
-        abort_unless(\App\Services\CompanyIdScope::sameCompanyId((string) ($vehicle->company_id), (string) ($companyId)), 403);
         $unitRules = ['present', 'nullable', 'integer'];
         if ($request->filled('wialon_unit_id')) {
             try {
-                $unitIds = collect($wialon->units($companyId))->pluck('id')->map(fn($id) => (string) $id)->all();
+                $unitIds = collect($wialon->units())->pluck('id')->map(fn($id) => (string) $id)->all();
             } catch (RuntimeException $error) {
                 return response()->json(['status' => 'error', 'message' => $error->getMessage()], 503);
             }
             $unitRules[] = Rule::in($unitIds);
         }
         $data = $request->validate(['wialon_unit_id' => $unitRules]);
-        DB::transaction(function () use ($vehicle, $companyId, $data): void {
+        DB::transaction(function () use ($vehicle, $data): void {
             $unitId = $data['wialon_unit_id'] ?? null;
             $unitId = $unitId === null ? null : (int) $unitId;
             if ($unitId) {
                 $previousVehicle = Vehicle::withTrashed()->withInactive()
-                    ->where(fn ($_companyIdScope) => \App\Services\CompanyIdScope::constrain($_companyIdScope, 'company_id', $companyId))
                     ->where('wialon_unit_id', (int) $unitId)
                     ->where('id', '!=', $vehicle->id)
                     ->lockForUpdate()
@@ -290,13 +272,12 @@ class FleetTrackingController extends Controller
                 $vehicle->wialon_mileage_sync_requested_at = null;
             }
             $vehicle->wialon_unit_id = $unitId;
-            $vehicle->company_id ??= $companyId;
             $vehicle->save();
         });
         $syncError = null;
         if ($vehicle->wialon_unit_id) {
             try {
-                $wialon->syncVehicles($companyId);
+                $wialon->syncVehicles();
                 $vehicle->refresh();
             } catch (RuntimeException $error) {
                 $syncError = $error->getMessage();
@@ -316,26 +297,24 @@ class FleetTrackingController extends Controller
             'offset' => ['sometimes', 'integer', 'min:0', 'max:9900'],
         ]);
         abort_if($data['to'] - $data['from'] > 366 * 86400, 422, 'Message intervals cannot exceed one year.');
-        $vehicle = Vehicle::withInactive()->where('wialon_unit_id', $unitId)->where(fn ($_companyIdScope) => \App\Services\CompanyIdScope::constrain($_companyIdScope, 'company_id', $this->companyId($request)))->firstOrFail();
+        $vehicle = Vehicle::withInactive()->where('wialon_unit_id', $unitId)->firstOrFail();
         try {
-            return response()->json(['status' => 'success', 'data' => $wialon->messages((string) $vehicle->company_id, $unitId, $data['from'], $data['to'], $data['offset'] ?? 0)]);
+            return response()->json(['status' => 'success', 'data' => $wialon->messages( $unitId, $data['from'], $data['to'], $data['offset'] ?? 0)]);
         } catch (RuntimeException $error) {
             return response()->json(['status' => 'error', 'message' => $error->getMessage()], 503);
         }
     }
 
-    public function settings(Request $request): JsonResponse
+    public function settings(): JsonResponse
     {
-        $companyId = $this->companyId($request);
-        $row = DB::table('wialon_integrations')->where(fn ($_companyIdScope) => \App\Services\CompanyIdScope::constrain($_companyIdScope, 'company_id', $companyId))->first();
+        $row = $this->integrationSettingsRow();
         return response()->json(['status' => 'success', 'data' => ['configured' => (bool) $row, 'enabled' => (bool) ($row->enabled ?? false), 'base_url' => $row->base_url ?? 'https://hst-api.wialon.com', 'resource_ids' => json_decode($row->resource_ids ?? '[]', true) ?: [], 'group_ids' => json_decode($row->group_ids ?? '[]', true) ?: [], 'unit_ids' => []]]);
     }
 
     public function catalog(Request $request, WialonService $wialon): JsonResponse
     {
-        $companyId = $this->companyId($request);
         try {
-            return response()->json(['status' => 'success', 'data' => ['resources' => $wialon->resources($companyId), 'groups' => $wialon->unitGroups($companyId), 'units' => $wialon->units($companyId, true)]]);
+            return response()->json(['status' => 'success', 'data' => ['resources' => $wialon->resources(), 'groups' => $wialon->unitGroups(), 'units' => $wialon->units(true)]]);
         } catch (RuntimeException $error) {
             return response()->json(['status' => 'error', 'message' => $error->getMessage()], 503);
         }
@@ -344,9 +323,8 @@ class FleetTrackingController extends Controller
     public function addUnitToGroup(Request $request, int $groupId, WialonService $wialon): JsonResponse
     {
         $data = $request->validate(['unit_id' => ['required', 'integer', 'min:1']]);
-        $companyId = $this->companyId($request);
         try {
-            $membership = $wialon->addUnitToGroup($companyId, $groupId, (int) $data['unit_id']);
+            $membership = $wialon->addUnitToGroup($groupId, (int) $data['unit_id']);
         } catch (RuntimeException $error) {
             return response()->json(['status' => 'error', 'message' => $error->getMessage()], 503);
         }
@@ -354,7 +332,7 @@ class FleetTrackingController extends Controller
         $syncError = null;
         $synced = 0;
         try {
-            $synced = $wialon->syncVehicles($companyId);
+            $synced = $wialon->syncVehicles();
         } catch (RuntimeException $error) {
             $syncError = $error->getMessage();
         }
@@ -368,9 +346,8 @@ class FleetTrackingController extends Controller
 
     public function removeUnitFromGroup(Request $request, int $groupId, int $unitId, WialonService $wialon): JsonResponse
     {
-        $companyId = $this->companyId($request);
         try {
-            $membership = $wialon->removeUnitFromGroup($companyId, $groupId, $unitId);
+            $membership = $wialon->removeUnitFromGroup($groupId, $unitId);
         } catch (RuntimeException $error) {
             return response()->json(['status' => 'error', 'message' => $error->getMessage()], 503);
         }
@@ -378,7 +355,7 @@ class FleetTrackingController extends Controller
         $syncError = null;
         $synced = 0;
         try {
-            $synced = $wialon->syncVehicles($companyId);
+            $synced = $wialon->syncVehicles();
         } catch (RuntimeException $error) {
             $syncError = $error->getMessage();
         }
@@ -400,15 +377,19 @@ class FleetTrackingController extends Controller
             'group_ids.*' => ['integer', 'min:1'],
             'enabled' => ['required', 'boolean'],
         ]);
-        $companyId = $this->companyId($request);
-        $existing = DB::table('wialon_integrations')->where(fn ($_companyIdScope) => \App\Services\CompanyIdScope::constrain($_companyIdScope, 'company_id', $companyId))->first();
-        abort_unless($existing || $data['token'] ?? false, 422, 'Enter the GPS service token to connect this company.');
+        $existing = $this->integrationSettingsRow();
+        abort_unless($existing || $data['token'] ?? false, 422, 'Enter the GPS service token to connect this installation.');
         $token = $data['token'] ?? decrypt($existing->token);
         try {
-            DB::transaction(function () use ($companyId, $existing, $token, $data, $wialon): void {
-                DB::table('wialon_integrations')->updateOrInsert(['company_id' => $companyId], ['id' => $existing->id ?? (string) Str::uuid(), 'token' => encrypt($token), 'base_url' => 'https://hst-api.wialon.com', 'resource_ids' => json_encode(array_values(array_unique($data['resource_ids'] ?? []))), 'group_ids' => json_encode(array_values(array_unique($data['group_ids'] ?? []))), 'unit_ids' => '[]', 'enabled' => $data['enabled'], 'updated_at' => now(), 'created_at' => $existing->created_at ?? now()]);
+            DB::transaction(function () use ($existing, $token, $data, $wialon): void {
+                $values = ['token' => encrypt($token), 'base_url' => 'https://hst-api.wialon.com', 'resource_ids' => json_encode(array_values(array_unique($data['resource_ids'] ?? []))), 'group_ids' => json_encode(array_values(array_unique($data['group_ids'] ?? []))), 'unit_ids' => '[]', 'enabled' => $data['enabled'], 'updated_at' => now()];
+                if ($existing) {
+                    DB::table('wialon_installation_settings')->where('id', 'installation')->update($values);
+                } else {
+                    DB::table('wialon_installation_settings')->insert($values + ['id' => 'installation', 'created_at' => now()]);
+                }
                 if ($data['enabled']) {
-                    $wialon->validateSelections($companyId, $data['resource_ids'] ?? [], $data['group_ids'] ?? []);
+                    $wialon->validateSelections( $data['resource_ids'] ?? [], $data['group_ids'] ?? []);
                 }
             });
         } catch (RuntimeException $error) {
@@ -418,7 +399,7 @@ class FleetTrackingController extends Controller
         $syncError = null;
         if ($data['enabled']) {
             try {
-                $synced = $wialon->syncVehicles($companyId);
+                $synced = $wialon->syncVehicles();
             } catch (RuntimeException $error) {
                 $syncError = $error->getMessage();
             }
@@ -426,19 +407,8 @@ class FleetTrackingController extends Controller
         return response()->json(['status' => 'success', 'data' => ['configured' => true, 'enabled' => (bool) $data['enabled'], 'synced' => $synced, 'sync_error' => $syncError]]);
     }
 
-    private function companyId(Request $request): string
+    private function integrationSettingsRow(): ?object
     {
-        if ($request->header('X-Active-Context-Type') === 'internal') {
-            $company = app(SingleCompanyScope::class)->activeDefaultCompany();
-            abort_unless($company, 409, 'An active default company is required to manage fleet settings from the Internal Portal.');
-
-            return (string) $company->id;
-        }
-
-        $companyId = app(\App\Services\StaffAccessService::class)->currentActorStaff($request->user())->company_id
-            ?? app(SingleCompanyScope::class)->activeDefaultCompany()?->id;
-        abort_unless($companyId, 409, 'No active default company is configured.');
-
-        return (string) $companyId;
+        return DB::table('wialon_installation_settings')->where('id', 'installation')->first();
     }
 }

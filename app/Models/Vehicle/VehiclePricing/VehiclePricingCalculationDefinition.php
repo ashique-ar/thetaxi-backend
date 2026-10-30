@@ -899,19 +899,19 @@ class VehiclePricingCalculationDefinition extends Model
             if (
                 $varName === 'extra_km_rate'
                 && ($inputs['include_garage_distance'] ?? false)
-                && ($inputs['pickup_and_dropoff_at_default_company'] ?? false)
+                && ($inputs['pickup_and_dropoff_at_company_location'] ?? false)
             ) {
                 $value = 0;
                 if (isset($this->resolvedRateSources[$varName])) {
                     $this->resolvedRateSources[$varName]['resolved_value'] = 0;
-                    $this->resolvedRateSources[$varName]['waived_reason'] = 'Pickup and drop-off are at the default company location.';
+                    $this->resolvedRateSources[$varName]['waived_reason'] = 'Pickup and drop-off are at company locations.';
                 }
             }
 
             $isDeliveryRate = $varType === 'common_rate'
                 && preg_match('/deliver(?:y)?_rate/i', $varName);
             $deliveryRateWaivedForGarageSetting = !($inputs['include_garage_distance'] ?? false);
-            $deliveryRateWaivedForCompanyLocation = $inputs['delivery_location_is_default_company'] ?? false;
+            $deliveryRateWaivedForCompanyLocation = $inputs['delivery_location_is_company_location'] ?? false;
 
             if ($isDeliveryRate && ($deliveryRateWaivedForGarageSetting || $deliveryRateWaivedForCompanyLocation)) {
                 $value = 0;
@@ -922,7 +922,7 @@ class VehiclePricingCalculationDefinition extends Model
                     $this->resolvedRateSources[$rateKey]['resolved_value'] = 0;
                     $this->resolvedRateSources[$rateKey]['waived_reason'] = $deliveryRateWaivedForGarageSetting
                         ? 'Garage-to-garage pricing is disabled.'
-                        : 'Delivery location is the default company location.';
+                        : 'Delivery location is a company location.';
                 }
             }
 

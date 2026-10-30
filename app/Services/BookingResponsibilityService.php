@@ -14,13 +14,7 @@ class BookingResponsibilityService
 {
     public function eligibleEmployees(?string $companyId = null)
     {
-        $companyId ??= app(SingleCompanyScope::class)->activeDefaultCompany()?->id;
-        if (!$companyId) {
-            return collect();
-        }
-
         $employees = DB::table('staff')->join('users', 'users.id', '=', 'staff.user_id')
-            ->where(fn ($_companyIdScope) => \App\Services\CompanyIdScope::constrain($_companyIdScope, 'staff.company_id', $companyId))
             ->whereNull('staff.deleted_at')->where(fn ($employment) => $employment->whereNull('staff.employment_ended_at')->orWhere('staff.employment_ended_at', '>', now()))
             ->whereNull('users.deleted_at')->where('users.is_active', true)
             ->select(['users.id', 'users.first_name', 'users.last_name', 'staff.code'])
@@ -30,7 +24,7 @@ class BookingResponsibilityService
         return $employees->whereIn('id', $canViewBookings)->values();
     }
 
-    public function eligibleEmployeesWithOpenBookingCounts(string $companyId): array
+    public function eligibleEmployeesWithOpenBookingCounts(?string $companyId = null): array
     {
         $employees = $this->eligibleEmployees($companyId);
         $employeeIds = $employees->pluck('id')->map(fn ($id) => (string) $id)->all();
@@ -39,7 +33,6 @@ class BookingResponsibilityService
             $query = Booking::query()->selectRaw('responsible_user_id, COUNT(*) as open_booking_count')
                 ->whereIn('responsible_user_id', $employeeIds)
                 ->whereIn('status', array_merge(['inquiry', 'inquiry_qualified'], BookingLifecycleStatus::activeOperationalValues()));
-            CompanyBookingScope::constrain($query, 'bookings', $companyId);
             $workload = $query->groupBy('responsible_user_id')->pluck('open_booking_count', 'responsible_user_id');
         }
 
@@ -85,7 +78,7 @@ class BookingResponsibilityService
     public function notifyUnassignedBooking(Booking $booking, ?string $companyId = null): void
     {
         $companyId ??= $this->companyIdFor($booking);
-        if (! $companyId || ! in_array($booking->status, array_merge(['inquiry', 'inquiry_qualified'], BookingLifecycleStatus::activeOperationalValues()), true)) {
+        if (! in_array($booking->status, array_merge(['inquiry', 'inquiry_qualified'], BookingLifecycleStatus::activeOperationalValues()), true)) {
             return;
         }
 
@@ -96,8 +89,7 @@ class BookingResponsibilityService
         try {
             $recipients = User::permission('bookings.view')->permission('bookings.assign')->where('is_active', true)
                 ->whereNull('deleted_at')
-                ->whereHas('staff', fn ($query) => $query->where(fn ($_companyIdScope) => \App\Services\CompanyIdScope::constrain($_companyIdScope, 'company_id', $companyId))
-                    ->whereNull('deleted_at')->where(fn ($employment) => $employment->whereNull('employment_ended_at')->orWhere('employment_ended_at', '>', now())))
+                ->whereHas('staff', fn ($query) => $query->whereNull('deleted_at')->where(fn ($employment) => $employment->whereNull('employment_ended_at')->orWhere('employment_ended_at', '>', now())))
                 ->get();
             foreach ($recipients as $recipient) {
                 $recipient->notify(new WebsiteBookingNeedsOwnerNotification($booking));
@@ -113,9 +105,7 @@ class BookingResponsibilityService
 
     private function companyIdFor(Booking $booking): ?string
     {
-        return $booking->company_id
-            ? (string) $booking->company_id
-            : app(SingleCompanyScope::class)->activeDefaultCompany()?->id;
+        return $booking->company_id ? (string) $booking->company_id : null;
     }
 
 }

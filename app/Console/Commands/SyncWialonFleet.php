@@ -13,16 +13,16 @@ class SyncWialonFleet extends Command
 
     public function handle(WialonService $wialon): int
     {
-        $failed = false;
-        foreach (DB::table('wialon_integrations')->where('enabled', true)->pluck('company_id') as $companyId) {
-            try {
-                $synced = $wialon->syncVehicles((string) $companyId);
-                $this->info("Company {$companyId}: {$synced} vehicle(s) synchronized.");
-            } catch (\Throwable $error) {
-                $failed = true;
-                $this->error("Company {$companyId}: {$error->getMessage()}");
-            }
+        $integration = DB::table('wialon_installation_settings')->where('id', 'installation')->first();
+        if (! $integration || ! $integration->enabled) return self::SUCCESS;
+
+        try {
+            $synced = $wialon->syncVehicles();
+            $this->info("Installation GPS: {$synced} vehicle(s) synchronized.");
+            return self::SUCCESS;
+        } catch (\Throwable $error) {
+            $this->error("Installation GPS: {$error->getMessage()}");
+            return self::FAILURE;
         }
-        return $failed ? self::FAILURE : self::SUCCESS;
     }
 }

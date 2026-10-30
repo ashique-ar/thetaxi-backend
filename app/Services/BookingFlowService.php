@@ -4162,7 +4162,7 @@ class BookingFlowService
 
             $this->recordPortalPromoUsage($booking, $params);
             $actor = Auth::user();
-            $activityCompanyId = $booking->company_id ?: \App\Services\CompanyIdScope::defaultCompanyId();
+            $activityCompanyId = $booking->company_id;
             $changedFields = $this->bookingUpdateChangedFieldLabels($original, $originalItemAttributes, $booking);
             BookingActivity::query()->create([
                 'company_id' => $activityCompanyId,
@@ -4442,16 +4442,13 @@ class BookingFlowService
             && round($longitude, 5) === round((float) $company->longitude, 5);
     }
 
-    private function isConfiguredCompanyLocation(array $location, ?\App\Models\Company $defaultCompany): bool
+    private function isConfiguredCompanyLocation(array $location): bool
     {
         $companyId = $location['company_id'] ?? null;
-        $company = $companyId
-            ? \App\Models\Company::query()->where('is_active', true)->find($companyId)
-            : null;
-
-        return $company
-            ? $this->matchesCompanyLocation($location, $company)
-            : ($defaultCompany ? $this->matchesCompanyLocation($location, $defaultCompany) : false);
+        return Company::query()->where('is_active', true)
+            ->when($companyId, fn ($query) => $query->whereKey($companyId))
+            ->get(['id', 'latitude', 'longitude'])
+            ->contains(fn (Company $company): bool => $this->matchesCompanyLocation($location, $company));
     }
 
     /**
@@ -5514,25 +5511,22 @@ class BookingFlowService
 
         $serviceType = $this->resolveCalculationServiceType($serviceTypeId, $params);
         $inputs['include_garage_distance'] = $this->includeGarageDistanceForPricing();
-        $defaultCompany = \App\Models\Company::getDefaultCompany();
         $isWithDriver = $this->isWithDriverService($serviceType?->code ?? (string) $serviceTypeId);
         $dropoffLocation = $this->normalizeLocationInput($params['dropoff_location'] ?? []);
         $deliveryLocation = $isWithDriver && $this->isValidLocationArray($dropoffLocation)
             ? $dropoffLocation
             : ($params['pickup_location'] ?? []);
-        $inputs['delivery_location_is_default_company'] = $this->isConfiguredCompanyLocation(
-            $this->normalizeLocationInput($deliveryLocation),
-            $defaultCompany
+        $inputs['delivery_location_is_company_location'] = $this->isConfiguredCompanyLocation(
+            $this->normalizeLocationInput($deliveryLocation)
         );
         $pickupLocationForWaiver = $this->normalizeLocationInput($params['pickup_location'] ?? []);
         $dropoffLocationForWaiver = $this->normalizeLocationInput($params['dropoff_location'] ?? []);
         if (!$this->isValidLocationArray($dropoffLocationForWaiver)) {
             $dropoffLocationForWaiver = $pickupLocationForWaiver;
         }
-        $inputs['pickup_and_dropoff_at_default_company'] = $this->isConfiguredCompanyLocation(
-            $pickupLocationForWaiver,
-            $defaultCompany
-        ) && $this->isConfiguredCompanyLocation($dropoffLocationForWaiver, $defaultCompany);
+        $inputs['pickup_and_dropoff_at_company_location'] = $this->isConfiguredCompanyLocation(
+            $pickupLocationForWaiver
+        ) && $this->isConfiguredCompanyLocation($dropoffLocationForWaiver);
 
         if ($serviceType && $serviceType->minimum_km > 0) {
             $minimumKm = (float) $serviceType->minimum_km;
@@ -8072,8 +8066,7 @@ class BookingFlowService
             ->whereNotNull('address')
             ->whereNotNull('latitude')
             ->whereNotNull('longitude')
-            ->select('id', 'name', 'address', 'latitude', 'longitude', 'is_default')
-            ->orderBy('is_default', 'desc')
+            ->select('id', 'name', 'address', 'latitude', 'longitude')
             ->orderBy('name')
             ->get();
 
@@ -8086,7 +8079,6 @@ class BookingFlowService
                 'address' => $company->address,
                 'latitude' => (float) $company->latitude,
                 'longitude' => (float) $company->longitude,
-                'is_default' => (bool) $company->is_default,
                 'type' => 'company_location'
             ];
         }
@@ -8619,9 +8611,7 @@ class BookingFlowService
     {
         try {
             // Find users in this company who can approve bookings
-            $companyId = $booking->company_id ?: \App\Services\CompanyIdScope::defaultCompanyId();
             $approvers = User::permission('bookings.approve')
-                ->where(fn ($_companyIdScope) => \App\Services\CompanyIdScope::constrain($_companyIdScope, 'company_id', $companyId))
                 ->get();
 
             $bookingNumber = $booking->booking_number ?? (string) $booking->id;
@@ -9361,10 +9351,6 @@ class BookingFlowService
         $clonedData['approved_at'] = null;
 
         $clonedBooking = Booking::create($clonedData);
-        $clonedBooking->company_id = $originalBooking->company_id ?: \App\Services\CompanyIdScope::defaultCompanyId();
-        if ($clonedBooking->company_id) {
-            $clonedBooking->save();
-        }
 
         // Clone addons
         foreach ($originalBooking->bookingAddons as $addon) {
@@ -10083,12 +10069,11 @@ class BookingFlowService
 
         match ($queue) {
             'needs_responsible_owner', 'needs_responsible_owner_past_target' => $query->whereHas('booking', function ($bookingQuery) use ($queue) {
-                    $companyId = app(SingleCompanyScope::class)->activeDefaultCompany()?->id;
-                    $eligibleOwners = $companyId ? app(BookingResponsibilityService::class)->eligibleEmployees((string) $companyId)->pluck('id')->map(fn ($id) => (string) $id)->all() : [];
+                    $eligibleOwners = app(BookingResponsibilityService::class)->eligibleEmployees()->pluck('id')->map(fn ($id) => (string) $id)->all();
                     $bookingQuery->whereIn('status', array_merge(['inquiry', 'inquiry_qualified'], BookingLifecycleStatus::activeOperationalValues()))
                         ->where(fn ($ownerQuery) => $ownerQuery->whereNull('bookings.responsible_user_id')->orWhereNotIn('bookings.responsible_user_id', $eligibleOwners));
                     if ($queue === 'needs_responsible_owner_past_target') {
-                        $targetMinutes = $companyId ? app(SalesPolicySettingsService::class)->bookingAssignmentTargetMinutes((string) $companyId) : null;
+                        $targetMinutes = app(SalesPolicySettingsService::class)->bookingAssignmentTargetMinutes();
                         $targetMinutes === null
                             ? $bookingQuery->whereRaw('1 = 0')
                             : $bookingQuery->where('bookings.created_at', '<=', now()->subMinutes($targetMinutes));
@@ -13621,54 +13606,42 @@ class BookingFlowService
     private function createBookingInquiryFromSource(array $params, string $sourceType, ?string $sourceId, string $actorUserId): array
     {
         [$booking, $created, $companyId] = DB::transaction(function () use ($params, $sourceType, $sourceId, $actorUserId): array {
+            $companyId = app(WebsiteSettingsService::class)->resolveCurrentCompanyId();
             if ($sourceType === 'phone_call') {
-                $companyId = (string) (app(WebsiteSettingsService::class)->resolveCurrentCompanyId() ?? '');
-                abort_unless($companyId !== '', 409, 'Select an active business before creating a booking request.');
-                app(CompanySettingsAccessService::class)->assertCanAccess(User::query()->findOrFail($actorUserId), $companyId);
-                $source = PhoneCall::query()->where(fn ($_companyIdScope) => \App\Services\CompanyIdScope::constrain($_companyIdScope, 'company_id', $companyId))->lockForUpdate()->findOrFail($sourceId);
+                $source = PhoneCall::query()->lockForUpdate()->findOrFail($sourceId);
+                $companyId ??= $source->company_id;
                 if ($source->booking_id) {
-                    $existing = Booking::query()->whereKey($source->booking_id);
-                    CompanyBookingScope::constrain($existing, 'bookings', $companyId);
-                    $existing = $existing->firstOrFail();
+                    $existing = Booking::query()->whereKey($source->booking_id)->firstOrFail();
                     abort_unless(data_get($existing->workflow_data, 'request_origin.phone_call_id') === (string) $source->id,
                         409, 'This call is already linked to a different booking.');
                     return [$existing, false, $companyId];
                 }
             } elseif ($sourceType === 'respond_io') {
-                $companyId = (string) (app(SingleCompanyScope::class)->activeDefaultCompany(true)?->id ?? '');
-                abort_unless($companyId !== '', 409, 'No active business is configured.');
-                $source = IntegrationWebhookEvent::query()->where(fn ($_companyIdScope) => \App\Services\CompanyIdScope::constrain($_companyIdScope, 'company_id', $companyId))->where('provider', 'respond_io')
+                $source = IntegrationWebhookEvent::query()->where('provider', 'respond_io')
                     ->incomingMessage()->lockForUpdate()->findOrFail($sourceId);
                 if ($source->linked_booking_id) {
-                    $existing = Booking::query()->whereKey($source->linked_booking_id);
-                    CompanyBookingScope::constrain($existing, 'bookings', $companyId);
-                    $existing = $existing->firstOrFail();
+                    $existing = Booking::query()->whereKey($source->linked_booking_id)->firstOrFail();
                     abort_unless(data_get($existing->workflow_data, 'request_origin.respond_io_event_id') === (string) $source->id,
                         409, 'This message is already linked to a different booking.');
                     return [$existing, false, $companyId];
                 }
                 abort_unless($source->status === 'received' && ! $source->linked_inquiry_id, 409, 'This message has already been reviewed.');
-            } else {
-                $companyId = (string) (app(WebsiteSettingsService::class)->resolveCurrentCompanyId() ?? '');
-                abort_unless($companyId !== '', 409, 'Select an active business before creating a booking request.');
-                app(CompanySettingsAccessService::class)->assertCanAccess(User::query()->findOrFail($actorUserId), $companyId);
             }
 
             $sourceCustomerId = $sourceType === 'phone_call' ? $source->customer_id : null;
             $customerId = $params['customer_id'] ?? $sourceCustomerId;
             abort_unless($customerId && (! $sourceCustomerId || (string) $sourceCustomerId === (string) $customerId),
                 422, 'Use the customer already linked to this call, or link a customer before creating the request.');
-            $customer = Customer::query()->whereKey($customerId);
-            CompanyCustomerScope::constrain($customer, 'customers', $companyId);
-            abort_unless($customer->exists(), 422, 'Select a customer associated with this business.');
+            abort_unless(Customer::query()->whereKey($customerId)->exists(), 422, 'Select a customer in this installation.');
 
             $items = $params['booking_items'] ?? [];
             abort_unless(is_array($items) && count($items) > 0, 422, 'Add at least one requested trip.');
             foreach ($items as $index => &$item) {
                 $serviceTypeId = $item['service_type_id'] ?? $item['service_type'] ?? null;
                 abort_unless($serviceTypeId && ServiceType::query()->whereKey($serviceTypeId)
-                    ->where('owner_type', 'company')->where('owner_id', $companyId)->where('is_active', true)->exists(),
-                    422, 'Trip '.($index + 1).' must use an active service from this business.');
+                    ->where('owner_type', 'company')->where('is_active', true)
+                    ->when($companyId, fn ($query) => $query->where('owner_id', $companyId))->exists(),
+                    422, 'Trip '.($index + 1).' must use an active service from this installation.');
                 $item['service_type_id'] = $serviceTypeId;
                 unset($item['vehicle_id'], $item['driver_id'], $item['employee_id'], $item['specific_driver_id']);
             }
@@ -13807,28 +13780,13 @@ class BookingFlowService
         }
 
         if (is_string($candidate) && trim($candidate) !== '') {
-            $defaultCompanyIds = Company::query()->where('is_active', true)->where('is_default', true)->limit(2)->pluck('id');
-            $companyId = $defaultCompanyIds->count() === 1 ? $defaultCompanyIds->first() : null;
-            $authenticatedUserId = Auth::id();
-            if (! $companyId) {
-                throw ValidationException::withMessages([
-                    'customer_id' => 'A customer can only be selected after an active business is configured.',
-                ]);
-            }
-            $customer = Customer::query()->whereKey($candidate)
-                ->where(function ($query) use ($companyId, $authenticatedUserId): void {
-                    CompanyCustomerScope::constrain($query, 'customers', (string) $companyId);
-                    if ($authenticatedUserId) {
-                        $query->orWhere('customers.user_id', $authenticatedUserId);
-                    }
-                })
-                ->first();
+            $customer = Customer::query()->whereKey($candidate)->first();
             if ($customer) {
                 return (string) $customer->id;
             }
 
             throw ValidationException::withMessages([
-                'customer_id' => 'Select a customer already linked to this business, or use your own customer account.',
+                'customer_id' => 'Select a customer in this installation.',
             ]);
         }
 

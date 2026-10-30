@@ -35,6 +35,8 @@ class BookingAttributionMutationService
         string $actorUserId,
     ): SalesBookingAttribution {
         return DB::transaction(function () use ($attribution, $toProfile, $reason, $idempotencyKey, $actorUserId) {
+            $targetCompanyId = $toProfile->company_id ?: \App\Services\CompanyIdScope::defaultCompanyId();
+            abort_unless($targetCompanyId, 422, 'Select an active default legal entity.');
             $locked = SalesBookingAttribution::query()->lockForUpdate()->findOrFail($attribution->id);
             $stagedOwnerReview = DB::table('sales_attribution_exceptions')
                 ->where('booking_id', $locked->booking_id)
@@ -48,7 +50,7 @@ class BookingAttributionMutationService
                 $existingOwner = DB::table('sales_booking_attribution_events')
                     ->where('attribution_id', $locked->id)->where('idempotency_key', "{$idempotencyKey}:owner")->first();
                 if ($existingEntity->event_type !== 'legal_entity_established'
-                    || !\App\Services\CompanyIdScope::sameCompanyId((string) ((string) ($existingEntity->to_value ?? '')), (string) ((string) $toProfile->company_id))
+                    || !\App\Services\CompanyIdScope::sameCompanyId((string) ((string) ($existingEntity->to_value ?? '')), (string) $targetCompanyId)
                     || (string) ($existingEntity->reason ?? '') !== $reason
                     || $existingEntity->actor_user_id !== $actorUserId
                     || ! $existingOwner
@@ -56,7 +58,7 @@ class BookingAttributionMutationService
                     || (string) ($existingOwner->to_value ?? '') !== (string) $toProfile->id
                     || (string) ($existingOwner->reason ?? '') !== $reason
                     || $existingOwner->actor_user_id !== $actorUserId
-                    || !\App\Services\CompanyIdScope::sameCompanyId((string) ((string) $locked->company_id), (string) ((string) $toProfile->company_id))
+                    || !\App\Services\CompanyIdScope::sameCompanyId((string) ((string) $locked->company_id), (string) $targetCompanyId)
                     || (string) $locked->acquisition_sales_profile_id !== (string) $toProfile->id) {
                     throw new RuntimeException('The attribution idempotency key was already used for different or incomplete legal-entity evidence.');
                 }
@@ -75,10 +77,11 @@ class BookingAttributionMutationService
             if (! $target) {
                 throw new RuntimeException('The target Sales Profile no longer exists.');
             }
-            if (! \App\Services\CompanyIdScope::sameCompanyId(null, (string) $target->company_id)) {
+            $targetCompanyId = $target->company_id ?: \App\Services\CompanyIdScope::defaultCompanyId();
+            if (! \App\Services\CompanyIdScope::sameCompanyId(null, (string) $targetCompanyId)) {
                 throw new RuntimeException('A null attribution belongs to the active default company; choose a Sales Profile in that company.');
             }
-            abort_unless(DB::table('companies')->where('id', $target->company_id)->where('is_active', true)
+            abort_unless(DB::table('companies')->where('id', $targetCompanyId)->where('is_active', true)
                 ->whereNull('deleted_at')->lockForUpdate()->exists(), 422, 'Select an active legal entity.');
             if (! $this->profileEligibility->isEligibleAt($target, ['acquisition'], $locked->secured_at)) {
                 throw new RuntimeException(
@@ -94,7 +97,7 @@ class BookingAttributionMutationService
                 'event_type' => 'legal_entity_established',
                 'field_name' => 'company_id',
                 'from_value' => null,
-                'to_value' => $target->company_id,
+                'to_value' => $targetCompanyId,
                 'from_sales_profile_id' => null,
                 'to_sales_profile_id' => null,
                 'effective_at' => $locked->secured_at,
@@ -125,11 +128,11 @@ class BookingAttributionMutationService
 
             $collectionProfile = $locked->collection_sales_profile_id
                 ? SalesProfile::query()->withTrashed()->find($locked->collection_sales_profile_id) : null;
-            $status = $collectionProfile && \App\Services\CompanyIdScope::sameCompanyId((string) ($collectionProfile->company_id), (string) ($target->company_id))
+            $status = $collectionProfile && \App\Services\CompanyIdScope::sameCompanyId((string) ($collectionProfile->company_id), (string) $targetCompanyId)
                 && $this->profileEligibility->isEligibleAt($collectionProfile, ['collection'], now())
                     ? 'active' : 'held';
             $locked->update([
-                'company_id' => $target->company_id,
+                'company_id' => $targetCompanyId,
                 'acquisition_sales_profile_id' => $target->id,
                 'status' => $status,
                 'version' => $ownerVersion,

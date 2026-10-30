@@ -17,7 +17,6 @@ use App\Services\UserContextService;
 use App\Services\StaffIdentityService;
 use App\Services\StaffAccessService;
 use App\Services\Hr\PeopleCoreService;
-use App\Services\Hr\StaffDefaultCompanyService;
 use App\Services\Hr\Recruitment\RecruitmentConversionService;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
@@ -35,13 +34,12 @@ class StaffController extends Controller
         private readonly StaffIdentityService $identityService,
         private readonly StaffAccessService $accessService,
         private readonly PeopleCoreService $peopleCore,
-        private readonly StaffDefaultCompanyService $defaultCompany,
         private readonly RecruitmentConversionService $recruitmentConversion,
     ) {}
 
     public function index(Request $request): AnonymousResourceCollection
     {
-        $q = $this->accessService->scope(Staff::with(['user', 'company', 'country', 'state']), $request->user());
+        $q = $this->accessService->scope(Staff::with(['user', 'country', 'state']), $request->user());
         $canSearchSensitivePersonal = $request->user()->can('staff-sensitive-personal.view');
         if ($request->filled('search')) {
             $search = trim((string) $request->get('search'));
@@ -164,12 +162,7 @@ class StaffController extends Controller
 
     public function store(CreateStaffRequest $request): JsonResponse
     {
-        $data = $this->defaultCompany->apply($request->validated());
-        abort_if(empty($data['company_id']), 422, 'Select an active legal entity or configure an active default company.');
-        if (! $request->user()->can('staff.create-all')) {
-            $actorStaff = $this->accessService->currentActorStaff($request->user());
-            abort_unless(\App\Services\CompanyIdScope::sameCompanyId((string) ($actorStaff->company_id), (string) ($data['company_id'])), 403, 'Creating Staff outside your legal entity requires Staff create-all permission.');
-        }
+        $data = $request->validated();
         if ($dob = SriLankanNic::dateOfBirth($data['nic'] ?? null)) $data['dob'] = $dob;
         $data['created_user_id'] = $request->user()->id;
         $paymentMethods = $data['payment_methods'] ?? null;
@@ -205,7 +198,7 @@ class StaffController extends Controller
             app(PaymentMethodSyncService::class)->syncMany($staff, $paymentMethods, $request->user()->id);
         }
 
-        $staff->load(['user', 'company', 'country', 'state', 'paymentMethods']);
+        $staff->load(['user', 'country', 'state', 'paymentMethods']);
 
         return response()->json([
             'status' => 'success',
@@ -217,7 +210,7 @@ class StaffController extends Controller
     public function show(Request $request, Staff $staff): JsonResponse
     {
         $this->accessService->authorize($request->user(), $staff, 'view');
-        $staff->load(['user', 'company', 'country', 'state']);
+        $staff->load(['user', 'country', 'state']);
         $viewer = $request->user();
         if ($viewer->id !== $staff->user_id && $viewer->can('staff-sensitive-personal.view')) {
             activity('staff-sensitive-data')
@@ -237,15 +230,6 @@ class StaffController extends Controller
     {
         $this->accessService->authorize($request->user(), $staff, 'edit');
         $data = $request->validated();
-        if (array_key_exists('company_id', $data) && empty($data['company_id'])) {
-            $data['company_id'] = $staff->company_id ?: $this->defaultCompany->id();
-            if (! $data['company_id']) {
-                unset($data['company_id']);
-            }
-        }
-        if (array_key_exists('company_id', $data) && !\App\Services\CompanyIdScope::sameCompanyId((string) ((string) $data['company_id']), (string) ((string) $staff->company_id))) {
-            abort_unless($request->user()->can('staff.edit-all'), 403, 'Changing a Staff legal entity requires Staff edit-all permission.');
-        }
         if ($dob = SriLankanNic::dateOfBirth($data['nic'] ?? null)) $data['dob'] = $dob;
         $data = $this->restrictSensitivePersonalFields($data, $staff->user_id, $request->user());
         $data['updated_user_id'] = $request->user()->id;
@@ -263,7 +247,7 @@ class StaffController extends Controller
         if ($paymentMethods !== null) {
             app(PaymentMethodSyncService::class)->syncMany($staff, $paymentMethods, $request->user()->id);
         }
-        $staff->load(['user', 'company', 'country', 'state', 'paymentMethods']);
+        $staff->load(['user', 'country', 'state', 'paymentMethods']);
 
         return response()->json([
             'status' => 'success',

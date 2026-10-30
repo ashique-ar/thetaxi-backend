@@ -25,7 +25,6 @@ class CreateCompanyRequest extends FormRequest
             'state_id' => ['nullable', 'exists:states,id'],
             'city' => ['nullable', 'string'],
             'is_active' => ['nullable', 'boolean'],
-            'is_default' => ['nullable', 'boolean'],
         ];
     }
 }

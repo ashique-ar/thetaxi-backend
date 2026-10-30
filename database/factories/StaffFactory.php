@@ -2,7 +2,6 @@
 
 namespace Database\Factories;
 
-use App\Models\Company;
 use App\Models\Staff;
 use App\Models\User;
 use Illuminate\Database\Eloquent\Factories\Factory;
@@ -17,13 +16,7 @@ class StaffFactory extends Factory
     /**
      * Define the model's default state.
      *
-     * `company_id` is nullable on the `staff` table itself, but almost every
-     * HR feature (People Core scoping, attendance device mapping, etc.)
-     * requires it, so this factory defaults to the active default Company
-     * (creating one for the fixture when absent) rather than guessing.
-     * Tests that need a specific legal entity should still override it
-     * explicitly, e.g. `Staff::factory()->create(['company_id' => $company->id])`,
-     * so the Staff lands in the same company as the acting user.
+     * Staff records are shared across locations in a single installation.
      *
      * @return array<string, mixed>
      */
@@ -31,7 +24,6 @@ class StaffFactory extends Factory
     {
         return [
             'user_id' => User::factory(),
-            'company_id' => fn () => Company::getDefaultCompany()?->id ?? Company::create(['name' => 'Factory Test Company', 'is_default' => true])->id,
             'staff_type' => fake()->randomElement(['operator', 'driver-coordinator', 'supervisor', 'agent', 'accountant']),
             'code' => 'STF-'.fake()->unique()->numerify('#####'),
             'nic' => null,

@@ -20,11 +20,10 @@ class CompanySettingsAccessService
                 ->where('context.is_active', true)
                 ->whereNull('context.deleted_at')
                 ->where('staff.user_id', $user->id)
-                ->where(fn ($company) => CompanyIdScope::constrain($company, 'staff.company_id', $companyId))
                 ->whereNull('staff.deleted_at')
                 ->where(fn ($employment) => $employment->whereNull('staff.employment_ended_at')->orWhere('staff.employment_ended_at', '>', now()))
                 ->exists();
-            abort_unless($selectedContextMatches, 403, 'These settings are outside your selected Staff business.');
+            abort_unless($selectedContextMatches, 403, 'Select a valid active Staff context.');
 
             return;
         }
@@ -37,25 +36,6 @@ class CompanySettingsAccessService
         if ($user->can('companies.view') && (! $manage || $user->can('companies.edit'))) {
             return;
         }
-        if (\App\Services\CompanyIdScope::sameCompanyId((string) ((string) $user->company_id), (string) ($companyId))) {
-            return;
-        }
-
-        $contexts = DB::table('user_contexts as context')
-            ->join('staff', 'staff.id', '=', 'context.context_id')
-            ->where('context.user_id', $user->id)
-            ->where('context.context_type', 'staff')
-            ->where('context.is_active', true)
-            ->whereNull('context.deleted_at')
-            ->where('staff.user_id', $user->id)
-            ->where(fn ($company) => CompanyIdScope::constrain($company, 'staff.company_id', $companyId))
-            ->whereNull('staff.deleted_at')
-            ->where(fn ($employment) => $employment->whereNull('staff.employment_ended_at')->orWhere('staff.employment_ended_at', '>', now()));
-
-        if ($contextType === 'internal') {
-            $contexts->whereRaw('1 = 0');
-        }
-
-        abort_unless($contexts->exists(), 403, 'These settings are outside your business access.');
+        abort(403, 'You do not have permission to access company settings.');
     }
 }

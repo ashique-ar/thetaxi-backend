@@ -52,7 +52,6 @@ class Staff extends BaseModel
      */
     protected $fillable = [
         'user_id',
-        'company_id',
         'staff_type',
         'collection_commission_enabled',
         'collection_commission_rate',

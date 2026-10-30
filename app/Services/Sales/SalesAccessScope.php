@@ -5,10 +5,6 @@ namespace App\Services\Sales;
 use App\Models\Sales\SalesProfile;
 use App\Models\User;
 use App\Services\PermissionEvaluator;
-use App\Services\CompanySettingsAccessService;
-use App\Services\CompanyIdScope;
-use App\Services\SingleCompanyScope;
-use App\Services\WebsiteSettingsService;
 use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Http\Exceptions\HttpResponseException;
 use Illuminate\Support\Facades\DB;
@@ -27,14 +23,6 @@ class SalesAccessScope
 
     public function actorProfiles(User $user, ?string $companyId = null)
     {
-        $companyId = $this->staffCompanyId($user, $companyId)
-            ?? $companyId
-            ?? app(WebsiteSettingsService::class)->resolveCurrentCompanyId()
-            ?? app(SingleCompanyScope::class)->activeDefaultCompany()?->id;
-        if (! $companyId) {
-            return collect();
-        }
-
         $contextType = request()->header('X-Active-Context-Type');
         $contextId = request()->header('X-Active-Context-Id');
         if ($contextType === 'staff' && (! $contextId || ! \Illuminate\Support\Str::isUuid($contextId))) {
@@ -62,7 +50,6 @@ class SalesAccessScope
             })
             ->activeAt(now())
             ->configured()
-            ->where(fn ($_companyIdScope) => \App\Services\CompanyIdScope::constrain($_companyIdScope, 'company_id', $companyId))
             ->orderBy('id')
             ->get();
     }
@@ -74,10 +61,6 @@ class SalesAccessScope
         ?string $companyId = null,
     ): ?array
     {
-        $staffCompanyId = $this->staffCompanyId($user, $companyId);
-        if ($staffCompanyId && $this->hasPermission($user, $allPermission)) {
-            return SalesProfile::query()->where(fn ($_companyIdScope) => \App\Services\CompanyIdScope::constrain($_companyIdScope, 'company_id', $staffCompanyId))->activeAt(now())->configured()->pluck('id')->all();
-        }
         if ($this->hasPermission($user, $allPermission)) {
             return null;
         }
@@ -90,7 +73,6 @@ class SalesAccessScope
         $ids = $profiles->pluck('id')->all();
         if ($this->hasPermission($user, $teamPermission)) {
             $assignments = DB::table('sales_reporting_assignments')
-                ->where(fn ($_companyIdScope) => \App\Services\CompanyIdScope::constrainIn($_companyIdScope, 'company_id', $profiles->pluck('company_id')->unique()->all()))
                 ->whereNull('deleted_at')
                 ->where('effective_from', '<=', now())
                 ->where(fn ($query) => $query->whereNull('effective_until')->orWhere('effective_until', '>', now()))
@@ -115,7 +97,6 @@ class SalesAccessScope
             }
 
             $ids = SalesProfile::query()
-                ->where(fn ($_companyIdScope) => \App\Services\CompanyIdScope::constrainIn($_companyIdScope, 'company_id', $profiles->pluck('company_id')->unique()->all()))
                 ->whereIn('id', $ids)
                 ->activeAt(now())
                 ->configured()
@@ -140,10 +121,6 @@ class SalesAccessScope
     ): ?array {
         if (! $this->hasPermission($user, $basePermission)) {
             return [];
-        }
-        $staffCompanyId = $this->staffCompanyId($user, $companyId);
-        if ($staffCompanyId && $this->hasPermission($user, $allPermission)) {
-            return SalesProfile::query()->where(fn ($_companyIdScope) => \App\Services\CompanyIdScope::constrain($_companyIdScope, 'company_id', $staffCompanyId))->activeAt(now())->configured()->pluck('id')->all();
         }
         if ($this->hasPermission($user, $allPermission)) {
             return null;
@@ -182,67 +159,24 @@ class SalesAccessScope
 
     public function assertCompany(User $user, string $companyId, string $allPermission): void
     {
-        $this->staffCompanyId($user, $companyId);
         if ($this->hasPermission($user, $allPermission)) {
             return;
         }
 
-        if (! $this->actorProfiles($user, $companyId)->isNotEmpty()
-            && ! $this->hasActiveStaffCompanyContext($user, $companyId)) {
-            $this->deny('LEGAL_ENTITY_MISMATCH', 'The Sales legal entity is outside your permitted scope.');
+        if (! $this->actorProfiles($user)->isNotEmpty()) {
+            $this->deny('SUBJECT_SCOPE_DENIED', 'You do not have access to Sales records.');
         }
     }
 
     public function companyIds(User $user, string $allPermission): ?array
     {
-        $staffCompanyId = $this->staffCompanyId($user);
-        if ($staffCompanyId) {
-            return [$staffCompanyId];
-        }
-        if ($this->hasPermission($user, $allPermission)) {
-            return null;
-        }
+        if ($this->hasPermission($user, $allPermission)) return null;
 
-        $contextType = request()->header('X-Active-Context-Type');
-        $contextId = request()->header('X-Active-Context-Id');
-        $profiles = SalesProfile::query()
-            ->whereHas('staff', function (Builder $staff) use ($user, $contextType, $contextId): void {
-                $staff->where('user_id', $user->id)
-                    ->whereNull('deleted_at')
-                    ->where(fn (Builder $employment) => $employment
-                        ->whereNull('employment_ended_at')
-                        ->orWhere('employment_ended_at', '>', now()))
-                    ->when($contextType === 'staff', fn (Builder $staff) => $staff->whereExists(
-                        fn ($context) => $context->selectRaw('1')->from('user_contexts')
-                            ->whereColumn('user_contexts.context_id', 'staff.id')
-                            ->where('user_contexts.id', $contextId)
-                            ->where('user_contexts.user_id', $user->id)
-                            ->where('user_contexts.context_type', 'staff')
-                            ->where('user_contexts.is_active', true)->whereNull('user_contexts.deleted_at'),
-                    ));
-            })
-            ->activeAt(now())
-            ->configured();
-        if ($contextType === 'staff' && (! $contextId || ! \Illuminate\Support\Str::isUuid($contextId))) {
-            $profiles->whereRaw('1 = 0');
-        } elseif ($contextType !== null && ! in_array($contextType, ['staff', 'internal'], true)) {
-            $profiles->whereRaw('1 = 0');
-        }
+        $companyIds = $this->actorProfiles($user)->pluck('company_id')->filter()->unique()->values()->all();
+        if ($companyIds === []) return [];
 
-        $companyIds = $profiles->distinct()->pluck('company_id')->filter()->values()->all();
-        if ($companyIds !== []) {
-            $companyIds = DB::table('companies')->whereIn('id', $companyIds)
-                ->where('is_active', true)->whereNull('deleted_at')->orderBy('id')->pluck('id')->all();
-        }
-
-        if ($companyIds === []) {
-            $defaultCompanyId = app(SingleCompanyScope::class)->activeDefaultCompany()?->id;
-            if ($defaultCompanyId && $this->hasActiveStaffCompanyContext($user, (string) $defaultCompanyId)) {
-                return [(string) $defaultCompanyId];
-            }
-        }
-
-        return $companyIds;
+        return DB::table('companies')->whereIn('id', $companyIds)
+            ->where('is_active', true)->whereNull('deleted_at')->orderBy('id')->pluck('id')->all();
     }
 
     public function scopeType(User $user, string $allPermission, string $teamPermission): string
@@ -257,47 +191,6 @@ class SalesAccessScope
     public function hasPermission(User $user, string $permission): bool
     {
         return $this->permissions->userHasAnyForInternalContext($user, [$permission]);
-    }
-
-    private function hasActiveStaffCompanyContext(User $user, string $companyId): bool
-    {
-        $contextType = request()->header('X-Active-Context-Type');
-        $contextId = request()->header('X-Active-Context-Id');
-        if ($contextType === 'staff' && (! $contextId || ! \Illuminate\Support\Str::isUuid($contextId))) {
-            return false;
-        }
-        if ($contextType !== null && ! in_array($contextType, ['staff', 'internal'], true)) {
-            return false;
-        }
-
-        return DB::table('user_contexts as context')
-            ->join('staff', 'staff.id', '=', 'context.context_id')
-            ->where('context.user_id', $user->id)
-            ->where('context.context_type', 'staff')
-            ->where('context.is_active', true)
-            ->whereNull('context.deleted_at')
-            ->when($contextType === 'staff', fn ($query) => $query->where('context.id', $contextId))
-            ->where('staff.user_id', $user->id)
-            ->whereNull('staff.deleted_at')
-            ->where(fn ($query) => $query->whereNull('staff.employment_ended_at')->orWhere('staff.employment_ended_at', '>', now()))
-            ->where(fn ($company) => CompanyIdScope::constrain($company, 'staff.company_id', $companyId))
-            ->exists();
-    }
-
-    private function staffCompanyId(User $user, ?string $companyId = null): ?string
-    {
-        if (request()->header('X-Active-Context-Type') !== 'staff') {
-            return null;
-        }
-
-        $selectedCompanyId = app(WebsiteSettingsService::class)->resolveCurrentCompanyId();
-        abort_unless($selectedCompanyId, 409, 'Select an active business for Sales work.');
-        $selectedCompanyId = (string) $selectedCompanyId;
-        app(CompanySettingsAccessService::class)->assertCanAccess($user, $selectedCompanyId);
-        abort_unless($companyId === null || (string) $companyId === $selectedCompanyId, 403,
-            'Sales work is outside your selected Staff business.');
-
-        return $selectedCompanyId;
     }
 
     private function deny(string $code, string $message): never

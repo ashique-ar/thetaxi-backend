@@ -16,15 +16,6 @@ class StaffAccessService
     {
         $staff = $this->actorStaff($actor);
         abort_unless($staff, 403, 'Select an active Staff context.');
-
-        // Legacy Staff records with a null company_id belong to the active default company.
-        if (empty($staff->company_id)) {
-            $defaultCompanyId = app(SingleCompanyScope::class)->activeDefaultCompany()?->id;
-            if ($defaultCompanyId) {
-                $staff->setAttribute('company_id', (string) $defaultCompanyId);
-            }
-        }
-
         return $staff;
     }
 
@@ -40,7 +31,7 @@ class StaffAccessService
         }
 
         if ($actor->can('staff.view-legal-entity')) {
-            return $query->where(fn ($_companyIdScope) => \App\Services\CompanyIdScope::constrainIn($_companyIdScope, 'company_id', $actorStaff->pluck('company_id')->unique()));
+            return $query;
         }
 
         if ($actor->can('staff.view-team')) {
@@ -78,8 +69,7 @@ class StaffAccessService
         }
 
         $actorStaff = $this->actorStaffs($actor);
-        $sameLegalEntity = $actor->can("staff.{$action}-legal-entity")
-            && $actorStaff->contains(fn (Staff $identity) => \App\Services\CompanyIdScope::sameCompanyId((string) ($identity->company_id), (string) ($staff->company_id)));
+        $sameLegalEntity = $actor->can("staff.{$action}-legal-entity");
 
         $teamMember = $actor->can("staff.{$action}-team")
             && $actorStaff->isNotEmpty()

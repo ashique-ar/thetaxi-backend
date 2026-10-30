@@ -157,9 +157,12 @@ class SalesPolicySettingsService
         return $this->current($companyId, 'inquiry_response')?->inquiry_response_business_hours;
     }
 
-    public function bookingAssignmentTargetMinutes(string $companyId): ?int
+    public function bookingAssignmentTargetMinutes(): ?int
     {
-        return $this->current($companyId, 'booking_assignment')?->booking_assignment_target_minutes;
+        $value = SalesPolicySetting::query()->where('policy_kind', 'booking_assignment')
+            ->where('status', 'approved')->orderByDesc('version')->value('booking_assignment_target_minutes');
+
+        return is_numeric($value) ? (int) $value : null;
     }
 
     /** @return array<int, string> */

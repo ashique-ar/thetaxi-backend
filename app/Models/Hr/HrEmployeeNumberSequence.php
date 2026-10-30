@@ -6,7 +6,7 @@ use App\Models\NonSoftDeletableTrackedModel;
 use Spatie\Activitylog\Support\LogOptions;
 
 /**
- * Per-company employee-number *allocation* counter: one row per company
+ * Installation-wide employee-number *allocation* counter: one row
  * holds the template/prefix/suffix/padding and the next numeric value to
  * hand out. {@see \App\Services\Hr\EmployeeNumberAllocator} locks this row
  * and increments `next_value` to mint a brand-new canonical employee number
@@ -20,7 +20,7 @@ use Spatie\Activitylog\Support\LogOptions;
  */
 class HrEmployeeNumberSequence extends NonSoftDeletableTrackedModel
 {
-    protected $fillable = ['company_id', 'template', 'prefix', 'suffix', 'start_value', 'next_value', 'padding', 'status', 'version', 'updated_user_id'];
+    protected $fillable = ['installation_key', 'template', 'prefix', 'suffix', 'start_value', 'next_value', 'padding', 'status', 'version', 'updated_user_id'];
 
     protected $casts = ['start_value' => 'integer', 'next_value' => 'integer', 'padding' => 'integer', 'version' => 'integer'];
 

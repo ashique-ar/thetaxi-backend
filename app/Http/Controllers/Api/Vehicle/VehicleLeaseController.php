@@ -231,7 +231,6 @@ class VehicleLeaseController extends Controller
         if (isset($data['odometer']) && $vehicle?->wialon_unit_id) {
             try {
                 $wialon->setMileage(
-                    (string) $vehicle->company_id,
                     (int) $vehicle->wialon_unit_id,
                     max((int) $data['odometer'], (int) ($vehicle->current_mileage ?? 0))
                 );

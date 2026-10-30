@@ -257,12 +257,12 @@ class NavigationMenuController extends Controller
     {
         $companyId = $this->companyId();
 
-        return NavigationMenu::query()->where(fn ($_companyIdScope) => \App\Services\CompanyIdScope::constrain($_companyIdScope, 'company_id', $companyId));
+        return NavigationMenu::query()->where(fn ($locationScope) => \App\Services\CompanyLocationScope::constrain($locationScope, 'company_id', $companyId));
     }
 
     private function assertCompanyOwner(NavigationMenu $navigationMenu): void
     {
-        abort_unless(\App\Services\CompanyIdScope::sameCompanyId((string) ($navigationMenu->company_id), (string) ($this->companyId())), 404);
+        abort_unless($navigationMenu->company_id === $this->companyId() || $navigationMenu->company_id === null, 404);
     }
 
     private function companyExistsRule()
@@ -270,7 +270,7 @@ class NavigationMenuController extends Controller
         $companyId = $this->companyId();
 
         return Rule::exists('navigation_menus', 'id')->where(
-            fn ($query) => $query->where(fn ($_companyIdScope) => \App\Services\CompanyIdScope::constrain($_companyIdScope, 'company_id', $companyId))
+            fn ($query) => $query->where(fn ($locationScope) => \App\Services\CompanyLocationScope::constrain($locationScope, 'company_id', $companyId))
         );
     }
 }

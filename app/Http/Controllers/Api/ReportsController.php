@@ -795,11 +795,7 @@ class ReportsController extends Controller
             'report_type' => ['sometimes', 'nullable', 'string', 'in:financial,collection,operational,customer,vehicle_performance,driver_performance,maintenance'],
             'search' => ['sometimes', 'nullable', 'string', 'max:100'],
         ]);
-        $companyId = app(WebsiteSettingsService::class)->resolveCurrentCompanyId();
-        abort_unless($companyId, 409, 'Select a business to view generated reports.');
-        app(CompanySettingsAccessService::class)->assertCanAccess($request->user(), (string) $companyId);
         $query = BookingGeneratedReport::query()
-            ->where(fn ($_companyIdScope) => \App\Services\CompanyIdScope::constrain($_companyIdScope, 'company_id', $companyId))
             ->with('createdBy')
             ->when(! empty($pagination['report_type']), fn ($query) => $query->where('report_type', $pagination['report_type']))
             ->when(! empty($pagination['search']), fn ($query) => $query->whereRaw('LOWER(name) LIKE ?', ['%' . mb_strtolower($pagination['search']) . '%']))
@@ -842,8 +838,6 @@ class ReportsController extends Controller
         ]);
 
         $companyId = app(WebsiteSettingsService::class)->resolveCurrentCompanyId();
-        abort_unless($companyId, 409, 'Select a business before generating a report.');
-        app(CompanySettingsAccessService::class)->assertCanAccess($request->user(), (string) $companyId);
 
         $templateId = $request->input('template_id');
         $reportType = $request->input('report_type') ?: match ($templateId) {
@@ -855,13 +849,15 @@ class ReportsController extends Controller
         };
         $format = $request->input('format') === 'excel' ? 'csv' : $request->input('format');
         $report = new BookingGeneratedReport([
-            'company_id' => (string) $companyId,
             'name' => $request->input('report_name') ?: ucfirst(str_replace('_', ' ', $reportType)) . ' Report',
             'report_type' => $reportType,
             'template_id' => $templateId,
             'format' => $format,
             'status' => 'generating',
-            'filters' => array_merge($request->only(['date_from', 'date_to', 'filters', 'custom_fields', 'period', 'locale']), ['company_id' => (string) $companyId]),
+            'filters' => array_merge(
+                $request->only(['date_from', 'date_to', 'filters', 'custom_fields', 'period', 'locale']),
+                $companyId ? ['company_id' => (string) $companyId] : [],
+            ),
             'metadata' => ['generated_at' => now()->toIso8601String()],
             'created_user_id' => $request->user()?->getAuthIdentifier(),
         ]);
@@ -895,7 +891,6 @@ class ReportsController extends Controller
 
     public function downloadGeneratedReport(Request $request, BookingGeneratedReport $report): Response
     {
-        $this->assertGeneratedReportAccess($request, $report);
         if ($report->file_path) {
             if (!Storage::disk('local')->exists($report->file_path)) {
                 abort(404, 'Generated report file is missing');
@@ -931,7 +926,6 @@ class ReportsController extends Controller
 
     public function deleteGeneratedReport(Request $request, BookingGeneratedReport $report): JsonResponse
     {
-        $this->assertGeneratedReportAccess($request, $report);
         if (!$report->delete()) {
             return response()->json(['status' => 'error', 'message' => 'Report could not be removed'], 500);
         }
@@ -1096,7 +1090,7 @@ class ReportsController extends Controller
         $nestedFilters = $saved['filters'] ?? [];
 
         return array_filter([
-            'company_id' => $report->company_id,
+            'company_id' => $saved['company_id'] ?? null,
             'date_from' => $saved['date_from'] ?? null,
             'date_to' => $saved['date_to'] ?? null,
             'period' => $saved['period'] ?? 'monthly',
@@ -1110,14 +1104,6 @@ class ReportsController extends Controller
             'vehicle_group' => $nestedFilters['vehicle_group'] ?? null,
             'maintenance_status' => $nestedFilters['maintenance_status'] ?? null,
         ], fn ($value) => $value !== null && $value !== '' && $value !== []);
-    }
-
-    private function assertGeneratedReportAccess(Request $request, BookingGeneratedReport $report): void
-    {
-        $companyId = app(WebsiteSettingsService::class)->resolveCurrentCompanyId();
-        abort_unless($companyId, 409, 'Select a business to access this report.');
-        app(CompanySettingsAccessService::class)->assertCanAccess($request->user(), (string) $companyId);
-        abort_unless($report->company_id && hash_equals((string) $report->company_id, (string) $companyId), 404);
     }
 
     private function getDateFormat(string $groupBy, string $column = 'created_at'): string

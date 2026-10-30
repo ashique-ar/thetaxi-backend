@@ -24,7 +24,6 @@ class CompanyResource extends JsonResource
             'latitude' => $this->latitude,
             'longitude' => $this->longitude,
             'is_active' => (bool) $this->is_active,
-            'is_default' => (bool) $this->is_default,
             'region' => $this->whenLoaded('region'),
             'country' => $this->whenLoaded('country'),
             'state' => $this->whenLoaded('state'),

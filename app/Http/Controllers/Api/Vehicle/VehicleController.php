@@ -673,7 +673,7 @@ class VehicleController extends Controller
         $message = 'Vehicle handover recorded';
         if ($vehicle->wialon_unit_id) {
             try {
-                $wialon->setMileage((string) $vehicle->company_id, (int) $vehicle->wialon_unit_id, (int) $data['handover_mileage']);
+                $wialon->setMileage((int) $vehicle->wialon_unit_id, (int) $data['handover_mileage']);
             } catch (\RuntimeException $error) {
                 $message .= '; GPS counter sync failed: ' . $error->getMessage();
             }

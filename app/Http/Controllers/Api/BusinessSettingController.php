@@ -80,6 +80,7 @@ class BusinessSettingController extends Controller
             'driver_form_public_enabled',
             'assignment_enable_qc_stage',
             'assignment_enable_maintenance_stage',
+            'booking_signed_agreement_required',
         ],
         'pricing' => [
             'internal_pricing_mode',
@@ -182,6 +183,7 @@ class BusinessSettingController extends Controller
         $categories['booking']['feature_3cx_enabled'] ??= false;
         $categories['booking']['feature_driver_management_enabled'] ??= true;
         $categories['booking']['driver_form_public_enabled'] ??= false;
+        $categories['booking']['booking_signed_agreement_required'] ??= true;
         $company = $companyId ? Company::query()->whereKey($companyId)->first(['id', 'name']) : null;
 
         return response()->json([
@@ -213,6 +215,7 @@ class BusinessSettingController extends Controller
                 'feature_vehicle_return_management_enabled' => ['sometimes', 'boolean'],
                 'assignment_enable_qc_stage' => ['sometimes', 'boolean'],
                 'assignment_enable_maintenance_stage' => ['sometimes', 'boolean'],
+                'booking_signed_agreement_required' => ['sometimes', 'boolean'],
             ]);
             if ($timingValidator->fails()) {
                 return response()->json([

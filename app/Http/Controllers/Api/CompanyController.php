@@ -4,14 +4,12 @@ namespace App\Http\Controllers\Api;
 
 use App\Http\Controllers\Controller;
 use App\Models\Company;
-use App\Services\SingleCompanyScope;
 use App\Http\Requests\Company\CreateCompanyRequest;
 use App\Http\Requests\Company\UpdateCompanyRequest;
 use App\Http\Resources\Company\CompanyResource;
 use Illuminate\Http\Request;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Resources\Json\AnonymousResourceCollection;
-use Illuminate\Support\Facades\DB;
 
 class CompanyController extends Controller
 {
@@ -54,12 +52,12 @@ class CompanyController extends Controller
         );
     }
 
-    public function options(Request $request, SingleCompanyScope $companyScope): JsonResponse
+    public function options(Request $request): JsonResponse
     {
         $data = $request->validate(['search' => ['nullable', 'string', 'max:100']]);
         $query = Company::query()
             ->where('is_active', true)
-            ->select(['id', 'name', 'is_active', 'is_default']);
+            ->select(['id', 'name', 'is_active']);
 
         if (!empty($data['search'])) {
             $query->whereLikeInsensitive('name', trim($data['search']));
@@ -67,9 +65,8 @@ class CompanyController extends Controller
 
         return response()->json([
             'status' => 'success',
-            'message' => 'Legal entity options loaded',
-            'data' => $query->orderByDesc('is_default')->orderBy('name')->limit(25)->get(),
-            'default_company_id' => $companyScope->activeDefaultCompany()?->id,
+            'message' => 'Location options loaded',
+            'data' => $query->orderBy('name')->limit(25)->get(),
         ]);
     }
 
@@ -77,8 +74,8 @@ class CompanyController extends Controller
     {
         return response()->json([
             'status' => 'success',
-            'message' => 'Legal entity loaded',
-            'data' => $company->only(['id', 'name', 'is_active', 'is_default']),
+            'message' => 'Location loaded',
+            'data' => $company->only(['id', 'name', 'is_active']),
         ]);
     }
 
@@ -101,33 +98,7 @@ class CompanyController extends Controller
     {
         $data = $request->validated();
         $data['created_user_id'] = $request->user()->id;
-        $company = DB::transaction(function () use ($data) {
-            DB::table('companies')->whereNull('deleted_at')->lockForUpdate()->get(['id']);
-            $willBeActive = (bool) ($data['is_active'] ?? true);
-            $data['is_active'] = $willBeActive;
-
-            $makeDefault = (bool) ($data['is_default'] ?? false);
-            $hasActiveDefault = DB::table('companies')->whereNull('deleted_at')
-                ->where('is_active', true)->where('is_default', true)->exists();
-            if (! $makeDefault && ! $hasActiveDefault) {
-                $firstActiveCompany = DB::table('companies')->whereNull('deleted_at')
-                    ->where('is_active', true)->orderBy('created_at')->orderBy('id')->first(['id']);
-                if ($firstActiveCompany) {
-                    DB::table('companies')->whereNull('deleted_at')->update(['is_default' => false]);
-                    DB::table('companies')->where('id', $firstActiveCompany->id)->update(['is_default' => true]);
-                } else {
-                    $makeDefault = $willBeActive;
-                }
-            }
-
-            abort_if($makeDefault && ! $willBeActive, 422, 'The default Staff company must remain active.');
-
-            if ($makeDefault) {
-                DB::table('companies')->whereNull('deleted_at')->update(['is_default' => false]);
-            }
-
-            return Company::create(array_merge($data, ['is_default' => $makeDefault]));
-        });
+        $company = Company::create($data);
 
         return response()->json([
             'status' => 'success',
@@ -148,36 +119,8 @@ class CompanyController extends Controller
     {
         $data = $request->validated();
         $data['updated_user_id'] = $request->user()->id;
-        $company = DB::transaction(function () use ($company, $data) {
-            DB::table('companies')->whereNull('deleted_at')->lockForUpdate()->get(['id']);
-            $lockedCompany = Company::query()->whereKey($company->id)->lockForUpdate()->firstOrFail();
-
-            $makeDefault = (bool) ($data['is_default'] ?? $lockedCompany->is_default);
-            $willBeActive = (bool) ($data['is_active'] ?? $lockedCompany->is_active);
-            $data['is_active'] = $willBeActive;
-
-            abort_if(
-                $lockedCompany->is_default && ! $makeDefault,
-                422,
-                'Select another active company as default before removing this default.'
-            );
-            abort_if(
-                $makeDefault && ! $willBeActive,
-                422,
-                'The default Staff company must remain active.'
-            );
-
-            if ($makeDefault) {
-                DB::table('companies')
-                    ->whereNull('deleted_at')
-                    ->where('id', '!=', $lockedCompany->id)
-                    ->update(['is_default' => false]);
-            }
-
-            $lockedCompany->update(array_merge($data, ['is_default' => $makeDefault]));
-
-            return $lockedCompany->fresh();
-        });
+        $company->update($data);
+        $company = $company->fresh();
 
         return response()->json([
             'status' => 'success',
@@ -188,12 +131,7 @@ class CompanyController extends Controller
 
     public function destroy(Company $company): JsonResponse
     {
-        DB::transaction(function () use ($company): void {
-            DB::table('companies')->whereNull('deleted_at')->lockForUpdate()->get(['id']);
-            $lockedCompany = Company::query()->whereKey($company->id)->lockForUpdate()->firstOrFail();
-            abort_if($lockedCompany->is_default, 422, 'Select another active company as default before deleting this company.');
-            $lockedCompany->delete();
-        });
+        $company->delete();
 
         return response()->json([
             'status' => 'success',

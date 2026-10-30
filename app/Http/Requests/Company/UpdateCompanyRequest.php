@@ -25,7 +25,6 @@ class UpdateCompanyRequest extends FormRequest
             'state_id' => ['sometimes', 'nullable', 'exists:states,id'],
             'city' => ['sometimes', 'nullable', 'string'],
             'is_active' => ['sometimes', 'nullable', 'boolean'],
-            'is_default' => ['sometimes', 'nullable', 'boolean'],
         ];
     }
 }

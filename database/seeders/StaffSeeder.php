@@ -2,7 +2,6 @@
 
 namespace Database\Seeders;
 
-use App\Models\Company;
 use App\Models\Staff;
 use App\Models\User;
 use Illuminate\Database\Seeder;
@@ -16,22 +15,13 @@ class StaffSeeder extends Seeder
      */
     public function run(): void
     {
-        // The default Company (created by CompanySeeder) that seeded Staff rows are
-        // attached to. Without it we still create the User accounts below, but skip
-        // the Staff linkage so HR modules (which require staff.company_id) stay empty
-        // rather than pointing at the wrong legal entity.
-        $company = Company::where('is_default', true)->whereNull('deleted_at')->first();
-        if (!$company) {
-            $this->command->warn('StaffSeeder: no default Company found. User accounts will be created, but Staff records (and HR linkage) will be skipped. Run CompanySeeder first.');
-        }
-
-        // If Staff records already exist for the default company, this is a
+        // If Staff records already exist, this is a
         // real/populated database — don't inject 13 fake demo employees alongside
         // real staff. The HR seeders that need "an active staff user" for audit
         // ownership (HrOrganizationDefaultsSeeder, HrLeaveTypesSeeder, etc.) attach
         // to whichever real Staff rows already exist.
-        if ($company && Staff::where('company_id', $company->id)->whereNull('deleted_at')->exists()) {
-            $this->command->info('StaffSeeder skipped: Staff records already exist for the default company.');
+        if (Staff::whereNull('deleted_at')->exists()) {
+            $this->command->info('StaffSeeder skipped: Staff records already exist.');
             $this->printSystemUserHint();
             return;
         }
@@ -208,18 +198,15 @@ class StaffSeeder extends Seeder
             // Every staff user also needs a Staff record: the HR module, the legacy
             // driver/booking screens and Spatie role checks all key off `staff`, not
             // `users`, once a person is a company employee.
-            if ($company) {
-                $staff = Staff::firstOrCreate(
-                    ['user_id' => $user->id],
-                    [
-                        'company_id' => $company->id,
-                        'staff_type' => $roleName,
-                        'code' => sprintf('STF-%04d', $sequence),
-                        'employment_ended_at' => null,
-                    ]
-                );
-                $this->command->info("Staff record ready for {$user->first_name} {$user->last_name} ({$staff->code})");
-            }
+            $staff = Staff::firstOrCreate(
+                ['user_id' => $user->id],
+                [
+                    'staff_type' => $roleName,
+                    'code' => sprintf('STF-%04d', $sequence),
+                    'employment_ended_at' => null,
+                ]
+            );
+            $this->command->info("Staff record ready for {$user->first_name} {$user->last_name} ({$staff->code})");
         }
 
         $this->command->info('Staff data seeded successfully!');

@@ -225,7 +225,7 @@ class LifecycleService
             $exit = DB::table('hr_exit_cases')->where('id', $id)->where(fn ($_companyIdScope) => \App\Services\CompanyIdScope::constrain($_companyIdScope, 'company_id', $companyId))->lockForUpdate()->first();
             abort_unless($exit, 404);
             if ($exit->status === 'completed') {
-                $termination = DB::table('staff_context_termination_events')->where(fn ($_companyIdScope) => \App\Services\CompanyIdScope::constrain($_companyIdScope, 'company_id', $companyId))
+                $termination = DB::table('staff_context_termination_events')
                     ->where('staff_id', $exit->staff_id)->where('idempotency_key', $id)->first();
                 abort_unless($termination && (string) $termination->actor_user_id === (string) $actor->id, 409, 'Exit was finalized by another user or lacks replay evidence.');
 

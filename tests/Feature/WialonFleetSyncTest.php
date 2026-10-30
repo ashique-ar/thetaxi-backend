@@ -12,17 +12,17 @@ use Tests\TestCase;
 
 class WialonFleetSyncTest extends TestCase
 {
-    private const COMPANY = 'c5a60000-0000-4000-8000-000000000001';
+    private const LOCATION = 'c5a60000-0000-4000-8000-000000000001';
 
     public function test_sync_imports_a_unit_once_and_preserves_later_portal_mileage(): void
     {
-        Schema::create('wialon_integrations', function (Blueprint $table) {
-            $table->uuid('id')->primary(); $table->uuid('company_id')->unique(); $table->text('token');
-            $table->string('base_url'); $table->json('resource_ids')->nullable(); $table->json('group_ids')->nullable(); $table->json('group_mappings')->nullable(); $table->json('unit_ids')->nullable();
+        Schema::create('wialon_installation_settings', function (Blueprint $table) {
+            $table->string('id', 32)->primary(); $table->text('token');
+            $table->string('base_url'); $table->json('resource_ids')->nullable(); $table->json('group_ids')->nullable(); $table->json('unit_ids')->nullable();
             $table->boolean('enabled')->default(true); $table->timestamps();
         });
-        DB::table('wialon_integrations')->insert(['id' => (string) \Illuminate\Support\Str::uuid(), 'company_id' => self::COMPANY,
-            'token' => encrypt('test-token'), 'base_url' => 'https://hst-api.wialon.com', 'resource_ids' => '[]', 'group_ids' => '[10]', 'group_mappings' => json_encode([['wialon_group_id' => 10, 'vehicle_group_id' => 'c5a60000-0000-4000-8000-000000000002']]), 'unit_ids' => '[]',
+        DB::table('wialon_installation_settings')->insert(['id' => 'installation',
+            'token' => encrypt('test-token'), 'base_url' => 'https://hst-api.wialon.com', 'resource_ids' => '[]', 'group_ids' => '[10]', 'unit_ids' => '[]',
             'enabled' => true, 'created_at' => now(), 'updated_at' => now()]);
         Schema::create('vehicle_groups', function (Blueprint $table) {
             $table->uuid('id')->primary(); $table->boolean('is_active')->default(true); $table->softDeletes();
@@ -34,6 +34,8 @@ class WialonFleetSyncTest extends TestCase
             $table->string('wialon_unique_id')->nullable();
             $table->unsignedBigInteger('wialon_hw_type_id')->nullable();
             $table->decimal('wialon_mileage', 12, 2)->nullable();
+            $table->boolean('wialon_mileage_sync_pending')->default(false);
+            $table->timestamp('wialon_mileage_sync_requested_at')->nullable();
             $table->timestamp('wialon_last_message_at')->nullable();
             $table->timestamp('wialon_last_synced_at')->nullable();
             $table->string('title')->nullable();
@@ -48,6 +50,20 @@ class WialonFleetSyncTest extends TestCase
             $table->timestamps();
             $table->softDeletes();
         });
+        DB::table('vehicles')->insert([
+            'id' => (string) \Illuminate\Support\Str::uuid(),
+            'wialon_unit_id' => 456,
+            'company_id' => self::LOCATION,
+            'title' => 'Fleet 456',
+            'license_plate' => 'ABC-456',
+            'registration_no' => 'ABC-456',
+            'is_active' => true,
+            'availability_status' => 'available',
+            'initial_mileage' => 13000,
+            'current_mileage' => 13000,
+            'created_at' => now(),
+            'updated_at' => now(),
+        ]);
         Schema::create('activity_log', function (Blueprint $table) {
             $table->bigIncrements('id');
             $table->string('log_name')->nullable();
@@ -66,11 +82,10 @@ class WialonFleetSyncTest extends TestCase
             ->push(['eid' => 'first-session'])->push($groups)->push(['items' => [$unit]])->push([])
             ->push(['eid' => 'second-session'])->push($groups)->push(['items' => [$unit]])->push([]);
 
-        $this->assertSame(1, app(WialonService::class)->syncVehicles(self::COMPANY));
+        $this->assertSame(1, app(WialonService::class)->syncVehicles());
         $this->assertSame(1, DB::table('vehicles')->count());
         $this->assertSame(456, (int) DB::table('vehicles')->value('wialon_unit_id'));
-        $this->assertSame(self::COMPANY, DB::table('vehicles')->value('company_id'));
-        $this->assertSame('c5a60000-0000-4000-8000-000000000002', DB::table('vehicles')->value('vehicle_group_id'));
+        $this->assertSame(self::LOCATION, DB::table('vehicles')->value('company_id'));
         $vehicle = Vehicle::withInactive()->withTrashed()->where('wialon_unit_id', 456)->firstOrFail();
         $this->assertFalse($vehicle->is_active);
         $this->assertSame('unavailable_offline', $vehicle->availability_status);
@@ -79,7 +94,7 @@ class WialonFleetSyncTest extends TestCase
         $vehicle->current_mileage = 14000;
         $vehicle->save();
 
-        $this->assertSame(0, app(WialonService::class)->syncVehicles(self::COMPANY));
+        $this->assertSame(1, app(WialonService::class)->syncVehicles());
         $this->assertSame(14000, $vehicle->fresh()->current_mileage);
         $this->assertSame(13500.4, (float) $vehicle->fresh()->wialon_mileage);
         $this->assertDatabaseCount('vehicles', 1);

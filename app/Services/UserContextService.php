@@ -8,7 +8,6 @@ use App\Models\Staff;
 use App\Models\User;
 use App\Models\UserContext;
 use App\Models\Vehicle\VehicleOwner;
-use App\Services\Hr\StaffDefaultCompanyService;
 use Exception;
 use Illuminate\Http\Request;
 use Illuminate\Support\Collection;
@@ -18,8 +17,6 @@ use Spatie\Permission\PermissionRegistrar;
 
 class UserContextService
 {
-    public function __construct(private readonly StaffDefaultCompanyService $defaultStaffCompany) {}
-
     private const INTERNAL_PERMISSION_HINTS = [
         'dashboard.view',
         'users.view',
@@ -813,18 +810,7 @@ class UserContextService
                     409,
                     'Former Staff access can only be restored through an approved rehire.'
                 );
-                $companyId = $existingStaff?->company_id;
-                if (empty($companyId)) {
-                    $contextData = $this->defaultStaffCompany->apply($contextData);
-                    $companyId = $contextData['company_id'] ?? null;
-                }
-                abort_if(empty($companyId), 422, 'Staff context requires an active default or explicit legal entity.');
-                abort_unless(
-                    DB::table('companies')->where('id', $companyId)->whereNull('deleted_at')->where('is_active', true)->exists(),
-                    422,
-                    'Staff context requires an active legal entity.'
-                );
-                $contextData['company_id'] = $companyId;
+                unset($contextData['company_id']);
 
                 return Staff::firstOrCreate(
                     ['user_id' => $user->id],

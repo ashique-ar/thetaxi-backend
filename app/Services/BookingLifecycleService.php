@@ -579,11 +579,10 @@ class BookingLifecycleService
             if ($dispatchMileage > (int) ($vehicle->current_mileage ?? 0)) {
                 $vehicleUpdates['current_mileage'] = $dispatchMileage;
                 if ($vehicle->wialon_unit_id) {
-                    $companyId = (string) $vehicle->company_id;
                     $unitId = (int) $vehicle->wialon_unit_id;
-                    DB::afterCommit(function () use ($companyId, $unitId, $vehicleId, $dispatchMileage): void {
+                    DB::afterCommit(function () use ($unitId, $vehicleId, $dispatchMileage): void {
                         try {
-                            app(WialonService::class)->setMileage($companyId, $unitId, $dispatchMileage);
+                            app(WialonService::class)->setMileage($unitId, $dispatchMileage);
                         } catch (\Throwable $syncError) {
                             Log::warning('Dispatch mileage saved locally but GPS counter sync failed', [
                                 'vehicle_id' => $vehicleId,
@@ -1089,11 +1088,10 @@ class BookingLifecycleService
                             if ($mileageIn > (int) ($vehicleForMaintenance->current_mileage ?? 0)) {
                                 $vehicleForMaintenance->update(['current_mileage' => $mileageIn]);
                                 if ($vehicleForMaintenance->wialon_unit_id) {
-                                    $companyId = (string) $vehicleForMaintenance->company_id;
                                     $unitId = (int) $vehicleForMaintenance->wialon_unit_id;
-                                    DB::afterCommit(function () use ($companyId, $unitId, $vehicleId, $mileageIn): void {
+                                    DB::afterCommit(function () use ($unitId, $vehicleId, $mileageIn): void {
                                         try {
-                                            app(WialonService::class)->setMileage($companyId, $unitId, $mileageIn);
+                                            app(WialonService::class)->setMileage($unitId, $mileageIn);
                                         } catch (\Throwable $syncError) {
                                             Log::warning('Post-trip mileage saved locally but GPS counter sync failed', [
                                                 'vehicle_id' => $vehicleId,
@@ -3576,7 +3574,7 @@ class BookingLifecycleService
 
         if (!$activity) {
             $activity = new BookingActivity([
-                'company_id' => $vehicle->company_id,
+                'company_id' => $vehicle->company_id ?: \App\Services\CompanyIdScope::defaultCompanyId(),
                 'booking_id' => $booking->id,
                 'booking_item_id' => $bookingItem?->id,
                 'event_key' => 'post_trip_maintenance',

@@ -4,7 +4,6 @@ namespace App\Models\Corporate;
 
 use App\Models\BaseModel;
 use App\Models\Booking\Booking;
-use App\Models\Company;
 use App\Models\Service\ServiceType;
 use App\Models\Vehicle\VehicleGroup;
 
@@ -20,7 +19,6 @@ class Corporate extends BaseModel
 
     protected $fillable = [
         'name',
-        'company_id',
         'contact_email',
         'booking_notification_emails',
         'contact_phone',
@@ -66,11 +64,6 @@ class Corporate extends BaseModel
     public function departments()
     {
         return $this->hasMany(CorporateDepartment::class, 'corporate_id');
-    }
-
-    public function company()
-    {
-        return $this->belongsTo(Company::class);
     }
 
     public function vehicleGroups()

@@ -15,10 +15,6 @@ class PeopleAccessService
     public function scope(Builder $query, User $actor): Builder
     {
         $actorStaff = $this->actorStaff($actor);
-        abort_unless($actorStaff?->company_id, Response::HTTP_FORBIDDEN, 'An active internal Staff identity is required.');
-
-        $query->where(fn ($_companyIdScope) => \App\Services\CompanyIdScope::constrain($_companyIdScope, 'company_id', $actorStaff->company_id));
-
         if ($actor->can('hr.people.view-all')) {
             return $query;
         }
@@ -26,17 +22,14 @@ class PeopleAccessService
         if ($actor->can('hr.people.view-team')) {
             $at = now();
             $reportingMembers = HrReportingLine::query()
-                ->where(fn ($_companyIdScope) => \App\Services\CompanyIdScope::constrain($_companyIdScope, 'company_id', $actorStaff->company_id))
                 ->where('manager_staff_id', $actorStaff->id)
                 ->whereIn('line_type', ['primary', 'dotted_line'])
                 ->where('effective_from', '<=', $at)
                 ->where(fn (Builder $line) => $line->whereNull('effective_until')->orWhere('effective_until', '>', $at))
                 ->select('member_staff_id');
             $assignmentMembers = HrEmploymentAssignment::query()
-                ->where(fn ($_companyIdScope) => \App\Services\CompanyIdScope::constrain($_companyIdScope, 'company_id', $actorStaff->company_id))
                 ->whereNotExists(fn ($governed) => $governed->selectRaw('1')->from('hr_reporting_lines as governed_lines')
                     ->whereColumn('governed_lines.member_staff_id', 'hr_employment_assignments.staff_id')
-                    ->where(fn ($sameCompany) => \App\Services\CompanyIdScope::sameCompany($sameCompany, 'governed_lines.company_id', 'hr_employment_assignments.company_id'))
                     ->whereIn('governed_lines.line_type', ['primary', 'dotted_line']))
                 ->where(fn (Builder $assignment) => $assignment
                     ->where('manager_staff_id', $actorStaff->id)

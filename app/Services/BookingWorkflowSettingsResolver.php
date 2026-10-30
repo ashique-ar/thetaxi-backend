@@ -20,7 +20,7 @@ class BookingWorkflowSettingsResolver
                 'enable_return_stage' => $business['enable_return_stage'] && (bool) ($serviceConfig['return_stage_enabled'] ?? false),
                 'enable_qc_stage' => $business['enable_qc_stage'] && (bool) ($serviceConfig['qc_stage_enabled'] ?? false),
                 'enable_maintenance_stage' => $business['enable_maintenance_stage'] && (bool) ($serviceConfig['maintenance_stage_enabled'] ?? false),
-                'require_signed_agreement' => (bool) ($serviceConfig['signed_agreement_required'] ?? false),
+                'require_signed_agreement' => $business['require_signed_agreement'] && (bool) ($serviceConfig['signed_agreement_required'] ?? false),
                 'require_driver_license' => (bool) ($serviceConfig['driver_license_required'] ?? false),
                 'require_customer_identity_document' => (bool) ($serviceConfig['customer_identity_document_required'] ?? false),
                 'require_booking_approval' => (bool) ($serviceConfig['booking_approval_required'] ?? false),
@@ -42,15 +42,18 @@ class BookingWorkflowSettingsResolver
             'handover_checklist_required' => 'require_handover_checklist',
         ] as $configKey => $settingKey) {
             if (array_key_exists($configKey, $serviceConfig ?? []) && $serviceConfig[$configKey] !== null) {
-                $settings[$settingKey] = in_array($settingKey, [
-                    'require_signed_agreement',
-                    'require_driver_license',
-                    'require_customer_identity_document',
-                    'require_booking_approval',
-                    'require_handover_checklist',
-                ], true)
-                    ? (bool) $serviceConfig[$configKey]
-                    : $settings[$settingKey] && (bool) $serviceConfig[$configKey];
+                if ($settingKey === 'require_signed_agreement') {
+                    $settings[$settingKey] = $defaults[$settingKey] && (bool) $serviceConfig[$configKey];
+                } elseif (in_array($settingKey, [
+                        'require_driver_license',
+                        'require_customer_identity_document',
+                        'require_booking_approval',
+                        'require_handover_checklist',
+                    ], true)) {
+                    $settings[$settingKey] = (bool) $serviceConfig[$configKey];
+                } else {
+                    $settings[$settingKey] = $settings[$settingKey] && (bool) $serviceConfig[$configKey];
+                }
             }
         }
 
@@ -167,7 +170,7 @@ class BookingWorkflowSettingsResolver
             'enable_return_stage' => $enableReturn,
             'enable_qc_stage' => $this->enabled('assignment_enable_qc_stage', $companyId) && $enableReturn,
             'enable_maintenance_stage' => $this->enabled('assignment_enable_maintenance_stage', $companyId),
-            'require_signed_agreement' => true,
+            'require_signed_agreement' => $this->enabled('booking_signed_agreement_required', $companyId, true),
             'require_driver_license' => false,
             'require_customer_identity_document' => false,
             'require_booking_approval' => false,
@@ -175,9 +178,9 @@ class BookingWorkflowSettingsResolver
         ];
     }
 
-    private function enabled(string $key, ?string $companyId = null): bool
+    private function enabled(string $key, ?string $companyId = null, bool $default = false): bool
     {
-        $value = $this->websiteSettings->get($key, false, $companyId);
+        $value = $this->websiteSettings->get($key, $default, $companyId);
         if (is_bool($value)) return $value;
         if (is_numeric($value)) return (int) $value === 1;
         return in_array(strtolower(trim((string) $value)), ['1', 'true', 'yes', 'on', 'enabled'], true);

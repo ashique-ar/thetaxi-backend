@@ -348,7 +348,7 @@ class SalesProfileController extends Controller
             DB::table('domain_audit_events')->insert([
                 'id' => (string) Str::uuid(),
                 'domain' => 'sales',
-                'company_id' => $profile->company_id,
+                'company_id' => $profile->company_id ?: \App\Services\CompanyIdScope::defaultCompanyId(),
                 'subject_type' => 'sales_profile',
                 'subject_id' => $profile->id,
                 'event_type' => 'sales.profile.enrolled',
@@ -411,7 +411,7 @@ class SalesProfileController extends Controller
             }
 
             $staff = Staff::query()->lockForUpdate()->findOrFail($profile->staff_id);
-            $salesStaffCategories = $this->salesStaffCategories((string) $profile->company_id);
+            $salesStaffCategories = $this->salesStaffCategories((string) ($profile->company_id ?: \App\Services\CompanyIdScope::defaultCompanyId()));
             abort_unless($salesStaffCategories !== [] && $this->isSalesStaffCategory($staff->staff_type, $salesStaffCategories), 422,
                 'The linked Staff record must be in an approved Sales category before Profile configuration is approved.');
             $before = $this->configurationSnapshot($profile);
@@ -644,7 +644,7 @@ class SalesProfileController extends Controller
                     422,
                     'A Sales Profile can only be reactivated for a current Staff identity with an active User and Staff context.',
                 );
-                $salesStaffCategories = $this->salesStaffCategories((string) $profile->company_id);
+                $salesStaffCategories = $this->salesStaffCategories((string) ($profile->company_id ?: \App\Services\CompanyIdScope::defaultCompanyId()));
                 abort_if($profile->effective_until && $profile->effective_until->lte(now()), 422, 'An ended effective interval cannot be reactivated.');
                 abort_unless(
                     $profile->reporting_currency
@@ -797,10 +797,11 @@ class SalesProfileController extends Controller
         string $reason,
         Request $request,
     ): void {
+        $companyId = $profile->company_id ?: \App\Services\CompanyIdScope::defaultCompanyId();
         DB::table('domain_audit_events')->insert([
             'id' => (string) Str::uuid(),
             'domain' => 'sales',
-            'company_id' => $profile->company_id,
+            'company_id' => $companyId,
             'subject_type' => 'sales_profile',
             'subject_id' => $profile->id,
             'event_type' => $eventType,

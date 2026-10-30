@@ -20,10 +20,10 @@ class WialonService
         $this->baseUrl = 'https://hst-api.wialon.com';
     }
 
-    public function units(string $companyId, bool $includeUnselected = false): array
+    public function units(bool $includeUnselected = false): array
     {
-        $integration = $includeUnselected ? null : $this->integration($companyId);
-        return $this->withSession($companyId, function (string $sid) use ($includeUnselected, $integration) {
+        $integration = $includeUnselected ? null : $this->integration();
+        return $this->withSession(function (string $sid) use ($includeUnselected, $integration) {
             $units = $this->searchUnits($sid);
             if ($includeUnselected) return $this->portalUnits($units);
             $groups = $integration->group_ids ? $this->searchUnitGroups($sid) : [];
@@ -71,22 +71,20 @@ class WialonService
         return in_array((int) ($unit['mu'] ?? 0), [1, 2], true);
     }
 
-    public function syncVehicles(string $companyId): int
+    public function syncVehicles(): int
     {
         $synced = 0;
-        $integration = $this->integration($companyId);
+        $integration = $this->integration();
         $portalMileageAtStart = \App\Models\Vehicle\Vehicle::withInactive()
-            ->where(fn ($_companyIdScope) => \App\Services\CompanyIdScope::constrain($_companyIdScope, 'company_id', $companyId))
             ->whereNotNull('wialon_unit_id')
             ->pluck('current_mileage', 'wialon_unit_id')
             ->all();
-        $catalog = $this->withSession($companyId, function (string $sid) use ($integration, $companyId) {
+        $catalog = $this->withSession(function (string $sid) use ($integration) {
             $groups = $integration->group_ids ? $this->searchUnitGroups($sid) : [];
             $units = $this->searchUnits($sid);
             $selectedUnitIds = $this->unitIdsFromGroups($groups, $integration->group_ids);
             if ($selectedUnitIds) {
                 $pendingVehicles = \App\Models\Vehicle\Vehicle::withInactive()
-                    ->where(fn ($_companyIdScope) => \App\Services\CompanyIdScope::constrain($_companyIdScope, 'company_id', $companyId))
                     ->where('wialon_mileage_sync_pending', true)
                     ->whereNotNull('current_mileage')
                     ->whereIn('wialon_unit_id', $selectedUnitIds)
@@ -100,9 +98,8 @@ class WialonService
                             (int) $pendingVehicle->wialon_unit_id,
                             $requestedMileage,
                         );
-                        DB::transaction(function () use ($companyId, $pendingVehicle, $requestedMileage, $confirmedMileage): void {
+                        DB::transaction(function () use ($pendingVehicle, $requestedMileage, $confirmedMileage): void {
                             $currentVehicle = \App\Models\Vehicle\Vehicle::withInactive()
-                                ->where(fn ($_companyIdScope) => \App\Services\CompanyIdScope::constrain($_companyIdScope, 'company_id', $companyId))
                                 ->where('wialon_unit_id', $pendingVehicle->wialon_unit_id)
                                 ->where('wialon_mileage_sync_pending', true)
                                 ->lockForUpdate()
@@ -118,7 +115,6 @@ class WialonService
                         });
                     } catch (RuntimeException $error) {
                         Log::warning('Pending GPS mileage correction could not be retried', [
-                            'company_id' => $companyId,
                             'vehicle_id' => $pendingVehicle->id,
                             'unit_id' => $pendingVehicle->wialon_unit_id,
                             'error' => $error->getMessage(),
@@ -135,17 +131,13 @@ class WialonService
             if (empty($unit['id'])) continue;
             $unitId = (int) $unit['id'];
             $mileage = $this->trackerMileageKm($unit);
-            $updated = DB::transaction(function () use ($companyId, $unit, $unitId, $mileage, $portalMileageAtStart): bool {
+            $updated = DB::transaction(function () use ($unit, $unitId, $mileage, $portalMileageAtStart): bool {
                 $vehicle = \App\Models\Vehicle\Vehicle::withInactive()->withTrashed()
-                    ->where(fn ($_companyIdScope) => \App\Services\CompanyIdScope::constrain($_companyIdScope, 'company_id', $companyId))
                     ->where('wialon_unit_id', $unitId)
                     ->lockForUpdate()
                     ->first();
                 if (!$vehicle || $vehicle->trashed() || $this->isImportedPlaceholder($vehicle, $unit)) return false;
-
-                if ($vehicle->company_id && !\App\Services\CompanyIdScope::sameCompanyId((string) ((string) $vehicle->company_id), (string) ($companyId))) return false;
                 $previousTrackerMileage = $vehicle->wialon_mileage;
-                $vehicle->company_id ??= $companyId;
                 $vehicle->wialon_unit_id = $unitId;
                 $vehicle->wialon_unique_id = $unit['uid'] ?? $vehicle->wialon_unique_id;
                 $vehicle->wialon_hw_type_id = $unit['hw'] ?? $vehicle->wialon_hw_type_id;
@@ -201,28 +193,25 @@ class WialonService
             && mb_strtolower(trim((string) $vehicle->title)) === mb_strtolower(trim((string) ($unit['nm'] ?? '')));
     }
 
-    public function setMileage(string $companyId, int $unitId, int $mileageKm): int
+    public function setMileage(int $unitId, int $mileageKm): int
     {
         if ($mileageKm < 0 || $mileageKm > self::MAX_COUNTER_KILOMETERS) {
             throw new RuntimeException('The GPS service accepts mileage counters from 0 to ' . self::MAX_COUNTER_KILOMETERS . ' km.');
         }
         $vehicle = \App\Models\Vehicle\Vehicle::withInactive()
-            ->where(fn ($_companyIdScope) => \App\Services\CompanyIdScope::constrain($_companyIdScope, 'company_id', $companyId))
             ->where('wialon_unit_id', $unitId)
             ->first();
-        $this->assertSelectedUnit($companyId, $unitId);
+        $this->assertSelectedUnit($unitId);
         $vehicle?->forceFill([
             'wialon_mileage_sync_pending' => true,
             'wialon_mileage_sync_requested_at' => now(),
         ])->save();
 
         $confirmedMileage = $this->withSession(
-            $companyId,
             fn (string $sid) => $this->writeMileageCounter($sid, $unitId, $mileageKm),
         );
-        DB::transaction(function () use ($companyId, $unitId, $mileageKm, $confirmedMileage): void {
+        DB::transaction(function () use ($unitId, $mileageKm, $confirmedMileage): void {
             $currentVehicle = \App\Models\Vehicle\Vehicle::withInactive()
-                ->where(fn ($_companyIdScope) => \App\Services\CompanyIdScope::constrain($_companyIdScope, 'company_id', $companyId))
                 ->where('wialon_unit_id', $unitId)
                 ->lockForUpdate()
                 ->first();
@@ -242,13 +231,13 @@ class WialonService
         return $confirmedMileage;
     }
 
-    public function setEngineHours(string $companyId, int $unitId, int $hours): int
+    public function setEngineHours(int $unitId, int $hours): int
     {
         if ($hours < 0 || $hours > 0xFFFFFFFF) {
             throw new RuntimeException('The GPS service accepts engine hour counters from 0 to 4294967295.');
         }
-        $this->assertSelectedUnit($companyId, $unitId);
-        $result = $this->withSession($companyId, fn (string $sid) => $this->call($sid, 'unit/update_eh_counter', [
+        $this->assertSelectedUnit($unitId);
+        $result = $this->withSession(fn (string $sid) => $this->call($sid, 'unit/update_eh_counter', [
             'itemId' => $unitId,
             'newValue' => $hours,
         ]));
@@ -259,9 +248,9 @@ class WialonService
         return $confirmed;
     }
 
-    public function telemetry(string $companyId, int $unitId): array
+    public function telemetry(int $unitId): array
     {
-        $unit = $this->selectedUnitDetails($companyId, $unitId, 1 + 512 + 1024 + 4096 + 8192 + 2097152 + 4194304 + 1048576);
+        $unit = $this->selectedUnitDetails($unitId, 1 + 512 + 1024 + 4096 + 8192 + 2097152 + 4194304 + 1048576);
         $latestParams = data_get($unit, 'lmsg.p', []);
         $sensors = collect($unit['sens'] ?? [])->map(function (array $sensor) use ($latestParams, $unit): array {
             $parameter = (string) ($sensor['p'] ?? '');
@@ -294,12 +283,11 @@ class WialonService
         ];
     }
 
-    public function diagnostics(string $companyId, int $unitId): array
+    public function diagnostics(int $unitId): array
     {
-        $unit = $this->selectedUnitDetails($companyId, $unitId, 1 + 8192);
+        $unit = $this->selectedUnitDetails($unitId, 1 + 8192);
         $acl = (int) ($unit['uacl'] ?? 0);
-        $vehicle = \App\Models\Vehicle\Vehicle::withInactive()
-            ->where(fn ($_companyIdScope) => \App\Services\CompanyIdScope::constrain($_companyIdScope, 'company_id', $companyId))->where('wialon_unit_id', $unitId)->first();
+        $vehicle = \App\Models\Vehicle\Vehicle::withInactive()->where('wialon_unit_id', $unitId)->first();
         return [
             'unit_id' => $unitId,
             'unit_name' => $unit['nm'] ?? null,
@@ -312,9 +300,9 @@ class WialonService
         ];
     }
 
-    public function commands(string $companyId, int $unitId): array
+    public function commands(int $unitId): array
     {
-        return $this->withSelectedUnitSession($companyId, $unitId, function (string $sid, array $unit): array {
+        return $this->withSelectedUnitSession($unitId, function (string $sid, array $unit): array {
             $available = $unit['cmds'] ?? [];
             $definitions = $this->call($sid, 'unit/get_command_definition_data', ['itemId' => (int) $unit['id']]);
             return collect($definitions)->filter(fn (array $definition) => collect($available)->contains(
@@ -331,10 +319,10 @@ class WialonService
         }, 1 + 512);
     }
 
-    public function executeCommand(string $companyId, int $unitId, int $commandId, ?string $parameter = null): array
+    public function executeCommand(int $unitId, int $commandId, ?string $parameter = null): array
     {
         if ($commandId < 1) throw new RuntimeException('Choose a valid GPS command.');
-        return $this->withSelectedUnitSession($companyId, $unitId, function (string $sid, array $unit) use ($commandId, $parameter): array {
+        return $this->withSelectedUnitSession($unitId, function (string $sid, array $unit) use ($commandId, $parameter): array {
             $definitions = $this->call($sid, 'unit/get_command_definition_data', ['itemId' => (int) $unit['id'], 'col' => [$commandId]]);
             $definition = collect($definitions)->first(fn (array $item) => (int) ($item['id'] ?? 0) === $commandId);
             if (!$definition || !collect($unit['cmds'] ?? [])->contains(
@@ -361,9 +349,9 @@ class WialonService
         }, 1 + 512);
     }
 
-    public function alertEvents(string $companyId, int $unitId, int $from, int $to): array
+    public function alertEvents(int $unitId, int $from, int $to): array
     {
-        return $this->withSelectedUnitSession($companyId, $unitId, function (string $sid, array $unit) use ($unitId, $from, $to): array {
+        return $this->withSelectedUnitSession($unitId, function (string $sid, array $unit) use ($unitId, $from, $to): array {
             $detectors = ['speedings', 'filling', 'theft', 'lls', 'fuel_level', 'trips', 'ignition', 'sensors', 'health_check'];
             $loadEvents = function (array $types) use ($sid, $unitId, $from, $to): array {
                 return $this->call($sid, 'events/load', [
@@ -394,22 +382,22 @@ class WialonService
         }, 1);
     }
 
-    private function selectedUnitDetails(string $companyId, int $unitId, int $flags): array
+    private function selectedUnitDetails(int $unitId, int $flags): array
     {
-        return $this->withSelectedUnitSession($companyId, $unitId, fn (string $sid, array $unit): array => $unit, $flags);
+        return $this->withSelectedUnitSession($unitId, fn (string $sid, array $unit): array => $unit, $flags);
     }
 
-    private function withSelectedUnitSession(string $companyId, int $unitId, callable $callback, int $flags = 1): mixed
+    private function withSelectedUnitSession(int $unitId, callable $callback, int $flags = 1): mixed
     {
-        $integration = $this->integration($companyId);
-        return $this->withSession($companyId, function (string $sid) use ($integration, $unitId, $callback, $flags) {
+        $integration = $this->integration();
+        return $this->withSession(function (string $sid) use ($integration, $unitId, $callback, $flags) {
             $groups = $integration->group_ids ? $this->searchUnitGroups($sid) : [];
             if (!in_array($unitId, $this->unitIdsFromGroups($groups, $integration->group_ids), true)) {
-                throw new RuntimeException('The GPS device is not enabled for this company.');
+                throw new RuntimeException('The GPS device is not enabled for this installation.');
             }
             $result = $this->call($sid, 'core/search_item', ['id' => $unitId, 'flags' => $flags]);
             $unit = $result['item'] ?? [];
-            if (empty($unit['id'])) throw new RuntimeException('The GPS device is unavailable to this company service account.');
+            if (empty($unit['id'])) throw new RuntimeException('The GPS device is unavailable to this installation service account.');
             return $callback($sid, $unit);
         });
     }
@@ -437,27 +425,27 @@ class WialonService
         return $confirmedMileage;
     }
 
-    public function addUnitToGroup(string $companyId, int $groupId, int $unitId): array
+    public function addUnitToGroup(int $groupId, int $unitId): array
     {
-        return $this->updateUnitGroupMembership($companyId, $groupId, $unitId, true);
+        return $this->updateUnitGroupMembership($groupId, $unitId, true);
     }
 
-    public function removeUnitFromGroup(string $companyId, int $groupId, int $unitId): array
+    public function removeUnitFromGroup(int $groupId, int $unitId): array
     {
-        return $this->updateUnitGroupMembership($companyId, $groupId, $unitId, false);
+        return $this->updateUnitGroupMembership($groupId, $unitId, false);
     }
 
-    private function updateUnitGroupMembership(string $companyId, int $groupId, int $unitId, bool $add): array
+    private function updateUnitGroupMembership(int $groupId, int $unitId, bool $add): array
     {
-        $integration = $this->integration($companyId);
+        $integration = $this->integration();
         if (!in_array($groupId, array_map('intval', $integration->group_ids), true)) {
-            throw ValidationException::withMessages(['group_id' => ['Save this GPS group in company settings before managing its devices.']]);
+            throw ValidationException::withMessages(['group_id' => ['Save this GPS group in installation settings before managing its devices.']]);
         }
         if ($groupId < 1 || $unitId < 1) {
             throw ValidationException::withMessages(['unit_id' => ['Choose a valid GPS group and device.']]);
         }
 
-        return $this->withSession($companyId, function (string $sid) use ($groupId, $unitId, $add): array {
+        return $this->withSession(function (string $sid) use ($groupId, $unitId, $add): array {
             $groups = $this->searchUnitGroups($sid);
             $group = collect($groups)->first(fn (array $item) => (int) ($item['id'] ?? 0) === $groupId);
             if (!$group) throw new RuntimeException('The GPS group is no longer available to this service account.');
@@ -480,19 +468,19 @@ class WialonService
         });
     }
 
-    public function reportTemplates(string $companyId): array
+    public function reportTemplates(): array
     {
-        $selected = array_map('intval', $this->integration($companyId)->resource_ids);
-        return array_values(array_filter($this->withSession($companyId, fn (string $sid) => $this->searchReportResources($sid)), fn ($resource) => in_array((int) $resource['id'], $selected, true)));
+        $selected = array_map('intval', $this->integration()->resource_ids);
+        return array_values(array_filter($this->withSession(fn (string $sid) => $this->searchReportResources($sid)), fn ($resource) => in_array((int) $resource['id'], $selected, true)));
     }
 
-    public function runReport(string $companyId, int $unitId, int $resourceId, int $templateId, int $from, int $to, ?int $tableIndex = null, int $offset = 0): array
+    public function runReport(int $unitId, int $resourceId, int $templateId, int $from, int $to, ?int $tableIndex = null, int $offset = 0): array
     {
-        $this->assertSelectedUnit($companyId, $unitId);
-        if (!in_array($resourceId, array_map('intval', $this->integration($companyId)->resource_ids), true)) {
-            throw new RuntimeException('The selected GPS report resource is not enabled for this company.');
+        $this->assertSelectedUnit($unitId);
+        if (!in_array($resourceId, array_map('intval', $this->integration()->resource_ids), true)) {
+            throw new RuntimeException('The selected GPS report resource is not enabled for this installation.');
         }
-        return $this->withSession($companyId, function (string $sid) use ($unitId, $resourceId, $templateId, $from, $to, $tableIndex, $offset) {
+        return $this->withSession(function (string $sid) use ($unitId, $resourceId, $templateId, $from, $to, $tableIndex, $offset) {
             $resources = $this->searchReportResources($sid);
             $resource = collect($resources)->firstWhere('id', $resourceId);
             if (!$resource || !collect($resource['templates'])->contains(fn ($template) => (int) $template['id'] === $templateId)) {
@@ -550,10 +538,10 @@ class WialonService
         ])->values()->all();
     }
 
-    public function messages(string $companyId, int $unitId, int $from, int $to, int $offset = 0): array
+    public function messages(int $unitId, int $from, int $to, int $offset = 0): array
     {
-        $this->assertSelectedUnit($companyId, $unitId);
-        return $this->withSession($companyId, function (string $sid) use ($unitId, $from, $to, $offset) {
+        $this->assertSelectedUnit($unitId);
+        return $this->withSession(function (string $sid) use ($unitId, $from, $to, $offset) {
             $loaded = $this->call($sid, 'messages/load_interval', [
                 'itemId' => $unitId, 'timeFrom' => $from, 'timeTo' => $to,
                 'flags' => 1, 'flagsMask' => 65281, 'loadCount' => 10000,
@@ -572,19 +560,19 @@ class WialonService
         });
     }
 
-    public function resources(string $companyId): array
+    public function resources(): array
     {
-        return $this->withSession($companyId, fn (string $sid) => $this->searchReportResources($sid));
+        return $this->withSession(fn (string $sid) => $this->searchReportResources($sid));
     }
 
-    public function unitGroups(string $companyId): array
+    public function unitGroups(): array
     {
-        return $this->withSession($companyId, fn (string $sid) => $this->searchUnitGroups($sid));
+        return $this->withSession(fn (string $sid) => $this->searchUnitGroups($sid));
     }
 
-    public function validateSelections(string $companyId, array $resourceIds, array $groupIds): void
+    public function validateSelections(array $resourceIds, array $groupIds): void
     {
-        $available = $this->withSession($companyId, fn (string $sid) => [
+        $available = $this->withSession(fn (string $sid) => [
             'resource_ids' => array_column($this->searchReportResources($sid), 'id'),
             'group_ids' => array_column($this->searchUnitGroups($sid), 'id'),
         ]);
@@ -592,7 +580,7 @@ class WialonService
         foreach (['resource_ids' => $resourceIds, 'group_ids' => $groupIds] as $field => $selectedIds) {
             $allowedIds = array_map('intval', $available[$field]);
             if (array_diff(array_map('intval', $selectedIds), $allowedIds)) {
-                $errors[$field] = ['One or more selected GPS items are unavailable to this company service account. Refresh the GPS catalog and select available items.'];
+                $errors[$field] = ['One or more selected GPS items are unavailable to this installation service account. Refresh the GPS catalog and select available items.'];
             }
         }
         if ($errors) throw ValidationException::withMessages($errors);
@@ -630,36 +618,36 @@ class WialonService
         ])['items'] ?? [];
     }
 
-    private function integration(string $companyId): object
+    private function integration(): object
     {
-        $row = DB::table('wialon_integrations')->where(fn ($_companyIdScope) => \App\Services\CompanyIdScope::constrain($_companyIdScope, 'company_id', $companyId))->where('enabled', true)->first();
-        if (!$row || !$row->token) throw new RuntimeException('GPS tracking is not configured for this company.');
+        $row = DB::table('wialon_installation_settings')->where('id', 'installation')->first();
+        if (!$row || !$row->enabled || !$row->token) throw new RuntimeException('GPS tracking is not configured for this installation.');
         $row->token = decrypt($row->token);
         $row->resource_ids = json_decode($row->resource_ids ?: '[]', true) ?: [];
         $row->group_ids = json_decode($row->group_ids ?: '[]', true) ?: [];
         return (object) $row;
     }
 
-    private function selectedUnitIds(string $companyId): array
+    private function selectedUnitIds(): array
     {
-        $integration = $this->integration($companyId);
+        $integration = $this->integration();
         if (!$integration->group_ids) return [];
-        return $this->withSession($companyId, fn (string $sid) => $this->unitIdsFromGroups(
+        return $this->withSession(fn (string $sid) => $this->unitIdsFromGroups(
             $this->searchUnitGroups($sid),
             $integration->group_ids
         ));
     }
 
-    private function assertSelectedUnit(string $companyId, int $unitId): void
+    private function assertSelectedUnit(int $unitId): void
     {
-        if (!in_array($unitId, $this->selectedUnitIds($companyId), true)) {
-            throw new RuntimeException('The GPS device is not enabled for this company.');
+        if (!in_array($unitId, $this->selectedUnitIds(), true)) {
+            throw new RuntimeException('The GPS device is not enabled for this installation.');
         }
     }
 
-    private function withSession(string $companyId, callable $callback): mixed
+    private function withSession(callable $callback): mixed
     {
-        $integration = $this->integration($companyId);
+        $integration = $this->integration();
         $this->baseUrl = rtrim($integration->base_url ?: $this->baseUrl, '/');
         $login = $this->call(null, 'token/login', ['token' => $integration->token]);
         if (empty($login['eid'])) {
@@ -681,7 +669,7 @@ class WialonService
                 }
                 $this->baseUrl = $reported;
                 if ($integration->base_url !== $reported) {
-                    DB::table('wialon_integrations')->where(fn ($_companyIdScope) => \App\Services\CompanyIdScope::constrain($_companyIdScope, 'company_id', $companyId))->update(['base_url' => $reported, 'updated_at' => now()]);
+                    DB::table('wialon_installation_settings')->where('id', 'installation')->update(['base_url' => $reported, 'updated_at' => now()]);
                 }
             }
             return $callback($login['eid']);

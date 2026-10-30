@@ -2,11 +2,13 @@
 
 This runbook covers creation/revision of payment schedules, open-ended rolling-horizon generation, allocation correction, overdue escalation, customer communication, and the scoped legacy collection-company repair tool. It does not authorize production access, migration execution, customer messaging, or financial adjustment.
 
+**Architecture update (30 October 2026):** The single-installation cleanup plan supersedes company-as-tenant and legal-entity scoping. This runbook's company-scoped repair procedures are historical and must be revised before operational use. Each installation is one operator business; `companies` is used for selectable locations/service areas.
+
 ## Ownership and severity
 
 - Operational owner: Accounts/Collections. Sales Operations owns current handler and reviewed long-term contract facts. Engineering owns the scheduler, schema, and repair tooling.
 - On-call routing and production topology must come from the approved target-environment register; do not infer either from local configuration.
-- Severity 1: duplicate or missing canonical receipts/allocations, cross-tenant exposure, corrupted paid history, or unauthorized customer communication.
+- Severity 1: duplicate or missing canonical receipts/allocations, cross-installation data exposure, corrupted paid history, or unauthorized customer communication.
 - Severity 2: an active rolling rule is not extended, reminders are delayed, aging disagrees with schedule minus allocations, or a current handler is missing.
 - Severity 3: one future unpaid schedule or work item needs reviewed correction without financial-history impact.
 

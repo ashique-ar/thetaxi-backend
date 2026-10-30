@@ -50,7 +50,6 @@ it('keeps encrypted employee records and profile details out of activity logs', 
     $aliasNumber = 'private-employee-number-alias';
     $alias = HrEmployeeNumberAlias::create([
         'staff_id' => $staff->id,
-        'company_id' => $company->id,
         'employee_number' => $aliasNumber,
         'alias_type' => 'manual_canonical',
         'is_canonical' => true,

@@ -101,7 +101,7 @@ class WebsiteSetting extends BaseModel
 
         $query = static::query()->where('type', $type);
         if ($companyId) {
-            $query->where(fn ($_companyIdScope) => \App\Services\CompanyIdScope::constrain($_companyIdScope, 'company_id', $companyId))
+            $query->where(fn ($locationScope) => \App\Services\CompanyLocationScope::constrain($locationScope, 'company_id', $companyId))
                 ->orderByRaw('CASE WHEN company_id = ? THEN 0 ELSE 1 END', [$companyId]);
         } else {
             $query->whereNull('company_id');
@@ -168,7 +168,7 @@ class WebsiteSetting extends BaseModel
         $companySettings = collect();
         if ($companyId) {
             $companySettings = static::whereIn('type', $types)
-                ->where(fn ($_companyIdScope) => \App\Services\CompanyIdScope::constrain($_companyIdScope, 'company_id', $companyId))
+                ->where(fn ($locationScope) => \App\Services\CompanyLocationScope::constrain($locationScope, 'company_id', $companyId))
                 ->orderByRaw('CASE WHEN company_id = ? THEN 0 ELSE 1 END', [$companyId])
                 ->get()
                 ->keyBy('type');

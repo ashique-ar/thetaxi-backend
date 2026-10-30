@@ -2,6 +2,8 @@
 
 This runbook governs the Sales KPI snapshot only. Every employee remains a canonical `Staff` record; `SalesProfile` is an effective-dated Sales category/capability for eligible Staff and does not create a second employee master.
 
+**Architecture update (30 October 2026):** The single-installation cleanup plan supersedes company-scoped Sales data and access assumptions. This runbook's legal-entity selection and company-scoped writer instructions must be revised before operational use.
+
 ## Preconditions
 
 - Apply the schema and complete permission, denial, and rollback checks before the first close.

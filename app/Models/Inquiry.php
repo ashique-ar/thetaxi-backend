@@ -41,9 +41,8 @@ class Inquiry extends BaseModel
     protected static function booted(): void
     {
         static::creating(function (Inquiry $inquiry): void {
-            $inquiry->company_id ??= \App\Services\CompanyIdScope::defaultCompanyId();
-            if (! $inquiry->company_id || ! Schema::hasColumn('inquiries', 'first_response_due_at')) return;
-            $policy = SalesPolicySetting::query()->where(fn ($_companyIdScope) => \App\Services\CompanyIdScope::constrain($_companyIdScope, 'company_id', $inquiry->company_id))
+            if (! Schema::hasColumn('inquiries', 'first_response_due_at')) return;
+            $policy = SalesPolicySetting::query()
                 ->where('policy_kind', 'inquiry_response')->where('status', 'approved')->orderByDesc('version')->first();
             if (! $policy?->inquiry_first_response_minutes) return;
 
@@ -63,7 +62,6 @@ class Inquiry extends BaseModel
      * @var array<int, string>
      */
     protected $fillable = [
-        'company_id',
         'customer_id',
         'booking_id',
         'agent_id',
@@ -244,7 +242,6 @@ class Inquiry extends BaseModel
         parent::boot();
 
         static::creating(function ($inquiry) {
-            $inquiry->company_id = app(\App\Services\SingleCompanyScope::class)->activeDefaultCompany()?->id;
             if (empty($inquiry->inquiry_number)) {
                 $inquiry->inquiry_number = static::generateInquiryNumber();
             }

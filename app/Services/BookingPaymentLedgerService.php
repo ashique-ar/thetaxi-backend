@@ -33,7 +33,6 @@ use App\Models\Booking\BookingPaymentScheduleRule;
 use App\Services\Sales\RollingPaymentScheduleService;
 use App\Services\Sales\SalesPolicySettingsService;
 use App\Services\Sales\SalesCollectionCompanyIntegrity;
-use App\Services\SingleCompanyScope;
 use Carbon\CarbonInterface;
 use Illuminate\Support\Str;
 
@@ -470,15 +469,7 @@ class BookingPaymentLedgerService
     public function receive(Booking $booking, array $data, ?string $userId): array
     {
         return DB::transaction(function () use ($booking, $data, $userId) {
-            $tenantCompanyId = $this->ensureBookingCompanyAttribution($booking);
-            $company = DB::table('companies')->where('id', $tenantCompanyId)->where('is_active', true)
-                ->whereNull('deleted_at')->lockForUpdate()->first(['id']);
-            abort_unless($company, 409, 'No active default company is configured.');
             $booking = Booking::query()->lockForUpdate()->findOrFail($booking->id);
-            $attribution = SalesBookingAttribution::query()->where('booking_id', $booking->id)->lockForUpdate()->first();
-            abort_unless(\App\Services\CompanyIdScope::sameCompanyId((string) ((string) $attribution?->company_id), (string) ((string) $company->id)), 409,
-                'The booking legal entity changed before payment could be recorded.');
-            $this->collectionCompanyIntegrity->assertConsistent($booking, (string) $company->id);
             if (!empty($data['idempotency_key'])) {
                 $duplicate = BookingPaymentReceipt::query()
                     ->where('idempotency_key', $data['idempotency_key'])
@@ -673,92 +664,6 @@ class BookingPaymentLedgerService
 
             return $summary;
         });
-    }
-
-    /**
-     * Ensures payment processing has a company attribution. Older bookings can predate
-     * company capture, so use the active default and record that fallback as an attribution
-     * event before creating any company-scoped payment facts.
-     */
-    public function ensureBookingCompanyAttribution(Booking $booking): string
-    {
-        return DB::transaction(function () use ($booking): string {
-            $attribution = SalesBookingAttribution::query()
-                ->where('booking_id', $booking->id)->lockForUpdate()->first();
-            if ($attribution?->company_id) {
-                $activeCompany = DB::table('companies')->where('id', $attribution->company_id)
-                    ->where('is_active', true)->whereNull('deleted_at')->lockForUpdate()->exists();
-                if ($activeCompany) {
-                    return (string) $attribution->company_id;
-                }
-            }
-
-            $profileCompanyId = $attribution?->acquisitionProfile?->company_id
-                ?? $attribution?->collectionProfile?->company_id;
-            $default = app(SingleCompanyScope::class)->activeDefaultCompany(true);
-            $companyId = (string) ($default?->id ?: $profileCompanyId);
-            abort_unless($companyId, 409, 'No active default company is configured.');
-            abort_unless(DB::table('companies')->where('id', $companyId)->where('is_active', true)
-                ->whereNull('deleted_at')->lockForUpdate()->exists(), 409,
-                'No active company is available for this booking.');
-
-            $now = now();
-            $previousCompanyId = $attribution?->company_id;
-            if (! $attribution) {
-                $currency = strtoupper((string) ($booking->currency ?: 'LKR'));
-                $value = (string) ($booking->total_actual ?? $booking->total_estimated ?? 0);
-                $attribution = SalesBookingAttribution::query()->create([
-                    'booking_id' => $booking->id,
-                    'company_id' => $companyId,
-                    'customer_id' => $booking->customer_id,
-                    'commission_category' => ($booking->is_recurring ?? false) ? 'long_term' : 'one_time',
-                    'business_classification' => 'new_business',
-                    'classification_source' => 'default_company_fallback',
-                    'secured_at' => $booking->confirmed_at ?? $booking->updated_at ?? $now,
-                    'contract_value_source' => $value,
-                    'source_currency' => $currency,
-                    'contract_value_lkr' => $currency === 'LKR' ? $value : null,
-                    'fx_rate_to_lkr' => $currency === 'LKR' ? 1 : null,
-                    'fx_rate_at' => $currency === 'LKR' ? ($booking->confirmed_at ?? $booking->updated_at ?? $now) : null,
-                    'new_customer_status' => 'pending',
-                    'status' => 'held',
-                    'version' => 1,
-                    'created_user_id' => $booking->created_user_id,
-                    'updated_user_id' => $booking->updated_user_id,
-                ]);
-            } else {
-                $attribution->update([
-                    'company_id' => $companyId,
-                    'status' => 'held',
-                    'version' => $attribution->version + 1,
-                    'updated_user_id' => $booking->updated_user_id,
-                ]);
-            }
-
-            $key = 'default-company-fallback:'.$booking->id;
-            DB::table('sales_booking_attribution_events')->insertOrIgnore([
-                'id' => (string) Str::uuid(),
-                'attribution_id' => $attribution->id,
-                'version' => $attribution->version,
-                'event_type' => 'default_company_fallback',
-                'field_name' => 'company_id',
-                'from_value' => $previousCompanyId,
-                'to_value' => $companyId,
-                'effective_at' => $booking->confirmed_at ?? $booking->updated_at ?? $now,
-                'reason' => $previousCompanyId
-                    ? 'Inactive booking company resolved to the configured active company for payment processing.'
-                    : 'Missing booking company resolved to the configured active default for payment processing.',
-                'idempotency_key' => $key,
-                'actor_user_id' => $booking->updated_user_id ?? $booking->created_user_id,
-                'created_at' => $now,
-                'updated_at' => $now,
-            ]);
-            DB::table('sales_attribution_exceptions')->where('booking_id', $booking->id)
-                ->where('exception_type', 'legal_entity_missing')->where('status', 'open')
-                ->update(['status' => 'resolved', 'resolution' => 'Resolved to the configured active default company for payment processing.', 'resolved_at' => $now, 'updated_at' => $now]);
-
-            return $companyId;
-        }, 3);
     }
 
     public function repairLegacyPaidBooking(Booking $booking, array $data, string $actorUserId, string $authorizedCompanyId): array

@@ -1627,15 +1627,6 @@ class CheckoutController extends Controller
 
                 if ($request->input('status') === 'success') {
                     $this->paymentEventService->recordEvent('payment_success', ['booking_id' => $booking->id, 'transaction_id' => $request->input('transaction_id'), 'payload' => $request->all(), 'source' => 'webxpay', 'status' => 'success']);
-                    $tenantCompanyId = $this->paymentLedger->ensureBookingCompanyAttribution($booking);
-                    $company = DB::table('companies')->where('id', $tenantCompanyId)->where('is_active', true)
-                        ->whereNull('deleted_at')->lockForUpdate()->first(['id']);
-                    if (! $company) {
-                        $tenantCompanyId = $this->paymentLedger->ensureBookingCompanyAttribution($booking);
-                        $company = DB::table('companies')->where('id', $tenantCompanyId)->where('is_active', true)
-                            ->whereNull('deleted_at')->lockForUpdate()->first(['id']);
-                    }
-                    abort_unless($company, 409, 'No active default company is configured.');
                     // Mock payment successful
                     $wasPaid = $booking->payment_status === 'paid';
                     $booking->update([
@@ -1755,21 +1746,8 @@ class CheckoutController extends Controller
                 $wasPaid = false;
                 DB::beginTransaction();
 
-                $tenantCompanyId = $this->paymentLedger->ensureBookingCompanyAttribution($booking);
-                $company = DB::table('companies')->where('id', $tenantCompanyId)->where('is_active', true)
-                    ->whereNull('deleted_at')->lockForUpdate()->first(['id']);
-                if (! $company) {
-                    $tenantCompanyId = $this->paymentLedger->ensureBookingCompanyAttribution($booking);
-                    $company = DB::table('companies')->where('id', $tenantCompanyId)->where('is_active', true)
-                        ->whereNull('deleted_at')->lockForUpdate()->first(['id']);
-                }
-                abort_unless($company, 409, 'No active default company is configured.');
                 // Re-fetch with a pessimistic lock to guard against concurrent callback/notify
                 $lockedBooking = Booking::where('id', $booking->id)->lockForUpdate()->first();
-                $attribution = DB::table('sales_booking_attributions')->where('booking_id', $booking->id)
-                    ->lockForUpdate()->first(['company_id']);
-                abort_unless(\App\Services\CompanyIdScope::sameCompanyId((string) ((string) $attribution?->company_id), (string) ((string) $company->id)), 409,
-                    'The booking legal entity changed before payment could be recorded.');
 
                 if ($lockedBooking && $lockedBooking->payment_status !== 'paid') {
                     $workflowData = is_array($lockedBooking->workflow_data) ? $lockedBooking->workflow_data : [];
@@ -1856,20 +1834,52 @@ class CheckoutController extends Controller
                     'initial_currency' => getBookingDisplayCurrency($booking),
                 ])->with('success', 'Payment successful! Your booking is confirmed.');
             } else {
-                Log::warning('WebXPay: payment verification failed', ['verification' => $verificationResult, 'booking_id' => $booking->id]);
-                $this->paymentEventService->recordEvent('payment_failed', ['booking_id' => $booking->id, 'booking_number' => $booking->booking_number, 'payload' => $verificationResult, 'source' => 'webxpay', 'status' => 'failed']);
-                // A late failure callback must never downgrade a booking that another callback paid.
-                DB::transaction(function () use ($booking): void {
+                $verifiedDecline = (string) ($verificationResult['status_code'] ?? '') === '15';
+                Log::warning($verifiedDecline ? 'WebXPay: verified payment decline' : 'WebXPay: payment result could not be verified', [
+                    'verification' => $verificationResult,
+                    'booking_id' => $booking->id,
+                ]);
+                $this->paymentEventService->recordEvent(
+                    $verifiedDecline ? 'payment_failed' : 'payment_callback_rejected',
+                    ['booking_id' => $booking->id, 'booking_number' => $booking->booking_number, 'payload' => $verificationResult,
+                        'source' => 'webxpay', 'status' => $verifiedDecline ? 'declined' : 'reconciliation_required']
+                );
+                DB::transaction(function () use ($booking, $verificationResult, $verifiedDecline): void {
                     $lockedBooking = Booking::where('id', $booking->id)->lockForUpdate()->first();
-                    if ($lockedBooking && $lockedBooking->payment_status !== 'paid') {
-                        $lockedBooking->update([
-                            'status' => config('booking.status.pending_payment'),
-                            'payment_status' => 'failed',
-                        ]);
+                    if (!$lockedBooking || $lockedBooking->payment_status === 'paid') return;
+
+                    $workflowData = is_array($lockedBooking->workflow_data) ? $lockedBooking->workflow_data : [];
+                    $orderId = (string) ($verificationResult['order_id'] ?? '');
+                    $attempts = array_values((array) ($workflowData['gateway_payment_attempts'] ?? []));
+                    $matchedAttempt = false;
+                    foreach ($attempts as &$attempt) {
+                        if ((string) ($attempt['order_id'] ?? '') !== $orderId || !$verifiedDecline) continue;
+                        $attempt['status_code'] = '15';
+                        $attempt['status'] = 'declined';
+                        $matchedAttempt = true;
                     }
+                    unset($attempt);
+
+                    $currentAttempt = (array) ($workflowData['gateway_payment'] ?? []);
+                    if ($verifiedDecline && (string) ($currentAttempt['order_id'] ?? '') === $orderId) {
+                        $workflowData['gateway_payment'] = array_merge($currentAttempt, ['status_code' => '15', 'status' => 'declined']);
+                        $matchedAttempt = true;
+                    }
+
+                    if ($attempts !== []) $workflowData['gateway_payment_attempts'] = $attempts;
+                    $allAttemptsDeclined = $verifiedDecline && $matchedAttempt && $attempts !== []
+                        && collect($attempts)->every(fn ($attempt) => (string) ($attempt['status_code'] ?? '') === '15');
+                    $lockedBooking->workflow_data = $workflowData;
+                    $lockedBooking->status = $allAttemptsDeclined
+                        ? config('booking.status.draft', 'draft')
+                        : config('booking.status.payment_processing');
+                    $lockedBooking->payment_status = $allAttemptsDeclined ? 'failed' : 'pending';
+                    $lockedBooking->save();
                 });
 
-                return redirect()->route('checkout')->with('error', 'Payment verification failed. Please try again.');
+                return redirect()->route('checkout')->with('error', $verifiedDecline
+                    ? 'The payment was declined. Please try again or choose another payment method.'
+                    : 'We could not confirm the payment result. Your booking is being held while the team checks it.');
             }
         } catch (\Exception $e) {
             while (DB::transactionLevel() > $initialTransactionLevel) {
@@ -1913,28 +1923,13 @@ class CheckoutController extends Controller
                         return response('Payment order mismatch', 422);
                     }
                     $emailBooking = null;
-                    $tenantCompanyId = $this->paymentLedger->ensureBookingCompanyAttribution($matchedBooking);
-
-                    DB::transaction(function () use ($bookingNumber, $verificationResult, $matchedBooking, $tenantCompanyId, &$emailBooking) {
-                        $company = DB::table('companies')->where('id', $tenantCompanyId)->where('is_active', true)
-                            ->whereNull('deleted_at')->lockForUpdate()->first(['id']);
-                        if (! $company) {
-                            $tenantCompanyId = $this->paymentLedger->ensureBookingCompanyAttribution($matchedBooking);
-                            $company = DB::table('companies')->where('id', $tenantCompanyId)->where('is_active', true)
-                                ->whereNull('deleted_at')->lockForUpdate()->first(['id']);
-                        }
-                        abort_unless($company, 409, 'No active default company is configured.');
+                    DB::transaction(function () use ($bookingNumber, $verificationResult, $matchedBooking, &$emailBooking) {
                         // Lock the row — prevents duplicate delivery race conditions
                         $booking = Booking::where('booking_number', $bookingNumber)
                             ->lockForUpdate()
                             ->first();
 
                         if (!$booking) return;
-                        $attribution = DB::table('sales_booking_attributions')->where('booking_id', $booking->id)
-                            ->lockForUpdate()->first(['company_id']);
-                        abort_unless(\App\Services\CompanyIdScope::sameCompanyId((string) ((string) $attribution?->company_id), (string) ((string) $company->id)), 409,
-                            'The booking legal entity changed before payment could be recorded.');
-
                         // Idempotency: if already paid, nothing to do
                         if ($booking->payment_status === 'paid') return;
 

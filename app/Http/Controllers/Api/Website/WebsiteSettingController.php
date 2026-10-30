@@ -63,7 +63,7 @@ class WebsiteSettingController extends Controller
     {
         $companyId = $this->settingsService->resolveCurrentCompanyId();
         $q = WebsiteSetting::query()
-            ->where(fn ($_companyIdScope) => \App\Services\CompanyIdScope::constrain($_companyIdScope, 'company_id', $companyId));
+            ->where(fn ($locationScope) => \App\Services\CompanyLocationScope::constrain($locationScope, 'company_id', $companyId));
         if ($request->filled('search')) {
             $q->where('type', 'like', '%' . $request->search . '%');
         }
@@ -153,7 +153,7 @@ class WebsiteSettingController extends Controller
         $type = "{$section}.{$key}";
         $companyId = $this->settingsService->resolveCurrentCompanyId();
         $setting = WebsiteSetting::where('type', $type)
-            ->where(fn ($_companyIdScope) => \App\Services\CompanyIdScope::constrain($_companyIdScope, 'company_id', $companyId))
+            ->where(fn ($locationScope) => \App\Services\CompanyLocationScope::constrain($locationScope, 'company_id', $companyId))
             ->first();
 
         return response()->json([

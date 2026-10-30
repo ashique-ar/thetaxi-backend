@@ -131,7 +131,7 @@ class WebsiteSettingsService
 
         if (in_array($type, BusinessSetting::COMPANY_SCOPED_WORKFLOW_KEYS, true)) {
             if ($companyId) {
-                $companyValue = WebsiteSetting::query()->where('type', $type)->where(fn ($_companyIdScope) => \App\Services\CompanyIdScope::constrain($_companyIdScope, 'company_id', $companyId))->value('value');
+                $companyValue = WebsiteSetting::query()->where('type', $type)->where(fn ($locationScope) => CompanyLocationScope::constrain($locationScope, 'company_id', $companyId, false))->value('value');
                 if ($companyValue !== null) return $companyValue;
             }
         }
@@ -239,7 +239,7 @@ class WebsiteSettingsService
 
         $companyWorkflowValues = $companyId
             ? WebsiteSetting::query()->whereIn('type', BusinessSetting::COMPANY_SCOPED_WORKFLOW_KEYS)
-                ->where(fn ($_companyIdScope) => \App\Services\CompanyIdScope::constrain($_companyIdScope, 'company_id', $companyId))->pluck('value', 'type')->all()
+                ->where(fn ($locationScope) => CompanyLocationScope::constrain($locationScope, 'company_id', $companyId, false))->pluck('value', 'type')->all()
             : [];
 
         foreach ($businessValues as $type => $value) {
@@ -1145,6 +1145,7 @@ class WebsiteSettingsService
             'pricing_recurring_holidays',
             'assignment_enable_qc_stage',
             'assignment_enable_maintenance_stage',
+            'booking_signed_agreement_required',
             'feature_corporate_management_enabled',
             'feature_vehicle_return_management_enabled',
             'feature_hr_management_enabled',
@@ -1473,12 +1474,9 @@ class WebsiteSettingsService
                 ->where('staff.user_id', $request->user()?->id)
                 ->whereNull('staff.deleted_at')
                 ->where(fn ($employment) => $employment->whereNull('staff.employment_ended_at')->orWhere('staff.employment_ended_at', '>', now()))
-                ->first(['staff.company_id']) : null;
+                ->first(['staff.id']) : null;
             abort_unless($staffContext, 403, 'Select a valid active Staff business context.');
-            $companyId = $staffContext->company_id ?: app(SingleCompanyScope::class)->activeDefaultCompany()?->id;
-            abort_unless($companyId, 403, 'Select a valid active Staff business context.');
-
-            return (string) $companyId;
+            return null;
         }
 
         $host = strtolower((string) $request->getHost());
@@ -1489,7 +1487,7 @@ class WebsiteSettingsService
         if ($request->header('X-Active-Context-Type') === 'internal'
             || str_starts_with($host, 'portal.')
             || ($portalDomain !== null && $portalDomain === $apiDomain)) {
-            return app(SingleCompanyScope::class)->activeDefaultCompany()?->id;
+            return null;
         }
 
         $companyId = $request->header('X-Company-Id') ?: $request->query('company_id');
@@ -1500,16 +1498,8 @@ class WebsiteSettingsService
             }
         }
 
-        $userCompanyId = optional($request->user())->company_id;
-        if ($userCompanyId) {
-            $activeUserCompanyId = Company::query()->whereKey($userCompanyId)->where('is_active', true)->value('id');
-            if ($activeUserCompanyId) {
-                return (string) $activeUserCompanyId;
-            }
-        }
-
         if ($host === '') {
-            return app(SingleCompanyScope::class)->activeDefaultCompany()?->id;
+            return null;
         }
 
         $company = Company::query()
@@ -1523,9 +1513,7 @@ class WebsiteSettingsService
             ->first(['id']);
 
         if (!$company) {
-            // Tenant domains also serve preview hosts such as dev.casons.lk.
-            // Resolve those to the registered parent domain rather than the
-            // unrelated default company, which would load the wrong menu.
+            // Preview hosts can use a registered location's parent domain.
             $company = Company::query()
                 ->where('is_active', true)
                 ->orderByRaw('LENGTH(domain) DESC')
@@ -1539,7 +1527,7 @@ class WebsiteSettingsService
                 });
         }
 
-        return $company?->id ?? app(SingleCompanyScope::class)->activeDefaultCompany()?->id;
+        return $company?->id;
     }
 
     /**

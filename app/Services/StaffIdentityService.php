@@ -33,8 +33,7 @@ class StaffIdentityService
     public function terminate(Staff $staff, User $actor, string $reason, string $idempotencyKey): array
     {
         return DB::transaction(function () use ($staff, $actor, $reason, $idempotencyKey) {
-            abort_unless(DB::table('companies')->where('id', $staff->company_id)->where('is_active', true)->whereNull('deleted_at')->lockForUpdate()->first(), 409, 'Staff termination requires an active legal entity.');
-            $lockedStaff = Staff::withTrashed()->where(fn ($_companyIdScope) => \App\Services\CompanyIdScope::constrain($_companyIdScope, 'company_id', $staff->company_id))->lockForUpdate()->findOrFail($staff->id);
+            $lockedStaff = Staff::withTrashed()->lockForUpdate()->findOrFail($staff->id);
             $requestChecksum = hash('sha256', json_encode([
                 'staff_id' => (string) $lockedStaff->id,
                 'reason' => trim($reason),
@@ -118,7 +117,6 @@ class StaffIdentityService
 
             DB::table('staff_context_termination_events')->insert([
                 'id' => (string) Str::uuid(),
-                'company_id' => $lockedStaff->company_id,
                 'staff_id' => $lockedStaff->id,
                 'user_id' => $user->id,
                 'employment_spell_id' => $employmentSpell?->id,
@@ -322,7 +320,7 @@ class StaffIdentityService
             $locked->update(['assigned_user_id' => null, 'updated_user_id' => $actor->id]);
             PhoneCallAssignment::create([
                 'phone_call_id' => $locked->id,
-                'company_id' => $staff->company_id,
+                'company_id' => $locked->company_id,
                 'from_user_id' => $departingUser->id,
                 'to_user_id' => null,
                 'actor_user_id' => $actor->id,
@@ -402,7 +400,7 @@ class StaffIdentityService
                     ]);
                     DB::table('inquiry_assignment_events')->insert([
                         'id' => (string) Str::uuid(),
-                        'company_id' => $staff->company_id,
+                        'company_id' => $locked->company_id,
                         'inquiry_id' => $locked->id,
                         'from_user_id' => $departingUser->id,
                         'to_user_id' => null,
@@ -441,7 +439,7 @@ class StaffIdentityService
                 $now = now();
                 $locked->forceFill(['responsible_user_id' => null, 'updated_user_id' => $actor->id])->save();
                 BookingActivity::create([
-                    'company_id' => $staff->company_id,
+                    'company_id' => $locked->company_id,
                     'booking_id' => $locked->id,
                     'event_key' => 'booking_responsible_user_changed',
                     'channel' => 'system',
@@ -454,7 +452,7 @@ class StaffIdentityService
                     'event_at' => $now,
                 ]);
                 $bookingId = (string) $locked->id;
-                $companyId = (string) $staff->company_id;
+                $companyId = $locked->company_id;
                 DB::afterCommit(static function () use ($bookingId, $companyId): void {
                     $booking = Booking::query()->find($bookingId);
                     if ($booking) app(BookingResponsibilityService::class)->notifyUnassignedBooking($booking, $companyId);

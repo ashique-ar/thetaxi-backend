@@ -9,7 +9,6 @@ use App\Models\Corporate\Corporate;
 use App\Models\Service\ServiceType;
 use App\Services\CorporateService;
 use App\Services\AuthService;
-use App\Services\CompanyIdScope;
 use App\Models\User;
 use App\Http\Resources\ServiceTypeResource;
 use Illuminate\Http\JsonResponse;
@@ -39,8 +38,7 @@ class CorporateController extends Controller
 
     public function index(Request $request): JsonResponse
     {
-        $companyId = (string) $request->attributes->get('business_company_id');
-        $query = Corporate::query()->where(fn ($scope) => CompanyIdScope::constrain($scope, 'company_id', $companyId));
+        $query = Corporate::query();
 
         if ($request->filled('search')) {
             $query->where('name', 'like', '%' . $request->search . '%');
@@ -63,7 +61,6 @@ class CorporateController extends Controller
     {
         $corporate = $this->corporateService->createCorporate(
             $request->validated() + [
-                'company_id' => $request->attributes->get('business_company_id'),
                 'created_user_id' => $request->user()->id,
             ]
         );

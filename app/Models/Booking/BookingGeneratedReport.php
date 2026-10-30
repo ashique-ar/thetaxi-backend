@@ -11,7 +11,6 @@ class BookingGeneratedReport extends BaseModel
     protected $table = 'booking_generated_reports';
 
     protected $fillable = [
-        'company_id',
         'name',
         'report_type',
         'template_id',

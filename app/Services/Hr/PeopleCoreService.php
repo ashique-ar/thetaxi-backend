@@ -50,10 +50,12 @@ class PeopleCoreService
 
     public function closeEmployment(Staff $staff, string $reason, string $actorUserId): ?HrEmploymentSpell
     {
-        
+        $staff->company_id = $staff->company_id ?: \App\Services\CompanyIdScope::defaultCompanyId();
+        abort_unless($staff->company_id, 409, 'No active default legal entity is configured.');
         return DB::transaction(function()use($staff,$reason,$actorUserId){
-            abort_unless(DB::table('companies')->where('id',$staff->company_id)->lockForUpdate()->first(),404,'Staff legal entity was not found.');
+            abort_unless(DB::table('companies')->where('id',$staff->company_id)->where('is_active',true)->whereNull('deleted_at')->lockForUpdate()->first(),404,'Staff legal entity was not found.');
             $staff=Staff::withTrashed()->lockForUpdate()->findOrFail($staff->id);
+            $staff->company_id = $staff->company_id ?: \App\Services\CompanyIdScope::defaultCompanyId();
             $spell=HrEmploymentSpell::query()->where('staff_id',$staff->id)->where('status','active')->lockForUpdate()->first();
             if(!$spell)return null;
             $date=now()->toDateString();
@@ -69,9 +71,11 @@ class PeopleCoreService
     {
         
         return DB::transaction(function () use ($staff, $data, $actorUserId) {
-            $companyId = (string) $staff->company_id;
+            $companyId = (string) ($staff->company_id ?: \App\Services\CompanyIdScope::defaultCompanyId());
+            abort_unless($companyId, 409, 'No active default legal entity is configured.');
             abort_unless(DB::table('companies')->where('id', $companyId)->where('is_active', true)->whereNull('deleted_at')->lockForUpdate()->first(), 409, 'Rehire requires an active legal entity.');
             $staff = Staff::withTrashed()->whereKey($staff->id)->lockForUpdate()->firstOrFail();
+            $staff->company_id = $staff->company_id ?: $companyId;
             abort_unless(\App\Services\CompanyIdScope::sameCompanyId((string) ((string) $staff->company_id), (string) ($companyId)), 409, 'The employee legal entity changed; reload the rehire review.');
             abort_unless($staff->trashed() || $staff->employment_ended_at, 422, 'Only a former employee can enter rehire review.');
             $prior = HrEmploymentSpell::query()->where('staff_id',$staff->id)->where('status','terminated')->latest('spell_number')->lockForUpdate()->firstOrFail();
@@ -81,7 +85,7 @@ class PeopleCoreService
                 return $existing;
             }
             return HrRehireCase::create([
-                'staff_id'=>$staff->id,'company_id'=>$staff->company_id,'prior_spell_id'=>$prior->id,'status'=>'pending_approval',
+                'staff_id'=>$staff->id,'company_id'=>$companyId,'prior_spell_id'=>$prior->id,'status'=>'pending_approval',
                 'proposed_rehire_date'=>$data['proposed_rehire_date'],
                 'duplicate_match_snapshot'=>['staff_id'=>$staff->id,'user_id'=>$staff->user_id,'employee_number'=>$staff->code,'nic_fingerprint'=>$staff->nic_fingerprint],
                 'eligibility_snapshot'=>$data['eligibility_snapshot'],'prior_service_decisions'=>$data['prior_service_decisions'],
@@ -95,8 +99,10 @@ class PeopleCoreService
     {
         
         return DB::transaction(function () use ($case,$assignment,$actorUserId) {
-            abort_unless(DB::table('companies')->where('id',$case->company_id)->where('is_active',true)->whereNull('deleted_at')->lockForUpdate()->first(),409,'Rehire requires an active legal entity.');
+            $companyId = $case->company_id ?: \App\Services\CompanyIdScope::defaultCompanyId();
+            abort_unless($companyId && DB::table('companies')->where('id',$companyId)->where('is_active',true)->whereNull('deleted_at')->lockForUpdate()->first(),409,'Rehire requires an active legal entity.');
             $case=HrRehireCase::query()->lockForUpdate()->findOrFail($case->id);
+            $case->company_id = $case->company_id ?: $companyId;
             $approvalPayload = array_map(fn (string $field) => $assignment[$field] ?? null, [
                 'employment_type_id', 'position_id', 'organization_unit_id', 'manager_staff_id',
                 'cost_centre_code', 'location_code', 'payroll_group_code', 'default_shift_code', 'work_pattern_code',
@@ -113,10 +119,11 @@ class PeopleCoreService
             abort_unless($case->status==='pending_approval',422,'Rehire case is not pending approval.');
             abort_if($case->prepared_by===$actorUserId,403,'Rehire preparer and approver must be different users.');
             $staff=Staff::withTrashed()->lockForUpdate()->findOrFail($case->staff_id);
+            $staff->company_id = $staff->company_id ?: $companyId;
             abort_unless(\App\Services\CompanyIdScope::sameCompanyId((string) ($staff->company_id), (string) ($case->company_id)),409,'The rehire case and employee legal entity do not match.');
             abort_if(HrEmploymentSpell::query()->where('staff_id',$staff->id)->where('status','active')->exists(),409,'Employee already has an active employment spell.');
             $this->assertEmploymentType($assignment['employment_type_id']??null,$case->company_id);
-            $staff->restore(); $staff->forceFill(['employment_ended_at'=>null,'termination_reason'=>null,'terminated_by'=>null,'updated_user_id'=>$actorUserId])->save();
+            $staff->restore(); $staff->forceFill(['company_id'=>$companyId,'employment_ended_at'=>null,'termination_reason'=>null,'terminated_by'=>null,'updated_user_id'=>$actorUserId])->save();
             $rehireDate=$case->proposed_rehire_date->toDateString();
             $spell=HrEmploymentSpell::create(['staff_id'=>$staff->id,'company_id'=>$case->company_id,'employment_type_id'=>$assignment['employment_type_id']??null,'spell_number'=>(int)HrEmploymentSpell::query()->where('staff_id',$staff->id)->max('spell_number')+1,'joined_at'=>$rehireDate,'service_date'=>$rehireDate,'rehire_date'=>$rehireDate,'status'=>'active','gratuity_service_start'=>$rehireDate,'gratuity_service_decision'=>$case->prior_service_decisions['gratuity']??'New gratuity-service clock required.','prior_service_decisions'=>$case->prior_service_decisions,'created_user_id'=>$actorUserId]);
             if (!empty($assignment['position_id'])||!empty($assignment['organization_unit_id'])) $this->createAssignment($staff,$spell,$assignment,$actorUserId,'rehire');
