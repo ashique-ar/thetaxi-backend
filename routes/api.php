@@ -1163,7 +1163,6 @@ Route::middleware(['auth:api'])->group(function () {
         Route::post('periods/{periodId}/transition', [AttendanceResultController::class, 'transitionPeriod'])->whereUuid('periodId')->middleware('permission:hr.attendance.periods.manage|hr.attendance.periods.reopen');
     });
     Route::prefix('hr/workforce')->middleware('business.module:hr')->group(function () {
-        Route::get('references', [WorkforceController::class, 'references'])->middleware('permission:hr.leave.view|hr.leave.request|hr.leave.config.manage|hr.leave.config.approve|hr.work-requests.view|hr.work-requests.request|hr.work-requests.config.manage|hr.work-requests.config.approve|hr.timesheets.view|hr.timesheets.manage');
         Route::get('staff-options', [WorkforceController::class, 'staffOptions'])->middleware('permission:hr.leave.view|hr.leave.request|hr.leave.config.manage|hr.leave.config.approve|hr.work-requests.view|hr.work-requests.request|hr.work-requests.config.manage|hr.work-requests.config.approve|hr.timesheets.view|hr.timesheets.manage');
         Route::get('leave-policy-options', [WorkforceController::class, 'leavePolicyOptions'])->middleware('permission:hr.leave.view|hr.leave.request|hr.leave.config.manage|hr.leave.config.approve');
         Route::get('leave-assignment-policy-options', [WorkforceController::class, 'leaveAssignmentPolicyOptions'])->middleware('permission:hr.leave.config.manage|hr.leave.config.approve');
