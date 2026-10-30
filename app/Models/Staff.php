@@ -102,11 +102,6 @@ class Staff extends BaseModel
         return $this->belongsTo(Country::class);
     }
 
-    public function company()
-    {
-        return $this->belongsTo(Company::class);
-    }
-
     /**
      * Get the staff's state.
      *

@@ -32,7 +32,9 @@ return new class extends Migration
 
         foreach (Schema::getIndexes('hr_attendance_periods') as $index) {
             if (in_array('company_id', $index['columns'], true)) {
-                Schema::table('hr_attendance_periods', fn (Blueprint $table) => $table->dropIndex($index['name']));
+                Schema::table('hr_attendance_periods', fn (Blueprint $table) => $index['unique']
+                    ? $table->dropUnique($index['name'])
+                    : $table->dropIndex($index['name']));
             }
         }
 
