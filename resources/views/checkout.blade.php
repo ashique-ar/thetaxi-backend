@@ -201,15 +201,6 @@
                                 </div>
                                 <div class="checkout-form">
                                     <div class="row">
-                                        <div class="col-12" id="checkout-contact-method" @if (Auth::user()?->email && Auth::user()?->phone) hidden @endif>
-                                            <fieldset class="border-0 p-0 m-0">
-                                                <legend class="form-label fw-semibold mb-2">Preferred contact method</legend>
-                                                <div class="d-flex flex-wrap gap-2">
-                                                    <label class="btn btn-outline-secondary rounded-pill px-3"><input class="form-check-input me-1" type="radio" name="contact_method" value="mobile" @checked(old('contact_method', Auth::user()?->email ? 'email' : 'mobile') === 'mobile')> Mobile</label>
-                                                    <label class="btn btn-outline-secondary rounded-pill px-3"><input class="form-check-input me-1" type="radio" name="contact_method" value="email" @checked(old('contact_method', Auth::user()?->email ? 'email' : 'mobile') === 'email')> Email</label>
-                                                </div>
-                                            </fieldset>
-                                        </div>
                                         <div class="col-md-6">
                                             <div class="form-inner two mb-25">
                                                 <label>First Name*</label>
@@ -3176,8 +3167,6 @@
             const status = document.getElementById('customer-email-code-status');
             const customerChoice = document.getElementById('checkout-customer-choice');
             const customerKindInputs = document.querySelectorAll('input[name="checkout_customer_kind"]');
-            const contactMethodInputs = document.querySelectorAll('input[name="contact_method"]');
-            const contactMethodPanel = document.getElementById('checkout-contact-method');
             const checkoutPhoneField = document.getElementById('checkout-phone-field');
             const checkoutEmailField = document.getElementById('checkout-email-field');
             const returningPanel = document.getElementById('returning-customer-panel');
@@ -3238,18 +3227,7 @@
                 if (paymentContactRequirement) paymentContactRequirement.hidden = !blocked;
                 if (checkoutSubmitButton) checkoutSubmitButton.disabled = blocked;
             };
-            const syncContactMethod = () => {
-                const paymentType = document.querySelector('input[name="payment_type"]:checked')?.value || 'full';
-                const requiresOnlineContact = onlinePaymentAvailable && ['full', 'advance'].includes(paymentType);
-                const accountHasBothContacts = Boolean(accountContactMethod && accountHasPhone);
-                const keepAccountContact = accountContactMethod && (accountHasBothContacts || !requiresOnlineContact);
-                const method = hasVerifiedCustomer
-                    ? (emailInput.value ? 'email' : 'mobile')
-                    : (keepAccountContact || document.querySelector('input[name="contact_method"]:checked')?.value || 'mobile');
-                if (hasVerifiedCustomer || keepAccountContact) {
-                    contactMethodInputs.forEach(input => { input.checked = input.value === method; });
-                }
-                if (contactMethodPanel) contactMethodPanel.hidden = hasVerifiedCustomer || Boolean(keepAccountContact);
+            const syncContactFields = () => {
                 if (checkoutPhoneField) checkoutPhoneField.hidden = false;
                 if (checkoutEmailField) checkoutEmailField.hidden = false;
                 phoneInput.disabled = false;
@@ -3320,7 +3298,7 @@
                 else phoneInput.value = customer.phone || '';
                 phoneInput.readOnly = Boolean(customer.phone);
                 if (window.validateCheckoutPhoneNumber) window.validateCheckoutPhoneNumber();
-                syncContactMethod();
+                syncContactFields();
                 resetButton.hidden = false;
                 showSavedDetailsMessage('Saved details loaded. Check them and update anything that has changed.');
             };
@@ -3340,9 +3318,7 @@
                 phoneInput.readOnly = false;
                 if (window.checkoutIntlTelInput) window.checkoutIntlTelInput.setNumber('');
                 else phoneInput.value = '';
-                const mobileChoice = document.querySelector('input[name="contact_method"][value="mobile"]');
-                if (mobileChoice) mobileChoice.checked = true;
-                syncContactMethod();
+                syncContactFields();
                 resetButton.hidden = true;
                 if (verifiedStatus) verifiedStatus.hidden = true;
                 const newCustomerOption = document.querySelector('input[name="checkout_customer_kind"][value="new"]');
@@ -3405,16 +3381,15 @@
                 syncCustomerChoice();
             }));
             lookupChannelInputs.forEach(input => input.addEventListener('change', syncLookupChannel));
-            contactMethodInputs.forEach(input => input.addEventListener('change', syncContactMethod));
             document.querySelectorAll('input[name="payment_type"]').forEach(input => input.addEventListener('change', () => {
-                syncContactMethod();
+                syncContactFields();
                 syncPaymentContactRequirement();
             }));
             emailInput.addEventListener('input', syncPaymentContactRequirement);
             phoneInput.addEventListener('input', syncPaymentContactRequirement);
             phoneInternationalInput.addEventListener('change', syncPaymentContactRequirement);
             syncLookupChannel();
-            syncContactMethod();
+            syncContactFields();
             syncCustomerChoice();
             sendCodeButton?.addEventListener('click', requestCode);
 

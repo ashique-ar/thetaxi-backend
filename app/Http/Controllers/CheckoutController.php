@@ -580,13 +580,6 @@ class CheckoutController extends Controller
         if (is_string($request->input('email'))) {
             $request->merge(['email' => strtolower($request->input('email'))]);
         }
-        $contactMethod = Auth::check() && filled(Auth::user()->email) && filled(Auth::user()->phone)
-            ? 'email'
-            : $request->input('contact_method', 'mobile');
-        if (! in_array($contactMethod, ['email', 'mobile'], true)) {
-            $contactMethod = 'mobile';
-        }
-        $request->merge(['contact_method' => $contactMethod]);
         $request->merge([
             'identification' => filled($request->input('identification'))
                 ? strtoupper(trim((string) $request->input('identification')))
@@ -608,7 +601,6 @@ class CheckoutController extends Controller
 
         // Define validation rules
         $rules = [
-            'contact_method' => ['required', 'in:email,mobile'],
             'payment_type' => 'required|in:' . implode(',', $allowedPaymentTypes),
             'first_name' => ['required', 'string', 'max:255', 'regex:/^(?=.*\p{L})[\p{L}\p{M} .\x27?-]+$/u'],
             'last_name' => ['nullable', 'string', 'max:255', 'regex:/^(?=.*\p{L})[\p{L}\p{M} .\x27?-]+$/u'],
