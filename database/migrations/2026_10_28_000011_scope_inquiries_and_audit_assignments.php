@@ -2,7 +2,6 @@
 
 use Illuminate\Database\Migrations\Migration;
 use Illuminate\Database\Schema\Blueprint;
-use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Schema;
 
 return new class extends Migration
@@ -13,17 +12,6 @@ return new class extends Migration
             $table->foreignUuid('company_id')->nullable()->after('id')->constrained('companies')->restrictOnDelete();
             $table->index(['company_id', 'assigned_to'], 'inquiries_company_assignee_idx');
         });
-
-        DB::table('inquiries')->whereNull('company_id')->whereNotNull('assigned_to')->update([
-            'company_id' => $this->uniqueStaffCompanyFor('assigned_to'),
-        ]);
-        DB::table('inquiries')->whereNull('company_id')->whereNotNull('created_user_id')->update([
-            'company_id' => $this->uniqueStaffCompanyFor('created_user_id'),
-        ]);
-        $defaultCompanies = DB::table('companies')->where('is_active', true)->where('is_default', true)->whereNull('deleted_at')->pluck('id');
-        if ($defaultCompanies->count() === 1) {
-            DB::table('inquiries')->whereNull('company_id')->update(['company_id' => $defaultCompanies->first()]);
-        }
 
         Schema::create('inquiry_assignment_events', function (Blueprint $table): void {
             $table->uuid('id')->primary();
@@ -48,20 +36,5 @@ return new class extends Migration
             $table->dropIndex('inquiries_company_assignee_idx');
             $table->dropConstrainedForeignId('company_id');
         });
-    }
-
-    private function uniqueStaffCompanyFor(string $userColumn): \Illuminate\Database\Query\Builder
-    {
-        return DB::table('staff as candidate')
-            ->select('candidate.company_id')
-            ->whereColumn('candidate.user_id', 'inquiries.'.$userColumn)
-            ->whereNotNull('candidate.company_id')
-            ->whereNotExists(fn ($other) => $other->selectRaw('1')
-                ->from('staff as other')
-                ->whereColumn('other.user_id', 'candidate.user_id')
-                ->whereNotNull('other.company_id')
-                ->whereColumn('other.company_id', '<>', 'candidate.company_id'))
-            ->orderBy('candidate.company_id')
-            ->limit(1);
     }
 };
