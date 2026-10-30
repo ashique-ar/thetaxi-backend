@@ -97,7 +97,7 @@ class MyWorkController extends Controller
                 $workflowConfig = (($snapshot['policy_version'] ?? null) === 1)
                     ? $snapshot
                     : array_merge($serviceConfig ?? [], $snapshot ?? []);
-                if (!$returnStageResolver->resolve($workflowConfig, $companyId)['enable_return_stage']) continue;
+                if (!$returnStageResolver->resolve($workflowConfig)['enable_return_stage']) continue;
 
                 $returnCount++;
                 if ($returnCount <= 4) {

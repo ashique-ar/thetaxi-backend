@@ -611,11 +611,7 @@ class BookingFlowService
                 ->orWhere('slug', $candidate);
         });
         if ($this->shouldUsePublicServiceContext($params)) {
-            $companyId = app(WebsiteSettingsService::class)->resolveCompanyId();
-            $serviceType = $companyId
-                ? $find((clone $query)->forContext('public', 'company', (string) $companyId))->first()
-                : null;
-            $serviceType ??= $find((clone $query)->publicContext())->first();
+            $serviceType = $find((clone $query)->publicContext())->first();
         } else {
             $serviceType = $find($query)->first();
         }
@@ -12038,8 +12034,8 @@ class BookingFlowService
     private function businessLocalDayUtcRange(): array
     {
         $settings = app(WebsiteSettingsService::class);
-        $companyId = $settings->resolveCurrentCompanyId();
-        $timezone = trim((string) $settings->get('site_timezone', config('app.timezone', 'UTC'), $companyId));
+        $businessSettings = $settings->getMultiple(['site_timezone'], null);
+        $timezone = trim((string) ($businessSettings['site_timezone'] ?: config('app.timezone', 'UTC')));
         if (!TimezoneService::isValidTimezone($timezone)) {
             $timezone = config('app.timezone', 'UTC');
         }
@@ -13568,16 +13564,14 @@ class BookingFlowService
 
     private function createBookingInquiryFromSource(array $params, string $sourceType, ?string $sourceId, string $actorUserId): array
     {
-        [$booking, $created, $companyId] = DB::transaction(function () use ($params, $sourceType, $sourceId, $actorUserId): array {
-            $companyId = app(WebsiteSettingsService::class)->resolveCurrentCompanyId();
+        [$booking, $created] = DB::transaction(function () use ($params, $sourceType, $sourceId, $actorUserId): array {
             if ($sourceType === 'phone_call') {
                 $source = PhoneCall::query()->lockForUpdate()->findOrFail($sourceId);
-                $companyId ??= $source->company_id;
                 if ($source->booking_id) {
                     $existing = Booking::query()->whereKey($source->booking_id)->firstOrFail();
                     abort_unless(data_get($existing->workflow_data, 'request_origin.phone_call_id') === (string) $source->id,
                         409, 'This call is already linked to a different booking.');
-                    return [$existing, false, $companyId];
+                    return [$existing, false];
                 }
             } elseif ($sourceType === 'respond_io') {
                 $source = IntegrationWebhookEvent::query()->where('provider', 'respond_io')
@@ -13586,7 +13580,7 @@ class BookingFlowService
                     $existing = Booking::query()->whereKey($source->linked_booking_id)->firstOrFail();
                     abort_unless(data_get($existing->workflow_data, 'request_origin.respond_io_event_id') === (string) $source->id,
                         409, 'This message is already linked to a different booking.');
-                    return [$existing, false, $companyId];
+                    return [$existing, false];
                 }
                 abort_unless($source->status === 'received' && ! $source->linked_inquiry_id, 409, 'This message has already been reviewed.');
             }
@@ -13602,8 +13596,7 @@ class BookingFlowService
             foreach ($items as $index => &$item) {
                 $serviceTypeId = $item['service_type_id'] ?? $item['service_type'] ?? null;
                 abort_unless($serviceTypeId && ServiceType::query()->whereKey($serviceTypeId)
-                    ->where('owner_type', 'company')->where('is_active', true)
-                    ->when($companyId, fn ($query) => $query->where('owner_id', $companyId))->exists(),
+                    ->where('is_active', true)->whereNull('deleted_at')->exists(),
                     422, 'Trip '.($index + 1).' must use an active service from this installation.');
                 $item['service_type_id'] = $serviceTypeId;
                 unset($item['vehicle_id'], $item['driver_id'], $item['employee_id'], $item['specific_driver_id']);
@@ -13654,7 +13647,7 @@ class BookingFlowService
                 default => 'A staff member created a booking request from the customer profile.',
             };
             BookingActivity::query()->create([
-                'company_id' => $companyId, 'booking_id' => $booking->id, 'event_key' => 'booking_inquiry_created',
+                'booking_id' => $booking->id, 'event_key' => 'booking_inquiry_created',
                 'channel' => $activityChannel, 'result_status' => 'completed', 'source' => $sourceLabel,
                 'title' => 'Booking request received', 'detail' => $sourceTitle,
                 'idempotency_key' => 'booking-inquiry-created:'.$booking->id,
@@ -13681,12 +13674,12 @@ class BookingFlowService
                 }
             }
 
-            return [$booking->fresh(['customer', 'bookingItems', 'serviceType', 'vehicleGroup']), true, $companyId];
+            return [$booking->fresh(['customer', 'bookingItems', 'serviceType', 'vehicleGroup']), true];
         }, 3);
 
         if ($created) app(BookingResponsibilityService::class)->notifyBookingCreated($booking);
 
-        return ['booking' => $booking, 'duplicate' => ! $created, 'company_id' => $companyId];
+        return ['booking' => $booking, 'duplicate' => ! $created];
     }
 
     private function hasDraftPricingInputs(array $params): bool

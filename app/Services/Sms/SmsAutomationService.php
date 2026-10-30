@@ -796,10 +796,15 @@ class SmsAutomationService
     {
         if (str_contains($template, '{company_')) {
             $websiteSettings = app(\App\Services\WebsiteSettingsService::class);
+            $businessSettings = $websiteSettings->getMultiple([
+                'company_name',
+                'company_phone',
+                'company_website',
+            ], null);
             $variables += [
-                'company_name' => $websiteSettings->get('company_name', config('app.name')),
-                'company_phone' => $websiteSettings->get('company_phone', ''),
-                'company_website' => $websiteSettings->get('company_website', config('app.url')),
+                'company_name' => $businessSettings['company_name'] ?: config('app.name'),
+                'company_phone' => $businessSettings['company_phone'] ?: '',
+                'company_website' => $businessSettings['company_website'] ?: config('app.url'),
             ];
         }
         $replacements = [];

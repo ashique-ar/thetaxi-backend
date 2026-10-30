@@ -16,7 +16,7 @@ class BookingChannelController extends Controller
 {
     public function __construct()
     {
-        $this->middleware('permission:booking-channels.view|bookings.create')->only(['index']);
+        $this->middleware('permission:booking-channels.view|booking-channels.delete|bookings.create')->only(['index']);
         $this->middleware('permission:booking-channels.view')->only(['show']);
         $this->middleware('permission:booking-channels.create')->only(['store']);
         $this->middleware('permission:booking-channels.edit')->only(['update']);
@@ -77,6 +77,11 @@ class BookingChannelController extends Controller
     public function destroy(BookingChannel $bookingChannel): JsonResponse
     {
         $bookingChannel->delete();
+        if (!BookingChannel::where('is_active', true)->where('is_default', true)->exists()) {
+            $fallback = BookingChannel::where('is_active', true)->orderBy('name')->first();
+            $fallback?->update(['is_default' => true]);
+        }
+
         return response()->json([
             'status' => 'success',
             'message' => 'Booking channel deleted'

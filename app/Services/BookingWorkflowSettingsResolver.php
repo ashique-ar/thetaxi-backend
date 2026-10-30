@@ -11,11 +11,11 @@ class BookingWorkflowSettingsResolver
     {
     }
 
-    public function resolve(?array $serviceConfig = null, ?string $companyId = null): array
+    public function resolve(?array $serviceConfig = null): array
     {
         // Version distinguishes frozen booking policies from legacy service-level overrides.
         if (($serviceConfig['policy_version'] ?? null) === 1) {
-            $business = $this->businessDefaults($companyId);
+            $business = $this->businessDefaults();
             return [
                 'enable_return_stage' => $business['enable_return_stage'] && (bool) ($serviceConfig['return_stage_enabled'] ?? false),
                 'enable_qc_stage' => $business['enable_qc_stage'] && (bool) ($serviceConfig['qc_stage_enabled'] ?? false),
@@ -28,7 +28,7 @@ class BookingWorkflowSettingsResolver
             ];
         }
 
-        $defaults = $this->businessDefaults($companyId);
+        $defaults = $this->businessDefaults();
         $settings = $defaults;
 
         foreach ([
@@ -62,10 +62,10 @@ class BookingWorkflowSettingsResolver
         return $settings;
     }
 
-    public function preview(array $serviceConfig, ?string $companyId = null): array
+    public function preview(array $serviceConfig): array
     {
-        $defaults = $this->businessDefaults($companyId);
-        $effective = $this->resolve($serviceConfig, $companyId);
+        $defaults = $this->businessDefaults();
+        $effective = $this->resolve($serviceConfig);
         $sources = [];
 
         foreach ([
@@ -106,13 +106,12 @@ class BookingWorkflowSettingsResolver
         ];
     }
 
-    public function assertCanDisableStage(string $companyId, array $stageKeys): void
+    public function assertCanDisableStage(array $stageKeys): void
     {
         if (!Schema::hasTable('bookings') || !Schema::hasTable('booking_items')) return;
 
         $openItems = DB::table('booking_items as item')
             ->join('bookings as booking', 'booking.id', '=', 'item.booking_id')
-            ->where(fn ($scope) => \App\Services\CompanyIdScope::constrain($scope, 'booking.company_id', $companyId))
             ->whereNull('booking.deleted_at')->whereNull('item.deleted_at')->whereNull('item.completed_at')
             ->whereNotIn('booking.status', ['completed', 'cancelled', 'canceled', 'booking_cancelled', 'booking_rejected', 'rejected', 'inquiry_cancelled', 'inquiry_canceled'])
             ->where(fn ($status) => $status->whereNull('item.status')->orWhereNotIn('item.status', ['completed', 'cancelled', 'canceled', 'booking_cancelled', 'booking_rejected', 'rejected']))
@@ -128,7 +127,7 @@ class BookingWorkflowSettingsResolver
             ? collect()
             : DB::table('service_types')->whereIn('id', $legacyServiceIds)->pluck('workflow_config', 'id');
 
-        $affected = $openItems->filter(function ($item) use ($companyId, $stageKeys, $serviceConfigs): bool {
+        $affected = $openItems->filter(function ($item) use ($stageKeys, $serviceConfigs): bool {
             $snapshot = is_array($item->workflow_config_snapshot)
                 ? $item->workflow_config_snapshot
                 : (json_decode((string) $item->workflow_config_snapshot, true) ?: []);
@@ -141,7 +140,7 @@ class BookingWorkflowSettingsResolver
             } else {
                 $config = $serviceConfigs->get($item->service_type_id);
                 $config = is_array($config) ? $config : (json_decode((string) $config, true) ?: null);
-                $effective = $this->resolve($config, $companyId);
+                $effective = $this->resolve($config);
             }
 
             foreach ($stageKeys as $stageKey) {
@@ -157,20 +156,20 @@ class BookingWorkflowSettingsResolver
         }
 
         if (in_array('enable_maintenance_stage', $stageKeys, true) && Schema::hasTable('booking_activities')) {
-            $pendingMaintenance = DB::table('booking_activities')->where(fn ($scope) => \App\Services\CompanyIdScope::constrain($scope, 'company_id', $companyId))->whereNull('deleted_at')
+            $pendingMaintenance = DB::table('booking_activities')->whereNull('deleted_at')
                 ->where('event_key', 'post_trip_maintenance')->where('result_status', 'pending')->exists();
             abort_unless(!$pendingMaintenance, 409, 'Maintenance cannot be turned off while completed trips still have maintenance work waiting. Finish or clear those maintenance tasks first.');
         }
     }
 
-    private function businessDefaults(?string $companyId = null): array
+    private function businessDefaults(): array
     {
-        $enableReturn = $this->enabled('feature_vehicle_return_management_enabled', $companyId);
+        $enableReturn = $this->enabled('feature_vehicle_return_management_enabled');
         return [
             'enable_return_stage' => $enableReturn,
-            'enable_qc_stage' => $this->enabled('assignment_enable_qc_stage', $companyId) && $enableReturn,
-            'enable_maintenance_stage' => $this->enabled('assignment_enable_maintenance_stage', $companyId),
-            'require_signed_agreement' => $this->enabled('booking_signed_agreement_required', $companyId, true),
+            'enable_qc_stage' => $this->enabled('assignment_enable_qc_stage') && $enableReturn,
+            'enable_maintenance_stage' => $this->enabled('assignment_enable_maintenance_stage'),
+            'require_signed_agreement' => $this->enabled('booking_signed_agreement_required', true),
             'require_driver_license' => false,
             'require_customer_identity_document' => false,
             'require_booking_approval' => false,
@@ -178,9 +177,9 @@ class BookingWorkflowSettingsResolver
         ];
     }
 
-    private function enabled(string $key, ?string $companyId = null, bool $default = false): bool
+    private function enabled(string $key, bool $default = false): bool
     {
-        $value = $this->websiteSettings->get($key, $default, $companyId);
+        $value = $this->websiteSettings->getMultiple([$key], null)[$key] ?? $default;
         if (is_bool($value)) return $value;
         if (is_numeric($value)) return (int) $value === 1;
         return in_array(strtolower(trim((string) $value)), ['1', 'true', 'yes', 'on', 'enabled'], true);

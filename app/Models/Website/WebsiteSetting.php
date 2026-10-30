@@ -40,7 +40,7 @@ class WebsiteSetting extends BaseModel
             };
             if ($stageKeys) {
                 app(\App\Services\BookingWorkflowSettingsResolver::class)
-                    ->assertCanDisableStage((string) $setting->company_id, $stageKeys);
+                    ->assertCanDisableStage($stageKeys);
             }
         });
     }
