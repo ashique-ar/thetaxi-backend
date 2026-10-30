@@ -15,9 +15,7 @@ use App\Models\DriverAssignment;
 use App\Models\Driver\Driver;
 use App\Services\BookingPaymentLedgerService;
 use App\Services\BookingFlowService;
-use App\Services\CompanySettingsAccessService;
 use App\Services\BookingWorkflowSettingsResolver;
-use App\Services\WebsiteSettingsService;
 use App\Services\TimezoneService;
 use Carbon\CarbonImmutable;
 use Illuminate\Http\JsonResponse;
@@ -29,12 +27,7 @@ class BookingExtensionController extends Controller
 {
     public function index(Request $request): JsonResponse
     {
-        $companyId = app(WebsiteSettingsService::class)->resolveCurrentCompanyId();
-        abort_unless($companyId, 409, 'Select a business before reviewing extension requests.');
-        app(CompanySettingsAccessService::class)->assertCanAccess($request->user(), (string) $companyId);
-
         $requests = BookingExtensionRequest::query()
-            ->where(fn ($scope) => \App\Services\CompanyIdScope::constrain($scope, 'company_id', (string) $companyId))
             ->where('status', 'pending')
             ->with([
                 'booking:id,booking_number,customer_id',
@@ -57,18 +50,13 @@ class BookingExtensionController extends Controller
             'notes' => ['nullable', 'string', 'max:3000'],
         ]);
 
-        $companyId = app(WebsiteSettingsService::class)->resolveCurrentCompanyId();
-        abort_unless($companyId, 409, 'Select a business before requesting an extension.');
-        app(CompanySettingsAccessService::class)->assertCanAccess($request->user(), (string) $companyId);
-
-        $extension = DB::transaction(function () use ($data, $request, $companyId, $bookingItemId) {
+        $extension = DB::transaction(function () use ($data, $request, $bookingItemId) {
             $bookingQuery = Booking::query()->whereHas('bookingItems', fn ($query) => $query->whereKey($bookingItemId));
-            \App\Services\CompanyBookingScope::constrain($bookingQuery, 'bookings', (string) $companyId);
             $booking = $bookingQuery->lockForUpdate()->firstOrFail();
             $item = BookingItem::query()->where('booking_id', $booking->id)->whereKey($bookingItemId)->lockForUpdate()->firstOrFail();
             abort_unless(BookingLifecycleStatus::tryFrom((string) $booking->status) === BookingLifecycleStatus::ONGOING_ACTIVE, 409,
                 'Only an active rental can request an extension.');
-            $workflow = app(BookingWorkflowSettingsResolver::class)->resolve($item->workflow_config_snapshot, (string) $companyId);
+            $workflow = app(BookingWorkflowSettingsResolver::class)->resolve($item->workflow_config_snapshot);
             abort_unless($workflow['enable_return_stage'], 422, 'This service does not use rental return extensions.');
 
             if (BookingExtensionRequest::query()->where('booking_item_id', $item->id)->where('status', 'pending')->exists()) {
@@ -85,7 +73,6 @@ class BookingExtensionController extends Controller
             }
 
             $extension = BookingExtensionRequest::create([
-                'company_id' => $companyId,
                 'booking_id' => $booking->id,
                 'booking_item_id' => $item->id,
                 'current_end_at' => $currentEnd,
@@ -97,7 +84,6 @@ class BookingExtensionController extends Controller
             ]);
 
             BookingActivity::create([
-                'company_id' => $companyId,
                 'booking_id' => $booking->id,
                 'booking_item_id' => $item->id,
                 'event_key' => 'rental_extension_requested',
@@ -128,18 +114,13 @@ class BookingExtensionController extends Controller
             'review_notes' => ['required', 'string', 'max:3000'],
             'additional_charge' => ['required_if:decision,approved', 'numeric', 'min:0', 'max:99999999.99'],
         ]);
-        $companyId = app(WebsiteSettingsService::class)->resolveCurrentCompanyId();
-        abort_unless($companyId, 409, 'Select a business before reviewing extension requests.');
-        app(CompanySettingsAccessService::class)->assertCanAccess($request->user(), (string) $companyId);
-
-        $extension = DB::transaction(function () use ($data, $request, $companyId, $extensionId) {
-            $extension = BookingExtensionRequest::query()->where(fn ($scope) => \App\Services\CompanyIdScope::constrain($scope, 'company_id', (string) $companyId))
-                ->whereKey($extensionId)->lockForUpdate()->firstOrFail();
+        $extension = DB::transaction(function () use ($data, $request, $extensionId) {
+            $extension = BookingExtensionRequest::query()->whereKey($extensionId)->lockForUpdate()->firstOrFail();
             abort_unless($extension->status === 'pending', 409, 'This extension request has already been reviewed.');
             $booking = Booking::query()->whereKey($extension->booking_id)->lockForUpdate()->firstOrFail();
             $item = BookingItem::query()->where('booking_id', $booking->id)->whereKey($extension->booking_item_id)->lockForUpdate()->firstOrFail();
             abort_unless(BookingLifecycleStatus::tryFrom((string) $booking->status) === BookingLifecycleStatus::ONGOING_ACTIVE, 409, 'This rental is no longer active.');
-            abort_unless(app(BookingWorkflowSettingsResolver::class)->resolve($item->workflow_config_snapshot, (string) $companyId)['enable_return_stage'], 409, 'This service no longer supports rental extensions.');
+            abort_unless(app(BookingWorkflowSettingsResolver::class)->resolve($item->workflow_config_snapshot)['enable_return_stage'], 409, 'This service no longer supports rental extensions.');
             $currentEnd = CarbonImmutable::parse($item->getAttributes()['to_date'], 'UTC');
             abort_unless($currentEnd->equalTo(CarbonImmutable::parse($extension->current_end_at)->utc()), 409, 'The rental return time changed after this request was submitted.');
 
@@ -214,7 +195,7 @@ class BookingExtensionController extends Controller
             }
 
             $extension->update(['status' => $data['decision'], 'additional_charge' => $data['decision'] === 'approved' ? round((float) $data['additional_charge'], 2) : null, 'charge_currency' => $data['decision'] === 'approved' ? (strtoupper((string) $booking->currency) ?: null) : null, 'review_notes' => trim($data['review_notes']), 'reviewed_by' => (string) $request->user()->id, 'reviewed_at' => now()]);
-            BookingActivity::create(['company_id' => $companyId, 'booking_id' => $booking->id, 'booking_item_id' => $item->id, 'event_key' => 'rental_extension_'.$data['decision'], 'channel' => 'system', 'result_status' => $data['decision'], 'source' => 'portal', 'title' => 'Rental extension '.$data['decision'], 'detail' => trim($data['review_notes']), 'idempotency_key' => 'booking-extension-decision-'.$extension->id, 'meta' => ['extension_request_id' => $extension->id, 'previous_end_at' => $currentEnd->toIso8601String(), 'requested_end_at' => $extension->requested_end_at->toIso8601String(), 'additional_charge' => $extension->additional_charge], 'event_at' => now()]);
+            BookingActivity::create(['booking_id' => $booking->id, 'booking_item_id' => $item->id, 'event_key' => 'rental_extension_'.$data['decision'], 'channel' => 'system', 'result_status' => $data['decision'], 'source' => 'portal', 'title' => 'Rental extension '.$data['decision'], 'detail' => trim($data['review_notes']), 'idempotency_key' => 'booking-extension-decision-'.$extension->id, 'meta' => ['extension_request_id' => $extension->id, 'previous_end_at' => $currentEnd->toIso8601String(), 'requested_end_at' => $extension->requested_end_at->toIso8601String(), 'additional_charge' => $extension->additional_charge], 'event_at' => now()]);
             return $extension->fresh();
         });
         return response()->json(['status' => 'success', 'data' => $extension]);

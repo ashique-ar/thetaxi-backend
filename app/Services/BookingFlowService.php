@@ -4162,10 +4162,8 @@ class BookingFlowService
 
             $this->recordPortalPromoUsage($booking, $params);
             $actor = Auth::user();
-            $activityCompanyId = $booking->company_id;
             $changedFields = $this->bookingUpdateChangedFieldLabels($original, $originalItemAttributes, $booking);
             BookingActivity::query()->create([
-                'company_id' => $activityCompanyId,
                 'booking_id' => $booking->id,
                 'event_key' => 'booking_updated',
                 'channel' => 'system',
@@ -4199,7 +4197,6 @@ class BookingFlowService
                         ? trim(($vehicle->title ?: 'Vehicle').($vehicle->license_plate ? ' · '.$vehicle->license_plate : ''))
                         : 'Unassigned';
                     BookingActivity::query()->create([
-                        'company_id' => $activityCompanyId,
                         'booking_id' => $booking->id,
                         'booking_item_id' => $item->id,
                         'event_key' => 'booking_vehicle_changed',

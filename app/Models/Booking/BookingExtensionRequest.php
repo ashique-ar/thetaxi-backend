@@ -9,7 +9,7 @@ use Illuminate\Database\Eloquent\Relations\BelongsTo;
 class BookingExtensionRequest extends BaseModel
 {
     protected $fillable = [
-        'company_id', 'booking_id', 'booking_item_id', 'current_end_at', 'requested_end_at',
+        'booking_id', 'booking_item_id', 'current_end_at', 'requested_end_at',
         'reason', 'notes', 'status', 'additional_charge', 'charge_currency', 'requested_by', 'reviewed_by', 'reviewed_at', 'review_notes',
     ];
 

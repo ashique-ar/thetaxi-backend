@@ -645,7 +645,6 @@ trait BookingSubmissionTrait
                         $quotationEmailStatus = 'sent';
                         try {
                             BookingActivity::create([
-                                    'company_id' => $booking->company_id,
                                     'booking_id' => $booking->id,
                                     'event_key' => 'quotation_email_sent',
                                     'channel' => 'email',
@@ -767,8 +766,6 @@ trait BookingSubmissionTrait
             'queue' => 'nullable|string|in:needs_approval,needs_assignment,needs_responsible_owner,needs_responsible_owner_past_target,ready_to_dispatch,pickup_today,dropoff_today,active,return_due,qc_pending,repair_pending,ready_to_complete,payment_pending,payment_attention,payment_confirmation_pending',
         ]);
 
-        $companyId = app(\App\Services\WebsiteSettingsService::class)->resolveCurrentCompanyId();
-
         $queue = $request->input('queue', $request->input('operations_queue'));
         if ($queue === 'needs_responsible_owner_past_target') {
             abort_unless(app(\App\Services\Sales\SalesPolicySettingsService::class)
@@ -784,7 +781,6 @@ trait BookingSubmissionTrait
             } elseif ($request->boolean('mine_only')) {
                 $filters['assigned_to'] = $request->user()->id;
             }
-            if ($companyId) $filters['company_id'] = $companyId;
             $bookings = $this->bookingFlowService->getFilteredBookings($filters);
 
             return response()->json([
@@ -833,7 +829,6 @@ trait BookingSubmissionTrait
             if ($previousOwnerId !== $newOwnerId) {
                 $booking->forceFill(['responsible_user_id' => $newOwnerId, 'updated_user_id' => $request->user()->id])->save();
                 BookingActivity::create([
-                    'company_id' => $booking->company_id,
                     'booking_id' => $booking->id,
                     'event_key' => 'booking_responsible_user_changed',
                     'channel' => 'system',
@@ -874,7 +869,6 @@ trait BookingSubmissionTrait
         ]);
 
         $recordType = $data['record_type'];
-        $companyId = app(\App\Services\WebsiteSettingsService::class)->resolveCurrentCompanyId();
         $filters = [
             'per_page' => min(50, (int) ($data['per_page'] ?? 25)),
             'search' => trim((string) ($data['search'] ?? '')),
@@ -883,7 +877,6 @@ trait BookingSubmissionTrait
             'sort_direction' => 'desc',
             'operations_queue' => $data['operations_queue'] ?? null,
         ];
-        if ($companyId) $filters['company_id'] = $companyId;
         if (! empty($data['selected_id'])) {
             $filters[$recordType === 'service_type' ? 'service_type' : $recordType . '_id'] = $data['selected_id'];
             unset($filters['search']);

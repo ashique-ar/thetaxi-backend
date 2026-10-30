@@ -288,7 +288,6 @@ class BookingLifecycleController extends Controller
             return BookingActivity::firstOrCreate(
                 ['idempotency_key' => 'return-no-show-'.$item->id.'-'.$scheduledReturn->format('YmdHis')],
                 [
-                    'company_id' => $booking->company_id,
                     'booking_id' => $booking->id,
                     'booking_item_id' => $item->id,
                     'event_key' => 'rental_return_no_show',

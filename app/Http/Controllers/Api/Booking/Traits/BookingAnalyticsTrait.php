@@ -17,7 +17,7 @@ trait BookingAnalyticsTrait
             'filters' => 'nullable|array',
             'dashboard_scope' => 'nullable|string|in:standard',
         ]);
-        $params = $this->withSelectedCompany($request);
+        $params = $request->all();
 
         try {
             $stats = $this->bookingFlowService->getDashboardStats($params);
@@ -46,7 +46,7 @@ trait BookingAnalyticsTrait
             'date_to' => 'required|date|after_or_equal:date_from',
             'group_by' => 'nullable|string|in:service_type,vehicle_group,customer_type,status'
         ]);
-        $params = $this->withSelectedCompany($request);
+        $params = $request->all();
 
         try {
             $trends = $this->bookingFlowService->getBookingTrends($params);
@@ -75,7 +75,7 @@ trait BookingAnalyticsTrait
             'breakdown' => 'nullable|string|in:service_type,vehicle_group,customer_segment',
             'include_projections' => 'nullable|boolean'
         ]);
-        $params = $this->withSelectedCompany($request);
+        $params = $request->all();
 
         try {
             $analytics = $this->bookingFlowService->getRevenueAnalytics($params);
@@ -105,7 +105,7 @@ trait BookingAnalyticsTrait
             'vehicle_group_id' => 'nullable|uuid|exists:vehicle_groups,id',
             'include_idle_time' => 'nullable|boolean'
         ]);
-        $params = $this->withSelectedCompany($request);
+        $params = $request->all();
 
         try {
             $reports = $this->bookingFlowService->getUtilizationReports($params);
@@ -134,7 +134,7 @@ trait BookingAnalyticsTrait
             'date_to' => 'required|date|after_or_equal:date_from',
             'customer_segment' => 'nullable|string|in:corporate,individual,vip'
         ]);
-        $params = $this->withSelectedCompany($request);
+        $params = $request->all();
 
         try {
             $analytics = $this->bookingFlowService->getCustomerAnalytics($params);
@@ -163,16 +163,8 @@ trait BookingAnalyticsTrait
             'include_relations' => 'nullable|boolean'
         ]);
 
-        $companyId = app(\App\Services\WebsiteSettingsService::class)->resolveCurrentCompanyId();
-        abort_unless($companyId, 409, 'Select a business before exporting bookings.');
-        app(\App\Services\CompanySettingsAccessService::class)->assertCanAccess($request->user(), (string) $companyId);
-
         try {
             $params = $request->all();
-            $params['company_id'] = (string) $companyId;
-            if (! empty($params['filters'])) {
-                $params['filters']['company_id'] = (string) $companyId;
-            }
             $export = $this->bookingFlowService->exportBookings($params);
 
             return response()->json([
@@ -190,12 +182,4 @@ trait BookingAnalyticsTrait
         }
     }
 
-    private function withSelectedCompany(Request $request): array
-    {
-        $companyId = app(\App\Services\WebsiteSettingsService::class)->resolveCurrentCompanyId();
-        abort_unless($companyId, 409, 'Select a business to view its booking analytics.');
-        app(\App\Services\CompanySettingsAccessService::class)->assertCanAccess($request->user(), (string) $companyId);
-
-        return array_merge($request->all(), ['company_id' => (string) $companyId]);
-    }
 }

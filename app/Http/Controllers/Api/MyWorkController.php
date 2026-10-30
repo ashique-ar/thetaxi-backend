@@ -156,8 +156,7 @@ class MyWorkController extends Controller
             }
 
             if (Schema::hasTable('booking_extension_requests')) {
-                $extensionRequests = DB::table('booking_extension_requests')->where(fn ($scope) => \App\Services\CompanyIdScope::constrain($scope, 'company_id', $companyId))
-                    ->where('status', 'pending')->whereNull('deleted_at');
+                $extensionRequests = DB::table('booking_extension_requests')->where('status', 'pending')->whereNull('deleted_at');
                 $extensionCount = (int) (clone $extensionRequests)->count();
                 if ($extensionCount > 0) {
                     $queues[] = ['group' => 'assignment', 'title' => 'Rental extensions to review',
