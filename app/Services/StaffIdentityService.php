@@ -452,10 +452,9 @@ class StaffIdentityService
                     'event_at' => $now,
                 ]);
                 $bookingId = (string) $locked->id;
-                $companyId = $locked->company_id;
-                DB::afterCommit(static function () use ($bookingId, $companyId): void {
+                DB::afterCommit(static function () use ($bookingId): void {
                     $booking = Booking::query()->find($bookingId);
-                    if ($booking) app(BookingResponsibilityService::class)->notifyUnassignedBooking($booking, $companyId);
+                    if ($booking) app(BookingResponsibilityService::class)->notifyUnassignedBooking($booking);
                 });
                 $released++;
             }

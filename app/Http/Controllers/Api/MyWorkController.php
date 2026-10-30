@@ -124,7 +124,7 @@ class MyWorkController extends Controller
 
         if ($request->user()->can('bookings.view') && $request->user()->can('bookings.assign')) {
             $employeeWorkload = app(BookingResponsibilityService::class)
-                ->eligibleEmployeesWithOpenBookingCounts($companyId);
+                ->eligibleEmployeesWithOpenBookingCounts();
             $eligibleOwners = collect($employeeWorkload)->pluck('id')->all();
             $unassigned = DB::table('bookings as booking')->whereNull('booking.deleted_at')
                 ->whereIn('booking.status', $activeBookingStatuses)

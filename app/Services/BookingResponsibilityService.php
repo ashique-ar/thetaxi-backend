@@ -12,7 +12,7 @@ use Illuminate\Support\Facades\Log;
 
 class BookingResponsibilityService
 {
-    public function eligibleEmployees(?string $companyId = null)
+    public function eligibleEmployees()
     {
         $employees = DB::table('staff')->join('users', 'users.id', '=', 'staff.user_id')
             ->whereNull('staff.deleted_at')->where(fn ($employment) => $employment->whereNull('staff.employment_ended_at')->orWhere('staff.employment_ended_at', '>', now()))
@@ -24,9 +24,9 @@ class BookingResponsibilityService
         return $employees->whereIn('id', $canViewBookings)->values();
     }
 
-    public function eligibleEmployeesWithOpenBookingCounts(?string $companyId = null): array
+    public function eligibleEmployeesWithOpenBookingCounts(): array
     {
-        $employees = $this->eligibleEmployees($companyId);
+        $employees = $this->eligibleEmployees();
         $employeeIds = $employees->pluck('id')->map(fn ($id) => (string) $id)->all();
         $workload = collect();
         if ($employeeIds) {
@@ -44,21 +44,20 @@ class BookingResponsibilityService
         ])->all();
     }
 
-    public function eligibleEmployeeId(?string $userId, ?string $companyId = null): ?string
+    public function eligibleEmployeeId(?string $userId): ?string
     {
         if (!$userId) {
             return null;
         }
 
-        return $this->eligibleEmployees($companyId)->contains(fn ($employee) => (string) $employee->id === $userId)
+        return $this->eligibleEmployees()->contains(fn ($employee) => (string) $employee->id === $userId)
             ? $userId
             : null;
     }
 
     public function notifyResponsibleEmployee(Booking $booking): void
     {
-        $companyId = $this->companyIdFor($booking);
-        $userId = $this->eligibleEmployeeId($booking->responsible_user_id, $companyId);
+        $userId = $this->eligibleEmployeeId($booking->responsible_user_id);
         if (! $userId) return;
 
         User::query()->whereKey($userId)->first()?->notify(new BookingResponsibilityAssignedNotification($booking));
@@ -66,23 +65,21 @@ class BookingResponsibilityService
 
     public function notifyBookingCreated(Booking $booking): void
     {
-        $companyId = $this->companyIdFor($booking);
-        if ($this->eligibleEmployeeId($booking->responsible_user_id, $companyId)) {
+        if ($this->eligibleEmployeeId($booking->responsible_user_id)) {
             $this->notifyResponsibleEmployee($booking);
             return;
         }
 
-        $this->notifyUnassignedBooking($booking, $companyId);
+        $this->notifyUnassignedBooking($booking);
     }
 
-    public function notifyUnassignedBooking(Booking $booking, ?string $companyId = null): void
+    public function notifyUnassignedBooking(Booking $booking): void
     {
-        $companyId ??= $this->companyIdFor($booking);
         if (! in_array($booking->status, array_merge(['inquiry', 'inquiry_qualified'], BookingLifecycleStatus::activeOperationalValues()), true)) {
             return;
         }
 
-        if ($this->eligibleEmployeeId($booking->responsible_user_id, $companyId)) {
+        if ($this->eligibleEmployeeId($booking->responsible_user_id)) {
             return;
         }
 
@@ -97,15 +94,9 @@ class BookingResponsibilityService
         } catch (\Throwable $exception) {
             Log::warning('Unassigned website booking notification could not be created', [
                 'booking_id' => $booking->id,
-                'company_id' => $companyId,
                 'error' => $exception->getMessage(),
             ]);
         }
-    }
-
-    private function companyIdFor(Booking $booking): ?string
-    {
-        return $booking->company_id ? (string) $booking->company_id : null;
     }
 
 }

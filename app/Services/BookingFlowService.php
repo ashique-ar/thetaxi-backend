@@ -9647,13 +9647,6 @@ class BookingFlowService
                 'booking.corporateDivision:id,name',
             ]);
 
-        $companyId = $filters['company_id'] ?? app(WebsiteSettingsService::class)->resolveCurrentCompanyId();
-        if ($companyId) {
-            $query->whereHas('booking', fn ($bookingQuery) => CompanyBookingScope::constrain($bookingQuery, 'bookings', (string) $companyId));
-        } else {
-            $query->whereRaw('1 = 0');
-        }
-
         if (!empty($filters['corporate_id'])) {
             $query->whereHas('booking', function ($bookingQuery) use ($filters) {
                 $bookingQuery->where('corporate_account_id', $filters['corporate_id']);
@@ -11736,7 +11729,6 @@ class BookingFlowService
         [$startDate, $endDate] = $this->getDateRange($period, $dateFrom, $dateTo);
 
         $query = Booking::whereBetween('created_at', [$startDate, $endDate]);
-        $this->applyBookingCompanyFilter($query, $params);
 
         if (($params['dashboard_scope'] ?? null) === 'standard') {
             $query->whereNull('corporate_account_id');
@@ -11779,7 +11771,6 @@ class BookingFlowService
         $groupBy = $params['group_by'] ?? null;
 
         $query = Booking::whereBetween('created_at', [$dateFrom, $dateTo]);
-        $this->applyBookingCompanyFilter($query, $params);
 
         $trends = [];
         $current = $dateFrom->copy();
@@ -11848,7 +11839,6 @@ class BookingFlowService
 
         $query = Booking::whereBetween('created_at', [$dateFrom, $dateTo])
             ->where('status', 'completed');
-        $this->applyBookingCompanyFilter($query, $params);
 
         $revenueStats = (clone $query)
             ->selectRaw('SUM(COALESCE(total_actual, total_estimated, 0)) as total_revenue')
@@ -11910,7 +11900,6 @@ class BookingFlowService
 
         $baseQuery = Booking::with('customer')
             ->whereBetween('created_at', [$dateFrom, $dateTo]);
-        $this->applyBookingCompanyFilter($baseQuery, $params);
 
         if ($customerSegment) {
             $baseQuery->whereHas('customer', function ($q) use ($customerSegment) {
@@ -11943,13 +11932,6 @@ class BookingFlowService
         $includeRelations = $params['include_relations'] ?? false;
 
         $query = Booking::query();
-
-        $companyId = $filters['company_id'] ?? $params['company_id'] ?? app(WebsiteSettingsService::class)->resolveCurrentCompanyId();
-        if ($companyId) {
-            CompanyBookingScope::constrain($query, 'bookings', (string) $companyId);
-        } else {
-            $query->whereRaw('1 = 0');
-        }
 
         // Apply filters (reuse filtering logic)
         if (!empty($filters)) {
@@ -12155,7 +12137,6 @@ class BookingFlowService
     private function getRecentActivities(array $params, $startDate, $endDate): array
     {
         $bookings = Booking::query()->select('id');
-        $this->applyBookingCompanyFilter($bookings, $params);
         if (($params['dashboard_scope'] ?? null) === 'standard') {
             $bookings->whereNull('corporate_account_id');
         }
@@ -12169,14 +12150,10 @@ class BookingFlowService
 
     private function getDashboardAlerts(array $params): array
     {
-        $companyId = $params['company_id'] ?? app(WebsiteSettingsService::class)->resolveCurrentCompanyId();
-        $eligibleOwners = $companyId
-            ? app(BookingResponsibilityService::class)->eligibleEmployees((string) $companyId)->pluck('id')->map(fn ($id) => (string) $id)->all()
-            : [];
+        $eligibleOwners = app(BookingResponsibilityService::class)->eligibleEmployees()->pluck('id')->map(fn ($id) => (string) $id)->all();
         $unassigned = Booking::query()
             ->whereIn('status', array_merge(['inquiry', 'inquiry_qualified'], BookingLifecycleStatus::activeOperationalValues()))
             ->where(fn ($query) => $query->whereNull('responsible_user_id')->orWhereNotIn('responsible_user_id', $eligibleOwners));
-        $this->applyBookingCompanyFilter($unassigned, $params);
         if (($params['dashboard_scope'] ?? null) === 'standard') {
             $unassigned->whereNull('corporate_account_id');
         }
@@ -12189,17 +12166,6 @@ class BookingFlowService
             'route' => '/bookings/list',
             'query_params' => ['queue' => 'needs_responsible_owner'],
         ]] : [];
-    }
-
-    private function applyBookingCompanyFilter($query, array $params): void
-    {
-        $companyId = $params['company_id'] ?? app(WebsiteSettingsService::class)->resolveCurrentCompanyId();
-        if ($companyId) {
-            CompanyBookingScope::constrain($query, 'bookings', (string) $companyId);
-            return;
-        }
-
-        $query->whereRaw('1 = 0');
     }
 
     private function getTrendBreakdown($query, $groupBy, $metric): array

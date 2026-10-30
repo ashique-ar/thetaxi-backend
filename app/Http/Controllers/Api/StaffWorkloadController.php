@@ -68,7 +68,7 @@ class StaffWorkloadController extends Controller
             $available[] = 'active_bookings';
             $available[] = 'completed_bookings_30d';
             $statuses = BookingLifecycleStatus::activeOperationalValues();
-            $eligibleBookingOwners = app(BookingResponsibilityService::class)->eligibleEmployees((string) $companyId)->pluck('id')->map(fn ($id) => (string) $id)->all();
+            $eligibleBookingOwners = app(BookingResponsibilityService::class)->eligibleEmployees()->pluck('id')->map(fn ($id) => (string) $id)->all();
             $counts = DB::table('bookings as booking')->whereNull('booking.deleted_at')
                 ->whereIn('booking.status', $statuses)->whereIn('booking.responsible_user_id', $userIds)
                 ->whereIn('booking.responsible_user_id', $eligibleBookingOwners);
