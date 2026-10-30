@@ -41,15 +41,15 @@ class UpdateUserRequest extends FormRequest
                 ->symbols()
                 ->uncompromised()
             ],
-            'role_id' => ['sometimes', 'exists:roles,id'],
+            'role_id' => ['sometimes', Rule::exists('roles', 'id')->where('guard_name', config('permissions.canonical_guard', 'api'))],
             'agent_id' => ['sometimes', 'exists:agents,id'],
             'is_active' => ['sometimes', 'boolean'],
             'timezone' => ['sometimes', 'string', 'max:50'],
             'language' => ['sometimes', 'string', 'max:10'],
             'roles' => ['sometimes', 'array'],
-            'roles.*' => ['required', 'string', 'exists:roles,name'],
+            'roles.*' => ['required', 'string', Rule::exists('roles', 'name')->where('guard_name', config('permissions.canonical_guard', 'api'))],
             'permissions' => ['sometimes', 'array'],
-            'permissions.*' => ['required', 'string', 'exists:permissions,name'],
+            'permissions.*' => ['required', 'string', Rule::exists('permissions', 'name')->where('guard_name', config('permissions.canonical_guard', 'api'))],
             'profile_image' => ['sometimes', 'image', 'mimes:jpeg,png,jpg,gif', 'max:2048'],
             'remove_profile_image' => ['sometimes', 'boolean'],
         ];

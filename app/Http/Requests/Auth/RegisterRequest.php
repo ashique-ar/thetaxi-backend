@@ -3,6 +3,7 @@
 namespace App\Http\Requests\Auth;
 
 use Illuminate\Foundation\Http\FormRequest;
+use Illuminate\Validation\Rule;
 use Illuminate\Validation\Rules\Password;
 
 class RegisterRequest extends FormRequest
@@ -32,7 +33,7 @@ class RegisterRequest extends FormRequest
                     ->uncompromised()
             ],
             'password_confirmation' => ['required', 'same:password'],
-            'role_id' => ['nullable', 'exists:roles,id'],
+            'role_id' => ['nullable', Rule::exists('roles', 'id')->where('guard_name', config('permissions.canonical_guard', 'api'))],
             'agent_id' => ['nullable', 'exists:agents,id'],
             'timezone' => ['nullable', 'string', 'max:50'],
             'language' => ['nullable', 'string', 'max:10'],
@@ -130,7 +131,9 @@ class RegisterRequest extends FormRequest
      */
     private function getDefaultRoleId(): ?string
     {
-        $role = \Spatie\Permission\Models\Role::where('name', 'customer')->first();
+        $role = \Spatie\Permission\Models\Role::where('name', 'customer')
+            ->where('guard_name', config('permissions.canonical_guard', 'api'))
+            ->first();
         return $role ? $role->id : null;
     }
 }

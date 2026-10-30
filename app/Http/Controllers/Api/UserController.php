@@ -191,7 +191,7 @@ class UserController extends Controller
         $data = $request->validate([
             'user_ids' => ['required', 'array', 'min:1'], 'user_ids.*' => ['uuid', 'exists:users,id'],
             'action' => ['required', Rule::in(['activate', 'deactivate', 'delete', 'assign_role'])],
-            'role' => ['nullable', 'required_if:action,assign_role', 'string', 'exists:roles,name'],
+            'role' => ['nullable', 'required_if:action,assign_role', 'string', Rule::exists('roles', 'name')->where('guard_name', config('permissions.canonical_guard', 'api'))],
         ]);
         if ($data['action'] === 'assign_role') {
             $this->assertCanChangePrivilegedRoles([$data['role']]);
@@ -200,14 +200,17 @@ class UserController extends Controller
         $users = User::whereIn('id', $data['user_ids'])->get();
         if ($data['action'] === 'assign_role') {
             $existingPrivilegedRoles = $users->flatMap(fn (User $target) => $target->roles()
-                ->whereIn('name', ['admin', 'super-admin'])->pluck('name')->all())->all();
+                ->whereIn('name', ['admin', 'super-admin'])
+                ->where('guard_name', config('permissions.canonical_guard', 'api'))
+                ->pluck('name')->all())->all();
             $this->assertCanChangePrivilegedRoles(array_merge([$data['role']], $existingPrivilegedRoles));
         }
         DB::transaction(function () use ($users, $data) {
             foreach ($users as $user) {
                 if ($data['action'] === 'assign_role') {
                     $user = User::query()->whereKey($user->id)->lockForUpdate()->firstOrFail();
-                    $roles = Role::query()->where('name', $data['role'])->get();
+                    $roles = Role::query()->where('name', $data['role'])
+                        ->where('guard_name', config('permissions.canonical_guard', 'api'))->get();
                     $user->syncRoles($roles);
                     $this->userService->syncDirectRoleGrants($user, $roles);
                     continue;
@@ -282,7 +285,10 @@ class UserController extends Controller
         $data = $request->validated();
         if (array_key_exists('roles', $data) || array_key_exists('role_id', $data) || array_key_exists('permissions', $data)) {
             $this->assertCanChangePrivilegedRoles(
-                array_merge($this->roleIdentifiers($data), $user->roles()->whereIn('name', ['admin', 'super-admin'])->pluck('name')->all()),
+                array_merge($this->roleIdentifiers($data), $user->roles()
+                    ->whereIn('name', ['admin', 'super-admin'])
+                    ->where('guard_name', config('permissions.canonical_guard', 'api'))
+                    ->pluck('name')->all()),
                 array_key_exists('permissions', $data)
             );
         }
@@ -418,6 +424,7 @@ class UserController extends Controller
     {
         $directPermissions = Permission::query()
             ->join('model_has_permissions', 'permissions.id', '=', 'model_has_permissions.permission_id')
+            ->where('permissions.guard_name', config('permissions.canonical_guard', 'api'))
             ->where('model_has_permissions.model_type', User::class)
             ->where('model_has_permissions.model_id', $user->id)
             ->select('permissions.*')
@@ -426,6 +433,7 @@ class UserController extends Controller
         $rolePermissions = Permission::query()
             ->join('role_has_permissions', 'permissions.id', '=', 'role_has_permissions.permission_id')
             ->join('model_has_roles', 'role_has_permissions.role_id', '=', 'model_has_roles.role_id')
+            ->where('permissions.guard_name', config('permissions.canonical_guard', 'api'))
             ->where('model_has_roles.model_type', User::class)
             ->where('model_has_roles.model_id', $user->id)
             ->select('permissions.*')
@@ -480,9 +488,7 @@ class UserController extends Controller
     {
         $request->validate([
             'permissions' => ['required', 'array'],
-            'permissions.*' => ['required', 'string', 'exists:permissions,name'],
-            'apply_to_guards' => ['sometimes', 'array'],
-            'apply_to_guards.*' => ['string', Rule::in($this->supportedPermissionGuards())],
+            'permissions.*' => ['required', 'string', Rule::exists('permissions', 'name')->where('guard_name', config('permissions.canonical_guard', 'api'))],
         ]);
 
         try {
@@ -512,9 +518,7 @@ class UserController extends Controller
     {
         $request->validate([
             'permissions' => ['required', 'array'],
-            'permissions.*' => ['required', 'string', 'exists:permissions,name'],
-            'apply_to_guards' => ['sometimes', 'array'],
-            'apply_to_guards.*' => ['string', Rule::in($this->supportedPermissionGuards())],
+            'permissions.*' => ['required', 'string', Rule::exists('permissions', 'name')->where('guard_name', config('permissions.canonical_guard', 'api'))],
         ]);
 
         try {
@@ -545,6 +549,7 @@ class UserController extends Controller
             ->join('model_has_roles', 'roles.id', '=', 'model_has_roles.role_id')
             ->where('model_has_roles.model_type', User::class)
             ->where('model_has_roles.model_id', $user->id)
+            ->where('roles.guard_name', config('permissions.canonical_guard', 'api'))
             ->select('roles.*')
             ->get();
         $roleIds = $roles->pluck('id');
@@ -699,7 +704,7 @@ class UserController extends Controller
     {
         $request->validate([
             'roles' => ['required', 'array'],
-            'roles.*' => ['required'],
+            'roles.*' => ['required', Rule::exists('roles', 'id')->where('guard_name', config('permissions.canonical_guard', 'api'))],
             'auto_assign_permissions' => ['sometimes', 'boolean']
         ]);
         $this->assertCanChangePrivilegedRoles($this->roleIdentifiers($request->all()));
@@ -846,9 +851,10 @@ class UserController extends Controller
     public function revokeContextRole(Request $request, User $user, $contextId): JsonResponse
     {
         $request->validate([
-            'role_id' => ['required']
+            'role_id' => ['required', Rule::exists('roles', 'id')->where('guard_name', config('permissions.canonical_guard', 'api'))]
         ]);
-        $role = Role::find($request->input('role_id'));
+        $role = Role::query()->where('guard_name', config('permissions.canonical_guard', 'api'))
+            ->find($request->input('role_id'));
         $this->assertCanChangePrivilegedRoles($role ? [$role->name] : []);
 
         try {
@@ -968,17 +974,14 @@ class UserController extends Controller
     {
         $request->validate([
             'roles' => ['required', 'array'],
-            'roles.*' => ['required', 'string', 'exists:roles,name'],
-            'apply_to_guards' => ['sometimes', 'array'],
-            'apply_to_guards.*' => ['string', Rule::in($this->supportedPermissionGuards())],
+            'roles.*' => ['required', 'string', Rule::exists('roles', 'name')->where('guard_name', config('permissions.canonical_guard', 'api'))],
         ]);
         abort_if($this->containsCorporateRole($request->input('roles', [])), 422, 'Corporate roles must be assigned within the employee corporate context.');
         $this->assertCanChangePrivilegedRoles($request->input('roles', []));
 
         try {
-            $guards = $this->resolveGuards($request);
             $rolesToAssign = Role::whereIn('name', $request->roles)
-                ->whereIn('guard_name', $guards)
+                ->where('guard_name', config('permissions.canonical_guard', 'api'))
                 ->with('permissions:id,name,guard_name')
                 ->get();
             $roleIds = $rolesToAssign->pluck('id')->all();
@@ -1031,17 +1034,14 @@ class UserController extends Controller
     {
         $request->validate([
             'roles' => ['required', 'array'],
-            'roles.*' => ['required', 'string', 'exists:roles,name'],
-            'apply_to_guards' => ['sometimes', 'array'],
-            'apply_to_guards.*' => ['string', Rule::in($this->supportedPermissionGuards())],
+            'roles.*' => ['required', 'string', Rule::exists('roles', 'name')->where('guard_name', config('permissions.canonical_guard', 'api'))],
         ]);
         abort_if($this->containsCorporateRole($request->input('roles', [])), 422, 'Corporate roles must be revoked within the employee corporate context.');
         $this->assertCanChangePrivilegedRoles($request->input('roles', []));
 
         try {
-            $guards = $this->resolveGuards($request);
             $roleIds = Role::whereIn('name', $request->roles)
-                ->whereIn('guard_name', $guards)
+                ->where('guard_name', config('permissions.canonical_guard', 'api'))
                 ->pluck('id')->all();
 
             if (empty($roleIds)) {
@@ -1287,24 +1287,6 @@ class UserController extends Controller
         }
     }
 
-    private function resolveGuards(Request $request): array
-    {
-        $guards = $request->input('apply_to_guards');
-        if (!is_array($guards) || empty($guards)) {
-            return $this->supportedPermissionGuards();
-        }
-
-        return array_values(array_unique(array_intersect($guards, $this->supportedPermissionGuards())));
-    }
-
-    private function supportedPermissionGuards(): array
-    {
-        return array_values(array_unique(array_merge(
-            [config('permissions.canonical_guard', 'api')],
-            config('permissions.legacy_guards', ['web'])
-        )));
-    }
-
     private function containsCorporateRole(array $roleNames): bool
     {
         $corporateTemplateNames = collect(array_keys(CorporateRoleStarterService::TEMPLATES))
@@ -1416,8 +1398,11 @@ class UserController extends Controller
             ->unique();
 
         return Role::query()
-            ->whereIn('name', $identifiers)
-            ->orWhereIn('id', $identifiers->filter(fn ($value) => ctype_digit($value)))
+            ->where(function ($query) use ($identifiers) {
+                $query->whereIn('name', $identifiers)
+                    ->orWhereIn('id', $identifiers->filter(fn ($value) => ctype_digit($value)));
+            })
+            ->where('guard_name', config('permissions.canonical_guard', 'api'))
             ->pluck('name')
             ->all();
     }
@@ -1425,7 +1410,8 @@ class UserController extends Controller
     private function assertCanChangePrivilegedRoles(array $roleNames, bool $changesDirectPermissions = false): void
     {
         $actor = request()->user();
-        $isMasterAdmin = $actor?->roles()->where('name', 'super-admin')->exists() ?? false;
+        $isMasterAdmin = $actor?->roles()->where('name', 'super-admin')
+            ->where('guard_name', config('permissions.canonical_guard', 'api'))->exists() ?? false;
         abort_if($changesDirectPermissions && ! $isMasterAdmin, 403, 'Only a Master Admin can grant direct permissions.');
         abort_if(
             ! $isMasterAdmin && collect($roleNames)->intersect(['admin', 'super-admin'])->isNotEmpty(),

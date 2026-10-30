@@ -2,7 +2,7 @@
 
 return [
     'canonical_guard' => 'api',
-    'legacy_guards' => ['web'],
+    'legacy_guards' => [],
 
     'modules' => [
         'admin' => ['label' => 'Administration', 'description' => 'Users, roles, permissions, and system controls.'],

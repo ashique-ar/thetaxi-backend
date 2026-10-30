@@ -350,8 +350,10 @@ class User extends Authenticatable
      */
     protected function hasAnyRolePermission(array $permissions)
     {
-        return $this->roles()->whereHas('permissions', function ($query) use ($permissions) {
-            $query->whereIn('name', $permissions);
+        return $this->roles()->where('guard_name', config('permissions.canonical_guard', 'api'))
+            ->whereHas('permissions', function ($query) use ($permissions) {
+                $query->whereIn('name', $permissions)
+                    ->where('guard_name', config('permissions.canonical_guard', 'api'));
         })->exists();
     }
 
@@ -364,6 +366,7 @@ class User extends Authenticatable
     {
         $directPermissions = DB::table('model_has_permissions')
             ->join('permissions', 'permissions.id', '=', 'model_has_permissions.permission_id')
+            ->where('permissions.guard_name', config('permissions.canonical_guard', 'api'))
             ->where('model_has_permissions.model_type', self::class)
             ->where('model_has_permissions.model_id', $this->id)
             ->pluck('permissions.name');
@@ -371,6 +374,7 @@ class User extends Authenticatable
         $rolePermissions = DB::table('model_has_roles')
             ->join('role_has_permissions', 'role_has_permissions.role_id', '=', 'model_has_roles.role_id')
             ->join('permissions', 'permissions.id', '=', 'role_has_permissions.permission_id')
+            ->where('permissions.guard_name', config('permissions.canonical_guard', 'api'))
             ->where('model_has_roles.model_type', self::class)
             ->where('model_has_roles.model_id', $this->id)
             ->pluck('permissions.name');
@@ -387,6 +391,7 @@ class User extends Authenticatable
     {
         return DB::table('model_has_roles')
             ->join('roles', 'roles.id', '=', 'model_has_roles.role_id')
+            ->where('roles.guard_name', config('permissions.canonical_guard', 'api'))
             ->where('model_has_roles.model_type', self::class)
             ->where('model_has_roles.model_id', $this->id)
             ->pluck('roles.name')
@@ -449,13 +454,10 @@ class User extends Authenticatable
         ]);
     }
 
-    /**
-     * Get the guard name for the user model
-     * This allows the model to work with both web and api guards
-     */
+    /** Get the guard name for the user model. */
     public function getGuardNames()
     {
-        return collect(['web', 'api']);
+        return collect([config('permissions.canonical_guard', 'api')]);
     }
 
     /**

@@ -74,18 +74,18 @@ beforeEach(function () {
 it('syncs a role to only the requested permissions', function () {
     $this->withoutMiddleware([Authenticate::class, PermissionMiddleware::class]);
 
-    $role = Role::create(['name' => 'operations', 'guard_name' => 'web']);
+    $role = Role::create(['name' => 'operations', 'guard_name' => 'api']);
 
     Permission::insert([
-        ['name' => 'addons.create', 'guard_name' => 'web', 'created_at' => now(), 'updated_at' => now()],
-        ['name' => 'addons.delete', 'guard_name' => 'web', 'created_at' => now(), 'updated_at' => now()],
-        ['name' => 'addons.edit', 'guard_name' => 'web', 'created_at' => now(), 'updated_at' => now()],
-        ['name' => 'addons.manage', 'guard_name' => 'web', 'created_at' => now(), 'updated_at' => now()],
-        ['name' => 'addons.update', 'guard_name' => 'web', 'created_at' => now(), 'updated_at' => now()],
-        ['name' => 'addons.view', 'guard_name' => 'web', 'created_at' => now(), 'updated_at' => now()],
+        ['name' => 'addons.create', 'guard_name' => 'api', 'created_at' => now(), 'updated_at' => now()],
+        ['name' => 'addons.delete', 'guard_name' => 'api', 'created_at' => now(), 'updated_at' => now()],
+        ['name' => 'addons.edit', 'guard_name' => 'api', 'created_at' => now(), 'updated_at' => now()],
+        ['name' => 'addons.manage', 'guard_name' => 'api', 'created_at' => now(), 'updated_at' => now()],
+        ['name' => 'addons.update', 'guard_name' => 'api', 'created_at' => now(), 'updated_at' => now()],
+        ['name' => 'addons.view', 'guard_name' => 'api', 'created_at' => now(), 'updated_at' => now()],
     ]);
 
-    $role->givePermissionTo(Permission::where('guard_name', 'web')->get());
+    $role->givePermissionTo(Permission::where('guard_name', 'api')->get());
 
     $response = putJson("/api/roles/{$role->id}/permissions/sync", [
         'permissions' => [
@@ -112,9 +112,9 @@ it('syncs a role to only the requested permissions', function () {
 it('merges role grants and revokes against the locked current permission set', function () {
     $this->withoutMiddleware([Authenticate::class, PermissionMiddleware::class]);
 
-    $role = Role::create(['name' => 'operations', 'guard_name' => 'web']);
-    $view = Permission::create(['name' => 'bookings.view', 'guard_name' => 'web']);
-    $edit = Permission::create(['name' => 'bookings.edit', 'guard_name' => 'web']);
+    $role = Role::create(['name' => 'operations', 'guard_name' => 'api']);
+    $view = Permission::create(['name' => 'bookings.view', 'guard_name' => 'api']);
+    $edit = Permission::create(['name' => 'bookings.edit', 'guard_name' => 'api']);
     $role->givePermissionTo($view);
 
     $this->postJson("/api/roles/{$role->id}/permissions", ['permissions' => ['bookings.edit']])->assertOk();
@@ -163,8 +163,8 @@ it('clears the permission cache only after a role permission transaction commits
 it('rejects permissions that do not exist for the role guard', function () {
     $this->withoutMiddleware([Authenticate::class, PermissionMiddleware::class]);
 
-    $role = Role::create(['name' => 'operations', 'guard_name' => 'web']);
-    Permission::create(['name' => 'addons.view', 'guard_name' => 'api']);
+    $role = Role::create(['name' => 'operations', 'guard_name' => 'api']);
+    Permission::create(['name' => 'addons.view', 'guard_name' => 'web']);
 
     putJson("/api/roles/{$role->id}/permissions/sync", [
         'permissions' => ['addons.view'],
@@ -183,8 +183,8 @@ it('does not write role permissions for an unresolved role model', function () {
 it('preserves untracked legacy direct grants when a role loses the same permission', function () {
     $this->withoutMiddleware([Authenticate::class, PermissionMiddleware::class]);
 
-    $role = Role::create(['name' => 'operations', 'guard_name' => 'web']);
-    $permission = Permission::create(['name' => 'addons.view', 'guard_name' => 'web']);
+    $role = Role::create(['name' => 'operations', 'guard_name' => 'api']);
+    $permission = Permission::create(['name' => 'addons.view', 'guard_name' => 'api']);
     $user = User::factory()->create();
     DB::table('role_has_permissions')->insert(['role_id' => $role->id, 'permission_id' => $permission->id]);
     DB::table('model_has_roles')->insert([

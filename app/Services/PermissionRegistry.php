@@ -15,7 +15,7 @@ class PermissionRegistry
 
     public function legacyGuards(): array
     {
-        return config('permissions.legacy_guards', ['web']);
+        return config('permissions.legacy_guards', []);
     }
 
     public function resolveKey(string $key): string
@@ -27,8 +27,7 @@ class PermissionRegistry
     public function permissions(?string $guard = null): Collection
     {
         return Permission::query()
-            ->when($guard, fn ($query) => $query->where('guard_name', $guard))
-            ->orderByRaw("case when guard_name = ? then 0 else 1 end", [$this->canonicalGuard()])
+            ->where('guard_name', $guard ?? $this->canonicalGuard())
             ->orderBy('name')
             ->get()
             ->unique('name')
@@ -49,7 +48,7 @@ class PermissionRegistry
 
                 return [
                     'key' => $module,
-                    'label' => $moduleConfig[$module]['label'] ?? Str::headline(str_replace(['-', '_'], ' ', $module)),
+                    'label' => $moduleConfig[$module]['label'] ?? Str::headline(str_replace(['.', '-', '_'], ' ', $module)),
                     'description' => $moduleConfig[$module]['description'] ?? null,
                     'permissions_count' => $items->count(),
                     'actions' => $actions,

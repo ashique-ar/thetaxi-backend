@@ -5,6 +5,8 @@ use Illuminate\Database\Schema\Blueprint;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Schema;
 
+require_once __DIR__.'/Support/TenantIndexDropper.php';
+
 return new class extends Migration
 {
     public function up(): void
@@ -56,8 +58,7 @@ return new class extends Migration
                 if ($index['type'] === 'primary' || ! in_array('company_id', $index['columns'], true)) {
                     continue;
                 }
-                $dropMethod = $index['type'] === 'unique' ? 'dropUnique' : 'dropIndex';
-                Schema::table($tableName, fn (Blueprint $table) => $table->{$dropMethod}($index['name']));
+                TenantIndexDropper::drop($tableName, $index);
             }
 
             Schema::table($tableName, fn (Blueprint $table) => $table->dropColumn('company_id'));

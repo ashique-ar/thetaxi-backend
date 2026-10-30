@@ -8,32 +8,24 @@ use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Str;
 
 /**
- * Seeds the standard set of Sri Lanka leave types for the default Company so
- * the Leave & Overtime screens have selectable leave types out of the box.
+ * Seeds installation-wide Sri Lanka leave types for the Leave & Overtime screens.
  *
  * Schema reference: database/migrations/2026_08_13_102000_create_hr_leave_overtime_and_timesheets.php
- * (hr_leave_types: company_id, code, name, category, unit, paid,
+ * (hr_leave_types: code, name, category, unit, paid,
  * medical_confidential, effective_from, effective_until, status, created_by).
  * No leave policies are created here — approving pay/accrual rules for these
  * types is a deliberate policy decision left to an authorized HR admin via
  * the Leave & Overtime screens.
  *
- * Idempotent: guarded by the table's own unique key (company_id, code,
- * effective_from).
+ * Idempotent: guarded by the installation-wide code/effective-date key.
  */
 class HrLeaveTypesSeeder extends Seeder
 {
     public function run(): void
     {
-        $company = DB::table('companies')->where('is_default', true)->whereNull('deleted_at')->first();
-        if (!$company) {
-            $this->command?->warn('HR leave type defaults skipped: no default company exists.');
-            return;
-        }
-
-        $actor = DB::table('staff')->where('company_id', $company->id)->whereNotNull('user_id')->whereNull('employment_ended_at')->whereNull('deleted_at')->orderBy('created_at')->value('user_id');
+        $actor = DB::table('staff')->whereNotNull('user_id')->whereNull('employment_ended_at')->whereNull('deleted_at')->orderBy('created_at')->value('user_id');
         if (!$actor) {
-            $this->command?->warn('HR leave type defaults skipped: the default company has no active Staff user for audit ownership.');
+            $this->command?->warn('HR leave type defaults skipped: no active Staff user is available for audit ownership.');
             return;
         }
 
@@ -51,7 +43,6 @@ class HrLeaveTypesSeeder extends Seeder
         $created = 0;
         foreach ($leaveTypes as $leaveType) {
             $existing = DB::table('hr_leave_types')
-                ->where('company_id', $company->id)
                 ->where('code', $leaveType['code'])
                 ->where('effective_from', $from)
                 ->first();
@@ -60,7 +51,6 @@ class HrLeaveTypesSeeder extends Seeder
             }
             DB::table('hr_leave_types')->insert([
                 'id' => (string) Str::uuid(),
-                'company_id' => $company->id,
                 'code' => $leaveType['code'],
                 'name' => $leaveType['name'],
                 'category' => $leaveType['category'],
@@ -76,6 +66,6 @@ class HrLeaveTypesSeeder extends Seeder
             $created++;
         }
 
-        $this->command?->info("HR leave type defaults ready for {$company->name}: {$created} leave types created (existing rows retained).");
+        $this->command?->info("HR leave type defaults ready: {$created} installation-wide leave types created (existing rows retained).");
     }
 }

@@ -9,6 +9,7 @@ use Illuminate\Support\Facades\Hash;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Str;
 use Illuminate\Pagination\LengthAwarePaginator;
+use Illuminate\Validation\ValidationException;
 use Spatie\Permission\Models\Role;
 
 class UserService
@@ -35,8 +36,8 @@ class UserService
                   ->orWhereLikeInsensitive('timezone', $search)
                   ->orWhereLikeInsensitive('language', $search)
                   ->orWhereHas('roles', function ($roleQuery) use ($search) {
-                      $roleQuery->whereLikeInsensitive('name', $search)
-                          ->orWhereLikeInsensitive('guard_name', $search);
+                      $roleQuery->where('guard_name', config('permissions.canonical_guard', 'api'))
+                          ->whereLikeInsensitive('name', $search);
                   })
                   ->orWhereHas('contexts', function ($contextQuery) use ($search) {
                       $contextQuery->whereLikeInsensitive('context_type', $search);
@@ -50,7 +51,8 @@ class UserService
 
         if (!empty($filters['role'])) {
             $query->whereHas('roles', function ($q) use ($filters) {
-                $q->where('name', $filters['role']);
+                $q->where('name', $filters['role'])
+                    ->where('guard_name', config('permissions.canonical_guard', 'api'));
             });
         }
 
@@ -64,7 +66,8 @@ class UserService
             if ($context === 'internal') {
                 $query->where(function ($q) {
                     $q->whereHas('roles', function ($roleQuery) {
-                        $roleQuery->whereIn('name', ['admin', 'staff']);
+                        $roleQuery->whereIn('name', ['admin', 'staff'])
+                            ->where('guard_name', config('permissions.canonical_guard', 'api'));
                     })->orWhereHas('contexts', function ($contextQuery) {
                         $contextQuery->where('context_type', 'staff')
                             ->where('is_active', true);
@@ -117,6 +120,7 @@ class UserService
     public function getFilterOptions(): array
     {
         $roles = Role::query()
+            ->where('guard_name', config('permissions.canonical_guard', 'api'))
             ->select('id', 'name', 'guard_name')
             ->orderBy('name')
             ->get()
@@ -198,7 +202,8 @@ class UserService
 
             // Assign default role if not provided
             if (!isset($userData['role_id']) && !isset($userData['roles'])) {
-                $defaultRole = Role::with('permissions')->where('name', 'customer')->first();
+                $defaultRole = Role::with('permissions')->where('name', 'customer')
+                    ->where('guard_name', config('permissions.canonical_guard', 'api'))->first();
                 if ($defaultRole) {
                     $user->assignRole($defaultRole);
                     $this->grantDirectRoleGrants($user, collect([$defaultRole]));
@@ -206,7 +211,8 @@ class UserService
             }
 
             if (isset($userData['role_id'])) {
-                $role = Role::with('permissions')->find($userData['role_id']);
+                $role = Role::with('permissions')->where('guard_name', config('permissions.canonical_guard', 'api'))
+                    ->find($userData['role_id']);
                 if ($role) {
                     $user->assignRole($role);
                     $this->grantDirectRoleGrants($user, collect([$role]));
@@ -215,9 +221,7 @@ class UserService
 
             // Assign roles if provided
             if (isset($userData['roles'])) {
-                $roles = Role::whereIn('name', $userData['roles'])
-                    ->with('permissions')
-                    ->get();
+                $roles = $this->rolesByNames($userData['roles']);
 
                 $user->assignRole($roles);
                 $this->grantDirectRoleGrants($user, $roles);
@@ -261,16 +265,15 @@ class UserService
 
             // Update roles if provided
             if (isset($userData['roles'])) {
-                $roles = Role::whereIn('name', $userData['roles'])
-                    ->with('permissions')
-                    ->get();
+                $roles = $this->rolesByNames($userData['roles']);
 
                 $user->syncRoles($roles);
                 $this->syncDirectRoleGrants($user, $roles);
             }
 
             if (isset($userData['role_id'])) {
-                $role = Role::with('permissions')->find($userData['role_id']);
+                $role = Role::with('permissions')->where('guard_name', config('permissions.canonical_guard', 'api'))
+                    ->find($userData['role_id']);
                 if ($role) {
                     $user->assignRole($role);
                     $this->grantDirectRoleGrants($user, collect([$role]));
@@ -303,6 +306,25 @@ class UserService
             );
         }
         $this->logDirectRoleGrantChange($user, $added, []);
+    }
+
+    private function rolesByNames(array $names): \Illuminate\Support\Collection
+    {
+        $names = collect($names)->map(fn ($name) => trim((string) $name))->filter()->unique()->values();
+        $roles = Role::query()
+            ->where('guard_name', config('permissions.canonical_guard', 'api'))
+            ->whereIn('name', $names)
+            ->with('permissions')
+            ->get();
+        $missing = $names->diff($roles->pluck('name'));
+
+        if ($missing->isNotEmpty()) {
+            throw ValidationException::withMessages([
+                'roles' => 'One or more selected API roles are invalid.',
+            ]);
+        }
+
+        return $roles;
     }
 
     public function syncDirectRoleGrants(User $user, \Illuminate\Support\Collection $roles): void

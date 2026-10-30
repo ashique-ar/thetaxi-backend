@@ -17,11 +17,8 @@ class UpdateRoleRequest extends FormRequest
     public function rules(): array
     {
         $role = $this->currentRole();
-        $guardName = $this->input('guard_name', $role?->guard_name ?? config('auth.defaults.guard', 'web'));
-        $guards = array_values(array_unique(array_merge(
-            [config('permissions.canonical_guard', 'api')],
-            config('permissions.legacy_guards', ['web'])
-        )));
+        $guardName = $this->input('guard_name', $role?->guard_name ?? config('permissions.canonical_guard', 'api'));
+        $guards = [config('permissions.canonical_guard', 'api')];
         
         return [
             'name' => [

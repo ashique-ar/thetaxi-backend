@@ -92,10 +92,10 @@ it('can run repeatedly without duplicates or removing client assignments', funct
         ->and(Permission::where([
             'name' => 'bookings.tracking_export',
             'guard_name' => 'web',
-        ])->exists())->toBeTrue()
+        ])->exists())->toBeFalse()
         ->and($clientRole->fresh()->hasPermissionTo('client.custom-workflow'))->toBeTrue();
 
-    foreach (['api', 'web'] as $guard) {
+    foreach (['api'] as $guard) {
         $admin = Role::where(['name' => 'admin', 'guard_name' => $guard])->firstOrFail();
         $masterAdmin = Role::where(['name' => 'super-admin', 'guard_name' => $guard])->firstOrFail();
 

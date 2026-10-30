@@ -19,54 +19,14 @@ use Illuminate\Validation\Rule;
 
 class WorkforceController extends Controller
 {
-    public function companyOptions(Request $r): JsonResponse
-    {
-        $data = $r->validate(['search' => ['nullable', 'string', 'max:120'], 'selected_id' => ['nullable', 'uuid']]);
-        $companyIds = $this->authorizedCompanyIds($r);
-        $defaultCompanyId = app(WebsiteSettingsService::class)->resolveCurrentCompanyId();
-        if (! $companyIds->contains($defaultCompanyId)) $defaultCompanyId = null;
-        $companies = DB::table('companies')->whereIn('id', $companyIds)
-            ->when($data['selected_id'] ?? null, fn ($q, $id) => $q->where('id', $id))
-            ->when(! empty($data['search']), fn ($q) => $q->whereLikeInsensitive('name', trim($data['search'])))
-            ->orderByDesc('is_default')->orderBy('name')->limit(25)->get(['id', 'name', 'is_default']);
-        return response()->json(['status' => 'success', 'default_company_id' => $defaultCompanyId, 'data' => $companies->map(fn ($company) => [
-            'value' => (string) $company->id, 'label' => $company->name,
-            'is_default' => (bool) $company->is_default, 'status' => 'active',
-        ])->values()]);
-    }
-
-    public function references(Request $r): JsonResponse
-    {
-        if ($r->filled('company_id')) {
-            $companyId = $this->company($r, $r->input('company_id'));
-        } elseif (! $r->user()->can('staff.view-all')) {
-            $companyId = $this->company($r, null);
-        } else {
-            $allowed = $this->authorizedCompanyIds($r);
-            abort_unless($allowed->isNotEmpty(), 403, 'The authenticated user has no active Staff legal-entity context.');
-            $companyId = $r->header('X-Active-Context-Type') === 'staff'
-                ? app(WebsiteSettingsService::class)->resolveCurrentCompanyId()
-                : DB::table('companies')->whereIn('id', $allowed)
-                    ->where('is_active', true)->where('is_default', true)->whereNull('deleted_at')->value('id');
-            abort_unless($companyId, 422, 'Select an authorized legal entity.');
-        }
-        return response()->json(['status' => 'success', 'data' => [
-            'company_id' => $companyId,
-        ]]);
-    }
-
     public function leaveTypeOptions(Request $r): JsonResponse
     {
         $d = $r->validate([
-            'company_id' => ['nullable', 'uuid'], 'status' => ['nullable', 'string', 'max:30'],
+            'status' => ['nullable', 'string', 'max:30'],
             'search' => ['nullable', 'string', 'max:120'], 'selected_id' => ['nullable', 'uuid'],
             'page' => ['nullable', 'integer', 'min:1'], 'per_page' => ['nullable', 'integer', 'min:1', 'max:50'],
         ]);
-        if (empty($d['company_id'])) return response()->json(['status' => 'success', 'data' => []]);
-        $actorCompanyId = app(StaffAccessService::class)->currentActorStaff($r->user())->company_id;
-        abort_unless(\App\Services\CompanyIdScope::sameCompanyId((string) ($actorCompanyId), (string) ($d['company_id'])), 403, 'Leave configuration is outside your legal entity.');
-        $companyId = $this->company($r, $d['company_id']);
-        $q = DB::table('hr_leave_types')->where(fn ($_companyIdScope) => \App\Services\CompanyIdScope::constrain($_companyIdScope, 'company_id', $companyId))
+        $q = DB::table('hr_leave_types')
             ->when($d['status'] ?? null, fn ($types, $status) => $types->where('status', $status));
         if (isset($d['selected_id'])) $q->where('id', $d['selected_id']);
         elseif (!empty($d['search'])) {
@@ -89,29 +49,26 @@ class WorkforceController extends Controller
     public function leavePolicyOptions(Request $r, StaffAccessService $access): JsonResponse
     {
         $d = $r->validate([
-            'company_id' => ['nullable', 'uuid'], 'staff_id' => ['nullable', 'uuid'],
+            'staff_id' => ['nullable', 'uuid'],
             'start_date' => ['nullable', 'date'], 'end_date' => ['nullable', 'date'],
             'search' => ['nullable', 'string', 'max:120'], 'selected_id' => ['nullable', 'uuid'],
             'page' => ['nullable', 'integer', 'min:1'], 'per_page' => ['nullable', 'integer', 'min:1', 'max:50'],
         ]);
-        if (empty($d['company_id']) || empty($d['staff_id']) || empty($d['start_date']) || empty($d['end_date']) || $d['end_date'] < $d['start_date']) {
+        if (empty($d['staff_id']) || empty($d['start_date']) || empty($d['end_date']) || $d['end_date'] < $d['start_date']) {
             return response()->json(['status' => 'success', 'data' => []]);
         }
-        $companyId = $this->company($r, $d['company_id']);
-        $staff = Staff::query()->whereKey($d['staff_id'])->where(fn ($_companyIdScope) => \App\Services\CompanyIdScope::constrain($_companyIdScope, 'company_id', $companyId))->whereNull('employment_ended_at')->firstOrFail();
+        $staff = Staff::query()->whereKey($d['staff_id'])->whereNull('employment_ended_at')->firstOrFail();
         $access->authorize($r->user(), $staff, 'view');
 
         $q = DB::table('hr_leave_policies as policy')
-            ->join('hr_leave_policy_assignments as assignment', function ($join) use ($d, $companyId) {
+            ->join('hr_leave_policy_assignments as assignment', function ($join) use ($d) {
                 $join->on('assignment.policy_id', '=', 'policy.id')
-                    ->where(fn ($_companyIdScope) => \App\Services\CompanyIdScope::constrain($_companyIdScope, 'assignment.company_id', $companyId))->where('assignment.staff_id', $d['staff_id'])
+                    ->where('assignment.staff_id', $d['staff_id'])
                     ->whereNotNull('assignment.approved_at')->whereDate('assignment.effective_from', '<=', $d['start_date'])
                     ->where(fn ($dates) => $dates->whereNull('assignment.effective_until')->orWhereDate('assignment.effective_until', '>', $d['end_date']));
             })
-            ->join('hr_leave_types as type', function ($join) use ($companyId) {
-                $join->on('type.id', '=', 'policy.leave_type_id')->where(fn ($_companyIdScope) => \App\Services\CompanyIdScope::constrain($_companyIdScope, 'type.company_id', $companyId));
-            })
-            ->where(fn ($_companyIdScope) => \App\Services\CompanyIdScope::constrain($_companyIdScope, 'policy.company_id', $companyId))->where('policy.status', 'approved')
+            ->join('hr_leave_types as type', 'type.id', '=', 'policy.leave_type_id')
+            ->where('policy.status', 'approved')
             ->whereDate('policy.effective_from', '<=', $d['start_date'])
             ->where(fn ($dates) => $dates->whereNull('policy.effective_until')->orWhereDate('policy.effective_until', '>', $d['end_date']));
         if (isset($d['selected_id'])) $q->where('policy.id', $d['selected_id']);
@@ -137,16 +94,13 @@ class WorkforceController extends Controller
     public function leaveAssignmentPolicyOptions(Request $r): JsonResponse
     {
         $d = $r->validate([
-            'company_id' => ['nullable', 'uuid'], 'effective_from' => ['nullable', 'date'], 'effective_until' => ['nullable', 'date', 'after:effective_from'],
+            'effective_from' => ['nullable', 'date'], 'effective_until' => ['nullable', 'date', 'after:effective_from'],
             'search' => ['nullable', 'string', 'max:120'], 'selected_id' => ['nullable', 'uuid'],
             'page' => ['nullable', 'integer', 'min:1'], 'per_page' => ['nullable', 'integer', 'min:1', 'max:50'],
         ]);
-        if (empty($d['company_id']) || empty($d['effective_from'])) return response()->json(['status' => 'success', 'data' => []]);
-        $companyId = $this->company($r, $d['company_id']);
-        $q = DB::table('hr_leave_policies as policy')->join('hr_leave_types as type', function ($join) use ($companyId) {
-            $join->on('type.id', '=', 'policy.leave_type_id')->where(fn ($_companyIdScope) => \App\Services\CompanyIdScope::constrain($_companyIdScope, 'type.company_id', $companyId));
-        })
-            ->where(fn ($_companyIdScope) => \App\Services\CompanyIdScope::constrain($_companyIdScope, 'policy.company_id', $companyId))->where('policy.status', 'approved')->whereDate('policy.effective_from', '<=', $d['effective_from'])
+        if (empty($d['effective_from'])) return response()->json(['status' => 'success', 'data' => []]);
+        $q = DB::table('hr_leave_policies as policy')->join('hr_leave_types as type', 'type.id', '=', 'policy.leave_type_id')
+            ->where('policy.status', 'approved')->whereDate('policy.effective_from', '<=', $d['effective_from'])
             ->when(isset($d['effective_until']), fn ($policies) => $policies->where(fn ($dates) => $dates->whereNull('policy.effective_until')->orWhereDate('policy.effective_until', '>=', $d['effective_until'])),
                 fn ($policies) => $policies->whereNull('policy.effective_until'));
         if (isset($d['selected_id'])) $q->where('policy.id', $d['selected_id']);
@@ -166,25 +120,24 @@ class WorkforceController extends Controller
     public function workRequestPolicyOptions(Request $r, StaffAccessService $access): JsonResponse
     {
         $d = $r->validate([
-            'company_id' => ['nullable', 'uuid'], 'staff_id' => ['nullable', 'uuid'],
+            'staff_id' => ['nullable', 'uuid'],
             'request_kind' => ['nullable', Rule::in(['overtime', 'field_duty', 'remote_work', 'travel', 'standby', 'callout', 'on_call'])],
             'starts_at' => ['nullable', 'date'], 'ends_at' => ['nullable', 'date'],
             'search' => ['nullable', 'string', 'max:120'], 'selected_id' => ['nullable', 'uuid'],
             'page' => ['nullable', 'integer', 'min:1'], 'per_page' => ['nullable', 'integer', 'min:1', 'max:50'],
         ]);
-        if (empty($d['company_id']) || empty($d['staff_id']) || empty($d['request_kind']) || empty($d['starts_at']) || empty($d['ends_at'])) {
+        if (empty($d['staff_id']) || empty($d['request_kind']) || empty($d['starts_at']) || empty($d['ends_at'])) {
             return response()->json(['status' => 'success', 'data' => []]);
         }
         $starts = CarbonImmutable::parse($d['starts_at']);
         $ends = CarbonImmutable::parse($d['ends_at']);
         if (!$ends->gt($starts)) return response()->json(['status' => 'success', 'data' => []]);
-        $companyId = $this->company($r, $d['company_id']);
-        $staff = Staff::query()->whereKey($d['staff_id'])->where(fn ($_companyIdScope) => \App\Services\CompanyIdScope::constrain($_companyIdScope, 'company_id', $companyId))->whereNull('employment_ended_at')->firstOrFail();
+        $staff = Staff::query()->whereKey($d['staff_id'])->whereNull('employment_ended_at')->firstOrFail();
         $access->authorize($r->user(), $staff, 'view');
 
         $start = $starts->toDateString();
         $end = $ends->toDateString();
-        $q = DB::table('hr_work_request_policies')->where(fn ($_companyIdScope) => \App\Services\CompanyIdScope::constrain($_companyIdScope, 'company_id', $companyId))
+        $q = DB::table('hr_work_request_policies')
             ->where('request_kind', $d['request_kind'])->where('status', 'approved')
             ->whereDate('effective_from', '<=', $start)
             ->where(fn ($dates) => $dates->whereNull('effective_until')->orWhereDate('effective_until', '>', $end));
@@ -207,18 +160,12 @@ class WorkforceController extends Controller
     public function staffOptions(Request $r, StaffAccessService $access): JsonResponse
     {
         $data = $r->validate([
-            'company_id' => ['nullable', 'uuid'], 'search' => ['nullable', 'string', 'max:120'],
+            'search' => ['nullable', 'string', 'max:120'],
             'selected_id' => ['nullable', 'uuid'], 'page' => ['nullable', 'integer', 'min:1'],
             'per_page' => ['nullable', 'integer', 'min:1', 'max:50'],
         ]);
-        if (! empty($data['company_id'])) {
-            $actorCompanyId = $access->currentActorStaff($r->user())->company_id;
-            abort_unless(\App\Services\CompanyIdScope::sameCompanyId((string) ($actorCompanyId), (string) ($data['company_id'])), 403, 'Workforce data is outside your legal entity.');
-        }
-        $companyId = $this->company($r, $data['company_id'] ?? null);
-        abort_unless(DB::table('companies')->where('id', $companyId)->whereNull('deleted_at')->exists(), 422, 'Select an available legal entity.');
         $query = $access->scope(Staff::query()->with('user:id,first_name,last_name,email')
-            ->where(fn ($_companyIdScope) => \App\Services\CompanyIdScope::constrain($_companyIdScope, 'company_id', $companyId))->whereNull('employment_ended_at'), $r->user());
+            ->whereNull('employment_ended_at'), $r->user());
         if (! empty($data['selected_id'])) {
             $query->whereKey($data['selected_id']);
         } elseif (! empty($data['search'])) {
@@ -246,9 +193,8 @@ class WorkforceController extends Controller
         $q = DB::table('hr_leave_requests as request')->join('hr_leave_types as type', 'type.id', '=', 'request.leave_type_id')
             ->whereIn('request.staff_id', $staff)
             ->whereExists(fn ($scope) => $scope->selectRaw('1')->from('staff')->whereColumn('staff.id', 'request.staff_id')->where(fn ($sameCompany) => \App\Services\CompanyIdScope::sameCompany($sameCompany, 'staff.company_id', 'request.company_id')))
-            ->where(fn ($sameCompany) => \App\Services\CompanyIdScope::sameCompany($sameCompany, 'type.company_id', 'request.company_id'))
             ->whereExists(fn ($policy) => $policy->selectRaw('1')->from('hr_leave_policies')
-                ->whereColumn('hr_leave_policies.id', 'request.policy_id')->where(fn ($sameCompany) => \App\Services\CompanyIdScope::sameCompany($sameCompany, 'hr_leave_policies.company_id', 'request.company_id'))
+                ->whereColumn('hr_leave_policies.id', 'request.policy_id')
                 ->whereColumn('hr_leave_policies.leave_type_id', 'request.leave_type_id'))
             ->select(['request.id', 'type.name as leave_type_name', 'request.start_date', 'request.end_date', 'request.requested_minutes', 'request.status', 'request.requested_by', 'request.actual_return_date', 'request.recalled_at'])
             ->when($r->status, fn ($query, $status) => $query->where('request.status', $status))->latest('request.created_at');
@@ -273,7 +219,6 @@ class WorkforceController extends Controller
         $rows = DB::table('hr_leave_balance_accounts as account')->join('hr_leave_types as type', 'type.id', '=', 'account.leave_type_id')
             ->whereIn('account.staff_id', $staff)
             ->whereExists(fn ($scope) => $scope->selectRaw('1')->from('staff')->whereColumn('staff.id', 'account.staff_id')->where(fn ($sameCompany) => \App\Services\CompanyIdScope::sameCompany($sameCompany, 'staff.company_id', 'account.company_id')))
-            ->where(fn ($sameCompany) => \App\Services\CompanyIdScope::sameCompany($sameCompany, 'type.company_id', 'account.company_id'))
             ->select(['account.id', 'account.staff_id', 'type.code', 'type.name', 'account.unit'])->get()
             ->map(fn ($row) => (array) $row + ['balance_minutes' => $service->balance($row->id, $asOf), 'as_of' => $asOf]);
         return response()->json(['status' => 'success', 'data' => $rows]);
@@ -285,9 +230,8 @@ class WorkforceController extends Controller
         $rows = DB::table('hr_leave_requests as request')->join('hr_leave_types as type', 'type.id', '=', 'request.leave_type_id')
             ->whereIn('request.staff_id', $staff)->where('request.status', 'approved')
             ->whereExists(fn ($scope) => $scope->selectRaw('1')->from('staff')->whereColumn('staff.id', 'request.staff_id')->where(fn ($sameCompany) => \App\Services\CompanyIdScope::sameCompany($sameCompany, 'staff.company_id', 'request.company_id')))
-            ->where(fn ($sameCompany) => \App\Services\CompanyIdScope::sameCompany($sameCompany, 'type.company_id', 'request.company_id'))
             ->whereExists(fn ($policy) => $policy->selectRaw('1')->from('hr_leave_policies')
-                ->whereColumn('hr_leave_policies.id', 'request.policy_id')->where(fn ($sameCompany) => \App\Services\CompanyIdScope::sameCompany($sameCompany, 'hr_leave_policies.company_id', 'request.company_id'))
+                ->whereColumn('hr_leave_policies.id', 'request.policy_id')
                 ->whereColumn('hr_leave_policies.leave_type_id', 'request.leave_type_id'))
             ->whereDate('request.start_date', '<=', $d['to'])->whereDate('request.end_date', '>=', $d['from'])
             ->select(['request.id', 'request.staff_id', 'request.start_date', 'request.end_date', 'type.name as absence_type', 'type.medical_confidential'])
@@ -372,14 +316,12 @@ class WorkforceController extends Controller
      */
     public function leaveTypes(Request $r): JsonResponse
     {
-        $companyId = $this->company($r, $r->input('company_id'));
-        $q = DB::table('hr_leave_types')->where(fn ($_companyIdScope) => \App\Services\CompanyIdScope::constrain($_companyIdScope, 'company_id', $companyId))->when($r->status, fn($b, $v) => $b->where('status', $v))->orderBy('name');
+        $q = DB::table('hr_leave_types')->when($r->status, fn($b, $v) => $b->where('status', $v))->orderBy('name');
         return response()->json(['status' => 'success', 'data' => $q->paginate($this->paginationSize($r, 50))]);
     }
     public function leavePolicies(Request $r): JsonResponse
     {
-        $companyId = $this->company($r, $r->input('company_id'));
-        $q = DB::table('hr_leave_policies as policy')->join('hr_leave_types as type', 'type.id', '=', 'policy.leave_type_id')->where(fn ($_companyIdScope) => \App\Services\CompanyIdScope::constrain($_companyIdScope, 'policy.company_id', $companyId))
+        $q = DB::table('hr_leave_policies as policy')->join('hr_leave_types as type', 'type.id', '=', 'policy.leave_type_id')
             ->select(['policy.id', 'policy.leave_type_id', 'type.code as leave_type_code', 'type.name as leave_type_name', 'policy.code', 'policy.version', 'policy.rules', 'policy.status', 'policy.effective_from', 'policy.effective_until', 'policy.created_by', 'policy.approved_by', 'policy.approved_at'])
             ->when($r->status, fn($b, $v) => $b->where('policy.status', $v))->latest('policy.created_at');
         $rows = $q->paginate($this->paginationSize($r, 50));
@@ -388,11 +330,10 @@ class WorkforceController extends Controller
     }
     public function leavePolicyAssignments(Request $r, StaffAccessService $access): JsonResponse
     {
-        $companyId = $this->company($r, $r->input('company_id'));
-        $staffIds = $access->scope(Staff::query(), $r->user())->where(fn ($_companyIdScope) => \App\Services\CompanyIdScope::constrain($_companyIdScope, 'company_id', $companyId))->select('id');
+        $staffIds = $access->scope(Staff::query(), $r->user())->select('id');
         $q = DB::table('hr_leave_policy_assignments as assignment')->join('hr_leave_policies as policy', 'policy.id', '=', 'assignment.policy_id')
             ->leftJoin('staff', 'staff.id', '=', 'assignment.staff_id')->leftJoin('users', 'users.id', '=', 'staff.user_id')
-            ->where(fn ($_companyIdScope) => \App\Services\CompanyIdScope::constrain($_companyIdScope, 'assignment.company_id', $companyId))->whereIn('assignment.staff_id', $staffIds)
+            ->whereIn('assignment.staff_id', $staffIds)
             ->select(['assignment.id', 'assignment.staff_id', 'assignment.policy_id', 'policy.code as policy_code', 'assignment.effective_from', 'assignment.effective_until', 'assignment.reason', 'assignment.created_by', 'assignment.approved_by', 'assignment.approved_at', 'staff.code as staff_code', 'users.first_name as staff_first_name', 'users.last_name as staff_last_name'])
             ->when($r->staff_id, fn($b, $v) => $b->where('assignment.staff_id', $v))->latest('assignment.created_at');
         return response()->json(['status' => 'success', 'data' => $q->paginate($this->paginationSize($r, 50))]);
@@ -401,10 +342,8 @@ class WorkforceController extends Controller
     public function storeLeaveType(Request $r): JsonResponse
     {
         
-        $d = $r->validate(['company_id' => ['nullable', 'uuid'], 'code' => ['required', 'string', 'max:80'], 'name' => ['required', 'string', 'max:255'], 'category' => ['required', Rule::in(['annual', 'sick', 'maternity', 'paternity', 'parental', 'no_pay', 'compassionate', 'study', 'lieu', 'duty', 'custom'])], 'unit' => ['required', Rule::in(['day', 'half_day', 'hour'])], 'paid' => ['required', 'boolean'], 'medical_confidential' => ['required', 'boolean'], 'effective_from' => ['required', 'date'], 'effective_until' => ['nullable', 'date', 'after:effective_from']]);
-        $d['company_id'] = $this->company($r, $d['company_id'] ?? null);
+        $d = $r->validate(['code' => ['required', 'string', 'max:80'], 'name' => ['required', 'string', 'max:255'], 'category' => ['required', Rule::in(['annual', 'sick', 'maternity', 'paternity', 'parental', 'no_pay', 'compassionate', 'study', 'lieu', 'duty', 'custom'])], 'unit' => ['required', Rule::in(['day', 'half_day', 'hour'])], 'paid' => ['required', 'boolean'], 'medical_confidential' => ['required', 'boolean'], 'effective_from' => ['required', 'date'], 'effective_until' => ['nullable', 'date', 'after:effective_from']]);
         return DB::transaction(function () use ($r, $d) {
-            $this->lockActiveCompany($d['company_id']);
             $id = (string) Str::uuid();
             DB::table('hr_leave_types')->insert($d + ['id' => $id, 'status' => 'active', 'created_by' => $r->user()->id, 'created_at' => now(), 'updated_at' => now()]);
             return response()->json(['status' => 'success', 'data' => DB::table('hr_leave_types')->find($id)], 201);
@@ -413,12 +352,10 @@ class WorkforceController extends Controller
     public function storeLeavePolicy(Request $r): JsonResponse
     {
         
-        $d = $r->validate(['company_id' => ['nullable', 'uuid'], 'leave_type_id' => ['required', 'uuid'], 'code' => ['required', 'string', 'max:80'], 'version' => ['required', 'integer', 'min:1'], 'rules' => ['required', 'array'], 'rules.minutes_per_day' => ['required', 'integer', 'min:1', 'max:1440'], 'rules.minimum_notice_days' => ['nullable', 'integer', 'min:0', 'max:365'], 'rules.negative_balance_limit_minutes' => ['nullable', 'integer', 'min:0'], 'rules.weekend_days' => ['nullable', 'array'], 'rules.sandwich_rule_enabled' => ['nullable', 'boolean'], 'effective_from' => ['required', 'date'], 'effective_until' => ['nullable', 'date', 'after:effective_from']]);
-        $d['company_id'] = $this->company($r, $d['company_id'] ?? null);
+        $d = $r->validate(['leave_type_id' => ['required', 'uuid'], 'code' => ['required', 'string', 'max:80'], 'version' => ['required', 'integer', 'min:1'], 'rules' => ['required', 'array'], 'rules.minutes_per_day' => ['required', 'integer', 'min:1', 'max:1440'], 'rules.minimum_notice_days' => ['nullable', 'integer', 'min:0', 'max:365'], 'rules.negative_balance_limit_minutes' => ['nullable', 'integer', 'min:0'], 'rules.weekend_days' => ['nullable', 'array'], 'rules.sandwich_rule_enabled' => ['nullable', 'boolean'], 'effective_from' => ['required', 'date'], 'effective_until' => ['nullable', 'date', 'after:effective_from']]);
         $d['rules'] = json_encode($d['rules'], JSON_THROW_ON_ERROR);
         return DB::transaction(function () use ($r, $d) {
-            $this->lockActiveCompany($d['company_id']);
-            abort_unless(DB::table('hr_leave_types')->where('id', $d['leave_type_id'])->where(fn ($_companyIdScope) => \App\Services\CompanyIdScope::constrain($_companyIdScope, 'company_id', $d['company_id']))->exists(), 422, 'Leave type and policy legal entities must match.');
+            abort_unless(DB::table('hr_leave_types')->where('id', $d['leave_type_id'])->exists(), 422, 'Select an existing leave type.');
             $id = (string) Str::uuid();
             DB::table('hr_leave_policies')->insert($d + ['id' => $id, 'status' => 'pending_approval', 'created_by' => $r->user()->id, 'created_at' => now(), 'updated_at' => now()]);
             return response()->json(['status' => 'success', 'data' => DB::table('hr_leave_policies')->find($id)], 201);
@@ -431,18 +368,16 @@ class WorkforceController extends Controller
     public function assignLeavePolicy(Request $r): JsonResponse
     {
         
-        $d = $r->validate(['company_id' => ['nullable', 'uuid'], 'staff_id' => ['required', 'uuid'], 'policy_id' => ['required', 'uuid'], 'effective_from' => ['required', 'date'], 'effective_until' => ['nullable', 'date', 'after:effective_from'], 'reason' => ['required', 'string', 'max:500']]);
-        $d['company_id'] = $this->company($r, $d['company_id'] ?? null);
+        $d = $r->validate(['staff_id' => ['required', 'uuid'], 'policy_id' => ['required', 'uuid'], 'effective_from' => ['required', 'date'], 'effective_until' => ['nullable', 'date', 'after:effective_from'], 'reason' => ['required', 'string', 'max:500']]);
         return DB::transaction(function () use ($r, $d) {
-            $this->lockActiveCompany($d['company_id']);
-            abort_unless(DB::table('staff')->where('id', $d['staff_id'])->where(fn ($_companyIdScope) => \App\Services\CompanyIdScope::constrain($_companyIdScope, 'company_id', $d['company_id']))->whereNull('employment_ended_at')->exists(), 422, 'Staff must be active in the selected legal entity.');
-            $policy = DB::table('hr_leave_policies')->where('id', $d['policy_id'])->where(fn ($_companyIdScope) => \App\Services\CompanyIdScope::constrain($_companyIdScope, 'company_id', $d['company_id']))->where('status', 'approved')
+            abort_unless(DB::table('staff')->where('id', $d['staff_id'])->whereNull('employment_ended_at')->exists(), 422, 'Staff must be active.');
+            $policy = DB::table('hr_leave_policies')->where('id', $d['policy_id'])->where('status', 'approved')
                 ->whereDate('effective_from', '<=', $d['effective_from'])
                 ->where(fn ($dates) => isset($d['effective_until']) ? $dates->whereNull('effective_until')->orWhereDate('effective_until', '>=', $d['effective_until']) : $dates->whereNull('effective_until'))->first();
             abort_unless($policy, 422, 'An approved policy must cover the full assignment period.');
             $leaveType = $policy->leave_type_id;
-            $sameTypePolicies = DB::table('hr_leave_policies')->where(fn ($_companyIdScope) => \App\Services\CompanyIdScope::constrain($_companyIdScope, 'company_id', $d['company_id']))->where('leave_type_id', $leaveType)->select('id');
-            $overlap = DB::table('hr_leave_policy_assignments')->where(fn ($_companyIdScope) => \App\Services\CompanyIdScope::constrain($_companyIdScope, 'company_id', $d['company_id']))->where('staff_id', $d['staff_id'])->whereIn('policy_id', $sameTypePolicies)->whereDate('effective_from', '<', $d['effective_until'] ?? '9999-12-31')->where(fn($q) => $q->whereNull('effective_until')->orWhereDate('effective_until', '>', $d['effective_from']))->exists();
+            $sameTypePolicies = DB::table('hr_leave_policies')->where('leave_type_id', $leaveType)->select('id');
+            $overlap = DB::table('hr_leave_policy_assignments')->where('staff_id', $d['staff_id'])->whereIn('policy_id', $sameTypePolicies)->whereDate('effective_from', '<', $d['effective_until'] ?? '9999-12-31')->where(fn($q) => $q->whereNull('effective_until')->orWhereDate('effective_until', '>', $d['effective_from']))->exists();
             abort_if($overlap, 409, 'An overlapping policy assignment exists for this leave type.');
             $id = (string) Str::uuid();
             DB::table('hr_leave_policy_assignments')->insert($d + ['id' => $id, 'created_by' => $r->user()->id, 'created_at' => now(), 'updated_at' => now()]);
@@ -451,7 +386,7 @@ class WorkforceController extends Controller
     public function approveLeaveAssignment(Request $r, string $id): JsonResponse
     {
         return $this->approveConfig($r, 'hr_leave_policy_assignments', $id, function ($row) {
-            $covered = DB::table('hr_leave_policies')->where('id', $row->policy_id)->where(fn ($_companyIdScope) => \App\Services\CompanyIdScope::constrain($_companyIdScope, 'company_id', $row->company_id))->where('status', 'approved')
+            $covered = DB::table('hr_leave_policies')->where('id', $row->policy_id)->where('status', 'approved')
                 ->whereDate('effective_from', '<=', $row->effective_from)
                 ->where(fn ($dates) => $row->effective_until ? $dates->whereNull('effective_until')->orWhereDate('effective_until', '>=', $row->effective_until) : $dates->whereNull('effective_until'))->exists();
             abort_unless($covered, 409, 'The approved policy must cover the full assignment period.');
@@ -464,7 +399,7 @@ class WorkforceController extends Controller
         $q = DB::table('hr_work_requests')->whereIn('staff_id', $staff)
             ->whereExists(fn ($scope) => $scope->selectRaw('1')->from('staff')->whereColumn('staff.id', 'hr_work_requests.staff_id')->where(fn ($sameCompany) => \App\Services\CompanyIdScope::sameCompany($sameCompany, 'staff.company_id', 'hr_work_requests.company_id')))
             ->whereExists(fn ($policy) => $policy->selectRaw('1')->from('hr_work_request_policies')
-                ->whereColumn('hr_work_request_policies.id', 'hr_work_requests.policy_id')->where(fn ($sameCompany) => \App\Services\CompanyIdScope::sameCompany($sameCompany, 'hr_work_request_policies.company_id', 'hr_work_requests.company_id'))
+                ->whereColumn('hr_work_request_policies.id', 'hr_work_requests.policy_id')
                 ->whereColumn('hr_work_request_policies.request_kind', 'hr_work_requests.request_kind'))
             ->select(['id', 'request_kind', 'starts_at', 'ends_at', 'requested_minutes', 'settlement_kind', 'status', 'requested_by'])
             ->when($r->request_kind, fn ($query, $kind) => $query->where('request_kind', $kind))
@@ -511,9 +446,8 @@ class WorkforceController extends Controller
      */
     public function workRequestPolicies(Request $r): JsonResponse
     {
-        $companyId = $this->company($r, $r->input('company_id'));
-        $q = DB::table('hr_work_request_policies')->where(fn ($_companyIdScope) => \App\Services\CompanyIdScope::constrain($_companyIdScope, 'company_id', $companyId))
-            ->select(['id', 'company_id', 'request_kind', 'code', 'version', 'rules', 'status', 'effective_from', 'effective_until', 'created_by', 'approved_by', 'approved_at'])
+        $q = DB::table('hr_work_request_policies')
+            ->select(['id', 'request_kind', 'code', 'version', 'rules', 'status', 'effective_from', 'effective_until', 'created_by', 'approved_by', 'approved_at'])
             ->when($r->request_kind, fn($b, $v) => $b->where('request_kind', $v))->when($r->status, fn($b, $v) => $b->where('status', $v))->latest('created_at');
         $rows = $q->paginate($this->paginationSize($r, 50));
         $rows->getCollection()->transform(fn($row) => (array) $row + ['rules' => json_decode($row->rules, true, 512, JSON_THROW_ON_ERROR)]);
@@ -522,13 +456,11 @@ class WorkforceController extends Controller
     public function storeWorkPolicy(Request $r): JsonResponse
     {
         
-        $d = $r->validate(['company_id' => ['nullable', 'uuid'], 'request_kind' => ['required', Rule::in(['overtime', 'field_duty', 'remote_work', 'travel', 'standby', 'callout', 'on_call'])], 'code' => ['required', 'string', 'max:80'], 'version' => ['required', 'integer', 'min:1'], 'rules' => ['required', 'array'], 'rules.maximum_request_minutes' => ['nullable', 'integer', 'min:1'], 'rules.default_rate_category' => ['nullable', 'string', 'max:60'], 'rules.default_settlement_kind' => ['nullable', Rule::in(['pay', 'time_off', 'informational'])], 'rules.time_off_leave_type_id' => ['nullable', 'uuid'], 'effective_from' => ['required', 'date'], 'effective_until' => ['nullable', 'date', 'after:effective_from']]);
-        $d['company_id'] = $this->company($r, $d['company_id'] ?? null);
+        $d = $r->validate(['request_kind' => ['required', Rule::in(['overtime', 'field_duty', 'remote_work', 'travel', 'standby', 'callout', 'on_call'])], 'code' => ['required', 'string', 'max:80'], 'version' => ['required', 'integer', 'min:1'], 'rules' => ['required', 'array'], 'rules.maximum_request_minutes' => ['nullable', 'integer', 'min:1'], 'rules.default_rate_category' => ['nullable', 'string', 'max:60'], 'rules.default_settlement_kind' => ['nullable', Rule::in(['pay', 'time_off', 'informational'])], 'rules.time_off_leave_type_id' => ['nullable', 'uuid'], 'effective_from' => ['required', 'date'], 'effective_until' => ['nullable', 'date', 'after:effective_from']]);
         if (!empty($d['rules']['time_off_leave_type_id']))
-            abort_unless(DB::table('hr_leave_types')->where('id', $d['rules']['time_off_leave_type_id'])->where(fn ($_companyIdScope) => \App\Services\CompanyIdScope::constrain($_companyIdScope, 'company_id', $d['company_id']))->exists(), 422, 'Time-off leave type must belong to the same legal entity.');
+            abort_unless(DB::table('hr_leave_types')->where('id', $d['rules']['time_off_leave_type_id'])->exists(), 422, 'Select an existing time-off leave type.');
         $d['rules'] = json_encode($d['rules'], JSON_THROW_ON_ERROR);
         return DB::transaction(function () use ($r, $d) {
-            $this->lockActiveCompany($d['company_id']);
             $id = (string) Str::uuid();
             DB::table('hr_work_request_policies')->insert($d + ['id' => $id, 'status' => 'pending_approval', 'created_by' => $r->user()->id, 'created_at' => now(), 'updated_at' => now()]);
             return response()->json(['status' => 'success', 'data' => DB::table('hr_work_request_policies')->find($id)], 201);
@@ -606,13 +538,10 @@ class WorkforceController extends Controller
 
     private function approveConfig(Request $r, string $table, string $id, ?callable $validate = null): JsonResponse
     {
-        
         return DB::transaction(function () use ($r, $table, $id, $validate) {
             $candidate = DB::table($table)->where('id', $id)->first();
             abort_unless($candidate, 404);
-            $this->company($r, $candidate->company_id);
-            $this->lockActiveCompany($candidate->company_id);
-            $row = DB::table($table)->where('id', $id)->where(fn ($_companyIdScope) => \App\Services\CompanyIdScope::constrain($_companyIdScope, 'company_id', $candidate->company_id))->lockForUpdate()->first();
+            $row = DB::table($table)->where('id', $id)->lockForUpdate()->first();
             abort_unless($row, 404);
             if ($row->approved_at) {
                 abort_unless($row->approved_by === $r->user()->id, 409, 'This configuration was approved by another user.');
@@ -628,11 +557,6 @@ class WorkforceController extends Controller
             DB::table($table)->where('id', $id)->update($update);
             return response()->json(['status' => 'success', 'data' => DB::table($table)->find($id)]); });
     }
-    private function lockActiveCompany(string $companyId): void
-    {
-        abort_unless(DB::table('companies')->where('id', $companyId)->where('is_active', true)->whereNull('deleted_at')->lockForUpdate()->first(), 409, 'Workforce writes require an active legal entity.');
-    }
-
     private function company(Request $r, ?string $id): string
     {
         $allowed = $this->authorizedCompanyIds($r);

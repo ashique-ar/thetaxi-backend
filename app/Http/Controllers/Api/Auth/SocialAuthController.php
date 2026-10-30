@@ -112,7 +112,8 @@ class SocialAuthController extends Controller
                     ]);
 
                     // Assign default role
-                    $defaultRole = \Spatie\Permission\Models\Role::where('name', 'customer')->first();
+                    $defaultRole = \Spatie\Permission\Models\Role::where('name', 'customer')
+                        ->where('guard_name', config('permissions.canonical_guard', 'api'))->first();
                     if ($defaultRole) {
                         $user->assignRole($defaultRole);
                         app(\App\Services\UserService::class)->grantDirectRoleGrants($user, collect([$defaultRole]));

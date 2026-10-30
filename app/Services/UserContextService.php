@@ -375,14 +375,16 @@ class UserContextService
                 $roleModel = null;
 
                 if (is_numeric($roleSpec)) {
-                    $roleModel = Role::find((int) $roleSpec);
+                    $roleModel = Role::query()
+                        ->where('guard_name', config('permissions.canonical_guard', 'api'))
+                        ->find((int) $roleSpec);
                 } else {
                     $roleModel = Role::where('name', (string) $roleSpec)
-                        ->where('guard_name', $user->guardName())
+                        ->where('guard_name', config('permissions.canonical_guard', 'api'))
                         ->first();
                 }
 
-                if (!$roleModel || !$user->getGuardNames()->contains($roleModel->guard_name)) {
+                if (!$roleModel || $roleModel->guard_name !== config('permissions.canonical_guard', 'api')) {
                     continue;
                 }
 
@@ -480,7 +482,7 @@ class UserContextService
         DB::transaction(function () use ($user, $userContext, $roleId): void {
             $user = User::query()->whereKey($user->id)->lockForUpdate()->firstOrFail();
             $userContext = UserContext::withTrashed()->whereKey($userContext->id)->where('user_id', $user->id)->lockForUpdate()->firstOrFail();
-            $role = Role::find($roleId);
+            $role = Role::query()->where('guard_name', config('permissions.canonical_guard', 'api'))->find($roleId);
             if (!$role) {
                 return;
             }
@@ -522,7 +524,7 @@ class UserContextService
             $removeGlobal = [];
 
             foreach (array_unique(array_map('intval', $roleIds)) as $roleId) {
-                $role = Role::find($roleId);
+                $role = Role::query()->where('guard_name', config('permissions.canonical_guard', 'api'))->find($roleId);
                 if (!$role) {
                     continue;
                 }
@@ -569,7 +571,7 @@ class UserContextService
     {
         return DB::transaction(function () use ($user, $roleId): string {
             $user = User::query()->whereKey($user->id)->lockForUpdate()->firstOrFail();
-            $role = Role::findOrFail($roleId);
+            $role = Role::query()->where('guard_name', config('permissions.canonical_guard', 'api'))->findOrFail($roleId);
             $hasDirect = DB::table('user_direct_role_grants')->where('user_id', $user->id)
                 ->where('role_id', $roleId)->exists();
             if ($hasDirect) {
@@ -679,7 +681,7 @@ class UserContextService
         $roleIds = $userContext->roles()->pluck('roles.id');
 
         foreach ($roleIds as $roleId) {
-            $role = Role::find($roleId);
+            $role = Role::query()->where('guard_name', config('permissions.canonical_guard', 'api'))->find($roleId);
             if (!$role) {
                 continue;
             }

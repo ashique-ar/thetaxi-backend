@@ -17,9 +17,7 @@ class PermissionController extends Controller
 {
     public function registry(Request $request, PermissionRegistry $registry): JsonResponse
     {
-        $guard = $request->filled('guard_name')
-            ? $request->string('guard_name')->toString()
-            : null;
+        $guard = config('permissions.canonical_guard', 'api');
 
         return response()->json([
             'status' => 'success',
@@ -49,9 +47,7 @@ class PermissionController extends Controller
             $query->where('name', 'like', '%' . $request->search . '%');
         }
 
-        if ($request->filled('guard_name')) {
-            $query->where('guard_name', $request->guard_name);
-        }
+        $query->where('guard_name', config('permissions.canonical_guard', 'api'));
 
         $sortable = ['id', 'name', 'guard_name', 'created_at'];
         $sortBy = $request->get('sort_by');
@@ -122,6 +118,8 @@ class PermissionController extends Controller
      */
     public function show(Permission $permission): JsonResponse
     {
+        $this->protectCanonicalPermission($permission);
+
         return response()->json([
             'status' => 'success',
             'data' => [
@@ -139,6 +137,8 @@ class PermissionController extends Controller
      */
     public function update(UpdatePermissionRequest $request, Permission $permission): JsonResponse
     {
+        $this->protectCanonicalPermission($permission);
+
         try {
             $permission->update($request->validated());
             app(PermissionRegistrar::class)->forgetCachedPermissions();
@@ -167,6 +167,8 @@ class PermissionController extends Controller
      */
     public function destroy(Permission $permission): JsonResponse
     {
+        $this->protectCanonicalPermission($permission);
+
         try {
             // Check if permission is being used by any roles or users
             if ($permission->roles()->exists() || $permission->users()->exists()) {
@@ -200,6 +202,8 @@ class PermissionController extends Controller
      */
     public function roles(Permission $permission): JsonResponse
     {
+        $this->protectCanonicalPermission($permission);
+
         $roles = $permission->roles()->select('id', 'name', 'guard_name')->get();
 
         return response()->json([
@@ -218,6 +222,8 @@ class PermissionController extends Controller
      */
     public function users(Permission $permission): JsonResponse
     {
+        $this->protectCanonicalPermission($permission);
+
         $users = $permission->users()->select('id', 'first_name', 'last_name', 'email')->get();
 
         return response()->json([
@@ -226,5 +232,10 @@ class PermissionController extends Controller
                 'users' => $users
             ]
         ]);
+    }
+
+    private function protectCanonicalPermission(Permission $permission): void
+    {
+        abort_unless($permission->guard_name === config('permissions.canonical_guard', 'api'), 404, 'Permission not found.');
     }
 }

@@ -3,6 +3,7 @@
 namespace App\Http\Requests\User;
 
 use Illuminate\Foundation\Http\FormRequest;
+use Illuminate\Validation\Rule;
 use Illuminate\Validation\Rules\Password;
 
 class CreateUserRequest extends FormRequest
@@ -27,15 +28,15 @@ class CreateUserRequest extends FormRequest
                 ->symbols()
                 ->uncompromised()
             ],
-            'role_id' => ['nullable', 'exists:roles,id'],
+            'role_id' => ['nullable', Rule::exists('roles', 'id')->where('guard_name', config('permissions.canonical_guard', 'api'))],
             'agent_id' => ['nullable', 'exists:agents,id'],
             'is_active' => ['nullable', 'boolean'],
             'timezone' => ['nullable', 'string', 'max:50'],
             'language' => ['nullable', 'string', 'max:10'],
             'roles' => ['nullable', 'array'],
-            'roles.*' => ['required', 'string', 'exists:roles,name'],
+            'roles.*' => ['required', 'string', Rule::exists('roles', 'name')->where('guard_name', config('permissions.canonical_guard', 'api'))],
             'permissions' => ['nullable', 'array'],
-            'permissions.*' => ['required', 'string', 'exists:permissions,name'],
+            'permissions.*' => ['required', 'string', Rule::exists('permissions', 'name')->where('guard_name', config('permissions.canonical_guard', 'api'))],
             'profile_image' => ['nullable', 'image', 'mimes:jpeg,png,jpg,gif', 'max:2048'],
             'send_welcome_email' => ['nullable', 'boolean'],
         ];

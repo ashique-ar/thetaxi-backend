@@ -17,10 +17,7 @@ class UpdatePermissionRequest extends FormRequest
     {
         $permission = $this->route('permission');
         $guardName = $this->input('guard_name', $permission->guard_name);
-        $guards = array_values(array_unique(array_merge(
-            [config('permissions.canonical_guard', 'api')],
-            config('permissions.legacy_guards', ['web'])
-        )));
+        $guards = [config('permissions.canonical_guard', 'api')];
         
         return [
             'name' => [

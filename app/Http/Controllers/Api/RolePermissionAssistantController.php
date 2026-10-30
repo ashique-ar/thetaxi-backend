@@ -14,7 +14,7 @@ class RolePermissionAssistantController extends Controller
     {
         $data = $request->validate([
             'requirements' => ['required', 'string', 'min:10', 'max:2000'],
-            'guard_name' => ['sometimes', 'string', Rule::in(array_merge([config('permissions.canonical_guard', 'api')], config('permissions.legacy_guards', ['web'])))],
+            'guard_name' => ['sometimes', 'string', Rule::in([config('permissions.canonical_guard', 'api')])],
             'current_permissions' => ['sometimes', 'array', 'max:2000'],
             'current_permissions.*' => ['string'],
         ]);

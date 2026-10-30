@@ -50,9 +50,7 @@ class RoleController extends Controller
             $query->where('name', 'like', '%' . $request->search . '%');
         }
 
-        if ($request->filled('guard_name')) {
-            $query->where('guard_name', $request->string('guard_name')->toString());
-        }
+        $query->where('guard_name', config('permissions.canonical_guard', 'api'));
 
         $sortable = ['name', 'guard_name'];
         $sortBy = $request->get('sort_by');
@@ -81,6 +79,10 @@ class RoleController extends Controller
             $permissions = $data['permissions'] ?? null;
             unset($data['permissions']);
 
+            if ($permissions !== null) {
+                $permissions = $this->resolvePermissionNames($permissions, $data['guard_name']);
+            }
+
             $contextData = $this->extractContextData($data);
             $role = Role::create($data);
             $this->applyContextData($role, $contextData);
@@ -96,6 +98,8 @@ class RoleController extends Controller
                     'role' => new RoleResource($role->load('permissions'))
                 ]
             ], 201);
+        } catch (ValidationException $e) {
+            throw $e;
         } catch (\Exception $e) {
             return response()->json([
                 'status' => 'error',
@@ -113,6 +117,8 @@ class RoleController extends Controller
      */
     public function show(Role $role): JsonResponse
     {
+        $this->protectManagedRole($role);
+
         return response()->json([
             'status' => 'success',
             'data' => [
@@ -130,12 +136,16 @@ class RoleController extends Controller
      */
     public function update(UpdateRoleRequest $request, Role $role): JsonResponse
     {
-        $this->protectMasterRole($role);
+        $this->protectManagedRole($role);
 
         try {
             $data = $request->validated();
             $permissions = $data['permissions'] ?? null;
             unset($data['permissions']);
+
+            if ($permissions !== null) {
+                $permissions = $this->resolvePermissionNames($permissions, $role->guard_name);
+            }
 
             $contextData = $this->extractContextData($data);
             $role->update($data);
@@ -156,6 +166,8 @@ class RoleController extends Controller
                     'role' => new RoleResource($role->load('permissions'))
                 ]
             ]);
+        } catch (ValidationException $e) {
+            throw $e;
         } catch (\Exception $e) {
             return response()->json([
                 'status' => 'error',
@@ -173,6 +185,7 @@ class RoleController extends Controller
      */
     public function destroy(Role $role): JsonResponse
     {
+        $this->protectManagedRole($role);
         abort_if(in_array($role->name, ['admin', 'super-admin'], true), 403, 'System roles cannot be deleted.');
 
         try {
@@ -207,6 +220,8 @@ class RoleController extends Controller
      */
     public function permissions(Role $role): JsonResponse
     {
+        $this->protectManagedRole($role);
+
         $permissions = $role->permissions;
         
         return response()->json([
@@ -233,15 +248,16 @@ class RoleController extends Controller
      */
     public function assignPermissions(Request $request, Role $role): JsonResponse
     {
-        $this->protectMasterRole($role);
+        $this->protectManagedRole($role);
 
         $request->validate([
             'permissions' => ['required', 'array'],
             'permissions.*' => ['required', 'string']
         ]);
+        $permissionNames = $this->resolvePermissionNames($request->permissions, $role->guard_name);
 
         try {
-            $this->assignmentService->grantRolePermissions($role, $request->permissions);
+            $this->assignmentService->grantRolePermissions($role, $permissionNames);
             
             return response()->json([
                 'status' => 'success',
@@ -265,15 +281,16 @@ class RoleController extends Controller
      */
     public function revokePermissions(Request $request, Role $role): JsonResponse
     {
-        $this->protectMasterRole($role);
+        $this->protectManagedRole($role);
 
         $request->validate([
             'permissions' => ['required', 'array'],
             'permissions.*' => ['required', 'string']
         ]);
+        $permissionNames = $this->resolvePermissionNames($request->permissions, $role->guard_name);
 
         try {
-            $this->assignmentService->revokeRolePermissions($role, $request->permissions);
+            $this->assignmentService->revokeRolePermissions($role, $permissionNames);
             
             return response()->json([
                 'status' => 'success',
@@ -296,6 +313,8 @@ class RoleController extends Controller
      */
     public function users(Role $role): JsonResponse
     {
+        $this->protectManagedRole($role);
+
         $users = $role->users()->select('id', 'first_name', 'last_name', 'email')->get();
         
         return response()->json([
@@ -308,7 +327,7 @@ class RoleController extends Controller
 
     public function syncPermissions(Request $request, Role $role): JsonResponse
     {
-        $this->protectMasterRole($role);
+        $this->protectManagedRole($role);
 
         abort_if(! $role->exists || $role->getKey() === null, 404, 'Role not found.');
 
@@ -326,7 +345,7 @@ class RoleController extends Controller
             'permissions.*' => ['string'],
         ]);
 
-        $requestedPermissionNames = collect($this->assignmentService->normalizePermissionNames($rawPermissions))
+        $requestedPermissionNames = collect($this->resolvePermissionNames($rawPermissions, $role->guard_name))
             ->map(fn ($permission) => (string) $permission)
             ->unique()
             ->values();
@@ -366,7 +385,7 @@ class RoleController extends Controller
 
     public function applyTemplate(Request $request, Role $role): JsonResponse
     {
-        $this->protectMasterRole($role);
+        $this->protectManagedRole($role);
 
         $request->validate([
             'template' => ['required', 'string'],
@@ -400,7 +419,7 @@ class RoleController extends Controller
      *
      * @throws ValidationException
      */
-    private function resolvePermissionNames(array $permissionIdentifiers): array
+    private function resolvePermissionNames(array $permissionIdentifiers, ?string $guardName = null): array
     {
         $identifiers = collect($permissionIdentifiers)
             ->filter(fn ($value) => $value !== null && $value !== '')
@@ -413,14 +432,19 @@ class RoleController extends Controller
         }
 
         $ids = $identifiers->filter(fn ($value) => ctype_digit($value))->values();
-        $names = $identifiers->reject(fn ($value) => ctype_digit($value))->values();
+        $names = $identifiers->reject(fn ($value) => ctype_digit($value))
+            ->map(fn ($name) => config("permissions.aliases.{$name}", $name))
+            ->values();
 
         $permissions = Permission::query()
-            ->when($ids->isNotEmpty(), fn ($query) => $query->whereIn('id', $ids))
-            ->when($names->isNotEmpty(), function ($query) use ($names, $ids) {
-                $method = $ids->isNotEmpty() ? 'orWhereIn' : 'whereIn';
-                $query->{$method}('name', $names);
+            ->where(function ($query) use ($ids, $names) {
+                $query->when($ids->isNotEmpty(), fn ($query) => $query->whereIn('id', $ids))
+                    ->when($names->isNotEmpty(), function ($query) use ($names, $ids) {
+                        $method = $ids->isNotEmpty() ? 'orWhereIn' : 'whereIn';
+                        $query->{$method}('name', $names);
+                    });
             })
+            ->when($guardName, fn ($query) => $query->where('guard_name', $guardName))
             ->get(['id', 'name']);
 
         $resolvedNames = $permissions->pluck('name')->unique()->values();
@@ -446,8 +470,9 @@ class RoleController extends Controller
         return $this->assignmentService->syncRolePermissions($role, $permissionIdentifiers);
     }
 
-    private function protectMasterRole(Role $role): void
+    private function protectManagedRole(Role $role): void
     {
+        abort_unless($role->guard_name === config('permissions.canonical_guard', 'api'), 404, 'Role not found.');
         abort_if($role->name === 'super-admin', 403, 'The Master Admin role cannot be changed or deleted.');
     }
 

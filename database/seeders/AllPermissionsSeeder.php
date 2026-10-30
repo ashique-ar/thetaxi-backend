@@ -17,7 +17,7 @@ use Spatie\Permission\PermissionRegistrar;
  */
 class AllPermissionsSeeder extends Seeder
 {
-    private const GUARDS = ['api', 'web'];
+    private const GUARDS = ['api'];
 
     private const STANDARD_ACTIONS = ['view', 'create', 'edit', 'update', 'delete', 'manage'];
 

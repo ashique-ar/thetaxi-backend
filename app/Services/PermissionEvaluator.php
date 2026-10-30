@@ -42,7 +42,10 @@ class PermissionEvaluator
 
         $contextQuery = $user->contexts()
             ->where('is_active', true)
-            ->with('roles.permissions');
+            ->with(['roles' => fn ($roles) => $roles
+                ->where('guard_name', $this->registry->canonicalGuard())
+                ->with(['permissions' => fn ($permissions) => $permissions
+                    ->where('guard_name', $this->registry->canonicalGuard())])]);
 
         if ($contextId && Str::isUuid($contextId)) {
             $contextQuery->where(function ($query) use ($contextId) {
@@ -107,7 +110,9 @@ class PermissionEvaluator
     public function rolesForInternalContext(User $user): Collection
     {
         $userRoles = $user->roles()
-            ->with('permissions')
+            ->where('guard_name', $this->registry->canonicalGuard())
+            ->with(['permissions' => fn ($permissions) => $permissions
+                ->where('guard_name', $this->registry->canonicalGuard())])
             ->get();
         $adminRoles = $userRoles->whereIn('name', ['admin', 'super-admin']);
 
@@ -118,7 +123,10 @@ class PermissionEvaluator
         $staffContexts = $user->contexts()
             ->where('context_type', 'staff')
             ->where('is_active', true)
-            ->with('roles.permissions')
+            ->with(['roles' => fn ($roles) => $roles
+                ->where('guard_name', $this->registry->canonicalGuard())
+                ->with(['permissions' => fn ($permissions) => $permissions
+                    ->where('guard_name', $this->registry->canonicalGuard())])])
             ->whereIn('context_id', function ($staff) use ($user) {
                 $staff->select('id')
                     ->from('staff')
@@ -131,7 +139,10 @@ class PermissionEvaluator
             ->get();
         $externalContexts = $user->contexts()
             ->where('context_type', '!=', 'staff')
-            ->with('roles.permissions')
+            ->with(['roles' => fn ($roles) => $roles
+                ->where('guard_name', $this->registry->canonicalGuard())
+                ->with(['permissions' => fn ($permissions) => $permissions
+                    ->where('guard_name', $this->registry->canonicalGuard())])])
             ->get();
         $staffRoleIds = $staffContexts
             ->flatMap(fn (UserContext $context) => $context->roles->pluck('id'))
@@ -153,14 +164,15 @@ class PermissionEvaluator
     {
         return $this->rolesForInternalContext($user)
             ->flatMap(fn ($role) => $role->permissions)
-            ->merge($user->getDirectPermissions())
+            ->merge($user->getDirectPermissions()->where('guard_name', $this->registry->canonicalGuard()))
             ->unique('name')
             ->values();
     }
 
     private function hasActiveStaffIdentity(User $user, ?string $contextId = null): bool
     {
-        if ($user->roles()->whereIn('name', ['admin', 'super-admin'])->exists()) {
+        if ($user->roles()->whereIn('name', ['admin', 'super-admin'])
+            ->where('guard_name', $this->registry->canonicalGuard())->exists()) {
             return true;
         }
 
