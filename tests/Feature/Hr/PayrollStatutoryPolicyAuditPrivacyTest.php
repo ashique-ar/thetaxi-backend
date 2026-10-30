@@ -1,6 +1,5 @@
 <?php
 
-use App\Models\Company;
 use App\Models\Hr\HrEpfEtfContributionPolicy;
 use App\Models\Hr\HrGratuityPolicy;
 use App\Models\User;
@@ -10,13 +9,11 @@ use Illuminate\Support\Facades\DB;
 uses(RefreshDatabase::class);
 
 it('keeps statutory policy terms auditable without free-text reasons or actor identifiers', function () {
-    $company = Company::create(['name' => 'Statutory audit company']);
     $creator = User::factory()->create();
     $approver = User::factory()->create();
     $privateReason = 'private statutory policy rationale';
 
     $epf = HrEpfEtfContributionPolicy::create([
-        'company_id' => $company->id,
         'version' => 1,
         'status' => 'approved',
         'employee_epf_rate_percent' => 8,
@@ -31,7 +28,6 @@ it('keeps statutory policy terms auditable without free-text reasons or actor id
         'approved_at' => now(),
     ]);
     $gratuity = HrGratuityPolicy::create([
-        'company_id' => $company->id,
         'version' => 1,
         'status' => 'approved',
         'minimum_qualifying_service_years' => 5,

@@ -31,8 +31,8 @@ class HrAnalyticsSnapshotService
         $periodStart = match ($contract['period_kind'] ?? 'month') {
             'day' => $asOf->startOfDay(), 'year_to_date' => $asOf->startOfYear(), default => $asOf->startOfMonth(),
         };
-        $facts = $this->facts($definition->company_id, $metric, $periodStart, $asOf);
-        $grouped = $dimension ? $facts->groupBy(fn ($fact) => $this->dimension($definition->company_id, $fact, $dimension, $asOf)) : collect(['all' => $facts]);
+        $facts = $this->facts($metric, $periodStart, $asOf);
+        $grouped = $dimension ? $facts->groupBy(fn ($fact) => $this->dimension($fact, $dimension, $asOf)) : collect(['all' => $facts]);
         $minimum = max(1, (int) $definition->minimum_group_size);
         $aggregates = []; $suppression = [];
         foreach ($grouped as $group => $rows) {
@@ -53,28 +53,28 @@ class HrAnalyticsSnapshotService
         ];
     }
 
-    private function facts(string $companyId, string $metric, CarbonImmutable $from, CarbonImmutable $to): Collection
+    private function facts(string $metric, CarbonImmutable $from, CarbonImmutable $to): Collection
     {
         return match ($metric) {
-            'headcount' => DB::table('hr_employment_assignments')->where(fn ($_companyIdScope) => \App\Services\CompanyIdScope::constrain($_companyIdScope, 'company_id', $companyId))->whereDate('effective_from', '<=', $to)->where(fn ($q) => $q->whereNull('effective_until')->orWhereDate('effective_until', '>=', $to))->get()->unique('staff_id')->map(fn ($r) => $this->fact($r->id, $r->staff_id, 1, $r->updated_at)),
-            'joiners' => DB::table('hr_employment_spells')->where(fn ($_companyIdScope) => \App\Services\CompanyIdScope::constrain($_companyIdScope, 'company_id', $companyId))->whereBetween('joined_at', [$from->toDateString(), $to->toDateString()])->get()->map(fn ($r) => $this->fact($r->id, $r->staff_id, 1, $r->updated_at)),
-            'leavers' => DB::table('hr_employment_spells')->where(fn ($_companyIdScope) => \App\Services\CompanyIdScope::constrain($_companyIdScope, 'company_id', $companyId))->whereBetween('terminated_at', [$from->toDateString(), $to->toDateString()])->get()->map(fn ($r) => $this->fact($r->id, $r->staff_id, 1, $r->updated_at)),
-            'vacant_positions' => DB::table('hr_positions')->where(fn ($_companyIdScope) => \App\Services\CompanyIdScope::constrain($_companyIdScope, 'company_id', $companyId))->where('status', 'vacant')->whereDate('effective_from', '<=', $to)->where(fn ($q) => $q->whereNull('effective_until')->orWhereDate('effective_until', '>=', $to))->get()->map(fn ($r) => ['id' => $r->id, 'staff_id' => null, 'organization_unit_id' => $r->organization_unit_id, 'value' => (int) $r->headcount_limit, 'source_updated_at' => (string) $r->updated_at]),
-            'approved_leave_minutes' => DB::table('hr_leave_requests')->where(fn ($_companyIdScope) => \App\Services\CompanyIdScope::constrain($_companyIdScope, 'company_id', $companyId))->whereIn('status', ['approved', 'posted', 'taken'])->whereDate('start_date', '<=', $to)->whereDate('end_date', '>=', $from)->get()->map(fn ($r) => $this->fact($r->id, $r->staff_id, (int) $r->reserved_minutes, $r->updated_at)),
-            'approved_overtime_minutes' => DB::table('hr_work_requests')->where(fn ($_companyIdScope) => \App\Services\CompanyIdScope::constrain($_companyIdScope, 'company_id', $companyId))->where('request_kind', 'overtime')->where('status', 'approved')->whereBetween('starts_at', [$from, $to])->get()->map(fn ($r) => $this->fact($r->id, $r->staff_id, (int) $r->requested_minutes, $r->updated_at)),
-            'learning_completions' => DB::table('hr_learning_enrollments as e')->join('hr_course_sessions as s', 's.id', '=', 'e.session_id')->join('hr_courses as c', 'c.id', '=', 's.course_id')->where(fn ($_companyIdScope) => \App\Services\CompanyIdScope::constrain($_companyIdScope, 'c.company_id', $companyId))->where('e.status', 'completed')->whereBetween('e.completed_at', [$from, $to])->select(['e.id', 'e.staff_id', 'e.updated_at'])->get()->map(fn ($r) => $this->fact($r->id, $r->staff_id, 1, $r->updated_at)),
+            'headcount' => DB::table('hr_employment_assignments')->whereDate('effective_from', '<=', $to)->where(fn ($q) => $q->whereNull('effective_until')->orWhereDate('effective_until', '>=', $to))->get()->unique('staff_id')->map(fn ($r) => $this->fact($r->id, $r->staff_id, 1, $r->updated_at)),
+            'joiners' => DB::table('hr_employment_spells')->whereBetween('joined_at', [$from->toDateString(), $to->toDateString()])->get()->map(fn ($r) => $this->fact($r->id, $r->staff_id, 1, $r->updated_at)),
+            'leavers' => DB::table('hr_employment_spells')->whereBetween('terminated_at', [$from->toDateString(), $to->toDateString()])->get()->map(fn ($r) => $this->fact($r->id, $r->staff_id, 1, $r->updated_at)),
+            'vacant_positions' => DB::table('hr_positions')->where('status', 'vacant')->whereDate('effective_from', '<=', $to)->where(fn ($q) => $q->whereNull('effective_until')->orWhereDate('effective_until', '>=', $to))->get()->map(fn ($r) => ['id' => $r->id, 'staff_id' => null, 'organization_unit_id' => $r->organization_unit_id, 'value' => (int) $r->headcount_limit, 'source_updated_at' => (string) $r->updated_at]),
+            'approved_leave_minutes' => DB::table('hr_leave_requests')->whereIn('status', ['approved', 'posted', 'taken'])->whereDate('start_date', '<=', $to)->whereDate('end_date', '>=', $from)->get()->map(fn ($r) => $this->fact($r->id, $r->staff_id, (int) $r->reserved_minutes, $r->updated_at)),
+            'approved_overtime_minutes' => DB::table('hr_work_requests')->where('request_kind', 'overtime')->where('status', 'approved')->whereBetween('starts_at', [$from, $to])->get()->map(fn ($r) => $this->fact($r->id, $r->staff_id, (int) $r->requested_minutes, $r->updated_at)),
+            'learning_completions' => DB::table('hr_learning_enrollments as e')->join('hr_course_sessions as s', 's.id', '=', 'e.session_id')->join('hr_courses as c', 'c.id', '=', 's.course_id')->where('e.status', 'completed')->whereBetween('e.completed_at', [$from, $to])->select(['e.id', 'e.staff_id', 'e.updated_at'])->get()->map(fn ($r) => $this->fact($r->id, $r->staff_id, 1, $r->updated_at)),
         };
     }
 
-    private function dimension(string $companyId, array $fact, string $dimension, CarbonImmutable $asOf): string
+    private function dimension(array $fact, string $dimension, CarbonImmutable $asOf): string
     {
         if ($dimension === 'organization_unit' && isset($fact['organization_unit_id'])) return (string) $fact['organization_unit_id'];
         if (!$fact['staff_id']) return 'unspecified';
-        $assignment = DB::table('hr_employment_assignments')->where(fn ($_companyIdScope) => \App\Services\CompanyIdScope::constrain($_companyIdScope, 'company_id', $companyId))->where('staff_id', $fact['staff_id'])->whereDate('effective_from', '<=', $asOf)->where(fn ($q) => $q->whereNull('effective_until')->orWhereDate('effective_until', '>=', $asOf))->latest('effective_from')->first();
+        $assignment = DB::table('hr_employment_assignments')->where('staff_id', $fact['staff_id'])->whereDate('effective_from', '<=', $asOf)->where(fn ($q) => $q->whereNull('effective_until')->orWhereDate('effective_until', '>=', $asOf))->latest('effective_from')->first();
         if ($dimension === 'organization_unit') return (string) ($assignment?->organization_unit_id ?? 'unspecified');
         if ($dimension === 'location') return (string) ($assignment?->location_code ?? 'unspecified');
         if ($dimension === 'staff_type') return (string) (DB::table('staff')->where('id', $fact['staff_id'])->value('staff_type') ?? 'unspecified');
-        $joined = DB::table('hr_employment_spells')->where(fn ($_companyIdScope) => \App\Services\CompanyIdScope::constrain($_companyIdScope, 'company_id', $companyId))->where('staff_id', $fact['staff_id'])->min('joined_at');
+        $joined = DB::table('hr_employment_spells')->where('staff_id', $fact['staff_id'])->min('joined_at');
         if (!$joined) return 'unspecified';
         $years = CarbonImmutable::parse($joined)->diffInYears($asOf);
         return $years < 1 ? 'under_1_year' : ($years < 3 ? '1_to_3_years' : ($years < 5 ? '3_to_5_years' : '5_plus_years'));

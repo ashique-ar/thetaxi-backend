@@ -1086,7 +1086,6 @@ Route::middleware(['auth:api'])->group(function () {
         Route::put('subjects/{ownerType}/{ownerId}/custom-fields/{definitionId}', [PeopleCoreController::class, 'putSubjectCustomFieldValue'])->whereUuid('ownerId')->whereUuid('definitionId')->middleware('permission:hr.custom-fields.values.manage');
     });
     Route::prefix('hr/attendance')->middleware('business.module:hr')->group(function () {
-        Route::get('company-options', [AttendanceResultController::class, 'companyOptions'])->middleware('permission:hr.attendance.results.view|hr.attendance.corrections.request|hr.attendance.periods.manage|hr.attendance.periods.reopen|hr.attendance.devices.view|hr.attendance.devices.manage|hr.attendance.access.request|hr.attendance.maintenance.execute|hr.attendance.config.manage|hr.attendance.config.approve');
         Route::get('device-options', [AttendanceDeviceController::class, 'deviceOptions'])->middleware('permission:hr.attendance.devices.view|hr.attendance.devices.manage');
         Route::get('devices', [AttendanceDeviceController::class, 'index'])->middleware('permission:hr.attendance.devices.view');
         Route::post('connectors', [AttendanceDeviceController::class, 'storeConnector'])->middleware('permission:hr.attendance.devices.manage');
@@ -1201,7 +1200,6 @@ Route::middleware(['auth:api'])->group(function () {
         Route::get('payroll-inputs', [WorkforceController::class, 'payrollInputs'])->middleware('permission:hr.payroll-inputs.view');
     });
     Route::prefix('hr/payroll')->middleware(['ensure.internal', 'business.module:hr'])->group(function () {
-        Route::get('context', [PayrollStatutoryController::class, 'context'])->middleware('permission:hr.payroll.statutory.view');
         Route::get('epf-etf-policies', [PayrollStatutoryController::class, 'epfEtfPolicies'])->middleware('permission:hr.payroll.statutory.view');
         Route::post('epf-etf-policies', [PayrollStatutoryController::class, 'storeEpfEtfPolicy'])->middleware('permission:hr.payroll.statutory.manage');
         Route::post('epf-etf-policies/{policy}/approve', [PayrollStatutoryController::class, 'approveEpfEtfPolicy'])->whereUuid('policy')->middleware('permission:hr.payroll.statutory.approve');

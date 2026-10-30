@@ -21,11 +21,14 @@ it('governs work-calendar and calendar-day creation as idempotent, replay-safe, 
     $service = file_get_contents(app_path('Services/Hr/OrganizationAdministrationService.php'));
 
     expect($service)
-        ->toContain('public function createWorkCalendar(array $data,string $companyId,string $actorUserId):array')
-        ->toContain('public function createWorkCalendarDay(string $calendarId,array $data,string $companyId,string $actorUserId):array')
-        ->toContain("if(\$replay=\$this->replay(\$data['idempotency_key'],\$checksum,\$companyId,'work_calendar'))return\$replay;")
-        ->toContain("if(\$replay=\$this->replay(\$data['idempotency_key'],\$checksum,\$companyId,'work_calendar_day'))return\$replay;")
+        ->toContain('public function createWorkCalendar(array $data,string $actorUserId):array')
+        ->toContain('public function createWorkCalendarDay(string $calendarId,array $data,string $actorUserId):array')
+        ->toContain("if(\$replay=\$this->replay(\$data['idempotency_key'],\$checksum,null,'work_calendar'))return\$replay;")
+        ->toContain("if(\$replay=\$this->replay(\$data['idempotency_key'],\$checksum,null,'work_calendar_day'))return\$replay;")
         ->toContain("abort_if(DB::table('hr_work_calendar_days')->where('calendar_id',\$calendarId)->whereDate('calendar_date',\$payload['calendar_date'])->exists(),409,");
+
+    $calendarWrites = substr($service, strpos($service, 'public function createWorkCalendar'), strpos($service, 'private function unitPayload') - strpos($service, 'public function createWorkCalendar'));
+    expect($calendarWrites)->not->toContain('company_id');
 });
 
 it('exposes work calendars under the existing hr.organization permissions without minting new ones', function () {

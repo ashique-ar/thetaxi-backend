@@ -82,7 +82,6 @@ it('refuses to drop populated attendance-results evidence', function () {
     $calendarId = (string) Str::uuid();
     DB::table('hr_work_calendars')->insert([
         'id' => $calendarId,
-        'company_id' => $company->id,
         'code' => 'ROLLBACK-CALENDAR',
         'name' => 'Retained calendar',
         'timezone' => 'Asia/Colombo',
@@ -458,12 +457,10 @@ it('refuses to drop populated engagement and wellness evidence', function () {
 });
 
 it('refuses to drop populated workforce-planning evidence', function () {
-    $company = Company::create(['name' => 'Workforce planning rollback company', 'is_active' => true]);
     $actor = User::factory()->create();
     $planId = (string) Str::uuid();
     DB::table('hr_workforce_plan_versions')->insert([
         'id' => $planId,
-        'company_id' => $company->id,
         'code' => 'ROLLBACK-PLAN',
         'version' => 1,
         'name' => 'Retained plan fixture',
@@ -486,12 +483,10 @@ it('refuses to drop populated workforce-planning evidence', function () {
 });
 
 it('refuses to drop populated reporting and data-quality evidence', function () {
-    $company = Company::create(['name' => 'Reporting rollback company', 'is_active' => true]);
     $owner = User::factory()->create();
     $viewId = (string) Str::uuid();
     DB::table('hr_report_saved_views')->insert([
         'id' => $viewId,
-        'company_id' => $company->id,
         'owner_user_id' => $owner->id,
         'name' => 'Retained view fixture',
         'report_kind' => 'workforce',
@@ -543,13 +538,11 @@ it('refuses to drop populated notification template evidence', function () {
 });
 
 it('refuses to drop evolved custom-field version evidence', function () {
-    $company = Company::create(['name' => 'Custom-field rollback company', 'is_active' => true]);
     $actor = User::factory()->create();
     $definitionId = (string) Str::uuid();
     $valueId = (string) Str::uuid();
     DB::table('hr_custom_field_definitions')->insert([
         'id' => $definitionId,
-        'company_id' => $company->id,
         'applies_to' => 'staff',
         'field_key' => 'rollback_fixture',
         'label' => 'Synthetic fixture',
@@ -640,13 +633,11 @@ it('refuses to drop evolved reporting-line governance evidence', function () {
 });
 
 it('refuses to drop populated custom-field value history metadata', function () {
-    $company = Company::create(['name' => 'Custom-field history rollback company', 'is_active' => true]);
     $actor = User::factory()->create();
     $definitionId = (string) Str::uuid();
     $valueId = (string) Str::uuid();
     DB::table('hr_custom_field_definitions')->insert([
         'id' => $definitionId,
-        'company_id' => $company->id,
         'applies_to' => 'staff',
         'field_key' => 'history_fixture',
         'label' => 'Synthetic history fixture',

@@ -35,7 +35,6 @@ class AttendanceIngestionService
         abort_unless($enabled, 403, 'Hikvision attendance ingestion is disabled.');
 
         $connector = AttendanceConnector::query()->where('connector_key', $headers['connector_key'])->where('status', 'active')->firstOrFail();
-        abort_unless(DB::table('companies')->where('id', $connector->company_id)->where('is_active', true)->whereNull('deleted_at')->exists(), 409, 'Attendance ingestion requires an active legal entity.');
         $this->verify($connector, $headers, $rawBody, $sourceIp);
         $checksum = hash('sha256', $rawBody);
         if ($existing = DB::table('hr_attendance_ingestion_requests')->where('request_id', $headers['request_id'])->first()) {
@@ -46,9 +45,7 @@ class AttendanceIngestionService
         abort_if(DB::table('hr_attendance_ingestion_requests')->where('nonce', $headers['nonce'])->exists(), 409, 'Attendance ingestion nonce was already used.');
         try {
             return DB::transaction(function () use ($connector, $headers, $events, $sourceIp, $checksum) {
-                $company = DB::table('companies')->where('id', $connector->company_id)->where('is_active', true)->whereNull('deleted_at')->lockForUpdate()->first();
-                abort_unless($company, 409, 'Attendance ingestion requires an active legal entity.');
-                $currentConnector = AttendanceConnector::query()->whereKey($connector->id)->where(fn ($_companyIdScope) => \App\Services\CompanyIdScope::constrain($_companyIdScope, 'company_id', $company->id))->where('status', 'active')->lockForUpdate()->firstOrFail();
+                $currentConnector = AttendanceConnector::query()->whereKey($connector->id)->where('status', 'active')->lockForUpdate()->firstOrFail();
                 abort_unless(hash_equals($connector->signing_secret, $currentConnector->signing_secret), 401, 'Attendance connector credentials changed; sign the request again.');
                 $requestId = (string) Str::uuid();
                 DB::table('hr_attendance_ingestion_requests')->insert(['id' => $requestId, 'connector_id' => $connector->id, 'request_id' => $headers['request_id'], 'nonce' => $headers['nonce'], 'signed_at' => CarbonImmutable::parse($headers['signed_at']), 'received_at' => now(), 'payload_checksum' => $checksum, 'event_count' => count($events), 'status' => 'processing', 'source_ip' => $sourceIp, 'created_at' => now(), 'updated_at' => now()]);
@@ -87,7 +84,7 @@ class AttendanceIngestionService
         $sourceOffset = (int) $occurred->setTimezone($event['source_timezone'])->utcOffset();
         abort_unless($sourceOffset === (int) $event['source_utc_offset_minutes'], 422, 'Attendance event timezone and UTC offset evidence do not agree.');
         $occurredDate = $occurred->setTimezone($event['source_timezone'])->toDateString();
-        $mappingQuery = DB::table('hr_attendance_person_mappings')->where(fn ($_companyIdScope) => \App\Services\CompanyIdScope::constrain($_companyIdScope, 'company_id', $connector->company_id))->where('provider_person_id', $event['provider_person_id'])->where('enrollment_status', 'verified')->whereDate('effective_from', '<=', $occurredDate)->where(fn($q) => $q->whereNull('effective_until')->orWhereDate('effective_until', '>', $occurredDate));
+        $mappingQuery = DB::table('hr_attendance_person_mappings')->where('provider_person_id', $event['provider_person_id'])->where('enrollment_status', 'verified')->whereDate('effective_from', '<=', $occurredDate)->where(fn($q) => $q->whereNull('effective_until')->orWhereDate('effective_until', '>', $occurredDate));
         if ($device)
             $mappingQuery->where(fn($q) => $q->where('device_id', $device->id)->orWhereNull('device_id'));
         else
@@ -97,7 +94,7 @@ class AttendanceIngestionService
         $reason = !$device ? 'device_unknown' : ($mappings->isEmpty() ? 'person_unmapped' : ($mappings->count() > 1 ? 'person_mapping_ambiguous' : null));
         $resolvedMapping = $reason ? null : $mapping;
         try {
-            $raw = DB::transaction(fn () => AttendanceRawEvent::create(['company_id' => $connector->company_id, 'connector_id' => $connector->id, 'device_id' => $device?->id, 'ingestion_request_id' => $requestId, 'staff_id' => $resolvedMapping?->staff_id, 'person_mapping_id' => $resolvedMapping?->id, 'provider_event_id' => $event['provider_event_id'], 'provider_person_id' => $event['provider_person_id'], 'employee_number' => $event['employee_number'] ?? null, 'occurred_at' => $occurred, 'source_timezone' => $event['source_timezone'], 'source_utc_offset_minutes' => $event['source_utc_offset_minutes'], 'event_kind' => $event['event_kind'], 'direction' => $event['direction'] ?? null, 'authentication_method' => $event['authentication_method'] ?? null, 'verification_result' => $event['verification_result'] ?? null, 'encrypted_raw_payload' => AttendanceEventEvidence::minimalPayload($event), 'payload_checksum' => $payloadChecksum, 'mapping_status' => $reason ? 'quarantined' : 'mapped', 'received_at' => now()]));
+            $raw = DB::transaction(fn () => AttendanceRawEvent::create(['connector_id' => $connector->id, 'device_id' => $device?->id, 'ingestion_request_id' => $requestId, 'staff_id' => $resolvedMapping?->staff_id, 'person_mapping_id' => $resolvedMapping?->id, 'provider_event_id' => $event['provider_event_id'], 'provider_person_id' => $event['provider_person_id'], 'employee_number' => $event['employee_number'] ?? null, 'occurred_at' => $occurred, 'source_timezone' => $event['source_timezone'], 'source_utc_offset_minutes' => $event['source_utc_offset_minutes'], 'event_kind' => $event['event_kind'], 'direction' => $event['direction'] ?? null, 'authentication_method' => $event['authentication_method'] ?? null, 'verification_result' => $event['verification_result'] ?? null, 'encrypted_raw_payload' => AttendanceEventEvidence::minimalPayload($event), 'payload_checksum' => $payloadChecksum, 'mapping_status' => $reason ? 'quarantined' : 'mapped', 'received_at' => now()]));
         } catch (QueryException $exception) {
             $existing = AttendanceRawEvent::query()->where('connector_id', $connector->id)
                 ->where('provider_event_id', $event['provider_event_id'])->first();
@@ -111,7 +108,7 @@ class AttendanceIngestionService
             return;
         }
         if ($reason) {
-            DB::table('hr_attendance_quarantine_items')->insert(['id' => (string) Str::uuid(), 'company_id' => $connector->company_id, 'raw_event_id' => $raw->id, 'reason_code' => $reason, 'details' => 'Raw event requires reviewed mapping resolution.', 'status' => 'open', 'created_at' => now(), 'updated_at' => now()]);
+            DB::table('hr_attendance_quarantine_items')->insert(['id' => (string) Str::uuid(), 'raw_event_id' => $raw->id, 'reason_code' => $reason, 'details' => 'Raw event requires reviewed mapping resolution.', 'status' => 'open', 'created_at' => now(), 'updated_at' => now()]);
             $counts['quarantined']++;
         } else
             $counts['created']++;

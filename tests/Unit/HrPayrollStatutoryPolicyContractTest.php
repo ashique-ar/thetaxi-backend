@@ -1,7 +1,8 @@
 <?php
 
-it('creates governed EPF/ETF and gratuity statutory-policy tables with maker-checker and rollback protection', function () {
+it('creates governed installation-wide EPF/ETF and gratuity statutory-policy tables with maker-checker and rollback protection', function () {
     $migration = file_get_contents(database_path('migrations/2026_08_24_100000_create_hr_payroll_statutory_policies.php'));
+    $cleanupMigration = file_get_contents(database_path('migrations/2026_10_30_000025_remove_hr_statutory_policy_tenant_company.php'));
 
     expect($migration)->toContain("Schema::create('hr_epf_etf_contribution_policies'")
         ->toContain("Schema::create('hr_gratuity_policies'")
@@ -20,10 +21,13 @@ it('creates governed EPF/ETF and gratuity statutory-policy tables with maker-che
         ->toContain("hr_epf_etf_policy_version_unique")
         ->toContain("hr_gratuity_policy_version_unique")
         ->toContain('Refusing to drop governed EPF/ETF statutory-policy evidence while rows exist.')
-        ->toContain('Refusing to drop governed gratuity statutory-policy evidence while rows exist.');
+        ->toContain('Refusing to drop governed gratuity statutory-policy evidence while rows exist.')
+        ->and($cleanupMigration)->toContain('hr_epf_etf_contribution_policies', 'hr_gratuity_policies', "dropForeign(['company_id'])", "dropColumn('company_id')")
+        ->toContain("index(['status', 'effective_from']")
+        ->toContain("index('version'");
 });
 
-it('keeps statutory policy models governance-scoped without generic user-tracking columns', function () {
+it('keeps statutory policy models installation-wide without generic user-tracking columns', function () {
     $epfModel = file_get_contents(app_path('Models/Hr/HrEpfEtfContributionPolicy.php'));
     $gratuityModel = file_get_contents(app_path('Models/Hr/HrGratuityPolicy.php'));
 
@@ -41,7 +45,6 @@ it('enforces maker-checker approval and effective-period overlap for both statut
 
         return $startAt === false || $endAt === false ? '' : substr($service, $startAt, $endAt - $startAt);
     };
-    $companyLock = "DB::table('companies')->where('id', \$companyId)->lockForUpdate()->first();";
 
     expect($service)->toContain("abort_unless(\$policy->status === 'draft', 422, 'Only a draft EPF/ETF contribution policy can be approved.')")
         ->toContain("abort_if(\$policy->created_by === \$actorUserId, 409, 'The policy preparer cannot approve the same version.')")
@@ -50,25 +53,26 @@ it('enforces maker-checker approval and effective-period overlap for both statut
         ->toContain("->where('status', 'approved')->where('id', '!=', \$policy->id)")
         ->toContain("An approved EPF/ETF contribution policy already overlaps this effective period.")
         ->toContain("An approved gratuity policy already overlaps this effective period.")
-        ->toContain('lockForUpdate()->max(\'version\') + 1');
+        ->toContain("orderByDesc('version')->orderByDesc('id')->lockForUpdate()->first()");
 
     foreach ([
         $approvalBody('public function approveEpfEtfPolicy', 'public function resolveEffectiveEpfEtfPolicy'),
         $approvalBody('public function approveGratuityPolicy', 'public function resolveEffectiveGratuityPolicy'),
     ] as $body) {
-        $lockAt = strpos($body, $companyLock);
+        $lockAt = strpos($body, 'lockForUpdate()');
         $overlapAt = strpos($body, '$overlap =');
-        expect($lockAt)->not->toBeFalse()
+        expect($body)->not->toContain('company_id', 'companies')
+            ->and($lockAt)->not->toBeFalse()
             ->and($overlapAt)->not->toBeFalse()
             ->and($lockAt)->toBeLessThan($overlapAt);
     }
 });
 
-it('fails closed on preview when no approved statutory policy is effective and never invents a rate', function () {
+it('fails closed when no unique approved statutory policy is effective and never invents a rate', function () {
     $service = file_get_contents(app_path('Services/Hr/PayrollStatutoryPolicyService.php'));
 
-    expect($service)->toContain('No approved EPF/ETF contribution policy is effective for this legal entity and date.')
-        ->toContain('No approved gratuity policy is effective for this legal entity and date.')
+    expect($service)->toContain('Exactly one approved EPF/ETF contribution policy must be effective for this date; resolve overlapping policy versions.')
+        ->toContain('Exactly one approved gratuity policy must be effective for this date; resolve overlapping policy versions.')
         ->toContain("->where('status', 'approved')")
         ->toContain("->where('effective_from', '<=', \$at)")
         ->not->toContain('0.08')
@@ -168,7 +172,7 @@ it('validates and sends every earnings category required by the approved EPF/ETF
             ->and($component)->toContain("{$field}: [null as number | null")
             ->and($template)->toContain("formControlName=\"{$field}\" required");
     }
-    expect($controller)->toContain("->previewContribution(\$companyId, \$data['earnings'], \$at)")
+    expect($controller)->toContain("->previewContribution(\$data['earnings'], \$at)")
         ->and($controller)->not->toContain("'total_earnings' => ['required'")
         ->and($template)->toContain('preview.assessable_earnings')
         ->and($component)->toContain('previewEpfEtfContribution({ earnings: this.epfEtfPreviewForm.getRawValue() })')

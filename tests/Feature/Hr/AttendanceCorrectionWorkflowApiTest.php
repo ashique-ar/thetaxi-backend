@@ -34,7 +34,7 @@ it('submits and approves a policy-mapped attendance correction as an immutable r
     $calendarId = (string) Str::uuid();
     $shiftId = (string) Str::uuid();
     DB::table('hr_work_calendars')->insert([
-        'id' => $calendarId, 'company_id' => $company->id, 'code' => 'CAL', 'name' => 'Calendar', 'timezone' => 'Asia/Colombo',
+        'id' => $calendarId, 'code' => 'CAL', 'name' => 'Calendar', 'timezone' => 'Asia/Colombo',
         'weekly_working_days' => json_encode(['monday']), 'effective_from' => '2026-01-01', 'status' => 'active',
         'created_by' => $requester->id, 'created_at' => now(), 'updated_at' => now(),
     ]);

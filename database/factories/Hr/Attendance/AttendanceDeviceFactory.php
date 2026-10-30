@@ -2,7 +2,6 @@
 
 namespace Database\Factories\Hr\Attendance;
 
-use App\Models\Company;
 use App\Models\Hr\Attendance\AttendanceDevice;
 use App\Models\User;
 use Illuminate\Database\Eloquent\Factories\Factory;
@@ -16,19 +15,10 @@ class AttendanceDeviceFactory extends Factory
 
     /**
      * Define the model's default state.
-     *
-     * `company_id` defaults to the active default Company (created for the
-     * fixture when absent); `connector_id` is left null since a device does
-     * not require one (see AttendanceDeviceController::storeDevice, where
-     * it's nullable). Override `company_id` explicitly to pin the device to
-     * the same legal entity as the Staff/actor a test is exercising.
-     *
-     * @return array<string, mixed>
      */
     public function definition(): array
     {
         return [
-            'company_id' => fn () => Company::getDefaultCompany()?->id ?? Company::create(['name' => 'Factory Test Company', 'is_default' => true])->id,
             'connector_id' => null,
             'organization_unit_id' => null,
             'provider' => 'hikvision',

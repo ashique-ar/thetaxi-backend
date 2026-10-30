@@ -15,7 +15,7 @@ class StaffCustomFieldValueService
 
     public function listForStaff(Staff $staff, User $actor): array
     {
-        $definitions = DB::table('hr_custom_field_definitions')->where(fn ($_companyIdScope) => \App\Services\CompanyIdScope::constrain($_companyIdScope, 'company_id', $staff->company_id))->where('applies_to', 'staff')->where('active', true)
+        $definitions = DB::table('hr_custom_field_definitions')->where('applies_to', 'staff')->where('active', true)
             ->orderBy('label')->orderBy('id')->get();
         $values = DB::table('hr_custom_field_values')->where('owner_type', 'staff')->where('owner_id', $staff->id)->get()->keyBy('definition_id');
         $requestId = (string) Str::uuid();
@@ -29,7 +29,7 @@ class StaffCustomFieldValueService
                 $value = $this->decrypt($row->encrypted_value);
                 abort_unless(hash_equals($row->value_checksum, $this->valueChecksum($value)), 409, 'A Staff custom-field value failed its integrity check.');
                 DB::table('hr_custom_field_value_access_events')->insert([
-                    'id' => (string) Str::uuid(), 'company_id' => $staff->company_id, 'definition_id' => $definition->id,
+                    'id' => (string) Str::uuid(), 'definition_id' => $definition->id,
                     'owner_type' => 'staff', 'owner_id' => $staff->id, 'access_type' => 'viewed', 'actor_user_id' => $actor->id,
                     'request_id' => $requestId, 'occurred_at' => now(), 'created_at' => now(), 'updated_at' => now(),
                 ]);
@@ -50,10 +50,9 @@ class StaffCustomFieldValueService
     public function put(Staff $staff, string $definitionId, array $data, User $actor): array
     {
         return DB::transaction(function () use ($staff, $definitionId, $data, $actor) {
-            abort_unless(DB::table('companies')->where('id', $staff->company_id)->lockForUpdate()->first(), 404, 'Staff legal entity was not found.');
-            $staff = Staff::withTrashed()->whereKey($staff->id)->where(fn ($_companyIdScope) => \App\Services\CompanyIdScope::constrain($_companyIdScope, 'company_id', $staff->company_id))->lockForUpdate()->firstOrFail();
-            $definition = DB::table('hr_custom_field_definitions')->where('id', $definitionId)->where(fn ($_companyIdScope) => \App\Services\CompanyIdScope::constrain($_companyIdScope, 'company_id', $staff->company_id))->where('applies_to', 'staff')->lockForUpdate()->first();
-            abort_unless($definition, 404, 'Staff custom-field definition was not found in your legal entity.');
+            $staff = Staff::withTrashed()->whereKey($staff->id)->lockForUpdate()->firstOrFail();
+            $definition = DB::table('hr_custom_field_definitions')->where('id', $definitionId)->where('applies_to', 'staff')->lockForUpdate()->first();
+            abort_unless($definition, 404, 'Staff custom-field definition was not found.');
             abort_unless((bool) $definition->active, 409, 'Inactive custom-field definitions cannot accept values.');
             abort_unless((int) $definition->version === (int) $data['definition_version'], 409, 'Custom-field definition version is stale.');
             abort_unless($this->canView($definition->confidentiality, $actor), 403, 'This custom-field classification is not available to the actor.');
@@ -66,7 +65,7 @@ class StaffCustomFieldValueService
                 'value_checksum' => $valueChecksum, 'reason' => $data['reason'],
             ]);
             if ($event = DB::table('hr_custom_field_value_events')->where('idempotency_key', $data['idempotency_key'])->first()) {
-                abort_unless(\App\Services\CompanyIdScope::sameCompanyId((string) ($event->company_id), (string) ($staff->company_id)) && $event->owner_id === $staff->id && $event->definition_id === $definitionId && hash_equals($event->command_checksum, $commandChecksum), 409, 'Custom-field value key was reused with different evidence.');
+                abort_unless($event->owner_id === $staff->id && $event->definition_id === $definitionId && hash_equals($event->command_checksum, $commandChecksum), 409, 'Custom-field value key was reused with different evidence.');
                 return $this->eventResult($event, $definition);
             }
             $current = DB::table('hr_custom_field_values')->where('definition_id', $definitionId)->where('owner_type', 'staff')->where('owner_id', $staff->id)->lockForUpdate()->first();
@@ -88,7 +87,7 @@ class StaffCustomFieldValueService
             else DB::table('hr_custom_field_values')->insert($payload + ['id' => $id, 'definition_id' => $definitionId, 'owner_type' => 'staff', 'owner_id' => $staff->id, 'created_at' => now()]);
             $eventId = (string) Str::uuid();
             DB::table('hr_custom_field_value_events')->insert([
-                'id' => $eventId, 'company_id' => $staff->company_id, 'custom_field_value_id' => $id, 'definition_id' => $definitionId,
+                'id' => $eventId, 'custom_field_value_id' => $id, 'definition_id' => $definitionId,
                 'definition_version' => (int) $definition->version, 'owner_type' => 'staff', 'owner_id' => $staff->id,
                 'value_version' => $version, 'event_type' => $current ? 'updated' : 'created',
                 'before_encrypted_value' => $current?->encrypted_value, 'before_checksum' => $current?->value_checksum,
@@ -103,7 +102,7 @@ class StaffCustomFieldValueService
 
     private function assertEmploymentCovers(Staff $staff, string $date): void
     {
-        abort_unless(DB::table('hr_employment_spells')->where('staff_id', $staff->id)->where(fn ($_companyIdScope) => \App\Services\CompanyIdScope::constrain($_companyIdScope, 'company_id', $staff->company_id))->where('joined_at', '<=', $date)
+        abort_unless(DB::table('hr_employment_spells')->where('staff_id', $staff->id)->where('joined_at', '<=', $date)
             ->where(fn ($range) => $range->whereNull('terminated_at')->orWhere('terminated_at', '>=', $date))->exists(), 422, 'A Staff custom-field effective date must be covered by retained employment.');
     }
 

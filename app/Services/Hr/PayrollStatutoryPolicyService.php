@@ -21,27 +21,26 @@ class PayrollStatutoryPolicyService
         'other_regular_allowances', 'overtime', 'bonus', 'reimbursements',
     ];
 
-    public function listEpfEtfPolicies(string $companyId, ?string $status, int $perPage)
+    public function listEpfEtfPolicies(?string $status, int $perPage)
     {
         return HrEpfEtfContributionPolicy::query()
-            ->where(fn ($_companyIdScope) => \App\Services\CompanyIdScope::constrain($_companyIdScope, 'company_id', $companyId))
             ->when($status, fn ($query, $value) => $query->where('status', $value))
             ->orderByDesc('version')
+            ->orderBy('created_at')
+            ->orderBy('id')
             ->paginate($perPage);
     }
 
-    public function createEpfEtfPolicy(array $data, string $companyId, string $actorUserId): HrEpfEtfContributionPolicy
+    public function createEpfEtfPolicy(array $data, string $actorUserId): HrEpfEtfContributionPolicy
     {
         $data['earnings_basis'] = $this->normalizeEarningsBasis($data['earnings_basis'] ?? null)
             ?? throw ValidationException::withMessages(['earnings_basis' => ['Every earnings inclusion and exclusion must be explicitly selected.']]);
 
-        return DB::transaction(function () use ($data, $companyId, $actorUserId) {
-            DB::table('companies')->where('id', $companyId)->lockForUpdate()->first();
-            $version = (int) HrEpfEtfContributionPolicy::query()
-                ->where(fn ($_companyIdScope) => \App\Services\CompanyIdScope::constrain($_companyIdScope, 'company_id', $companyId))->lockForUpdate()->max('version') + 1;
+        return DB::transaction(function () use ($data, $actorUserId) {
+            $latest = HrEpfEtfContributionPolicy::query()->orderByDesc('version')->orderByDesc('id')->lockForUpdate()->first();
+            $version = (int) ($latest?->version ?? 0) + 1;
 
             return HrEpfEtfContributionPolicy::create($data + [
-                'company_id' => $companyId,
                 'version' => $version,
                 'status' => 'draft',
                 'created_by' => $actorUserId,
@@ -49,17 +48,15 @@ class PayrollStatutoryPolicyService
         });
     }
 
-    public function approveEpfEtfPolicy(string $policyId, string $companyId, string $actorUserId): HrEpfEtfContributionPolicy
+    public function approveEpfEtfPolicy(string $policyId, string $actorUserId): HrEpfEtfContributionPolicy
     {
-        return DB::transaction(function () use ($policyId, $companyId, $actorUserId) {
-            DB::table('companies')->where('id', $companyId)->lockForUpdate()->first();
-            $policy = HrEpfEtfContributionPolicy::query()->where(fn ($_companyIdScope) => \App\Services\CompanyIdScope::constrain($_companyIdScope, 'company_id', $companyId))
-                ->lockForUpdate()->findOrFail($policyId);
+        return DB::transaction(function () use ($policyId, $actorUserId) {
+            $policy = HrEpfEtfContributionPolicy::query()->lockForUpdate()->findOrFail($policyId);
             abort_unless($policy->status === 'draft', 422, 'Only a draft EPF/ETF contribution policy can be approved.');
             abort_unless($this->epfEtfPolicyIsComplete($policy), 422, 'Explicit EPF/ETF rates, a complete earnings basis, and a statutory reference are required before approval.');
             abort_if($policy->created_by === $actorUserId, 409, 'The policy preparer cannot approve the same version.');
             $overlap = HrEpfEtfContributionPolicy::query()
-                ->where(fn ($_companyIdScope) => \App\Services\CompanyIdScope::constrain($_companyIdScope, 'company_id', $companyId))->where('status', 'approved')->where('id', '!=', $policy->id)
+                ->where('status', 'approved')->where('id', '!=', $policy->id)
                 ->where('effective_from', '<', $policy->effective_until ?? '9999-12-31')
                 ->where(fn ($query) => $query->whereNull('effective_until')->orWhere('effective_until', '>', $policy->effective_from))
                 ->exists();
@@ -70,22 +67,23 @@ class PayrollStatutoryPolicyService
         });
     }
 
-    public function resolveEffectiveEpfEtfPolicy(string $companyId, CarbonInterface $at): ?HrEpfEtfContributionPolicy
+    public function resolveEffectiveEpfEtfPolicy(CarbonInterface $at): ?HrEpfEtfContributionPolicy
     {
-        return HrEpfEtfContributionPolicy::query()
-            ->where(fn ($_companyIdScope) => \App\Services\CompanyIdScope::constrain($_companyIdScope, 'company_id', $companyId))->where('status', 'approved')
+        $policies = HrEpfEtfContributionPolicy::query()->where('status', 'approved')
             ->where('effective_from', '<=', $at)
             ->where(fn ($query) => $query->whereNull('effective_until')->orWhere('effective_until', '>', $at))
-            ->orderByDesc('version')->first();
+            ->limit(2)->get();
+
+        return $policies->count() === 1 ? $policies->first() : null;
     }
 
-    public function previewContribution(string $companyId, array $earnings, CarbonInterface $at): array
+    public function previewContribution(array $earnings, CarbonInterface $at): array
     {
-        $policy = $this->resolveEffectiveEpfEtfPolicy($companyId, $at);
+        $policy = $this->resolveEffectiveEpfEtfPolicy($at);
         if (! $policy) {
             return [
                 'blocked' => true,
-                'blocker' => 'No approved EPF/ETF contribution policy is effective for this legal entity and date.',
+                'blocker' => 'Exactly one approved EPF/ETF contribution policy must be effective for this date; resolve overlapping policy versions.',
             ];
         }
 
@@ -156,24 +154,23 @@ class PayrollStatutoryPolicyService
         ];
     }
 
-    public function listGratuityPolicies(string $companyId, ?string $status, int $perPage)
+    public function listGratuityPolicies(?string $status, int $perPage)
     {
         return HrGratuityPolicy::query()
-            ->where(fn ($_companyIdScope) => \App\Services\CompanyIdScope::constrain($_companyIdScope, 'company_id', $companyId))
             ->when($status, fn ($query, $value) => $query->where('status', $value))
             ->orderByDesc('version')
+            ->orderBy('created_at')
+            ->orderBy('id')
             ->paginate($perPage);
     }
 
-    public function createGratuityPolicy(array $data, string $companyId, string $actorUserId): HrGratuityPolicy
+    public function createGratuityPolicy(array $data, string $actorUserId): HrGratuityPolicy
     {
-        return DB::transaction(function () use ($data, $companyId, $actorUserId) {
-            DB::table('companies')->where('id', $companyId)->lockForUpdate()->first();
-            $version = (int) HrGratuityPolicy::query()
-                ->where(fn ($_companyIdScope) => \App\Services\CompanyIdScope::constrain($_companyIdScope, 'company_id', $companyId))->lockForUpdate()->max('version') + 1;
+        return DB::transaction(function () use ($data, $actorUserId) {
+            $latest = HrGratuityPolicy::query()->orderByDesc('version')->orderByDesc('id')->lockForUpdate()->first();
+            $version = (int) ($latest?->version ?? 0) + 1;
 
             return HrGratuityPolicy::create($data + [
-                'company_id' => $companyId,
                 'version' => $version,
                 'status' => 'draft',
                 'created_by' => $actorUserId,
@@ -181,19 +178,17 @@ class PayrollStatutoryPolicyService
         });
     }
 
-    public function approveGratuityPolicy(string $policyId, string $companyId, string $actorUserId): HrGratuityPolicy
+    public function approveGratuityPolicy(string $policyId, string $actorUserId): HrGratuityPolicy
     {
-        return DB::transaction(function () use ($policyId, $companyId, $actorUserId) {
-            DB::table('companies')->where('id', $companyId)->lockForUpdate()->first();
-            $policy = HrGratuityPolicy::query()->where(fn ($_companyIdScope) => \App\Services\CompanyIdScope::constrain($_companyIdScope, 'company_id', $companyId))
-                ->lockForUpdate()->findOrFail($policyId);
+        return DB::transaction(function () use ($policyId, $actorUserId) {
+            $policy = HrGratuityPolicy::query()->lockForUpdate()->findOrFail($policyId);
             abort_unless($policy->status === 'draft', 422, 'Only a draft gratuity policy can be approved.');
             abort_unless($policy->tax_exempt_threshold_lkr !== null && $policy->tax_rate_above_threshold_percent !== null,
                 422, 'An explicit statutory tax threshold and rate are required before approval.');
             abort_unless($this->gratuityPolicyIsComplete($policy), 422, 'Gratuity formula values and statutory reference must be complete and within accepted ranges before approval.');
             abort_if($policy->created_by === $actorUserId, 409, 'The policy preparer cannot approve the same version.');
             $overlap = HrGratuityPolicy::query()
-                ->where(fn ($_companyIdScope) => \App\Services\CompanyIdScope::constrain($_companyIdScope, 'company_id', $companyId))->where('status', 'approved')->where('id', '!=', $policy->id)
+                ->where('status', 'approved')->where('id', '!=', $policy->id)
                 ->where('effective_from', '<', $policy->effective_until ?? '9999-12-31')
                 ->where(fn ($query) => $query->whereNull('effective_until')->orWhere('effective_until', '>', $policy->effective_from))
                 ->exists();
@@ -204,17 +199,17 @@ class PayrollStatutoryPolicyService
         });
     }
 
-    public function resolveEffectiveGratuityPolicy(string $companyId, CarbonInterface $at): ?HrGratuityPolicy
+    public function resolveEffectiveGratuityPolicy(CarbonInterface $at): ?HrGratuityPolicy
     {
-        return HrGratuityPolicy::query()
-            ->where(fn ($_companyIdScope) => \App\Services\CompanyIdScope::constrain($_companyIdScope, 'company_id', $companyId))->where('status', 'approved')
+        $policies = HrGratuityPolicy::query()->where('status', 'approved')
             ->where('effective_from', '<=', $at)
             ->where(fn ($query) => $query->whereNull('effective_until')->orWhere('effective_until', '>', $at))
-            ->orderByDesc('version')->first();
+            ->limit(2)->get();
+
+        return $policies->count() === 1 ? $policies->first() : null;
     }
 
     public function previewGratuityEntitlement(
-        string $companyId,
         string $payBasis,
         float $wageAmount,
         int $completedYears,
@@ -233,11 +228,11 @@ class PayrollStatutoryPolicyService
         if ($currentEmployerHeadcount !== null && $currentEmployerHeadcount < 0) {
             throw ValidationException::withMessages(['current_employer_headcount' => ['Employer headcount cannot be negative.']]);
         }
-        $policy = $this->resolveEffectiveGratuityPolicy($companyId, $at);
+        $policy = $this->resolveEffectiveGratuityPolicy($at);
         if (! $policy) {
             return [
                 'blocked' => true,
-                'blocker' => 'No approved gratuity policy is effective for this legal entity and date.',
+                'blocker' => 'Exactly one approved gratuity policy must be effective for this date; resolve overlapping policy versions.',
             ];
         }
         if ($completedYears < $policy->minimum_qualifying_service_years) {

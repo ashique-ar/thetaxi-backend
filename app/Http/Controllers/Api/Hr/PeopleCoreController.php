@@ -214,10 +214,8 @@ class PeopleCoreController extends Controller
 
     public function subjectCustomFieldValues(Request $request, string $ownerType, string $ownerId): JsonResponse
     {
-        
         $this->assertSubjectType($ownerType);
-        $companyId = $this->access->actorCompanyId($request->user());
-        return response()->json(['status' => 'success', 'data' => $this->subjectCustomFieldValues->listFor($ownerType, $ownerId, $companyId, $request->user())]);
+        return response()->json(['status' => 'success', 'data' => $this->subjectCustomFieldValues->listFor($ownerType, $ownerId, $request->user())]);
     }
 
     public function putSubjectCustomFieldValue(Request $request, string $ownerType, string $ownerId, string $definitionId): JsonResponse
@@ -225,8 +223,7 @@ class PeopleCoreController extends Controller
         
         $this->assertSubjectType($ownerType);
         $data = $request->validate(['definition_version' => ['required', 'integer', 'min:1'], 'expected_version' => ['nullable', 'integer', 'min:0'], 'effective_from' => ['required', 'date'], 'value' => ['present'], 'reason' => ['required', 'string', 'max:2000'], 'idempotency_key' => ['required', 'string', 'max:160']]);
-        $companyId = $this->access->actorCompanyId($request->user());
-        return response()->json(['status' => 'success', 'data' => $this->subjectCustomFieldValues->put($ownerType, $ownerId, $definitionId, $data, $companyId, $request->user())]);
+        return response()->json(['status' => 'success', 'data' => $this->subjectCustomFieldValues->put($ownerType, $ownerId, $definitionId, $data, $request->user())]);
     }
 
     private function assertSubjectType(string $ownerType): void
@@ -464,9 +461,7 @@ class PeopleCoreController extends Controller
 
     public function workCalendars(Request $request): JsonResponse
     {
-        
-        $companyId = $this->access->actorCompanyId($request->user());
-        $rows = DB::table('hr_work_calendars')->where(fn ($_companyIdScope) => \App\Services\CompanyIdScope::constrain($_companyIdScope, 'company_id', $companyId))->orderBy('name')->orderBy('id')->get();
+        $rows = DB::table('hr_work_calendars')->orderBy('name')->orderBy('id')->get();
         return response()->json(['status' => 'success', 'data' => $rows->map(fn($row) => $this->decodeJsonColumns($row, ['weekly_working_days']))->values()]);
     }
 
@@ -474,15 +469,12 @@ class PeopleCoreController extends Controller
     {
         
         $data = $request->validate(['code' => ['required', 'string', 'max:80'], 'name' => ['required', 'string', 'max:255'], 'timezone' => ['required', 'timezone'], 'weekly_working_days' => ['required', 'array', 'min:1'], 'weekly_working_days.*' => ['required', Rule::in(['monday', 'tuesday', 'wednesday', 'thursday', 'friday', 'saturday', 'sunday'])], 'effective_from' => ['required', 'date'], 'effective_until' => ['nullable', 'date', 'after:effective_from'], 'reason' => ['required', 'string', 'max:2000'], 'idempotency_key' => ['required', 'string', 'max:160']]);
-        $companyId = $this->access->actorCompanyId($request->user());
-        return response()->json(['status' => 'success', 'data' => $this->organizationAdmin->createWorkCalendar($data, $companyId, (string) $request->user()->id)], 201);
+        return response()->json(['status' => 'success', 'data' => $this->organizationAdmin->createWorkCalendar($data, (string) $request->user()->id)], 201);
     }
 
     public function workCalendarDays(Request $request, string $calendarId): JsonResponse
     {
-        
-        $companyId = $this->access->actorCompanyId($request->user());
-        abort_unless(DB::table('hr_work_calendars')->where('id', $calendarId)->where(fn ($_companyIdScope) => \App\Services\CompanyIdScope::constrain($_companyIdScope, 'company_id', $companyId))->exists(), 404, 'Work calendar was not found in your legal entity.');
+        abort_unless(DB::table('hr_work_calendars')->where('id', $calendarId)->exists(), 404, 'Work calendar was not found.');
         $rows = DB::table('hr_work_calendar_days')->where('calendar_id', $calendarId)->orderBy('calendar_date')->get();
         return response()->json(['status' => 'success', 'data' => $rows]);
     }
@@ -491,16 +483,13 @@ class PeopleCoreController extends Controller
     {
         
         $data = $request->validate(['calendar_date' => ['required', 'date'], 'day_type' => ['required', Rule::in(['working', 'holiday', 'rest_day', 'special_leave'])], 'name' => ['nullable', 'string', 'max:255'], 'paid' => ['required', 'boolean'], 'reason' => ['required', 'string', 'max:2000'], 'idempotency_key' => ['required', 'string', 'max:160']]);
-        $companyId = $this->access->actorCompanyId($request->user());
-        return response()->json(['status' => 'success', 'data' => $this->organizationAdmin->createWorkCalendarDay($calendarId, $data, $companyId, (string) $request->user()->id)], 201);
+        return response()->json(['status' => 'success', 'data' => $this->organizationAdmin->createWorkCalendarDay($calendarId, $data, (string) $request->user()->id)], 201);
     }
 
     public function customFieldDefinitions(Request $request): JsonResponse
     {
-        
-        $companyId = $this->access->actorCompanyId($request->user());
         $data = $request->validate(['applies_to' => ['nullable', Rule::in(['staff', 'organization_unit', 'position', 'employment_spell'])], 'active' => ['nullable', 'boolean'], 'page' => ['nullable', 'integer', 'min:1'], 'per_page' => ['nullable', 'integer', 'min:1', 'max:100']]);
-        $rows = DB::table('hr_custom_field_definitions')->where(fn ($_companyIdScope) => \App\Services\CompanyIdScope::constrain($_companyIdScope, 'company_id', $companyId))->when($data['applies_to'] ?? null, fn($q, $type) => $q->where('applies_to', $type))->when(array_key_exists('active', $data), fn($q) => $q->where('active', (bool) $data['active']))->orderBy('applies_to')->orderBy('label')->orderBy('id')->paginate((int) ($data['per_page'] ?? 50));
+        $rows = DB::table('hr_custom_field_definitions')->when($data['applies_to'] ?? null, fn($q, $type) => $q->where('applies_to', $type))->when(array_key_exists('active', $data), fn($q) => $q->where('active', (bool) $data['active']))->orderBy('applies_to')->orderBy('label')->orderBy('id')->paginate((int) ($data['per_page'] ?? 50));
         $rows->getCollection()->transform(fn($row) => $this->decodeJsonColumns($row, ['validation_rules']));
         return response()->json(['status' => 'success', 'data' => $rows]);
     }
@@ -508,19 +497,17 @@ class PeopleCoreController extends Controller
     public function storeCustomFieldDefinition(Request $request): JsonResponse
     {
         
-        $companyId = $this->access->actorCompanyId($request->user());
         $data = $request->validate($this->customFieldRules());
         $this->assertCustomFieldRules($data);
-        return response()->json(['status' => 'success', 'data' => $this->organizationAdmin->createDefinition($data, $companyId, (string) $request->user()->id)], 201);
+        return response()->json(['status' => 'success', 'data' => $this->organizationAdmin->createDefinition($data, (string) $request->user()->id)], 201);
     }
 
     public function updateCustomFieldDefinition(Request $request, string $definitionId): JsonResponse
     {
         
-        $companyId = $this->access->actorCompanyId($request->user());
         $data = $request->validate($this->customFieldRules(true));
         $this->assertCustomFieldRules($data);
-        return response()->json(['status' => 'success', 'data' => $this->organizationAdmin->updateDefinition($definitionId, $data, $companyId, (string) $request->user()->id)]);
+        return response()->json(['status' => 'success', 'data' => $this->organizationAdmin->updateDefinition($definitionId, $data, (string) $request->user()->id)]);
     }
 
     public function jobFamilies(Request $request): JsonResponse

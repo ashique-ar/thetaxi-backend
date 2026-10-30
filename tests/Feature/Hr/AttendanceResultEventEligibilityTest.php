@@ -53,7 +53,7 @@ it('uses mapped or company-scoped resolved events and ignores quarantined rows',
     $rosterId = (string) Str::uuid();
 
     DB::table('hr_work_calendars')->insert([
-        'id' => $calendarId, 'company_id' => $company->id, 'code' => 'test', 'name' => 'Test calendar', 'timezone' => 'Asia/Colombo',
+        'id' => $calendarId, 'code' => 'test', 'name' => 'Test calendar', 'timezone' => 'Asia/Colombo',
         'weekly_working_days' => json_encode(['monday'], JSON_THROW_ON_ERROR), 'effective_from' => '2026-01-01', 'status' => 'active',
         'created_by' => $admin->id, 'created_at' => $now, 'updated_at' => $now,
     ]);
@@ -157,13 +157,13 @@ it('uses mapped or company-scoped resolved events and ignores quarantined rows',
 
     $otherCalendarId = (string) Str::uuid();
     DB::table('hr_work_calendars')->insert([
-        'id' => $otherCalendarId, 'company_id' => $otherCompany->id, 'code' => 'other', 'name' => 'Other tenant calendar', 'timezone' => 'Asia/Colombo',
+        'id' => $otherCalendarId, 'code' => 'other', 'name' => 'Other installation calendar', 'timezone' => 'Asia/Colombo',
         'weekly_working_days' => json_encode(['monday'], JSON_THROW_ON_ERROR), 'effective_from' => '2026-01-01', 'status' => 'active',
         'created_by' => $admin->id, 'created_at' => $now, 'updated_at' => $now,
     ]);
     DB::table('hr_roster_assignments')->where('id', $rosterId)->update(['calendar_id' => $otherCalendarId]);
     expect(fn () => $service->calculate($company->id, $staff->id, '2026-06-01', $admin->id))
-        ->toThrow(\Symfony\Component\HttpKernel\Exception\HttpException::class);
+        ->not->toThrow(\Symfony\Component\HttpKernel\Exception\HttpException::class);
 
     DB::table('hr_roster_assignments')->where('id', $rosterId)->update(['calendar_id' => $calendarId]);
     DB::table('hr_attendance_daily_results')->where('id', $resolved->id)->update(['company_id' => $otherCompany->id]);

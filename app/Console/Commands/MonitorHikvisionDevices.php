@@ -53,9 +53,9 @@ class MonitorHikvisionDevices extends Command
         $key = hash('sha256', $d->id.'|'.$type);
         $existing = DB::table('hr_attendance_device_alerts')->where('dedupe_key', $key)->first();
         $id = $existing?->id ?? (string) Str::uuid();
-        DB::table('hr_attendance_device_alerts')->updateOrInsert(['dedupe_key' => $key], ['id' => $id, 'company_id' => $d->company_id, 'device_id' => $d->id, 'alert_type' => $type, 'severity' => $severity, 'status' => 'open', 'message' => $message, 'detected_at' => now(), 'resolved_at' => null, 'resolved_by' => null, 'resolution_note' => null, 'created_at' => $existing?->created_at ?? now(), 'updated_at' => now()]);
+        DB::table('hr_attendance_device_alerts')->updateOrInsert(['dedupe_key' => $key], ['id' => $id, 'device_id' => $d->id, 'alert_type' => $type, 'severity' => $severity, 'status' => 'open', 'message' => $message, 'detected_at' => now(), 'resolved_at' => null, 'resolved_by' => null, 'resolution_note' => null, 'created_at' => $existing?->created_at ?? now(), 'updated_at' => now()]);
         if (! $existing) {
-            Staff::query()->with('user')->where(fn ($_companyIdScope) => \App\Services\CompanyIdScope::constrain($_companyIdScope, 'company_id', $d->company_id))->whereNull('employment_ended_at')->get()->filter(fn ($s) => $s->user?->can('hr.attendance.devices.manage'))->each(fn ($s) => app(HrNotificationService::class)->queue($d->company_id, 'hikvision_device_alert', 'attendance_device_alert', $id, $s->id, ['site_code' => $d->site_code, 'alert_type' => $type, 'severity' => $severity, 'message' => $message]));
+            Staff::query()->with('user')->whereNull('employment_ended_at')->get()->filter(fn ($s) => $s->user?->can('hr.attendance.devices.manage'))->each(fn ($s) => app(HrNotificationService::class)->queue('hikvision_device_alert', 'attendance_device_alert', $id, $s->id, ['site_code' => $d->site_code, 'alert_type' => $type, 'severity' => $severity, 'message' => $message]));
         }
     }
 }

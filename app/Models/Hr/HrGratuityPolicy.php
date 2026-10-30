@@ -11,7 +11,7 @@ class HrGratuityPolicy extends BaseModel
 
 
     protected $fillable = [
-        'company_id', 'version', 'status',
+        'version', 'status',
         'minimum_qualifying_service_years', 'minimum_employer_headcount_threshold',
         'monthly_paid_divisor', 'non_monthly_daily_wage_multiplier', 'non_monthly_lookback_months',
         'payment_deadline_days', 'tax_exempt_threshold_lkr', 'tax_rate_above_threshold_percent',
@@ -38,7 +38,7 @@ class HrGratuityPolicy extends BaseModel
     {
         return LogOptions::defaults()
             ->logOnly([
-                'company_id', 'version', 'status',
+                'version', 'status',
                 'minimum_qualifying_service_years', 'minimum_employer_headcount_threshold',
                 'monthly_paid_divisor', 'non_monthly_daily_wage_multiplier', 'non_monthly_lookback_months',
                 'payment_deadline_days', 'tax_exempt_threshold_lkr', 'tax_rate_above_threshold_percent',

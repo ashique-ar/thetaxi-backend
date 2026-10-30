@@ -5,34 +5,18 @@ namespace App\Http\Controllers\Api\Hr;
 use App\Http\Controllers\Controller;
 use App\Models\Hr\HrEpfEtfContributionPolicy;
 use App\Models\Hr\HrGratuityPolicy;
-use App\Services\Hr\PeopleAccessService;
 use App\Services\Hr\PayrollStatutoryPolicyService;
 use Carbon\Carbon;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
-use Illuminate\Support\Facades\DB;
 use Illuminate\Validation\Rule;
 
 class PayrollStatutoryController extends Controller
 {
     public function __construct(
-        private readonly PeopleAccessService $access,
         private readonly PayrollStatutoryPolicyService $policies,
     )
     {
-    }
-
-    public function context(Request $request): JsonResponse
-    {
-        
-        $companyId = $this->access->actorCompanyId($request->user());
-
-        return response()->json([
-            'status' => 'success',
-            'data' => [
-                'company' => DB::table('companies')->where('id', $companyId)->first(['id', 'name']),
-            ]
-        ]);
     }
 
     public function epfEtfPolicies(Request $request): JsonResponse
@@ -42,9 +26,7 @@ class PayrollStatutoryController extends Controller
             'status' => ['nullable', Rule::in(['draft', 'approved', 'retired'])],
             'per_page' => ['nullable', 'integer', 'min:1', 'max:100'],
         ]);
-        $companyId = $this->access->actorCompanyId($request->user());
-
-        $page = $this->policies->listEpfEtfPolicies($companyId, $data['status'] ?? null, (int) ($data['per_page'] ?? 20));
+        $page = $this->policies->listEpfEtfPolicies($data['status'] ?? null, (int) ($data['per_page'] ?? 20));
         $page->getCollection()->transform(fn (HrEpfEtfContributionPolicy $policy): array => $this->epfEtfPolicyProjection(
             $policy, (string) $request->user()->id,
         ));
@@ -56,8 +38,7 @@ class PayrollStatutoryController extends Controller
     {
         
         $data = $request->validate($this->epfEtfRules());
-        $companyId = $this->access->actorCompanyId($request->user());
-        $policy = $this->policies->createEpfEtfPolicy($data, $companyId, (string) $request->user()->id);
+        $policy = $this->policies->createEpfEtfPolicy($data, (string) $request->user()->id);
 
         return $this->policyActionResponse($policy, 201);
     }
@@ -65,8 +46,7 @@ class PayrollStatutoryController extends Controller
     public function approveEpfEtfPolicy(Request $request, HrEpfEtfContributionPolicy $policy): JsonResponse
     {
         
-        $companyId = $this->access->actorCompanyId($request->user());
-        $policy = $this->policies->approveEpfEtfPolicy($policy->id, $companyId, (string) $request->user()->id);
+        $policy = $this->policies->approveEpfEtfPolicy($policy->id, (string) $request->user()->id);
 
         return $this->policyActionResponse($policy);
     }  
@@ -86,13 +66,12 @@ class PayrollStatutoryController extends Controller
             'earnings.reimbursements' => ['required', 'numeric', 'min:0'],
             'as_of' => ['nullable', 'date'],
         ]);
-        $companyId = $this->access->actorCompanyId($request->user());
         $at = isset($data['as_of']) ? Carbon::parse($data['as_of']) : now();
 
         return response()->json([
             'status' => 'success',
             'data' => $this->policies
-                ->previewContribution($companyId, $data['earnings'], $at)
+                ->previewContribution($data['earnings'], $at)
         ]);
     }
 
@@ -103,9 +82,7 @@ class PayrollStatutoryController extends Controller
             'status' => ['nullable', Rule::in(['draft', 'approved', 'retired'])],
             'per_page' => ['nullable', 'integer', 'min:1', 'max:100'],
         ]);
-        $companyId = $this->access->actorCompanyId($request->user());
-
-        $page = $this->policies->listGratuityPolicies($companyId, $data['status'] ?? null, (int) ($data['per_page'] ?? 20));
+        $page = $this->policies->listGratuityPolicies($data['status'] ?? null, (int) ($data['per_page'] ?? 20));
         $page->getCollection()->transform(fn (HrGratuityPolicy $policy): array => $this->gratuityPolicyProjection(
             $policy, (string) $request->user()->id,
         ));
@@ -117,8 +94,7 @@ class PayrollStatutoryController extends Controller
     {
         
         $data = $request->validate($this->gratuityRules());
-        $companyId = $this->access->actorCompanyId($request->user());
-        $policy = $this->policies->createGratuityPolicy($data, $companyId, (string) $request->user()->id);
+        $policy = $this->policies->createGratuityPolicy($data, (string) $request->user()->id);
 
         return $this->policyActionResponse($policy, 201);
     }
@@ -126,8 +102,7 @@ class PayrollStatutoryController extends Controller
     public function approveGratuityPolicy(Request $request, HrGratuityPolicy $policy): JsonResponse
     {
         
-        $companyId = $this->access->actorCompanyId($request->user());
-        $policy = $this->policies->approveGratuityPolicy($policy->id, $companyId, (string) $request->user()->id);
+        $policy = $this->policies->approveGratuityPolicy($policy->id, (string) $request->user()->id);
 
         return $this->policyActionResponse($policy);
     }
@@ -142,13 +117,11 @@ class PayrollStatutoryController extends Controller
             'current_employer_headcount' => ['required', 'integer', 'min:0'],
             'as_of' => ['nullable', 'date'],
         ]);
-        $companyId = $this->access->actorCompanyId($request->user());
         $at = isset($data['as_of']) ? Carbon::parse($data['as_of']) : now();
 
         return response()->json([
             'status' => 'success',
             'data' => $this->policies->previewGratuityEntitlement(
-                $companyId,
                 $data['pay_basis'],
                 (float) ($data['wage_amount'] ?? 0),
                 (int) $data['completed_years'],

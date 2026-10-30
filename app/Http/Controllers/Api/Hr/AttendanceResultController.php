@@ -5,10 +5,8 @@ namespace App\Http\Controllers\Api\Hr;
 use App\Http\Controllers\Controller;
 use App\Http\Controllers\Api\Hr\Concerns\AuthorizesAttendanceRequests;
 use App\Models\Hr\Attendance\AttendanceDailyResult;
-use App\Models\Company;
 use App\Models\Staff;
 use App\Services\Hr\Attendance\AttendanceResultService;
-use App\Services\WebsiteSettingsService;
 use App\Services\StaffAccessService;
 use App\Services\Hr\Ess\HrDomainRequestProjectionService;
 use Carbon\CarbonImmutable;
@@ -23,26 +21,6 @@ class AttendanceResultController extends Controller
     use AuthorizesAttendanceRequests;
 
     private const CORRECTION_FIELDS = ['day_status', 'first_in_at', 'last_out_at', 'worked_minutes', 'late_minutes', 'early_leave_minutes', 'payable_minutes'];
-
-    public function companyOptions(Request $request): JsonResponse
-    {
-        $data = $request->validate(['search' => ['nullable', 'string', 'max:120'], 'selected_id' => ['nullable', 'uuid']]);
-        $companyIds = $this->authorizedCompanyIds($request);
-        abort_unless($companyIds->isNotEmpty(), 403, 'The authenticated user has no active Staff legal-entity context.');
-        $defaultCompanyId = app(WebsiteSettingsService::class)->resolveCurrentCompanyId();
-        if (! $companyIds->contains($defaultCompanyId)) $defaultCompanyId = null;
-        $companies = Company::query()->whereIn('id', $companyIds)
-            ->when($data['selected_id'] ?? null, fn ($query, $id) => $query->whereKey($id))
-            ->when(! empty($data['search']), fn ($query) => $query->whereLikeInsensitive('name', trim($data['search'])))
-            ->orderByDesc('is_default')->orderBy('name')->limit(25)->get(['id', 'name', 'is_default']);
-
-        return response()->json(['status' => 'success', 'default_company_id' => $defaultCompanyId, 'data' => $companies->map(fn ($company) => [
-            'value' => (string) $company->id,
-            'label' => $company->name,
-            'is_default' => (bool) $company->is_default,
-            'status' => 'active',
-        ])->values()]);
-    }
 
     public function index(Request $request, StaffAccessService $access): JsonResponse
     {
@@ -164,6 +142,7 @@ class AttendanceResultController extends Controller
         $data = $request->validate(['code' => ['required', 'string', 'max:80'], 'name' => ['required', 'string', 'max:255'], 'timezone' => ['required', 'timezone'], 'weekly_working_days' => ['required', 'array', 'min:1'], 'weekly_working_days.*' => ['required', Rule::in(['monday', 'tuesday', 'wednesday', 'thursday', 'friday', 'saturday', 'sunday'])], 'effective_from' => ['required', 'date'], 'effective_until' => ['nullable', 'date', 'after:effective_from']]);
         $id = (string) Str::uuid();
         return DB::transaction(function () use ($request, $data, $id) {
+            abort_if(DB::table('hr_work_calendars')->where('code', $data['code'])->where('effective_from', $data['effective_from'])->exists(), 409, 'A work calendar with this code and effective date already exists.');
             DB::table('hr_work_calendars')->insert($this->json($data, ['weekly_working_days']) + ['id' => $id, 'status' => 'active', 'created_by' => $request->user()->id, 'created_at' => now(), 'updated_at' => now()]);
             activity('hr-attendance')->causedBy($request->user())->withProperties(['status' => 'active'])->log('attendance_calendar_created');
             return response()->json(['status' => 'success', 'data' => DB::table('hr_work_calendars')->find($id)], 201);
@@ -180,6 +159,7 @@ class AttendanceResultController extends Controller
             abort_unless($candidate, 404);
             $calendar = DB::table('hr_work_calendars')->where('id', $calendarId)->lockForUpdate()->first();
             abort_unless($calendar, 404);
+            abort_if(DB::table('hr_work_calendars')->where('id', '!=', $calendarId)->where('code', $data['code'])->where('effective_from', $data['effective_from'])->exists(), 409, 'A work calendar with this code and effective date already exists.');
             DB::table('hr_work_calendars')->where('id', $calendarId)->update($this->json($data, ['weekly_working_days']) + ['updated_at' => now()]);
             activity('hr-attendance')->causedBy($request->user())->withProperties(['status' => $data['status'], 'changed_fields' => array_keys($data)])->log('attendance_calendar_updated');
             return response()->json(['status' => 'success', 'data' => DB::table('hr_work_calendars')->find($calendarId)]);

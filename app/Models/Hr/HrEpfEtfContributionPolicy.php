@@ -11,7 +11,7 @@ class HrEpfEtfContributionPolicy extends BaseModel
 
 
     protected $fillable = [
-        'company_id', 'version', 'status',
+        'version', 'status',
         'employee_epf_rate_percent', 'employer_epf_rate_percent', 'employer_etf_rate_percent',
         'earnings_basis', 'statutory_reference', 'effective_from', 'effective_until',
         'reason', 'created_by', 'approved_by', 'approved_at',
@@ -32,7 +32,7 @@ class HrEpfEtfContributionPolicy extends BaseModel
     {
         return LogOptions::defaults()
             ->logOnly([
-                'company_id', 'version', 'status',
+                'version', 'status',
                 'employee_epf_rate_percent', 'employer_epf_rate_percent', 'employer_etf_rate_percent',
                 'earnings_basis', 'statutory_reference', 'effective_from', 'effective_until', 'approved_at',
             ])

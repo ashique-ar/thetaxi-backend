@@ -27,7 +27,7 @@ class LeaveWorkflowService
                 abort_unless($policy, 422, 'No approved leave policy covers the requested interval.');
                 abort_unless(DB::table('hr_leave_policy_assignments')->where(fn ($_companyIdScope) => \App\Services\CompanyIdScope::constrain($_companyIdScope, 'company_id', $data['company_id']))->where('staff_id', $data['staff_id'])->where('policy_id', $policy->id)->whereNotNull('approved_at')->whereDate('effective_from', '<=', $data['start_date'])->where(fn($q) => $q->whereNull('effective_until')->orWhereDate('effective_until', '>', $data['end_date']))->exists(), 422, 'The leave policy is not assigned for the full interval.');
                 $rules = json_decode($policy->rules, true, 512, JSON_THROW_ON_ERROR);
-                $days = $this->days($data, $rules);
+                $days = $this->days($data + ['staff_id' => $staff->id], $rules);
                 $minutes = array_sum(array_column($days, 'minutes'));
                 abort_if($minutes <= 0, 422, 'The request contains no eligible leave time.');
                 abort_if(count($days) > (int) ($rules['maximum_consecutive_days'] ?? 366), 422, 'The request exceeds the policy consecutive-day limit.');
@@ -239,7 +239,7 @@ class LeaveWorkflowService
             abort_unless($policy, 422, 'No approved leave policy covers the extended interval.');
             abort_unless(DB::table('hr_leave_policy_assignments')->where(fn ($_companyIdScope) => \App\Services\CompanyIdScope::constrain($_companyIdScope, 'company_id', $row->company_id))->where('staff_id', $row->staff_id)->where('policy_id', $policy->id)->whereNotNull('approved_at')->whereDate('effective_from', '<=', $row->start_date)->where(fn($q) => $q->whereNull('effective_until')->orWhereDate('effective_until', '>', $newEndDate))->exists(), 422, 'The leave policy is not assigned for the full extended interval.');
             $rules = json_decode($policy->rules, true, 512, JSON_THROW_ON_ERROR);
-            $newDays = $this->days(['company_id' => $row->company_id, 'unit' => $row->unit, 'start_date' => $extensionStart, 'end_date' => $newEndDate], $rules);
+            $newDays = $this->days(['staff_id' => $row->staff_id, 'unit' => $row->unit, 'start_date' => $extensionStart, 'end_date' => $newEndDate], $rules);
             $addedMinutes = array_sum(array_column($newDays, 'minutes'));
             abort_if($addedMinutes <= 0, 422, 'The extension contains no additional eligible leave time.');
             $existingDayCount = DB::table('hr_leave_request_days')->where('leave_request_id', $row->id)->count();
@@ -370,7 +370,12 @@ class LeaveWorkflowService
         $out = [];
         for ($day = $start; $day->lte($end); $day = $day->addDay()) {
             $weekend = in_array(strtolower($day->format('l')), array_map('strtolower', $rules['weekend_days'] ?? ['saturday', 'sunday']), true);
-            $holiday = DB::table('hr_work_calendar_days as d')->join('hr_work_calendars as c', 'c.id', '=', 'd.calendar_id')->where(fn ($_companyIdScope) => \App\Services\CompanyIdScope::constrain($_companyIdScope, 'c.company_id', $data['company_id']))->whereDate('d.calendar_date', $day)->whereIn('d.day_type', ['holiday', 'rest_day'])->exists();
+            $holiday = DB::table('hr_work_calendar_days as d')->whereDate('d.calendar_date', $day)->whereIn('d.day_type', ['holiday', 'rest_day'])
+                ->whereExists(fn ($rosters) => $rosters->selectRaw('1')->from('hr_roster_assignments as r')
+                    ->whereColumn('r.calendar_id', 'd.calendar_id')->where('r.staff_id', $data['staff_id'])
+                    ->whereNotNull('r.approved_at')->whereDate('r.effective_from', '<=', $day)
+                    ->where(fn ($active) => $active->whereNull('r.effective_until')->orWhereDate('r.effective_until', '>', $day)))
+                ->exists();
             $include = (!$weekend && !$holiday) || ($rules['sandwich_rule_enabled'] ?? false);
             if ($include)
                 $out[] = ['date' => $day->toDateString(), 'minutes' => $data['unit'] === 'half_day' ? (int) floor($minutes / 2) : ($data['unit'] === 'hour' ? (int) $data['requested_minutes'] : $minutes), 'kind' => $weekend || $holiday ? 'sandwich' : 'working'];

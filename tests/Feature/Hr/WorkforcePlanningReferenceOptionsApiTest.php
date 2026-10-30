@@ -8,7 +8,7 @@ use function Pest\Laravel\actingAs;
 
 uses(RefreshDatabase::class);
 
-it('searches and hydrates organization units only within the active Staff legal entity', function () {
+it('searches and hydrates organization units across the installation', function () {
     [$admin, $company] = hr_seed_admin_actor(['name' => 'Planning Selector Company']);
     $unitId = (string) Str::uuid();
     DB::table('hr_organization_units')->insert([
@@ -31,7 +31,7 @@ it('searches and hydrates organization units only within the active Staff legal 
     actingAs($admin, 'api')->getJson($url.'&selected_id='.$unitId.'&search=no-match')
         ->assertOk()->assertJsonPath('data.data.0.value', $unitId);
     actingAs($admin, 'api')->getJson($url.'&selected_id='.$foreignUnitId)
-        ->assertOk()->assertJsonCount(0, 'data.data');
+        ->assertOk()->assertJsonPath('data.data.0.value', $foreignUnitId);
     actingAs($admin, 'api')->getJson($url.'&per_page=51')->assertUnprocessable();
     actingAs($admin, 'api')->getJson($url.'&page=0')->assertUnprocessable();
 });

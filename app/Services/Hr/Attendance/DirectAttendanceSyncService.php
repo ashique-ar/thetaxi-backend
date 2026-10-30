@@ -38,10 +38,9 @@ class DirectAttendanceSyncService
         $enabled = filter_var($this->settings->get('feature_hr_attendance_ingestion_enabled', false), FILTER_VALIDATE_BOOL, FILTER_NULL_ON_FAILURE) ?? false;
         abort_unless($enabled, 403, 'Hikvision attendance ingestion is disabled.');
         abort_unless($device->status === 'active' && $device->integration_mode === 'direct_isapi', 409, 'Only active direct-ISAPI devices can be synchronized.');
-        abort_unless(DB::table('hr_attendance_devices')->where('id', $device->id)->where(fn ($_companyIdScope) => \App\Services\CompanyIdScope::constrain($_companyIdScope, 'company_id', $device->company_id))->where('status', 'active')->where('integration_mode', 'direct_isapi')->whereNull('deleted_at')->exists(), 409, 'Attendance synchronization requires an active undeleted device.');
-        abort_unless(DB::table('companies')->where('id', $device->company_id)->where('is_active', true)->whereNull('deleted_at')->exists(), 409, 'Attendance synchronization requires an active legal entity.');
+        abort_unless(DB::table('hr_attendance_devices')->where('id', $device->id)->where('status', 'active')->where('integration_mode', 'direct_isapi')->whereNull('deleted_at')->exists(), 409, 'Attendance synchronization requires an active undeleted device.');
         $runId = (string) Str::uuid();
-        DB::table('hr_attendance_sync_runs')->insert(['id' => $runId, 'company_id' => $device->company_id, 'device_id' => $device->id, 'sync_type' => $type, 'status' => 'running', 'started_at' => now(), 'cursor_snapshot' => json_encode(['from' => $from->toIso8601String(), 'to' => $to->toIso8601String(), 'position' => 0]), 'created_at' => now(), 'updated_at' => now()]);
+        DB::table('hr_attendance_sync_runs')->insert(['id' => $runId, 'device_id' => $device->id, 'sync_type' => $type, 'status' => 'running', 'started_at' => now(), 'cursor_snapshot' => json_encode(['from' => $from->toIso8601String(), 'to' => $to->toIso8601String(), 'position' => 0]), 'created_at' => now(), 'updated_at' => now()]);
         $counts = ['read' => 0, 'created' => 0, 'duplicate' => 0, 'quarantined' => 0];
         $position = 0;
         try {
@@ -72,10 +71,8 @@ class DirectAttendanceSyncService
             return;
         }
         $created = DB::transaction(function () use ($device, $runId, $event, $payloadChecksum, &$counts) {
-            $company = DB::table('companies')->where('id', $device->company_id)->where('is_active', true)->whereNull('deleted_at')->lockForUpdate()->first();
-            abort_unless($company, 409, 'Attendance synchronization requires an active legal entity.');
-            $lockedDevice = DB::table('hr_attendance_devices')->where('id', $device->id)->where(fn ($_companyIdScope) => \App\Services\CompanyIdScope::constrain($_companyIdScope, 'company_id', $company->id))->where('status', 'active')->whereNull('deleted_at')->lockForUpdate()->first();
-            abort_unless($lockedDevice, 409, 'Attendance synchronization requires an active device in the selected legal entity.');
+            $lockedDevice = DB::table('hr_attendance_devices')->where('id', $device->id)->where('status', 'active')->whereNull('deleted_at')->lockForUpdate()->first();
+            abort_unless($lockedDevice, 409, 'Attendance synchronization requires an active device.');
             $existingChecksum = AttendanceRawEvent::query()->where('device_id', $device->id)->where('provider_event_id', $event['provider_event_id'])->value('payload_checksum');
             if ($existingChecksum !== null) {
                 abort_unless(hash_equals($existingChecksum, $payloadChecksum), 409, 'Provider event ID was reused with different attendance evidence.');
@@ -87,14 +84,14 @@ class DirectAttendanceSyncService
             abort_unless($sourceOffset === (int) $event['source_utc_offset_minutes'], 422,
                 'Attendance event timezone and UTC offset evidence do not agree.');
             $date = $occurred->setTimezone($event['source_timezone'])->toDateString();
-            $mappings = DB::table('hr_attendance_person_mappings')->where(fn ($_companyIdScope) => \App\Services\CompanyIdScope::constrain($_companyIdScope, 'company_id', $device->company_id))->where('provider_person_id', $event['provider_person_id'])->where('enrollment_status', 'verified')->where(fn($q) => $q->where('device_id', $device->id)->orWhereNull('device_id'))->whereDate('effective_from', '<=', $date)->where(fn($q) => $q->whereNull('effective_until')->orWhereDate('effective_until', '>', $date))->get();
+            $mappings = DB::table('hr_attendance_person_mappings')->where('provider_person_id', $event['provider_person_id'])->where('enrollment_status', 'verified')->where(fn($q) => $q->where('device_id', $device->id)->orWhereNull('device_id'))->whereDate('effective_from', '<=', $date)->where(fn($q) => $q->whereNull('effective_until')->orWhereDate('effective_until', '>', $date))->get();
             $mapping = $mappings->count() === 1 ? $mappings->first() : null;
             $reason = empty($event['provider_person_id']) ? 'person_missing' : ($mappings->isEmpty() ? 'person_unmapped' : ($mappings->count() > 1 ? 'person_mapping_ambiguous' : null));
             $requestId = (string) Str::uuid();
             DB::table('hr_attendance_ingestion_requests')->insert(['id' => $requestId, 'device_id' => $device->id, 'request_id' => 'direct:' . $device->id . ':' . $event['provider_event_id'], 'nonce' => 'sync:' . $runId . ':' . $event['provider_event_id'], 'signed_at' => now(), 'received_at' => now(), 'payload_checksum' => $payloadChecksum, 'event_count' => 1, 'status' => 'accepted', 'source_ip' => null, 'created_at' => now(), 'updated_at' => now()]);
-            $raw = AttendanceRawEvent::create(['company_id' => $device->company_id, 'device_id' => $device->id, 'ingestion_request_id' => $requestId, 'staff_id' => $mapping?->staff_id, 'person_mapping_id' => $mapping?->id, 'provider_event_id' => $event['provider_event_id'], 'provider_person_id' => $event['provider_person_id'], 'employee_number' => $event['employee_number'], 'occurred_at' => $occurred, 'source_timezone' => $event['source_timezone'], 'source_utc_offset_minutes' => $event['source_utc_offset_minutes'], 'event_kind' => $event['event_kind'], 'direction' => $event['direction'], 'authentication_method' => $event['authentication_method'], 'verification_result' => $event['verification_result'], 'encrypted_raw_payload' => AttendanceEventEvidence::minimalPayload($event), 'payload_checksum' => $payloadChecksum, 'mapping_status' => $reason ? 'quarantined' : 'mapped', 'received_at' => now()]);
+            $raw = AttendanceRawEvent::create(['device_id' => $device->id, 'ingestion_request_id' => $requestId, 'staff_id' => $mapping?->staff_id, 'person_mapping_id' => $mapping?->id, 'provider_event_id' => $event['provider_event_id'], 'provider_person_id' => $event['provider_person_id'], 'employee_number' => $event['employee_number'], 'occurred_at' => $occurred, 'source_timezone' => $event['source_timezone'], 'source_utc_offset_minutes' => $event['source_utc_offset_minutes'], 'event_kind' => $event['event_kind'], 'direction' => $event['direction'], 'authentication_method' => $event['authentication_method'], 'verification_result' => $event['verification_result'], 'encrypted_raw_payload' => AttendanceEventEvidence::minimalPayload($event), 'payload_checksum' => $payloadChecksum, 'mapping_status' => $reason ? 'quarantined' : 'mapped', 'received_at' => now()]);
             if ($reason) {
-                DB::table('hr_attendance_quarantine_items')->insert(['id' => (string) Str::uuid(), 'company_id' => $device->company_id, 'raw_event_id' => $raw->id, 'reason_code' => $reason, 'details' => 'Direct ISAPI event requires reviewed mapping resolution.', 'status' => 'open', 'created_at' => now(), 'updated_at' => now()]);
+                DB::table('hr_attendance_quarantine_items')->insert(['id' => (string) Str::uuid(), 'raw_event_id' => $raw->id, 'reason_code' => $reason, 'details' => 'Direct ISAPI event requires reviewed mapping resolution.', 'status' => 'open', 'created_at' => now(), 'updated_at' => now()]);
                 $counts['quarantined']++;
             } else
                 $counts['created']++;

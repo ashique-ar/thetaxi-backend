@@ -52,36 +52,35 @@ class OrganizationAdministrationService
         });
     }
 
-    public function createDefinition(array $data, string $companyId, string $actorUserId): array
+    public function createDefinition(array $data, string $actorUserId): array
     {
-        return DB::transaction(function () use ($data,$companyId,$actorUserId) {
-            $this->lockActiveCompany($companyId);
-            $payload=$this->definitionPayload($data,$companyId);
+        return DB::transaction(function () use ($data,$actorUserId) {
+            $payload=$this->definitionPayload($data);
             $checksum=$this->checksum(['command'=>'create_definition','payload'=>$payload,'reason'=>$data['reason']]);
-            if($replay=$this->replay($data['idempotency_key'],$checksum,$companyId,'custom_field_definition'))return$replay;
+            if($replay=$this->replay($data['idempotency_key'],$checksum,null,'custom_field_definition',['command'=>'create_definition','payload'=>$payload,'reason'=>$data['reason']]))return$replay;
+            abort_if(DB::table('hr_custom_field_definitions')->where('applies_to',$payload['applies_to'])->where('field_key',$payload['field_key'])->exists(),409,'A custom-field definition with this owner and key already exists.');
             $id=(string)Str::uuid();
             DB::table('hr_custom_field_definitions')->insert($this->json($payload+['id'=>$id,'version'=>1,'active'=>true,'updated_user_id'=>$actorUserId,'created_at'=>now(),'updated_at'=>now()],['validation_rules']));
             $after=$this->snapshot('hr_custom_field_definitions',$id);
-            $this->event($companyId,'custom_field_definition',$id,'created',1,null,$after,$data['reason'],$actorUserId,$data['idempotency_key'],$checksum);
+            $this->event(null,'custom_field_definition',$id,'created',1,null,$after,$data['reason'],$actorUserId,$data['idempotency_key'],$checksum);
             return$after;
         });
     }
 
-    public function updateDefinition(string $definitionId,array $data,string $companyId,string $actorUserId):array
+    public function updateDefinition(string $definitionId,array $data,string $actorUserId):array
     {
-        return DB::transaction(function()use($definitionId,$data,$companyId,$actorUserId){
-            $this->lockActiveCompany($companyId);
-            $row=DB::table('hr_custom_field_definitions')->where('id',$definitionId)->where(fn ($_companyIdScope) => \App\Services\CompanyIdScope::constrain($_companyIdScope, 'company_id', $companyId))->lockForUpdate()->first();
-            abort_unless($row,404,'Custom-field definition was not found in your legal entity.');
-            $payload=$this->definitionPayload($data,$companyId,true);
+        return DB::transaction(function()use($definitionId,$data,$actorUserId){
+            $row=DB::table('hr_custom_field_definitions')->where('id',$definitionId)->lockForUpdate()->first();
+            abort_unless($row,404,'Custom-field definition was not found.');
+            $payload=$this->definitionPayload($data,true);
             $checksum=$this->checksum(['definition_id'=>$definitionId,'expected_version'=>$data['expected_version'],'payload'=>$payload,'reason'=>$data['reason']]);
-            if($replay=$this->replay($data['idempotency_key'],$checksum,$companyId,'custom_field_definition'))return$replay;
+            if($replay=$this->replay($data['idempotency_key'],$checksum,null,'custom_field_definition'))return$replay;
             abort_unless((int)$row->version===(int)$data['expected_version'],409,'Custom-field definition version is stale.');
             abort_unless($payload['applies_to']===$row->applies_to&&$payload['field_key']===$row->field_key&&$payload['data_type']===$row->data_type,422,'Custom-field owner, key and data type are immutable; create a new definition instead.');
             $before=$this->decodeRow($row);$version=(int)$row->version+1;
             DB::table('hr_custom_field_definitions')->where('id',$definitionId)->update($this->json($payload+['version'=>$version,'updated_user_id'=>$actorUserId,'updated_at'=>now()],['validation_rules']));
             $after=$this->snapshot('hr_custom_field_definitions',$definitionId);
-            $this->event($companyId,'custom_field_definition',$definitionId,'updated',$version,$before,$after,$data['reason'],$actorUserId,$data['idempotency_key'],$checksum);
+            $this->event(null,'custom_field_definition',$definitionId,'updated',$version,$before,$after,$data['reason'],$actorUserId,$data['idempotency_key'],$checksum);
             return$after;
         });
     }
@@ -183,36 +182,34 @@ class OrganizationAdministrationService
      * without altering the Attendance engine's read contract or its existing
      * endpoint.
      */
-    public function createWorkCalendar(array $data,string $companyId,string $actorUserId):array
+    public function createWorkCalendar(array $data,string $actorUserId):array
     {
-        return DB::transaction(function()use($data,$companyId,$actorUserId){
-            $this->lockActiveCompany($companyId);
-            $payload=['company_id'=>$companyId,'code'=>$data['code'],'name'=>$data['name'],'timezone'=>$data['timezone'],'weekly_working_days'=>$data['weekly_working_days'],'effective_from'=>$data['effective_from'],'effective_until'=>$data['effective_until']??null];
+        return DB::transaction(function()use($data,$actorUserId){
+            $payload=['code'=>$data['code'],'name'=>$data['name'],'timezone'=>$data['timezone'],'weekly_working_days'=>$data['weekly_working_days'],'effective_from'=>$data['effective_from'],'effective_until'=>$data['effective_until']??null];
             $checksum=$this->checksum(['command'=>'create_work_calendar','payload'=>$payload,'reason'=>$data['reason']]);
-            if($replay=$this->replay($data['idempotency_key'],$checksum,$companyId,'work_calendar'))return$replay;
-            abort_if(DB::table('hr_work_calendars')->where(fn ($_companyIdScope) => \App\Services\CompanyIdScope::constrain($_companyIdScope, 'company_id', $companyId))->where('code',$payload['code'])->where('effective_from',$payload['effective_from'])->exists(),409,'A work calendar with this code and effective date already exists in your legal entity.');
+            if($replay=$this->replay($data['idempotency_key'],$checksum,null,'work_calendar'))return$replay;
+            abort_if(DB::table('hr_work_calendars')->where('code',$payload['code'])->where('effective_from',$payload['effective_from'])->exists(),409,'A work calendar with this code and effective date already exists.');
             $id=(string)Str::uuid();
             DB::table('hr_work_calendars')->insert($this->json($payload,['weekly_working_days'])+['id'=>$id,'status'=>'active','created_by'=>$actorUserId,'created_at'=>now(),'updated_at'=>now()]);
             $after=$this->snapshot('hr_work_calendars',$id);
-            $this->event($companyId,'work_calendar',$id,'created',1,null,$after,$data['reason'],$actorUserId,$data['idempotency_key'],$checksum);
+            $this->event(null,'work_calendar',$id,'created',1,null,$after,$data['reason'],$actorUserId,$data['idempotency_key'],$checksum);
             return$after;
         });
     }
 
-    public function createWorkCalendarDay(string $calendarId,array $data,string $companyId,string $actorUserId):array
+    public function createWorkCalendarDay(string $calendarId,array $data,string $actorUserId):array
     {
-        return DB::transaction(function()use($calendarId,$data,$companyId,$actorUserId){
-            $this->lockActiveCompany($companyId);
-            $calendar=DB::table('hr_work_calendars')->where('id',$calendarId)->where(fn ($_companyIdScope) => \App\Services\CompanyIdScope::constrain($_companyIdScope, 'company_id', $companyId))->lockForUpdate()->first();
-            abort_unless($calendar,404,'Work calendar was not found in your legal entity.');
+        return DB::transaction(function()use($calendarId,$data,$actorUserId){
+            $calendar=DB::table('hr_work_calendars')->where('id',$calendarId)->lockForUpdate()->first();
+            abort_unless($calendar,404,'Work calendar was not found.');
             $payload=['calendar_date'=>$data['calendar_date'],'day_type'=>$data['day_type'],'name'=>$data['name']??null,'paid'=>$data['paid']];
             $checksum=$this->checksum(['command'=>'create_work_calendar_day','calendar_id'=>$calendarId,'payload'=>$payload,'reason'=>$data['reason']]);
-            if($replay=$this->replay($data['idempotency_key'],$checksum,$companyId,'work_calendar_day'))return$replay;
+            if($replay=$this->replay($data['idempotency_key'],$checksum,null,'work_calendar_day'))return$replay;
             abort_if(DB::table('hr_work_calendar_days')->where('calendar_id',$calendarId)->whereDate('calendar_date',$payload['calendar_date'])->exists(),409,'This calendar already has a day entry for that date.');
             $id=(string)Str::uuid();
             DB::table('hr_work_calendar_days')->insert($payload+['id'=>$id,'calendar_id'=>$calendarId,'created_at'=>now(),'updated_at'=>now()]);
             $after=$this->decodeRow(DB::table('hr_work_calendar_days')->where('id',$id)->first());
-            $this->event($companyId,'work_calendar_day',$id,'created',1,null,$after,$data['reason'],$actorUserId,$data['idempotency_key'],$checksum);
+            $this->event(null,'work_calendar_day',$id,'created',1,null,$after,$data['reason'],$actorUserId,$data['idempotency_key'],$checksum);
             return$after;
         });
     }
@@ -225,12 +222,10 @@ class OrganizationAdministrationService
         return$payload;
     }
 
-    private function definitionPayload(array $data,string $companyId,bool $partial=false):array
+    private function definitionPayload(array $data,bool $partial=false):array
     {
         $keys=['applies_to','field_key','label','data_type','validation_rules','confidentiality','required','active'];
-        $payload=array_intersect_key($data,array_flip($keys));
-        if(!$partial)$payload=['company_id'=>$companyId]+$payload;
-        return$payload;
+        return array_intersect_key($data,array_flip($keys));
     }
 
     private function assertUnitReferences(array $payload,string $companyId,?string $unitId=null):void
@@ -289,17 +284,22 @@ class OrganizationAdministrationService
             ->whereNull('deleted_at')->lockForUpdate()->first(), 409, 'HR organization writes require an active legal entity.');
     }
 
-    private function replay(string $key,string $checksum,string $companyId,string $aggregateType):?array
+    private function replay(string $key,string $checksum,?string $companyId,string $aggregateType,?array $legacyChecksumInput=null):?array
     {
         $event=DB::table('hr_organization_change_events')->where('idempotency_key',$key)->first();
         if(!$event)return null;
         abort_unless(\App\Services\CompanyIdScope::sameCompanyId((string) ($event->company_id), (string) ($companyId)),403,'Organization command replay is outside your legal entity.');
         abort_unless($event->aggregate_type===$aggregateType,409,'Idempotency key was reused for another organization command.');
-        abort_unless(hash_equals($event->request_checksum,$checksum),409,'Idempotency key was reused with different organization facts.');
-        return is_array($event->after_snapshot)?$event->after_snapshot:json_decode((string)$event->after_snapshot,true,512,JSON_THROW_ON_ERROR);
+        $legacyChecksum = $legacyChecksumInput && $event->company_id
+            ? $this->checksum(['command'=>$legacyChecksumInput['command'],'payload'=>['company_id'=>$event->company_id]+$legacyChecksumInput['payload'],'reason'=>$legacyChecksumInput['reason']])
+            : null;
+        abort_unless(hash_equals($event->request_checksum,$checksum) || ($legacyChecksum !== null && hash_equals($event->request_checksum,$legacyChecksum)),409,'Idempotency key was reused with different organization facts.');
+        $snapshot = is_array($event->after_snapshot)?$event->after_snapshot:json_decode((string)$event->after_snapshot,true,512,JSON_THROW_ON_ERROR);
+        if ($aggregateType === 'custom_field_definition') unset($snapshot['company_id']);
+        return $snapshot;
     }
 
-    private function event(string $companyId,string $type,string $id,string $eventType,int $version,?array $before,array $after,string $reason,string $actor,string $key,string $checksum):void
+    private function event(?string $companyId,string $type,string $id,string $eventType,int $version,?array $before,array $after,string $reason,string $actor,string $key,string $checksum):void
     {
         DB::table('hr_organization_change_events')->insert(['id'=>(string)Str::uuid(),'company_id'=>$companyId,'aggregate_type'=>$type,'aggregate_id'=>$id,'event_type'=>$eventType,'aggregate_version'=>$version,'before_snapshot'=>$before?json_encode($before,JSON_THROW_ON_ERROR):null,'after_snapshot'=>json_encode($after,JSON_THROW_ON_ERROR),'reason'=>$reason,'actor_user_id'=>$actor,'idempotency_key'=>$key,'request_checksum'=>$checksum,'occurred_at'=>now(),'created_at'=>now(),'updated_at'=>now()]);
     }

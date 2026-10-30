@@ -29,7 +29,7 @@ trait ManagesDeviceCredentials
             'masked_reference' => $this->maskCard($card['card_number']),
             'card_type' => $card['card_type'],
         ])->values();
-        $history = DB::table('hr_attendance_credential_events')->where(fn ($_companyIdScope) => \App\Services\CompanyIdScope::constrain($_companyIdScope, 'company_id', $device->company_id))->where('device_id', $device->id)->where('provider_person_id', $employeeNumber)->latest('occurred_at')->limit(50)->get(['id', 'credential_type', 'action', 'masked_reference', 'status', 'reason', 'actor_user_id', 'occurred_at']);
+        $history = DB::table('hr_attendance_credential_events')->where('device_id', $device->id)->where('provider_person_id', $employeeNumber)->latest('occurred_at')->limit(50)->get(['id', 'credential_type', 'action', 'masked_reference', 'status', 'reason', 'actor_user_id', 'occurred_at']);
 
         return response()->json(['status' => 'success', 'data' => ['mapping' => $mapping, 'cards' => $cards, 'history' => $history, 'pin' => ['configured' => $history->contains(fn ($row) => $row->credential_type === 'pin' && $row->action === 'set' && $row->status === 'delivered')]]]);
     }
@@ -114,11 +114,10 @@ trait ManagesDeviceCredentials
     public function disposition(Request $request, string $deviceId, string $employeeNumber): JsonResponse
     {
         $data = $request->validate(['disposition' => ['required', Rule::in(['former_staff', 'vendor', 'test_identity', 'unknown', 'ignored'])], 'reason' => ['required', 'string', 'max:2000']]);
-        $device = $this->authorizedDevice($request, $deviceId);
+        $device = $this->authorizedDevice($deviceId);
         DB::transaction(function () use ($request, $device, $employeeNumber, $data) {
-            $this->lockActiveAttendanceCompany($device->company_id);
             DB::table('hr_attendance_identity_dispositions')->updateOrInsert(['device_id' => $device->id, 'provider_person_id' => $employeeNumber], [
-                'id' => (string) Str::uuid(), 'company_id' => $device->company_id, 'disposition' => $data['disposition'], 'reason' => $data['reason'], 'reviewed_by' => $request->user()->id, 'reviewed_at' => now(), 'created_at' => now(), 'updated_at' => now(),
+                'id' => (string) Str::uuid(), 'disposition' => $data['disposition'], 'reason' => $data['reason'], 'reviewed_by' => $request->user()->id, 'reviewed_at' => now(), 'created_at' => now(), 'updated_at' => now(),
             ]);
         });
 
@@ -127,18 +126,18 @@ trait ManagesDeviceCredentials
 
     private function mappedIdentity(Request $request, string $deviceId, string $employeeNumber): array
     {
-        $device = $this->authorizedDevice($request, $deviceId);
+        $device = $this->authorizedDevice($deviceId);
         abort_unless($device->status === 'active' && $device->integration_mode === 'direct_isapi', 409, 'Credential writes require an active direct-ISAPI device.');
-        $mapping = DB::table('hr_attendance_person_mappings')->where(fn ($_companyIdScope) => \App\Services\CompanyIdScope::constrain($_companyIdScope, 'company_id', $device->company_id))->where('provider_person_id', $employeeNumber)->where('enrollment_status', 'verified')->where(fn ($q) => $q->where('device_id', $device->id)->orWhereNull('device_id'))->whereDate('effective_from', '<=', now())->where(fn ($q) => $q->whereNull('effective_until')->orWhereDate('effective_until', '>', now()))->first();
+        $mapping = DB::table('hr_attendance_person_mappings')->where('provider_person_id', $employeeNumber)->where('enrollment_status', 'verified')->where(fn ($q) => $q->where('device_id', $device->id)->orWhereNull('device_id'))->whereDate('effective_from', '<=', now())->where(fn ($q) => $q->whereNull('effective_until')->orWhereDate('effective_until', '>', now()))->first();
         abort_unless($mapping, 422, 'A current verified Staff mapping is required.');
-        abort_unless(Staff::withTrashed()->whereKey($mapping->staff_id)->where(fn ($_companyIdScope) => \App\Services\CompanyIdScope::constrain($_companyIdScope, 'company_id', $device->company_id))->exists(), 404);
+        abort_unless(Staff::withTrashed()->whereKey($mapping->staff_id)->exists(), 404);
 
         return [$device, $mapping];
     }
 
     private function requireActiveCredentialOwner(AttendanceDevice $device, object $mapping): void
     {
-        $staff = Staff::withTrashed()->whereKey($mapping->staff_id)->where(fn ($_companyIdScope) => \App\Services\CompanyIdScope::constrain($_companyIdScope, 'company_id', $device->company_id))->lockForUpdate()->firstOrFail();
+        $staff = Staff::withTrashed()->whereKey($mapping->staff_id)->lockForUpdate()->firstOrFail();
         abort_if($staff->trashed() || filled($staff->employment_ended_at), 409, 'Former Staff cannot receive attendance credentials.');
     }
 
@@ -150,7 +149,7 @@ trait ManagesDeviceCredentials
     private function credentialRequestChecksum(AttendanceDevice $device, object $mapping, Request $request, string $type, string $action, array $data): string
     {
         return hash_hmac('sha256', json_encode([
-            'company_id' => $device->company_id, 'device_id' => $device->id, 'staff_id' => $mapping->staff_id,
+            'device_id' => $device->id, 'staff_id' => $mapping->staff_id,
             'provider_person_id' => $mapping->provider_person_id, 'credential_type' => $type, 'action' => $action,
             'actor_user_id' => $request->user()->id, 'request' => $data,
         ], JSON_UNESCAPED_SLASHES | JSON_THROW_ON_ERROR), (string) config('app.key'));
@@ -160,7 +159,7 @@ trait ManagesDeviceCredentials
     {
         $existing = DB::table('hr_attendance_credential_events')->where('idempotency_key', $key)->first();
         abort_unless(! $existing || (
-            \App\Services\CompanyIdScope::sameCompanyId((string) ($existing->company_id), (string) ($device->company_id)) && $existing->device_id === $device->id
+            $existing->device_id === $device->id
             && $existing->provider_person_id === $employeeNumber && $existing->credential_type === $type
             && $existing->action === $action && $existing->actor_user_id === $actorId
             && hash_equals((string) $existing->request_checksum, $checksum)
@@ -179,7 +178,7 @@ trait ManagesDeviceCredentials
     {
         $id = (string) Str::uuid();
         try {
-            DB::table('hr_attendance_credential_events')->insert(['id' => $id, 'company_id' => $device->company_id, 'device_id' => $device->id, 'staff_id' => $mapping->staff_id, 'provider_person_id' => $mapping->provider_person_id, 'credential_type' => $type, 'action' => $action, 'credential_fingerprint' => $fingerprint, 'masked_reference' => $masked, 'status' => 'pending', 'reason' => $reason, 'idempotency_key' => $idempotency, 'request_checksum' => $checksum, 'actor_user_id' => $request->user()->id, 'occurred_at' => now(), 'created_at' => now(), 'updated_at' => now()]);
+            DB::table('hr_attendance_credential_events')->insert(['id' => $id, 'device_id' => $device->id, 'staff_id' => $mapping->staff_id, 'provider_person_id' => $mapping->provider_person_id, 'credential_type' => $type, 'action' => $action, 'credential_fingerprint' => $fingerprint, 'masked_reference' => $masked, 'status' => 'pending', 'reason' => $reason, 'idempotency_key' => $idempotency, 'request_checksum' => $checksum, 'actor_user_id' => $request->user()->id, 'occurred_at' => now(), 'created_at' => now(), 'updated_at' => now()]);
         } catch (QueryException $exception) {
             if (! in_array($exception->errorInfo[0] ?? null, ['23000', '23505'], true)) throw $exception;
             $existing = $this->existingCredentialEvent($idempotency, $checksum, $device, $employeeNumber, $type, $action, $request->user()->id);

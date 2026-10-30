@@ -27,11 +27,11 @@ class SubjectCustomFieldValueService
         'employment_spell' => ['table' => 'hr_employment_spells', 'from' => 'joined_at', 'until' => 'terminated_at'],
     ];
 
-    public function listFor(string $ownerType, string $ownerId, string $companyId, User $actor): array
+    public function listFor(string $ownerType, string $ownerId, User $actor): array
     {
         $subject = $this->subject($ownerType);
-        $owner = $this->loadOwner($subject, $ownerId, $companyId);
-        $definitions = DB::table('hr_custom_field_definitions')->where(fn ($_companyIdScope) => \App\Services\CompanyIdScope::constrain($_companyIdScope, 'company_id', $companyId))->where('applies_to', $ownerType)->where('active', true)
+        $owner = $this->loadOwner($subject, $ownerId);
+        $definitions = DB::table('hr_custom_field_definitions')->where('applies_to', $ownerType)->where('active', true)
             ->orderBy('label')->orderBy('id')->get();
         $values = DB::table('hr_custom_field_values')->where('owner_type', $ownerType)->where('owner_id', $owner->id)->get()->keyBy('definition_id');
         $requestId = (string) Str::uuid();
@@ -45,7 +45,7 @@ class SubjectCustomFieldValueService
                 $value = $this->decrypt($row->encrypted_value);
                 abort_unless(hash_equals($row->value_checksum, $this->valueChecksum($value)), 409, 'A custom-field value failed its integrity check.');
                 DB::table('hr_custom_field_value_access_events')->insert([
-                    'id' => (string) Str::uuid(), 'company_id' => $companyId, 'definition_id' => $definition->id,
+                    'id' => (string) Str::uuid(), 'definition_id' => $definition->id,
                     'owner_type' => $ownerType, 'owner_id' => $owner->id, 'access_type' => 'viewed', 'actor_user_id' => $actor->id,
                     'request_id' => $requestId, 'occurred_at' => now(), 'created_at' => now(), 'updated_at' => now(),
                 ]);
@@ -63,15 +63,14 @@ class SubjectCustomFieldValueService
         return $result;
     }
 
-    public function put(string $ownerType, string $ownerId, string $definitionId, array $data, string $companyId, User $actor): array
+    public function put(string $ownerType, string $ownerId, string $definitionId, array $data, User $actor): array
     {
-        return DB::transaction(function () use ($ownerType, $ownerId, $definitionId, $data, $companyId, $actor) {
+        return DB::transaction(function () use ($ownerType, $ownerId, $definitionId, $data, $actor) {
             $subject = $this->subject($ownerType);
-            abort_unless(DB::table('companies')->where('id', $companyId)->lockForUpdate()->first(), 404, 'Legal entity was not found.');
-            $owner = DB::table($subject['table'])->where('id', $ownerId)->where(fn ($_companyIdScope) => \App\Services\CompanyIdScope::constrain($_companyIdScope, 'company_id', $companyId))->lockForUpdate()->first();
-            abort_unless($owner, 404, ucfirst(str_replace('_', ' ', $ownerType)).' was not found in your legal entity.');
-            $definition = DB::table('hr_custom_field_definitions')->where('id', $definitionId)->where(fn ($_companyIdScope) => \App\Services\CompanyIdScope::constrain($_companyIdScope, 'company_id', $companyId))->where('applies_to', $ownerType)->lockForUpdate()->first();
-            abort_unless($definition, 404, 'Custom-field definition was not found in your legal entity.');
+            $owner = DB::table($subject['table'])->where('id', $ownerId)->lockForUpdate()->first();
+            abort_unless($owner, 404, ucfirst(str_replace('_', ' ', $ownerType)).' was not found.');
+            $definition = DB::table('hr_custom_field_definitions')->where('id', $definitionId)->where('applies_to', $ownerType)->lockForUpdate()->first();
+            abort_unless($definition, 404, 'Custom-field definition was not found.');
             abort_unless((bool) $definition->active, 409, 'Inactive custom-field definitions cannot accept values.');
             abort_unless((int) $definition->version === (int) $data['definition_version'], 409, 'Custom-field definition version is stale.');
             abort_unless($this->canView($definition->confidentiality, $actor), 403, 'This custom-field classification is not available to the actor.');
@@ -84,7 +83,7 @@ class SubjectCustomFieldValueService
                 'value_checksum' => $valueChecksum, 'reason' => $data['reason'],
             ]);
             if ($event = DB::table('hr_custom_field_value_events')->where('idempotency_key', $data['idempotency_key'])->first()) {
-                abort_unless(\App\Services\CompanyIdScope::sameCompanyId((string) ($event->company_id), (string) ($companyId)) && $event->owner_type === $ownerType && $event->owner_id === $owner->id && $event->definition_id === $definitionId && hash_equals($event->command_checksum, $commandChecksum), 409, 'Custom-field value key was reused with different evidence.');
+                abort_unless($event->owner_type === $ownerType && $event->owner_id === $owner->id && $event->definition_id === $definitionId && hash_equals($event->command_checksum, $commandChecksum), 409, 'Custom-field value key was reused with different evidence.');
                 return $this->eventResult($event, $definition);
             }
             $current = DB::table('hr_custom_field_values')->where('definition_id', $definitionId)->where('owner_type', $ownerType)->where('owner_id', $owner->id)->lockForUpdate()->first();
@@ -106,7 +105,7 @@ class SubjectCustomFieldValueService
             else DB::table('hr_custom_field_values')->insert($payload + ['id' => $id, 'definition_id' => $definitionId, 'owner_type' => $ownerType, 'owner_id' => $owner->id, 'created_at' => now()]);
             $eventId = (string) Str::uuid();
             DB::table('hr_custom_field_value_events')->insert([
-                'id' => $eventId, 'company_id' => $companyId, 'custom_field_value_id' => $id, 'definition_id' => $definitionId,
+                'id' => $eventId, 'custom_field_value_id' => $id, 'definition_id' => $definitionId,
                 'definition_version' => (int) $definition->version, 'owner_type' => $ownerType, 'owner_id' => $owner->id,
                 'value_version' => $version, 'event_type' => $current ? 'updated' : 'created',
                 'before_encrypted_value' => $current?->encrypted_value, 'before_checksum' => $current?->value_checksum,
@@ -124,10 +123,10 @@ class SubjectCustomFieldValueService
         return self::SUBJECTS[$ownerType];
     }
 
-    private function loadOwner(array $subject, string $ownerId, string $companyId): object
+    private function loadOwner(array $subject, string $ownerId): object
     {
-        $owner = DB::table($subject['table'])->where('id', $ownerId)->where(fn ($_companyIdScope) => \App\Services\CompanyIdScope::constrain($_companyIdScope, 'company_id', $companyId))->first();
-        abort_unless($owner, 404, 'Subject was not found in your legal entity.');
+        $owner = DB::table($subject['table'])->where('id', $ownerId)->first();
+        abort_unless($owner, 404, 'Subject was not found.');
         return $owner;
     }
 

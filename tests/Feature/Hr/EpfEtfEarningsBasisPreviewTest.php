@@ -1,6 +1,5 @@
 <?php
 
-use App\Models\Company;
 use App\Models\Hr\HrEpfEtfContributionPolicy;
 use App\Models\User;
 use App\Services\Hr\PayrollStatutoryPolicyService;
@@ -14,11 +13,9 @@ uses(RefreshDatabase::class);
 
 function approved_epf_etf_policy_fixture(array $overrides = []): array
 {
-    $company = Company::create(['name' => 'EPF earnings basis preview company']);
     $creator = User::factory()->create();
     $approver = User::factory()->create();
     $policy = HrEpfEtfContributionPolicy::create(array_merge([
-        'company_id' => $company->id,
         'version' => 1,
         'status' => 'approved',
         'employee_epf_rate_percent' => 8,
@@ -42,13 +39,13 @@ function approved_epf_etf_policy_fixture(array $overrides = []): array
         'approved_at' => now(),
     ], $overrides));
 
-    return [app(PayrollStatutoryPolicyService::class), $company, $policy];
+    return [app(PayrollStatutoryPolicyService::class), $policy];
 }
 
 it('calculates EPF and ETF from only the explicitly included earning categories', function () {
-    [$service, $company] = approved_epf_etf_policy_fixture();
+    [$service] = approved_epf_etf_policy_fixture();
 
-    $preview = $service->previewContribution($company->id, [
+    $preview = $service->previewContribution([
         'basic_salary' => 100000,
         'cost_of_living_allowance' => 20000,
         'food_allowance' => 10000,
@@ -67,14 +64,13 @@ it('calculates EPF and ETF from only the explicitly included earning categories'
 });
 
 it('blocks preview of incomplete policies and prevents their approval', function () {
-    [$service, $company, $policy] = approved_epf_etf_policy_fixture(['earnings_basis' => []]);
+    [$service, $policy] = approved_epf_etf_policy_fixture(['earnings_basis' => []]);
 
-    $preview = $service->previewContribution($company->id, [], CarbonImmutable::now());
+    $preview = $service->previewContribution([], CarbonImmutable::now());
     expect($preview['blocked'])->toBeTrue()
         ->and($preview)->not->toHaveKey('employee_epf_amount');
 
     $draft = HrEpfEtfContributionPolicy::create([
-        'company_id' => $company->id,
         'version' => 2,
         'status' => 'draft',
         'employee_epf_rate_percent' => $policy->employee_epf_rate_percent,
@@ -89,19 +85,19 @@ it('blocks preview of incomplete policies and prevents their approval', function
         'approved_at' => null,
     ]);
 
-    expect(fn () => $service->approveEpfEtfPolicy($draft->id, $company->id, (string) Str::uuid()))
+    expect(fn () => $service->approveEpfEtfPolicy($draft->id, (string) Str::uuid()))
         ->toThrow(HttpException::class, 'Explicit EPF/ETF rates, a complete earnings basis, and a statutory reference are required before approval.');
 });
 
 it('requires an amount for every earnings category instead of treating missing amounts as zero', function () {
-    [$service, $company] = approved_epf_etf_policy_fixture();
+    [$service] = approved_epf_etf_policy_fixture();
 
-    expect(fn () => $service->previewContribution($company->id, ['basic_salary' => 100000], CarbonImmutable::now()))
+    expect(fn () => $service->previewContribution(['basic_salary' => 100000], CarbonImmutable::now()))
         ->toThrow(ValidationException::class);
 });
 
 it('rejects combined EPF contributions that overflow the supported numeric range', function () {
-    [$service, $company] = approved_epf_etf_policy_fixture([
+    [$service] = approved_epf_etf_policy_fixture([
         'employee_epf_rate_percent' => 100,
         'employer_epf_rate_percent' => 100,
     ]);
@@ -111,12 +107,12 @@ it('rejects combined EPF contributions that overflow the supported numeric range
     ], 0.0);
     $earnings['basic_salary'] = PHP_FLOAT_MAX;
 
-    expect(fn () => $service->previewContribution($company->id, $earnings, CarbonImmutable::now()))
+    expect(fn () => $service->previewContribution($earnings, CarbonImmutable::now()))
         ->toThrow(ValidationException::class, 'The calculated contribution exceeds the supported numeric range.');
 });
 
 it('returns normalized boolean earnings-basis choices', function () {
-    [$service, $company] = approved_epf_etf_policy_fixture(['earnings_basis' => [
+    [$service] = approved_epf_etf_policy_fixture(['earnings_basis' => [
         'include_basic_salary' => 1,
         'include_cost_of_living_allowance' => '0',
         'include_food_allowance' => true,
@@ -131,7 +127,7 @@ it('returns normalized boolean earnings-basis choices', function () {
         'other_regular_allowances', 'overtime', 'bonus', 'reimbursements',
     ], 0);
 
-    $preview = $service->previewContribution($company->id, $earnings, CarbonImmutable::now());
+    $preview = $service->previewContribution($earnings, CarbonImmutable::now());
 
     expect($preview['earnings_basis']['include_basic_salary'])->toBeTrue()
         ->and($preview['earnings_basis']['include_cost_of_living_allowance'])->toBeFalse();

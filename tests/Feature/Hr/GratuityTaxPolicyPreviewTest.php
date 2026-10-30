@@ -1,6 +1,5 @@
 <?php
 
-use App\Models\Company;
 use App\Models\Hr\HrGratuityPolicy;
 use App\Models\Staff;
 use App\Models\User;
@@ -16,11 +15,9 @@ uses(RefreshDatabase::class);
 
 function approved_gratuity_policy_fixture(array $overrides = []): array
 {
-    $company = Company::create(['name' => 'Gratuity tax preview company']);
     $creator = User::factory()->create();
     $approver = User::factory()->create();
     $policy = HrGratuityPolicy::create(array_merge([
-        'company_id' => $company->id,
         'version' => 1,
         'status' => 'approved',
         'minimum_qualifying_service_years' => 5,
@@ -39,14 +36,13 @@ function approved_gratuity_policy_fixture(array $overrides = []): array
         'approved_at' => now(),
     ], $overrides));
 
-    return [app(PayrollStatutoryPolicyService::class), $company, $policy];
+    return [app(PayrollStatutoryPolicyService::class), $policy];
 }
 
 it('blocks the net preview when an approved legacy policy lacks tax inputs', function () {
-    [$service, $company] = approved_gratuity_policy_fixture();
+    [$service] = approved_gratuity_policy_fixture();
 
     $preview = $service->previewGratuityEntitlement(
-        $company->id,
         'monthly',
         10000,
         5,
@@ -64,9 +60,8 @@ it('blocks the net preview when only one approved tax input is missing', functio
         ['tax_exempt_threshold_lkr' => null, 'tax_rate_above_threshold_percent' => 10],
         ['tax_exempt_threshold_lkr' => 10000, 'tax_rate_above_threshold_percent' => null],
     ] as $taxInputs) {
-        [$service, $company] = approved_gratuity_policy_fixture($taxInputs);
+        [$service] = approved_gratuity_policy_fixture($taxInputs);
         $preview = $service->previewGratuityEntitlement(
-            $company->id,
             'monthly',
             10000,
             5,
@@ -80,13 +75,12 @@ it('blocks the net preview when only one approved tax input is missing', functio
 });
 
 it('calculates tax only from explicit approved threshold and rate values', function () {
-    [$service, $company] = approved_gratuity_policy_fixture([
+    [$service] = approved_gratuity_policy_fixture([
         'tax_exempt_threshold_lkr' => 10000,
         'tax_rate_above_threshold_percent' => 10,
     ]);
 
     $preview = $service->previewGratuityEntitlement(
-        $company->id,
         'monthly',
         10000,
         5,
@@ -101,13 +95,12 @@ it('calculates tax only from explicit approved threshold and rate values', funct
 });
 
 it('blocks non-monthly gratuity until an authoritative wage-history source exists', function () {
-    [$service, $company] = approved_gratuity_policy_fixture([
+    [$service] = approved_gratuity_policy_fixture([
         'tax_exempt_threshold_lkr' => 10000,
         'tax_rate_above_threshold_percent' => 10,
     ]);
 
     $preview = $service->previewGratuityEntitlement(
-        $company->id,
         'non_monthly',
         1000,
         5,
@@ -123,13 +116,12 @@ it('blocks non-monthly gratuity until an authoritative wage-history source exist
 });
 
 it('accepts a non-monthly API preview without an operator wage and returns no payable amount', function () {
-    [$admin, $company] = hr_seed_admin_actor([], true);
+    [$admin] = hr_seed_admin_actor([], true);
     $admin->givePermissionTo('hr.payroll.statutory.view');
     config(['hr.features.payroll' => true]);
     $staff = Staff::query()->where('user_id', $admin->id)->firstOrFail();
     $context = UserContext::query()->where('user_id', $admin->id)->where('context_id', $staff->id)->firstOrFail();
     HrGratuityPolicy::create([
-        'company_id' => $company->id,
         'version' => 1,
         'status' => 'approved',
         'minimum_qualifying_service_years' => 5,
@@ -160,14 +152,13 @@ it('accepts a non-monthly API preview without an operator wage and returns no pa
 });
 
 it('blocks a gratuity calculation that overflows the supported numeric range', function () {
-    [$service, $company] = approved_gratuity_policy_fixture([
+    [$service] = approved_gratuity_policy_fixture([
         'monthly_paid_divisor' => 0.01,
         'tax_exempt_threshold_lkr' => 0,
         'tax_rate_above_threshold_percent' => 0,
     ]);
 
     $preview = $service->previewGratuityEntitlement(
-        $company->id,
         'monthly',
         PHP_FLOAT_MAX,
         5,
@@ -181,13 +172,13 @@ it('blocks a gratuity calculation that overflows the supported numeric range', f
 });
 
 it('rejects approval of a draft missing either statutory tax input', function () {
-    [$service, $company, $policy] = approved_gratuity_policy_fixture([
+    [$service, $policy] = approved_gratuity_policy_fixture([
         'status' => 'draft',
         'approved_by' => null,
         'approved_at' => null,
     ]);
 
-    expect(fn () => $service->approveGratuityPolicy($policy->id, $company->id, (string) Str::uuid()))
+    expect(fn () => $service->approveGratuityPolicy($policy->id, (string) Str::uuid()))
         ->toThrow(HttpException::class, 'An explicit statutory tax threshold and rate are required before approval.');
 });
 
@@ -203,12 +194,12 @@ it('blocks legacy approved policies with invalid formula ranges or a blank statu
         ['tax_rate_above_threshold_percent' => 100.01],
         ['statutory_reference' => '   '],
     ] as $invalidPolicy) {
-        [$service, $company] = approved_gratuity_policy_fixture(array_merge([
+        [$service] = approved_gratuity_policy_fixture(array_merge([
             'tax_exempt_threshold_lkr' => 10000,
             'tax_rate_above_threshold_percent' => 10,
         ], $invalidPolicy));
 
-        $preview = $service->previewGratuityEntitlement($company->id, 'monthly', 10000, 5, 20, CarbonImmutable::now());
+        $preview = $service->previewGratuityEntitlement('monthly', 10000, 5, 20, CarbonImmutable::now());
 
         expect($preview['blocked'])->toBeTrue()
             ->and($preview)->not->toHaveKey('net_gratuity_amount_lkr');
@@ -216,7 +207,7 @@ it('blocks legacy approved policies with invalid formula ranges or a blank statu
 });
 
 it('rejects approval of a draft with an out-of-range gratuity formula', function () {
-    [$service, $company, $policy] = approved_gratuity_policy_fixture([
+    [$service, $policy] = approved_gratuity_policy_fixture([
         'status' => 'draft',
         'approved_by' => null,
         'approved_at' => null,
@@ -225,17 +216,17 @@ it('rejects approval of a draft with an out-of-range gratuity formula', function
         'tax_rate_above_threshold_percent' => 10,
     ]);
 
-    expect(fn () => $service->approveGratuityPolicy($policy->id, $company->id, (string) Str::uuid()))
+    expect(fn () => $service->approveGratuityPolicy($policy->id, (string) Str::uuid()))
         ->toThrow(HttpException::class, 'Gratuity formula values and statutory reference must be complete and within accepted ranges before approval.');
 });
 
 it('blocks net previews until current employer headcount is supplied', function () {
-    [$service, $company] = approved_gratuity_policy_fixture([
+    [$service] = approved_gratuity_policy_fixture([
         'tax_exempt_threshold_lkr' => 10000,
         'tax_rate_above_threshold_percent' => 10,
     ]);
 
-    $preview = $service->previewGratuityEntitlement($company->id, 'monthly', 10000, 5, null, CarbonImmutable::now());
+    $preview = $service->previewGratuityEntitlement('monthly', 10000, 5, null, CarbonImmutable::now());
 
     expect($preview['blocked'])->toBeTrue()
         ->and($preview['blocker'])->toBe('Current employer headcount is required to evaluate the approved gratuity policy threshold.')
@@ -243,12 +234,12 @@ it('blocks net previews until current employer headcount is supplied', function 
 });
 
 it('blocks entitlement previews when headcount is below the approved policy threshold', function () {
-    [$service, $company] = approved_gratuity_policy_fixture([
+    [$service] = approved_gratuity_policy_fixture([
         'tax_exempt_threshold_lkr' => 10000,
         'tax_rate_above_threshold_percent' => 10,
     ]);
 
-    $preview = $service->previewGratuityEntitlement($company->id, 'monthly', 10000, 5, 14, CarbonImmutable::now());
+    $preview = $service->previewGratuityEntitlement('monthly', 10000, 5, 14, CarbonImmutable::now());
 
     expect($preview['blocked'])->toBeTrue()
         ->and($preview['blocker'])->toBe('Current employer headcount is below the approved gratuity policy threshold.')

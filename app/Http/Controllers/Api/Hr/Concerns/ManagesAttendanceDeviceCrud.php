@@ -26,8 +26,7 @@ trait ManagesAttendanceDeviceCrud
     public function probe(Request $request, string $deviceId, AttendanceProviderManager $providers): JsonResponse
     {
         
-        $data = $request->validate(['company_id' => ['nullable', 'uuid']]);
-        $device = $this->authorizedDevice($request, $deviceId, $data['company_id'] ?? null);
+        $device = $this->authorizedDevice($deviceId);
         abort_unless($device->status === 'active', 409, 'Only an active attendance device can be tested.');
         $this->assertDirectIsapiCredentialsConfigured($device);
 
@@ -65,8 +64,8 @@ trait ManagesAttendanceDeviceCrud
     public function sync(Request $request, string $deviceId, DirectAttendanceSyncService $sync): JsonResponse
     {
         
-        $data = $request->validate(['company_id' => ['nullable', 'uuid'], 'days' => ['nullable', 'integer', 'min:1', 'max:31']]);
-        $device = $this->authorizedDevice($request, $deviceId, $data['company_id'] ?? null);
+        $data = $request->validate(['days' => ['nullable', 'integer', 'min:1', 'max:31']]);
+        $device = $this->authorizedDevice($deviceId);
         $this->assertDirectIsapiCredentialsConfigured($device);
         $to = CarbonImmutable::now();
         $days = (int) ($data['days'] ?? 2);
@@ -77,23 +76,19 @@ trait ManagesAttendanceDeviceCrud
     public function syncRuns(Request $request): JsonResponse
     {
         $data = $request->validate([
-            'company_id' => ['nullable', 'uuid'],
             'per_page' => ['nullable', 'integer', 'min:1', 'max:100'],
         ]);
-        $companyId = $this->authorizedCompanyId($request, $data['company_id'] ?? null);
-        $runs = DB::table('hr_attendance_sync_runs')->where(fn ($_companyIdScope) => \App\Services\CompanyIdScope::constrain($_companyIdScope, 'company_id', $companyId))->latest('started_at')->paginate($data['per_page'] ?? 50);
+        $runs = DB::table('hr_attendance_sync_runs')->select(['id', 'device_id', 'sync_type', 'status', 'started_at', 'finished_at', 'read_count', 'created_count', 'duplicate_count', 'quarantined_count', 'error_summary'])->latest('started_at')->paginate($data['per_page'] ?? 50);
 
         return response()->json(['status' => 'success', 'data' => $runs]);
     }
 
     public function index(Request $request): JsonResponse
     {
-        $companyId = $this->authorizedCompanyId($request, $request->input('company_id'));
         $devices = AttendanceDevice::query()
-            ->where(fn ($_companyIdScope) => \App\Services\CompanyIdScope::constrain($_companyIdScope, 'company_id', $companyId))
             ->with('connector:id,name,status,last_heartbeat_at')
             ->orderBy('site_code')
-            ->get();
+            ->get(['id', 'connector_id', 'organization_unit_id', 'provider', 'integration_mode', 'model', 'serial_number', 'firmware', 'site_code', 'timezone', 'capabilities', 'status', 'last_sync_at', 'last_event_at', 'created_user_id', 'created_at', 'updated_at']);
 
         return response()->json(['status' => 'success', 'data' => $devices]);
     }
@@ -101,14 +96,12 @@ trait ManagesAttendanceDeviceCrud
     public function deviceOptions(Request $request): JsonResponse
     {
         $data = $request->validate([
-            'company_id' => ['nullable', 'uuid'],
             'search' => ['nullable', 'string', 'max:100'],
             'selected_id' => ['nullable', 'uuid'],
             'page' => ['nullable', 'integer', 'min:1'],
             'per_page' => ['nullable', 'integer', 'min:1', 'max:50'],
         ]);
-        $companyId = $this->authorizedCompanyId($request, $data['company_id'] ?? null);
-        $devices = AttendanceDevice::query()->where(fn ($_companyIdScope) => \App\Services\CompanyIdScope::constrain($_companyIdScope, 'company_id', $companyId));
+        $devices = AttendanceDevice::query();
 
         if (! empty($data['selected_id'])) {
             $devices->whereKey($data['selected_id']);
@@ -120,7 +113,7 @@ trait ManagesAttendanceDeviceCrud
                 ->orWhere('serial_number', 'like', $search));
         }
 
-        $results = $devices->select(['id', 'company_id', 'site_code', 'model', 'serial_number', 'status'])
+        $results = $devices->select(['id', 'site_code', 'model', 'serial_number', 'status'])
             ->orderBy('site_code')
             ->orderBy('id')
             ->paginate($data['per_page'] ?? 25, ['*'], 'page', $data['page'] ?? 1);
@@ -129,7 +122,6 @@ trait ManagesAttendanceDeviceCrud
             'data' => collect($results->items())->map(fn (AttendanceDevice $device) => [
                 'value' => $device->id,
                 'label' => $device->site_code,
-                'company_id' => $device->company_id ?: $companyId,
                 'metadata' => ['model' => $device->model, 'serial' => $device->serial_number, 'timezone' => $device->timezone],
                 'status' => $device->status,
             ])->values(),
@@ -188,13 +180,11 @@ trait ManagesAttendanceDeviceCrud
     {
         
         $data = $request->validate([
-            'company_id' => ['nullable', 'uuid'],
             'name' => ['required', 'string', 'max:255'],
             'topology' => ['required', Rule::in(['direct_isapi', 'hikcentral', 'provider_push', 'approved_csv', 'local_connector'])],
             'allowed_ip_cidrs' => ['nullable', 'string', 'max:2000'],
             'capabilities' => ['nullable', 'array'],
         ]);
-        $data['company_id'] = $this->authorizedCompanyId($request, $data['company_id'] ?? null);
         $secret = bin2hex(random_bytes(32));
         $connector = AttendanceConnector::create($data + [
             'connector_key' => 'ATC-'.strtoupper(Str::random(24)),
@@ -215,7 +205,6 @@ trait ManagesAttendanceDeviceCrud
     {
         
         $data = $request->validate([
-            'company_id' => ['nullable', 'uuid'],
             'connector_id' => ['nullable', 'uuid'],
             'organization_unit_id' => ['nullable', 'uuid'],
             'provider' => ['required', 'string', 'max:60'],
@@ -228,12 +217,11 @@ trait ManagesAttendanceDeviceCrud
             'capabilities' => ['nullable', 'array'],
             'encrypted_configuration' => ['nullable', 'array'],
         ]);
-        $data['company_id'] = $this->authorizedCompanyId($request, $data['company_id'] ?? null);
         if (! empty($data['connector_id'])) {
-            abort_unless(AttendanceConnector::query()->where(fn ($_companyIdScope) => \App\Services\CompanyIdScope::constrain($_companyIdScope, 'company_id', $data['company_id']))->whereKey($data['connector_id'])->exists(), 404);
+            abort_unless(AttendanceConnector::query()->whereKey($data['connector_id'])->exists(), 404);
         }
         if (! empty($data['organization_unit_id'])) {
-            abort_unless(DB::table('hr_organization_units')->where('id', $data['organization_unit_id'])->where(fn ($_companyIdScope) => \App\Services\CompanyIdScope::constrain($_companyIdScope, 'company_id', $data['company_id']))->exists(), 404);
+            abort_unless(DB::table('hr_organization_units')->where('id', $data['organization_unit_id'])->exists(), 404);
         }
 
         if ($data['integration_mode'] === 'direct_isapi') {
@@ -290,7 +278,7 @@ trait ManagesAttendanceDeviceCrud
     public function updateDevice(Request $request, string $deviceId): JsonResponse
     {
         
-        $device = $this->authorizedDevice($request, $deviceId);
+        $device = $this->authorizedDevice($deviceId);
         $data = $request->validate([
             'connector_id' => ['nullable', 'uuid'],
             'organization_unit_id' => ['nullable', 'uuid'],
@@ -303,10 +291,10 @@ trait ManagesAttendanceDeviceCrud
             'status' => ['required', Rule::in(['active', 'inactive'])],
         ]);
         if (! empty($data['connector_id'])) {
-            abort_unless(AttendanceConnector::query()->where(fn ($_companyIdScope) => \App\Services\CompanyIdScope::constrain($_companyIdScope, 'company_id', $device->company_id))->whereKey($data['connector_id'])->exists(), 404);
+            abort_unless(AttendanceConnector::query()->whereKey($data['connector_id'])->exists(), 404);
         }
         if (! empty($data['organization_unit_id'])) {
-            abort_unless(DB::table('hr_organization_units')->where('id', $data['organization_unit_id'])->where(fn ($_companyIdScope) => \App\Services\CompanyIdScope::constrain($_companyIdScope, 'company_id', $device->company_id))->exists(), 404);
+            abort_unless(DB::table('hr_organization_units')->where('id', $data['organization_unit_id'])->exists(), 404);
         }
         // encrypted_configuration (which may hold the ISAPI password) is never sent back to the
         // client by health()/index(), so a client-supplied value only ever carries the fields the
@@ -323,7 +311,7 @@ trait ManagesAttendanceDeviceCrud
     public function destroyDevice(Request $request, string $deviceId): JsonResponse
     {
         
-        $device = $this->authorizedDevice($request, $deviceId);
+        $device = $this->authorizedDevice($deviceId);
 
         // Soft deletion removes the terminal from operational selection and all
         // schedulers while retaining its UUID for raw events, mappings, access

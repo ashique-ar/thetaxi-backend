@@ -10,7 +10,7 @@ use function Pest\Laravel\actingAs;
 
 uses(RefreshDatabase::class);
 
-it('limits workforce planning selector options to the selected Staff company', function () {
+it('shows workforce planning selector options across locations', function () {
     [$admin, $firstCompany] = hr_seed_admin_actor();
     $admin->givePermissionTo('hr.workforce-planning.manage');
     $secondCompany = Company::create(['name' => 'Selected workforce planning company']);
@@ -32,7 +32,8 @@ it('limits workforce planning selector options to the selected Staff company', f
     actingAs($admin, 'api')->getJson($url)->assertOk();
     actingAs($admin, 'api')->withHeaders([
         'X-Active-Context-Type' => 'staff', 'X-Active-Context-Id' => $context->id,
-    ])->getJson($url.'&search=company')->assertOk()->assertJsonCount(1, 'data.data')
-        ->assertJsonPath('data.data.0.value', $secondUnit)
-        ->assertJsonPath('data.data.0.label', 'Selected company unit');
+    ])->getJson($url.'&search=company')->assertOk()->assertJsonCount(2, 'data.data');
+    actingAs($admin, 'api')->withHeaders([
+        'X-Active-Context-Type' => 'staff', 'X-Active-Context-Id' => $context->id,
+    ])->getJson($url.'&selected_id='.$secondUnit)->assertOk()->assertJsonPath('data.data.0.value', $secondUnit);
 });

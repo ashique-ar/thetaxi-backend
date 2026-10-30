@@ -22,8 +22,7 @@ trait ManagesPhysicalAccessCommands
 {
     public function accessCommands(Request $request): JsonResponse
     {
-        $companyId = $this->authorizedCompanyId($request, $request->input('company_id'));
-        $query = DB::table('hr_attendance_access_commands')->where(fn ($_companyIdScope) => \App\Services\CompanyIdScope::constrain($_companyIdScope, 'company_id', $companyId))
+        $query = DB::table('hr_attendance_access_commands')
             ->when($request->input('status'), fn ($builder, $status) => $builder->where('status', $status))
             ->latest();
 
@@ -34,13 +33,12 @@ trait ManagesPhysicalAccessCommands
     {
         
         $data = $request->validate([
-            'company_id' => ['nullable', 'uuid'], 'staff_id' => ['required', 'uuid'],
+            'staff_id' => ['required', 'uuid'],
             'device_id' => ['required', 'uuid'],
             'command_type' => ['required', Rule::in(['grant', 'revoke', 'suspend', 'restore'])],
             'access_group_code' => ['nullable', 'string', 'max:100'], 'reason' => ['required', 'string', 'max:2000'],
             'idempotency_key' => ['required', 'string', 'max:160'],
         ]);
-        $data['company_id'] = $this->authorizedCompanyId($request, $data['company_id'] ?? null);
         $checksum = hash('sha256', json_encode(['request' => $data, 'requested_by' => $request->user()->id], JSON_UNESCAPED_SLASHES | JSON_THROW_ON_ERROR));
 
         try {
@@ -49,18 +47,18 @@ trait ManagesPhysicalAccessCommands
                     return response()->json(['status' => 'success', 'data' => $existing]);
                 }
 
-                $staff = Staff::withTrashed()->whereKey($data['staff_id'])->where(fn ($_companyIdScope) => \App\Services\CompanyIdScope::constrain($_companyIdScope, 'company_id', $data['company_id']))->lockForUpdate()->first();
+                $staff = Staff::withTrashed()->whereKey($data['staff_id'])->lockForUpdate()->first();
                 abort_unless($staff, 404);
                 abort_if(in_array($data['command_type'], ['grant', 'restore'], true) && ($staff->trashed() || filled($staff->employment_ended_at)), 409, 'Former Staff cannot receive physical access.');
-                $device = AttendanceDevice::query()->where(fn ($_companyIdScope) => \App\Services\CompanyIdScope::constrain($_companyIdScope, 'company_id', $data['company_id']))->find($data['device_id']);
+                $device = AttendanceDevice::query()->find($data['device_id']);
                 abort_unless($device, 404);
                 abort_unless(! in_array($data['command_type'], ['grant', 'restore'], true) || filled($data['access_group_code'] ?? null), 422, 'Grant and restore commands require an access group.');
                 if (filled($data['access_group_code'] ?? null)) {
-                    abort_unless(DB::table('hr_attendance_access_groups')->where(fn ($_companyIdScope) => \App\Services\CompanyIdScope::constrain($_companyIdScope, 'company_id', $data['company_id']))->where('device_id', $data['device_id'])->where('code', $data['access_group_code'])->where('status', 'active')->exists(), 422, 'The selected access group is not active for this device.');
+                    abort_unless(DB::table('hr_attendance_access_groups')->where('device_id', $data['device_id'])->where('code', $data['access_group_code'])->where('status', 'active')->exists(), 422, 'The selected access group is not active for this device.');
                 }
                 $id = (string) Str::uuid();
                 DB::table('hr_attendance_access_commands')->insert([
-                    'id' => $id, 'company_id' => $data['company_id'], 'staff_id' => $data['staff_id'], 'device_id' => $data['device_id'] ?? null,
+                    'id' => $id, 'staff_id' => $data['staff_id'], 'device_id' => $data['device_id'],
                     'command_type' => $data['command_type'], 'access_group_code' => $data['access_group_code'] ?? null, 'status' => 'pending_approval',
                     'request_snapshot' => json_encode(['reason' => $data['reason'], 'requested_at' => now()->toIso8601String()], JSON_THROW_ON_ERROR),
                     'idempotency_key' => $data['idempotency_key'], 'request_checksum' => $checksum, 'requested_by' => $request->user()->id,
@@ -86,20 +84,18 @@ trait ManagesPhysicalAccessCommands
         
 
         return DB::transaction(function () use ($request, $commandId) {
-            $command = DB::table('hr_attendance_access_commands')->where('id', $commandId)
-                ->where(fn ($_companyIdScope) => \App\Services\CompanyIdScope::constrainIn($_companyIdScope, 'company_id', $this->authorizedCompanyIds($request)))->lockForUpdate()->first();
+            $command = DB::table('hr_attendance_access_commands')->where('id', $commandId)->lockForUpdate()->first();
             abort_unless($command, 404);
-            $companyId = $command->company_id;
             abort_if($command->requested_by === $request->user()->id, 409, 'The requester cannot approve the same physical-access command.');
             if ($command->approved_by === $request->user()->id && $command->status !== 'pending_approval') {
                 return response()->json(['status' => 'success', 'data' => $command]);
             }
             abort_unless($command->status === 'pending_approval', 409, 'Only pending commands may be approved.');
             if (in_array($command->command_type, ['grant', 'restore'], true)) {
-                $staff = Staff::query()->whereKey($command->staff_id)->where(fn ($_companyIdScope) => \App\Services\CompanyIdScope::constrain($_companyIdScope, 'company_id', $companyId))->lockForUpdate()->firstOrFail();
+                $staff = Staff::query()->whereKey($command->staff_id)->lockForUpdate()->firstOrFail();
                 abort_if(filled($staff->employment_ended_at), 409, 'Former Staff cannot receive physical access.');
             }
-            DB::table('hr_attendance_access_commands')->where('id', $commandId)->where(fn ($_companyIdScope) => \App\Services\CompanyIdScope::constrain($_companyIdScope, 'company_id', $companyId))->update([
+            DB::table('hr_attendance_access_commands')->where('id', $commandId)->update([
                 'status' => 'approved_pending_delivery', 'approved_by' => $request->user()->id, 'approved_at' => now(), 'updated_at' => now(),
             ]);
 

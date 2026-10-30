@@ -46,11 +46,9 @@ class ProcessHrNotifications extends Command
                             return false;
                         }
 
-                        $failure = ! $notifications->companyIsActive($outbox->company_id)
-                            ? 'Notification company is no longer active.'
-                            : (! $notifications->recipientIsActive($outbox->company_id, $outbox->recipient_staff_id, $outbox->recipient_user_id)
-                                ? 'Notification recipient is no longer active in the notification company.'
-                                : null);
+                        $failure = ! $notifications->recipientIsActive($outbox->recipient_staff_id, $outbox->recipient_user_id)
+                            ? 'Notification recipient is no longer active.'
+                            : null;
                         if ($failure !== null) {
                             $message = $failure;
                             DB::table('hr_notification_outbox')->where('id', $outbox->id)->update([

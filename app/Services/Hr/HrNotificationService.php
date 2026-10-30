@@ -9,33 +9,17 @@ use Illuminate\Validation\ValidationException;
 
 class HrNotificationService
 {
-    public function companyIsActive(string $companyId): bool
-    {
-        return DB::table('companies')->where('id', $companyId)
-            ->where('is_active', true)->whereNull('deleted_at')->exists();
-    }
-
-    public function recipientMatchesCompany(string $companyId, string $staffId, string $userId): bool
+    public function recipientIsActive(string $staffId, string $userId): bool
     {
         return DB::table('staff')->join('users', 'users.id', '=', 'staff.user_id')
-            ->where('staff.id', $staffId)->where(fn ($_companyIdScope) => \App\Services\CompanyIdScope::constrain($_companyIdScope, 'staff.company_id', $companyId))
-            ->where('staff.user_id', $userId)->whereNull('staff.deleted_at')->whereNull('users.deleted_at')->exists();
-    }
-
-    public function recipientIsActive(string $companyId, string $staffId, string $userId): bool
-    {
-        return DB::table('staff')->join('users', 'users.id', '=', 'staff.user_id')
-            ->where('staff.id', $staffId)->where(fn ($_companyIdScope) => \App\Services\CompanyIdScope::constrain($_companyIdScope, 'staff.company_id', $companyId))
+            ->where('staff.id', $staffId)
             ->where('staff.user_id', $userId)->whereNull('staff.deleted_at')->whereNull('staff.employment_ended_at')
             ->whereNull('users.deleted_at')->where('users.is_active', true)->exists();
     }
 
-    public function queue(string $companyId, string $eventType, string $sourceType, string $sourceId, string $staffId, array $variables): array
+    public function queue(string $eventType, string $sourceType, string $sourceId, string $staffId, array $variables): array
     {
-        if (! $this->companyIsActive($companyId)) return [];
-
-        $staff = Staff::query()->whereKey($staffId)->where(fn ($_companyIdScope) => \App\Services\CompanyIdScope::constrain($_companyIdScope, 'company_id', $companyId))
-            ->whereNull('employment_ended_at')->first();
+        $staff = Staff::query()->whereKey($staffId)->whereNull('employment_ended_at')->first();
         if (!$staff || !$staff->user_id) return [];
 
         $user = DB::table('users')->where('id', $staff->user_id)->whereNull('deleted_at')->where('is_active', true)->first();
@@ -43,7 +27,7 @@ class HrNotificationService
 
         $rows = [];
         foreach (['in_app', 'email', 'sms'] as $channel) {
-            $template = DB::table('hr_notification_template_versions')->where(fn ($_companyIdScope) => \App\Services\CompanyIdScope::constrain($_companyIdScope, 'company_id', $companyId))
+            $template = DB::table('hr_notification_template_versions')
                 ->where('event_type', $eventType)->where('channel', $channel)->where('status', 'approved')
                 ->whereDate('effective_from', '<=', now())
                 ->where(fn ($query) => $query->whereNull('effective_until')->orWhereDate('effective_until', '>=', now()))
@@ -90,7 +74,7 @@ class HrNotificationService
 
             $id = (string) Str::uuid();
             $outbox = [
-                'id' => $id, 'company_id' => $companyId, 'template_version_id' => $template->id,
+                'id' => $id, 'company_id' => null, 'template_version_id' => $template->id,
                 'recipient_staff_id' => $staffId, 'recipient_user_id' => $staff->user_id,
                 'event_type' => $eventType, 'channel' => $channel, 'source_type' => $sourceType,
                 'source_id' => $sourceId, 'encrypted_rendered_payload' => encrypt($payload),

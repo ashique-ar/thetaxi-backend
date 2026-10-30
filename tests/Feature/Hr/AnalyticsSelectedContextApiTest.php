@@ -1,27 +1,21 @@
 <?php
 
-use App\Models\Company;
-use App\Models\Staff;
-use App\Models\UserContext;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Schema;
 use Illuminate\Support\Str;
 use function Pest\Laravel\actingAs;
 
 uses(RefreshDatabase::class);
 
-it('scopes HR analytics to the selected Staff company and writes definitions there', function () {
-    [$admin, $firstCompany] = hr_seed_admin_actor();
+it('shares HR analytics definitions across locations and creates installation-wide definitions', function () {
+    [$admin] = hr_seed_admin_actor();
     $admin->givePermissionTo(['hr.analytics.view', 'hr.analytics.configure']);
     config(['hr.features.engagement_analytics' => true]);
-    $secondCompany = Company::create(['name' => 'Second Analytics company']);
-    $secondStaff = Staff::query()->where('user_id', $admin->id)->firstOrFail();
-    $secondStaff->update(['company_id' => $secondCompany->id]);
-    $context = UserContext::query()->where('user_id', $admin->id)->where('context_type', 'staff')->firstOrFail();
     $definitionIds = [(string) Str::uuid(), (string) Str::uuid()];
-    foreach ([[$definitionIds[0], $firstCompany->id, 'FIRST'], [$definitionIds[1], $secondCompany->id, 'SECOND']] as [$id, $companyId, $code]) {
+    foreach ([[$definitionIds[0], 'FIRST'], [$definitionIds[1], 'SECOND']] as [$id, $code]) {
         DB::table('hr_analytics_definition_versions')->insert([
-            'id' => $id, 'company_id' => $companyId, 'metric_code' => $code, 'version' => 1, 'name' => $code.' metric',
+            'id' => $id, 'metric_code' => $code, 'version' => 1, 'name' => $code.' metric',
             'definition' => 'Count active Staff', 'source_contract' => json_encode(['metric_kind' => 'headcount'], JSON_THROW_ON_ERROR),
             'dimension_policy' => json_encode(['allowed_dimensions' => []], JSON_THROW_ON_ERROR), 'minimum_group_size' => 5,
             'effective_from' => today()->toDateString(), 'status' => 'approved', 'created_by' => $admin->id,
@@ -29,17 +23,15 @@ it('scopes HR analytics to the selected Staff company and writes definitions the
         ]);
     }
 
-    actingAs($admin, 'api')->getJson('/api/hr/analytics/definitions')->assertOk();
-    $headers = ['X-Active-Context-Type' => 'staff', 'X-Active-Context-Id' => $context->id];
-    actingAs($admin, 'api')->withHeaders($headers)->getJson('/api/hr/analytics/definitions')
-        ->assertOk()->assertJsonCount(1, 'data.data')->assertJsonPath('data.data.0.id', $definitionIds[1]);
-    actingAs($admin, 'api')->withHeaders($headers)->postJson('/api/hr/analytics/definitions', [
-        'metric_code' => 'SELECTED_CONTEXT', 'version' => 1, 'name' => 'Selected context metric',
+    actingAs($admin, 'api')->getJson('/api/hr/analytics/definitions')
+        ->assertOk()->assertJsonCount(2, 'data.data');
+    actingAs($admin, 'api')->postJson('/api/hr/analytics/definitions', [
+        'metric_code' => 'INSTALLATION_WIDE', 'version' => 1, 'name' => 'Installation-wide metric',
         'definition' => 'Count active Staff',
         'source_contract' => ['metric_kind' => 'headcount', 'period_kind' => 'month', 'unit' => 'count'],
         'dimension_policy' => ['allowed_dimensions' => []], 'minimum_group_size' => 5,
         'effective_from' => today()->toDateString(),
     ])->assertCreated();
-    expect(DB::table('hr_analytics_definition_versions')->where('metric_code', 'SELECTED_CONTEXT')->value('company_id'))
-        ->toBe($secondCompany->id);
+    expect(DB::table('hr_analytics_definition_versions')->where('metric_code', 'INSTALLATION_WIDE')->exists())->toBeTrue()
+        ->and(Schema::hasColumn('hr_analytics_definition_versions', 'company_id'))->toBeFalse();
 });

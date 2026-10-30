@@ -23,7 +23,7 @@ it('refuses roster approval until its same-company configuration is active and a
     $rosterId = (string) Str::uuid();
 
     DB::table('hr_work_calendars')->insert([
-        'id' => $calendarId, 'company_id' => $company->id, 'code' => 'default', 'name' => 'Default', 'timezone' => 'Asia/Colombo',
+        'id' => $calendarId, 'code' => 'default', 'name' => 'Default', 'timezone' => 'Asia/Colombo',
         'weekly_working_days' => json_encode(['monday'], JSON_THROW_ON_ERROR), 'effective_from' => '2026-01-01', 'status' => 'active',
         'created_by' => $approver->id, 'created_at' => $now, 'updated_at' => $now,
     ]);
