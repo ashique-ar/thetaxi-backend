@@ -4719,15 +4719,15 @@ class BookingLifecycleService
                 ->orWhereHas('user', fn ($user) => $user->where('first_name', 'like', $term)->orWhere('last_name', 'like', $term)));
         }
 
-        $page = $query->with(['user:id,first_name,last_name', 'company:id,name'])->orderBy('code')->orderBy('id')
-            ->paginate(min(50, max(1, (int) ($filters['per_page'] ?? 25))), ['id', 'user_id', 'company_id', 'code'], 'page', max(1, (int) ($filters['page'] ?? 1)));
+        $page = $query->with('user:id,first_name,last_name')->orderBy('code')->orderBy('id')
+            ->paginate(min(50, max(1, (int) ($filters['per_page'] ?? 25))), ['id', 'user_id', 'code'], 'page', max(1, (int) ($filters['page'] ?? 1)));
         $page->getCollection()->transform(function (Staff $staff) {
             $name = trim(($staff->user->first_name ?? '').' '.($staff->user->last_name ?? ''));
 
             return [
                 'value' => (string) $staff->user_id,
                 'label' => $name !== '' ? $name : ($staff->code ?: 'Unnamed Staff member'),
-                'metadata' => ['staff_code' => $staff->code, 'company' => $staff->company?->name],
+                'metadata' => ['staff_code' => $staff->code],
                 'status' => 'active',
             ];
         });
@@ -4740,7 +4740,7 @@ class BookingLifecycleService
         $staff = $this->availableQcInspectorStaff($actor)->where('user_id', $userId)->lockForUpdate()->first();
         if (! $staff) {
             throw \Illuminate\Validation\ValidationException::withMessages([
-                'inspector_id' => ['The selected inspector is no longer active or available in your Staff scope.'],
+                'inspector_id' => ['The selected inspector is no longer active or available.'],
             ]);
         }
         if (! User::query()->whereKey($userId)->where('is_active', true)->lockForUpdate()->first()) {

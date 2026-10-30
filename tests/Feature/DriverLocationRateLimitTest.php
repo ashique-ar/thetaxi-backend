@@ -25,8 +25,10 @@ it('keeps driver location and recovery traffic in separate rate limit buckets', 
 
     expect($limits->get('driver-location-live')->maxAttempts)->toBe(60)
         ->and($limits->get('driver-location-bulk')->maxAttempts)->toBe(10)
+        ->and($limits->get('driver-location-incidents')->maxAttempts)->toBe(30)
         ->and($limits->get('driver-diagnostic-reports')->maxAttempts)->toBe(30)
         ->and($limits->get('driver-diagnostic-reports')->decaySeconds)->toBe(3600)
+        ->and($limits->get('driver-hire-recovery')->maxAttempts)->toBe(60)
         ->and($limits->pluck('key')->unique())->toHaveCount(5);
 
     $routes = file_get_contents(base_path('routes/api_driver.php'));
