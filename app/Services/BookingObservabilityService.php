@@ -7,6 +7,8 @@ use App\Models\Booking\Booking;
 use App\Models\Booking\BookingDispatch;
 use App\Models\Booking\BookingPaymentReceipt;
 use App\Models\Booking\BookingActivity;
+use App\Models\Vehicle\VehicleAssignment;
+use App\Models\User;
 use App\Models\Sms\SmsMessage;
 use App\Models\AuditLog;
 use App\Models\Driver\RoutePoint;
@@ -56,6 +58,27 @@ class BookingObservabilityService
         $logs = $query->orderByDesc('timestamp')->orderByDesc('id')->limit($limit + 1)->get();
         $events = $logs->map(fn(AuditLog $log): array => $this->mapAuditEvent($booking, $log));
 
+        $bookingActivities = BookingActivity::query()
+            ->where('booking_id', $booking->id)
+            ->where('company_id', $booking->company_id)
+            ->whereIn('event_key', ['booking_updated', 'booking_vehicle_changed'])
+            ->when($bookingItemId, fn ($query) => $query->where(fn ($scope) => $scope
+                ->whereNull('booking_item_id')->orWhere('booking_item_id', $bookingItemId)))
+            ->when($decodedCursor, fn ($query) => $query->where('event_at', '<=', $decodedCursor[0]))
+            ->orderByDesc('event_at')->orderByDesc('id')->limit($limit + 1)->get();
+        $activityActors = User::query()->whereIn('id', $bookingActivities->pluck('meta.actor_user_id')->filter()->unique())
+            ->get(['id', 'first_name', 'last_name'])->keyBy('id');
+        $bookingActivityEvents = $bookingActivities->map(fn (BookingActivity $activity): array =>
+            $this->mapBookingUpdate($booking, $activity, $activityActors->get(data_get($activity->meta, 'actor_user_id'))));
+
+        $vehicleAssignments = $bookingItemId ? collect() : VehicleAssignment::query()
+            ->with(['vehicle:id,title,license_plate', 'assignedBy:id,first_name,last_name'])
+            ->where('booking_id', $booking->id)
+            ->when($decodedCursor, fn ($query) => $query->where('created_at', '<=', $decodedCursor[0]))
+            ->orderByDesc('created_at')->orderByDesc('id')->limit($limit + 1)->get();
+        $vehicleAssignmentEvents = $vehicleAssignments->map(fn (VehicleAssignment $assignment): array =>
+            $this->mapVehicleAssignment($booking, $assignment));
+
         $deletedActivities = ActivityLog::query()
             ->with('causer')
             ->where('subject_type', Booking::class)
@@ -97,7 +120,8 @@ class BookingObservabilityService
             ->when(!$bookingItemId, fn(Collection $items) => $items->whereNull('booking_item_id'))
             ->map(fn (array $event): array => $this->mapDocumentTraceEvent($booking, $event));
 
-        $events = $events->concat($deletedActivities)->concat($financialEvents)->concat($tripEvents)
+        $events = $events->concat($bookingActivityEvents)->concat($vehicleAssignmentEvents)
+            ->concat($deletedActivities)->concat($financialEvents)->concat($tripEvents)
             ->concat($tripStopEvents)
             ->concat($recoveryEvents)
             ->concat($communicationEvents)->concat($documentEvents)
@@ -655,6 +679,66 @@ class BookingObservabilityService
         ];
     }
 
+    private function mapBookingUpdate(Booking $booking, BookingActivity $activity, ?User $actor): array
+    {
+        $actorName = trim((string) ($actor?->first_name ?? '') . ' ' . (string) ($actor?->last_name ?? ''));
+        $actorId = data_get($activity->meta, 'actor_user_id');
+
+        return [
+            'id' => 'booking-activity:' . $activity->id,
+            'booking_id' => (string) $booking->id,
+            'booking_item_id' => $activity->booking_item_id ? (string) $activity->booking_item_id : null,
+            'occurred_at' => $activity->event_at?->utc()->toIso8601String(),
+            'source' => 'system',
+            'event_type' => $activity->event_key,
+            'title' => $activity->title ?: 'Booking details updated',
+            'description' => $activity->detail,
+            'actor' => ['id' => $actorId ? (string) $actorId : null, 'name' => $actorName ?: 'System', 'type' => $actorId ? 'user' : 'system'],
+            'from_status' => null,
+            'to_status' => null,
+            'severity' => 'info',
+            'correlation_id' => 'booking-activity:' . $activity->id,
+            'metadata' => [],
+            'evidence' => null,
+            'actor_display_snapshot' => null,
+        ];
+    }
+
+    private function mapVehicleAssignment(Booking $booking, VehicleAssignment $assignment): array
+    {
+        $vehicle = $assignment->vehicle;
+        $actor = $assignment->assignedBy;
+        $actorName = trim((string) ($actor?->first_name ?? '') . ' ' . (string) ($actor?->last_name ?? ''));
+        $description = $vehicle?->title;
+        if ($vehicle?->license_plate) {
+            $description = trim(($description ? $description . ' · ' : '') . $vehicle->license_plate);
+        }
+
+        return [
+            'id' => 'vehicle-assignment:' . $assignment->id,
+            'booking_id' => (string) $booking->id,
+            'booking_item_id' => null,
+            'occurred_at' => $assignment->created_at?->utc()->toIso8601String(),
+            'source' => 'assignment',
+            'event_type' => 'vehicle_assigned',
+            'title' => 'Vehicle assigned',
+            'description' => $description ?: 'Vehicle assignment recorded',
+            'actor' => ['id' => $assignment->assigned_by ? (string) $assignment->assigned_by : null, 'name' => $actorName ?: 'System', 'type' => $assignment->assigned_by ? 'user' : 'system'],
+            'from_status' => null,
+            'to_status' => $assignment->status,
+            'severity' => 'info',
+            'correlation_id' => 'vehicle-assignment:' . $assignment->id,
+            'metadata' => collect([
+                'assignment_type' => $assignment->assignment_type,
+                'assigned_from' => $assignment->assigned_from?->toIso8601String(),
+                'assigned_to' => $assignment->assigned_to?->toIso8601String(),
+                'actual_end' => $assignment->actual_end?->toIso8601String(),
+            ])->filter()->all(),
+            'evidence' => null,
+            'actor_display_snapshot' => null,
+        ];
+    }
+
     private function mapDeletedActivity(Booking $booking, ActivityLog $activity): array
     {
         $actor = $activity->causer;
@@ -1119,7 +1203,7 @@ class BookingObservabilityService
     private function matchesTraceFilter(array $event, string $filter): bool
     {
         return match ($filter) {
-            'operations' => in_array($event['source'], ['lifecycle', 'trip'], true),
+            'operations' => in_array($event['source'], ['lifecycle', 'trip', 'assignment'], true),
             'journey' => in_array($event['source'], ['trip', 'tracking'], true),
             'recovery' => $event['source'] === 'tracking' && str_starts_with($event['event_type'], 'recovery_'),
             'finance' => $event['source'] === 'finance',

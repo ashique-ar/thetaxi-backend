@@ -52,10 +52,10 @@ class SalesCollectionCompanyRepairService
                 $join->on('after_company.id', '=', 'repair.after_company_id')
                     ->on('after_company.id', '=', 'repair.company_id');
             })
-            ->leftJoin('companies as before_company', 'before_company.id', '=', 'repair.before_company_id')
+            ->leftJoin('companies as before_company', fn ($join) => \App\Services\CompanyIdScope::sameCompany($join, 'before_company.id', 'repair.before_company_id'))
             ->leftJoin('domain_evidence_files as evidence', function ($join) {
                 $join->on('evidence.id', '=', 'repair.evidence_file_id')
-                    ->on('evidence.company_id', '=', 'repair.company_id')
+                    ->where(fn ($sameCompany) => \App\Services\CompanyIdScope::sameCompany($sameCompany, 'evidence.company_id', 'repair.company_id'))
                     ->on('evidence.subject_id', '=', 'repair.booking_id')
                     ->where('evidence.domain', 'sales')->where('evidence.subject_type', 'booking')->whereNull('evidence.deleted_at');
             })
@@ -67,12 +67,12 @@ class SalesCollectionCompanyRepairService
             })
             ->leftJoin('sales_collection_company_repair_rollbacks as rollback', function ($join) {
                 $join->on('rollback.id', '=', 'rollback_item.rollback_id')
-                    ->on('rollback.company_id', '=', 'repair.company_id')
+                    ->where(fn ($sameCompany) => \App\Services\CompanyIdScope::sameCompany($sameCompany, 'rollback.company_id', 'repair.company_id'))
                     ->on('rollback.booking_id', '=', 'repair.booking_id');
             })
             ->leftJoin('domain_evidence_files as rollback_evidence', function ($join) {
                 $join->on('rollback_evidence.id', '=', 'rollback.evidence_file_id')
-                    ->on('rollback_evidence.company_id', '=', 'rollback.company_id')
+                    ->where(fn ($sameCompany) => \App\Services\CompanyIdScope::sameCompany($sameCompany, 'rollback_evidence.company_id', 'rollback.company_id'))
                     ->on('rollback_evidence.subject_id', '=', 'rollback.booking_id')
                     ->where('rollback_evidence.domain', 'sales')->where('rollback_evidence.subject_type', 'booking')
                     ->whereNull('rollback_evidence.deleted_at');
@@ -82,7 +82,7 @@ class SalesCollectionCompanyRepairService
             ->orderByDesc('repair.repaired_at')->orderBy('repair.id')
             ->select([
                 'booking.booking_number', 'repair.source_table', 'repair.reason', 'repair.repaired_at',
-                DB::raw("CASE WHEN repair.before_company_id IS NULL THEN 'Unassigned' WHEN repair.before_company_id = repair.company_id THEN before_company.name ELSE 'Another legal entity' END as company_before"),
+                DB::raw("CASE WHEN before_company.id IS NULL THEN 'Unavailable legal entity' WHEN before_company.id = repair.company_id THEN before_company.name ELSE 'Another legal entity' END as company_before"),
                 DB::raw("COALESCE(after_company.name, 'Unavailable legal entity record') as company_after"),
                 'evidence.file_name as evidence_name', 'actor.first_name as actor_first_name',
                 'actor.last_name as actor_last_name',
@@ -139,7 +139,7 @@ class SalesCollectionCompanyRepairService
                 ->where(fn ($_companyIdScope) => \App\Services\CompanyIdScope::constrain($_companyIdScope, 'company_id', $attribution->company_id))->where('idempotency_hash', $keyHash)->first();
             if ($duplicate) {
                 abort_unless((string) $duplicate->booking_id === (string) $booking->id
-                    && (string) $duplicate->company_id === (string) $attribution->company_id, 409,
+                    && \App\Services\CompanyIdScope::sameCompanyId((string) ((string) $duplicate->company_id), (string) ((string) $attribution->company_id)), 409,
                     'This rollback key belongs to another booking or legal entity.');
                 abort_unless(hash_equals($duplicate->request_checksum, $requestChecksum), 409,
                     'This rollback key was already used with different facts.');
@@ -230,7 +230,7 @@ class SalesCollectionCompanyRepairService
                 ->where('idempotency_hash', $keyHash)->first();
             if ($duplicate) {
                 abort_unless((string) $duplicate->booking_id === (string) $booking->id
-                    && (string) $duplicate->company_id === (string) $attribution->company_id, 409,
+                    && \App\Services\CompanyIdScope::sameCompanyId((string) ((string) $duplicate->company_id), (string) ((string) $attribution->company_id)), 409,
                     'This repair key belongs to another booking or legal entity.');
                 abort_unless(hash_equals($duplicate->request_checksum, $requestChecksum), 409,
                     'This repair key was already used with different facts.');
@@ -239,7 +239,7 @@ class SalesCollectionCompanyRepairService
                 abort_unless($duplicate->request_record_count !== null
                     && $repairRows->count() === (int) $duplicate->request_record_count
                     && $repairRows->every(fn ($row) => (string) $row->booking_id === (string) $booking->id
-                        && (string) $row->company_id === (string) $attribution->company_id), 409,
+                        && \App\Services\CompanyIdScope::sameCompanyId((string) ((string) $row->company_id), (string) ((string) $attribution->company_id))), 409,
                     'Original transaction rows are incomplete; replay is held.');
                 $this->assertAuditEvidence($attribution->company_id, $data['idempotency_key'],
                     'sales.collection.company_repaired', $repairRows, trim($data['reason']));
@@ -262,7 +262,7 @@ class SalesCollectionCompanyRepairService
                 $row['before_company_id'] === null
                     ? $query->whereNull('company_id')
                     : $query->where(fn ($_companyIdScope) => \App\Services\CompanyIdScope::constrain($_companyIdScope, 'company_id', $row['before_company_id']));
-                abort_unless($query->update(['company_id' => $attribution->company_id, 'updated_at' => $updatedAt]) === 1,
+                abort_unless(\App\Services\CompanyIdScope::sameCompanyId((string) ($query->update(['company_id' => $attribution->company_id, 'updated_at' => $updatedAt])), (string) (1)),
                     409, 'A collection record changed during repair; refresh the preview.');
 
                 $repairId = (string) Str::uuid();
@@ -350,7 +350,7 @@ class SalesCollectionCompanyRepairService
             $sourceQuery = DB::table($table)->where('id', $repair->source_record_id)->where('booking_id', $booking->id);
             if ($lock) $sourceQuery->lockForUpdate();
             $record = $sourceQuery->first(['id', 'company_id', 'updated_at', ...$queryColumns]);
-            abort_unless($record && $record->company_id === $repair->after_company_id, 409,
+            abort_unless($record && \App\Services\CompanyIdScope::sameCompanyId((string) ($record->company_id), (string) ($repair->after_company_id)), 409,
                 'A repaired collection record has changed since repair; rollback is held.');
 
             $reference = [];
@@ -406,10 +406,10 @@ class SalesCollectionCompanyRepairService
                 if ($profileColumn && ! empty($record->{$profileColumn})) {
                     $checksumValues[$profileColumn] = $record->{$profileColumn};
                     $profileCompany = DB::table('sales_profiles')->where('id', $record->{$profileColumn})->value('company_id');
-                    if ($profileCompany !== $attribution->company_id) $blocked = true;
+                    if (!\App\Services\CompanyIdScope::sameCompanyId((string) ($profileCompany), (string) ($attribution->company_id))) $blocked = true;
                     $checksumValues['profile_company_id'] = $profileCompany;
                 }
-                if ($record->company_id === $attribution->company_id) continue;
+                if (\App\Services\CompanyIdScope::sameCompanyId((string) ($record->company_id), (string) ($attribution->company_id))) continue;
                 $rows[] = [
                     'table' => $table, 'id' => (string) $record->id, 'before_company_id' => $record->company_id,
                     'before_company_name' => $record->company_id ? DB::table('companies')->where('id', $record->company_id)->value('name') : null,

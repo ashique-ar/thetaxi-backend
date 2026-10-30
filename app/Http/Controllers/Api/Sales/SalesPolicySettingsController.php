@@ -254,6 +254,6 @@ class SalesPolicySettingsController extends Controller
 
         return DB::table('staff')->where('user_id', $request->user()->id)->whereNull('deleted_at')
             ->where(fn ($staff) => $staff->whereNull('employment_ended_at')->orWhere('employment_ended_at', '>', now()))
-            ->whereNotNull('company_id')->pluck('company_id')->unique()->values()->all();
+            ->pluck('company_id')->map(fn ($id) => $id ?: \App\Services\CompanyIdScope::defaultCompanyId())->filter()->unique()->values()->all();
     }
 }

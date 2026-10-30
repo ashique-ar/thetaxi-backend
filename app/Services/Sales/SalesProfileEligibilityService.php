@@ -72,7 +72,7 @@ class SalesProfileEligibilityService
 
         $configuration = $this->configurationAt($profile, $at);
         if (! $configuration
-            || ($configuration['company_id'] ?? null) !== $profile->company_id
+            || !\App\Services\CompanyIdScope::sameCompanyId((string) ($configuration['company_id'] ?? null), (string) ($profile->company_id))
             || ($configuration['staff_id'] ?? null) !== $profile->staff_id
             || ! is_string($configuration['staff_category_snapshot'] ?? null)
             || trim($configuration['staff_category_snapshot']) === ''

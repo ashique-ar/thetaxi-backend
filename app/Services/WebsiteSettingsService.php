@@ -1463,7 +1463,7 @@ class WebsiteSettingsService
         $request = request();
         if ($request->header('X-Active-Context-Type') === 'staff') {
             $contextId = $request->header('X-Active-Context-Id');
-            $companyId = $contextId ? DB::table('user_contexts as context')
+            $staffContext = $contextId ? DB::table('user_contexts as context')
                 ->join('staff', 'staff.id', '=', 'context.context_id')
                 ->where('context.id', $contextId)
                 ->where('context.user_id', $request->user()?->id)
@@ -1471,26 +1471,43 @@ class WebsiteSettingsService
                 ->where('context.is_active', true)
                 ->whereNull('context.deleted_at')
                 ->where('staff.user_id', $request->user()?->id)
-                ->whereNotNull('staff.company_id')
                 ->whereNull('staff.deleted_at')
                 ->where(fn ($employment) => $employment->whereNull('staff.employment_ended_at')->orWhere('staff.employment_ended_at', '>', now()))
-                ->value('staff.company_id') : null;
+                ->first(['staff.company_id']) : null;
+            abort_unless($staffContext, 403, 'Select a valid active Staff business context.');
+            $companyId = $staffContext->company_id ?: app(SingleCompanyScope::class)->activeDefaultCompany()?->id;
             abort_unless($companyId, 403, 'Select a valid active Staff business context.');
 
             return (string) $companyId;
         }
 
+        $host = strtolower((string) $request->getHost());
+        $portalOrigin = parse_url((string) ($request->header('Origin') ?: $request->header('Referer')), PHP_URL_HOST);
+        $portalOrigin = strtolower((string) $portalOrigin);
+        $apiDomain = str_starts_with($host, 'api.') ? substr($host, 4) : $host;
+        $portalDomain = str_starts_with($portalOrigin, 'portal.') ? substr($portalOrigin, 7) : null;
+        if ($request->header('X-Active-Context-Type') === 'internal'
+            || str_starts_with($host, 'portal.')
+            || ($portalDomain !== null && $portalDomain === $apiDomain)) {
+            return app(SingleCompanyScope::class)->activeDefaultCompany()?->id;
+        }
+
         $companyId = $request->header('X-Company-Id') ?: $request->query('company_id');
         if ($companyId) {
-            return (string) $companyId;
+            $activeCompanyId = Company::query()->whereKey($companyId)->where('is_active', true)->value('id');
+            if ($activeCompanyId) {
+                return (string) $activeCompanyId;
+            }
         }
 
         $userCompanyId = optional($request->user())->company_id;
         if ($userCompanyId) {
-            return (string) $userCompanyId;
+            $activeUserCompanyId = Company::query()->whereKey($userCompanyId)->where('is_active', true)->value('id');
+            if ($activeUserCompanyId) {
+                return (string) $activeUserCompanyId;
+            }
         }
 
-        $host = strtolower((string) $request->getHost());
         if ($host === '') {
             return app(SingleCompanyScope::class)->activeDefaultCompany()?->id;
         }

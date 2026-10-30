@@ -58,8 +58,8 @@ class CommissionAccountingOutboxReconciliationService
         $sourceChecksumValid = $source && is_array($sourcePayload)
             && hash_equals($source->payload_checksum, hash('sha256', CanonicalJson::encode($sourcePayload)));
         if ($source && ! $sourceChecksumValid) $issues[] = 'source_event_checksum_invalid';
-        if ($source && (string) $source->company_id !== (string) $payout->company_id) $issues[] = 'source_event_company_mismatch';
-        if ($accounting && (string) $accounting->company_id !== (string) $payout->company_id) $issues[] = 'accounting_event_company_mismatch';
+        if ($source && !\App\Services\CompanyIdScope::sameCompanyId((string) ((string) $source->company_id), (string) ((string) $payout->company_id))) $issues[] = 'source_event_company_mismatch';
+        if ($accounting && !\App\Services\CompanyIdScope::sameCompanyId((string) ((string) $accounting->company_id), (string) ((string) $payout->company_id))) $issues[] = 'accounting_event_company_mismatch';
 
         $payload = $accounting ? json_decode($accounting->payload, true) : null;
         $checksumValid = $accounting && is_array($payload)
@@ -115,11 +115,11 @@ class CommissionAccountingOutboxReconciliationService
 
         $deliveryRecords = DB::table('sales_commission_accounting_deliveries')
             ->where('payout_id', $payout->id)->where('event_type', $deliveryEventType)->where('status', 'accepted')->get();
-        if ($deliveryRecords->contains(static fn (object $delivery): bool => (string) $delivery->company_id !== (string) $payout->company_id)) {
+        if ($deliveryRecords->contains(static fn (object $delivery): bool => !\App\Services\CompanyIdScope::sameCompanyId((string) ((string) $delivery->company_id), (string) ((string) $payout->company_id)))) {
             $issues[] = 'delivery_company_mismatch';
         }
         $verified = $deliveryRecords->contains(static fn (object $delivery): bool => $delivery->verification_source === 'quickbooks'
-            && (string) $delivery->company_id === (string) $payout->company_id
+            && \App\Services\CompanyIdScope::sameCompanyId((string) ((string) $delivery->company_id), (string) ((string) $payout->company_id))
             && $delivery->source_outbox_event_id === $accounting?->id
             && trim((string) $delivery->provider_transaction_id) !== ''
             && preg_match('/^[a-f0-9]{64}$/i', (string) $delivery->provider_response_checksum) === 1);

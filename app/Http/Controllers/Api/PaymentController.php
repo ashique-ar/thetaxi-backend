@@ -346,12 +346,12 @@ class PaymentController extends Controller
                 abort_unless($attribution?->company_id, 409,
                     'The booking has no reviewed legal-entity attribution; reconcile this callback manually.');
                 abort_unless($lockedTransaction->company_id
-                    && (string) $lockedTransaction->company_id === (string) $attribution->company_id, 409,
+                    && \App\Services\CompanyIdScope::sameCompanyId((string) ((string) $lockedTransaction->company_id), (string) ((string) $attribution->company_id)), 409,
                     'The payment attempt has no matching company snapshot; reconcile this callback manually.');
                 $company = DB::table('companies')->where('id', $attribution->company_id)->where('is_active', true)
                     ->whereNull('deleted_at')->lockForUpdate()->first(['id']);
                 abort_unless($company, 409, 'The booking legal entity is inactive; reconcile this callback manually.');
-                abort_unless((string) $attribution->company_id === (string) $company->id, 409,
+                abort_unless(\App\Services\CompanyIdScope::sameCompanyId((string) ((string) $attribution->company_id), (string) ((string) $company->id)), 409,
                     'The booking legal entity changed before payment could be recorded.');
                 DB::table('payment_transactions')
                     ->where('id', $lockedTransaction->id)
@@ -565,7 +565,7 @@ class PaymentController extends Controller
             $component = $receipt?->components->firstWhere('component_type', 'booking_payment');
             abort_unless($booking && $component, 409,
                 'Canonical payment receipt is missing. Reconcile this transaction before refunding it.');
-            abort_unless((string) $receipt->company_id === (string) $companyId, 409,
+            abort_unless(\App\Services\CompanyIdScope::sameCompanyId((string) ((string) $receipt->company_id), (string) ((string) $companyId)), 409,
                 'The payment receipt legal entity does not match its booking attribution.');
             abort_unless(is_string($transaction->currency) && $transaction->currency !== ''
                 && strtoupper($transaction->currency) === strtoupper((string) $receipt->source_currency), 409,

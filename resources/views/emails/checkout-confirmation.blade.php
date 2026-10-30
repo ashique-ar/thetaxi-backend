@@ -21,6 +21,14 @@
         $workflowData = is_string($booking->workflow_data)
             ? json_decode($booking->workflow_data, true)
             : $booking->workflow_data ?? [];
+        $checkoutContact = (array) ($workflowData['checkout_contact'] ?? []);
+        $customerName = trim((string) ($checkoutContact['first_name'] ?? '').' '.(string) ($checkoutContact['last_name'] ?? ''))
+            ?: ($booking->customer->full_name ?? 'Valued Customer');
+        $customerEmail = array_key_exists('email', $checkoutContact) ? $checkoutContact['email'] : ($booking->customer->email ?? null);
+        $customerPhone = array_key_exists('phone', $checkoutContact) ? $checkoutContact['phone'] : ($booking->customer->phone ?? null);
+        $customerAddress = array_key_exists('address', $checkoutContact) ? $checkoutContact['address'] : ($booking->customer->address ?? null);
+        $customerCity = array_key_exists('city', $checkoutContact) ? $checkoutContact['city'] : ($booking->customer->city ?? null);
+        $customerCountry = array_key_exists('country', $checkoutContact) ? $checkoutContact['country'] : ($booking->customer->country ?? null);
         $cartItems = $workflowData['cart_items'] ?? [];
         $pickupLocation = is_string($booking->pickup_location)
             ? json_decode($booking->pickup_location, true)
@@ -54,7 +62,7 @@
 
     <!-- Greeting -->
     <p class="greeting">
-        Dear <strong>{{ $booking->customer->full_name ?? 'Valued Customer' }}</strong>,
+        Dear <strong>{{ $customerName }}</strong>,
     </p>
 
     <p class="intro-text">
@@ -96,15 +104,15 @@
         <table class="info-table">
             <tr>
                 <td>Name</td>
-                <td>{{ $booking->customer->full_name ?? 'N/A' }}</td>
+                <td>{{ $customerName }}</td>
             </tr>
             <tr>
                 <td>Email</td>
-                <td>{{ $booking->customer->email ?? 'N/A' }}</td>
+                <td>{{ $customerEmail ?: 'N/A' }}</td>
             </tr>
             <tr>
                 <td>Phone</td>
-                <td>{{ $booking->customer->phone ?? 'N/A' }}</td>
+                <td>{{ $customerPhone ?: 'N/A' }}</td>
             </tr>
             @if ($booking->customer->identification ?? null)
                 <tr>
@@ -112,22 +120,22 @@
                     <td>{{ $booking->customer->identification }}</td>
                 </tr>
             @endif
-            @if (!empty($booking->customer->address))
+            @if (!empty($customerAddress))
                 <tr>
                     <td>Address</td>
-                    <td>{{ $booking->customer->address }}</td>
+                    <td>{{ $customerAddress }}</td>
                 </tr>
             @endif
-            @if (!empty($booking->customer->city))
+            @if (!empty($customerCity))
                 <tr>
                     <td>City</td>
-                    <td>{{ $booking->customer->city }}</td>
+                    <td>{{ $customerCity }}</td>
                 </tr>
             @endif
-            @if (!empty($booking->customer->country))
+            @if (!empty($customerCountry))
                 <tr>
                     <td>Country</td>
-                    <td>{{ $booking->customer->country }}</td>
+                    <td>{{ $customerCountry }}</td>
                 </tr>
             @endif
         </table>
@@ -244,7 +252,7 @@
                 <h3>Your Request is Being Processed</h3>
                 <p><strong>Step 1:</strong> Our team will review your quotation request</p>
                 <p><strong>Step 2:</strong> We'll contact you at
-                    <strong>{{ $booking->customer->phone ?? 'your provided number' }}</strong>  as soon as possible
+                    <strong>{{ $customerPhone ?: 'your provided number' }}</strong>  as soon as possible
                 </p>
                 <p><strong>Step 3:</strong> You'll receive a detailed quote with vehicle options and pricing</p>
                 <p style="margin-bottom: 0;"><strong>Step 4:</strong> Once approved, we'll send a secure payment link to

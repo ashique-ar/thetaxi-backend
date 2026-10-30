@@ -38,7 +38,7 @@ class BookingPaymentAdjustmentService
             abort_unless($company, 422, 'Select an active legal entity.');
             $booking = Booking::query()->lockForUpdate()->findOrFail($booking->id);
             $attribution = SalesBookingAttribution::query()->where('booking_id', $booking->id)->lockForUpdate()->firstOrFail();
-            abort_unless((string) $attribution->company_id === (string) $company->id, 409,
+            abort_unless(\App\Services\CompanyIdScope::sameCompanyId((string) ((string) $attribution->company_id), (string) ((string) $company->id)), 409,
                 'The booking legal entity changed before its payment adjustment could be recorded.');
             $payloadChecksum = $this->payloadChecksum($booking->id, $data);
             $duplicate = BookingPaymentAdjustment::query()
@@ -65,7 +65,7 @@ class BookingPaymentAdjustmentService
 
             if ($component) {
                 $component->load('receipt');
-                abort_unless((string) $component->receipt?->company_id === (string) $company->id, 409,
+                abort_unless(\App\Services\CompanyIdScope::sameCompanyId((string) ((string) $component->receipt?->company_id), (string) ((string) $company->id)), 409,
                     'The receipt legal entity does not match the booking.');
             }
 
@@ -224,7 +224,7 @@ class BookingPaymentAdjustmentService
                 ->whereHas('receipt', fn($q) => $q->where('booking_id', $booking->id))
                 ->lockForUpdate()->firstOrFail();
             $component->load('receipt');
-            abort_unless((string) $component->receipt?->company_id === (string) $company->id, 409,
+            abort_unless(\App\Services\CompanyIdScope::sameCompanyId((string) ((string) $component->receipt?->company_id), (string) ((string) $company->id)), 409,
                 'The receipt company changed before its FX snapshot could be established.');
             $facts = $this->validateFxEstablishment($component, $data, $booking);
             $preview = $this->fxEstablishmentPreview($facts);
@@ -324,7 +324,7 @@ class BookingPaymentAdjustmentService
             throw ValidationException::withMessages(['receipt_component_id' => ['The original receipt has no canonical legal-entity identity.']]);
         }
         $attributionCompanyId = SalesBookingAttribution::query()->where('booking_id', $component->receipt->booking_id)->value('company_id');
-        if (!$attributionCompanyId || $attributionCompanyId !== $component->receipt->company_id) {
+        if (!$attributionCompanyId || !\App\Services\CompanyIdScope::sameCompanyId((string) ($attributionCompanyId), (string) ($component->receipt->company_id))) {
             throw ValidationException::withMessages(['receipt_component_id' => ['Receipt and booking attribution legal entities do not match.']]);
         }
         $hasOpenFxHold = SalesCommissionDecision::query()->where('receipt_component_id', $component->id)
@@ -442,7 +442,7 @@ class BookingPaymentAdjustmentService
                 throw ValidationException::withMessages(['receipt_component_id' => ['The original receipt has no canonical legal-entity identity.']]);
             }
             $attributionCompanyId = SalesBookingAttribution::query()->where('booking_id', $component->receipt->booking_id)->value('company_id');
-            if (!$attributionCompanyId || $attributionCompanyId !== $component->receipt->company_id) {
+            if (!$attributionCompanyId || !\App\Services\CompanyIdScope::sameCompanyId((string) ($attributionCompanyId), (string) ($component->receipt->company_id))) {
                 throw ValidationException::withMessages(['receipt_component_id' => ['Receipt and booking attribution legal entities do not match.']]);
             }
             if (

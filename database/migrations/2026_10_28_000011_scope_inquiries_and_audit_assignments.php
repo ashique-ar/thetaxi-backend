@@ -15,10 +15,10 @@ return new class extends Migration
         });
 
         DB::table('inquiries')->whereNull('company_id')->whereNotNull('assigned_to')->update([
-            'company_id' => DB::table('staff')->selectRaw('MIN(company_id::text)::uuid')->whereColumn('staff.user_id', 'inquiries.assigned_to')->groupBy('user_id')->havingRaw('COUNT(DISTINCT company_id) = 1')->limit(1),
+            'company_id' => $this->uniqueStaffCompanyFor('assigned_to'),
         ]);
         DB::table('inquiries')->whereNull('company_id')->whereNotNull('created_user_id')->update([
-            'company_id' => DB::table('staff')->selectRaw('MIN(company_id::text)::uuid')->whereColumn('staff.user_id', 'inquiries.created_user_id')->groupBy('user_id')->havingRaw('COUNT(DISTINCT company_id) = 1')->limit(1),
+            'company_id' => $this->uniqueStaffCompanyFor('created_user_id'),
         ]);
         $defaultCompanies = DB::table('companies')->where('is_active', true)->where('is_default', true)->whereNull('deleted_at')->pluck('id');
         if ($defaultCompanies->count() === 1) {
@@ -48,5 +48,20 @@ return new class extends Migration
             $table->dropIndex('inquiries_company_assignee_idx');
             $table->dropConstrainedForeignId('company_id');
         });
+    }
+
+    private function uniqueStaffCompanyFor(string $userColumn): \Illuminate\Database\Query\Builder
+    {
+        return DB::table('staff as candidate')
+            ->select('candidate.company_id')
+            ->whereColumn('candidate.user_id', 'inquiries.'.$userColumn)
+            ->whereNotNull('candidate.company_id')
+            ->whereNotExists(fn ($other) => $other->selectRaw('1')
+                ->from('staff as other')
+                ->whereColumn('other.user_id', 'candidate.user_id')
+                ->whereNotNull('other.company_id')
+                ->whereColumn('other.company_id', '<>', 'candidate.company_id'))
+            ->orderBy('candidate.company_id')
+            ->limit(1);
     }
 };

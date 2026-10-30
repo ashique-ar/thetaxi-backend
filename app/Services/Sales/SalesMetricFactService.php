@@ -24,6 +24,7 @@ class SalesMetricFactService
 
     public function record(array $fact): ?SalesMetricFact
     {
+        $fact['company_id'] = $fact['company_id'] ?? \App\Services\CompanyIdScope::defaultCompanyId();
         if (empty($fact['company_id']) || empty($fact['sales_profile_id'])) {
             return null;
         }

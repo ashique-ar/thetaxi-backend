@@ -520,6 +520,80 @@ class AssignmentController extends Controller
         ], 201);
     }
 
+    public function addAdditionalHireCharge(Request $request, string $bookingId): JsonResponse
+    {
+        $data = $request->validate([
+            'booking_item_id' => ['required', 'uuid'],
+            'category' => ['required', 'in:extra_km,extra_hour,fuel,damage,toll,waiting,other'],
+            'description' => ['required', 'string', 'max:1000'],
+            'amount' => ['required', 'numeric', 'gt:0'],
+            'idempotency_key' => ['required', 'uuid'],
+        ]);
+        $summary = DB::transaction(function () use ($request, $bookingId, $data) {
+            $company = $this->selectedActiveCompanyForUpdate($request);
+            $booking = Booking::query()->where('company_id', $company->id)->whereKey($bookingId)->lockForUpdate()->firstOrFail();
+            $item = \App\Models\Booking\BookingItem::query()->where('booking_id', $booking->id)->whereKey($data['booking_item_id'])->lockForUpdate()->firstOrFail();
+            $existing = BookingActivity::query()->where('company_id', $company->id)->where('booking_id', $booking->id)
+                ->where('idempotency_key', 'additional-rental-charge-'.$data['idempotency_key'])->first();
+            if ($existing) {
+                abort_unless(
+                    $existing->booking_item_id === $item->id
+                    && ($existing->meta['category'] ?? null) === $data['category']
+                    && (float) ($existing->meta['amount'] ?? 0) === round((float) $data['amount'], 2)
+                    && ($existing->detail ?? '') === trim($data['description']),
+                    409,
+                    'This charge request key was already used for different charge details.',
+                );
+                return $this->paymentLedger->summary($booking);
+            }
+            abort_unless((string) $booking->status === BookingLifecycleStatus::ONGOING_ACTIVE->value, 409, 'Charges can only be added to an active rental.');
+            abort_unless(($booking->payment_arrangement_status ?? '') !== 'complimentary', 422, 'Complimentary bookings cannot have additional charges.');
+
+            $amount = round((float) $data['amount'], 2);
+            $oldTotal = (float) ($booking->total_actual ?? $booking->total_estimated ?? $booking->amount_to_pay ?? 0);
+            $collectedAmount = $booking->payment_collected_amount;
+            if ($collectedAmount === null
+                && !\App\Models\Booking\BookingPaymentReceipt::query()->where('booking_id', $booking->id)->exists()
+                && in_array(strtolower((string) $booking->payment_status), ['paid', 'success', 'online_paid'], true)) {
+                $collectedAmount = $oldTotal;
+            }
+            $booking->update([
+                'base_amount' => (float) ($booking->base_amount ?? $oldTotal) + $amount,
+                'total_actual' => $oldTotal + $amount,
+                'total_estimated' => $oldTotal + $amount,
+                'payment_collected_amount' => $collectedAmount,
+            ]);
+            $summary = $this->paymentLedger->addScheduleItem($booking, [
+                'label' => ucfirst(str_replace('_', ' ', $data['category'])),
+                'due_date' => now()->toDateString(),
+                'amount' => $amount,
+                'notes' => trim($data['description']),
+            ], (string) $request->user()->id);
+            $booking->update([
+                'amount_to_pay' => $summary['due_amount'],
+                'payment_status' => $summary['payment_status'],
+                'payment_collection_status' => $summary['due_amount'] <= 0 ? 'paid' : ($summary['paid_amount'] > 0 ? 'partially_paid' : 'pending'),
+            ]);
+            BookingActivity::create([
+                'company_id' => $company->id,
+                'booking_id' => $booking->id,
+                'booking_item_id' => $item->id,
+                'event_key' => 'additional_rental_charge_added',
+                'channel' => 'system',
+                'result_status' => 'added',
+                'source' => 'portal',
+                'title' => 'Additional rental charge added',
+                'detail' => trim($data['description']),
+                'idempotency_key' => 'additional-rental-charge-'.$data['idempotency_key'],
+                'meta' => ['category' => $data['category'], 'amount' => $amount, 'currency' => $booking->currency],
+                'event_at' => now(),
+            ]);
+            return $summary;
+        }, 3);
+
+        return response()->json(['status' => 'success', 'message' => 'Additional rental charge added.', 'data' => $summary], 201);
+    }
+
     public function generatePaymentSchedule(Request $request, string $bookingId): JsonResponse
     {
         $data = $request->validate([

@@ -435,6 +435,18 @@ class CheckoutController extends Controller
 
         // Load countries for dynamic dropdown
         $countries = \App\Models\Country::orderBy('name')->get(['id', 'name', 'code', 'callcode']);
+        $checkoutDefaultCountry = strtolower((string) DB::table('companies')
+            ->join('countries', 'countries.id', '=', 'companies.country_id')
+            ->where('companies.id', $this->websiteSettingsService->resolveCompanyId())
+            ->value('countries.code'));
+        if (! preg_match('/^[a-z]{2}$/', $checkoutDefaultCountry)
+            || ! $countries->contains(fn ($country) => strtolower((string) $country->code) === $checkoutDefaultCountry)) {
+            $checkoutDefaultCountry = $countries->contains(fn ($country) => strtolower((string) $country->code) === 'lk')
+                ? 'lk'
+                : strtolower((string) ($countries->first()?->code ?: 'lk'));
+        }
+        $checkoutDefaultCountryName = $countries->first(fn ($country) => strtolower((string) $country->code) === $checkoutDefaultCountry)?->name
+            ?? 'Sri Lanka';
 
         return view('checkout', compact(
             'cart',
@@ -448,6 +460,8 @@ class CheckoutController extends Controller
             'advanceMinAmount',
             'offlinePaymentEnabled',
             'countries',
+            'checkoutDefaultCountry',
+            'checkoutDefaultCountryName',
             'hasAirportTransfer',
             'guestBookingEnabled',
             'customerLookupEnabled',
@@ -566,14 +580,16 @@ class CheckoutController extends Controller
         if (is_string($request->input('email'))) {
             $request->merge(['email' => strtolower($request->input('email'))]);
         }
-        $contactMethod = Auth::check() && filled(Auth::user()->email)
+        $contactMethod = Auth::check() && filled(Auth::user()->email) && filled(Auth::user()->phone)
             ? 'email'
             : $request->input('contact_method', 'mobile');
         if (! in_array($contactMethod, ['email', 'mobile'], true)) {
             $contactMethod = 'mobile';
         }
         $request->merge(['contact_method' => $contactMethod]);
-        if (! Auth::check() && ! ($customerLookupEnabled && $this->hasRecentCheckoutVerification())) {
+        $onlinePaymentNeedsBothContacts = in_array($request->input('payment_type'), ['full', 'advance'], true)
+            && in_array('online', $allowedPaymentMethodKeys, true);
+        if (! Auth::check() && ! ($customerLookupEnabled && $this->hasRecentCheckoutVerification()) && ! $onlinePaymentNeedsBothContacts) {
             // Contact choice is enforced server-side; hidden fields cannot become accidental identifiers.
             if ($contactMethod === 'email') {
                 $request->merge(['phone' => null, 'phone_country_code' => null, 'phone_international' => null]);
@@ -686,7 +702,7 @@ class CheckoutController extends Controller
             && (! filled($validated['email'] ?? Auth::user()?->email)
                 || ! filled($validated['phone_international'] ?? $validated['phone'] ?? Auth::user()?->phone))) {
             throw ValidationException::withMessages([
-                'payment_type' => ['Online payment needs both an email address and mobile number. Choose Request Quotation or Pay on Check-in if available.'],
+                'payment_type' => ['Online payment needs both an email address and mobile number. Switch the contact choice to enter each one.'],
             ]);
         }
 
@@ -787,6 +803,21 @@ class CheckoutController extends Controller
         try {
             DB::beginTransaction();
 
+            if ($paymentType !== 'quotation') {
+                $vehicleGroupIds = collect($cart)
+                    ->pluck('vehicle_group_id')
+                    ->filter()
+                    ->unique()
+                    ->all();
+                $this->bookingFlowService->lockVehicleGroupCapacity($vehicleGroupIds);
+                $lockedAvailability = $this->bookingFlowService->validatePublicCartAvailability($cart);
+                if (!($lockedAvailability['available'] ?? false)) {
+                    throw ValidationException::withMessages([
+                        'availability' => ['One or more selected vehicle options are no longer available. Choose another option or request a quotation.'],
+                    ]);
+                }
+            }
+
             // Prepare customer data
             $validated['customer_name'] = trim($validated['first_name'] . ' ' . $validated['last_name']);
             $validated['customer_email'] = $validated['email'] ?? null;
@@ -798,7 +829,10 @@ class CheckoutController extends Controller
             $validated['customer_identification'] = $validated['identification'];
 
             // Step 1: Create or get customer
-            $customer = $this->customerService->getOrCreateCustomer($validated);
+            $customer = $this->customerService->getOrCreateCustomer(
+                $validated,
+                $guestBookingEnabled && ! $customerLookupEnabled
+            );
 
             // Use the converted snapshot shown on checkout, not the raw LKR cart.
             $totals = $cartData['totals'] ?? [];
@@ -906,6 +940,15 @@ class CheckoutController extends Controller
             $workflowData = [
                 'additional_notes' => $validated['additional_notes'] ?? $validated['special_notes'] ?? null,
                 'budget_range' => $validated['budget_range'] ?? null,
+                'checkout_contact' => [
+                    'first_name' => $validated['first_name'],
+                    'last_name' => $validated['last_name'] ?? null,
+                    'email' => $validated['customer_email'],
+                    'phone' => $validated['customer_phone'],
+                    'address' => $validated['customer_address'],
+                    'city' => $validated['customer_city'],
+                    'country' => $validated['customer_country'],
+                ],
                 'cart_items' => $cart,
                 'display_currency' => $bookingCurrency,
                 'base_currency' => 'LKR',
@@ -1725,7 +1768,7 @@ class CheckoutController extends Controller
                 $lockedBooking = Booking::where('id', $booking->id)->lockForUpdate()->first();
                 $attribution = DB::table('sales_booking_attributions')->where('booking_id', $booking->id)
                     ->lockForUpdate()->first(['company_id']);
-                abort_unless((string) $attribution?->company_id === (string) $company->id, 409,
+                abort_unless(\App\Services\CompanyIdScope::sameCompanyId((string) ((string) $attribution?->company_id), (string) ((string) $company->id)), 409,
                     'The booking legal entity changed before payment could be recorded.');
 
                 if ($lockedBooking && $lockedBooking->payment_status !== 'paid') {
@@ -1889,7 +1932,7 @@ class CheckoutController extends Controller
                         if (!$booking) return;
                         $attribution = DB::table('sales_booking_attributions')->where('booking_id', $booking->id)
                             ->lockForUpdate()->first(['company_id']);
-                        abort_unless((string) $attribution?->company_id === (string) $company->id, 409,
+                        abort_unless(\App\Services\CompanyIdScope::sameCompanyId((string) ((string) $attribution?->company_id), (string) ((string) $company->id)), 409,
                             'The booking legal entity changed before payment could be recorded.');
 
                         // Idempotency: if already paid, nothing to do
@@ -2016,6 +2059,11 @@ class CheckoutController extends Controller
      */
     protected function getBookingCustomerEmail(Booking $booking): ?string
     {
+        $contact = $booking->workflow_data['checkout_contact'] ?? null;
+        if (is_array($contact)) {
+            return filled($contact['email'] ?? null) ? (string) $contact['email'] : null;
+        }
+
         return $booking->customer?->user?->email;
     }
 

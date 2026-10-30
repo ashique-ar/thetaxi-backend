@@ -42,7 +42,7 @@ class SafetyController extends Controller
             'page' => ['nullable', 'integer', 'min:1'],
             'per_page' => ['nullable', 'integer', 'min:1', 'max:50'],
         ]);
-        abort_unless(empty($data['company_id']) || $data['company_id'] === $actor->company_id, 403, 'Safety data is outside your legal entity.');
+        abort_unless(empty($data['company_id']) || \App\Services\CompanyIdScope::sameCompanyId((string) ($data['company_id']), (string) ($actor->company_id)), 403, 'Safety data is outside your legal entity.');
         // Match issuance eligibility: employment, not login access, owns PPE.
         $query = Staff::query()->leftJoin('users', 'users.id', '=', 'staff.user_id')
             ->where(fn ($_companyIdScope) => \App\Services\CompanyIdScope::constrain($_companyIdScope, 'staff.company_id', $actor->company_id))->whereNull('staff.employment_ended_at');
@@ -174,7 +174,7 @@ class SafetyController extends Controller
             $existing = DB::table('hr_hazards')->where('id', $d['idempotency_key'])->first();
             if ($existing) {
                 $expected = $this->checksum(['hazard_number' => $existing->hazard_number] + $d);
-                abort_unless($existing->company_id === $a->company_id && $existing->created_by === $r->user()->id && hash_equals($existing->hazard_checksum, $expected), 409, 'Safety register retry conflicts with the original request.');
+                abort_unless(\App\Services\CompanyIdScope::sameCompanyId((string) ($existing->company_id), (string) ($a->company_id)) && $existing->created_by === $r->user()->id && hash_equals($existing->hazard_checksum, $expected), 409, 'Safety register retry conflicts with the original request.');
                 return response()->json(['status' => 'success', 'data' => $existing]);
             }
             $this->assertLocation($a->company_id, $d['location_code']);
@@ -222,7 +222,7 @@ class SafetyController extends Controller
             $id = $d['idempotency_key'];
             $existing = DB::table('hr_ppe_issuances')->where('id', $id)->first();
             if ($existing) {
-                abort_unless($existing->company_id === $a->company_id && $existing->issued_by === $r->user()->id && hash_equals($existing->issuance_checksum, $checksum), 409, 'PPE retry conflicts with the original request.');
+                abort_unless(\App\Services\CompanyIdScope::sameCompanyId((string) ($existing->company_id), (string) ($a->company_id)) && $existing->issued_by === $r->user()->id && hash_equals($existing->issuance_checksum, $checksum), 409, 'PPE retry conflicts with the original request.');
                 return response()->json(['status' => 'success', 'data' => $existing]);
             }
             $this->activeStaff($d['staff_id'], $a->company_id);
@@ -410,7 +410,7 @@ class SafetyController extends Controller
             $id = $d['idempotency_key'];
             $existing = DB::table('hr_fitness_restrictions')->where('id', $id)->first();
             if ($existing) {
-                abort_unless($existing->company_id === $a->company_id && $existing->recorded_by === $r->user()->id && hash_equals($existing->restriction_checksum, $checksum), 409, 'Fitness restriction retry conflicts with the original request.');
+                abort_unless(\App\Services\CompanyIdScope::sameCompanyId((string) ($existing->company_id), (string) ($a->company_id)) && $existing->recorded_by === $r->user()->id && hash_equals($existing->restriction_checksum, $checksum), 409, 'Fitness restriction retry conflicts with the original request.');
                 $privateNotes = $existing->encrypted_private_notes ? decrypt($existing->encrypted_private_notes) : '';
                 abort_unless(hash_equals((string) $privateNotes, (string) ($d['private_notes'] ?? '')), 409, 'Fitness restriction retry conflicts with the original request.');
                 return response()->json(['status' => 'success', 'data' => DB::table('hr_fitness_restrictions')->select(['id', 'staff_id', 'fitness_status', 'work_restrictions', 'effective_from', 'effective_until', 'verification_reference', 'restriction_checksum'])->find($id)]);
@@ -432,7 +432,7 @@ class SafetyController extends Controller
             $existing = DB::table('hr_safety_inspections')->where('id', $d['idempotency_key'])->first();
             if ($existing) {
                 $expected = $this->checksum(['inspection_number' => $existing->inspection_number] + $d);
-                abort_unless($existing->company_id === $a->company_id && $existing->created_by === $r->user()->id && hash_equals($existing->checklist_checksum, $expected), 409, 'Safety register retry conflicts with the original request.');
+                abort_unless(\App\Services\CompanyIdScope::sameCompanyId((string) ($existing->company_id), (string) ($a->company_id)) && $existing->created_by === $r->user()->id && hash_equals($existing->checklist_checksum, $expected), 409, 'Safety register retry conflicts with the original request.');
                 return response()->json(['status' => 'success', 'data' => $existing]);
             }
             $this->assertLocation($a->company_id, $d['location_code']);
@@ -730,7 +730,7 @@ class SafetyController extends Controller
 
     private function company(Request $r, string $id): void
     {
-        abort_unless($this->actor($r)->company_id === $id, 403, 'Safety data is outside your legal entity.');
+        abort_unless(\App\Services\CompanyIdScope::sameCompanyId((string) ($this->actor($r)->company_id), (string) ($id)), 403, 'Safety data is outside your legal entity.');
     }
 
     

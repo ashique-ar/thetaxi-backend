@@ -20,12 +20,12 @@ class EssController extends Controller
         $query = DB::table('hr_request_index as i')
             ->leftJoin('staff as owner', function ($join) {
                 $join->on('owner.id', '=', 'i.current_owner_staff_id')
-                    ->on('owner.company_id', '=', 'i.company_id');
+                    ->where(fn ($sameCompany) => \App\Services\CompanyIdScope::sameCompany($sameCompany, 'owner.company_id', 'i.company_id'));
             })
             ->leftJoin('users as owner_user', 'owner_user.id', '=', 'owner.user_id')
             ->where('i.requester_staff_id', $staff->id)
             ->where(fn ($_companyIdScope) => \App\Services\CompanyIdScope::constrain($_companyIdScope, 'i.company_id', $staff->company_id))
-            ->where(fn ($query) => $query->whereNull('i.current_owner_staff_id')->orWhere('owner.company_id', $staff->company_id))
+            ->where(fn ($query) => $query->whereNull('i.current_owner_staff_id')->orWhereNotNull('owner.id'))
             ->select(['i.id', 'i.request_type', 'i.source_type', 'i.source_id', 'i.status', 'i.summary', 'i.current_owner_staff_id', 'i.due_at', 'i.result_type', 'i.result_id', 'i.submitted_at', 'i.closed_at', 'owner.code as current_owner_staff_code', 'owner_user.first_name as current_owner_first_name', 'owner_user.last_name as current_owner_last_name'])
             ->latest('i.submitted_at');
 
@@ -114,12 +114,12 @@ class EssController extends Controller
         $rows = DB::table('hr_approval_delegations as delegation')
             ->join('staff as delegator', function ($join) {
                 $join->on('delegator.id', '=', 'delegation.delegator_staff_id')
-                    ->on('delegator.company_id', '=', 'delegation.company_id');
+                    ->where(fn ($sameCompany) => \App\Services\CompanyIdScope::sameCompany($sameCompany, 'delegator.company_id', 'delegation.company_id'));
             })
             ->leftJoin('users as delegator_user', 'delegator_user.id', '=', 'delegator.user_id')
             ->join('staff as delegate', function ($join) {
                 $join->on('delegate.id', '=', 'delegation.delegate_staff_id')
-                    ->on('delegate.company_id', '=', 'delegation.company_id');
+                    ->where(fn ($sameCompany) => \App\Services\CompanyIdScope::sameCompany($sameCompany, 'delegate.company_id', 'delegation.company_id'));
             })
             ->leftJoin('users as delegate_user', 'delegate_user.id', '=', 'delegate.user_id')
             ->where(fn ($_companyIdScope) => \App\Services\CompanyIdScope::constrain($_companyIdScope, 'delegation.company_id', $staff->company_id))

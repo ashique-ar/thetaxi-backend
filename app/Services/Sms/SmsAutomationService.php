@@ -30,7 +30,7 @@ class SmsAutomationService
             return;
         }
 
-        $recipientNumber = $recipient ?: $booking->customer?->phone ?? null;
+        $recipientNumber = $recipient ?: $this->bookingCustomerPhone($booking);
         if (!$recipientNumber) {
             return;
         }
@@ -70,7 +70,7 @@ class SmsAutomationService
         $triggeredAt = $booking->confirmed_at ?? now();
 
         if ($sendCustomerSms && !empty($settings['booking_confirmation_enabled'])) {
-            $phone = $booking->customer?->phone;
+            $phone = $this->bookingCustomerPhone($booking);
             if ($phone) {
                 $this->queueBookingEvent(
                     $booking,
@@ -190,7 +190,7 @@ class SmsAutomationService
             return;
         }
 
-        $phone = $booking->customer?->phone;
+        $phone = $this->bookingCustomerPhone($booking);
         if (!$phone) {
             $this->recordBookingDecision($booking, TransactionalSmsEvent::WebsiteQuotationRequested, 'missing_recipient', 'Customer has no SMS recipient number.');
             return;
@@ -274,7 +274,7 @@ class SmsAutomationService
             return;
         }
 
-        $phone = $booking->customer?->phone ?? null;
+        $phone = $this->bookingCustomerPhone($booking);
         if (!$phone) {
             return;
         }
@@ -313,7 +313,7 @@ class SmsAutomationService
         $dispatch = $dispatch->exists
             ? BookingDispatch::query()->with(['driver.user', 'vehicle.group.make', 'vehicle.group.model'])->findOrFail($dispatch->getKey())
             : tap($dispatch)->loadMissing(['driver.user', 'vehicle.group.make', 'vehicle.group.model']);
-        $phone = $booking->customer?->phone;
+        $phone = $this->bookingCustomerPhone($booking);
         if (!$phone || !$dispatch->driver || !$dispatch->vehicle) {
             $this->recordBookingDecision($booking, TransactionalSmsEvent::DriverDispatched, 'missing_data', 'Recipient, driver, or vehicle data is missing.', $dispatch->booking_item_id);
             return;
@@ -354,7 +354,7 @@ class SmsAutomationService
         $assignment = $assignment->exists
             ? DriverAssignment::query()->with(['driver.user', 'bookingItem.vehicle.group.make', 'bookingItem.vehicle.group.model'])->findOrFail($assignment->getKey())
             : tap($assignment)->loadMissing(['driver.user', 'bookingItem.vehicle.group.make', 'bookingItem.vehicle.group.model']);
-        $phone = $booking->customer?->phone;
+        $phone = $this->bookingCustomerPhone($booking);
         $vehicle = $assignment->bookingItem?->vehicle;
         if (!$phone || !$assignment->driver || !$vehicle) {
             $this->recordBookingDecision($booking, TransactionalSmsEvent::DriverArrived, 'missing_data', 'Recipient, driver, or vehicle data is missing.', $assignment->booking_item_id, $assignment->id);
@@ -467,7 +467,7 @@ class SmsAutomationService
             return;
         }
 
-        $phone = $booking->customer?->phone ?? null;
+        $phone = $this->bookingCustomerPhone($booking);
         if (!$phone) {
             $this->recordBookingDecision($booking, TransactionalSmsEvent::TripCompleted, 'missing_recipient', 'Customer has no SMS recipient number.', $assignment->booking_item_id, $assignment->id);
             return;
@@ -537,7 +537,7 @@ class SmsAutomationService
             return;
         }
 
-        $phone = $booking->customer?->phone ?? null;
+        $phone = $this->bookingCustomerPhone($booking);
         if (!$phone) {
             $this->recordBookingDecision($booking, TransactionalSmsEvent::PaymentReceived, 'missing_recipient', 'Customer has no SMS recipient number.');
             return;
@@ -624,6 +624,13 @@ class SmsAutomationService
         return tap($booking)->loadMissing(['customer.user', 'bookingItems']);
     }
 
+    private function bookingCustomerPhone(Booking $booking): ?string
+    {
+        $contact = $booking->workflow_data['checkout_contact'] ?? null;
+
+        return is_array($contact) ? ($contact['phone'] ?? null) : $booking->customer?->phone;
+    }
+
     private function bookingAllowsSms(Booking $booking): bool
     {
         return filter_var($booking->notification_sms ?? true, FILTER_VALIDATE_BOOL);
@@ -680,11 +687,15 @@ class SmsAutomationService
         $pickupTime = $this->formatBookingTime($firstItem?->from_time);
         $dropoffDate = $this->formatBookingDate($firstItem?->to_date);
         $dropoffTime = $this->formatBookingTime($firstItem?->to_time);
+        $checkoutContact = $booking->workflow_data['checkout_contact'] ?? null;
+        $customerName = is_array($checkoutContact)
+            ? trim((string) ($checkoutContact['first_name'] ?? '').' '.(string) ($checkoutContact['last_name'] ?? ''))
+            : (string) ($booking->customer?->full_name ?: 'Customer');
 
         return [
             'booking_number' => (string) ($booking->booking_number ?: $booking->id),
-            'customer_name' => (string) ($booking->customer?->full_name ?: 'Customer'),
-            'customer_mobile' => (string) ($booking->customer?->phone ?: '-'),
+            'customer_name' => $customerName ?: 'Customer',
+            'customer_mobile' => (string) ($this->bookingCustomerPhone($booking) ?: '-'),
             // Booking dates and times are persisted in separate columns. Never infer the
             // customer-facing time from the date column's midnight/timezone component.
             'pickup_datetime' => $this->formatBookingDateTime($pickupDate, $pickupTime),

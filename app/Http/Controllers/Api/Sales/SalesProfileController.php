@@ -156,7 +156,8 @@ class SalesProfileController extends Controller
         if ($export->generated_by !== (string) $request->user()->id) {
             abort(404, 'Sales Profile export is unavailable.');
         }
-        if (! $export->company_id || ! in_array($export->scope_type, ['self', 'team', 'all'], true)) {
+        $companyId = $export->company_id ?: \App\Services\CompanyIdScope::defaultCompanyId();
+        if (! $companyId || ! in_array($export->scope_type, ['self', 'team', 'all'], true)) {
             $this->fail('RECONCILIATION_BLOCK', 'The Sales Profile export has no verifiable frozen authorization scope.', 409);
         }
         if ($export->expires_at?->isPast()) {
@@ -177,7 +178,7 @@ class SalesProfileController extends Controller
             $request->user(),
             'sales.profiles.view-all',
             'sales.profiles.view-team',
-            $export->company_id,
+            $companyId,
         );
         if ($currentIds !== null && array_diff($profileIds, $currentIds) !== []) {
             abort(404, 'Sales Profile export is unavailable.');
@@ -264,7 +265,7 @@ class SalesProfileController extends Controller
             $company = DB::table('companies')->where('id', $data['company_id'])->whereNull('deleted_at')->lockForUpdate()->firstOrFail();
             abort_unless($company->is_active, 422, 'Select an active legal entity.');
             $staff = Staff::query()->lockForUpdate()->findOrFail($data['staff_id']);
-            abort_unless($staff->company_id === $data['company_id'], 422, 'Staff and Sales Profile must belong to the same legal entity.');
+            abort_unless(\App\Services\CompanyIdScope::sameCompanyId((string) ($staff->company_id), (string) ($data['company_id'])), 422, 'Staff and Sales Profile must belong to the same legal entity.');
             abort_unless($staff->user_id, 422, 'Sales self-service enrollment requires a linked User identity.');
             $user = $staff->user()->lockForUpdate()->firstOrFail();
             abort_unless($user->is_active, 422, 'Sales Profile enrollment requires an active User account.');

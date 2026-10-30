@@ -305,7 +305,7 @@ trait ManagesDevicePeopleMapping
     public function legacyStaffGaps(Request $request): JsonResponse
     {
         $actor = app(StaffAccessService::class)->currentActorStaff($request->user());
-        $rows = DB::table('staff')->join('users', 'users.id', '=', 'staff.user_id')->whereNull('staff.deleted_at')->where(fn ($q) => $q->whereNull('staff.company_id')->orWhereNull('staff.code'))->select('staff.id', 'staff.company_id', 'staff.code', 'users.first_name', 'users.last_name', 'users.email')->orderBy('users.first_name')->paginate($this->paginationSize($request, 100));
+        $rows = DB::table('staff')->join('users', 'users.id', '=', 'staff.user_id')->whereNull('staff.deleted_at')->whereNull('staff.code')->select('staff.id', 'staff.company_id', 'staff.code', 'users.first_name', 'users.last_name', 'users.email')->orderBy('users.first_name')->paginate($this->paginationSize($request, 100));
 
         return response()->json(['status' => 'success', 'data' => $rows, 'meta' => ['actor_staff_id' => $actor->id]]);
     }

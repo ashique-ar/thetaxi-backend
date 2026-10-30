@@ -110,7 +110,7 @@ class ProcessBookingPaymentSchedules extends Command
                         && $staff
                         && ! $staff->trashed()
                         && $profile->company_id
-                        && (string) $profile->company_id === (string) $schedule->company_id
+                        && \App\Services\CompanyIdScope::sameCompanyId((string) ((string) $profile->company_id), (string) ((string) $schedule->company_id))
                         && $profile->status === 'active'
                         && $profile->collection_eligible
                         && $profile->reporting_currency

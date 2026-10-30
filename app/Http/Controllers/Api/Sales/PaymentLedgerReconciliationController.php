@@ -56,8 +56,7 @@ class PaymentLedgerReconciliationController extends Controller
             ->join('sales_booking_attributions as attribution', 'attribution.booking_id', '=', 'booking.id')
             ->where(fn ($_companyIdScope) => \App\Services\CompanyIdScope::constrain($_companyIdScope, 'attribution.company_id', $data['company_id']))
             ->whereNull('attribution.deleted_at')
-            ->where(fn($query) => $query->whereNull('receipt.company_id')
-                ->orWhereColumn('receipt.company_id', '!=', 'attribution.company_id')
+            ->where(fn($query) => $query->whereNot(fn ($company) => \App\Services\CompanyIdScope::sameCompany($company, 'receipt.company_id', 'attribution.company_id'))
                 ->orWhereNull('receipt.source_currency')
                 ->orWhere(fn($fx) => $fx->where('receipt.source_currency', '!=', 'LKR')->whereNull('receipt.fx_rate_to_lkr'))
                 ->orWhereNotExists(fn($components) => $components->selectRaw('1')
@@ -73,7 +72,7 @@ class PaymentLedgerReconciliationController extends Controller
                 'receipt.fx_rate_to_lkr',
                 'receipt.finality_status',
             ])
-            ->selectRaw("CASE WHEN receipt.company_id IS NULL THEN 'missing' WHEN receipt.company_id != attribution.company_id THEN 'mismatch' ELSE 'matched' END AS company_state")
+            ->selectRaw("CASE WHEN receipt.company_id = attribution.company_id OR (receipt.company_id IS NULL AND EXISTS (SELECT 1 FROM companies default_company WHERE default_company.id = attribution.company_id AND default_company.is_default = true AND default_company.is_active = true AND default_company.deleted_at IS NULL)) OR (attribution.company_id IS NULL AND EXISTS (SELECT 1 FROM companies default_company WHERE default_company.id = receipt.company_id AND default_company.is_default = true AND default_company.is_active = true AND default_company.deleted_at IS NULL)) OR (receipt.company_id IS NULL AND attribution.company_id IS NULL AND EXISTS (SELECT 1 FROM companies default_company WHERE default_company.is_default = true AND default_company.is_active = true AND default_company.deleted_at IS NULL)) THEN 'matched' WHEN receipt.company_id IS NULL THEN 'missing' ELSE 'mismatch' END AS company_state")
             ->selectRaw("CASE WHEN EXISTS (SELECT 1 FROM booking_payment_receipt_components component WHERE component.receipt_id = receipt.id) THEN 1 ELSE 0 END AS has_components")
             ->get();
         $receiptsHaveMore = $receiptExceptions->count() > $limit;

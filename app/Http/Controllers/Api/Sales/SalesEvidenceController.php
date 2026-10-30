@@ -78,7 +78,7 @@ class SalesEvidenceController extends Controller
         $superseded = null;
         if (! empty($data['supersedes_id'])) {
             $superseded = DB::table('domain_evidence_files')->where('id', $data['supersedes_id'])->whereNull('deleted_at')->first();
-            abort_unless($superseded && $superseded->domain === 'sales' && $superseded->company_id === $companyId
+            abort_unless($superseded && $superseded->domain === 'sales' && \App\Services\CompanyIdScope::sameCompanyId((string) ($superseded->company_id), (string) ($companyId))
                 && $superseded->subject_type === $data['subject_type'] && $superseded->subject_id === $data['subject_id'],
                 422, 'Superseded evidence must belong to the same Sales subject and legal entity.');
         }
@@ -157,7 +157,7 @@ class SalesEvidenceController extends Controller
                     $profileIds = DB::table('sales_profiles as profile')->join('staff', 'staff.id', '=', 'profile.staff_id')
                         ->where('staff.user_id', $request->user()->id)->whereNull('staff.deleted_at')
                         ->where(fn ($q) => $q->whereNull('staff.employment_ended_at')->orWhere('staff.employment_ended_at', '>', now()))
-                        ->whereColumn('profile.company_id', 'staff.company_id')
+                        ->where(fn ($sameCompany) => \App\Services\CompanyIdScope::sameCompany($sameCompany, 'profile.company_id', 'staff.company_id'))
                         ->where('profile.collection_eligible', true)->whereNotNull('profile.reporting_currency')
                         ->whereNotNull('profile.staff_category_snapshot')->whereNull('profile.deleted_at')->where('profile.status', 'active')
                         ->where('profile.effective_from', '<=', now())

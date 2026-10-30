@@ -129,7 +129,7 @@ trait ManagesAttendanceDeviceCrud
             'data' => collect($results->items())->map(fn (AttendanceDevice $device) => [
                 'value' => $device->id,
                 'label' => $device->site_code,
-                'company_id' => $device->company_id,
+                'company_id' => $device->company_id ?: $companyId,
                 'metadata' => ['model' => $device->model, 'serial' => $device->serial_number, 'timezone' => $device->timezone],
                 'status' => $device->status,
             ])->values(),

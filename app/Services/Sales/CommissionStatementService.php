@@ -46,7 +46,7 @@ class CommissionStatementService
             abort_unless($this->policySettings->featureEnabled((string) $companyId, 'statements'), 409,
                 'Commission statement generation is not activated for this legal entity.');
             $profile = SalesProfile::query()->with('staff')->lockForUpdate()->findOrFail($profile->id);
-            abort_unless((string) $profile->company_id === (string) $companyId, 409,
+            abort_unless(\App\Services\CompanyIdScope::sameCompanyId((string) ((string) $profile->company_id), (string) ((string) $companyId)), 409,
                 'The Sales Profile legal entity changed before statement generation.');
             $scope = ['company_id' => $profile->company_id, 'staff_id' => $profile->staff_id];
             $checksum = $this->checksum(['sales_profile_id' => $profile->id, ...$data]);
@@ -54,7 +54,7 @@ class CommissionStatementService
             if ($duplicate) {
                 abort_unless(hash_equals($duplicate->generation_payload_checksum, $checksum)
                     && (string) $duplicate->sales_profile_id === (string) $profile->id
-                    && (string) $duplicate->company_id === (string) $profile->company_id
+                    && \App\Services\CompanyIdScope::sameCompanyId((string) ((string) $duplicate->company_id), (string) ((string) $profile->company_id))
                     && (string) $duplicate->staff_id === (string) $profile->staff_id, 422,
                     'This statement generation key was already used with different facts.');
                 return $duplicate->load('lines');
@@ -132,7 +132,7 @@ class CommissionStatementService
                 $checksum = $this->checksum(['sales_profile_id' => $profile->id, ...$data]);
                 abort_unless(hash_equals($duplicate->generation_payload_checksum, $checksum)
                     && (string) $duplicate->sales_profile_id === (string) $profile->id
-                    && (string) $duplicate->company_id === (string) $companyId, 422,
+                    && \App\Services\CompanyIdScope::sameCompanyId((string) ((string) $duplicate->company_id), (string) ((string) $companyId)), 422,
                     'This statement generation key was already used with different facts.');
 
                 return $duplicate->load('lines');
@@ -148,7 +148,7 @@ class CommissionStatementService
         return DB::transaction(function () use ($statement, $toStatus, $expectedVersion, $reason, $key, $actorUserId, $companyId) {
             $this->lockActiveCompany((string) $companyId);
             $statement = SalesCommissionStatement::query()->lockForUpdate()->findOrFail($statement->id);
-            abort_unless((string) $statement->company_id === (string) $companyId, 409,
+            abort_unless(\App\Services\CompanyIdScope::sameCompanyId((string) ((string) $statement->company_id), (string) ((string) $companyId)), 409,
                 'The statement legal entity changed before its status could be updated.');
             $duplicate = SalesCommissionStatementEvent::query()->where('statement_id', $statement->id)->where('idempotency_key', $key)->first();
             if ($duplicate) {
@@ -362,7 +362,7 @@ class CommissionStatementService
             && $profile->reporting_currency !== null
             && $profile->staff_category_snapshot !== null
             && $staff !== null
-            && (string) $staff->company_id === (string) $profile->company_id
+            && \App\Services\CompanyIdScope::sameCompanyId((string) ((string) $staff->company_id), (string) ((string) $profile->company_id))
             && $staff->deleted_at === null
             && ($staff->employment_ended_at === null || CarbonImmutable::parse($staff->employment_ended_at)->gt(now()));
     }

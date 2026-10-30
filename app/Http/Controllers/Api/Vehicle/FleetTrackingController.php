@@ -46,7 +46,7 @@ class FleetTrackingController extends Controller
 
     public function runReport(Request $request, Vehicle $vehicle, WialonService $wialon): JsonResponse
     {
-        abort_unless((string) $vehicle->company_id === $this->companyId($request), 403);
+        abort_unless(\App\Services\CompanyIdScope::sameCompanyId((string) ((string) $vehicle->company_id), (string) ($this->companyId($request))), 403);
         abort_unless($vehicle->wialon_unit_id, 422, 'Link a GPS device before running a report.');
         $data = $request->validate([
             'resource_id' => ['required', 'integer', 'min:1'],
@@ -84,7 +84,7 @@ class FleetTrackingController extends Controller
 
     public function mileage(Request $request, Vehicle $vehicle, WialonService $wialon): JsonResponse
     {
-        abort_unless((string) $vehicle->company_id === $this->companyId($request), 403);
+        abort_unless(\App\Services\CompanyIdScope::sameCompanyId((string) ((string) $vehicle->company_id), (string) ($this->companyId($request))), 403);
         abort_unless($vehicle->wialon_unit_id, 422, 'Link a GPS device before changing its odometer.');
         $data = $request->validate(['mileage_km' => ['required', 'integer', 'min:0', 'max:' . WialonService::MAX_COUNTER_KILOMETERS]]);
         $vehicle->current_mileage = $data['mileage_km'];
@@ -103,7 +103,7 @@ class FleetTrackingController extends Controller
 
     public function telemetry(Request $request, Vehicle $vehicle, WialonService $wialon): JsonResponse
     {
-        abort_unless((string) $vehicle->company_id === $this->companyId($request), 403);
+        abort_unless(\App\Services\CompanyIdScope::sameCompanyId((string) ((string) $vehicle->company_id), (string) ($this->companyId($request))), 403);
         abort_unless($vehicle->wialon_unit_id, 422, 'Link a GPS device before requesting telemetry.');
         try {
             return response()->json(['status' => 'success', 'data' => $wialon->telemetry((string) $vehicle->company_id, (int) $vehicle->wialon_unit_id)]);
@@ -114,7 +114,7 @@ class FleetTrackingController extends Controller
 
     public function diagnostics(Request $request, Vehicle $vehicle, WialonService $wialon): JsonResponse
     {
-        abort_unless((string) $vehicle->company_id === $this->companyId($request), 403);
+        abort_unless(\App\Services\CompanyIdScope::sameCompanyId((string) ((string) $vehicle->company_id), (string) ($this->companyId($request))), 403);
         abort_unless($vehicle->wialon_unit_id, 422, 'Link a GPS device before requesting diagnostics.');
         try {
             return response()->json(['status' => 'success', 'data' => $wialon->diagnostics((string) $vehicle->company_id, (int) $vehicle->wialon_unit_id)]);
@@ -125,7 +125,7 @@ class FleetTrackingController extends Controller
 
     public function engineHours(Request $request, Vehicle $vehicle, WialonService $wialon): JsonResponse
     {
-        abort_unless((string) $vehicle->company_id === $this->companyId($request), 403);
+        abort_unless(\App\Services\CompanyIdScope::sameCompanyId((string) ((string) $vehicle->company_id), (string) ($this->companyId($request))), 403);
         abort_unless($vehicle->wialon_unit_id, 422, 'Link a GPS device before changing engine hours.');
         $data = $request->validate(['engine_hours' => ['required', 'integer', 'min:0', 'max:4294967295']]);
         try {
@@ -138,7 +138,7 @@ class FleetTrackingController extends Controller
 
     public function commands(Request $request, Vehicle $vehicle, WialonService $wialon): JsonResponse
     {
-        abort_unless((string) $vehicle->company_id === $this->companyId($request), 403);
+        abort_unless(\App\Services\CompanyIdScope::sameCompanyId((string) ((string) $vehicle->company_id), (string) ($this->companyId($request))), 403);
         abort_unless($vehicle->wialon_unit_id, 422, 'Link a GPS device before requesting commands.');
         try {
             return response()->json(['status' => 'success', 'data' => $wialon->commands((string) $vehicle->company_id, (int) $vehicle->wialon_unit_id)]);
@@ -149,7 +149,7 @@ class FleetTrackingController extends Controller
 
     public function executeCommand(Request $request, Vehicle $vehicle, int $commandId, WialonService $wialon): JsonResponse
     {
-        abort_unless((string) $vehicle->company_id === $this->companyId($request), 403);
+        abort_unless(\App\Services\CompanyIdScope::sameCompanyId((string) ((string) $vehicle->company_id), (string) ($this->companyId($request))), 403);
         abort_unless($vehicle->wialon_unit_id, 422, 'Link a GPS device before executing commands.');
         $data = $request->validate(['parameter' => ['nullable', 'string', 'max:2000']]);
         try {
@@ -161,7 +161,7 @@ class FleetTrackingController extends Controller
 
     public function alerts(Request $request, Vehicle $vehicle, WialonService $wialon): JsonResponse
     {
-        abort_unless((string) $vehicle->company_id === $this->companyId($request), 403);
+        abort_unless(\App\Services\CompanyIdScope::sameCompanyId((string) ((string) $vehicle->company_id), (string) ($this->companyId($request))), 403);
         abort_unless($vehicle->wialon_unit_id, 422, 'Link a GPS device before requesting alerts.');
         $defaultFrom = now()->subDays(7)->timestamp;
         $data = $request->validate([
@@ -181,7 +181,7 @@ class FleetTrackingController extends Controller
 
     public function position(Request $request, Vehicle $vehicle, WialonService $wialon): JsonResponse
     {
-        abort_unless((string) $vehicle->company_id === $this->companyId($request), 403);
+        abort_unless(\App\Services\CompanyIdScope::sameCompanyId((string) ((string) $vehicle->company_id), (string) ($this->companyId($request))), 403);
         if (!$vehicle->wialon_unit_id)
             return response()->json(['status' => 'success', 'data' => null]);
         try {
@@ -203,7 +203,7 @@ class FleetTrackingController extends Controller
             $wialonError = $error->getMessage();
         }
         $vehicles = Vehicle::withInactive()
-            ->where(fn($query) => $query->where(fn ($_companyIdScope) => \App\Services\CompanyIdScope::constrain($_companyIdScope, 'company_id', $companyId))->orWhereNull('company_id'))
+            ->where(fn ($_companyIdScope) => \App\Services\CompanyIdScope::constrain($_companyIdScope, 'company_id', $companyId))
             ->select('id', 'title', 'license_plate', 'registration_no', 'wialon_unit_id', 'current_mileage', 'is_active', 'availability_status', 'wialon_mileage', 'wialon_mileage_sync_pending', 'wialon_last_message_at', 'wialon_last_synced_at')
             ->orderBy('title')
             ->get();
@@ -242,7 +242,7 @@ class FleetTrackingController extends Controller
     public function link(Request $request, Vehicle $vehicle, WialonService $wialon): JsonResponse
     {
         $companyId = $this->companyId($request);
-        abort_unless(!$vehicle->company_id || (string) $vehicle->company_id === $companyId, 403);
+        abort_unless(\App\Services\CompanyIdScope::sameCompanyId((string) ($vehicle->company_id), (string) ($companyId)), 403);
         $unitRules = ['present', 'nullable', 'integer'];
         if ($request->filled('wialon_unit_id')) {
             try {

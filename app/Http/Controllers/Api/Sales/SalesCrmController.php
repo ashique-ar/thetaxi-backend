@@ -61,7 +61,7 @@ class SalesCrmController extends Controller
             ->when($request->boolean('needs_follow_up'), fn ($q) => $q->whereNotIn('sales_opportunities.stage', ['won', 'lost'])
                 ->whereNotExists(fn ($tasks) => $tasks->selectRaw('1')->from('sales_tasks as task')
                     ->whereColumn('task.opportunity_id', 'sales_opportunities.id')
-                    ->whereColumn('task.company_id', 'sales_opportunities.company_id')
+                    ->where(fn ($sameCompany) => \App\Services\CompanyIdScope::sameCompany($sameCompany, 'task.company_id', 'sales_opportunities.company_id'))
                     ->whereIn('task.status', ['open', 'in_progress'])))
             ->when($data['from'] ?? null, fn ($q, $from) => $q->whereDate('expected_close_date', '>=', $from))
             ->when($data['to'] ?? null, fn ($q, $to) => $q->whereDate('expected_close_date', '<=', $to))
@@ -142,8 +142,10 @@ class SalesCrmController extends Controller
             ->where(fn ($_companyIdScope) => \App\Services\CompanyIdScope::constrain($_companyIdScope, 'profile.company_id', $companyId));
         if ($featureTableReady) {
             $query->whereExists(fn ($feature) => $feature->selectRaw('1')->from('sales_company_feature_settings as setting')
-                ->whereColumn('setting.company_id', 'profile.company_id')->where('setting.feature_key', 'crm')
-                ->whereRaw('setting.version = (select MAX(current_setting.version) from sales_company_feature_settings as current_setting where current_setting.company_id = profile.company_id and current_setting.feature_key = setting.feature_key and current_setting.status = \'approved\' and current_setting.deleted_at is null)')
+                ->where(fn ($sameCompany) => \App\Services\CompanyIdScope::sameCompany($sameCompany, 'setting.company_id', 'profile.company_id'))->where('setting.feature_key', 'crm')
+                ->where('setting.version', DB::table('sales_company_feature_settings as current_setting')->selectRaw('MAX(current_setting.version)')
+                    ->where(fn ($sameCompany) => \App\Services\CompanyIdScope::sameCompany($sameCompany, 'current_setting.company_id', 'setting.company_id'))
+                    ->whereColumn('current_setting.feature_key', 'setting.feature_key')->where('current_setting.status', 'approved')->whereNull('current_setting.deleted_at'))
                 ->where('setting.enabled', true)->where('setting.status', 'approved')->whereNull('setting.deleted_at'));
         } else $query->whereRaw('1 = 0');
         if (! empty($data['selected_id'])) $query->where('profile.id', $data['selected_id']);
@@ -235,7 +237,7 @@ class SalesCrmController extends Controller
         } else {
             $query = DB::table('phone_calls as source')->leftJoin('sales_opportunities as opportunity', function ($join): void {
                     $join->on('opportunity.source_phone_call_id', '=', 'source.id')
-                        ->on('opportunity.company_id', '=', 'source.company_id')
+                        ->where(fn ($sameCompany) => \App\Services\CompanyIdScope::sameCompany($sameCompany, 'opportunity.company_id', 'source.company_id'))
                         ->whereNull('opportunity.deleted_at');
                 })
                 ->where(fn ($_companyIdScope) => \App\Services\CompanyIdScope::constrain($_companyIdScope, 'source.company_id', $companyId))->whereNull('source.deleted_at')->whereNull('opportunity.id')
@@ -351,7 +353,9 @@ class SalesCrmController extends Controller
             ->whereNull('booking.deleted_at')->whereNull('booking.sales_opportunity_id')
             ->where(fn ($query) => $query->whereNull('booking.confirmed')->orWhere('booking.confirmed', false))
             ->whereNull('booking.confirmed_at')->where(fn ($query) => $query->whereNull('booking.status')->orWhere('booking.status', '!=', 'confirmed'))
-            ->whereRaw('COALESCE(owner_staff.company_id, creator_staff.company_id) = ?', [$opportunity->company_id])
+            ->where(fn ($company) => $company->where('owner_staff.company_id', $opportunity->company_id)
+                ->orWhere(fn ($creatorCompany) => $creatorCompany->whereNull('owner_staff.company_id')
+                    ->where(fn ($scope) => \App\Services\CompanyIdScope::constrain($scope, 'creator_staff.company_id', $opportunity->company_id))))
             ->whereRaw('COALESCE(owner_staff.id, creator_staff.id) = ?', [$ownerStaffId])
             ->when($opportunity->customer_id, fn ($query, $customerId) => $query->where(fn ($customer) => $customer->whereNull('booking.customer_id')->orWhere('booking.customer_id', $customerId)))
             ->select(['booking.id', 'booking.booking_number', 'booking.log_code', 'booking.created_at']);
@@ -367,11 +371,11 @@ class SalesCrmController extends Controller
             ->where(fn ($_companyIdScope) => \App\Services\CompanyIdScope::constrain($_companyIdScope, 'sales_activities.company_id', $data['company_id']))
             ->whereExists(fn ($profile) => $profile->selectRaw('1')->from('sales_profiles as profile')
                 ->whereColumn('profile.id', 'sales_activities.sales_profile_id')
-                ->whereColumn('profile.company_id', 'sales_activities.company_id')
+                ->where(fn ($sameCompany) => \App\Services\CompanyIdScope::sameCompany($sameCompany, 'profile.company_id', 'sales_activities.company_id'))
                 ->whereNull('profile.deleted_at')
                 ->whereExists(fn ($staff) => $staff->selectRaw('1')->from('staff as activity_staff')
                     ->whereColumn('activity_staff.id', 'profile.staff_id')
-                    ->whereColumn('activity_staff.company_id', 'sales_activities.company_id')
+                    ->where(fn ($sameCompany) => \App\Services\CompanyIdScope::sameCompany($sameCompany, 'activity_staff.company_id', 'sales_activities.company_id'))
                     ->whereNull('activity_staff.deleted_at')))
             ->where(fn ($opportunity) => $opportunity->whereNull('sales_activities.opportunity_id')
                 ->whereNull('sales_activities.customer_id')->whereNull('sales_activities.inquiry_id')
@@ -379,7 +383,7 @@ class SalesCrmController extends Controller
                 ->whereNull('sales_activities.booking_activity_id')
                 ->orWhereExists(fn ($linked) => $linked->selectRaw('1')->from('sales_opportunities as opportunity')
                     ->whereColumn('opportunity.id', 'sales_activities.opportunity_id')
-                    ->whereColumn('opportunity.company_id', 'sales_activities.company_id')
+                    ->where(fn ($sameCompany) => \App\Services\CompanyIdScope::sameCompany($sameCompany, 'opportunity.company_id', 'sales_activities.company_id'))
                     ->where(fn ($reference) => $reference->whereNull('sales_activities.customer_id')
                         ->orWhereColumn('sales_activities.customer_id', 'opportunity.customer_id'))
                     ->where(fn ($reference) => $reference->whereNull('sales_activities.inquiry_id')
@@ -388,11 +392,11 @@ class SalesCrmController extends Controller
                         ->orWhereColumn('sales_activities.phone_call_id', 'opportunity.source_phone_call_id'))
                     ->whereExists(fn ($owner) => $owner->selectRaw('1')->from('sales_profiles as opportunity_owner')
                         ->whereColumn('opportunity_owner.id', 'opportunity.owner_sales_profile_id')
-                        ->whereColumn('opportunity_owner.company_id', 'opportunity.company_id')
+                        ->where(fn ($sameCompany) => \App\Services\CompanyIdScope::sameCompany($sameCompany, 'opportunity_owner.company_id', 'opportunity.company_id'))
                         ->whereNull('opportunity_owner.deleted_at')
                         ->whereExists(fn ($staff) => $staff->selectRaw('1')->from('staff as opportunity_staff')
                             ->whereColumn('opportunity_staff.id', 'opportunity_owner.staff_id')
-                            ->whereColumn('opportunity_staff.company_id', 'opportunity.company_id')
+                            ->where(fn ($sameCompany) => \App\Services\CompanyIdScope::sameCompany($sameCompany, 'opportunity_staff.company_id', 'opportunity.company_id'))
                             ->whereNull('opportunity_staff.deleted_at'))
                     ->where(fn ($booking) => $booking->whereNull('sales_activities.booking_id')
                         ->orWhereExists(function ($linkedBooking) {
@@ -404,14 +408,13 @@ class SalesCrmController extends Controller
                                 ->whereNotExists(fn ($foreignAttribution) => $foreignAttribution->selectRaw('1')
                                     ->from('sales_booking_attributions as activity_attribution')
                                     ->whereColumn('activity_attribution.booking_id', 'activity_booking.id')
-                                    ->where(fn ($company) => $company->whereNull('activity_attribution.company_id')
-                                        ->orWhereColumn('activity_attribution.company_id', '!=', 'sales_activities.company_id')));
+                                    ->whereNot(fn ($company) => \App\Services\CompanyIdScope::sameCompany($company, 'activity_attribution.company_id', 'sales_activities.company_id')));
                             $this->constrainBookingOwnerToOpportunity($linkedBooking, 'activity_booking', 'opportunity');
                         }))
                     ->where(fn ($event) => $event->whereNull('sales_activities.booking_activity_id')
                         ->orWhereExists(fn ($bookingEvent) => $bookingEvent->selectRaw('1')->from('booking_activities as activity_event')
                             ->whereColumn('activity_event.id', 'sales_activities.booking_activity_id')
-                            ->whereColumn('activity_event.company_id', 'sales_activities.company_id')
+                            ->where(fn ($sameCompany) => \App\Services\CompanyIdScope::sameCompany($sameCompany, 'activity_event.company_id', 'sales_activities.company_id'))
                             ->whereNotNull('activity_event.booking_id')->whereNull('activity_event.deleted_at')
                             ->where(fn ($sameBooking) => $sameBooking->whereNull('sales_activities.booking_id')
                                 ->orWhereColumn('sales_activities.booking_id', 'activity_event.booking_id'))
@@ -424,28 +427,27 @@ class SalesCrmController extends Controller
                                     ->whereNotExists(fn ($foreignAttribution) => $foreignAttribution->selectRaw('1')
                                         ->from('sales_booking_attributions as event_attribution')
                                         ->whereColumn('event_attribution.booking_id', 'event_booking.id')
-                                        ->where(fn ($company) => $company->whereNull('event_attribution.company_id')
-                                            ->orWhereColumn('event_attribution.company_id', '!=', 'sales_activities.company_id')));
+                                        ->whereNot(fn ($company) => \App\Services\CompanyIdScope::sameCompany($company, 'event_attribution.company_id', 'sales_activities.company_id')));
                                 $this->constrainBookingOwnerToOpportunity($linkedBooking, 'event_booking', 'opportunity');
                             })))))
                 ->orWhereExists(fn ($directInquiry) => $directInquiry->selectRaw('1')->from('inquiries as activity_inquiry')
                     ->whereColumn('activity_inquiry.id', 'sales_activities.inquiry_id')
-                    ->whereColumn('activity_inquiry.company_id', 'sales_activities.company_id')->whereNull('activity_inquiry.deleted_at')
+                    ->where(fn ($sameCompany) => \App\Services\CompanyIdScope::sameCompany($sameCompany, 'activity_inquiry.company_id', 'sales_activities.company_id'))->whereNull('activity_inquiry.deleted_at')
                     ->where(fn ($customer) => $customer->whereNull('sales_activities.customer_id')
                         ->orWhereColumn('sales_activities.customer_id', 'activity_inquiry.customer_id')))
                 ->orWhereExists(fn ($directBooking) => $directBooking->selectRaw('1')->from('bookings as activity_booking')
                     ->whereColumn('activity_booking.id', 'sales_activities.booking_id')->whereNull('activity_booking.deleted_at')
                     ->where(fn ($company) => $company->whereExists(fn ($attribution) => $attribution->selectRaw('1')
                         ->from('sales_booking_attributions as direct_attribution')->whereColumn('direct_attribution.booking_id', 'activity_booking.id')
-                        ->whereColumn('direct_attribution.company_id', 'sales_activities.company_id'))
+                        ->where(fn ($sameCompany) => \App\Services\CompanyIdScope::sameCompany($sameCompany, 'direct_attribution.company_id', 'sales_activities.company_id')))
                         ->orWhereExists(fn ($owner) => $owner->selectRaw('1')->from('staff as booking_owner')
                             ->whereColumn('booking_owner.user_id', 'activity_booking.responsible_user_id')
-                            ->whereColumn('booking_owner.company_id', 'sales_activities.company_id')->whereNull('booking_owner.deleted_at')))
+                            ->where(fn ($sameCompany) => \App\Services\CompanyIdScope::sameCompany($sameCompany, 'booking_owner.company_id', 'sales_activities.company_id'))->whereNull('booking_owner.deleted_at')))
                     ->where(fn ($customer) => $customer->whereNull('sales_activities.customer_id')
                         ->orWhereColumn('sales_activities.customer_id', 'activity_booking.customer_id')))
                 ->orWhereExists(fn ($directCustomer) => $directCustomer->selectRaw('1')->from('customer_relationship_owner_assignments as activity_customer_owner')
                     ->whereColumn('activity_customer_owner.customer_id', 'sales_activities.customer_id')
-                    ->whereColumn('activity_customer_owner.company_id', 'sales_activities.company_id')));
+                    ->where(fn ($sameCompany) => \App\Services\CompanyIdScope::sameCompany($sameCompany, 'activity_customer_owner.company_id', 'sales_activities.company_id'))));
         if ($ids !== null) $query->whereIn('sales_profile_id', $ids);
         $rows = $query->when($data['sales_profile_id'] ?? null, fn ($q, $id) => $q->where('sales_profile_id', $id))
             ->when($data['opportunity_id'] ?? null, fn ($q, $id) => $q->where('opportunity_id', $id))
@@ -540,16 +542,16 @@ class SalesCrmController extends Controller
             ->addSelect(['owner_active' => $activeTaskOwner()])
             ->whereExists(fn ($profile) => $profile->selectRaw('1')->from('sales_profiles as profile')
                 ->whereColumn('profile.id', 'sales_tasks.owner_sales_profile_id')
-                ->whereColumn('profile.company_id', 'sales_tasks.company_id')
+                ->where(fn ($sameCompany) => \App\Services\CompanyIdScope::sameCompany($sameCompany, 'profile.company_id', 'sales_tasks.company_id'))
                 ->whereNull('profile.deleted_at')
                 ->whereExists(fn ($staff) => $staff->selectRaw('1')->from('staff as owner_staff')
                     ->whereColumn('owner_staff.id', 'profile.staff_id')
-                    ->whereColumn('owner_staff.company_id', 'sales_tasks.company_id')
+                    ->where(fn ($sameCompany) => \App\Services\CompanyIdScope::sameCompany($sameCompany, 'owner_staff.company_id', 'sales_tasks.company_id'))
                     ))
             ->where(fn ($linkScope) => $linkScope
                 ->whereExists(fn ($linked) => $linked->selectRaw('1')->from('sales_opportunities as opportunity')
                     ->whereColumn('opportunity.id', 'sales_tasks.opportunity_id')
-                    ->whereColumn('opportunity.company_id', 'sales_tasks.company_id')
+                    ->where(fn ($sameCompany) => \App\Services\CompanyIdScope::sameCompany($sameCompany, 'opportunity.company_id', 'sales_tasks.company_id'))
                     ->where(fn ($references) => $references->whereNull('sales_tasks.customer_id')
                         ->orWhereColumn('sales_tasks.customer_id', 'opportunity.customer_id'))
                     ->where(fn ($references) => $references->whereNull('sales_tasks.inquiry_id')
@@ -564,8 +566,7 @@ class SalesCrmController extends Controller
                                 ->whereNotExists(fn ($foreignAttribution) => $foreignAttribution->selectRaw('1')
                                     ->from('sales_booking_attributions as attribution')
                                     ->whereColumn('attribution.booking_id', 'task_booking.id')
-                                    ->where(fn ($company) => $company->whereNull('attribution.company_id')
-                                        ->orWhereColumn('attribution.company_id', '!=', 'sales_tasks.company_id')));
+                                    ->whereNot(fn ($company) => \App\Services\CompanyIdScope::sameCompany($company, 'attribution.company_id', 'sales_tasks.company_id')));
                             $this->constrainBookingOwnerToOpportunity($linkedBooking, 'task_booking', 'opportunity');
                         })))
                 ->orWhereExists(fn ($direct) => $direct->selectRaw('1')->from('bookings as task_booking')
@@ -576,31 +577,31 @@ class SalesCrmController extends Controller
                     ->where(fn ($company) => $company
                         ->whereExists(fn ($attribution) => $attribution->selectRaw('1')->from('sales_booking_attributions as attribution')
                             ->whereColumn('attribution.booking_id', 'task_booking.id')
-                            ->whereColumn('attribution.company_id', 'sales_tasks.company_id'))
+                            ->where(fn ($sameCompany) => \App\Services\CompanyIdScope::sameCompany($sameCompany, 'attribution.company_id', 'sales_tasks.company_id')))
                         ->orWhereExists(fn ($staff) => $staff->selectRaw('1')->from('staff as booking_owner')
                             ->whereColumn('booking_owner.user_id', 'task_booking.responsible_user_id')
-                            ->whereColumn('booking_owner.company_id', 'sales_tasks.company_id')))
+                            ->where(fn ($sameCompany) => \App\Services\CompanyIdScope::sameCompany($sameCompany, 'booking_owner.company_id', 'sales_tasks.company_id'))))
                     ->where(fn ($customer) => $customer->whereNull('sales_tasks.customer_id')
                         ->orWhereColumn('sales_tasks.customer_id', 'task_booking.customer_id')))
                 ->orWhereExists(fn ($inquiry) => $inquiry->selectRaw('1')->from('inquiries as task_inquiry')
                     ->whereColumn('task_inquiry.id', 'sales_tasks.inquiry_id')->whereNull('task_inquiry.deleted_at')
-                    ->whereColumn('task_inquiry.company_id', 'sales_tasks.company_id')
+                    ->where(fn ($sameCompany) => \App\Services\CompanyIdScope::sameCompany($sameCompany, 'task_inquiry.company_id', 'sales_tasks.company_id'))
                     ->whereNull('sales_tasks.opportunity_id')->whereNull('sales_tasks.booking_id')
                     ->where(function ($source) {
                         $source->whereExists(fn ($staff) => $staff->selectRaw('1')->from('staff as inquiry_owner')
                             ->whereColumn('inquiry_owner.user_id', 'task_inquiry.assigned_to')
-                            ->whereColumn('inquiry_owner.company_id', 'sales_tasks.company_id'))
+                            ->where(fn ($sameCompany) => \App\Services\CompanyIdScope::sameCompany($sameCompany, 'inquiry_owner.company_id', 'sales_tasks.company_id')))
                             ->orWhere(function ($unassigned) {
                                 $unassigned->whereNull('task_inquiry.assigned_to')->whereExists(fn ($staff) => $staff->selectRaw('1')->from('staff as inquiry_creator')
                                     ->whereColumn('inquiry_creator.user_id', 'task_inquiry.created_user_id')
-                                    ->whereColumn('inquiry_creator.company_id', 'sales_tasks.company_id'));
+                                    ->where(fn ($sameCompany) => \App\Services\CompanyIdScope::sameCompany($sameCompany, 'inquiry_creator.company_id', 'sales_tasks.company_id')));
                             });
                     })
                     ->where(fn ($customer) => $customer->whereNull('sales_tasks.customer_id')
                         ->orWhereColumn('sales_tasks.customer_id', 'task_inquiry.customer_id')))
                 ->orWhereExists(fn ($customer) => $customer->selectRaw('1')->from('customer_relationship_owner_assignments as customer_owner')
                     ->whereColumn('customer_owner.customer_id', 'sales_tasks.customer_id')
-                    ->whereColumn('customer_owner.company_id', 'sales_tasks.company_id')
+                    ->where(fn ($sameCompany) => \App\Services\CompanyIdScope::sameCompany($sameCompany, 'customer_owner.company_id', 'sales_tasks.company_id'))
                     ->whereNull('sales_tasks.opportunity_id')->whereNull('sales_tasks.booking_id')->whereNull('sales_tasks.inquiry_id')));
         if ($ids !== null) $query->whereIn('owner_sales_profile_id', $ids);
         $rows = $query
@@ -840,19 +841,18 @@ class SalesCrmController extends Controller
     private function constrainBookingOwnerToOpportunity($query, string $bookingAlias, string $opportunityAlias): void
     {
         $query->whereExists(fn ($staff) => $staff->selectRaw('1')->from('staff as linked_booking_staff')
-            ->whereColumn('linked_booking_staff.company_id', "{$opportunityAlias}.company_id")
+            ->where(fn ($sameCompany) => \App\Services\CompanyIdScope::sameCompany($sameCompany, 'linked_booking_staff.company_id', "{$opportunityAlias}.company_id"))
             ->where(fn ($owner) => $owner->whereColumn('linked_booking_staff.id', "{$bookingAlias}.commission_owner_staff_id")
                 ->orWhere(fn ($creator) => $creator->whereNull("{$bookingAlias}.commission_owner_staff_id")
                     ->whereColumn('linked_booking_staff.user_id', "{$bookingAlias}.created_user_id")))
             ->whereExists(fn ($profile) => $profile->selectRaw('1')->from('sales_profiles as linked_booking_profile')
                 ->whereColumn('linked_booking_profile.id', "{$opportunityAlias}.owner_sales_profile_id")
                 ->whereColumn('linked_booking_profile.staff_id', 'linked_booking_staff.id')
-                ->whereColumn('linked_booking_profile.company_id', "{$opportunityAlias}.company_id")
+                ->where(fn ($sameCompany) => \App\Services\CompanyIdScope::sameCompany($sameCompany, 'linked_booking_profile.company_id', "{$opportunityAlias}.company_id"))
                 ->whereNull('linked_booking_profile.deleted_at')))
             ->whereNotExists(fn ($attribution) => $attribution->selectRaw('1')->from('sales_booking_attributions as linked_booking_attribution')
                 ->whereColumn('linked_booking_attribution.booking_id', "{$bookingAlias}.id")
-                ->where(fn ($company) => $company->whereNull('linked_booking_attribution.company_id')
-                    ->orWhereColumn('linked_booking_attribution.company_id', '!=', "{$opportunityAlias}.company_id")));
+                ->whereNot(fn ($company) => \App\Services\CompanyIdScope::sameCompany($company, 'linked_booking_attribution.company_id', "{$opportunityAlias}.company_id")));
     }
 
     public function createTask(Request $request, SalesCrmService $crm): JsonResponse
@@ -908,7 +908,8 @@ class SalesCrmController extends Controller
     {
         $this->assertSelectedStaffCompany((string) $opportunity->company_id);
         $profile = SalesProfile::query()->findOrFail($opportunity->owner_sales_profile_id);
-        abort_unless((string) $profile->company_id === (string) $opportunity->company_id
+        abort_unless(DB::table('sales_profiles as profile')->where('profile.id', $profile->id)
+            ->where(fn ($_companyIdScope) => \App\Services\CompanyIdScope::constrain($_companyIdScope, 'profile.company_id', $opportunity->company_id))->exists()
             && DB::table('staff')->where('id', $profile->staff_id)->where(fn ($_companyIdScope) => \App\Services\CompanyIdScope::constrain($_companyIdScope, 'company_id', $opportunity->company_id))
                 ->whereNull('deleted_at')->exists()
             && (! $opportunity->won_booking_id || DB::table('bookings')->where('id', $opportunity->won_booking_id)
@@ -922,13 +923,14 @@ class SalesCrmController extends Controller
         return DB::table('sales_profiles as profile')->selectRaw('1')
             ->join('staff as owner_staff', 'owner_staff.id', '=', 'profile.staff_id')
             ->join('users as owner_user', 'owner_user.id', '=', 'owner_staff.user_id')
-            ->whereColumn('profile.id', $profileIdColumn)->whereColumn('profile.company_id', $companyIdColumn)
+            ->whereColumn('profile.id', $profileIdColumn)
+            ->where(fn ($sameCompany) => \App\Services\CompanyIdScope::sameCompany($sameCompany, 'profile.company_id', $companyIdColumn))
             ->where('profile.status', 'active')->whereNull('profile.deleted_at')->where('profile.effective_from', '<=', now())
             ->where(fn ($effective) => $effective->whereNull('profile.effective_until')->orWhere('profile.effective_until', '>', now()))
             ->whereNotNull('profile.reporting_currency')->whereNotNull('profile.staff_category_snapshot')
             ->where(fn ($eligible) => $eligible->where('profile.acquisition_eligible', true)
                 ->orWhere('profile.collection_eligible', true)->orWhere('profile.commission_eligible', true))
-            ->whereColumn('owner_staff.company_id', $companyIdColumn)->whereNull('owner_staff.deleted_at')
+            ->where(fn ($sameCompany) => \App\Services\CompanyIdScope::sameCompany($sameCompany, 'owner_staff.company_id', $companyIdColumn))->whereNull('owner_staff.deleted_at')
             ->where(fn ($employment) => $employment->whereNull('owner_staff.employment_ended_at')->orWhere('owner_staff.employment_ended_at', '>', now()))
             ->where('owner_user.is_active', true)->whereNull('owner_user.deleted_at')
             ->whereExists(fn ($context) => $context->selectRaw('1')->from('user_contexts')
@@ -947,6 +949,7 @@ class SalesCrmController extends Controller
 
     private function opportunityPayload(SalesOpportunity $row, bool $detail = false, ?array $stageLabels = null): array
     {
+        $companyId = $row->company_id ?: \App\Services\CompanyIdScope::defaultCompanyId();
         $owner = $row->owner;
         $ownerStaff = $owner?->staff;
         $ownerUser = $ownerStaff?->user;
@@ -974,23 +977,26 @@ class SalesCrmController extends Controller
         ];
         if (! $detail) return $payload;
         $wonBookingNumber = null;
+        $wonBookingCancelled = false;
         if ($row->won_booking_id) {
             $booking = DB::table('sales_opportunities as won_opportunity')
                 ->join('bookings as won_booking', 'won_booking.id', '=', 'won_opportunity.won_booking_id')
                 ->where('won_opportunity.id', $row->id)->where('won_booking.id', $row->won_booking_id);
             $this->constrainBookingOwnerToOpportunity($booking, 'won_booking', 'won_opportunity');
-            $wonBookingNumber = $booking->value('won_booking.booking_number');
+            $wonBooking = $booking->first(['won_booking.booking_number', 'won_booking.status']);
+            $wonBookingNumber = $wonBooking?->booking_number;
+            $wonBookingCancelled = in_array(strtolower((string) ($wonBooking?->status ?? '')), ['cancelled', 'canceled', 'booking_cancelled'], true);
         }
         return $payload + [
-            'company_id' => (string) $row->company_id,
+            'company_id' => $companyId,
             'owner_sales_profile_id' => (string) $row->owner_sales_profile_id,
             'state_version' => $row->state_version,
-            'crm_enabled' => $this->policySettings->featureEnabled((string) $row->company_id, 'crm'),
+            'crm_enabled' => $companyId ? $this->policySettings->featureEnabled($companyId, 'crm') : false,
             'prospect_name' => $row->prospect_name,
             'prospect_email' => $row->prospect_email,
             'prospect_phone' => $row->prospect_phone,
             'won_booking' => $row->won_booking_id
-                ? ['booking_number' => $wonBookingNumber]
+                ? ['booking_number' => $wonBookingNumber, 'is_cancelled' => $wonBookingCancelled]
                 : null,
             'stage_events' => $row->stageEvents->sortByDesc('occurred_at')->map(fn ($event) => [
                 'from_stage' => $event->from_stage,
@@ -1022,7 +1028,7 @@ class SalesCrmController extends Controller
             $labels = $defaults;
             foreach ($mapping as $column => [$stage, $feature]) {
                 $setting = $settings->get($row->{$column});
-                if ($setting && (string) $setting->company_id === (string) $row->company_id
+                if ($setting && \App\Services\CompanyIdScope::sameCompanyId((string) ((string) $setting->company_id), (string) ((string) $row->company_id))
                     && $setting->feature_key === $feature && trim((string) $setting->stage_label) !== '') {
                     $labels[$stage] = trim((string) $setting->stage_label);
                 }
@@ -1044,7 +1050,7 @@ class SalesCrmController extends Controller
         if ($userIds === []) return [];
 
         $ambiguousUserIds = DB::table('staff')->whereIn('user_id', $userIds)
-            ->where(fn ($staff) => $staff->whereNull('company_id')->orWhere('company_id', '!=', $companyId))
+            ->whereNot(fn ($staff) => \App\Services\CompanyIdScope::constrain($staff, 'company_id', $companyId))
             ->distinct()->pluck('user_id')->all();
 
         return array_values(array_diff($userIds, $ambiguousUserIds));

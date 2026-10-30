@@ -44,7 +44,7 @@ class SalesCollectionCompanyIntegrity
             }
 
             abort_unless(! DB::table($table)->where('booking_id', $booking->id)
-                ->where(fn ($query) => $query->whereNull('company_id')->orWhere('company_id', '!=', $companyId))->exists(), 409,
+                ->whereNot(fn ($query) => \App\Services\CompanyIdScope::constrain($query, 'company_id', $companyId))->exists(), 409,
                 'Immutable collection history has unresolved legal-entity ownership and requires approved historical disposition.');
         }
     }
@@ -75,7 +75,7 @@ class SalesCollectionCompanyIntegrity
             $mismatch = DB::table($table)->where(function ($query) use ($bookingIdsByCompany): void {
                 foreach ($bookingIdsByCompany as $companyId => $bookingIds) {
                     $query->orWhere(fn ($scope) => $scope->whereIn('booking_id', $bookingIds)
-                        ->where(fn ($ownership) => $ownership->whereNull('company_id')->orWhere('company_id', '!=', $companyId)));
+                        ->whereNot(fn ($ownership) => \App\Services\CompanyIdScope::constrain($ownership, 'company_id', $companyId)));
                 }
             })->exists();
 
@@ -95,7 +95,7 @@ class SalesCollectionCompanyIntegrity
                     foreach ($bookingIdsByCompany as $companyId => $bookingIds) {
                         $query->orWhere(fn ($scope) => $scope->whereIn('source.booking_id', $bookingIds)
                             ->where(fn ($profileScope) => $profileScope->whereNull('profile.id')
-                                ->orWhereNull('profile.company_id')->orWhere('profile.company_id', '!=', $companyId)));
+                                ->orWhereNot(fn ($company) => \App\Services\CompanyIdScope::constrain($company, 'profile.company_id', $companyId))));
                     }
                 })->exists();
 
@@ -123,16 +123,16 @@ class SalesCollectionCompanyIntegrity
                 ->leftJoin('sales_booking_attributions as attribution', 'attribution.booking_id', '=', 'booking.id')
                 ->leftJoin('companies as expected_company', 'expected_company.id', '=', 'attribution.company_id')
                 ->leftJoin('companies as recorded_company', 'recorded_company.id', '=', 'source.company_id')
-                ->where(fn ($scope) => $scope->whereNull('attribution.company_id')
-                    ->orWhereNull('source.company_id')
-                    ->orWhereColumn('source.company_id', '!=', 'attribution.company_id'))
+                ->whereNot(fn ($sameCompany) => \App\Services\CompanyIdScope::sameCompany($sameCompany, 'source.company_id', 'attribution.company_id'))
                 ->when($companyId, fn ($scope, $id) => $scope->where(fn ($_companyIdScope) => \App\Services\CompanyIdScope::constrain($_companyIdScope, 'attribution.company_id', $id)))
                 ->when($bookingNumber, fn ($scope, $number) => $scope->where('booking.booking_number', $number))
                 ->orderBy('booking.booking_number')
                 ->select([
-                    'booking.booking_number', 'attribution.company_id as expected_company_id',
-                    'expected_company.name as expected_company', 'source.company_id as recorded_company_id',
-                    'recorded_company.name as recorded_company',
+                    'booking.booking_number',
+                    DB::raw("COALESCE(attribution.company_id, (SELECT default_company.id FROM companies AS default_company WHERE default_company.is_default = true AND default_company.is_active = true AND default_company.deleted_at IS NULL LIMIT 1)) AS expected_company_id"),
+                    DB::raw("CASE WHEN attribution.company_id IS NULL THEN (SELECT default_company.name FROM companies AS default_company WHERE default_company.is_default = true AND default_company.is_active = true AND default_company.deleted_at IS NULL LIMIT 1) ELSE expected_company.name END AS expected_company"),
+                    DB::raw("COALESCE(source.company_id, (SELECT default_company.id FROM companies AS default_company WHERE default_company.is_default = true AND default_company.is_active = true AND default_company.deleted_at IS NULL LIMIT 1)) AS recorded_company_id"),
+                    DB::raw("CASE WHEN source.company_id IS NULL THEN (SELECT default_company.name FROM companies AS default_company WHERE default_company.is_default = true AND default_company.is_active = true AND default_company.deleted_at IS NULL LIMIT 1) ELSE recorded_company.name END AS recorded_company"),
                 ]);
             foreach ($availableReferences as $column) {
                 $query->addSelect("source.{$column} as reference_{$column}");
@@ -177,16 +177,16 @@ class SalesCollectionCompanyIntegrity
                 ->leftJoin('sales_profiles as profile', 'profile.id', '=', "source.{$column}")
                 ->leftJoin('companies as owner_company', 'owner_company.id', '=', 'profile.company_id')
                 ->whereNotNull("source.{$column}")
-                ->where(fn ($scope) => $scope->whereNull('attribution.company_id')
-                    ->orWhereNull('profile.company_id')
-                    ->orWhereColumn('profile.company_id', '!=', 'attribution.company_id'))
+                ->whereNot(fn ($sameCompany) => \App\Services\CompanyIdScope::sameCompany($sameCompany, 'profile.company_id', 'attribution.company_id'))
                 ->when($companyId, fn ($scope, $id) => $scope->where(fn ($_companyIdScope) => \App\Services\CompanyIdScope::constrain($_companyIdScope, 'attribution.company_id', $id)))
                 ->when($bookingNumber, fn ($scope, $number) => $scope->where('booking.booking_number', $number))
                 ->orderBy('booking.booking_number')
                 ->select([
-                    'booking.booking_number', 'attribution.company_id as expected_company_id',
-                    'expected_company.name as expected_company', 'profile.company_id as owner_company_id',
-                    'owner_company.name as owner_company',
+                    'booking.booking_number',
+                    DB::raw("COALESCE(attribution.company_id, (SELECT default_company.id FROM companies AS default_company WHERE default_company.is_default = true AND default_company.is_active = true AND default_company.deleted_at IS NULL LIMIT 1)) AS expected_company_id"),
+                    DB::raw("CASE WHEN attribution.company_id IS NULL THEN (SELECT default_company.name FROM companies AS default_company WHERE default_company.is_default = true AND default_company.is_active = true AND default_company.deleted_at IS NULL LIMIT 1) ELSE expected_company.name END AS expected_company"),
+                    DB::raw("COALESCE(profile.company_id, (SELECT default_company.id FROM companies AS default_company WHERE default_company.is_default = true AND default_company.is_active = true AND default_company.deleted_at IS NULL LIMIT 1)) AS owner_company_id"),
+                    DB::raw("CASE WHEN profile.company_id IS NULL THEN (SELECT default_company.name FROM companies AS default_company WHERE default_company.is_default = true AND default_company.is_active = true AND default_company.deleted_at IS NULL LIMIT 1) ELSE owner_company.name END AS owner_company"),
                 ]);
             foreach ($availableReferences as $reference) {
                 $query->addSelect("source.{$reference} as reference_{$reference}");

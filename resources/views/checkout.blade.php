@@ -189,6 +189,9 @@
                             <div class="checkout-form-wrapper">
                                 <div class="checkout-form-title">
                                     <h4>Billing Information</h4>
+                                    @if (!$customerLookupEnabled && $guestBookingEnabled)
+                                        <p class="small text-muted mb-0">You can book as a guest. If your email or mobile is already on file, we’ll use that customer record without changing its saved details.</p>
+                                    @endif
                                     @if ($verifiedCheckoutCustomer)
                                         <button type="button" id="reset-customer-details" class="btn btn-link btn-sm px-0">Use different details</button>
                                     @else
@@ -198,7 +201,7 @@
                                 </div>
                                 <div class="checkout-form">
                                     <div class="row">
-                                        <div class="col-12" id="checkout-contact-method" @if (Auth::user()?->email) hidden @endif>
+                                        <div class="col-12" id="checkout-contact-method" @if (Auth::user()?->email && Auth::user()?->phone) hidden @endif>
                                             <fieldset class="border-0 p-0 m-0">
                                                 <legend class="form-label fw-semibold mb-2">How should we contact you?</legend>
                                                 <div class="d-flex flex-wrap gap-2">
@@ -232,7 +235,7 @@
                                                 <label>Mobile Number<span class="checkout-contact-required">*</span></label>
                                                 <input type="tel" id="phone-input" name="phone"
                                                     placeholder="Mobile number" autocomplete="tel"
-                                                    value="{{ old('phone') }}" style="padding-left: 48px;">
+                                                    value="{{ old('phone', Auth::user()?->phone) }}" style="padding-left: 48px;">
                                                 <div id="phone-error" class="text-danger mt-2" style="display: none;">
                                                 </div>
                                                 <div id="phone-valid" class="text-success small mt-1"
@@ -251,7 +254,7 @@
                                             <div class="form-inner two mb-25">
                                                 <label>Email Address<span class="checkout-contact-required">*</span></label>
                                                 <input type="email" name="email" placeholder="Enter email address"
-                                                    value="{{ old('email') }}">
+                                                    value="{{ old('email', Auth::user()?->email) }}">
                                                 @error('email')
                                                     <span class="text-danger">{{ $message }}</span>
                                                 @enderror
@@ -284,7 +287,7 @@
                                                     <option value="">Select Country</option>
                                                     @foreach ($countries as $country)
                                                         <option value="{{ $country->name }}"
-                                                            {{ old('country', 'Sri Lanka') === $country->name ? 'selected' : '' }}>
+                                                            {{ old('country', $checkoutDefaultCountryName) === $country->name ? 'selected' : '' }}>
                                                             {{ $country->name }}
                                                             @if ($country->callcode)
                                                                 (+{{ $country->callcode }})
@@ -601,7 +604,7 @@
                                             </div>
 
                                             <div class="alert alert-warning mb-3" id="payment-contact-requirement" role="status" hidden>
-                                                Online payment needs both an email address and mobile number. Choose Request Quotation or Pay on Check-in, if available, to continue with one contact detail.
+                                                Online payment needs both an email address and mobile number. Use the contact choice above to enter both; only one field is shown at a time.
                                             </div>
 
                                             <!-- Payment Type Alert -->
@@ -3035,7 +3038,7 @@
             const lookupPhoneInput = document.querySelector('#customer-lookup-mobile');
             if (lookupPhoneInput) {
                 window.checkoutLookupIntlTelInput = window.intlTelInput(lookupPhoneInput, {
-                    initialCountry: 'lk',
+                    initialCountry: @json($checkoutDefaultCountry),
                     preferredCountries: availablePreferredCountries,
                     separateDialCode: true,
                     formatAsYouType: true,
@@ -3044,7 +3047,7 @@
             }
 
             const iti = window.intlTelInput(phoneInput, {
-                initialCountry: 'lk',
+                initialCountry: @json($checkoutDefaultCountry),
                 preferredCountries: availablePreferredCountries,
                 separateDialCode: true,
                 formatAsYouType: true,
@@ -3227,31 +3230,37 @@
             const syncPaymentContactRequirement = () => {
                 const paymentType = document.querySelector('input[name="payment_type"]:checked')?.value || 'full';
                 const requiresOnlineContact = onlinePaymentAvailable && ['full', 'advance'].includes(paymentType);
-                const hasEmail = Boolean(emailInput.value.trim() || accountContactMethod);
-                const hasPhone = Boolean(phoneInternationalInput.value.trim() || (accountContactMethod && accountHasPhone));
+                const hasEmail = Boolean((emailInput.value.trim() && emailInput.checkValidity()) || accountContactMethod);
+                const hasPhone = Boolean(window.checkoutIntlTelInput?.isValidNumber() || (accountContactMethod && accountHasPhone));
                 const blocked = requiresOnlineContact && !(hasEmail && hasPhone);
                 if (paymentContactRequirement) paymentContactRequirement.hidden = !blocked;
                 if (checkoutSubmitButton) checkoutSubmitButton.disabled = blocked;
             };
             const syncContactMethod = () => {
+                const paymentType = document.querySelector('input[name="payment_type"]:checked')?.value || 'full';
+                const requiresOnlineContact = onlinePaymentAvailable && ['full', 'advance'].includes(paymentType);
+                const accountHasBothContacts = Boolean(accountContactMethod && accountHasPhone);
+                const keepAccountContact = accountContactMethod && (accountHasBothContacts || !requiresOnlineContact);
                 const method = hasVerifiedCustomer
                     ? (emailInput.value ? 'email' : 'mobile')
-                    : (accountContactMethod || document.querySelector('input[name="contact_method"]:checked')?.value || 'mobile');
-                if (hasVerifiedCustomer || accountContactMethod) {
+                    : (keepAccountContact || document.querySelector('input[name="contact_method"]:checked')?.value || 'mobile');
+                if (hasVerifiedCustomer || keepAccountContact) {
                     contactMethodInputs.forEach(input => { input.checked = input.value === method; });
                 }
                 const showPhone = hasVerifiedCustomer || method === 'mobile';
                 const showEmail = hasVerifiedCustomer || method === 'email';
-                if (contactMethodPanel) contactMethodPanel.hidden = hasVerifiedCustomer || Boolean(accountContactMethod);
+                const validEmail = emailInput.checkValidity();
+                const validPhone = Boolean(window.checkoutIntlTelInput?.isValidNumber());
+                if (contactMethodPanel) contactMethodPanel.hidden = hasVerifiedCustomer || Boolean(keepAccountContact);
                 if (checkoutPhoneField) checkoutPhoneField.hidden = !showPhone;
                 if (checkoutEmailField) checkoutEmailField.hidden = !showEmail;
-                phoneInput.disabled = !showPhone;
-                emailInput.disabled = !showEmail;
+                phoneInput.disabled = !showPhone && (!requiresOnlineContact || !validPhone);
+                emailInput.disabled = !showEmail && (!requiresOnlineContact || !validEmail);
                 phoneInput.required = !hasVerifiedCustomer && method === 'mobile';
                 emailInput.required = !hasVerifiedCustomer && method === 'email';
-                phoneInternationalInput.disabled = !showPhone;
+                phoneInternationalInput.disabled = !showPhone && (!requiresOnlineContact || !validPhone);
                 const countryCode = document.getElementById('phone-country-code');
-                if (countryCode) countryCode.disabled = !showPhone;
+                if (countryCode) countryCode.disabled = !showPhone && (!requiresOnlineContact || !validPhone);
                 syncPaymentContactRequirement();
             };
             const renderCooldown = () => {
@@ -3399,7 +3408,10 @@
             }));
             lookupChannelInputs.forEach(input => input.addEventListener('change', syncLookupChannel));
             contactMethodInputs.forEach(input => input.addEventListener('change', syncContactMethod));
-            document.querySelectorAll('input[name="payment_type"]').forEach(input => input.addEventListener('change', syncPaymentContactRequirement));
+            document.querySelectorAll('input[name="payment_type"]').forEach(input => input.addEventListener('change', () => {
+                syncContactMethod();
+                syncPaymentContactRequirement();
+            }));
             emailInput.addEventListener('input', syncPaymentContactRequirement);
             phoneInput.addEventListener('input', syncPaymentContactRequirement);
             phoneInternationalInput.addEventListener('change', syncPaymentContactRequirement);

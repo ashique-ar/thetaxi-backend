@@ -48,7 +48,7 @@ class BookingAttributionMutationService
                 $existingOwner = DB::table('sales_booking_attribution_events')
                     ->where('attribution_id', $locked->id)->where('idempotency_key', "{$idempotencyKey}:owner")->first();
                 if ($existingEntity->event_type !== 'legal_entity_established'
-                    || (string) ($existingEntity->to_value ?? '') !== (string) $toProfile->company_id
+                    || !\App\Services\CompanyIdScope::sameCompanyId((string) ((string) ($existingEntity->to_value ?? '')), (string) ((string) $toProfile->company_id))
                     || (string) ($existingEntity->reason ?? '') !== $reason
                     || $existingEntity->actor_user_id !== $actorUserId
                     || ! $existingOwner
@@ -56,7 +56,7 @@ class BookingAttributionMutationService
                     || (string) ($existingOwner->to_value ?? '') !== (string) $toProfile->id
                     || (string) ($existingOwner->reason ?? '') !== $reason
                     || $existingOwner->actor_user_id !== $actorUserId
-                    || (string) $locked->company_id !== (string) $toProfile->company_id
+                    || !\App\Services\CompanyIdScope::sameCompanyId((string) ((string) $locked->company_id), (string) ((string) $toProfile->company_id))
                     || (string) $locked->acquisition_sales_profile_id !== (string) $toProfile->id) {
                     throw new RuntimeException('The attribution idempotency key was already used for different or incomplete legal-entity evidence.');
                 }
@@ -74,6 +74,9 @@ class BookingAttributionMutationService
             $target = SalesProfile::query()->lockForUpdate()->find($toProfile->id);
             if (! $target) {
                 throw new RuntimeException('The target Sales Profile no longer exists.');
+            }
+            if (! \App\Services\CompanyIdScope::sameCompanyId(null, (string) $target->company_id)) {
+                throw new RuntimeException('A null attribution belongs to the active default company; choose a Sales Profile in that company.');
             }
             abort_unless(DB::table('companies')->where('id', $target->company_id)->where('is_active', true)
                 ->whereNull('deleted_at')->lockForUpdate()->exists(), 422, 'Select an active legal entity.');
@@ -122,7 +125,7 @@ class BookingAttributionMutationService
 
             $collectionProfile = $locked->collection_sales_profile_id
                 ? SalesProfile::query()->withTrashed()->find($locked->collection_sales_profile_id) : null;
-            $status = $collectionProfile && $collectionProfile->company_id === $target->company_id
+            $status = $collectionProfile && \App\Services\CompanyIdScope::sameCompanyId((string) ($collectionProfile->company_id), (string) ($target->company_id))
                 && $this->profileEligibility->isEligibleAt($collectionProfile, ['collection'], now())
                     ? 'active' : 'held';
             $locked->update([
@@ -247,7 +250,7 @@ class BookingAttributionMutationService
         if ($effectiveAt->lt($requestAcceptedAt->subSecond())) {
             throw new RuntimeException('Sales Profile closure is prospective and cannot predate the request.');
         }
-        if ($replacement && $replacement->company_id !== $leaver->company_id) {
+        if ($replacement && !\App\Services\CompanyIdScope::sameCompanyId((string) ($replacement->company_id), (string) ($leaver->company_id))) {
             throw new RuntimeException('A replacement handler must belong to the same legal entity.');
         }
 
@@ -362,7 +365,7 @@ class BookingAttributionMutationService
                 ->whereNull('deleted_at')->lockForUpdate()->first(['id']);
             abort_unless($company, 422, 'Select an active legal entity.');
             $locked = SalesBookingAttribution::query()->lockForUpdate()->findOrFail($attribution->id);
-            abort_unless((string) $locked->company_id === (string) $company->id, 409,
+            abort_unless(\App\Services\CompanyIdScope::sameCompanyId((string) ((string) $locked->company_id), (string) ((string) $company->id)), 409,
                 'The attribution legal entity changed before its owner could be corrected.');
             $existing = DB::table('sales_booking_attribution_events')
                 ->where('attribution_id', $locked->id)
@@ -403,7 +406,7 @@ class BookingAttributionMutationService
             if ($toProfile && ! $target) {
                 throw new RuntimeException('The target Sales Profile no longer exists.');
             }
-            if ($target && $target->company_id !== $locked->company_id) {
+            if ($target && !\App\Services\CompanyIdScope::sameCompanyId((string) ($target->company_id), (string) ($locked->company_id))) {
                 throw new RuntimeException('The target Sales Profile must belong to the attribution legal entity.');
             }
             $requiredEligibility = $field === 'acquisition_sales_profile_id' ? 'acquisition' : 'collection';
@@ -520,9 +523,9 @@ class BookingAttributionMutationService
         }
 
         return $acquisitionProfile
-            && $acquisitionProfile->company_id === $attribution->company_id
+            && \App\Services\CompanyIdScope::sameCompanyId((string) ($acquisitionProfile->company_id), (string) ($attribution->company_id))
             && $collectionProfile
-            && $collectionProfile->company_id === $attribution->company_id
+            && \App\Services\CompanyIdScope::sameCompanyId((string) ($collectionProfile->company_id), (string) ($attribution->company_id))
                 ? 'active'
                 : 'held';
     }

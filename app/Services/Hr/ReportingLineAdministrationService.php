@@ -231,7 +231,7 @@ class ReportingLineAdministrationService
         if (! $event) {
             return null;
         }
-        abort_unless($event->company_id === $companyId, 403, 'Reporting-line replay is outside your legal entity.');
+        abort_unless(\App\Services\CompanyIdScope::sameCompanyId((string) ($event->company_id), (string) ($companyId)), 403, 'Reporting-line replay is outside your legal entity.');
         abort_unless(hash_equals($event->request_checksum, $checksum), 409, 'Reporting-line idempotency key was reused with different facts.');
 
         return is_array($event->after_snapshot) ? $event->after_snapshot : json_decode((string) $event->after_snapshot, true, 512, JSON_THROW_ON_ERROR);

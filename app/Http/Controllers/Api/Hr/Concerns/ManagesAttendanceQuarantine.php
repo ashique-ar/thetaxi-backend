@@ -63,7 +63,7 @@ trait ManagesAttendanceQuarantine
         $companyId = $item->company_id;
         abort_unless($item->status === 'open', 409, 'Only open quarantine items can be resolved.');
         $event = DB::table('hr_attendance_raw_events')->where('id', $item->raw_event_id)->first();
-        abort_unless($event && $event->company_id === $companyId, 409, 'Quarantine and raw event legal entities must match.');
+        abort_unless($event && \App\Services\CompanyIdScope::sameCompanyId((string) ($event->company_id), (string) ($companyId)), 409, 'Quarantine and raw event legal entities must match.');
         abort_unless(! $event->device_id || DB::table('hr_attendance_devices')->where('id', $event->device_id)->where(fn ($_companyIdScope) => \App\Services\CompanyIdScope::constrain($_companyIdScope, 'company_id', $companyId))->exists(), 409, 'The event device must belong to the quarantine legal entity.');
 
         $occurred = CarbonImmutable::parse($event->occurred_at)->toDateString();
@@ -125,10 +125,10 @@ trait ManagesAttendanceQuarantine
                 ->where(fn ($_companyIdScope) => \App\Services\CompanyIdScope::constrain($_companyIdScope, 'company_id', $item->company_id))->lockForUpdate()->first();
             abort_unless($mapping, 404);
             $event = DB::table('hr_attendance_raw_events')->where('id', $item->raw_event_id)->first();
-            abort_unless($event && $event->company_id === $item->company_id && $mapping && $mapping->company_id === $item->company_id, 422, 'Event, mapping, and quarantine legal entities must match.');
+            abort_unless($event && \App\Services\CompanyIdScope::sameCompanyId((string) ($event->company_id), (string) ($item->company_id)) && $mapping && \App\Services\CompanyIdScope::sameCompanyId((string) ($mapping->company_id), (string) ($item->company_id)), 422, 'Event, mapping, and quarantine legal entities must match.');
             abort_unless(! $event->device_id || DB::table('hr_attendance_devices')->where('id', $event->device_id)->where(fn ($_companyIdScope) => \App\Services\CompanyIdScope::constrain($_companyIdScope, 'company_id', $item->company_id))->exists(), 422, 'The event device must belong to the quarantine legal entity.');
             $staff = DB::table('staff')->where('id', $mapping->staff_id)->lockForUpdate()->first();
-            abort_unless($staff && $staff->company_id === $item->company_id, 422, 'The mapping Staff member must belong to the quarantine legal entity.');
+            abort_unless($staff && \App\Services\CompanyIdScope::sameCompanyId((string) ($staff->company_id), (string) ($item->company_id)), 422, 'The mapping Staff member must belong to the quarantine legal entity.');
             abort_unless($mapping->enrollment_status === 'verified', 422, 'Only a verified mapping can resolve quarantined evidence.');
             abort_unless($mapping->provider_person_id === $event->provider_person_id, 422, 'The provider person does not match the selected mapping.');
             abort_unless($mapping->device_id === null || $mapping->device_id === $event->device_id, 422, 'The event device does not match the selected mapping.');

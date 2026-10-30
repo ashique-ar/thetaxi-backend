@@ -6,14 +6,14 @@ class LifecycleController extends Controller{
  {
      $companyId = $this->actorCompanyId($r);
      $staff = $access->scope(Staff::query(), $r->user())->where(fn ($_companyIdScope) => \App\Services\CompanyIdScope::constrain($_companyIdScope, 'company_id', $companyId))->select('id');
-     $rows = DB::table('hr_lifecycle_cases as c')->leftJoin('staff as s', fn ($join) => $join->on('s.id', '=', 'c.staff_id')->on('s.company_id', '=', 'c.company_id'))
+     $rows = DB::table('hr_lifecycle_cases as c')->leftJoin('staff as s', fn ($join) => $join->on('s.id', '=', 'c.staff_id')->where(fn ($sameCompany) => \App\Services\CompanyIdScope::sameCompany($sameCompany, 's.company_id', 'c.company_id')))
          ->leftJoin('users as u', 'u.id', '=', 's.user_id')->where(fn ($_companyIdScope) => \App\Services\CompanyIdScope::constrain($_companyIdScope, 'c.company_id', $companyId))
          ->where(function ($visibility) use ($staff) {
              $visibility->whereIn('c.staff_id', $staff)
                  ->orWhere(function ($preHire) {
                      $preHire->whereNotNull('c.application_id')->whereExists(fn ($application) => $application
                          ->selectRaw('1')->from('hr_candidate_applications as a')
-                         ->whereColumn('a.id', 'c.application_id')->whereColumn('a.company_id', 'c.company_id'));
+                         ->whereColumn('a.id', 'c.application_id')->where(fn ($sameCompany) => \App\Services\CompanyIdScope::sameCompany($sameCompany, 'a.company_id', 'c.company_id')));
                  });
          })
          ->select(['c.id', 'c.company_id', 'c.staff_id', 'c.application_id', 'c.template_id', 'c.case_type', 'c.status', 'c.effective_date', 'c.case_snapshot', 'c.opened_by', 'c.closed_at', 'c.closed_by', 'c.created_at', 'c.updated_at', 's.code as staff_code', 'u.first_name as staff_first_name', 'u.last_name as staff_last_name'])
@@ -38,7 +38,7 @@ class LifecycleController extends Controller{
      $companyId = $this->actorCompanyId($r);
      $rows = DB::table('hr_exit_clearance_items as item')
          ->join('hr_exit_cases as exit_case', 'exit_case.id', '=', 'item.exit_case_id')
-         ->leftJoin('staff', fn ($join) => $join->on('staff.id', '=', 'exit_case.staff_id')->on('staff.company_id', '=', 'exit_case.company_id'))
+         ->leftJoin('staff', fn ($join) => $join->on('staff.id', '=', 'exit_case.staff_id')->where(fn ($sameCompany) => \App\Services\CompanyIdScope::sameCompany($sameCompany, 'staff.company_id', 'exit_case.company_id')))
          ->leftJoin('users', 'users.id', '=', 'staff.user_id')
          ->where(fn ($_companyIdScope) => \App\Services\CompanyIdScope::constrain($_companyIdScope, 'exit_case.company_id', $companyId))
          ->select(['item.id', 'item.exit_case_id', 'item.clearance_type', 'item.title', 'item.status', 'item.completed_at', 'staff.code as staff_code', 'users.first_name', 'users.last_name'])
@@ -51,7 +51,7 @@ class LifecycleController extends Controller{
      $companyId = $this->actorCompanyId($r);
      $rows = DB::table('hr_probation_cases as probation')
          ->join('hr_employment_spells as spell', 'spell.id', '=', 'probation.employment_spell_id')
-         ->join('staff', fn ($join) => $join->on('staff.id', '=', 'probation.staff_id')->on('staff.company_id', '=', 'spell.company_id'))
+         ->join('staff', fn ($join) => $join->on('staff.id', '=', 'probation.staff_id')->where(fn ($sameCompany) => \App\Services\CompanyIdScope::sameCompany($sameCompany, 'staff.company_id', 'spell.company_id')))
          ->leftJoin('users', 'users.id', '=', 'staff.user_id')
          ->where(fn ($_companyIdScope) => \App\Services\CompanyIdScope::constrain($_companyIdScope, 'spell.company_id', $companyId))
          ->whereColumn('spell.staff_id', 'probation.staff_id')

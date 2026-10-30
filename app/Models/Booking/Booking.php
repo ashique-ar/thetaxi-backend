@@ -1524,6 +1524,7 @@ class Booking extends BaseModel
         parent::boot();
 
         static::creating(function ($booking) {
+            $booking->company_id ??= app(\App\Services\BookingCompanyResolver::class)->resolve($booking);
             $referenceNumbers = app(\App\Services\CorporateReferenceNumberService::class);
             $corporateId = $booking->is_corporate_booking ? $booking->corporate_account_id : null;
             if (empty($booking->booking_number)) {

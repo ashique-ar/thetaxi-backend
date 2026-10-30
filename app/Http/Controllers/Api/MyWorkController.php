@@ -31,16 +31,6 @@ class MyWorkController extends Controller
         $employeeWorkload = [];
         $activeBookingStatuses = array_merge(['inquiry', 'inquiry_qualified'], BookingLifecycleStatus::activeOperationalValues());
 
-        if ($request->user()->can('inquiries.view') && $request->user()->can('inquiries.edit')
-            && $request->user()->can('companies.view') && $request->user()->can('companies.edit')) {
-            $unscopedInquiries = (int) DB::table('inquiries')->whereNull('company_id')->whereNull('deleted_at')->count();
-            if ($unscopedInquiries > 0) {
-                $queues[] = ['group' => 'assignment', 'title' => 'Older inquiries need a business',
-                    'help' => 'Review the request and choose which business should manage it.', 'icon' => 'rule_folder',
-                    'link' => '/communication/inquiries/review-unscoped', 'count' => $unscopedInquiries];
-            }
-        }
-
         if ($request->user()->can('bookings.view') && !Schema::hasColumn('bookings', 'responsible_user_id')) {
             return response()->json([
                 'status' => 'error',
@@ -67,6 +57,71 @@ class MyWorkController extends Controller
             }
         }
 
+        if ($request->user()->can('bookings.view')
+            && Schema::hasTable('booking_dispatches')
+            && Schema::hasColumn('booking_items', 'workflow_config_snapshot')
+            && Schema::hasColumn('booking_dispatches', 'booking_item_id')) {
+            $expectedReturn = DB::table('booking_dispatches as due_dispatch')
+                ->select('due_dispatch.expected_return_at')
+                ->whereColumn('due_dispatch.booking_id', 'booking.id')
+                ->whereColumn('due_dispatch.booking_item_id', 'item.id')
+                ->whereIn('due_dispatch.dispatch_status', ['dispatched', 'in_progress'])
+                ->whereNull('due_dispatch.actual_return_at')
+                ->whereNotNull('due_dispatch.expected_return_at')
+                ->where('due_dispatch.expected_return_at', '<=', now('UTC'))
+                ->orderBy('due_dispatch.expected_return_at')->limit(1);
+            $dueReturns = DB::table('booking_items as item')
+                ->join('bookings as booking', 'booking.id', '=', 'item.booking_id')
+                ->leftJoin('service_types as return_service', 'return_service.id', '=', 'item.service_type_id')
+                ->leftJoin('customers as return_customer', function ($join): void {
+                    $join->on('return_customer.id', '=', 'booking.customer_id')->whereNull('return_customer.deleted_at');
+                })
+                ->leftJoin('users as return_customer_user', function ($join): void {
+                    $join->on('return_customer_user.id', '=', 'return_customer.user_id')->whereNull('return_customer_user.deleted_at');
+                })
+                ->whereNull('booking.deleted_at')->whereNull('item.deleted_at')->whereNull('item.completed_at')
+                ->whereNull('item.returned_at')->where('booking.responsible_user_id', $userId)
+                ->whereNotIn('booking.status', ['completed', 'cancelled', 'canceled', 'booking_cancelled', 'booking_rejected', 'rejected'])
+                ->where(fn ($status) => $status->whereNull('item.status')->orWhereNotIn('item.status', ['completed', 'cancelled', 'canceled', 'booking_cancelled', 'booking_rejected', 'rejected']))
+                ->whereExists(fn ($dispatch) => $dispatch->selectRaw('1')->from('booking_dispatches as due_dispatch')
+                    ->whereColumn('due_dispatch.booking_id', 'booking.id')->whereColumn('due_dispatch.booking_item_id', 'item.id')
+                    ->whereIn('due_dispatch.dispatch_status', ['dispatched', 'in_progress'])->whereNull('due_dispatch.actual_return_at')
+                    ->whereNotNull('due_dispatch.expected_return_at')->where('due_dispatch.expected_return_at', '<=', now('UTC')))
+                ->select(['item.id', 'item.workflow_config_snapshot', 'item.service_type_id', 'booking.booking_number', 'return_service.workflow_config'])
+                ->selectSub($expectedReturn, 'due_return_at')
+                ->selectRaw("NULLIF(CONCAT_WS(' ', return_customer_user.first_name, return_customer_user.last_name), '') as customer_name");
+            CompanyBookingScope::constrain($dueReturns, 'booking', $companyId);
+
+            $returnStageResolver = app(\App\Services\BookingWorkflowSettingsResolver::class);
+            $returnCount = 0;
+            foreach ($dueReturns->orderBy('due_return_at')->orderBy('item.id')->cursor() as $row) {
+                $snapshot = is_array($row->workflow_config_snapshot)
+                    ? $row->workflow_config_snapshot
+                    : (json_decode((string) $row->workflow_config_snapshot, true) ?: null);
+                $serviceConfig = is_array($row->workflow_config)
+                    ? $row->workflow_config
+                    : (json_decode((string) $row->workflow_config, true) ?: null);
+                $workflowConfig = (($snapshot['policy_version'] ?? null) === 1)
+                    ? $snapshot
+                    : array_merge($serviceConfig ?? [], $snapshot ?? []);
+                if (!$returnStageResolver->resolve($workflowConfig, $companyId)['enable_return_stage']) continue;
+
+                $returnCount++;
+                if ($returnCount <= 4) {
+                    $title = trim((string) $row->customer_name) ?: ($row->booking_number ?: 'Return due');
+                    $attention[] = ['id' => 'return-due:'.$row->id, 'group' => 'mine', 'type' => 'Return follow-up', 'title' => $title,
+                        'detail' => implode(' · ', array_filter([$row->booking_number ? 'Ref '.$row->booking_number : null, 'Return is overdue'])),
+                        'when' => $row->due_return_at, 'link' => '/bookings/operations/return-inspection?queue=return_due',
+                        'sort_at' => strtotime((string) $row->due_return_at) ?: PHP_INT_MAX];
+                }
+            }
+            if ($returnCount > 0) {
+                $queues[] = ['group' => 'mine', 'title' => 'Returns to follow up',
+                    'help' => 'Contact the customer and coordinate overdue returns assigned to you.', 'icon' => 'assignment_return',
+                    'link' => '/bookings/operations/return-inspection?queue=return_due', 'count' => $returnCount];
+            }
+        }
+
         if ($request->user()->can('bookings.view') && $request->user()->can('bookings.assign')) {
             $employeeWorkload = app(BookingResponsibilityService::class)
                 ->eligibleEmployeesWithOpenBookingCounts($companyId);
@@ -77,6 +132,36 @@ class MyWorkController extends Controller
             CompanyBookingScope::constrain($unassigned, 'booking', $companyId);
             $queues[] = ['group' => 'assignment', 'title' => 'Bookings to assign', 'help' => 'New or active bookings waiting for an employee', 'icon' => 'person_add',
                 'link' => '/bookings/list?queue=needs_responsible_owner', 'count' => (int) $unassigned->distinct('booking.id')->count('booking.id')];
+
+            $paymentsAwaitingConfirmation = DB::table('bookings as booking')->whereNull('booking.deleted_at')
+                ->where('booking.booking_origin', 'website')->where('booking.payment_method', 'online')
+                ->whereIn('booking.payment_type', ['full', 'advance'])->where('booking.payment_status', 'pending')
+                ->whereIn('booking.status', ['pending', 'payment_processing']);
+            CompanyBookingScope::constrain($paymentsAwaitingConfirmation, 'booking', $companyId);
+            $paymentCount = (int) $paymentsAwaitingConfirmation->distinct('booking.id')->count('booking.id');
+            if ($paymentCount > 0) {
+                $queues[] = ['group' => 'assignment', 'title' => 'Website payments to follow up',
+                    'help' => 'Online bookings still waiting for payment confirmation. Check the payment and contact the customer before releasing the vehicle.',
+                    'icon' => 'payments', 'link' => '/bookings/list?queue=payment_confirmation_pending', 'count' => $paymentCount];
+            }
+
+            if (Schema::hasTable('booking_extension_requests')) {
+                $extensionRequests = DB::table('booking_extension_requests')->where('company_id', $companyId)
+                    ->where('status', 'pending')->whereNull('deleted_at');
+                $extensionCount = (int) (clone $extensionRequests)->count();
+                if ($extensionCount > 0) {
+                    $queues[] = ['group' => 'assignment', 'title' => 'Rental extensions to review',
+                        'help' => 'Check return dates and availability before approving a rental extension', 'icon' => 'more_time',
+                        'link' => '/bookings/operations/ongoing-hires?queue=extensions', 'count' => $extensionCount];
+                    foreach ((clone $extensionRequests)->orderBy('created_at')->limit(4)->get(['id', 'booking_id', 'booking_item_id', 'requested_end_at', 'created_at']) as $row) {
+                        $attention[] = ['id' => 'booking-extension:'.$row->id, 'group' => 'assignment', 'type' => 'Rental extension',
+                            'title' => 'Return date change needs review', 'detail' => 'Check availability before confirming the new date',
+                            'when' => $row->created_at, 'link' => '/bookings/operations/ongoing-hires?queue=extensions',
+                            'sort_at' => strtotime((string) $row->created_at) ?: PHP_INT_MAX];
+                    }
+                }
+            }
+
             $assignmentTargetMinutes = app(SalesPolicySettingsService::class)->bookingAssignmentTargetMinutes($companyId);
             if ($assignmentTargetMinutes !== null) {
                 $pastTarget = DB::table('bookings as booking')->whereNull('booking.deleted_at')
@@ -103,7 +188,7 @@ class MyWorkController extends Controller
         }
 
         if ($request->user()->can('inquiries.view')) {
-            $queues[] = ['group' => 'mine', 'title' => 'My open inquiries', 'help' => 'Website and Respond.io requests waiting for action', 'icon' => 'chat',
+            $queues[] = ['group' => 'mine', 'title' => 'My open inquiries', 'help' => 'Customer requests assigned to you that need action', 'icon' => 'chat',
                 'link' => '/communication/inquiries?mine_only=true&actionable_only=true', 'count' => (int) DB::table('inquiries')
                     ->where(fn ($_companyIdScope) => \App\Services\CompanyIdScope::constrain($_companyIdScope, 'company_id', $companyId))->whereNull('deleted_at')->where('assigned_to', $userId)
                     ->whereIn('status', ['open', 'in_progress'])->count()];
@@ -118,10 +203,10 @@ class MyWorkController extends Controller
             $responseTargetMinutes = app(SalesPolicySettingsService::class)->inquiryFirstResponseMinutes($companyId);
             if ($responseTargetMinutes !== null) {
                 $hasUnconfirmedEmail = static fn ($query) => $query->selectRaw('1')->from('inquiry_outbound_responses as email_attempt')
-                    ->whereColumn('email_attempt.company_id', 'inquiries.company_id')->whereColumn('email_attempt.inquiry_id', 'inquiries.id')
+                    ->where(fn ($sameCompany) => \App\Services\CompanyIdScope::sameCompany($sameCompany, 'email_attempt.company_id', 'inquiries.company_id'))->whereColumn('email_attempt.inquiry_id', 'inquiries.id')
                     ->whereIn('email_attempt.status', ['sending', 'uncertain']);
                 $hasUnconfirmedRespondIo = static fn ($query) => $query->selectRaw('1')->from('integration_webhook_events as reply_attempt')
-                    ->whereColumn('reply_attempt.company_id', 'inquiries.company_id')->whereColumn('reply_attempt.linked_inquiry_id', 'inquiries.id')
+                    ->where(fn ($sameCompany) => \App\Services\CompanyIdScope::sameCompany($sameCompany, 'reply_attempt.company_id', 'inquiries.company_id'))->whereColumn('reply_attempt.linked_inquiry_id', 'inquiries.id')
                     ->whereIn('reply_attempt.outbound_status', ['sending', 'uncertain']);
                 $overdueFirstResponses = DB::table('inquiries')->where(fn ($_companyIdScope) => \App\Services\CompanyIdScope::constrain($_companyIdScope, 'company_id', $companyId))->whereNull('deleted_at')
                     ->whereIn('status', ['open', 'in_progress'])->whereNull('first_response_sent_at');
@@ -131,6 +216,21 @@ class MyWorkController extends Controller
                 $queues[] = ['group' => 'mine', 'title' => 'First replies overdue', 'help' => 'Open requests that passed the approved first-response target', 'icon' => 'schedule',
                     'link' => '/communication/inquiries?mine_only=true&actionable_only=true&first_response_state=overdue',
                     'count' => (int) $myOverdueResponses->count()];
+
+                $hasSavedResponseDeadline = Schema::hasColumn('inquiries', 'first_response_due_at');
+                $overdueResponseColumns = ['id', 'name', 'subject', 'created_at'];
+                if ($hasSavedResponseDeadline) $overdueResponseColumns[] = 'first_response_due_at';
+                foreach ((clone $myOverdueResponses)
+                    ->orderBy($hasSavedResponseDeadline ? 'first_response_due_at' : 'created_at')
+                    ->limit(5)->get($overdueResponseColumns) as $row) {
+                    $attention = array_values(array_filter($attention, fn ($item) => $item['id'] !== 'inquiry:'.$row->id));
+                    $dueAt = $row->first_response_due_at ?? $row->created_at;
+                    $attention[] = ['id' => 'inquiry-overdue:'.$row->id, 'group' => 'mine', 'type' => 'Reply overdue',
+                        'title' => $row->subject ?: 'Customer request',
+                        'detail' => implode(' · ', array_filter([$row->name ?: 'Customer name not recorded', 'Reply is overdue'])),
+                        'when' => $dueAt, 'link' => '/communication/inquiries/'.$row->id,
+                        'sort_at' => strtotime((string) $dueAt) ?: PHP_INT_MAX];
+                }
 
                 if ($request->user()->can('inquiries.edit')) {
                     $eligibleInquiryAssignees = app(InquiryAssignmentService::class)->eligibleAssigneeIds($companyId);
@@ -278,7 +378,8 @@ class MyWorkController extends Controller
         }
 
         if ($request->user()->can('sales.crm.view')) {
-            $workdayEndUtc = now(config('app.timezone'))->endOfDay()->utc();
+            $businessTimezone = app(SalesPolicySettingsService::class)->businessTimezone($companyId) ?: config('app.timezone');
+            $workdayEndUtc = now($businessTimezone)->endOfDay()->utc();
             $profile = DB::table('sales_profiles as profile')->join('staff as owner_staff', 'owner_staff.id', '=', 'profile.staff_id')
                 ->join('users as owner_user', 'owner_user.id', '=', 'owner_staff.user_id')
                 ->where(fn ($_companyIdScope) => \App\Services\CompanyIdScope::constrain($_companyIdScope, 'profile.company_id', $companyId))->where('profile.status', 'active')->whereNull('profile.deleted_at')

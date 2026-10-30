@@ -64,7 +64,7 @@ class WorkforceController extends Controller
         ]);
         if (empty($d['company_id'])) return response()->json(['status' => 'success', 'data' => []]);
         $actorCompanyId = app(StaffAccessService::class)->currentActorStaff($r->user())->company_id;
-        abort_unless($actorCompanyId === $d['company_id'], 403, 'Leave configuration is outside your legal entity.');
+        abort_unless(\App\Services\CompanyIdScope::sameCompanyId((string) ($actorCompanyId), (string) ($d['company_id'])), 403, 'Leave configuration is outside your legal entity.');
         $companyId = $this->company($r, $d['company_id']);
         $q = DB::table('hr_leave_types')->where(fn ($_companyIdScope) => \App\Services\CompanyIdScope::constrain($_companyIdScope, 'company_id', $companyId))
             ->when($d['status'] ?? null, fn ($types, $status) => $types->where('status', $status));
@@ -213,7 +213,7 @@ class WorkforceController extends Controller
         ]);
         if (! empty($data['company_id'])) {
             $actorCompanyId = $access->currentActorStaff($r->user())->company_id;
-            abort_unless($actorCompanyId === $data['company_id'], 403, 'Workforce data is outside your legal entity.');
+            abort_unless(\App\Services\CompanyIdScope::sameCompanyId((string) ($actorCompanyId), (string) ($data['company_id'])), 403, 'Workforce data is outside your legal entity.');
         }
         $companyId = $this->company($r, $data['company_id'] ?? null);
         abort_unless(DB::table('companies')->where('id', $companyId)->whereNull('deleted_at')->exists(), 422, 'Select an available legal entity.');
@@ -245,10 +245,10 @@ class WorkforceController extends Controller
         $staff = $access->scope(Staff::query(), $r->user())->select('id');
         $q = DB::table('hr_leave_requests as request')->join('hr_leave_types as type', 'type.id', '=', 'request.leave_type_id')
             ->whereIn('request.staff_id', $staff)
-            ->whereExists(fn ($scope) => $scope->selectRaw('1')->from('staff')->whereColumn('staff.id', 'request.staff_id')->whereColumn('staff.company_id', 'request.company_id'))
-            ->whereColumn('type.company_id', 'request.company_id')
+            ->whereExists(fn ($scope) => $scope->selectRaw('1')->from('staff')->whereColumn('staff.id', 'request.staff_id')->where(fn ($sameCompany) => \App\Services\CompanyIdScope::sameCompany($sameCompany, 'staff.company_id', 'request.company_id')))
+            ->where(fn ($sameCompany) => \App\Services\CompanyIdScope::sameCompany($sameCompany, 'type.company_id', 'request.company_id'))
             ->whereExists(fn ($policy) => $policy->selectRaw('1')->from('hr_leave_policies')
-                ->whereColumn('hr_leave_policies.id', 'request.policy_id')->whereColumn('hr_leave_policies.company_id', 'request.company_id')
+                ->whereColumn('hr_leave_policies.id', 'request.policy_id')->where(fn ($sameCompany) => \App\Services\CompanyIdScope::sameCompany($sameCompany, 'hr_leave_policies.company_id', 'request.company_id'))
                 ->whereColumn('hr_leave_policies.leave_type_id', 'request.leave_type_id'))
             ->select(['request.id', 'type.name as leave_type_name', 'request.start_date', 'request.end_date', 'request.requested_minutes', 'request.status', 'request.requested_by', 'request.actual_return_date', 'request.recalled_at'])
             ->when($r->status, fn ($query, $status) => $query->where('request.status', $status))->latest('request.created_at');
@@ -272,8 +272,8 @@ class WorkforceController extends Controller
         $asOf = $r->date('as_of')?->toDateString() ?? now()->toDateString();
         $rows = DB::table('hr_leave_balance_accounts as account')->join('hr_leave_types as type', 'type.id', '=', 'account.leave_type_id')
             ->whereIn('account.staff_id', $staff)
-            ->whereExists(fn ($scope) => $scope->selectRaw('1')->from('staff')->whereColumn('staff.id', 'account.staff_id')->whereColumn('staff.company_id', 'account.company_id'))
-            ->whereColumn('type.company_id', 'account.company_id')
+            ->whereExists(fn ($scope) => $scope->selectRaw('1')->from('staff')->whereColumn('staff.id', 'account.staff_id')->where(fn ($sameCompany) => \App\Services\CompanyIdScope::sameCompany($sameCompany, 'staff.company_id', 'account.company_id')))
+            ->where(fn ($sameCompany) => \App\Services\CompanyIdScope::sameCompany($sameCompany, 'type.company_id', 'account.company_id'))
             ->select(['account.id', 'account.staff_id', 'type.code', 'type.name', 'account.unit'])->get()
             ->map(fn ($row) => (array) $row + ['balance_minutes' => $service->balance($row->id, $asOf), 'as_of' => $asOf]);
         return response()->json(['status' => 'success', 'data' => $rows]);
@@ -284,10 +284,10 @@ class WorkforceController extends Controller
         $staff = $access->scope(Staff::query(), $r->user())->select('id');
         $rows = DB::table('hr_leave_requests as request')->join('hr_leave_types as type', 'type.id', '=', 'request.leave_type_id')
             ->whereIn('request.staff_id', $staff)->where('request.status', 'approved')
-            ->whereExists(fn ($scope) => $scope->selectRaw('1')->from('staff')->whereColumn('staff.id', 'request.staff_id')->whereColumn('staff.company_id', 'request.company_id'))
-            ->whereColumn('type.company_id', 'request.company_id')
+            ->whereExists(fn ($scope) => $scope->selectRaw('1')->from('staff')->whereColumn('staff.id', 'request.staff_id')->where(fn ($sameCompany) => \App\Services\CompanyIdScope::sameCompany($sameCompany, 'staff.company_id', 'request.company_id')))
+            ->where(fn ($sameCompany) => \App\Services\CompanyIdScope::sameCompany($sameCompany, 'type.company_id', 'request.company_id'))
             ->whereExists(fn ($policy) => $policy->selectRaw('1')->from('hr_leave_policies')
-                ->whereColumn('hr_leave_policies.id', 'request.policy_id')->whereColumn('hr_leave_policies.company_id', 'request.company_id')
+                ->whereColumn('hr_leave_policies.id', 'request.policy_id')->where(fn ($sameCompany) => \App\Services\CompanyIdScope::sameCompany($sameCompany, 'hr_leave_policies.company_id', 'request.company_id'))
                 ->whereColumn('hr_leave_policies.leave_type_id', 'request.leave_type_id'))
             ->whereDate('request.start_date', '<=', $d['to'])->whereDate('request.end_date', '>=', $d['from'])
             ->select(['request.id', 'request.staff_id', 'request.start_date', 'request.end_date', 'type.name as absence_type', 'type.medical_confidential'])
@@ -300,7 +300,7 @@ class WorkforceController extends Controller
         $d['company_id'] = $this->company($r, $d['company_id'] ?? null);
         $staff = Staff::query()->findOrFail($d['staff_id']);
         $access->authorize($r->user(), $staff, 'view');
-        abort_unless($staff->company_id === $d['company_id'], 422, 'Staff and leave legal entities must match.');
+        abort_unless(\App\Services\CompanyIdScope::sameCompanyId((string) ($staff->company_id), (string) ($d['company_id'])), 422, 'Staff and leave legal entities must match.');
         abort_if($d['unit'] === 'hour' && !isset($d['requested_minutes']), 422, 'Hourly leave requires requested minutes.');
         $row = $service->submit($d, $r->user()->id);
         $projection->leave($row, $r->user()->id);
@@ -462,9 +462,9 @@ class WorkforceController extends Controller
     {
         $staff = $access->scope(Staff::query(), $r->user())->select('id');
         $q = DB::table('hr_work_requests')->whereIn('staff_id', $staff)
-            ->whereExists(fn ($scope) => $scope->selectRaw('1')->from('staff')->whereColumn('staff.id', 'hr_work_requests.staff_id')->whereColumn('staff.company_id', 'hr_work_requests.company_id'))
+            ->whereExists(fn ($scope) => $scope->selectRaw('1')->from('staff')->whereColumn('staff.id', 'hr_work_requests.staff_id')->where(fn ($sameCompany) => \App\Services\CompanyIdScope::sameCompany($sameCompany, 'staff.company_id', 'hr_work_requests.company_id')))
             ->whereExists(fn ($policy) => $policy->selectRaw('1')->from('hr_work_request_policies')
-                ->whereColumn('hr_work_request_policies.id', 'hr_work_requests.policy_id')->whereColumn('hr_work_request_policies.company_id', 'hr_work_requests.company_id')
+                ->whereColumn('hr_work_request_policies.id', 'hr_work_requests.policy_id')->where(fn ($sameCompany) => \App\Services\CompanyIdScope::sameCompany($sameCompany, 'hr_work_request_policies.company_id', 'hr_work_requests.company_id'))
                 ->whereColumn('hr_work_request_policies.request_kind', 'hr_work_requests.request_kind'))
             ->select(['id', 'request_kind', 'starts_at', 'ends_at', 'requested_minutes', 'settlement_kind', 'status', 'requested_by'])
             ->when($r->request_kind, fn ($query, $kind) => $query->where('request_kind', $kind))
@@ -488,7 +488,7 @@ class WorkforceController extends Controller
         $d['company_id'] = $this->company($r, $d['company_id'] ?? null);
         $staff = Staff::query()->findOrFail($d['staff_id']);
         $access->authorize($r->user(), $staff, 'view');
-        abort_unless($staff->company_id === $d['company_id'], 422, 'Staff and request legal entities must match.');
+        abort_unless(\App\Services\CompanyIdScope::sameCompanyId((string) ($staff->company_id), (string) ($d['company_id'])), 422, 'Staff and request legal entities must match.');
         $row = $service->submitWorkRequest($d, $r->user()->id);
         $projection->work($row, $r->user()->id);
         return response()->json(['status' => 'success', 'data' => $row], 201);
@@ -545,7 +545,7 @@ class WorkforceController extends Controller
         $rows = DB::table('hr_timesheets as timesheet')->whereIn('timesheet.staff_id', $staff)
             ->whereExists(fn ($query) => $query->selectRaw('1')->from('staff')
                 ->whereColumn('staff.id', 'timesheet.staff_id')
-                ->whereColumn('staff.company_id', 'timesheet.company_id'))
+                ->where(fn ($sameCompany) => \App\Services\CompanyIdScope::sameCompany($sameCompany, 'staff.company_id', 'timesheet.company_id')))
             ->select(['timesheet.id', 'timesheet.submitted_by', 'timesheet.period_start', 'timesheet.period_end', 'timesheet.status', 'timesheet.version', 'timesheet.submitted_at'])
             ->latest('timesheet.period_start')->paginate($this->paginationSize($r, 50));
         $rows->getCollection()->transform(fn ($row) => [
@@ -566,7 +566,7 @@ class WorkforceController extends Controller
         $d['company_id'] = $this->company($r, $d['company_id'] ?? null);
         $staff = Staff::query()->findOrFail($d['staff_id']);
         $access->authorize($r->user(), $staff, 'view');
-        abort_unless($staff->company_id === $d['company_id'], 422, 'Staff and timesheet legal entities must match.');
+        abort_unless(\App\Services\CompanyIdScope::sameCompanyId((string) ($staff->company_id), (string) ($d['company_id'])), 422, 'Staff and timesheet legal entities must match.');
         $row = $service->saveTimesheet($d, $r->user()->id);
         $projection->timesheet($row, $r->user()->id);
         return response()->json(['status' => 'success', 'data' => ['id' => $row->id, 'status' => $row->status, 'version' => $row->version]], 201);
@@ -680,10 +680,11 @@ class WorkforceController extends Controller
             abort(403, 'Select an active Staff context.');
         }
 
-        return DB::table('companies')->whereIn('id', Staff::query()->where('user_id', $r->user()->id)
-            ->whereIn('id', $contexts->pluck('context_id'))->whereNotNull('company_id')
+        $staffCompanyIds = Staff::query()->where('user_id', $r->user()->id)
+            ->whereIn('id', $contexts->pluck('context_id'))
             ->where(fn ($q) => $q->whereNull('employment_ended_at')->orWhere('employment_ended_at', '>', now()))
-            ->select('company_id'))
+            ->select('company_id');
+        return DB::table('companies')->where(fn ($scope) => \App\Services\CompanyIdScope::constrainIn($scope, 'id', $staffCompanyIds))
             ->where('is_active', true)->whereNull('deleted_at')->pluck('id');
     }
 

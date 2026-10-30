@@ -11,7 +11,7 @@ class BookingCommunicationActivityService
     public function record(array $data): BookingActivity
     {
         $defaultCompanyId = app(SingleCompanyScope::class)->defaultCompany()?->id;
-        $companyId = array_key_exists('company_id', $data) ? $data['company_id'] : $defaultCompanyId;
+        $companyId = $data['company_id'] ?? $defaultCompanyId;
         if (! $defaultCompanyId || $companyId !== $defaultCompanyId) {
             throw new \RuntimeException('Booking communication activity requires the active default company.');
         }
@@ -43,7 +43,7 @@ class BookingCommunicationActivityService
                 'event_at' => $data['event_at'] ?? now(),
             ]
         );
-        if ($activity->company_id !== $companyId) {
+        if (!\App\Services\CompanyIdScope::sameCompanyId((string) ($activity->company_id), (string) ($companyId))) {
             throw new \RuntimeException('This booking communication activity key belongs to another company.');
         }
 

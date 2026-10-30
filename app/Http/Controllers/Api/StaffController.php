@@ -168,7 +168,7 @@ class StaffController extends Controller
         abort_if(empty($data['company_id']), 422, 'Select an active legal entity or configure an active default company.');
         if (! $request->user()->can('staff.create-all')) {
             $actorStaff = $this->accessService->currentActorStaff($request->user());
-            abort_unless($actorStaff->company_id === $data['company_id'], 403, 'Creating Staff outside your legal entity requires Staff create-all permission.');
+            abort_unless(\App\Services\CompanyIdScope::sameCompanyId((string) ($actorStaff->company_id), (string) ($data['company_id'])), 403, 'Creating Staff outside your legal entity requires Staff create-all permission.');
         }
         if ($dob = SriLankanNic::dateOfBirth($data['nic'] ?? null)) $data['dob'] = $dob;
         $data['created_user_id'] = $request->user()->id;
@@ -243,7 +243,7 @@ class StaffController extends Controller
                 unset($data['company_id']);
             }
         }
-        if (array_key_exists('company_id', $data) && (string) $data['company_id'] !== (string) $staff->company_id) {
+        if (array_key_exists('company_id', $data) && !\App\Services\CompanyIdScope::sameCompanyId((string) ((string) $data['company_id']), (string) ((string) $staff->company_id))) {
             abort_unless($request->user()->can('staff.edit-all'), 403, 'Changing a Staff legal entity requires Staff edit-all permission.');
         }
         if ($dob = SriLankanNic::dateOfBirth($data['nic'] ?? null)) $data['dob'] = $dob;

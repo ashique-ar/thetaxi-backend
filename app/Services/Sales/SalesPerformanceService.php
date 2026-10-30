@@ -53,7 +53,7 @@ class SalesPerformanceService
             DB::table('companies')->where('id', $data['company_id'])->where('is_active', true)
                 ->whereNull('deleted_at')->lockForUpdate()->firstOrFail();
             $profile = SalesProfile::query()->lockForUpdate()->findOrFail($data['sales_profile_id']);
-            abort_unless($profile->company_id === $data['company_id'], 422, 'Target and Sales Profile legal entities must match.');
+            abort_unless(\App\Services\CompanyIdScope::sameCompanyId((string) ($profile->company_id), (string) ($data['company_id'])), 422, 'Target and Sales Profile legal entities must match.');
             abort_unless($profile->status === 'active' && $profile->effective_from?->lte(now())
                 && (! $profile->effective_until || $profile->effective_until->gt(now())), 422,
                 'A target can only be drafted for a currently active Sales Profile.');
@@ -1581,7 +1581,7 @@ class SalesPerformanceService
                     $history = DB::table('sales_kpi_snapshot_rows as row')
                         ->join('sales_kpi_snapshots as snapshot', 'snapshot.id', '=', 'row.snapshot_id')
                         ->joinSub($latestFrozenMonthly, 'latest', function ($join) {
-                            $join->on('latest.company_id', '=', 'snapshot.company_id')
+                            $join->where(fn ($sameCompany) => \App\Services\CompanyIdScope::sameCompany($sameCompany, 'latest.company_id', 'snapshot.company_id'))
                                 ->on('latest.period_start', '=', 'snapshot.period_start')
                                 ->on('latest.period_end', '=', 'snapshot.period_end')
                                 ->on('latest.latest_version', '=', 'snapshot.version');

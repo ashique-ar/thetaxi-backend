@@ -474,7 +474,7 @@ class PhoneCallController extends Controller
     private function assertCompanyCall(PhoneCall $call): void
     {
         $companyId = $this->selectedCompanyId();
-        abort_unless($companyId && (string) $call->company_id === (string) $companyId, 404);
+        abort_unless($companyId && \App\Services\CompanyIdScope::sameCompanyId((string) ((string) $call->company_id), (string) ((string) $companyId)), 404);
     }
 
     private function selectedCompanyId(): string

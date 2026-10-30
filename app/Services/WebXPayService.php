@@ -222,17 +222,18 @@ class WebXPayService
             }
 
             // Step 3: Prepare customer details
+            $checkoutContact = (array) ($workflowData['checkout_contact'] ?? []);
             $customerData = [
-                'first_name' => $booking->customer?->user?->first_name ?? explode(' ', $booking->customer?->user?->full_name ?? 'Customer')[0],
-                'last_name' => $booking->customer?->user?->last_name ?? explode(' ', $booking->customer?->user?->full_name ?? 'Customer')[1] ?? '',
-                'email' => $booking->customer?->user?->email ?? 'customer@example.com',
-                'contact_number' => $this->formatPhoneNumber($booking->customer?->user?->phone ?? '0000000000'),
-                'address_line_one' => $booking->customer->address ?? $booking->customer?->user?->address ?? '',
+                'first_name' => $checkoutContact['first_name'] ?? $booking->customer?->user?->first_name ?? explode(' ', $booking->customer?->user?->full_name ?? 'Customer')[0],
+                'last_name' => $checkoutContact['last_name'] ?? $booking->customer?->user?->last_name ?? explode(' ', $booking->customer?->user?->full_name ?? 'Customer')[1] ?? '',
+                'email' => $checkoutContact['email'] ?? $booking->customer?->user?->email ?? 'customer@example.com',
+                'contact_number' => $this->formatPhoneNumber($checkoutContact['phone'] ?? $booking->customer?->user?->phone ?? '0000000000'),
+                'address_line_one' => $checkoutContact['address'] ?? $booking->customer?->address ?? $booking->customer?->user?->address ?? '',
                 'address_line_two' => '',
-                'city'             => $booking->customer->city ?? $booking->customer?->user?->city ?? '',
+                'city'             => $checkoutContact['city'] ?? $booking->customer?->city ?? $booking->customer?->user?->city ?? '',
                 'state'            => $this->getSettingValue('webxpay_customer_state', config('booking.webxpay.customer_state', '')),
                 'postal_code'      => $this->getSettingValue('webxpay_customer_postal_code', config('booking.webxpay.customer_postal_code', '')),
-                'country'          => $this->getSettingValue('webxpay_customer_country', config('booking.webxpay.customer_country', '')),
+                'country'          => $checkoutContact['country'] ?? $this->getSettingValue('webxpay_customer_country', config('booking.webxpay.customer_country', '')),
                 'process_currency' => $this->currency,
                 'cms'              => $this->getSettingValue('webxpay_cms_identifier', config('booking.webxpay.cms_identifier', 'Laravel')),
             ];

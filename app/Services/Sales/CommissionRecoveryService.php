@@ -296,7 +296,7 @@ class CommissionRecoveryService
         if (! $query || ! $case->entitlement_source_id) return null;
         if ($lock) $query->lockForUpdate();
         $source = $query->find($case->entitlement_source_id);
-        if (! $source || $source->company_id !== $case->company_id) return null;
+        if (! $source || !\App\Services\CompanyIdScope::sameCompanyId((string) ($source->company_id), (string) ($case->company_id))) return null;
 
         $sourceDecisionId = $case->entitlement_source_type === 'commission_decision'
             ? $source->id : $source->commission_decision_id;
@@ -363,7 +363,7 @@ class CommissionRecoveryService
             default => 'unstatemented_liability_adjustment',
         };
         $adjustment = BookingPaymentAdjustment::query()->find($case->payment_adjustment_id);
-        if (! $adjustment || $adjustment->company_id !== $case->company_id) {
+        if (! $adjustment || !\App\Services\CompanyIdScope::sameCompanyId((string) ($adjustment->company_id), (string) ($case->company_id))) {
             return $this->blockedDecisionPreview($case, 'The immutable source adjustment is unavailable in the recovery legal entity.');
         }
         $snapshot = [

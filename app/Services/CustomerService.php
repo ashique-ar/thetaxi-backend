@@ -166,7 +166,7 @@ class CustomerService
      * @param array $data Checkout form data
      * @return Customer
      */
-    public function getOrCreateCustomer(array $data): Customer
+    public function getOrCreateCustomer(array $data, bool $allowUnverifiedExistingCustomer = false): Customer
     {
         $data = $this->normalizeCheckoutData($data);
 
@@ -198,7 +198,8 @@ class CustomerService
             $customer = $this->getCustomerByEmail($data['customer_email']);
 
             if ($customer) {
-                if (!$this->checkoutEmailIsVerified($data['customer_email'])) {
+                $emailVerified = $this->checkoutEmailIsVerified($data['customer_email']);
+                if (!$emailVerified && !$allowUnverifiedExistingCustomer) {
                     throw ValidationException::withMessages([
                         'email' => ['This email is already linked to a customer. Choose “Use email” above to load your saved details.'],
                     ]);
@@ -216,6 +217,16 @@ class CustomerService
                     ]);
                 }
 
+                if (!$emailVerified) {
+                    $submittedPhone = PhoneNumberMatch::normalized((string) ($data['customer_phone'] ?? ''), $data['phone_country_code'] ?? null);
+                    $savedPhone = PhoneNumberMatch::normalized((string) ($customer->user->phone ?? ''), $data['phone_country_code'] ?? null);
+                    if ($submittedPhone !== '' && $savedPhone !== '' && $submittedPhone !== $savedPhone) {
+                        throw ValidationException::withMessages(['phone' => ['Use the mobile number saved with this email, or choose Returning customer and verify your details.']]);
+                    }
+
+                    return $customer->load('user');
+                }
+
                 return $this->updateCustomerProfile($customer, $data)->load('user');
             }
         }
@@ -225,12 +236,21 @@ class CustomerService
             $verifiedCustomerId = (string) session('checkout_verified_customer_id', '');
             $verifiedMobile = preg_replace('/\D+/', '', (string) session('checkout_verified_customer_mobile', ''));
             $submittedMobile = preg_replace('/\D+/', '', (string) ($data['customer_phone'] ?? ''));
-            if ($verifiedCustomerId !== (string) $phoneCustomer->id
-                || ! $verifiedMobile || $verifiedMobile !== $submittedMobile
-                || now()->timestamp - (int) session('checkout_verified_email_at', 0) > 1800) {
+            $mobileVerified = $verifiedCustomerId === (string) $phoneCustomer->id
+                && $verifiedMobile !== '' && $verifiedMobile === $submittedMobile
+                && now()->timestamp - (int) session('checkout_verified_email_at', 0) <= 1800;
+            if (!$mobileVerified && !$allowUnverifiedExistingCustomer) {
                 throw ValidationException::withMessages([
                     'phone' => ['This mobile number is linked to an existing customer. Choose “Returning customer” and verify it, or use a different number.'],
                 ]);
+            }
+
+            if (!$mobileVerified) {
+                $submittedEmail = strtolower(trim((string) ($data['customer_email'] ?? '')));
+                $savedEmail = strtolower(trim((string) ($phoneCustomer->user?->email ?? '')));
+                if ($submittedEmail !== '' && $submittedEmail !== $savedEmail) {
+                    throw ValidationException::withMessages(['phone' => ['This mobile number is already on file with a different email address. Use the saved email or contact the booking team.']]);
+                }
             }
 
             if (! $phoneCustomer->user || $phoneCustomer->user->trashed() || ! $phoneCustomer->user->is_active) {
@@ -239,7 +259,9 @@ class CustomerService
             if (! $phoneCustomer->user->is_guest && ! $phoneCustomer->user->hasRole('customer')) {
                 throw ValidationException::withMessages(['phone' => ['This mobile number belongs to a non-customer account. Please contact the business or use a different number.']]);
             }
-            return $this->updateCustomerProfile($phoneCustomer, $data)->load('user');
+            return $mobileVerified
+                ? $this->updateCustomerProfile($phoneCustomer, $data)->load('user')
+                : $phoneCustomer->load('user');
         }
 
         return $this->createGuestCustomer($data);

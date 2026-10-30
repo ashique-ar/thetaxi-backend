@@ -196,13 +196,13 @@ class CollectionScheduleWorkflowService
                 ->where(fn ($query) => $query->whereNull('profile.effective_until')->orWhere('profile.effective_until', '>', now()))
                 ->where('staff.user_id', $actorUserId)->whereNull('staff.deleted_at')
                 ->where(fn ($query) => $query->whereNull('staff.employment_ended_at')->orWhere('staff.employment_ended_at', '>', now()))
-                ->whereColumn('profile.company_id', 'staff.company_id')->lockForUpdate()
+                ->where(fn ($sameCompany) => \App\Services\CompanyIdScope::sameCompany($sameCompany, 'profile.company_id', 'staff.company_id'))->lockForUpdate()
                 ->first(['profile.company_id', 'staff.id as staff_id', 'staff.user_id as staff_user_id', 'staff.company_id as staff_company_id']);
-            abort_unless($owner && (string) $owner->company_id === (string) $profile->company_id
-                && (string) $owner->staff_company_id === (string) $attribution->company_id,
+            abort_unless($owner && \App\Services\CompanyIdScope::sameCompanyId($owner->company_id, $profile->company_id)
+                && \App\Services\CompanyIdScope::sameCompanyId($owner->staff_company_id, $attribution->company_id),
                 403, 'The collection Sales Profile and active Staff owner must match the booking legal entity.');
             abort_unless($this->collectionProfileAt($attribution, now()) === $profile->id, 403, 'This booking is outside your current collection portfolio.');
-            abort_unless($attribution->company_id === $profile->company_id, 403, 'The booking belongs to another legal entity.');
+            abort_unless(\App\Services\CompanyIdScope::sameCompanyId($attribution->company_id, $profile->company_id), 403, 'The booking belongs to another legal entity.');
             $this->companyIntegrity->assertConsistent($booking, $attribution->company_id);
 
             $checksum = $this->checksum($booking->id, $data);
@@ -210,7 +210,7 @@ class CollectionScheduleWorkflowService
                 ->where('booking_id', $booking->id)->where('idempotency_key', $data['idempotency_key'])->first();
             if ($duplicate) {
                 abort_unless(hash_equals($duplicate->request_payload_checksum, $checksum)
-                    && (string) $duplicate->company_id === (string) $profile->company_id
+                    && \App\Services\CompanyIdScope::sameCompanyId($duplicate->company_id, $profile->company_id)
                     && (string) $duplicate->submitted_by_sales_profile_id === (string) $profile->id
                     && (string) $duplicate->submitted_by_staff_id === (string) $owner->staff_id
                     && (string) $duplicate->submitted_by_user_id === (string) $owner->staff_user_id,
@@ -265,7 +265,7 @@ class CollectionScheduleWorkflowService
             $submission = BookingCollectionSubmission::query()->lockForUpdate()->findOrFail($submission->id);
             abort_unless((string) $submission->booking_id === (string) $booking->id, 409, 'The collection submission booking changed; reload before deciding.');
             $attribution = SalesBookingAttribution::query()->where('booking_id', $booking->id)->lockForUpdate()->firstOrFail();
-            abort_unless($submission->company_id === $attribution->company_id, 409,
+            abort_unless(\App\Services\CompanyIdScope::sameCompanyId($submission->company_id, $attribution->company_id), 409,
                 'The collection submission company does not match the booking attribution; reconcile its ownership before continuing.');
             $this->companyIntegrity->assertConsistent($booking, $attribution->company_id);
             if (in_array($submission->status, ['verified', 'rejected'], true)) {
@@ -370,15 +370,14 @@ class CollectionScheduleWorkflowService
             ->whereNull('allocation.deleted_at')
             ->where(fn ($query) => $query->whereNull('schedule.id')
                 ->orWhere('schedule.booking_id', '!=', $booking->id)
-                ->orWhereNull('schedule.company_id')
-                ->orWhere('schedule.company_id', '!=', $companyId))
+                ->orWhereNot(fn ($company) => \App\Services\CompanyIdScope::constrain($company, 'schedule.company_id', $companyId)))
             ->exists();
 
         abort_unless(! $allocationMismatch, 409,
             'The canonical receipt is allocated outside its booking legal entity; reconcile its allocation history before continuing.');
 
         abort_unless($receipt->booking_id === $booking->id
-            && $receipt->company_id === $companyId
+            && \App\Services\CompanyIdScope::sameCompanyId($receipt->company_id, $companyId)
             && $receipt->idempotency_key === 'collection-submission:'.$submission->id
             && $receipt->payment_stage === 'account_payment'
             && $receipt->payment_purpose === 'booking_payment'

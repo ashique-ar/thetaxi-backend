@@ -32,6 +32,7 @@ use App\Http\Controllers\Api\AvailabilityController;
 use App\Http\Controllers\Api\Booking\BookingChannelController;
 use App\Http\Controllers\Api\Booking\BookingStatusController;
 use App\Http\Controllers\Api\BookingObservabilityController;
+use App\Http\Controllers\Api\BookingCompanyScopeReviewController;
 use App\Http\Controllers\Api\BusinessSettingController;
 use App\Http\Controllers\Api\CMS\FooterLinkController;
 use App\Http\Controllers\Api\CMS\NavigationMenuController;
@@ -1623,6 +1624,11 @@ Route::middleware(['auth:api'])->group(function () {
         Route::get('companies/stats', [CompanyController::class, 'stats']);
         Route::get('companies/options', [CompanyController::class, 'options']);
         Route::get('companies/{company}/option', [CompanyController::class, 'option'])->whereUuid('company');
+        Route::get('companies/booking-scope-review', [BookingCompanyScopeReviewController::class, 'index'])
+            ->middleware(['ensure.internal', 'permission:companies.view']);
+        Route::post('companies/booking-scope-review/{booking}/assign', [BookingCompanyScopeReviewController::class, 'assign'])
+            ->whereUuid('booking')
+            ->middleware(['ensure.internal', 'permission:companies.edit']);
         Route::apiResource('companies', CompanyController::class)->whereUuid('company');
 
         // Public CMS routes (no authentication required)
@@ -2379,6 +2385,8 @@ Route::middleware(['auth:api'])->group(function () {
             // Draft Management Routes - Updated to match frontend service
             Route::post('create-inquiry-from-call', [BookingFlowController::class, 'createCallBookingInquiry'])
                 ->middleware(['permission:bookings.create', 'permission:phone-calls.edit']);
+            Route::post('create-customer-booking-inquiry', [BookingFlowController::class, 'createCustomerBookingInquiry'])
+                ->middleware(['permission:bookings.create', DenyCustomerPortalLegacyBookingActions::class]);
             Route::post('save-draft', [BookingFlowController::class, 'saveBookingDraft'])
                 ->middleware(['permission:bookings.create', DenyCustomerPortalLegacyBookingActions::class]);
             Route::post('request-quotation', [BookingFlowController::class, 'requestBookingQuotation'])
@@ -2573,6 +2581,9 @@ Route::middleware(['auth:api'])->group(function () {
             Route::post('{bookingId}/payment-schedule', [AssignmentController::class, 'addPaymentScheduleItem'])
                 ->whereUuid('bookingId')
                 ->middleware('permission:bookings.update');
+            Route::post('{bookingId}/additional-hire-charges', [AssignmentController::class, 'addAdditionalHireCharge'])
+                ->whereUuid('bookingId')
+                ->middleware('permission:bookings.update');
             Route::post('{bookingId}/payment-schedule/generate', [AssignmentController::class, 'generatePaymentSchedule'])
                 ->whereUuid('bookingId')
                 ->middleware('permission:bookings.update');
@@ -2637,6 +2648,12 @@ Route::middleware(['auth:api'])->group(function () {
 
         // Booking Lifecycle Management Routes
         Route::group(['prefix' => 'booking-lifecycle', 'middleware' => 'booking.operations.telemetry'], function () {
+            Route::get('extension-requests', [\App\Http\Controllers\Api\BookingExtensionController::class, 'index'])
+                ->middleware(['permission:bookings.view', 'permission:bookings.assign']);
+            Route::post('extension-requests/{extensionId}/decision', [\App\Http\Controllers\Api\BookingExtensionController::class, 'decide'])
+                ->middleware('permission:bookings.assign');
+            Route::post('booking-items/{bookingItemId}/extension-requests', [\App\Http\Controllers\Api\BookingExtensionController::class, 'store'])
+                ->middleware('permission:bookings.update');
             Route::get('{bookingId}/summary', [BookingLifecycleController::class, 'getLifecycleSummary'])
                 ->middleware('permission:bookings.view');
             Route::get('{bookingId}/ongoing-details', [BookingLifecycleController::class, 'getOngoingDetails'])
@@ -2651,6 +2668,8 @@ Route::middleware(['auth:api'])->group(function () {
             Route::post('dispatch-vehicle', [BookingLifecycleController::class, 'dispatchVehicle'])
                 ->middleware('permission:bookings.dispatch');
             Route::post('process-return', [BookingLifecycleController::class, 'processReturn'])
+                ->middleware('permission:bookings.process_return');
+            Route::post('record-return-no-show', [BookingLifecycleController::class, 'recordReturnNoShow'])
                 ->middleware('permission:bookings.process_return');
             Route::post('start-qc-inspection', [BookingLifecycleController::class, 'startQCInspection'])
                 ->middleware('permission:bookings.qc_inspect');
@@ -3086,7 +3105,7 @@ Route::middleware(['auth:api'])->group(function () {
     |--------------------------------------------------------------------------
     */
 
-    Route::prefix('admin/corporates')->group(function () {
+    Route::prefix('admin/corporates')->middleware('corporate.business')->group(function () {
         Route::get('/', [CorporateController::class, 'index']);
         Route::post('/', [CorporateController::class, 'store']);
         Route::get('{corporate}', [CorporateController::class, 'show']);

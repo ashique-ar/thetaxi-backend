@@ -51,7 +51,7 @@ class BookingCommercialValueAdjustmentService
             abort_unless($company, 422, 'Select an active legal entity.');
             $booking = Booking::query()->lockForUpdate()->findOrFail($booking->id);
             $attribution = SalesBookingAttribution::query()->where('booking_id', $booking->id)->lockForUpdate()->firstOrFail();
-            abort_unless((string) $attribution->company_id === (string) $company->id, 409,
+            abort_unless(\App\Services\CompanyIdScope::sameCompanyId((string) ((string) $attribution->company_id), (string) ((string) $company->id)), 409,
                 'The booking legal entity changed before its commercial value adjustment.');
             $checksum = $this->payloadChecksum($booking->id, $data);
             $duplicate = BookingCommercialValueAdjustment::query()

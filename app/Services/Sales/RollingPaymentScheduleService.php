@@ -128,7 +128,7 @@ class RollingPaymentScheduleService
             }
             $booking = Booking::query()->whereKey($rule->booking_id)->lockForUpdate()->firstOrFail();
             $attribution = SalesBookingAttribution::query()->where('booking_id', $rule->booking_id)->lockForUpdate()->first();
-            abort_unless($attribution?->company_id === $rule->company_id, 409,
+            abort_unless(\App\Services\CompanyIdScope::sameCompanyId((string) ($attribution?->company_id), (string) ($rule->company_id)), 409,
                 'The rolling rule company does not match the booking attribution; reconcile its ownership before continuing.');
             $this->companyIntegrity->assertConsistent($booking, $attribution->company_id);
             $handler = $attribution?->collection_sales_profile_id
@@ -163,7 +163,7 @@ class RollingPaymentScheduleService
             $booking = Booking::query()->whereKey($booking->id)->lockForUpdate()->firstOrFail();
             $rule = BookingPaymentScheduleRule::query()->where('booking_id', $booking->id)->lockForUpdate()->firstOrFail();
             $attribution = SalesBookingAttribution::query()->where('booking_id', $booking->id)->lockForUpdate()->firstOrFail();
-            abort_unless($attribution->company_id === $rule->company_id, 409,
+            abort_unless(\App\Services\CompanyIdScope::sameCompanyId((string) ($attribution->company_id), (string) ($rule->company_id)), 409,
                 'The rolling rule company does not match the booking attribution; reconcile its ownership before continuing.');
             $this->companyIntegrity->assertConsistent($booking, $attribution->company_id);
             $requestChecksum = $this->checksum($booking->id, $data);

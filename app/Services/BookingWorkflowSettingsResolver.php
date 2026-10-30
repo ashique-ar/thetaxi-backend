@@ -2,6 +2,9 @@
 
 namespace App\Services;
 
+use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Schema;
+
 class BookingWorkflowSettingsResolver
 {
     public function __construct(private readonly WebsiteSettingsService $websiteSettings)
@@ -12,10 +15,11 @@ class BookingWorkflowSettingsResolver
     {
         // Version distinguishes frozen booking policies from legacy service-level overrides.
         if (($serviceConfig['policy_version'] ?? null) === 1) {
+            $business = $this->businessDefaults($companyId);
             return [
-                'enable_return_stage' => (bool) ($serviceConfig['return_stage_enabled'] ?? false),
-                'enable_qc_stage' => (bool) ($serviceConfig['qc_stage_enabled'] ?? false),
-                'enable_maintenance_stage' => (bool) ($serviceConfig['maintenance_stage_enabled'] ?? false),
+                'enable_return_stage' => $business['enable_return_stage'] && (bool) ($serviceConfig['return_stage_enabled'] ?? false),
+                'enable_qc_stage' => $business['enable_qc_stage'] && (bool) ($serviceConfig['qc_stage_enabled'] ?? false),
+                'enable_maintenance_stage' => $business['enable_maintenance_stage'] && (bool) ($serviceConfig['maintenance_stage_enabled'] ?? false),
                 'require_signed_agreement' => (bool) ($serviceConfig['signed_agreement_required'] ?? false),
                 'require_driver_license' => (bool) ($serviceConfig['driver_license_required'] ?? false),
                 'require_customer_identity_document' => (bool) ($serviceConfig['customer_identity_document_required'] ?? false),
@@ -97,6 +101,63 @@ class BookingWorkflowSettingsResolver
             'applies_to' => 'New bookings only',
             'existing_bookings_change' => false,
         ];
+    }
+
+    public function assertCanDisableStage(string $companyId, array $stageKeys): void
+    {
+        if (!Schema::hasTable('bookings') || !Schema::hasTable('booking_items')) return;
+
+        $openItems = DB::table('booking_items as item')
+            ->join('bookings as booking', 'booking.id', '=', 'item.booking_id')
+            ->where('booking.company_id', $companyId)
+            ->whereNull('booking.deleted_at')->whereNull('item.deleted_at')->whereNull('item.completed_at')
+            ->whereNotIn('booking.status', ['completed', 'cancelled', 'canceled', 'booking_cancelled', 'booking_rejected', 'rejected', 'inquiry_cancelled', 'inquiry_canceled'])
+            ->where(fn ($status) => $status->whereNull('item.status')->orWhereNotIn('item.status', ['completed', 'cancelled', 'canceled', 'booking_cancelled', 'booking_rejected', 'rejected']))
+            ->get(['item.workflow_config_snapshot', 'item.service_type_id', 'booking.booking_number']);
+
+        $legacyServiceIds = $openItems->filter(function ($item): bool {
+            $snapshot = is_array($item->workflow_config_snapshot)
+                ? $item->workflow_config_snapshot
+                : (json_decode((string) $item->workflow_config_snapshot, true) ?: []);
+            return (int) ($snapshot['policy_version'] ?? 0) !== 1;
+        })->pluck('service_type_id')->filter()->unique()->values();
+        $serviceConfigs = $legacyServiceIds->isEmpty()
+            ? collect()
+            : DB::table('service_types')->whereIn('id', $legacyServiceIds)->pluck('workflow_config', 'id');
+
+        $affected = $openItems->filter(function ($item) use ($companyId, $stageKeys, $serviceConfigs): bool {
+            $snapshot = is_array($item->workflow_config_snapshot)
+                ? $item->workflow_config_snapshot
+                : (json_decode((string) $item->workflow_config_snapshot, true) ?: []);
+            if ((int) ($snapshot['policy_version'] ?? 0) === 1) {
+                $effective = [
+                    'enable_return_stage' => (bool) ($snapshot['return_stage_enabled'] ?? false),
+                    'enable_qc_stage' => (bool) ($snapshot['qc_stage_enabled'] ?? false),
+                    'enable_maintenance_stage' => (bool) ($snapshot['maintenance_stage_enabled'] ?? false),
+                ];
+            } else {
+                $config = $serviceConfigs->get($item->service_type_id);
+                $config = is_array($config) ? $config : (json_decode((string) $config, true) ?: null);
+                $effective = $this->resolve($config, $companyId);
+            }
+
+            foreach ($stageKeys as $stageKey) {
+                if (!empty($effective[$stageKey])) return true;
+            }
+            return false;
+        });
+
+        if ($affected->isNotEmpty()) {
+            $references = $affected->pluck('booking_number')->filter()->unique()->take(5)->implode(', ');
+            $referenceText = $references ? ' Affected bookings: '.$references.'.' : '';
+            abort(409, 'This stage cannot be turned off while '.$affected->count().' open booking item(s) still use it. Complete or cancel that work first.'.$referenceText);
+        }
+
+        if (in_array('enable_maintenance_stage', $stageKeys, true) && Schema::hasTable('booking_activities')) {
+            $pendingMaintenance = DB::table('booking_activities')->where('company_id', $companyId)->whereNull('deleted_at')
+                ->where('event_key', 'post_trip_maintenance')->where('result_status', 'pending')->exists();
+            abort_unless(!$pendingMaintenance, 409, 'Maintenance cannot be turned off while completed trips still have maintenance work waiting. Finish or clear those maintenance tasks first.');
+        }
     }
 
     private function businessDefaults(?string $companyId = null): array

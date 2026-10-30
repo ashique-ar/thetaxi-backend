@@ -4,6 +4,7 @@ namespace App\Http\Middleware;
 
 use App\Models\Corporate\Corporate;
 use App\Models\Corporate\CorporateEmployee;
+use App\Services\SingleCompanyScope;
 use Closure;
 use Illuminate\Http\Request;
 use Symfony\Component\HttpFoundation\Response;
@@ -104,6 +105,10 @@ class EnsureCorporateContext
             'corporate_employee_id' => $corporateEmployee->id,
         ]);
         $request->attributes->set('corporate_employee', $corporateEmployee);
+        $request->attributes->set(
+            'business_company_id',
+            $corporate->company_id ?: app(SingleCompanyScope::class)->activeDefaultCompany()?->id
+        );
 
         return $next($request);
     }

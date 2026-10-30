@@ -4767,7 +4767,7 @@ class BookingLifecycleService
     private function availableQcInspectorStaff(User $actor): \Illuminate\Database\Eloquent\Builder
     {
         $query = app(StaffAccessService::class)->scope(
-            Staff::query()->whereNotNull('company_id')->whereNotNull('user_id')->whereNull('employment_ended_at')->whereHas('company'),
+            Staff::query()->whereNotNull('user_id')->whereNull('employment_ended_at'),
             $actor
         )->whereHas('user', fn ($user) => $user->where('is_active', true));
 

@@ -40,13 +40,14 @@ class SalesCommissionNotificationService
             }
 
             $decision = DB::table('sales_commission_decisions')->where('id', $notificationEvent['decision_id'])->first();
-            if (! $decision || ! $decision->company_id || $decision->company_id !== $event->companyId) {
+            $companyId = $decision?->company_id ?: \App\Services\CompanyIdScope::defaultCompanyId();
+            if (! $decision || ! $companyId || !\App\Services\CompanyIdScope::sameCompanyId((string) ($companyId), (string) ($event->companyId))) {
                 return;
             }
 
             $id = $existing?->id ?? (string) Str::uuid();
             $base = [
-                'company_id' => $decision->company_id,
+                'company_id' => $companyId,
                 'source_outbox_event_id' => $event->id,
                 'commission_decision_id' => $decision->id,
                 'commission_hold_release_id' => $notificationEvent['release_id'],
@@ -57,13 +58,13 @@ class SalesCommissionNotificationService
                 'updated_at' => now(),
             ];
 
-            if (! $this->policySettings->featureEnabled((string) $decision->company_id, 'commission_notifications')) {
+            if (! $this->policySettings->featureEnabled((string) $companyId, 'commission_notifications')) {
                 $this->persist($id, $existing, $base, $this->blocked('feature_disabled'));
                 return;
             }
 
             $policies = DB::table('sales_commission_notification_policy_versions')
-                ->where(fn ($_companyIdScope) => \App\Services\CompanyIdScope::constrain($_companyIdScope, 'company_id', $decision->company_id))
+                ->where(fn ($_companyIdScope) => \App\Services\CompanyIdScope::constrain($_companyIdScope, 'company_id', $companyId))
                 ->where('event_type', $notificationEvent['event_type'])
                 ->where('channel', 'in_app')
                 ->where('recipient_scope', 'beneficiary')

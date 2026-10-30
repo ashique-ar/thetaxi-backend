@@ -55,7 +55,7 @@ class SalesProfile extends BaseModel
     {
         return $query->activeAt(now())->configured()->where('commission_eligible', true)
             ->whereHas('staff', fn (Builder $staff) => $staff
-                ->whereColumn('staff.company_id', 'sales_profiles.company_id')
+                ->where(fn ($sameCompany) => \App\Services\CompanyIdScope::sameCompany($sameCompany, 'staff.company_id', 'sales_profiles.company_id'))
                 ->whereNull('staff.deleted_at')
                 ->where(fn (Builder $employment) => $employment->whereNull('employment_ended_at')
                     ->orWhere('employment_ended_at', '>', now())));

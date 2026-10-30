@@ -280,7 +280,7 @@ class CommissionConfigurationController extends Controller
         $companyId = (string) $family->company_id;
         $version = $this->approveDraft($version, $request, $companyId, 'plan version', function ($locked) use ($familyId, $companyId) {
             $lockedFamily = SalesCommissionPlanFamily::query()->whereKey($locked->plan_family_id)->lockForUpdate()->firstOrFail();
-            abort_unless((string) $locked->plan_family_id === $familyId && (string) $lockedFamily->company_id === $companyId, 422,
+            abort_unless((string) $locked->plan_family_id === $familyId && \App\Services\CompanyIdScope::sameCompanyId((string) ((string) $lockedFamily->company_id), (string) ($companyId)), 422,
                 'Plan version and family must belong to the same legal entity.');
             $overlap = SalesCommissionPlanVersion::query()->where('plan_family_id', $locked->plan_family_id)->where('status', 'approved')
                 ->where('effective_from', '<', $locked->effective_until ?? '9999-12-31')
@@ -337,7 +337,7 @@ class CommissionConfigurationController extends Controller
         $assignment = $this->approveDraft($assignment, $request, $assignment->company_id, 'plan assignment', function ($locked) {
             $this->validateScopedTarget($locked->only(['company_id', 'scope_type', 'staff_category', 'sales_profile_id', 'staff_id']));
             $family = SalesCommissionPlanFamily::query()->lockForUpdate()->findOrFail($locked->plan_family_id);
-            abort_unless($family->status === 'approved' && (string) $family->company_id === (string) $locked->company_id,
+            abort_unless($family->status === 'approved' && \App\Services\CompanyIdScope::sameCompanyId((string) ((string) $family->company_id), (string) ((string) $locked->company_id)),
                 422, 'The assigned family must be approved in the same legal entity.');
             $overlap = SalesCommissionPlanAssignment::query()->where(fn ($_companyIdScope) => \App\Services\CompanyIdScope::constrain($_companyIdScope, 'company_id', $locked->company_id))
                 ->where('scope_type', $locked->scope_type)->where('status', 'approved')->where('id', '!=', $locked->id)
@@ -369,7 +369,7 @@ class CommissionConfigurationController extends Controller
         $this->assertCompanyScope($request, $override->company_id);
         $override = $this->approveDraft($override, $request, $override->company_id, 'Staff override', function ($locked) {
             $staff = Staff::query()->whereKey($locked->staff_id)->lockForUpdate()->firstOrFail();
-            abort_unless($staff->company_id === $locked->company_id && ! $staff->trashed()
+            abort_unless(\App\Services\CompanyIdScope::sameCompanyId((string) ($staff->company_id), (string) ($locked->company_id)) && ! $staff->trashed()
                 && (! $staff->employment_ended_at || $staff->employment_ended_at->gt(now())), 422,
                 'Staff override target must remain active in the same legal entity.');
             $overlap = SalesCommissionStaffOverride::query()->where('staff_id', $locked->staff_id)->where('status', 'approved')
@@ -394,7 +394,7 @@ class CommissionConfigurationController extends Controller
         $data['company_id'] = $this->resolveCompanyId($data['company_id'] ?? null);
         $this->assertCompanyScope($request, $data['company_id']);
         $calendar = SalesCommissionBusinessCalendar::query()->findOrFail($data['business_calendar_id']);
-        abort_unless($calendar->company_id === $data['company_id'], 422, 'Business calendar belongs to another legal entity.');
+        abort_unless(\App\Services\CompanyIdScope::sameCompanyId((string) ($calendar->company_id), (string) ($data['company_id'])), 422, 'Business calendar belongs to another legal entity.');
         abort_unless($calendar->timezone === $data['timezone'], 422, 'Cycle and business calendar timezones must match.');
         $cycle = DB::transaction(function () use ($request, $data) {
             DB::table('companies')->where('id', $data['company_id'])->lockForUpdate()->first();
@@ -409,7 +409,7 @@ class CommissionConfigurationController extends Controller
         $this->assertCompanyScope($request, $cycle->company_id);
         $cycle = $this->approveDraft($cycle, $request, $cycle->company_id, 'commission cycle', function ($locked) {
             $calendar = SalesCommissionBusinessCalendar::query()->whereKey($locked->business_calendar_id)->lockForUpdate()->first();
-            abort_unless($calendar && $calendar->company_id === $locked->company_id && $calendar->status === 'approved', 422,
+            abort_unless($calendar && \App\Services\CompanyIdScope::sameCompanyId((string) ($calendar->company_id), (string) ($locked->company_id)) && $calendar->status === 'approved', 422,
                 'The cycle business calendar must be approved in the same legal entity.');
             abort_unless($calendar->timezone === $locked->timezone, 422, 'Cycle and business calendar timezones must match.');
             abort_if($calendar->effective_from->gt($locked->effective_from)
@@ -507,7 +507,7 @@ class CommissionConfigurationController extends Controller
         $this->assertCompanyScope($request, $data['company_id']);
         $this->validateScopedTarget($data);
         $cycle = SalesCommissionCycleVersion::query()->findOrFail($data['cycle_version_id']);
-        abort_unless($cycle->company_id === $data['company_id'], 422, 'Cycle belongs to another legal entity.');
+        abort_unless(\App\Services\CompanyIdScope::sameCompanyId((string) ($cycle->company_id), (string) ($data['company_id'])), 422, 'Cycle belongs to another legal entity.');
         $assignment = SalesCommissionCycleAssignment::create($data + ['precedence' => $this->precedence($data['scope_type']), 'status' => 'draft', 'created_by' => $request->user()->id]);
         return $this->confirmation($assignment, 201);
     }
@@ -518,7 +518,7 @@ class CommissionConfigurationController extends Controller
         $assignment = $this->approveDraft($assignment, $request, $assignment->company_id, 'cycle assignment', function ($locked) {
             $this->validateScopedTarget($locked->only(['company_id', 'scope_type', 'staff_category', 'sales_profile_id', 'staff_id']));
             $cycle = SalesCommissionCycleVersion::query()->whereKey($locked->cycle_version_id)->lockForUpdate()->firstOrFail();
-            abort_unless($cycle->status === 'approved' && (string) $cycle->company_id === (string) $locked->company_id,
+            abort_unless($cycle->status === 'approved' && \App\Services\CompanyIdScope::sameCompanyId((string) ((string) $cycle->company_id), (string) ((string) $locked->company_id)),
                 422, 'The assigned cycle must be approved in the same legal entity.');
             $overlap = SalesCommissionCycleAssignment::query()->where(fn ($_companyIdScope) => \App\Services\CompanyIdScope::constrain($_companyIdScope, 'company_id', $locked->company_id))
                 ->where('scope_type', $locked->scope_type)->where('status', 'approved')->where('id', '!=', $locked->id)
@@ -556,7 +556,7 @@ class CommissionConfigurationController extends Controller
     private function validateAssignmentTargets(array $data): void
     {
         $family = SalesCommissionPlanFamily::query()->findOrFail($data['plan_family_id']);
-        abort_unless($family->company_id === $data['company_id'], 422, 'Plan family belongs to another legal entity.');
+        abort_unless(\App\Services\CompanyIdScope::sameCompanyId((string) ($family->company_id), (string) ($data['company_id'])), 422, 'Plan family belongs to another legal entity.');
         $this->validateScopedTarget($data);
     }
 
@@ -662,6 +662,6 @@ class CommissionConfigurationController extends Controller
         if ($request->user()->can('sales.commission-config.manage-all')) return null;
         return Staff::query()->where('user_id', $request->user()->id)->whereNull('deleted_at')
             ->where(fn ($staff) => $staff->whereNull('employment_ended_at')->orWhere('employment_ended_at', '>', now()))
-            ->whereNotNull('company_id')->pluck('company_id')->unique()->values()->all();
+            ->pluck('company_id')->map(fn ($id) => $id ?: \App\Services\CompanyIdScope::defaultCompanyId())->filter()->unique()->values()->all();
     }
 }

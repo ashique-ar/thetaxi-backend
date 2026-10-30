@@ -161,7 +161,7 @@ class PeopleCoreMigrationService
             abort_if(HrPeopleIdentityLink::query()->where(fn ($_companyIdScope) => \App\Services\CompanyIdScope::constrain($_companyIdScope, 'company_id', $companyId))->whereIn('canonical_staff_id',$aliases)->where('status','active')->lockForUpdate()->exists(),409,'A reviewed alias is already canonical for another identity. Consolidate that case first.');
             foreach($aliases as $aliasId){
                 $existing=HrPeopleIdentityLink::query()->where('alias_staff_id',$aliasId)->lockForUpdate()->first();
-                abort_if($existing&&($existing->company_id!==$companyId||$existing->canonical_staff_id!==(string)$review->canonical_staff_id||$existing->status!=='active'),409,'A reviewed Staff alias already belongs to another canonical identity.');
+                abort_if($existing&&(!\App\Services\CompanyIdScope::sameCompanyId((string) ($existing->company_id), (string) ($companyId))||$existing->canonical_staff_id!==(string)$review->canonical_staff_id||$existing->status!=='active'),409,'A reviewed Staff alias already belongs to another canonical identity.');
                 $checksum=hash('sha256',CanonicalJson::encode(['company_id'=>$companyId,'review_id'=>(string)$review->id,'alias_staff_id'=>$aliasId,'canonical_staff_id'=>(string)$review->canonical_staff_id,'reason'=>$review->reason]));
                 if(!$existing)HrPeopleIdentityLink::create(['company_id'=>$companyId,'duplicate_review_id'=>$review->id,'alias_staff_id'=>$aliasId,'canonical_staff_id'=>$review->canonical_staff_id,'status'=>'active','reason'=>$review->reason,'evidence_checksum'=>$checksum,'approved_by'=>$actorId,'approved_at'=>now()]);
             }

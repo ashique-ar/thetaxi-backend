@@ -299,7 +299,7 @@ class SmsManagementController extends Controller
 
     public function showMessage(Request $request, SmsMessage $smsMessage): JsonResponse
     {
-        abort_unless($smsMessage->company_id === $this->campaignCompany($request)->id, 404);
+        abort_unless(\App\Services\CompanyIdScope::sameCompanyId((string) ($smsMessage->company_id), (string) ($this->campaignCompany($request)->id)), 404);
         $smsMessage->loadMissing(['booking:id,booking_number', 'bookingItem:id,booking_id,trip_number']);
         return response()->json([
             'status' => 'success',
@@ -406,7 +406,7 @@ class SmsManagementController extends Controller
 
     public function retryMessage(Request $request, SmsMessage $smsMessage): JsonResponse
     {
-        abort_unless($smsMessage->company_id === $this->campaignCompany($request)->id, 404);
+        abort_unless(\App\Services\CompanyIdScope::sameCompanyId((string) ($smsMessage->company_id), (string) ($this->campaignCompany($request)->id)), 404);
         $data = $request->validate(['reason' => ['required', 'string', 'min:3', 'max:500']]);
 
         try {
@@ -480,7 +480,7 @@ class SmsManagementController extends Controller
 
     public function showCampaign(Request $request, SmsCampaign $smsCampaign): JsonResponse
     {
-        abort_unless($smsCampaign->company_id === $this->campaignCompany($request)->id, 404);
+        abort_unless(\App\Services\CompanyIdScope::sameCompanyId((string) ($smsCampaign->company_id), (string) ($this->campaignCompany($request)->id)), 404);
         $smsCampaign->load('messages');
 
         return response()->json([
@@ -491,7 +491,7 @@ class SmsManagementController extends Controller
 
     public function launchCampaign(Request $request, SmsCampaign $smsCampaign): JsonResponse
     {
-        abort_unless($smsCampaign->company_id === $this->campaignCompany($request)->id, 404);
+        abort_unless(\App\Services\CompanyIdScope::sameCompanyId((string) ($smsCampaign->company_id), (string) ($this->campaignCompany($request)->id)), 404);
 
         $taskId = $this->registerCampaignTask($request, $smsCampaign);
 
@@ -578,7 +578,7 @@ class SmsManagementController extends Controller
 
     public function checkMessageStatus(Request $request, SmsMessage $smsMessage): JsonResponse
     {
-        abort_unless($smsMessage->company_id === $this->campaignCompany($request)->id, 404);
+        abort_unless(\App\Services\CompanyIdScope::sameCompanyId((string) ($smsMessage->company_id), (string) ($this->campaignCompany($request)->id)), 404);
         try {
             return response()->json([
                 'status' => 'success',
@@ -651,7 +651,7 @@ class SmsManagementController extends Controller
     {
         $company = app(SingleCompanyScope::class)->defaultCompany();
         abort_unless($company, 409, 'Set one active default company before managing SMS campaigns.');
-        abort_unless(app(StaffAccessService::class)->currentActorStaff($request->user())->company_id === $company->id, 403);
+        abort_unless(\App\Services\CompanyIdScope::sameCompanyId((string) (app(StaffAccessService::class)->currentActorStaff($request->user())->company_id), (string) ($company->id)), 403);
 
         return $company;
     }

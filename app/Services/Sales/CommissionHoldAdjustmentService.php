@@ -34,6 +34,7 @@ class CommissionHoldAdjustmentService
 
     public function preview(SalesCommissionDecision $decision): array
     {
+        $decision->company_id ??= \App\Services\CompanyIdScope::defaultCompanyId();
         if ($decision->status !== 'held') {
             return $this->blocked($decision, 'Only an immutable held decision can create a linked adjustment.');
         }
@@ -95,7 +96,7 @@ class CommissionHoldAdjustmentService
         }
 
         $receipt = BookingPaymentReceipt::query()->find($decision->receipt_id);
-        if (! $receipt || $receipt->company_id !== $decision->company_id
+        if (! $receipt || !\App\Services\CompanyIdScope::sameCompanyId((string) ($receipt->company_id), (string) ($decision->company_id))
             || $receipt->finality_status !== 'confirmed' || $decision->receipt_finality_status !== 'confirmed') {
             return $this->blocked($decision, 'The original receipt does not have confirmed finality evidence.');
         }
@@ -116,8 +117,8 @@ class CommissionHoldAdjustmentService
             return $this->blocked($decision, 'Exactly one canonical booking attribution must now exist.');
         }
         $attribution = $attributions->first();
-        if ($attribution->version !== 1 || $attribution->status !== 'active' || ! $attribution->company_id
-            || $attribution->company_id !== $decision->company_id || ! $attribution->commission_plan_family_id
+        if ($attribution->version !== 1 || $attribution->status !== 'active'
+            || !\App\Services\CompanyIdScope::sameCompanyId((string) ($attribution->company_id), (string) ($decision->company_id)) || ! $attribution->commission_plan_family_id
             || ! $attribution->commission_plan_assignment_id || $attribution->secured_at->gt($receipt->received_at)
             || ! SalesCommissionPlanFamily::query()->whereKey($attribution->commission_plan_family_id)
                 ->where(fn ($_companyIdScope) => \App\Services\CompanyIdScope::constrain($_companyIdScope, 'company_id', $decision->company_id))->where('status', 'approved')->exists()
@@ -143,7 +144,7 @@ class CommissionHoldAdjustmentService
         if (! $acquisitionProfile || ! $this->profileEligibility->isEligibleAt($acquisitionProfile, ['acquisition'], $attribution->secured_at)) {
             return $this->blocked($decision, 'The canonical acquisition Profile was not eligible at the secured time.');
         }
-        if (! $beneficiary?->staff_id || $beneficiary->company_id !== $decision->company_id
+        if (! $beneficiary?->staff_id || !\App\Services\CompanyIdScope::sameCompanyId((string) ($beneficiary->company_id), (string) ($decision->company_id))
             || ! $this->profileEligibility->isEligibleAt($beneficiary, ['collection', 'commission'], $receipt->received_at)) {
             return $this->blocked($decision, 'The canonical beneficiary was not collection- and commission-eligible at the receipt time.');
         }
@@ -212,7 +213,7 @@ class CommissionHoldAdjustmentService
         $originalFinalityStatus = $decision->hold_code === 'finality_policy_invalid'
             ? 'pending_clearance' : 'policy_missing';
         $receipt = BookingPaymentReceipt::query()->find($decision->receipt_id);
-        if (! $receipt || $receipt->company_id !== $decision->company_id
+        if (! $receipt || !\App\Services\CompanyIdScope::sameCompanyId((string) ($receipt->company_id), (string) ($decision->company_id))
             || $receipt->initial_finality_status !== $originalFinalityStatus
             || $receipt->finality_status !== 'confirmed') {
             return $this->blocked($decision,
@@ -264,7 +265,7 @@ class CommissionHoldAdjustmentService
 
         $attribution = $decision->booking_attribution_id
             ? SalesBookingAttribution::query()->find($decision->booking_attribution_id) : null;
-        if (! $attribution || $attribution->company_id !== $decision->company_id
+        if (! $attribution || !\App\Services\CompanyIdScope::sameCompanyId((string) ($attribution->company_id), (string) ($decision->company_id))
             || $attribution->id !== $decision->booking_attribution_id
             || $attribution->commission_plan_family_id !== $decision->plan_family_id
             || $attribution->commission_plan_assignment_id !== $decision->plan_assignment_id
@@ -290,7 +291,7 @@ class CommissionHoldAdjustmentService
             return $this->blocked($decision, 'The frozen acquisition Profile was not eligible at the secured time.');
         }
         if (! $beneficiary?->staff_id || $beneficiary->staff_id !== $decision->beneficiary_staff_id
-            || $beneficiary->company_id !== $decision->company_id
+            || !\App\Services\CompanyIdScope::sameCompanyId((string) ($beneficiary->company_id), (string) ($decision->company_id))
             || ! $this->profileEligibility->isEligibleAt($beneficiary, ['collection', 'commission'], $receipt->received_at)) {
             return $this->blocked($decision,
                 'The frozen beneficiary was not collection- and commission-eligible at the receipt time.');
@@ -402,7 +403,7 @@ class CommissionHoldAdjustmentService
             return $this->blocked($decision, 'The original decision does not carry a genuinely unrecognized frozen finality state.');
         }
         $receipt = BookingPaymentReceipt::query()->find($decision->receipt_id);
-        if (! $receipt || $receipt->company_id !== $decision->company_id
+        if (! $receipt || !\App\Services\CompanyIdScope::sameCompanyId((string) ($receipt->company_id), (string) ($decision->company_id))
             || $receipt->initial_finality_status !== $originalFinalityStatus
             || $receipt->finality_status !== 'confirmed') {
             return $this->blocked($decision,
@@ -448,7 +449,7 @@ class CommissionHoldAdjustmentService
 
         $attribution = $decision->booking_attribution_id
             ? SalesBookingAttribution::query()->find($decision->booking_attribution_id) : null;
-        if (! $attribution || $attribution->company_id !== $decision->company_id
+        if (! $attribution || !\App\Services\CompanyIdScope::sameCompanyId((string) ($attribution->company_id), (string) ($decision->company_id))
             || $attribution->id !== $decision->booking_attribution_id
             || $attribution->commission_plan_family_id !== $decision->plan_family_id
             || $attribution->commission_plan_assignment_id !== $decision->plan_assignment_id
@@ -474,7 +475,7 @@ class CommissionHoldAdjustmentService
             return $this->blocked($decision, 'The frozen acquisition Profile was not eligible at the secured time.');
         }
         if (! $beneficiary?->staff_id || $beneficiary->staff_id !== $decision->beneficiary_staff_id
-            || $beneficiary->company_id !== $decision->company_id
+            || !\App\Services\CompanyIdScope::sameCompanyId((string) ($beneficiary->company_id), (string) ($decision->company_id))
             || ! $this->profileEligibility->isEligibleAt($beneficiary, ['collection', 'commission'], $receipt->received_at)) {
             return $this->blocked($decision,
                 'The frozen beneficiary was not collection- and commission-eligible at the receipt time.');
@@ -577,7 +578,7 @@ class CommissionHoldAdjustmentService
         }
 
         $receipt = BookingPaymentReceipt::query()->find($decision->receipt_id);
-        if (! $receipt || $receipt->company_id !== $decision->company_id
+        if (! $receipt || !\App\Services\CompanyIdScope::sameCompanyId((string) ($receipt->company_id), (string) ($decision->company_id))
             || $receipt->finality_status !== 'confirmed' || $decision->receipt_finality_status !== 'confirmed') {
             return $this->blocked($decision, 'The original receipt does not have confirmed finality evidence.');
         }
@@ -601,7 +602,7 @@ class CommissionHoldAdjustmentService
         $attribution = $decision->booking_attribution_id
             ? SalesBookingAttribution::query()->find($decision->booking_attribution_id) : null;
         if (! $attribution || $attribution->booking_id !== $decision->booking_id
-            || $attribution->company_id !== $decision->company_id
+            || !\App\Services\CompanyIdScope::sameCompanyId((string) ($attribution->company_id), (string) ($decision->company_id))
             || ! $attribution->acquisition_sales_profile_id || $attribution->secured_at->gt($receipt->received_at)
             || $attribution->commission_plan_family_id !== $decision->plan_family_id
             || $attribution->commission_plan_assignment_id !== $decision->plan_assignment_id
@@ -641,11 +642,11 @@ class CommissionHoldAdjustmentService
         }
         $acquisitionProfile = SalesProfile::query()->withTrashed()->find($attribution->acquisition_sales_profile_id);
         $beneficiary = SalesProfile::query()->withTrashed()->with('staff')->find($beneficiaryEvent->to_sales_profile_id);
-        if (! $acquisitionProfile || $acquisitionProfile->company_id !== $decision->company_id
+        if (! $acquisitionProfile || !\App\Services\CompanyIdScope::sameCompanyId((string) ($acquisitionProfile->company_id), (string) ($decision->company_id))
             || ! $this->profileEligibility->isEligibleAt($acquisitionProfile, ['acquisition'], $attribution->secured_at)) {
             return $this->blocked($decision, 'The corrected acquisition Profile was not eligible at the secured time.');
         }
-        if (! $beneficiary?->staff_id || $beneficiary->company_id !== $decision->company_id
+        if (! $beneficiary?->staff_id || !\App\Services\CompanyIdScope::sameCompanyId((string) ($beneficiary->company_id), (string) ($decision->company_id))
             || ! $this->profileEligibility->isEligibleAt($beneficiary, ['collection', 'commission'], $receipt->received_at)) {
             return $this->blocked($decision,
                 'The frozen receipt-time beneficiary Staff/Profile was not collection- and commission-eligible.');
@@ -725,7 +726,7 @@ class CommissionHoldAdjustmentService
     private function previewLateLegalEntity(SalesCommissionDecision $decision): array
     {
         $receipt = BookingPaymentReceipt::query()->find($decision->receipt_id);
-        if (! $receipt || $receipt->company_id !== $decision->company_id
+        if (! $receipt || !\App\Services\CompanyIdScope::sameCompanyId((string) ($receipt->company_id), (string) ($decision->company_id))
             || $receipt->finality_status !== 'confirmed' || $decision->receipt_finality_status !== 'confirmed') {
             return $this->blocked($decision, 'The original receipt does not have confirmed finality evidence.');
         }
@@ -747,7 +748,7 @@ class CommissionHoldAdjustmentService
         $attribution = $decision->booking_attribution_id
             ? SalesBookingAttribution::query()->find($decision->booking_attribution_id) : null;
         if (! $attribution || $attribution->booking_id !== $decision->booking_id
-            || ! $attribution->company_id || $attribution->company_id !== $decision->company_id
+            || !\App\Services\CompanyIdScope::sameCompanyId((string) ($attribution->company_id), (string) ($decision->company_id))
             || ! $attribution->acquisition_sales_profile_id || $attribution->secured_at->gt($receipt->received_at)) {
             return $this->blocked($decision,
                 'The corrected attribution must now have one immutable legal entity matching the original receipt.');
@@ -801,7 +802,7 @@ class CommissionHoldAdjustmentService
         }
 
         $acquisitionProfile = SalesProfile::query()->withTrashed()->find($attribution->acquisition_sales_profile_id);
-        if (! $acquisitionProfile || $acquisitionProfile->company_id !== $decision->company_id
+        if (! $acquisitionProfile || !\App\Services\CompanyIdScope::sameCompanyId((string) ($acquisitionProfile->company_id), (string) ($decision->company_id))
             || ! $this->profileEligibility->isEligibleAt($acquisitionProfile, ['acquisition'], $attribution->secured_at)) {
             return $this->blocked($decision, 'The established acquisition Profile was not eligible at the secured time.');
         }
@@ -810,7 +811,7 @@ class CommissionHoldAdjustmentService
         $beneficiary = $beneficiaryEvent?->to_sales_profile_id
             ? SalesProfile::query()->withTrashed()->with('staff')->find($beneficiaryEvent->to_sales_profile_id) : null;
         if (! $beneficiaryEvent?->actor_user_id || ! $beneficiary?->staff_id
-            || $beneficiary->company_id !== $decision->company_id
+            || !\App\Services\CompanyIdScope::sameCompanyId((string) ($beneficiary->company_id), (string) ($decision->company_id))
             || ! $this->profileEligibility->isEligibleAt($beneficiary, ['collection', 'commission'], $receipt->received_at)) {
             return $this->blocked($decision, 'The receipt-time beneficiary lacks actor-owned eligible Staff/Profile evidence.');
         }
@@ -879,7 +880,7 @@ class CommissionHoldAdjustmentService
     private function previewLateFxSnapshot(SalesCommissionDecision $decision): array
     {
         $receipt = BookingPaymentReceipt::query()->find($decision->receipt_id);
-        if (! $receipt || $receipt->company_id !== $decision->company_id
+        if (! $receipt || !\App\Services\CompanyIdScope::sameCompanyId((string) ($receipt->company_id), (string) ($decision->company_id))
             || $receipt->finality_status !== 'confirmed' || $decision->receipt_finality_status !== 'confirmed') {
             return $this->blocked($decision, 'The original receipt does not have confirmed finality evidence.');
         }
@@ -901,7 +902,7 @@ class CommissionHoldAdjustmentService
         $attribution = $decision->booking_attribution_id
             ? SalesBookingAttribution::query()->find($decision->booking_attribution_id) : null;
         if (! $attribution || $attribution->booking_id !== $decision->booking_id
-            || $attribution->company_id !== $decision->company_id
+            || !\App\Services\CompanyIdScope::sameCompanyId((string) ($attribution->company_id), (string) ($decision->company_id))
             || ! $attribution->acquisition_sales_profile_id || $attribution->secured_at->gt($receipt->received_at)) {
             return $this->blocked($decision, 'The attribution must retain the original legal entity, booking, and secured time.');
         }
@@ -946,7 +947,7 @@ class CommissionHoldAdjustmentService
         }
 
         $acquisitionProfile = SalesProfile::query()->withTrashed()->find($attribution->acquisition_sales_profile_id);
-        if (! $acquisitionProfile || $acquisitionProfile->company_id !== $decision->company_id
+        if (! $acquisitionProfile || !\App\Services\CompanyIdScope::sameCompanyId((string) ($acquisitionProfile->company_id), (string) ($decision->company_id))
             || ! $this->profileEligibility->isEligibleAt($acquisitionProfile, ['acquisition'], $attribution->secured_at)) {
             return $this->blocked($decision, 'The frozen acquisition Profile was not eligible at the secured time.');
         }
@@ -954,7 +955,7 @@ class CommissionHoldAdjustmentService
         $beneficiary = $beneficiaryEvent?->to_sales_profile_id
             ? SalesProfile::query()->withTrashed()->with('staff')->find($beneficiaryEvent->to_sales_profile_id) : null;
         if (! $beneficiaryEvent?->actor_user_id || ! $beneficiary?->staff_id
-            || $beneficiary->company_id !== $decision->company_id
+            || !\App\Services\CompanyIdScope::sameCompanyId((string) ($beneficiary->company_id), (string) ($decision->company_id))
             || ! $this->profileEligibility->isEligibleAt($beneficiary, ['collection', 'commission'], $receipt->received_at)) {
             return $this->blocked($decision, 'The receipt-time beneficiary lacks actor-owned eligible Staff/Profile evidence.');
         }
@@ -1016,7 +1017,7 @@ class CommissionHoldAdjustmentService
     private function previewLatePlanFamily(SalesCommissionDecision $decision): array
     {
         $receipt = BookingPaymentReceipt::query()->find($decision->receipt_id);
-        if (! $receipt || $receipt->company_id !== $decision->company_id
+        if (! $receipt || !\App\Services\CompanyIdScope::sameCompanyId((string) ($receipt->company_id), (string) ($decision->company_id))
             || $receipt->finality_status !== 'confirmed' || $decision->receipt_finality_status !== 'confirmed') {
             return $this->blocked($decision, 'The original receipt does not have confirmed finality evidence.');
         }
@@ -1037,7 +1038,7 @@ class CommissionHoldAdjustmentService
         $attribution = $decision->booking_attribution_id
             ? SalesBookingAttribution::query()->find($decision->booking_attribution_id) : null;
         if (! $attribution || $attribution->booking_id !== $decision->booking_id
-            || $attribution->company_id !== $decision->company_id
+            || !\App\Services\CompanyIdScope::sameCompanyId((string) ($attribution->company_id), (string) ($decision->company_id))
             || $attribution->secured_at->gt($receipt->received_at)
             || ! $attribution->commission_plan_family_id || ! $attribution->commission_plan_assignment_id
             || $attribution->commission_category !== $decision->commission_category) {
@@ -1076,7 +1077,7 @@ class CommissionHoldAdjustmentService
             return $this->blocked($decision, 'The frozen acquisition Profile was not eligible at the secured time.');
         }
         if (! $beneficiaryEvent?->actor_user_id || ! $beneficiary?->staff_id
-            || $beneficiary->company_id !== $decision->company_id
+            || !\App\Services\CompanyIdScope::sameCompanyId((string) ($beneficiary->company_id), (string) ($decision->company_id))
             || ! $this->profileEligibility->isEligibleAt($beneficiary, ['collection', 'commission'], $receipt->received_at)) {
             return $this->blocked($decision, 'The receipt-time beneficiary lacks actor-owned eligible Staff/Profile evidence.');
         }
@@ -1128,7 +1129,7 @@ class CommissionHoldAdjustmentService
     private function previewLateBeneficiaryCorrection(SalesCommissionDecision $decision): array
     {
         $receipt = BookingPaymentReceipt::query()->find($decision->receipt_id);
-        if (! $receipt || $receipt->company_id !== $decision->company_id
+        if (! $receipt || !\App\Services\CompanyIdScope::sameCompanyId((string) ($receipt->company_id), (string) ($decision->company_id))
             || $receipt->finality_status !== 'confirmed' || $decision->receipt_finality_status !== 'confirmed') {
             return $this->blocked($decision, 'The original receipt does not have confirmed finality evidence.');
         }
@@ -1152,7 +1153,7 @@ class CommissionHoldAdjustmentService
         $attribution = $decision->booking_attribution_id
             ? SalesBookingAttribution::query()->find($decision->booking_attribution_id) : null;
         if (! $attribution || $attribution->booking_id !== $decision->booking_id
-            || $attribution->company_id !== $decision->company_id
+            || !\App\Services\CompanyIdScope::sameCompanyId((string) ($attribution->company_id), (string) ($decision->company_id))
             || $attribution->secured_at->gt($receipt->received_at)
             || $attribution->commission_plan_family_id !== $decision->plan_family_id
             || $attribution->commission_plan_assignment_id !== $decision->plan_assignment_id
@@ -1165,7 +1166,7 @@ class CommissionHoldAdjustmentService
         $acquisitionProfile = $decision->acquisition_sales_profile_id
             ? SalesProfile::query()->withTrashed()->find($decision->acquisition_sales_profile_id) : null;
         if (! $acquisitionProfile || $acquisitionProfile->id !== $attribution->acquisition_sales_profile_id
-            || $acquisitionProfile->company_id !== $decision->company_id
+            || !\App\Services\CompanyIdScope::sameCompanyId((string) ($acquisitionProfile->company_id), (string) ($decision->company_id))
             || ! $this->profileEligibility->isEligibleAt($acquisitionProfile, ['acquisition'], $attribution->secured_at)) {
             return $this->blocked($decision, 'The frozen acquisition Profile was not eligible at the secured time.');
         }
@@ -1178,7 +1179,7 @@ class CommissionHoldAdjustmentService
                 'Exactly one immutable, actor-owned collection-handler correction must now govern this receipt timestamp.');
         }
         $beneficiary = SalesProfile::query()->withTrashed()->with('staff')->find($winningEvent->to_sales_profile_id);
-        if (! $beneficiary?->staff_id || $beneficiary->company_id !== $decision->company_id
+        if (! $beneficiary?->staff_id || !\App\Services\CompanyIdScope::sameCompanyId((string) ($beneficiary->company_id), (string) ($decision->company_id))
             || ! $this->profileEligibility->isEligibleAt($beneficiary, ['collection', 'commission'], $receipt->received_at)) {
             return $this->blocked($decision,
                 'The corrected beneficiary Staff/Profile was not collection- and commission-eligible at the receipt time.');
@@ -1263,12 +1264,14 @@ class CommissionHoldAdjustmentService
             'preview_checksum' => $previewChecksum, 'reason' => trim($reason), 'actor_user_id' => $actorUserId]);
         $decisionTenant = DB::table('sales_commission_decisions')->where('id', $decisionId)->first(['company_id', 'receipt_id']);
         abort_unless($decisionTenant, 404, 'Commission decision not found.');
+        $companyId = $decisionTenant->company_id ?: \App\Services\CompanyIdScope::defaultCompanyId();
+        abort_unless($companyId, 422, 'No active default legal entity is configured.');
         $receiptId = $decisionTenant->receipt_id;
         abort_unless($receiptId, 422, 'The held decision has no linked receipt.');
 
-        return DB::transaction(function () use ($decisionId, $receiptId, $expectedVersion, $previewChecksum, $reason, $idempotencyKey, $actorUserId, $requestChecksum) {
+        return DB::transaction(function () use ($decisionId, $receiptId, $expectedVersion, $previewChecksum, $reason, $idempotencyKey, $actorUserId, $requestChecksum, $companyId) {
             $decisionTenant = DB::table('sales_commission_decisions')->where('id', $decisionId)->first(['company_id']);
-            abort_unless($decisionTenant?->company_id && DB::table('companies')->where('id', $decisionTenant->company_id)
+            abort_unless(DB::table('companies')->where('id', $companyId)
                 ->where('is_active', true)->whereNull('deleted_at')->lockForUpdate()->first(['id']), 422,
                 'Select an active legal entity.');
             $duplicate = SalesCommissionHoldAdjustment::query()->where('idempotency_key', $idempotencyKey)->lockForUpdate()->first();
@@ -1279,6 +1282,7 @@ class CommissionHoldAdjustmentService
             }
             BookingPaymentReceipt::query()->whereKey($receiptId)->lockForUpdate()->firstOrFail();
             $decision = SalesCommissionDecision::query()->lockForUpdate()->findOrFail($decisionId);
+            $decision->company_id ??= $companyId;
             abort_unless($decision->event_version === $expectedVersion, 409, 'The commission decision version changed; refresh the adjustment preview.');
             abort_if(SalesCommissionHoldAdjustment::query()->where('commission_decision_id', $decision->id)->exists(), 409,
                 'This commission hold already has an immutable linked adjustment.');

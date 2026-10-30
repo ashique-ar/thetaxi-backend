@@ -401,7 +401,7 @@ class CollectionScheduleWorkflowController extends Controller
             'staff_notes' => ['nullable', 'string', 'max:2000'],
             'idempotency_key' => ['required', 'string', 'max:160'],
         ]);
-        abort_unless(SalesBookingAttribution::query()->where('booking_id', $booking->id)->whereNotNull('company_id')->exists(), 409,
+        abort_unless(SalesBookingAttribution::query()->where('booking_id', $booking->id)->exists(), 409,
             'The booking needs a reviewed legal-entity attribution before collection submission.');
         $profile = $this->actorProfile($request, $booking);
         abort_unless($profile, 409, 'An active collection Sales Profile is not configured for this user in the default company.');
@@ -504,7 +504,7 @@ class CollectionScheduleWorkflowController extends Controller
             $schedule = $schedules->get($row->booking_payment_schedule_id);
             abort_unless($schedule
                 && (string) $schedule->booking_id === (string) $row->booking_id
-                && (string) $schedule->company_id === (string) $row->company_id,
+                && \App\Services\CompanyIdScope::sameCompanyId((string) ((string) $schedule->company_id), (string) ((string) $row->company_id)),
                 409, 'Collection work or submission references a schedule outside its booking and legal entity.');
         }
     }
@@ -657,10 +657,10 @@ class CollectionScheduleWorkflowController extends Controller
             ->when($companyId, fn ($query, $id) => $query->where(fn ($_companyIdScope) => \App\Services\CompanyIdScope::constrain($_companyIdScope, 'attribution.company_id', $id)))
             ->when($bookingId, fn ($query, $id) => $query->where('attribution.booking_id', $id))
             ->when($profileIds !== null, fn ($query) => $query->whereIn('attribution.collection_sales_profile_id', $profileIds))
-            ->where(fn ($query) => $query->whereNull('profile.id')->orWhereNull('profile.company_id')
-                ->orWhereColumn('profile.company_id', '!=', 'attribution.company_id')
-                ->orWhereNull('staff.id')->orWhereNull('staff.company_id')
-                ->orWhereColumn('staff.company_id', '!=', 'attribution.company_id'))
+            ->where(fn ($query) => $query->whereNull('profile.id')
+                ->orWhereNot(fn ($sameCompany) => \App\Services\CompanyIdScope::sameCompany($sameCompany, 'profile.company_id', 'attribution.company_id'))
+                ->orWhereNull('staff.id')
+                ->orWhereNot(fn ($sameCompany) => \App\Services\CompanyIdScope::sameCompany($sameCompany, 'staff.company_id', 'attribution.company_id')))
             ->exists();
 
         abort_unless(! $mismatch, 409,

@@ -22,8 +22,8 @@ class SalesAlertReconciliationService
             ->where('sales_profile_id', $alert->sales_profile_id)->firstOrFail();
         $policy = SalesAlertPolicyVersion::query()->findOrFail($alert->policy_version_id);
 
-        abort_unless($snapshot->company_id === $alert->company_id
-            && $policy->company_id === $alert->company_id, 409,
+        abort_unless(\App\Services\CompanyIdScope::sameCompanyId((string) ($snapshot->company_id), (string) ($alert->company_id))
+            && \App\Services\CompanyIdScope::sameCompanyId((string) ($policy->company_id), (string) ($alert->company_id)), 409,
             'The alert evidence crosses legal-entity boundaries and cannot be reconciled.');
 
         $currentRows = collect($this->performance->preview(

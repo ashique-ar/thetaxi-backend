@@ -208,14 +208,14 @@ class StaffWorkloadController extends Controller
                         ->join('staff as task_owner_staff', 'task_owner_staff.id', '=', 'task_owner_profile.staff_id')
                         ->join('users as task_owner_user', 'task_owner_user.id', '=', 'task_owner_staff.user_id')
                         ->whereColumn('task_owner_profile.id', 'task.owner_sales_profile_id')
-                        ->whereColumn('task_owner_profile.company_id', 'task.company_id')
+                        ->where(fn ($sameCompany) => \App\Services\CompanyIdScope::sameCompany($sameCompany, 'task_owner_profile.company_id', 'task.company_id'))
                         ->where('task_owner_profile.status', 'active')->whereNull('task_owner_profile.deleted_at')
                         ->where('task_owner_profile.effective_from', '<=', now())
                         ->where(fn ($effective) => $effective->whereNull('task_owner_profile.effective_until')->orWhere('task_owner_profile.effective_until', '>', now()))
                         ->whereNotNull('task_owner_profile.reporting_currency')->whereNotNull('task_owner_profile.staff_category_snapshot')
                         ->where(fn ($eligible) => $eligible->where('task_owner_profile.acquisition_eligible', true)
                             ->orWhere('task_owner_profile.collection_eligible', true)->orWhere('task_owner_profile.commission_eligible', true))
-                        ->whereColumn('task_owner_staff.company_id', 'task.company_id')->whereNull('task_owner_staff.deleted_at')
+                        ->where(fn ($sameCompany) => \App\Services\CompanyIdScope::sameCompany($sameCompany, 'task_owner_staff.company_id', 'task.company_id'))->whereNull('task_owner_staff.deleted_at')
                         ->where(fn ($employment) => $employment->whereNull('task_owner_staff.employment_ended_at')->orWhere('task_owner_staff.employment_ended_at', '>', now()))
                         ->where('task_owner_user.is_active', true)->whereNull('task_owner_user.deleted_at')
                         ->whereExists(fn ($context) => $context->selectRaw('1')->from('user_contexts')
@@ -224,9 +224,9 @@ class StaffWorkloadController extends Controller
                     $unassigned['open_followups'] = (int) DB::table('sales_tasks as task')
                         ->where(fn ($_companyIdScope) => \App\Services\CompanyIdScope::constrain($_companyIdScope, 'task.company_id', $companyId))->whereIn('task.status', ['open', 'in_progress'])
                         ->whereExists(fn ($owner) => $owner->selectRaw('1')->from('sales_profiles as task_profile')
-                            ->whereColumn('task_profile.id', 'task.owner_sales_profile_id')->whereColumn('task_profile.company_id', 'task.company_id')
+                            ->whereColumn('task_profile.id', 'task.owner_sales_profile_id')->where(fn ($sameCompany) => \App\Services\CompanyIdScope::sameCompany($sameCompany, 'task_profile.company_id', 'task.company_id'))
                             ->whereNull('task_profile.deleted_at')->whereExists(fn ($staff) => $staff->selectRaw('1')->from('staff as task_staff')
-                                ->whereColumn('task_staff.id', 'task_profile.staff_id')->whereColumn('task_staff.company_id', 'task.company_id')))
+                                ->whereColumn('task_staff.id', 'task_profile.staff_id')->where(fn ($sameCompany) => \App\Services\CompanyIdScope::sameCompany($sameCompany, 'task_staff.company_id', 'task.company_id'))))
                         ->whereNotExists($activeTaskOwner())->count();
                 }
             }

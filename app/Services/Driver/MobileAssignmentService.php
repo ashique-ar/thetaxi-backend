@@ -481,9 +481,11 @@ class MobileAssignmentService
                     ]);
             })
             ->where(function (Builder $query) use ($assignment) {
-                $query->where('created_at', '<', $assignment->created_at)
+                $assignedFrom = $assignment->getRawOriginal('assigned_from');
+
+                $query->where('assigned_from', '<', $assignedFrom)
                     ->orWhere(function (Builder $tieQuery) use ($assignment) {
-                        $tieQuery->where('created_at', $assignment->created_at)
+                        $tieQuery->where('assigned_from', $assignment->getRawOriginal('assigned_from'))
                             ->where('id', '<', $assignment->id);
                     });
             });

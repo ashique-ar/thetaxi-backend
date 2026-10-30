@@ -149,7 +149,7 @@ class CommissionStatementController extends Controller
         ]);
         $data['company_id'] = $this->resolveCompanyId($data['company_id'] ?? null);
         $profile = SalesProfile::query()->commissionStatementEligible()->with('staff')->findOrFail($data['sales_profile_id']);
-        abort_unless((string) $profile->company_id === $data['company_id'], 422, 'Select a Sales Profile in the chosen legal entity.');
+        abort_unless(\App\Services\CompanyIdScope::sameCompanyId((string) ((string) $profile->company_id), (string) ($data['company_id'])), 422, 'Select a Sales Profile in the chosen legal entity.');
         $this->assertManagementCompany($request, $profile->company_id);
         $resolved = $cycles->resolve($profile, CarbonImmutable::parse($data['reference_date']));
         $cycle = $resolved['cycle'];
@@ -240,7 +240,7 @@ class CommissionStatementController extends Controller
     {
         $data = $this->statementInput($request);
         $profile = SalesProfile::query()->commissionStatementEligible()->with('staff')->findOrFail($data['sales_profile_id']);
-        abort_unless((string) $profile->company_id === $data['company_id'], 422, 'Select a Sales Profile in the chosen legal entity.');
+        abort_unless(\App\Services\CompanyIdScope::sameCompanyId((string) ((string) $profile->company_id), (string) ($data['company_id'])), 422, 'Select a Sales Profile in the chosen legal entity.');
         $this->assertManagementCompany($request, $profile->company_id);
         unset($data['company_id']);
         return response()->json(['status' => 'success', 'data' => $this->previewProjection($statements->preview($profile, $data))]);
@@ -250,7 +250,7 @@ class CommissionStatementController extends Controller
     {
         $data = $this->statementInput($request, true);
         $profile = SalesProfile::query()->commissionStatementEligible()->with('staff')->findOrFail($data['sales_profile_id']);
-        abort_unless((string) $profile->company_id === $data['company_id'], 422, 'Select a Sales Profile in the chosen legal entity.');
+        abort_unless(\App\Services\CompanyIdScope::sameCompanyId((string) ((string) $profile->company_id), (string) ($data['company_id'])), 422, 'Select a Sales Profile in the chosen legal entity.');
         $this->assertManagementCompany($request, $profile->company_id);
         unset($data['company_id']);
         $statement = $statements->generate($profile, $data, (string) $request->user()->id);

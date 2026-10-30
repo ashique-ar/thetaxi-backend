@@ -51,11 +51,12 @@ class CommissionPlanResolver
         if ($attribution->commission_plan_family_id || $attribution->commission_plan_assignment_id) {
             return ['correction_allowed' => false, 'blocker' => 'The attribution already has frozen commission plan evidence.', 'write_performed' => false];
         }
-        if (! $attribution->company_id || ! $attribution->acquisition_sales_profile_id || ! $attribution->secured_at) {
+        $companyId = $attribution->company_id ?: \App\Services\CompanyIdScope::defaultCompanyId();
+        if (! $companyId || ! $attribution->acquisition_sales_profile_id || ! $attribution->secured_at) {
             return ['correction_allowed' => false, 'blocker' => 'Legal entity, acquisition Profile, and secured time are required before plan-family correction.', 'write_performed' => false];
         }
         $profile = SalesProfile::query()->withTrashed()->with('staff')->find($attribution->acquisition_sales_profile_id);
-        if (! $profile || $profile->company_id !== $attribution->company_id) {
+        if (! $profile || !\App\Services\CompanyIdScope::sameCompanyId((string) ($profile->company_id), (string) ($companyId))) {
             return ['correction_allowed' => false, 'blocker' => 'The frozen acquisition Profile does not reconcile to the attribution legal entity.', 'write_performed' => false];
         }
         $matches = $this->assignmentCandidates($attribution, $profile);
@@ -73,14 +74,14 @@ class CommissionPlanResolver
             return ['correction_allowed' => false, 'blocker' => 'The winning plan assignment lacks maker-checker approval evidence.', 'write_performed' => false];
         }
         $family = $assignment->planFamily;
-        if (! $family || $family->company_id !== $attribution->company_id
+        if (! $family || !\App\Services\CompanyIdScope::sameCompanyId((string) ($family->company_id), (string) ($companyId))
             || $family->status !== 'approved' || $family->commission_category !== $attribution->commission_category) {
             return ['correction_allowed' => false, 'blocker' => 'The winning plan family does not reconcile to the attribution legal entity and category.', 'write_performed' => false];
         }
         $snapshot = [
             'attribution_id' => $attribution->id,
             'attribution_version' => $attribution->version,
-            'company_id' => $attribution->company_id,
+            'company_id' => $companyId,
             'secured_at' => $attribution->secured_at->toIso8601String(),
             'commission_category' => $attribution->commission_category,
             'acquisition_sales_profile_id' => $profile->id,

@@ -57,7 +57,7 @@ class SalesDashboardController extends Controller
         );
         $companyWide = $ids === null && $selectedProfile === null;
         abort_unless(DB::table('companies')->where('id', $companyId)->whereNull('deleted_at')->exists(), 422, 'Select an available legal entity.');
-        abort_if($selectedProfile && isset($data['company_id']) && $data['company_id'] !== $selectedProfile->company_id,
+        abort_if($selectedProfile && isset($data['company_id']) && !\App\Services\CompanyIdScope::sameCompanyId((string) ($data['company_id']), (string) ($selectedProfile->company_id)),
             422, 'The requested legal entity does not match the selected Staff Sales Profile.');
         $data['company_id'] = (string) $companyId;
         if ($selectedProfile) $ids = [$selectedProfile->id];
@@ -157,7 +157,7 @@ class SalesDashboardController extends Controller
         $trends = DB::table('sales_kpi_snapshot_rows as row')
             ->join('sales_kpi_snapshots as snapshot', 'snapshot.id', '=', 'row.snapshot_id')
             ->joinSub($latestFrozenMonthly, 'latest', function ($join) {
-                $join->on('latest.company_id', '=', 'snapshot.company_id')
+                $join->where(fn ($sameCompany) => \App\Services\CompanyIdScope::sameCompany($sameCompany, 'latest.company_id', 'snapshot.company_id'))
                     ->on('latest.period_start', '=', 'snapshot.period_start')
                     ->on('latest.period_end', '=', 'snapshot.period_end')
                     ->on('latest.latest_version', '=', 'snapshot.version');
@@ -348,7 +348,7 @@ class SalesDashboardController extends Controller
             ->join('staff', 'staff.id', '=', 'profile.staff_id')
             ->leftJoin('staff as owner_staff', function ($join) {
                 $join->on('owner_staff.user_id', '=', 'alert.assigned_to')
-                    ->on('owner_staff.company_id', '=', 'alert.company_id')->whereNull('owner_staff.deleted_at');
+                    ->where(fn ($sameCompany) => \App\Services\CompanyIdScope::sameCompany($sameCompany, 'owner_staff.company_id', 'alert.company_id'))->whereNull('owner_staff.deleted_at');
             })
             ->where(fn ($_companyIdScope) => \App\Services\CompanyIdScope::constrain($_companyIdScope, 'alert.company_id', $companyId))->whereIn('alert.sales_profile_id', $ids)
             ->where('alert_snapshot.status', 'frozen')

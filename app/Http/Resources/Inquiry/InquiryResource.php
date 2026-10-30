@@ -4,7 +4,6 @@
 namespace App\Http\Resources\Inquiry;
 
 use App\Models\InquiryForm;
-use App\Services\SingleCompanyScope;
 use Illuminate\Http\Resources\Json\JsonResource;
 
 class InquiryResource extends JsonResource
@@ -17,12 +16,8 @@ class InquiryResource extends JsonResource
         $formId = $payload['form_id'] ?? null;
         $formName = $payload['form_name'] ?? ($formId ? InquiryForm::withInactive()->withTrashed()->find($formId)?->name : null);
         $serviceSlug = $cms?->slug ?? $legacy?->slug ?? ($payload['service_slug'] ?? null);
-        if ($this->assigned_to && ! $request->attributes->has('inquiry_default_company_id')) {
-            $request->attributes->set('inquiry_default_company_id', app(SingleCompanyScope::class)->activeDefaultCompany()?->id);
-        }
-        $companyId = $request->attributes->get('inquiry_default_company_id');
         $assignedStaff = $this->assignedUser?->staff;
-        $assignedLabel = $this->assigned_to && $companyId && $assignedStaff?->company_id === $companyId
+        $assignedLabel = $this->assigned_to && $this->company_id && \App\Services\CompanyIdScope::sameCompanyId((string) ($assignedStaff?->company_id), (string) ($this->company_id))
             ? trim(($this->assignedUser->first_name ?? '') . ' ' . ($this->assignedUser->last_name ?? ''))
             : null;
         $responseAuthor = $this->relationLoaded('firstResponseSavedBy') ? $this->firstResponseSavedBy : null;

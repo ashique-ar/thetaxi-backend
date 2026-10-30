@@ -12,7 +12,7 @@ class NavigationViewComposer
     {
         $companyId = app(WebsiteSettingsService::class)->resolveCurrentCompanyId();
         $query = NavigationMenu::headerNavigation();
-        $companyId ? $query->where(fn ($_companyIdScope) => \App\Services\CompanyIdScope::constrain($_companyIdScope, 'company_id', $companyId)) : $query->whereNull('company_id');
+        $query->where(fn ($_companyIdScope) => \App\Services\CompanyIdScope::constrain($_companyIdScope, 'company_id', $companyId));
 
         $view->with('headerNavigation', $query
             ->with(['children' => fn ($query) => $query->where('show_in_header', true)])

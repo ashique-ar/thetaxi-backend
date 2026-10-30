@@ -4,6 +4,8 @@ namespace App\Http\Controllers\Api\Booking;
 
 use App\Http\Controllers\Controller;
 use App\Models\Booking\Booking;
+use App\Models\Booking\BookingActivity;
+use App\Models\Booking\BookingItem;
 use App\Models\UserMedia;
 use App\Services\BookingLifecycleService;
 use App\Services\CompanySettingsAccessService;
@@ -16,6 +18,7 @@ use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Facades\Auth;
 use Illuminate\Validation\Rule;
 use Illuminate\Validation\ValidationException;
+use Carbon\CarbonImmutable;
 
 class BookingLifecycleController extends Controller
 {
@@ -263,6 +266,51 @@ class BookingLifecycleController extends Controller
                 'message' => 'Failed to process return: ' . $e->getMessage()
             ], $statusCode);
         }
+    }
+
+    public function recordReturnNoShow(Request $request): JsonResponse
+    {
+        $data = $request->validate([
+            'booking_id' => ['required', 'uuid'],
+            'booking_item_id' => ['required', 'uuid'],
+            'reason' => ['required', 'in:customer_unreachable,address_incorrect,cancelled_without_notice,other'],
+            'notes' => ['required', 'string', 'min:3', 'max:3000'],
+        ]);
+        $data['notes'] = trim($data['notes']);
+        $companyId = app(WebsiteSettingsService::class)->resolveCurrentCompanyId();
+        abort_unless($companyId, 409, 'Select an active business before recording a missed return.');
+        app(CompanySettingsAccessService::class)->assertCanAccess($request->user(), (string) $companyId);
+
+        $activity = DB::transaction(function () use ($data, $companyId, $request) {
+            $bookingQuery = Booking::query()->whereKey($data['booking_id'])->whereNull('deleted_at');
+            \App\Services\CompanyBookingScope::constrain($bookingQuery, 'bookings', (string) $companyId);
+            $booking = $bookingQuery->lockForUpdate()->firstOrFail();
+            $item = BookingItem::query()->where('booking_id', $booking->id)->whereKey($data['booking_item_id'])->lockForUpdate()->firstOrFail();
+            $contract = $this->lifecycleService->getLifecycleContract($booking, (string) $item->id);
+            abort_unless(in_array('process_return', $contract['allowed_actions'] ?? [], true), 409, 'This trip is not waiting for a return.');
+            abort_unless(!empty($item->to_date), 409, 'This trip has no scheduled return time.');
+            $scheduledReturn = CarbonImmutable::parse($item->to_date, 'UTC');
+            abort_unless($scheduledReturn->lessThanOrEqualTo(CarbonImmutable::now('UTC')), 409, 'This trip is not yet due for return.');
+
+            return BookingActivity::firstOrCreate(
+                ['idempotency_key' => 'return-no-show-'.$item->id.'-'.$scheduledReturn->format('YmdHis')],
+                [
+                    'company_id' => $companyId,
+                    'booking_id' => $booking->id,
+                    'booking_item_id' => $item->id,
+                    'event_key' => 'rental_return_no_show',
+                    'channel' => 'system',
+                    'result_status' => 'follow_up_required',
+                    'source' => 'portal',
+                    'title' => 'Scheduled return missed',
+                    'detail' => $data['notes'],
+                    'meta' => ['reason' => $data['reason'], 'scheduled_return_at' => $scheduledReturn->toIso8601String()],
+                    'event_at' => now(),
+                ]
+            );
+        });
+
+        return response()->json(['status' => 'success', 'data' => $activity, 'message' => 'Missed return recorded for follow-up.']);
     }
 
     /**

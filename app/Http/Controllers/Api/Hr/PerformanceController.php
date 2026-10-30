@@ -122,7 +122,7 @@ class PerformanceController extends Controller
         return $review;
     }
 
-    private function company(Request$request,string$id):void{abort_unless($this->actor($request)->company_id===$id,403,'Performance data is outside your legal entity.');}
+    private function company(Request$request,string$id):void{abort_unless(\App\Services\CompanyIdScope::sameCompanyId((string) ($this->actor($request)->company_id), (string) ($id)),403,'Performance data is outside your legal entity.');}
     private function owns(Request$request,string$table,string$id):void{$company=DB::table($table)->where('id',$id)->value('company_id');abort_unless($company,404);$this->company($request,$company);}
     
 }

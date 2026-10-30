@@ -581,6 +581,35 @@ trait BookingSubmissionTrait
         ], $result['duplicate'] ? 200 : 201);
     }
 
+    public function createCustomerBookingInquiry(Request $request): JsonResponse
+    {
+        $request->validate([
+            'customer_id' => ['required', 'uuid'],
+            'booking_items' => ['required', 'array', 'min:1', 'max:10'],
+            'booking_items.*.service_type_id' => ['required', 'uuid'],
+            'booking_items.*.from_date' => ['required', 'date'],
+            'booking_items.*.from_time' => ['required', 'date_format:H:i'],
+            'booking_items.*.to_date' => ['nullable', 'date', 'after_or_equal:booking_items.*.from_date'],
+            'booking_items.*.to_time' => ['nullable', 'date_format:H:i'],
+            'booking_items.*.pickup_location' => ['nullable', 'array'],
+            'booking_items.*.dropoff_location' => ['nullable', 'array'],
+            'passenger_count' => ['nullable', 'integer', 'min:1', 'max:100'],
+            'luggage_count' => ['nullable', 'integer', 'min:0', 'max:100'],
+            'special_requirements' => ['nullable', 'string', 'max:5000'],
+        ]);
+
+        $params = $this->bookingFlowService->normalizeDynamicCalculationParams($request->all());
+        $params = $this->bookingFlowService->normalizeCorporateEmployeeReferences($params);
+        $result = $this->bookingFlowService->createCustomerBookingInquiry($params, (string) $request->user()->id);
+
+        return response()->json([
+            'status' => 'success',
+            'duplicate' => $result['duplicate'],
+            'data' => new BookingFlowResource($result['booking']),
+            'message' => 'Booking request created for the customer.',
+        ], $result['duplicate'] ? 200 : 201);
+    }
+
     public function requestBookingQuotation(Request $request): JsonResponse
     {
         $request->validate([
@@ -737,8 +766,8 @@ trait BookingSubmissionTrait
             'booking_source' => 'nullable|string|in:public,corporate,internal',
             'corporate_id' => 'nullable|uuid',
             'dashboard_scope' => 'nullable|string|in:standard',
-            'operations_queue' => 'nullable|string|in:needs_approval,needs_assignment,needs_responsible_owner,needs_responsible_owner_past_target,ready_to_dispatch,active,return_due,qc_pending,repair_pending,ready_to_complete,payment_pending,payment_attention',
-            'queue' => 'nullable|string|in:needs_approval,needs_assignment,needs_responsible_owner,needs_responsible_owner_past_target,ready_to_dispatch,active,return_due,qc_pending,repair_pending,ready_to_complete,payment_pending,payment_attention',
+            'operations_queue' => 'nullable|string|in:needs_approval,needs_assignment,needs_responsible_owner,needs_responsible_owner_past_target,ready_to_dispatch,pickup_today,dropoff_today,active,return_due,qc_pending,repair_pending,ready_to_complete,payment_pending,payment_attention,payment_confirmation_pending',
+            'queue' => 'nullable|string|in:needs_approval,needs_assignment,needs_responsible_owner,needs_responsible_owner_past_target,ready_to_dispatch,pickup_today,dropoff_today,active,return_due,qc_pending,repair_pending,ready_to_complete,payment_pending,payment_attention,payment_confirmation_pending',
         ]);
 
         $companyId = app(\App\Services\WebsiteSettingsService::class)->resolveCurrentCompanyId();
@@ -808,7 +837,8 @@ trait BookingSubmissionTrait
                 $eligible = DB::table('staff')->join('users', 'users.id', '=', 'staff.user_id')
                     ->where(fn ($company) => \App\Services\CompanyIdScope::constrain($company, 'staff.company_id', $companyId))
                     ->where('users.id', $newOwnerId)
-                    ->whereNull('staff.deleted_at')->whereNull('staff.employment_ended_at')
+                    ->whereNull('staff.deleted_at')
+                    ->where(fn ($employment) => $employment->whereNull('staff.employment_ended_at')->orWhere('staff.employment_ended_at', '>', now()))
                     ->whereNull('users.deleted_at')->where('users.is_active', true)
                     ->lockForUpdate()->exists()
                     && User::permission('bookings.view')->whereKey($newOwnerId)->exists();
@@ -819,6 +849,7 @@ trait BookingSubmissionTrait
             if ($previousOwnerId !== $newOwnerId) {
                 $booking->forceFill(['responsible_user_id' => $newOwnerId, 'updated_user_id' => $request->user()->id])->save();
                 BookingActivity::create([
+                    'company_id' => $companyId,
                     'booking_id' => $booking->id,
                     'event_key' => 'booking_responsible_user_changed',
                     'channel' => 'system',
@@ -1232,10 +1263,17 @@ trait BookingSubmissionTrait
         }
     }
 
-    public function getBookingAnalytics(string $bookingId): JsonResponse
+    public function getBookingAnalytics(Request $request, string $bookingId): JsonResponse
     {
+        $companyId = app(\App\Services\WebsiteSettingsService::class)->resolveCurrentCompanyId();
+        abort_unless($companyId, 409, 'Select a business before viewing booking history.');
+        app(\App\Services\CompanySettingsAccessService::class)->assertCanAccess($request->user(), (string) $companyId);
+        $bookingQuery = Booking::query()->whereKey($bookingId);
+        \App\Services\CompanyBookingScope::constrain($bookingQuery, 'bookings', (string) $companyId);
+        $booking = $bookingQuery->firstOrFail();
+
         try {
-            $analytics = $this->bookingFlowService->getBookingAnalytics($bookingId);
+            $analytics = $this->bookingFlowService->getBookingAnalytics($booking);
 
             return response()->json([
                 'status' => 'success',

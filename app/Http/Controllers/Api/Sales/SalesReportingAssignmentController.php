@@ -88,7 +88,7 @@ class SalesReportingAssignmentController extends Controller
             $member = $profiles->get($data['member_sales_profile_id']);
             $this->scope->assertProfile($request->user(), $manager, 'sales.profiles.manage-all', 'sales.profiles.manage-team');
             $this->scope->assertProfile($request->user(), $member, 'sales.profiles.manage-all', 'sales.profiles.manage-team');
-            abort_unless($profiles->every(fn (SalesProfile $profile) => $profile->company_id === $data['company_id']),
+            abort_unless($profiles->every(fn (SalesProfile $profile) => \App\Services\CompanyIdScope::sameCompanyId((string) ($profile->company_id), (string) ($data['company_id']))),
                 422, 'Manager and member must belong to the selected legal entity.');
             abort_unless($profiles->every(fn (SalesProfile $profile) => $this->supportsAssignmentInterval($profile, $data)),
                 422, 'Reporting assignments must remain inside configured active Sales Profile intervals.');

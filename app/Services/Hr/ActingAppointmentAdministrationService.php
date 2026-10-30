@@ -22,7 +22,7 @@ class ActingAppointmentAdministrationService
             $this->lockCompany($companyId);
             if ($existing = DB::table('hr_acting_appointments')->where('idempotency_key', $data['idempotency_key'])->first()) {
                 abort_unless(
-                    $existing->company_id === $companyId
+                    \App\Services\CompanyIdScope::sameCompanyId((string) ($existing->company_id), (string) ($companyId))
                     && $existing->staff_id === $data['staff_id']
                     && $existing->acting_position_id === $data['acting_position_id']
                     && $existing->acting_manager_staff_id === ($data['acting_manager_staff_id'] ?? null)

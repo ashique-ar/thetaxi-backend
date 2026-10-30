@@ -148,7 +148,7 @@ class CommissionPayoutService
             $statementIds = $allocations->pluck('statement_id')->unique();
             $statements = SalesCommissionStatement::query()->whereIn('id', $statementIds)->orderBy('id')->lockForUpdate()->get()->keyBy('id');
             abort_if($statements->count() !== $statementIds->count()
-                || $statements->contains(fn ($statement) => (string) $statement->company_id !== (string) $original->company_id
+                || $statements->contains(fn ($statement) => !\App\Services\CompanyIdScope::sameCompanyId((string) ((string) $statement->company_id), (string) ((string) $original->company_id))
                     || (string) $statement->staff_id !== (string) $original->staff_id),
                 422, 'Payout reversal allocations must match the original company and Staff beneficiary.');
             $this->assertFrozenProfileBeneficiaries($statements);
@@ -337,7 +337,7 @@ class CommissionPayoutService
         $profiles = DB::table('sales_profiles')->whereIn('id', $statements->pluck('sales_profile_id')->unique())
             ->orderBy('id')->lockForUpdate()->get()->keyBy('id');
         abort_if($statements->contains(fn ($statement) => ! $profiles->has($statement->sales_profile_id)
-            || (string) $profiles->get($statement->sales_profile_id)->company_id !== (string) $statement->company_id
+            || !\App\Services\CompanyIdScope::sameCompanyId((string) ((string) $profiles->get($statement->sales_profile_id)->company_id), (string) ((string) $statement->company_id))
             || (string) $profiles->get($statement->sales_profile_id)->staff_id !== (string) $statement->staff_id),
             422, 'Every statement must match its frozen Sales Profile company and Staff beneficiary.');
     }

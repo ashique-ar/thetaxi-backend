@@ -37,7 +37,7 @@ class CompanySettingsAccessService
         if ($user->can('companies.view') && (! $manage || $user->can('companies.edit'))) {
             return;
         }
-        if ((string) $user->company_id === $companyId) {
+        if (\App\Services\CompanyIdScope::sameCompanyId((string) ((string) $user->company_id), (string) ($companyId))) {
             return;
         }
 

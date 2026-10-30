@@ -23,6 +23,7 @@ class CommissionEmploymentExitResolutionService
 
         return DB::transaction(function () use ($decision) {
             $decision = SalesCommissionDecision::query()->lockForUpdate()->findOrFail($decision->id);
+            $decision->company_id ??= \App\Services\CompanyIdScope::defaultCompanyId();
             $existing = SalesCommissionHoldResolution::query()
                 ->where('commission_decision_id', $decision->id)->first();
             if ($existing) return $existing;
@@ -37,8 +38,8 @@ class CommissionEmploymentExitResolutionService
 
             $receipt = BookingPaymentReceipt::query()->lockForUpdate()->find($decision->receipt_id);
             $staff = Staff::query()->withTrashed()->lockForUpdate()->find($decision->beneficiary_staff_id);
-            if (! $receipt || ! $staff || $receipt->company_id !== $decision->company_id
-                || $staff->company_id !== $decision->company_id || ! $staff->employment_ended_at
+            if (! $receipt || ! $staff || !\App\Services\CompanyIdScope::sameCompanyId((string) ($receipt->company_id), (string) ($decision->company_id))
+                || !\App\Services\CompanyIdScope::sameCompanyId((string) ($staff->company_id), (string) ($decision->company_id)) || ! $staff->employment_ended_at
                 || ! $staff->terminated_by || $staff->employment_ended_at->gt($receipt->received_at)) {
                 return null;
             }

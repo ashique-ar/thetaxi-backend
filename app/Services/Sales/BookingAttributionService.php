@@ -37,7 +37,6 @@ class BookingAttributionService
             $securedAt = $booking->confirmed_at ?? $booking->updated_at ?? now();
             $resolved = $this->resolveProfiles($booking, $securedAt);
             if ($stageUnownedHistorical && ! $this->hasHistoricalCompanySource($booking)) {
-                $resolved['company_id'] = null;
                 $resolved['acquisition_profile'] = null;
                 $resolved['acquisition_profile_id'] = null;
                 $resolved['collection_profile'] = null;
@@ -187,11 +186,11 @@ class BookingAttributionService
         }
 
         if ($booking->commission_owner_staff_id) {
-            return Staff::withTrashed()->whereKey($booking->commission_owner_staff_id)->whereNotNull('company_id')->exists();
+            return Staff::withTrashed()->whereKey($booking->commission_owner_staff_id)->exists();
         }
 
         return $booking->created_user_id !== null
-            && Staff::withTrashed()->where('user_id', $booking->created_user_id)->whereNotNull('company_id')->limit(2)->pluck('id')->count() === 1;
+            && Staff::withTrashed()->where('user_id', $booking->created_user_id)->limit(2)->pluck('id')->count() === 1;
     }
 
     private function isConfirmed(Booking $booking): bool
@@ -222,19 +221,20 @@ class BookingAttributionService
     {
         $root = $this->rootAttribution($booking);
         if ($root) {
+            $companyId = $booking->company_id ?: app(SingleCompanyScope::class)->activeDefaultCompany()?->id;
             $acquisitionProfileId = $root->acquisition_sales_profile_id;
             $acquisitionProfile = $this->profileEligibility->byIdAt(
                 $acquisitionProfileId,
                 ['acquisition'],
                 $root->secured_at,
-                $root->company_id,
+                $companyId,
             );
             $collectionProfileId = $this->collectionProfileAt($root, $securedAt);
             $collectionProfile = $this->profileEligibility->byIdAt(
                 $collectionProfileId,
                 ['collection'],
                 $securedAt,
-                $root->company_id,
+                $companyId,
             );
 
             return [
@@ -243,14 +243,18 @@ class BookingAttributionService
                 'acquisition_profile' => $acquisitionProfile,
                 'collection_profile_id' => $collectionProfileId,
                 'collection_profile' => $collectionProfile,
-                'company_id' => $root->company_id,
+                'company_id' => $companyId,
             ];
         }
 
+        $companyId = $booking->company_id ?: app(SingleCompanyScope::class)->activeDefaultCompany()?->id;
         $staff = $this->resolveAcquisitionStaff($booking);
         $acquisitionProfile = $staff
             ? $this->profileEligibility->forStaffAt($staff, 'acquisition', $securedAt)
             : null;
+        if ($acquisitionProfile && ! \App\Services\CompanyIdScope::sameCompanyId((string) ($acquisitionProfile->company_id), (string) ($companyId))) {
+            $acquisitionProfile = null;
+        }
         $collectionProfile = $acquisitionProfile
             && $this->profileEligibility->isEligibleAt($acquisitionProfile, ['collection'], $securedAt)
                 ? $acquisitionProfile
@@ -262,12 +266,7 @@ class BookingAttributionService
             'acquisition_profile' => $acquisitionProfile,
             'collection_profile_id' => $collectionProfile?->id,
             'collection_profile' => $collectionProfile,
-            // Public bookings can have no linked acquisition Staff/Profile. They still belong to
-            // the configured tenant company so payment callbacks and company scoped ledgers have
-            // a stable entity from the moment the booking is confirmed.
-            'company_id' => $acquisitionProfile?->company_id
-                ?? $staff?->company_id
-                ?? app(SingleCompanyScope::class)->activeDefaultCompany()?->id,
+            'company_id' => $companyId,
         ];
     }
 

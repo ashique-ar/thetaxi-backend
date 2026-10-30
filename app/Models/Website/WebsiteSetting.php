@@ -25,7 +25,25 @@ use Illuminate\Database\Eloquent\Relations\BelongsTo;
  */
 class WebsiteSetting extends BaseModel
 {
-    
+    protected static function booted(): void
+    {
+        static::saving(function (WebsiteSetting $setting): void {
+            if ($setting->exists && ! $setting->isDirty('value')) return;
+            $enabled = filter_var($setting->value, FILTER_VALIDATE_BOOL, FILTER_NULL_ON_FAILURE);
+            if ($enabled !== false || ! $setting->company_id) return;
+
+            $stageKeys = match ((string) $setting->type) {
+                'feature_vehicle_return_management_enabled' => ['enable_return_stage', 'enable_qc_stage'],
+                'assignment_enable_qc_stage' => ['enable_qc_stage'],
+                'assignment_enable_maintenance_stage' => ['enable_maintenance_stage'],
+                default => [],
+            };
+            if ($stageKeys) {
+                app(\App\Services\BookingWorkflowSettingsResolver::class)
+                    ->assertCanDisableStage((string) $setting->company_id, $stageKeys);
+            }
+        });
+    }
 
     /**
      * The attributes that are mass assignable.
@@ -77,11 +95,18 @@ class WebsiteSetting extends BaseModel
      */
     public static function getValue(string $type, $default = null, ?string $companyId = null)
     {
-        $setting = static::query()
-            ->where('type', $type)
-            ->when($companyId, fn ($query) => $query->where(fn ($_companyIdScope) => \App\Services\CompanyIdScope::constrain($_companyIdScope, 'company_id', $companyId)))
-            ->when(!$companyId, fn ($query) => $query->whereNull('company_id'))
-            ->first();
+        if (func_num_args() < 3) {
+            $companyId = app(\App\Services\WebsiteSettingsService::class)->resolveCurrentCompanyId();
+        }
+
+        $query = static::query()->where('type', $type);
+        if ($companyId) {
+            $query->where(fn ($_companyIdScope) => \App\Services\CompanyIdScope::constrain($_companyIdScope, 'company_id', $companyId))
+                ->orderByRaw('CASE WHEN company_id = ? THEN 0 ELSE 1 END', [$companyId]);
+        } else {
+            $query->whereNull('company_id');
+        }
+        $setting = $query->first();
 
         if (!$setting && $companyId) {
             $setting = static::where('type', $type)->whereNull('company_id')->first();
@@ -131,6 +156,10 @@ class WebsiteSetting extends BaseModel
      */
     public static function getValues(array $types, ?string $companyId = null): array
     {
+        if (func_num_args() < 2) {
+            $companyId = app(\App\Services\WebsiteSettingsService::class)->resolveCurrentCompanyId();
+        }
+
         $globalSettings = static::whereIn('type', $types)
             ->whereNull('company_id')
             ->get()
@@ -140,6 +169,7 @@ class WebsiteSetting extends BaseModel
         if ($companyId) {
             $companySettings = static::whereIn('type', $types)
                 ->where(fn ($_companyIdScope) => \App\Services\CompanyIdScope::constrain($_companyIdScope, 'company_id', $companyId))
+                ->orderByRaw('CASE WHEN company_id = ? THEN 0 ELSE 1 END', [$companyId])
                 ->get()
                 ->keyBy('type');
         }

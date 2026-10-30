@@ -143,7 +143,7 @@ class WialonService
                     ->first();
                 if (!$vehicle || $vehicle->trashed() || $this->isImportedPlaceholder($vehicle, $unit)) return false;
 
-                if ($vehicle->company_id && (string) $vehicle->company_id !== $companyId) return false;
+                if ($vehicle->company_id && !\App\Services\CompanyIdScope::sameCompanyId((string) ((string) $vehicle->company_id), (string) ($companyId))) return false;
                 $previousTrackerMileage = $vehicle->wialon_mileage;
                 $vehicle->company_id ??= $companyId;
                 $vehicle->wialon_unit_id = $unitId;

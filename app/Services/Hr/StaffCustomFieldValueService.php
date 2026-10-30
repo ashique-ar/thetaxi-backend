@@ -66,7 +66,7 @@ class StaffCustomFieldValueService
                 'value_checksum' => $valueChecksum, 'reason' => $data['reason'],
             ]);
             if ($event = DB::table('hr_custom_field_value_events')->where('idempotency_key', $data['idempotency_key'])->first()) {
-                abort_unless($event->company_id === $staff->company_id && $event->owner_id === $staff->id && $event->definition_id === $definitionId && hash_equals($event->command_checksum, $commandChecksum), 409, 'Custom-field value key was reused with different evidence.');
+                abort_unless(\App\Services\CompanyIdScope::sameCompanyId((string) ($event->company_id), (string) ($staff->company_id)) && $event->owner_id === $staff->id && $event->definition_id === $definitionId && hash_equals($event->command_checksum, $commandChecksum), 409, 'Custom-field value key was reused with different evidence.');
                 return $this->eventResult($event, $definition);
             }
             $current = DB::table('hr_custom_field_values')->where('definition_id', $definitionId)->where('owner_type', 'staff')->where('owner_id', $staff->id)->lockForUpdate()->first();

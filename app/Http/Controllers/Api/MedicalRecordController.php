@@ -63,7 +63,7 @@ class MedicalRecordController extends Controller
     {
         $companyId = $this->actorCompanyId($request);
         $categories = MedicalCategory::query()->where('is_active', true)
-            ->where(fn ($query) => $query->whereNull('company_id')->orWhere('company_id', $companyId))
+            ->where(fn ($_companyIdScope) => \App\Services\CompanyIdScope::constrain($_companyIdScope, 'company_id', $companyId))
             ->orderBy('name')->orderBy('id')->get(['id', 'code', 'name', 'description']);
 
         return response()->json(['status' => 'success', 'data' => $categories]);
@@ -85,7 +85,7 @@ class MedicalRecordController extends Controller
         ]);
         $this->authorizeSubject($data['subject_type'], $data['subject_id'], $companyId);
         abort_unless(MedicalCategory::query()->whereKey($data['medical_category_id'])->where('is_active', true)
-            ->where(fn ($q) => $q->whereNull('company_id')->orWhere('company_id', $companyId))->exists(), 422, 'Select an active medical category.');
+            ->where(fn ($_companyIdScope) => \App\Services\CompanyIdScope::constrain($_companyIdScope, 'company_id', $companyId))->exists(), 422, 'Select an active medical category.');
 
         $data['company_id'] = $companyId;
         $data['record_number'] = ($data['record_number'] ?? null) ?: 'MED-'.Str::upper(Str::random(12));
@@ -196,7 +196,7 @@ class MedicalRecordController extends Controller
         $companyId = app(SingleCompanyScope::class)->activeDefaultCompany()?->id;
         abort_unless($companyId, 403, 'Medical records require one active default company.');
         $actor = app(StaffAccessService::class)->currentActorStaff($request->user());
-        abort_unless($actor && (string) $actor->company_id === (string) $companyId, 403, 'Medical records are available only in the active default company context.');
+        abort_unless($actor && \App\Services\CompanyIdScope::sameCompanyId((string) ((string) $actor->company_id), (string) ((string) $companyId)), 403, 'Medical records are available only in the active default company context.');
 
         return (string) $companyId;
     }

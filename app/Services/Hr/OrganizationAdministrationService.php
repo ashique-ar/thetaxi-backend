@@ -293,7 +293,7 @@ class OrganizationAdministrationService
     {
         $event=DB::table('hr_organization_change_events')->where('idempotency_key',$key)->first();
         if(!$event)return null;
-        abort_unless($event->company_id===$companyId,403,'Organization command replay is outside your legal entity.');
+        abort_unless(\App\Services\CompanyIdScope::sameCompanyId((string) ($event->company_id), (string) ($companyId)),403,'Organization command replay is outside your legal entity.');
         abort_unless($event->aggregate_type===$aggregateType,409,'Idempotency key was reused for another organization command.');
         abort_unless(hash_equals($event->request_checksum,$checksum),409,'Idempotency key was reused with different organization facts.');
         return is_array($event->after_snapshot)?$event->after_snapshot:json_decode((string)$event->after_snapshot,true,512,JSON_THROW_ON_ERROR);

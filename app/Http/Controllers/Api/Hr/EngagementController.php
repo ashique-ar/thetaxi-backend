@@ -372,7 +372,7 @@ class EngagementController extends Controller
             'per_page' => ['nullable', 'integer', 'min:1', 'max:50'],
         ]);
         $data['company_id'] = $data['company_id'] ?? $actor->company_id;
-        abort_unless($data['company_id'] === $actor->company_id, 403, 'Wellness handlers are outside your legal entity.');
+        abort_unless(\App\Services\CompanyIdScope::sameCompanyId((string) ($data['company_id']), (string) ($actor->company_id)), 403, 'Wellness handlers are outside your legal entity.');
 
         $query = Staff::query()->with('user:id,first_name,last_name,is_active')
             ->where(fn ($_companyIdScope) => \App\Services\CompanyIdScope::constrain($_companyIdScope, 'company_id', $actor->company_id))->whereNull('employment_ended_at')
@@ -580,6 +580,6 @@ class EngagementController extends Controller
     }
 
     private function actor(Request $request): Staff { return app(StaffAccessService::class)->currentActorStaff($request->user()); }
-    private function company(Request $request, string $companyId): void { abort_unless($this->actor($request)->company_id === $companyId, 403, 'Engagement data is outside your legal entity.'); }
+    private function company(Request $request, string $companyId): void { abort_unless(\App\Services\CompanyIdScope::sameCompanyId((string) ($this->actor($request)->company_id), (string) ($companyId)), 403, 'Engagement data is outside your legal entity.'); }
     
 }

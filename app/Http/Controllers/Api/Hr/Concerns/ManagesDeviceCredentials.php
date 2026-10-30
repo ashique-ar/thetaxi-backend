@@ -160,7 +160,7 @@ trait ManagesDeviceCredentials
     {
         $existing = DB::table('hr_attendance_credential_events')->where('idempotency_key', $key)->first();
         abort_unless(! $existing || (
-            $existing->company_id === $device->company_id && $existing->device_id === $device->id
+            \App\Services\CompanyIdScope::sameCompanyId((string) ($existing->company_id), (string) ($device->company_id)) && $existing->device_id === $device->id
             && $existing->provider_person_id === $employeeNumber && $existing->credential_type === $type
             && $existing->action === $action && $existing->actor_user_id === $actorId
             && hash_equals((string) $existing->request_checksum, $checksum)

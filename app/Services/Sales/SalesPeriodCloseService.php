@@ -49,7 +49,7 @@ class SalesPeriodCloseService
             ->leftJoin('sales_profiles as profile', 'profile.id', '=', 'fact.sales_profile_id')
             ->where(fn ($_companyIdScope) => \App\Services\CompanyIdScope::constrain($_companyIdScope, 'fact.company_id', $companyId))->whereBetween('fact.occurred_on', [$start->toDateString(), $end->toDateString()])
             ->where('fact.occurred_at', '<=', $cutoff)->where(fn ($query) => $query
-                ->whereNull('profile.id')->orWhereColumn('profile.company_id', '!=', 'fact.company_id'))->count();
+                ->whereNull('profile.id')->orWhereNot(fn ($sameCompany) => \App\Services\CompanyIdScope::sameCompany($sameCompany, 'profile.company_id', 'fact.company_id')))->count();
         if ($profileMismatchCount > 0) $blockers[] = ['code' => 'metric_profile_scope_mismatch', 'count' => $profileMismatchCount];
         $missingStaffCount = SalesProfile::query()->withTrashed()->where(fn ($_companyIdScope) => \App\Services\CompanyIdScope::constrain($_companyIdScope, 'company_id', $companyId))
             ->where('effective_from', '<', $endExclusiveUtc)->where(fn ($query) => $query

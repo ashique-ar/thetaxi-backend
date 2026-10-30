@@ -68,7 +68,7 @@ class ProcessSalesTasks extends Command
                 ->whereExists(function ($query): void {
                     $query->selectRaw('1')->from('customer_relationship_owner_assignments as current_owner')
                         ->whereColumn('current_owner.customer_id', 'bookings.customer_id')
-                        ->whereColumn('current_owner.company_id', 'bookings.company_id')
+                        ->where(fn ($sameCompany) => \App\Services\CompanyIdScope::sameCompany($sameCompany, 'current_owner.company_id', 'bookings.company_id'))
                         ->whereNotNull('current_owner.owner_sales_profile_id')->whereNull('current_owner.ended_at')
                         ->where('current_owner.effective_from', '<=', now());
                 })
@@ -76,7 +76,7 @@ class ProcessSalesTasks extends Command
                     $eligible->whereExists(function ($query): void {
                         $query->selectRaw('1')->from('customer_relationship_owner_assignments as owner')
                             ->whereColumn('owner.customer_id', 'bookings.customer_id')
-                            ->whereColumn('owner.company_id', 'bookings.company_id')
+                            ->where(fn ($sameCompany) => \App\Services\CompanyIdScope::sameCompany($sameCompany, 'owner.company_id', 'bookings.company_id'))
                             ->whereNotNull('owner.owner_sales_profile_id')
                             ->whereColumn('owner.effective_from', '<=', 'bookings.completed_at')
                             ->where(fn ($activeAtCompletion) => $activeAtCompletion->whereNull('owner.ended_at')
@@ -84,12 +84,12 @@ class ProcessSalesTasks extends Command
                     })->orWhereExists(function ($ownerAfter): void {
                         $ownerAfter->selectRaw('1')->from('customer_relationship_owner_assignments as later_owner')
                             ->whereColumn('later_owner.customer_id', 'bookings.customer_id')
-                            ->whereColumn('later_owner.company_id', 'bookings.company_id')
+                            ->where(fn ($sameCompany) => \App\Services\CompanyIdScope::sameCompany($sameCompany, 'later_owner.company_id', 'bookings.company_id'))
                             ->whereNotNull('later_owner.owner_sales_profile_id')
                             ->whereColumn('later_owner.effective_from', '>', 'bookings.completed_at')
                             ->whereNotExists(function ($newer): void {
                                 $newer->selectRaw('1')->from('bookings as newer')
-                                    ->whereColumn('newer.company_id', 'bookings.company_id')
+                                    ->where(fn ($sameCompany) => \App\Services\CompanyIdScope::sameCompany($sameCompany, 'newer.company_id', 'bookings.company_id'))
                                     ->whereColumn('newer.customer_id', 'bookings.customer_id')
                                     ->where('newer.status', 'completed')->whereNotNull('newer.completed_at')
                                     ->whereColumn('newer.completed_at', '>', 'bookings.completed_at')
@@ -99,7 +99,7 @@ class ProcessSalesTasks extends Command
                 })
                 ->whereNotExists(function ($query): void {
                     $query->selectRaw('1')->from('sales_tasks as task')
-                        ->whereColumn('task.company_id', 'bookings.company_id')
+                        ->where(fn ($sameCompany) => \App\Services\CompanyIdScope::sameCompany($sameCompany, 'task.company_id', 'bookings.company_id'))
                         ->whereColumn('task.booking_id', 'bookings.id')
                         ->whereRaw("task.creation_idempotency_key = CONCAT('repeat-booking-follow-up:', bookings.id)");
                 })

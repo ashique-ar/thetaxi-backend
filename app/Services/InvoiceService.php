@@ -327,9 +327,14 @@ class InvoiceService
 
         $customer  = $booking->customer;
         $user      = $customer?->user;
-        $firstName = $user?->first_name ?? '';
-        $lastName  = $user?->last_name ?? '';
-        $fullName  = trim("$firstName $lastName") ?: ($customer?->name ?? 'Customer');
+        $checkoutContact = $booking->workflow_data['checkout_contact'] ?? null;
+        $hasCheckoutContact = is_array($checkoutContact);
+        $firstName = $hasCheckoutContact ? (string) ($checkoutContact['first_name'] ?? '') : ($user?->first_name ?? '');
+        $lastName  = $hasCheckoutContact ? (string) ($checkoutContact['last_name'] ?? '') : ($user?->last_name ?? '');
+        $fullName  = trim("$firstName $lastName") ?: ($hasCheckoutContact ? 'Customer' : ($customer?->name ?? 'Customer'));
+        $address = $hasCheckoutContact
+            ? collect(['address', 'city', 'country'])->map(fn (string $field) => trim((string) ($checkoutContact[$field] ?? '')))->filter()->implode(', ')
+            : ($customer?->address ?? $user?->address);
 
         $dueDays = (int) (WebsiteSetting::getValue('invoice_due_days', 7) ?? 7);
 
@@ -337,9 +342,9 @@ class InvoiceService
             'booking_id'      => $booking->id,
             'customer_id'     => $booking->customer_id,
             'customer_name'   => $fullName,
-            'customer_email'  => $user?->email,
-            'customer_phone'  => $user?->phone,
-            'customer_address' => $customer?->address ?? $user?->address,
+            'customer_email'  => $hasCheckoutContact ? ($checkoutContact['email'] ?? null) : $user?->email,
+            'customer_phone'  => $hasCheckoutContact ? ($checkoutContact['phone'] ?? null) : $user?->phone,
+            'customer_address' => $address,
             'currency'        => $currency,
             'subtotal'        => $subtotal,
             'discount_amount' => $discountAmount,

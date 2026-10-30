@@ -144,6 +144,13 @@ class BusinessSettingController extends Controller
             ? WebsiteSetting::query()->whereIn('type', BusinessSetting::COMPANY_SCOPED_WORKFLOW_KEYS)
                 ->where(fn ($_companyIdScope) => \App\Services\CompanyIdScope::constrain($_companyIdScope, 'company_id', $companyId))->pluck('value', 'type')->all()
             : [];
+        $legacyCorporateEmailCanBeShown = Company::query()->where('is_active', true)->count() <= 1
+            || ($companyId && Company::query()->whereKey($companyId)->where('is_active', true)->where('is_default', true)->exists());
+        $companyCorporateEmail = $companyId
+            ? WebsiteSetting::query()->where('type', 'corporate_booking_notification_email')
+                ->where(fn ($query) => \App\Services\CompanyIdScope::constrain($query, 'company_id', $companyId))
+                ->orderByRaw('CASE WHEN company_id = ? THEN 0 ELSE 1 END', [$companyId])->value('value')
+            : null;
         if ($companyId && request()->user()) {
             app(CompanySettingsAccessService::class)->assertCanAccess(request()->user(), $companyId);
         }
@@ -154,11 +161,17 @@ class BusinessSettingController extends Controller
             $categories[$category] = [];
 
             foreach ($keys as $key) {
+                if ($key === 'corporate_booking_notification_email') {
+                    $categories[$category][$key] = $companyCorporateEmail
+                        ?? ($legacyCorporateEmailCanBeShown
+                            ? ($businessValues[$key] ?? $legacyValues[$key] ?? null)
+                            : null);
+                    continue;
+                }
+
                 $categories[$category][$key] = array_key_exists($key, $companyWorkflowValues)
                     ? $companyWorkflowValues[$key]
-                    : (array_key_exists($key, $businessValues)
-                        ? $businessValues[$key]
-                        : ($legacyValues[$key] ?? null));
+                    : (array_key_exists($key, $businessValues) ? $businessValues[$key] : ($legacyValues[$key] ?? null));
             }
         }
         $categories['booking']['customer_portal_booking_advance_hours'] ??= $categories['booking']['booking_advance_hours'];
@@ -283,18 +296,18 @@ class BusinessSettingController extends Controller
             ? trim((string) $this->websiteSettingsService->get('driver_mobile_latest_version', ''))
             : '';
         $userId = $request->user()?->id;
-        $hasCompanyWorkflowSettings = array_intersect(array_keys($settings), BusinessSetting::COMPANY_SCOPED_WORKFLOW_KEYS) !== [];
-        $companyId = $hasCompanyWorkflowSettings ? $this->websiteSettingsService->resolveCurrentCompanyId() : null;
-        if ($hasCompanyWorkflowSettings && ! $companyId) {
+        $hasCompanySettings = array_intersect(array_keys($settings), BusinessSetting::COMPANY_SCOPED_KEYS) !== [];
+        $companyId = $hasCompanySettings ? $this->websiteSettingsService->resolveCurrentCompanyId() : null;
+        if ($hasCompanySettings && ! $companyId) {
             return response()->json([
                 'status' => 'error',
-                'message' => 'Select an active business before changing its workflow settings.',
+                'message' => 'Select an active business before changing its settings.',
             ], 422);
         }
         foreach ($settings as $type => $value) {
             $normalizedValue = WebsiteSetting::normalizeValue($value);
 
-            if (in_array($type, BusinessSetting::COMPANY_SCOPED_WORKFLOW_KEYS, true)) {
+            if (in_array($type, BusinessSetting::COMPANY_SCOPED_KEYS, true)) {
                 $this->saveCompanyWorkflowSetting($request, $type, $normalizedValue);
                 continue;
             }
@@ -347,7 +360,8 @@ class BusinessSettingController extends Controller
         $data = $request->validated();
         $this->validateCompanyWorkflowSetting($data['type'], $data['value'] ?? null);
         $this->attendanceActivation->assertCanEnable($request->user(), $data['type'], $data['value'] ?? null);
-        if (in_array($data['type'], BusinessSetting::COMPANY_SCOPED_WORKFLOW_KEYS, true)) {
+        if (in_array($data['type'], BusinessSetting::COMPANY_SCOPED_KEYS, true)) {
+            $this->validateCompanyScopedSetting($data['type'], $data['value'] ?? null);
             $setting = $this->saveCompanyWorkflowSetting($request, $data['type'], $data['value'] ?? null, true);
             return response()->json([
                 'status'=>'success',
@@ -385,9 +399,10 @@ class BusinessSettingController extends Controller
             $targetType,
             array_key_exists('value', $data) ? $data['value'] : $businessSetting->value,
         );
-        if (in_array($businessSetting->type, BusinessSetting::COMPANY_SCOPED_WORKFLOW_KEYS, true)
-            || in_array($targetType, BusinessSetting::COMPANY_SCOPED_WORKFLOW_KEYS, true)) {
-            abort_unless($targetType === $businessSetting->type, 422, 'Workflow setting names cannot be changed.');
+        if (in_array($businessSetting->type, BusinessSetting::COMPANY_SCOPED_KEYS, true)
+            || in_array($targetType, BusinessSetting::COMPANY_SCOPED_KEYS, true)) {
+            abort_unless($targetType === $businessSetting->type, 422, 'Company setting names cannot be changed.');
+            $this->validateCompanyScopedSetting($targetType, $data['value'] ?? $businessSetting->value);
             $this->attendanceActivation->assertCanEnable($request->user(), $targetType, $data['value'] ?? $businessSetting->value);
             $setting = $this->saveCompanyWorkflowSetting($request, $targetType, $data['value'] ?? $businessSetting->value);
             return response()->json([
@@ -424,8 +439,8 @@ class BusinessSettingController extends Controller
 
     public function destroy(BusinessSetting $businessSetting): JsonResponse
     {
-        abort_unless(! in_array($businessSetting->type, BusinessSetting::COMPANY_SCOPED_WORKFLOW_KEYS, true), 422,
-            'Workflow settings are managed in the active business booking settings.');
+        abort_unless(! in_array($businessSetting->type, BusinessSetting::COMPANY_SCOPED_KEYS, true), 422,
+            'This setting is managed for the active business.');
         $this->attendanceActivation->assertNotDeletable($businessSetting->type);
         $businessSetting->delete();
         return response()->json([
@@ -446,6 +461,15 @@ class BusinessSettingController extends Controller
         $setting->save();
         $this->websiteSettingsService->clearCache($type, $companyId);
         return $setting;
+    }
+
+    private function validateCompanyScopedSetting(string $type, mixed $value): void
+    {
+        if ($type !== 'corporate_booking_notification_email') {
+            return;
+        }
+
+        Validator::make(['value' => $value], ['value' => ['nullable', 'email:rfc', 'max:255']])->validate();
     }
 
     private function normalizeBookingWorkflowSettings(array $settings): array

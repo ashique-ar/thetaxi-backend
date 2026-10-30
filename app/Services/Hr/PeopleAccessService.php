@@ -36,7 +36,7 @@ class PeopleAccessService
                 ->where(fn ($_companyIdScope) => \App\Services\CompanyIdScope::constrain($_companyIdScope, 'company_id', $actorStaff->company_id))
                 ->whereNotExists(fn ($governed) => $governed->selectRaw('1')->from('hr_reporting_lines as governed_lines')
                     ->whereColumn('governed_lines.member_staff_id', 'hr_employment_assignments.staff_id')
-                    ->whereColumn('governed_lines.company_id', 'hr_employment_assignments.company_id')
+                    ->where(fn ($sameCompany) => \App\Services\CompanyIdScope::sameCompany($sameCompany, 'governed_lines.company_id', 'hr_employment_assignments.company_id'))
                     ->whereIn('governed_lines.line_type', ['primary', 'dotted_line']))
                 ->where(fn (Builder $assignment) => $assignment
                     ->where('manager_staff_id', $actorStaff->id)

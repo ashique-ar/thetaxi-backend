@@ -60,7 +60,7 @@ class PeopleCoreController extends Controller
     public function importJob(Request $request, HrPeopleImportJob $job): JsonResponse
     {
         
-        abort_unless($job->company_id===$this->access->actorCompanyId($request->user()),404);
+        abort_unless(\App\Services\CompanyIdScope::sameCompanyId((string) ($job->company_id), (string) ($this->access->actorCompanyId($request->user()))),404);
         return response()->json(['status'=>'success','data'=>$this->importPayload($job)]);
     }
 
@@ -68,7 +68,7 @@ class PeopleCoreController extends Controller
     {
         
         $data=$request->validate(['expected_file_checksum'=>['required','string','size:64']]);
-        abort_unless($job->company_id===$this->access->actorCompanyId($request->user()),404);
+        abort_unless(\App\Services\CompanyIdScope::sameCompanyId((string) ($job->company_id), (string) ($this->access->actorCompanyId($request->user()))),404);
         abort_unless(hash_equals($job->file_checksum,$data['expected_file_checksum']),409,'The retained import file differs from the reviewed preview.');
         return response()->json(['status'=>'success','data'=>$this->importPayload($this->migration->commit($job,$job->company_id,(string)$request->user()->id))]);
     }
@@ -239,7 +239,7 @@ class PeopleCoreController extends Controller
         
         $data = $request->validate(['company_id' => ['nullable', 'uuid'], 'unit_type' => ['nullable', 'string', 'max:40'], 'status' => ['nullable', Rule::in(['active', 'inactive'])], 'search' => ['nullable', 'string', 'max:120'], 'page' => ['nullable', 'integer', 'min:1'], 'per_page' => ['nullable', 'integer', 'min:1', 'max:100']]);
         $companyId = $this->access->actorCompanyId($request->user());
-        abort_if(isset($data['company_id']) && $data['company_id'] !== $companyId, 403, 'The requested organization is outside your legal entity.');
+        abort_if(isset($data['company_id']) && !\App\Services\CompanyIdScope::sameCompanyId((string) ($data['company_id']), (string) ($companyId)), 403, 'The requested organization is outside your legal entity.');
         $search = trim((string) ($data['search'] ?? ''));
         $rows = DB::table('hr_organization_units')->where(fn ($_companyIdScope) => \App\Services\CompanyIdScope::constrain($_companyIdScope, 'company_id', $companyId))->when($data['unit_type'] ?? null, fn($q, $type) => $q->where('unit_type', $type))->when($data['status'] ?? null, fn($q, $status) => $q->where('status', $status))->when($search !== '', fn($q) => $q->where(fn($match) => $match->whereRaw('LOWER(code) LIKE ?', ['%' . mb_strtolower($search) . '%'])->orWhereRaw('LOWER(name) LIKE ?', ['%' . mb_strtolower($search) . '%'])))->orderBy('name')->orderBy('id')->paginate((int) ($data['per_page'] ?? 50));
         $rows->getCollection()->transform(fn($row) => $this->decodeJsonColumns($row, ['custom_fields']));
@@ -358,7 +358,7 @@ class PeopleCoreController extends Controller
         
         $data = $request->validate($this->organizationUnitRules() + ['company_id' => ['nullable', 'uuid', 'exists:companies,id']]);
         $companyId = $this->access->actorCompanyId($request->user());
-        abort_if(isset($data['company_id']) && $data['company_id'] !== $companyId, 403, 'The organization unit must belong to your legal entity.');
+        abort_if(isset($data['company_id']) && !\App\Services\CompanyIdScope::sameCompanyId((string) ($data['company_id']), (string) ($companyId)), 403, 'The organization unit must belong to your legal entity.');
         $this->assertOrganizationStaffReferences($data, $companyId);
         return response()->json(['status' => 'success', 'data' => $this->organizationAdmin->createUnit($data, $companyId, (string) $request->user()->id)], 201);
     }
@@ -709,7 +709,7 @@ class PeopleCoreController extends Controller
         
         $staff = Staff::withTrashed()->findOrFail($case->staff_id);
         $this->access->authorize($request->user(), $staff);
-        abort_unless($staff->company_id === $case->company_id, 409, 'The rehire case and employee legal entity do not match.');
+        abort_unless(\App\Services\CompanyIdScope::sameCompanyId((string) ($staff->company_id), (string) ($case->company_id)), 409, 'The rehire case and employee legal entity do not match.');
         $assignment = $request->validate(['employment_type_id' => ['nullable', 'uuid', 'exists:hr_employment_types,id'], 'position_id' => ['nullable', 'uuid', 'exists:hr_positions,id'], 'organization_unit_id' => ['nullable', 'uuid', 'exists:hr_organization_units,id'], 'manager_staff_id' => ['nullable', 'uuid', 'exists:staff,id'], 'cost_centre_code' => ['nullable', 'string', 'max:80'], 'location_code' => ['nullable', 'string', 'max:80'], 'payroll_group_code' => ['nullable', 'string', 'max:80'], 'default_shift_code' => ['nullable', 'string', 'max:80'], 'work_pattern_code' => ['nullable', 'string', 'max:80']]);
         foreach (['employment_type_id' => 'hr_employment_types', 'position_id' => 'hr_positions', 'organization_unit_id' => 'hr_organization_units'] as $field => $table) {
             if (!empty($assignment[$field]))

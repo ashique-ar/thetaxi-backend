@@ -55,11 +55,10 @@ trait AuthorizesAttendanceRequests
         $staffQuery = Staff::query()
             ->where('user_id', $request->user()->id)
             ->whereIn('id', $contexts->pluck('context_id'))
-            ->whereNotNull('company_id')
             ->where(fn ($employment) => $employment
                 ->whereNull('employment_ended_at')
                 ->orWhere('employment_ended_at', '>', now()));
-        return Company::query()->whereIn('id', $staffQuery->select('company_id'))
+        return Company::query()->where(fn ($scope) => \App\Services\CompanyIdScope::constrainIn($scope, 'id', $staffQuery->select('company_id')))
             ->where('is_active', true)->pluck('id');
     }
 

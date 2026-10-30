@@ -24,6 +24,7 @@ class PeopleCoreService
     public function initializeStaff(Staff $staff, array $input, string $actorUserId): Staff
     {
         
+        $staff->company_id = $staff->company_id ?: app(\App\Services\SingleCompanyScope::class)->activeDefaultCompany()?->id;
         if (! $staff->company_id) return $staff;
         return DB::transaction(function () use ($staff, $input, $actorUserId) {
             abort_unless(DB::table('companies')->where('id',$staff->company_id)->where('is_active',true)->whereNull('deleted_at')->lockForUpdate()->first(),409,'Staff initialization requires an active legal entity.');
@@ -71,7 +72,7 @@ class PeopleCoreService
             $companyId = (string) $staff->company_id;
             abort_unless(DB::table('companies')->where('id', $companyId)->where('is_active', true)->whereNull('deleted_at')->lockForUpdate()->first(), 409, 'Rehire requires an active legal entity.');
             $staff = Staff::withTrashed()->whereKey($staff->id)->lockForUpdate()->firstOrFail();
-            abort_unless((string) $staff->company_id === $companyId, 409, 'The employee legal entity changed; reload the rehire review.');
+            abort_unless(\App\Services\CompanyIdScope::sameCompanyId((string) ((string) $staff->company_id), (string) ($companyId)), 409, 'The employee legal entity changed; reload the rehire review.');
             abort_unless($staff->trashed() || $staff->employment_ended_at, 422, 'Only a former employee can enter rehire review.');
             $prior = HrEmploymentSpell::query()->where('staff_id',$staff->id)->where('status','terminated')->latest('spell_number')->lockForUpdate()->firstOrFail();
             $checksum=hash('sha256',json_encode(['staff_id'=>$staff->id,'prior_spell_id'=>$prior->id,'data'=>$data],JSON_UNESCAPED_SLASHES));
@@ -112,7 +113,7 @@ class PeopleCoreService
             abort_unless($case->status==='pending_approval',422,'Rehire case is not pending approval.');
             abort_if($case->prepared_by===$actorUserId,403,'Rehire preparer and approver must be different users.');
             $staff=Staff::withTrashed()->lockForUpdate()->findOrFail($case->staff_id);
-            abort_unless($staff->company_id===$case->company_id,409,'The rehire case and employee legal entity do not match.');
+            abort_unless(\App\Services\CompanyIdScope::sameCompanyId((string) ($staff->company_id), (string) ($case->company_id)),409,'The rehire case and employee legal entity do not match.');
             abort_if(HrEmploymentSpell::query()->where('staff_id',$staff->id)->where('status','active')->exists(),409,'Employee already has an active employment spell.');
             $this->assertEmploymentType($assignment['employment_type_id']??null,$case->company_id);
             $staff->restore(); $staff->forceFill(['employment_ended_at'=>null,'termination_reason'=>null,'terminated_by'=>null,'updated_user_id'=>$actorUserId])->save();
@@ -181,7 +182,7 @@ class PeopleCoreService
     private function createAssignment(Staff $staff,HrEmploymentSpell $spell,array $data,string $actor,string $reason): HrEmploymentAssignment
     {
         $start=$data['effective_from']??$spell->joined_at->toDateString();
-        abort_unless($spell->staff_id===$staff->id&&$spell->company_id===$staff->company_id,409,'Employment spell and Staff legal entity do not match.');
+        abort_unless($spell->staff_id===$staff->id&&\App\Services\CompanyIdScope::sameCompanyId((string) ($spell->company_id), (string) ($staff->company_id)),409,'Employment spell and Staff legal entity do not match.');
         $this->assertAssignmentReferences($staff,$data,$start);
         if(!empty($data['payroll_group_code']))$this->assertPayrollGroupCode($staff->company_id,$data['payroll_group_code'],$start);
         HrEmploymentAssignment::query()->where('staff_id',$staff->id)->whereNull('effective_until')->update(['effective_until'=>$start]);

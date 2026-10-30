@@ -133,7 +133,7 @@ class CustomerMergeService
         ] as [$table, $column]) {
             if (! Schema::hasTable($table) || ! Schema::hasColumn($table, $column) || ! Schema::hasColumn($table, 'company_id')) continue;
             $otherCompanyHasReferences = DB::table($table)->whereIn($column, [$primary->id, $duplicate->id])
-                ->where(fn ($scope) => $scope->whereNull('company_id')->orWhere('company_id', '!=', $companyId))->exists();
+                ->whereNot(fn ($scope) => \App\Services\CompanyIdScope::constrain($scope, 'company_id', $companyId))->exists();
             if ($otherCompanyHasReferences) {
                 throw ValidationException::withMessages(['customer_id' => ['These customer records have activity in another company. Ask a system administrator to review the cross-company records.']]);
             }

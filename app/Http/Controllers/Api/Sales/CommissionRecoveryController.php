@@ -91,7 +91,7 @@ class CommissionRecoveryController extends Controller
                 'proposed_commission_adjustment_lkr', 'original_formula_kind', 'calculation_status',
                 'calculation_explanation',
             ]) + [
-                'beneficiary_sales_code' => $profile?->company_id === $case->company_id ? $profile->sales_code : null,
+                'beneficiary_sales_code' => \App\Services\CompanyIdScope::sameCompanyId((string) ($profile?->company_id), (string) ($case->company_id)) ? $profile->sales_code : null,
                 'decision' => $case->decision?->only(['resolution_disposition', 'commission_adjustment_lkr']),
             ];
         });

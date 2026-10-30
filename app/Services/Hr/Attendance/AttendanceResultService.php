@@ -58,8 +58,8 @@ class AttendanceResultService
             $payable = $isWorking ? min($worked, (int) ($rules['maximum_payable_minutes'] ?? $shift->minimum_full_day_minutes)) : 0;
             $leave = DB::table('hr_leave_request_days as day')
                 ->join('hr_leave_requests as request', 'request.id', '=', 'day.leave_request_id')
-                ->join('hr_leave_types as type', fn ($join) => $join->on('type.id', '=', 'request.leave_type_id')->on('type.company_id', '=', 'request.company_id'))
-                ->join('hr_leave_policies as leave_policy', fn ($join) => $join->on('leave_policy.id', '=', 'request.policy_id')->on('leave_policy.company_id', '=', 'request.company_id'))
+                ->join('hr_leave_types as type', fn ($join) => $join->on('type.id', '=', 'request.leave_type_id')->where(fn ($sameCompany) => \App\Services\CompanyIdScope::sameCompany($sameCompany, 'type.company_id', 'request.company_id')))
+                ->join('hr_leave_policies as leave_policy', fn ($join) => $join->on('leave_policy.id', '=', 'request.policy_id')->where(fn ($sameCompany) => \App\Services\CompanyIdScope::sameCompany($sameCompany, 'leave_policy.company_id', 'request.company_id')))
                 ->where(fn ($_companyIdScope) => \App\Services\CompanyIdScope::constrain($_companyIdScope, 'request.company_id', $companyId))->where('request.staff_id', $staffId)
                 ->where('request.status', 'approved')->whereDate('day.leave_date', $date)
                 ->select(['request.id', 'day.minutes', 'day.day_kind', 'type.code as leave_type_code', 'type.paid'])->first();
@@ -76,7 +76,7 @@ class AttendanceResultService
             $input = ['company_id' => $companyId, 'staff_id' => $staffId, 'date' => $date->toDateString(), 'roster' => (array) $roster, 'calendar' => (array) $calendar, 'shift' => (array) $shift, 'policy' => (array) $policy, 'day_override' => $dayOverride ? (array) $dayOverride : null, 'leave' => $leave, 'events' => $events->map(fn($event) => [$event->id, $event->payload_checksum])->values()->all()];
             $inputChecksum = hash('sha256', json_encode($input, JSON_UNESCAPED_SLASHES | JSON_THROW_ON_ERROR));
             $latest = AttendanceDailyResult::query()->where('staff_id', $staffId)->whereDate('work_date', $date)->latest('result_version')->lockForUpdate()->first();
-            abort_if($latest && (string) $latest->company_id !== (string) $companyId, 409, 'The latest attendance result does not belong to the selected legal entity.');
+            abort_if($latest && !\App\Services\CompanyIdScope::sameCompanyId((string) ((string) $latest->company_id), (string) ((string) $companyId)), 409, 'The latest attendance result does not belong to the selected legal entity.');
             if ($latest && $latest->source_kind === 'calculated' && hash_equals($latest->input_checksum, $inputChecksum))
                 return $latest;
             if ($latest && $latest->source_kind === 'manual_correction'

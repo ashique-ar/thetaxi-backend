@@ -16,10 +16,10 @@ class ProcessLeaveAccruals extends Command
     {
         $asOf=CarbonImmutable::parse($this->option('as-of')?:now()->toDateString())->startOfDay();$actor=(string)config('hr.system_user_id');if($this->option('commit')){if(!$actor||!DB::table('users')->where('id',$actor)->exists()){$this->error('HR_SYSTEM_USER_ID must identify an existing system actor before committed processing.');return self::FAILURE;}}
         $rows=DB::table('hr_leave_policy_assignments as assignment')
-            ->join('hr_leave_policies as policy',fn($join)=>$join->on('policy.id','=','assignment.policy_id')->on('policy.company_id','=','assignment.company_id'))
-            ->join('hr_leave_types as type',fn($join)=>$join->on('type.id','=','policy.leave_type_id')->on('type.company_id','=','assignment.company_id'))
-            ->join('staff',fn($join)=>$join->on('staff.id','=','assignment.staff_id')->on('staff.company_id','=','assignment.company_id'))
-            ->join('hr_leave_balance_accounts as account',fn($join)=>$join->on('account.staff_id','=','assignment.staff_id')->on('account.leave_type_id','=','policy.leave_type_id')->on('account.company_id','=','assignment.company_id'))
+            ->join('hr_leave_policies as policy',fn($join)=>$join->on('policy.id','=','assignment.policy_id')->where(fn ($sameCompany) => \App\Services\CompanyIdScope::sameCompany($sameCompany, 'policy.company_id', 'assignment.company_id')))
+            ->join('hr_leave_types as type',fn($join)=>$join->on('type.id','=','policy.leave_type_id')->where(fn ($sameCompany) => \App\Services\CompanyIdScope::sameCompany($sameCompany, 'type.company_id', 'assignment.company_id')))
+            ->join('staff',fn($join)=>$join->on('staff.id','=','assignment.staff_id')->where(fn ($sameCompany) => \App\Services\CompanyIdScope::sameCompany($sameCompany, 'staff.company_id', 'assignment.company_id')))
+            ->join('hr_leave_balance_accounts as account',fn($join)=>$join->on('account.staff_id','=','assignment.staff_id')->on('account.leave_type_id','=','policy.leave_type_id')->where(fn ($sameCompany) => \App\Services\CompanyIdScope::sameCompany($sameCompany, 'account.company_id', 'assignment.company_id')))
             ->whereNotNull('assignment.approved_at')->where('policy.status','approved')->whereDate('assignment.effective_from','<=',$asOf)
             ->where(fn($q)=>$q->whereNull('assignment.effective_until')->orWhereDate('assignment.effective_until','>',$asOf))
             ->whereDate('policy.effective_from','<=',$asOf)->where(fn($q)=>$q->whereNull('policy.effective_until')->orWhereDate('policy.effective_until','>',$asOf))

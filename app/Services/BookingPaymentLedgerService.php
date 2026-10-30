@@ -476,7 +476,7 @@ class BookingPaymentLedgerService
             abort_unless($company, 409, 'No active default company is configured.');
             $booking = Booking::query()->lockForUpdate()->findOrFail($booking->id);
             $attribution = SalesBookingAttribution::query()->where('booking_id', $booking->id)->lockForUpdate()->first();
-            abort_unless((string) $attribution?->company_id === (string) $company->id, 409,
+            abort_unless(\App\Services\CompanyIdScope::sameCompanyId((string) ((string) $attribution?->company_id), (string) ((string) $company->id)), 409,
                 'The booking legal entity changed before payment could be recorded.');
             $this->collectionCompanyIntegrity->assertConsistent($booking, (string) $company->id);
             if (!empty($data['idempotency_key'])) {

@@ -139,11 +139,9 @@ class SmsService
             ? SmsCampaign::query()->findOrFail($payload['campaign_id'])
             : null;
         $defaultCompanyId = app(SingleCompanyScope::class)->defaultCompany()?->id;
-        $companyId = $campaign
-            ? (string) $campaign->company_id
-            : $defaultCompanyId;
+        $companyId = $campaign?->company_id ?: $defaultCompanyId;
         if (!$defaultCompanyId || !$companyId || $companyId !== $defaultCompanyId
-            || (!empty($payload['company_id']) && $payload['company_id'] !== $companyId)) {
+            || (!empty($payload['company_id']) && !\App\Services\CompanyIdScope::sameCompanyId((string) ($payload['company_id']), (string) ($companyId)))) {
             throw new RuntimeException('Select the active default company before queuing SMS.');
         }
 
@@ -187,7 +185,7 @@ class SmsService
             ? SmsMessage::firstOrCreate(['idempotency_key' => $idempotencyKey], $attributes)
             : SmsMessage::create($attributes);
 
-        if ($message->company_id !== $companyId) {
+        if (!\App\Services\CompanyIdScope::sameCompanyId((string) ($message->company_id), (string) ($companyId))) {
             throw new RuntimeException('This SMS idempotency key belongs to another company.');
         }
 
@@ -224,7 +222,7 @@ class SmsService
     public function queueBulkMessages(array $payload): Collection
     {
         $companyId = app(SingleCompanyScope::class)->defaultCompany()?->id;
-        if (!$companyId || (!empty($payload['company_id']) && $payload['company_id'] !== $companyId)) {
+        if (!$companyId || (!empty($payload['company_id']) && !\App\Services\CompanyIdScope::sameCompanyId((string) ($payload['company_id']), (string) ($companyId)))) {
             throw new RuntimeException('Select the active default company before queuing SMS.');
         }
         $payload['company_id'] = $companyId;
@@ -243,7 +241,7 @@ class SmsService
     {
         $audienceType = $payload['audience_type'] ?? 'manual';
         $company = app(SingleCompanyScope::class)->defaultCompany();
-        if (! $company || ($payload['company_id'] ?? null) !== $company->id) {
+        if (! $company || !\App\Services\CompanyIdScope::sameCompanyId((string) ($payload['company_id'] ?? null), (string) ($company->id))) {
             throw new RuntimeException('Select the active default company before creating a campaign.');
         }
         if (! in_array($audienceType, ['manual', 'customers'], true)) {
@@ -290,7 +288,7 @@ class SmsService
     public function scheduleCampaignLaunch(SmsCampaign $campaign): void
     {
         $company = app(SingleCompanyScope::class)->defaultCompany();
-        if (! $company || $campaign->company_id !== $company->id) {
+        if (! $company || !\App\Services\CompanyIdScope::sameCompanyId((string) ($campaign->company_id), (string) ($company->id))) {
             throw new RuntimeException('This campaign has no current default-company ownership.');
         }
 
@@ -311,7 +309,7 @@ class SmsService
         }
 
         $company = app(SingleCompanyScope::class)->defaultCompany();
-        if (! $company || $campaign->company_id !== $company->id) {
+        if (! $company || !\App\Services\CompanyIdScope::sameCompanyId((string) ($campaign->company_id), (string) ($company->id))) {
             $campaign->update([
                 'status' => 'failed',
                 'completed_at' => now(),
@@ -382,7 +380,7 @@ class SmsService
     public function processQueuedMessage(SmsMessage $message): SmsMessage
     {
         $defaultCompanyId = app(SingleCompanyScope::class)->defaultCompany()?->id;
-        if (!$defaultCompanyId || $message->company_id !== $defaultCompanyId) {
+        if (!$defaultCompanyId || !\App\Services\CompanyIdScope::sameCompanyId((string) ($message->company_id), (string) ($defaultCompanyId))) {
             SmsMessage::query()->whereKey($message->id)->whereIn('status', ['queued', 'pending', 'processing', 'failed'])->update([
                 'status' => 'failed',
                 'provider_status' => 'failed',

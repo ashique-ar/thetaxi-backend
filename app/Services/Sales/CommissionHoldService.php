@@ -34,7 +34,7 @@ class CommissionHoldService
         }
 
         $calculation = $this->formulaReplay->calculate(
-            $decision->company_id,
+            $decision->company_id ?: \App\Services\CompanyIdScope::defaultCompanyId(),
             $decision->beneficiary_staff_id,
             $decision->plan_family_id,
             (float) $decision->eligible_lkr_amount,
@@ -62,7 +62,8 @@ class CommissionHoldService
         return DB::transaction(function () use ($decisionId, $expectedVersion, $reason, $idempotencyKey, $actorUserId, $requestChecksum) {
             $decisionTenant = DB::table('sales_commission_decisions')->where('id', $decisionId)->first(['company_id']);
             abort_unless($decisionTenant, 404, 'Commission decision not found.');
-            abort_unless($decisionTenant->company_id && DB::table('companies')->where('id', $decisionTenant->company_id)
+            $companyId = $decisionTenant->company_id ?: \App\Services\CompanyIdScope::defaultCompanyId();
+            abort_unless($companyId && DB::table('companies')->where('id', $companyId)
                 ->where('is_active', true)->whereNull('deleted_at')->lockForUpdate()->first(['id']), 422,
                 'Select an active legal entity.');
             $byKey = SalesCommissionHoldRelease::query()->where('idempotency_key', $idempotencyKey)->first();
@@ -73,6 +74,7 @@ class CommissionHoldService
             }
 
             $decision = SalesCommissionDecision::query()->lockForUpdate()->findOrFail($decisionId);
+            $decision->company_id ??= $companyId;
             abort_unless($decision->event_version === $expectedVersion, 409, 'The commission decision version changed; refresh the release preview.');
             $existing = SalesCommissionHoldRelease::query()->where('commission_decision_id', $decision->id)->first();
             abort_if($existing, 409, 'This commission hold already has an immutable release.');
@@ -133,6 +135,7 @@ class CommissionHoldService
 
         return DB::transaction(function () use ($decision, $finalityEvent) {
             $decision = SalesCommissionDecision::query()->lockForUpdate()->findOrFail($decision->id);
+            $decision->company_id ??= \App\Services\CompanyIdScope::defaultCompanyId();
             $existing = SalesCommissionHoldRelease::query()->where('commission_decision_id', $decision->id)->first();
             if ($existing) return $existing;
             if ($decision->status !== 'held' || $decision->hold_code !== 'cash_clearance_pending'
@@ -210,6 +213,7 @@ class CommissionHoldService
 
         return DB::transaction(function () use ($decision, $finalityEvent) {
             $decision = SalesCommissionDecision::query()->lockForUpdate()->findOrFail($decision->id);
+            $decision->company_id ??= \App\Services\CompanyIdScope::defaultCompanyId();
             $existing = SalesCommissionHoldResolution::query()
                 ->where('commission_decision_id', $decision->id)->first();
             if ($existing) return $existing;
@@ -219,11 +223,10 @@ class CommissionHoldService
                 'A payable release or entitlement adjustment already exists for this immutable commission decision.');
             $receipt = BookingPaymentReceipt::query()->lockForUpdate()->findOrFail($decision->receipt_id);
             abort_unless($receipt->finality_status === 'failed'
-                && $receipt->company_id !== null
                 && $finalityEvent->booking_payment_receipt_id === $receipt->id
-                && $finalityEvent->company_id === $receipt->company_id
+                && \App\Services\CompanyIdScope::sameCompanyId((string) ($finalityEvent->company_id), (string) ($receipt->company_id))
                 && $decision->receipt_component_id !== null
-                && ($decision->company_id === null || $decision->company_id === $receipt->company_id), 409,
+                && ($decision->company_id === null || \App\Services\CompanyIdScope::sameCompanyId((string) ($decision->company_id), (string) ($receipt->company_id))), 409,
                 'The commission hold resolution is not bound to this failed receipt-finality event.');
 
             $snapshot = [
@@ -252,7 +255,7 @@ class CommissionHoldService
             ]);
 
             $resolution = SalesCommissionHoldResolution::create([
-                'company_id' => $receipt->company_id,
+                'company_id' => $receipt->company_id ?: \App\Services\CompanyIdScope::defaultCompanyId(),
                 'commission_decision_id' => $decision->id,
                 'receipt_finality_event_id' => $finalityEvent->id,
                 'resolution_kind' => 'failed_finality_no_entitlement',
@@ -284,7 +287,7 @@ class CommissionHoldService
         if ($decision->status === 'shadow_held') return 'Shadow commission decisions cannot create payable releases.';
         if ($decision->status !== 'held') return 'Only an immutable held commission decision can be reviewed.';
         if (! CommissionHoldRemediationService::isFormulaReplayable($decision->hold_code)) return 'This hold requires governed attribution, identity, eligibility, finality, or FX correction and cannot be released here.';
-        if (! $decision->company_id || ! $decision->beneficiary_sales_profile_id || ! $decision->beneficiary_staff_id) return 'The frozen legal entity and beneficiary evidence is incomplete.';
+        if ((! $decision->company_id && ! \App\Services\CompanyIdScope::defaultCompanyId()) || ! $decision->beneficiary_sales_profile_id || ! $decision->beneficiary_staff_id) return 'The frozen legal entity and beneficiary evidence is incomplete.';
         if (! $decision->plan_family_id || $decision->eligible_lkr_amount === null) return 'The frozen plan family or eligible LKR basis is incomplete.';
         if (SalesCommissionHoldRelease::query()->where('commission_decision_id', $decision->id)->exists()) return 'This hold already has an immutable release.';
         return null;

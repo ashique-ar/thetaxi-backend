@@ -4,7 +4,9 @@ namespace App\Services;
 
 use App\Models\Booking\Booking;
 use App\Models\BusinessSetting;
+use App\Models\Company;
 use App\Models\User;
+use App\Models\Website\WebsiteSetting;
 use App\Notifications\NewCorporateBookingNotification;
 use App\Notifications\CorporatePortalBookingNotification;
 use App\Notifications\CorporateAccountBookingNotification;
@@ -40,7 +42,7 @@ class CorporateBookingNotificationService
         ]))))->get()
             ->each(fn (User $user) => $this->notifyPortalUser($user, $booking, $state, $reason));
 
-        $this->notifyCorporateAccount($booking, $state, $reason);
+        $this->notifyCorporateAccount($booking, $state, $reason, $this->businessCompanyId($booking));
         $this->notifyPassenger($booking, $state, $reason);
     }
 
@@ -48,6 +50,10 @@ class CorporateBookingNotificationService
     {
         try {
             $booking->loadMissing('corporateAccount');
+            $companyId = $this->businessCompanyId($booking);
+            if (! $companyId) {
+                return;
+            }
             $notification = new NewCorporateBookingNotification($booking);
 
             $this->notifyPassenger(
@@ -55,18 +61,23 @@ class CorporateBookingNotificationService
                 $booking->status === 'pending_approval' ? 'approval_requested' : 'received',
             );
 
-            // Keep the in-app notification available to internal dispatch staff.
+            // Keep booking alerts inside the business that owns the booking.
             $dispatchUsers = User::permission('bookings.dispatch')
                 ->where('is_active', true)
+                ->whereNull('deleted_at')
+                ->whereHas('staff', fn ($query) => $query
+                    ->where(fn ($company) => \App\Services\CompanyIdScope::constrain($company, 'company_id', $companyId))
+                    ->whereNull('deleted_at')
+                    ->where(fn ($employment) => $employment->whereNull('employment_ended_at')->orWhere('employment_ended_at', '>', now())))
                 ->get();
             Notification::send($dispatchUsers, $notification);
 
-            $businessEmail = trim((string) BusinessSetting::getSetting('corporate_booking_notification_email'));
+            $businessEmail = $this->businessNotificationEmail($companyId);
             if (filter_var($businessEmail, FILTER_VALIDATE_EMAIL)) {
                 Notification::route('mail', strtolower($businessEmail))->notify($notification);
             }
 
-            $this->notifyCorporateAccount($booking, $booking->status === 'pending_approval' ? 'approval_requested' : 'received');
+            $this->notifyCorporateAccount($booking, $booking->status === 'pending_approval' ? 'approval_requested' : 'received', null, $companyId);
         } catch (\Throwable $exception) {
             Log::warning('Corporate booking internal notification could not be queued', [
                 'booking_id' => $booking->id,
@@ -75,11 +86,11 @@ class CorporateBookingNotificationService
         }
     }
 
-    private function notifyCorporateAccount(Booking $booking, string $state, ?string $reason = null): void
+    private function notifyCorporateAccount(Booking $booking, string $state, ?string $reason = null, ?string $companyId = null): void
     {
         try {
             $booking->loadMissing('corporateAccount');
-            $businessEmail = strtolower(trim((string) BusinessSetting::getSetting('corporate_booking_notification_email')));
+            $businessEmail = strtolower(trim($this->businessNotificationEmail($companyId ?? $this->businessCompanyId($booking))));
             $recipients = collect($booking->corporateAccount?->booking_notification_emails ?? [])
                 ->filter(fn ($email) => is_string($email) && filter_var($email, FILTER_VALIDATE_EMAIL))
                 ->map(fn ($email) => strtolower(trim($email)))
@@ -128,5 +139,30 @@ class CorporateBookingNotificationService
                 'error' => $exception->getMessage(),
             ]);
         }
+    }
+
+    private function businessCompanyId(?Booking $booking = null): ?string
+    {
+        return app(BookingCompanyResolver::class)->resolve($booking);
+    }
+
+    private function businessNotificationEmail(?string $companyId): string
+    {
+        $companyEmail = $companyId
+            ? WebsiteSetting::query()->where('type', 'corporate_booking_notification_email')
+                ->where(fn ($query) => \App\Services\CompanyIdScope::constrain($query, 'company_id', $companyId))
+                ->orderByRaw('CASE WHEN company_id = ? THEN 0 ELSE 1 END', [$companyId])->value('value')
+            : null;
+
+        if ($companyEmail !== null) {
+            return trim((string) $companyEmail);
+        }
+
+        $legacyEmailIsStillCompanyScoped = Company::query()->where('is_active', true)->count() <= 1
+            || ($companyId && Company::query()->whereKey($companyId)->where('is_active', true)->where('is_default', true)->exists());
+
+        return $legacyEmailIsStillCompanyScoped
+            ? trim((string) BusinessSetting::getSetting('corporate_booking_notification_email'))
+            : '';
     }
 }

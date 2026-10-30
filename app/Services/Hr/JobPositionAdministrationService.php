@@ -261,7 +261,7 @@ class JobPositionAdministrationService
         if (! $event) {
             return null;
         }
-        abort_unless($event->company_id === $companyId, 403, 'Job or position command replay is outside your legal entity.');
+        abort_unless(\App\Services\CompanyIdScope::sameCompanyId((string) ($event->company_id), (string) ($companyId)), 403, 'Job or position command replay is outside your legal entity.');
         abort_unless($event->aggregate_type === $aggregateType, 409, 'Idempotency key was reused for another job or position command.');
         abort_unless(hash_equals($event->request_checksum, $checksum), 409, 'Idempotency key was reused with different job or position facts.');
 

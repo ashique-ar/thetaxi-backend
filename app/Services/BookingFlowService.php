@@ -1742,6 +1742,82 @@ class BookingFlowService
             ->first(fn(array $group) => (string) ($group['id'] ?? '') === $vehicleGroupId);
     }
 
+    /** Serialize capacity checks and booking writes for the selected vehicle groups. */
+    public function lockVehicleGroupCapacity(array $vehicleGroupIds): void
+    {
+        if (DB::transactionLevel() < 1) {
+            throw new \LogicException('Vehicle-group capacity must be locked inside a transaction.');
+        }
+
+        $ids = collect($vehicleGroupIds)->filter()->map(fn ($id) => (string) $id)->unique()->sort()->values();
+        if ($ids->isEmpty()) {
+            return;
+        }
+
+        DB::table('vehicle_groups')->whereIn('id', $ids)->orderBy('id')->lockForUpdate()->get(['id']);
+    }
+
+    private function lockBookingCapacityGroups(array $params, ?Booking $booking = null): void
+    {
+        $ids = collect([$params['vehicle_group_id'] ?? null]);
+        foreach (($params['vehicle_groups'] ?? []) as $group) $ids->push($group['id'] ?? $group['vehicle_group_id'] ?? null);
+        foreach (($params['booking_items'] ?? []) as $item) $ids->push($item['vehicle_group_id'] ?? null);
+        foreach (($params['vehicles'] ?? []) as $vehicle) $ids->push($vehicle['group_id'] ?? $vehicle['vehicle_group_id'] ?? null);
+        if ($booking) $ids = $ids->merge($booking->bookingItems->pluck('vehicle_group_id'));
+
+        $vehicleIds = collect([$params['vehicle_id'] ?? null]);
+        foreach (($params['vehicles'] ?? []) as $vehicle) $vehicleIds->push($vehicle['id'] ?? null);
+        foreach (($params['booking_items'] ?? []) as $item) $vehicleIds->push($item['vehicle_id'] ?? null);
+        if ($vehicleIds->filter()->isNotEmpty()) {
+            $ids = $ids->merge(Vehicle::query()->whereIn('id', $vehicleIds->filter()->unique())->pluck('vehicle_group_id'));
+        }
+
+        $this->lockVehicleGroupCapacity($ids->all());
+    }
+
+    private function assertBookingGroupCapacityAvailable(array $params, ?Booking $booking = null): void
+    {
+        $items = $params['booking_items'] ?? [];
+        $groupSelection = $items === [] && !empty($params['vehicle_groups']);
+        if ($items === [] && !empty($params['vehicle_groups'])) {
+            $items = collect($params['vehicle_groups'])->map(fn ($group) => array_merge($params, [
+                'vehicle_group_id' => $group['id'] ?? $group['vehicle_group_id'] ?? null,
+                'quantity' => $group['quantity'] ?? 1,
+            ]))->all();
+        }
+        if ($items === []) $items = [$params];
+
+        foreach ($items as $item) {
+            $groupId = $item['vehicle_group_id'] ?? null;
+            if (!$groupId) continue;
+            if (!empty($item['vehicle_id'])) continue;
+
+            $serviceType = $item['service_type'] ?? $item['service_type_id'] ?? $params['service_type'] ?? $params['service_type_id'] ?? null;
+            $fromDate = $item['from_date'] ?? $params['from_date'] ?? null;
+            if (!$serviceType || !$fromDate) continue;
+
+            $selection = array_merge($params, $item, [
+                'vehicle_group_id' => $groupId,
+                'from_time' => $item['from_time'] ?? $params['from_time'] ?? '00:00',
+                'exclude_booking_id' => $booking?->id,
+            ]);
+            $result = $this->getAvailableVehicleGroups($selection, false);
+            $availableGroup = collect($result['data'] ?? $result)
+                ->first(fn ($group) => (string) ($group['id'] ?? '') === (string) $groupId);
+            $quantity = $groupSelection ? max(1, (int) ($item['quantity'] ?? 1)) : 1;
+            $selectedVehicles = collect($params['vehicles'] ?? [])
+                ->filter(fn ($vehicle) => (string) ($vehicle['group_id'] ?? $vehicle['vehicle_group_id'] ?? '') === (string) $groupId)
+                ->count();
+            $needed = max(0, $quantity - $selectedVehicles);
+
+            if ($needed > 0 && (!$availableGroup || (int) ($availableGroup['available_count'] ?? 0) < $needed)) {
+                throw ValidationException::withMessages([
+                    'vehicle_group_id' => ['There is not enough availability for this vehicle group and time. Choose another option or change the dates.'],
+                ]);
+            }
+        }
+    }
+
     /**
      * Recheck persisted public cart items immediately before checkout.
      *
@@ -1753,6 +1829,7 @@ class BookingFlowService
     public function validatePublicCartAvailability(array $items): array
     {
         $failures = [];
+        $cartReservations = [];
 
         foreach ($items as $cartKey => $item) {
             if (!is_array($item)) {
@@ -1783,7 +1860,33 @@ class BookingFlowService
                     'reasons' => $availability['quotation_only_reasons']
                         ?? [$availability ? 'booking_not_allowed' : 'vehicle_group_unavailable'],
                 ];
+                continue;
             }
+
+            $fromDate = Carbon::parse($params['from_date']);
+            $toDate = Carbon::parse($params['to_date'] ?? $params['from_date']);
+            $sameGroupDemand = 1;
+            foreach ($cartReservations as $reservation) {
+                if ($reservation['vehicle_group_id'] === (string) $vehicleGroupId
+                    && $reservation['from_date'] <= $toDate
+                    && $reservation['to_date'] >= $fromDate) {
+                    $sameGroupDemand++;
+                }
+            }
+            if ((int) ($availability['available_count'] ?? 0) < $sameGroupDemand) {
+                $failures[] = [
+                    'cart_key' => (string) $cartKey,
+                    'vehicle_group_id' => $vehicleGroupId,
+                    'reasons' => ['vehicle_group_capacity_exceeded'],
+                ];
+                continue;
+            }
+
+            $cartReservations[] = [
+                'vehicle_group_id' => (string) $vehicleGroupId,
+                'from_date' => $fromDate,
+                'to_date' => $toDate,
+            ];
         }
 
         return [
@@ -2325,6 +2428,8 @@ class BookingFlowService
 
         return DB::transaction(function () use ($params) {
             $draft = $this->prepareDraftForTransition($params);
+            $this->lockBookingCapacityGroups($params, $draft);
+            $this->assertBookingGroupCapacityAvailable($params, $draft);
 
             // 1) Calculate pricing with the same payload you got from the controller
             $pricing = $this->calculatePricing($params);
@@ -2382,11 +2487,11 @@ class BookingFlowService
             $booking->review_notes = $params['review_notes'] ?? null;
 
             $booking->workflow_step = $requiresApproval ? 'pending_approval' : 'confirmed';
-            $booking->workflow_data = [
+            $booking->workflow_data = array_merge(is_array($booking->workflow_data) ? $booking->workflow_data : [], [
                 ($requiresApproval ? 'submitted_at' : 'confirmed_at') => now()->toISOString(),
                 ($requiresApproval ? 'submitted_by' : 'confirmed_by') => Auth::id(),
                 'frontend_data' => $params,
-            ];
+            ]);
             $booking->workflow_data = $this->attachCorporateContactToWorkflowData(
                 $booking->workflow_data,
                 $params
@@ -3040,6 +3145,8 @@ class BookingFlowService
 
         return DB::transaction(function () use ($params) {
             $draft = $this->prepareDraftForTransition($params);
+            $this->lockBookingCapacityGroups($params, $draft);
+            $this->assertBookingGroupCapacityAvailable($params, $draft);
             $deferConfirmation = filter_var($params['defer_confirmation'] ?? false, FILTER_VALIDATE_BOOL);
 
             // 1) Calculate pricing
@@ -3097,12 +3204,12 @@ class BookingFlowService
             $isMultiGroup = !empty($params['vehicle_groups']) && count($params['vehicle_groups']) > 1;
 
             $booking->workflow_step = $deferConfirmation ? 'pending_internal_confirmation' : 'confirmed';
-            $booking->workflow_data = [
+            $booking->workflow_data = array_merge(is_array($booking->workflow_data) ? $booking->workflow_data : [], [
                 ($deferConfirmation ? 'submitted_at' : 'confirmed_at') => now()->toISOString(),
                 ($deferConfirmation ? 'submitted_by' : 'confirmed_by') => Auth::id(),
                 'frontend_data' => $params,
                 'is_multi_group' => $isMultiGroup,
-            ];
+            ]);
             $booking->workflow_data = $this->attachCorporateContactToWorkflowData(
                 $booking->workflow_data,
                 $params
@@ -3147,6 +3254,7 @@ class BookingFlowService
                 $this->createBookingAssignments($booking, $params, $deferConfirmation ? 'pending' : 'active');
             } elseif ($isMultiGroup) {
                 $this->createMultiGroupBookingItems($booking, $params, $pricing);
+                $this->createBookingAssignments($booking, $params, $deferConfirmation ? 'pending' : 'active');
             } else {
                 // Handle single group booking - create booking item
                 $this->createSingleGroupBookingItem($booking, $params, $pricing);
@@ -3329,17 +3437,6 @@ class BookingFlowService
                     ])
                 ]);
 
-                // Create assignments for this booking item if needed
-                if ($bookingItem->vehicle_id || $bookingItem->driver_id) {
-                    $this->createBookingItemAssignments($bookingItem, [
-                        'vehicle_id' => $bookingItem->vehicle_id,
-                        'driver_id' => $bookingItem->driver_id,
-                        'from_date' => $booking->from_date,
-                        'to_date' => $booking->to_date,
-                        'from_time' => $booking->from_time,
-                        'to_time' => $booking->to_time
-                    ]);
-                }
             }
         }
     }
@@ -3573,31 +3670,21 @@ class BookingFlowService
     /**
      * Create assignments for individual booking items
      */
-    private function createBookingItemAssignments(BookingItem $bookingItem, array $assignmentData): void
-    {
-        // This method can be expanded to create specific vehicle and driver assignments
-        // for each booking item in a multi-group booking scenario
-
-        // For now, we'll use the existing assignment logic but scoped to the booking item
-        if (!empty($assignmentData['vehicle_id']) || !empty($assignmentData['driver_id'])) {
-
-            // Future implementation: Create specific assignment records for booking items
-            // This might involve a new table like booking_item_assignments or extending 
-            // existing assignment tables to reference booking_item_id
-        }
-    }
-
     public function updateBooking(string $bookingId, array $params, array $changeAnalytics): Booking
     {
         $this->assertCanOverrideTripPrices($params);
         return DB::transaction(function () use ($bookingId, $params) {
 
-            $booking = Booking::with(['bookingItems', 'bookingAddons', 'variableCustomizations'])->findOrFail($bookingId);
+            $booking = Booking::with(['bookingItems', 'bookingAddons', 'variableCustomizations'])->lockForUpdate()->findOrFail($bookingId);
+            $this->lockBookingCapacityGroups($params, $booking);
             $original = $booking->replicate();
+            $originalItemAttributes = BookingItem::withTrashed()->where('booking_id', $booking->id)
+                ->get()->keyBy('id')->map(fn (BookingItem $item) => $item->getAttributes())->all();
 
             // 1) Include booking_id in params for edit-mode customizations
             $params['booking_id'] = $bookingId;
             $params = $this->validateAndPricePromoDiscounts($params);
+            $this->assertBookingGroupCapacityAvailable($params, $booking);
 
             // 2) Update booking-level fields
             $booking->customer_id = $this->resolveBookingCustomerId($params, $booking);
@@ -4074,6 +4161,67 @@ class BookingFlowService
             ]);
 
             $this->recordPortalPromoUsage($booking, $params);
+            $actor = Auth::user();
+            $changedFields = $this->bookingUpdateChangedFieldLabels($original, $originalItemAttributes, $booking);
+            BookingActivity::query()->create([
+                'company_id' => $booking->company_id,
+                'booking_id' => $booking->id,
+                'event_key' => 'booking_updated',
+                'channel' => 'system',
+                'result_status' => 'completed',
+                'source' => $actor ? 'staff' : 'system',
+                'title' => 'Booking details updated',
+                'detail' => ($actor ? 'Updated by '.trim((string) ($actor->full_name ?: $actor->name)) : 'Updated by system.')
+                    .($changedFields ? ' · Changed: '.implode(', ', $changedFields) : ''),
+                'idempotency_key' => 'booking-updated:'.Str::uuid(),
+                'meta' => ['actor_user_id' => $actor?->id, 'changed_fields' => $changedFields],
+                'event_at' => now(),
+            ]);
+
+            $currentItems = BookingItem::withTrashed()->where('booking_id', $booking->id)->get()->keyBy('id');
+            $vehicleChanges = $currentItems->filter(function (BookingItem $item, string $itemId) use ($originalItemAttributes): bool {
+                return array_key_exists($itemId, $originalItemAttributes)
+                    && ($originalItemAttributes[$itemId]['vehicle_id'] ?? null) !== ($item->getAttributes()['vehicle_id'] ?? null);
+            });
+            if ($vehicleChanges->isNotEmpty()) {
+                $vehicleIds = $vehicleChanges->flatMap(fn (BookingItem $item, string $itemId) => [
+                    $originalItemAttributes[$itemId]['vehicle_id'] ?? null,
+                    $item->getAttributes()['vehicle_id'] ?? null,
+                ])->filter()->unique()->values();
+                $vehicles = Vehicle::query()->whereIn('id', $vehicleIds)->get(['id', 'title', 'license_plate'])->keyBy('id');
+                foreach ($vehicleChanges as $itemId => $item) {
+                    $previousId = $originalItemAttributes[$itemId]['vehicle_id'] ?? null;
+                    $newId = $item->getAttributes()['vehicle_id'] ?? null;
+                    $previousVehicle = $previousId ? $vehicles->get($previousId) : null;
+                    $newVehicle = $newId ? $vehicles->get($newId) : null;
+                    $vehicleLabel = fn ($vehicle): string => $vehicle
+                        ? trim(($vehicle->title ?: 'Vehicle').($vehicle->license_plate ? ' · '.$vehicle->license_plate : ''))
+                        : 'Unassigned';
+                    BookingActivity::query()->create([
+                        'company_id' => $booking->company_id,
+                        'booking_id' => $booking->id,
+                        'booking_item_id' => $item->id,
+                        'event_key' => 'booking_vehicle_changed',
+                        'channel' => 'system',
+                        'result_status' => 'completed',
+                        'source' => $actor ? 'staff' : 'system',
+                        'title' => 'Trip vehicle changed',
+                        'detail' => trim((string) $item->item_code).' · '.$vehicleLabel($previousVehicle).' → '.$vehicleLabel($newVehicle)
+                            .' · by '.($actor ? trim((string) ($actor->full_name ?: $actor->name)) : 'System'),
+                        'idempotency_key' => 'booking-vehicle-changed:'.Str::uuid(),
+                        'meta' => [
+                            'actor_user_id' => $actor?->id,
+                            'booking_item_id' => $item->id,
+                            'item_code' => $item->item_code,
+                            'previous_vehicle_id' => $previousId,
+                            'previous_vehicle_name' => $vehicleLabel($previousVehicle),
+                            'new_vehicle_id' => $newId,
+                            'new_vehicle_name' => $vehicleLabel($newVehicle),
+                        ],
+                        'event_at' => now(),
+                    ]);
+                }
+            }
 
             return $booking->load(['customer', 'vehicleGroup', 'bookingItems.vehicle', 'bookingItems.driver', 'bookingItems.serviceType', 'bookingItems.vehicleGroup', 'approvals']);
         });
@@ -8557,8 +8705,13 @@ class BookingFlowService
             // Load customer relation if not already loaded
             $customer = $booking->customer ?? ($booking->customer_id ? Customer::find($booking->customer_id) : null);
 
-            $customerEmail = $customer?->email ?? $booking->notification_email ?? null;
-            $customerName = $customer ? trim(($customer->first_name ?? '') . ' ' . ($customer->last_name ?? '')) : 'Valued Customer';
+            $checkoutContact = $booking->workflow_data['checkout_contact'] ?? null;
+            $customerEmail = is_array($checkoutContact)
+                ? ($checkoutContact['email'] ?? null)
+                : ($customer?->email ?? $booking->notification_email ?? null);
+            $customerName = is_array($checkoutContact)
+                ? (trim((string) ($checkoutContact['first_name'] ?? '') . ' ' . (string) ($checkoutContact['last_name'] ?? '')) ?: 'Valued Customer')
+                : ($customer ? trim(($customer->first_name ?? '') . ' ' . ($customer->last_name ?? '')) : 'Valued Customer');
 
             // Send confirmation email to customer
             if ($customerEmail) {
@@ -9206,6 +9359,10 @@ class BookingFlowService
         $clonedData['approved_at'] = null;
 
         $clonedBooking = Booking::create($clonedData);
+        if ($originalBooking->company_id) {
+            $clonedBooking->company_id = $originalBooking->company_id;
+            $clonedBooking->save();
+        }
 
         // Clone addons
         foreach ($originalBooking->bookingAddons as $addon) {
@@ -9225,12 +9382,10 @@ class BookingFlowService
     /**
      * Get booking analytics
      */
-    public function getBookingAnalytics(string $bookingId): array
+    public function getBookingAnalytics(Booking $booking): array
     {
-        $booking = Booking::findOrFail($bookingId);
-
         return [
-            'booking_id' => $bookingId,
+            'booking_id' => (string) $booking->id,
             'created_at' => $booking->created_at,
             'status_history' => $this->getStatusHistory($booking),
             'edit_count' => $this->getEditCount($booking),
@@ -9275,10 +9430,17 @@ class BookingFlowService
      */
     private function getStatusHistory(Booking $booking): array
     {
-        // Implementation depends on your activity log setup
+        $changes = BookingStatus::query()->with('createdBy:id,first_name,last_name')
+            ->where('booking_id', $booking->id)->orderBy('created_at')->get()
+            ->map(fn (BookingStatus $status) => [
+                'from' => $status->old_status,
+                'to' => $status->new_status,
+                'changed_by' => $status->createdBy?->name,
+                'changed_at' => optional($status->created_at)->toIso8601String(),
+            ])->all();
         return [
             'current_status' => $booking->status,
-            'status_changes' => [] // Fetch from activity log
+            'status_changes' => $changes,
         ];
     }
 
@@ -9287,8 +9449,74 @@ class BookingFlowService
      */
     private function getEditCount(Booking $booking): int
     {
-        // Count edits from activity log or dedicated tracking
-        return 0; // Placeholder
+        return BookingActivity::query()->where('booking_id', $booking->id)
+            ->where('event_key', 'booking_updated')->count();
+    }
+
+    private function bookingUpdateChangedFieldLabels(Booking $original, array $originalItemAttributes, Booking $booking): array
+    {
+        $changed = [];
+        $bookingFields = [
+            'customer_id' => 'Customer',
+            'passenger_count' => 'Passengers',
+            'luggage_count' => 'Luggage',
+            'special_requirements' => 'Special requirements',
+            'status' => 'Booking status',
+            'total_estimated' => 'Estimated fare',
+            'total_actual' => 'Final fare',
+            'payment_status' => 'Payment status',
+            'payment_collection_status' => 'Collection status',
+            'payment_method' => 'Payment method',
+            'corporate_department_id' => 'Corporate details',
+            'corporate_division_id' => 'Corporate details',
+            'cost_center' => 'Corporate details',
+            'project_code' => 'Corporate details',
+        ];
+        $originalAttributes = $original->getAttributes();
+        $currentAttributes = $booking->getAttributes();
+        foreach ($bookingFields as $field => $label) {
+            if (($originalAttributes[$field] ?? null) !== ($currentAttributes[$field] ?? null)) {
+                $changed[] = $label;
+            }
+        }
+
+        $itemFields = [
+            'service_type_id' => 'Service type',
+            'from_date' => 'Pickup date or time',
+            'from_time' => 'Pickup date or time',
+            'to_date' => 'Drop-off date or time',
+            'to_time' => 'Drop-off date or time',
+            'pickup_location' => 'Pickup location',
+            'dropoff_location' => 'Drop-off location',
+            'vehicle_id' => 'Vehicle',
+            'driver_id' => 'Driver',
+            'total_price' => 'Trip fare',
+            'status' => 'Trip status',
+        ];
+        $currentItems = BookingItem::withTrashed()->where('booking_id', $booking->id)->get()->keyBy('id');
+        foreach ($currentItems as $id => $item) {
+            $before = $originalItemAttributes[$id] ?? null;
+            $after = $item->getAttributes();
+            if ($before === null) {
+                $changed[] = 'Trip added';
+                continue;
+            }
+            if (empty($before['deleted_at']) && !empty($after['deleted_at'])) {
+                $changed[] = 'Trip removed';
+                continue;
+            }
+            if (!empty($before['deleted_at']) && empty($after['deleted_at'])) {
+                $changed[] = 'Trip restored';
+                continue;
+            }
+            foreach ($itemFields as $field => $label) {
+                if (($before[$field] ?? null) !== ($after[$field] ?? null)) {
+                    $changed[] = $label;
+                }
+            }
+        }
+
+        return array_values(array_unique($changed));
     }
 
     /**
@@ -9307,8 +9535,18 @@ class BookingFlowService
      */
     private function getPricingChanges(Booking $booking): array
     {
-        // Fetch from change log or activity log
-        return [];
+        return BookingActivity::query()->where('booking_id', $booking->id)
+            ->where('event_key', 'trip_price_changed')->orderBy('event_at')->get()
+            ->map(fn (BookingActivity $activity) => [
+                'booking_item_id' => (string) $activity->booking_item_id,
+                'previous_price' => data_get($activity->meta, 'previous_price'),
+                'calculated_price' => data_get($activity->meta, 'calculated_price'),
+                'final_price' => data_get($activity->meta, 'final_price'),
+                'currency' => data_get($activity->meta, 'currency'),
+                'reason' => $activity->detail,
+                'changed_by' => data_get($activity->meta, 'changed_by_name'),
+                'changed_at' => $activity->event_at?->toIso8601String(),
+            ])->all();
     }
 
     /**
@@ -9316,8 +9554,25 @@ class BookingFlowService
      */
     private function getVehicleChanges(Booking $booking): array
     {
-        // Fetch from change log or activity log
-        return [];
+        return VehicleAssignment::query()
+            ->with(['vehicle:id,title,license_plate', 'assignedBy:id,name'])
+            ->where('booking_id', $booking->id)
+            ->orderBy('created_at')
+            ->get()
+            ->map(fn (VehicleAssignment $assignment) => [
+                'id' => (string) $assignment->id,
+                'type' => 'vehicle_assignment',
+                'vehicle_id' => (string) $assignment->vehicle_id,
+                'vehicle_name' => $assignment->vehicle?->title,
+                'license_plate' => $assignment->vehicle?->license_plate,
+                'status' => $assignment->status,
+                'assigned_from' => $assignment->assigned_from?->toIso8601String(),
+                'assigned_to' => $assignment->assigned_to?->toIso8601String(),
+                'actual_end' => $assignment->actual_end?->toIso8601String(),
+                'assigned_by' => $assignment->assignedBy?->full_name ?? $assignment->assignedBy?->name,
+                'created_at' => $assignment->created_at?->toIso8601String(),
+            ])
+            ->all();
     }
 
     // ========================
@@ -9689,7 +9944,8 @@ class BookingFlowService
                 break;
 
             case 'to_date':
-                $query->orderBy('booking_items.to_date', $sortDirection);
+                $query->orderBy('booking_items.to_date', $sortDirection)
+                    ->orderBy('booking_items.to_time', $sortDirection);
                 break;
 
             case 'total_amount':
@@ -9873,6 +10129,45 @@ class BookingFlowService
                         $driverQuery->where('booking_items.is_self_driven', true)
                         ->orWhereNotNull('booking_items.driver_id');
                     }),
+            'pickup_today' => (function () use ($query) {
+                [$dayStart, $nextDay] = $this->businessLocalDayUtcRange();
+
+                $query->where('booking_items.from_date', '>=', $dayStart)
+                    ->where('booking_items.from_date', '<', $nextDay)
+                    ->whereNull('booking_items.completed_at')
+                    ->whereNotIn('booking_items.status', ['completed', 'cancelled', 'rejected'])
+                    ->whereHas('booking', function ($bookingQuery) {
+                        $bookingQuery->whereIn('status', ['approved', 'confirmed', 'allocated', 'in_progress']);
+                    })
+                    ->whereDoesntHave('booking.dispatches', function ($dispatchQuery) {
+                        $dispatchQuery->whereColumn('booking_dispatches.booking_item_id', 'booking_items.id')
+                            ->whereIn('dispatch_status', ['dispatched', 'in_progress', 'returned']);
+                    })
+                    ->whereDoesntHave('booking.driverAssignments', function ($assignmentQuery) {
+                        $assignmentQuery->whereColumn('driver_assignments.booking_item_id', 'booking_items.id')
+                            ->where(function ($started) {
+                                $started->whereNotNull('trip_started_at')
+                                    ->orWhereIn('trip_phase', ['in_progress', 'completed']);
+                            });
+                    });
+            })(),
+            'dropoff_today' => (function () use ($query) {
+                [$dayStart, $nextDay] = $this->businessLocalDayUtcRange();
+
+                $query->whereNull('booking_items.completed_at')
+                    ->whereNotIn('booking_items.status', ['completed', 'cancelled', 'rejected'])
+                    ->whereHas('booking', function ($bookingQuery) {
+                        $bookingQuery->whereIn('status', ['approved', 'confirmed', 'allocated', 'in_progress']);
+                    })
+                    ->whereHas('booking.dispatches', function ($dispatchQuery) use ($dayStart, $nextDay) {
+                        $dispatchQuery->whereColumn('booking_dispatches.booking_item_id', 'booking_items.id')
+                            ->whereIn('dispatch_status', ['dispatched', 'in_progress'])
+                            ->whereNull('actual_return_at')
+                            ->whereNotNull('expected_return_at')
+                            ->where('expected_return_at', '>=', $dayStart)
+                            ->where('expected_return_at', '<', $nextDay);
+                    });
+            })(),
             'active' => $query
                 ->whereNull('booking_items.completed_at')
                 ->whereNotIn('booking_items.status', ['completed', 'cancelled', 'rejected'])
@@ -9931,6 +10226,13 @@ class BookingFlowService
                         ->orWhere('payment_status', 'pending');
                     });
                 }),
+            'payment_confirmation_pending' => $query->whereHas('booking', function ($bookingQuery) {
+                $bookingQuery->where('booking_origin', 'website')
+                    ->where('payment_method', 'online')
+                    ->whereIn('payment_type', ['full', 'advance'])
+                    ->where('payment_status', 'pending')
+                    ->whereIn('status', ['pending', 'payment_processing']);
+            }),
             default => null,
         };
     }
@@ -11464,12 +11766,12 @@ class BookingFlowService
                 'total_revenue' => (clone $query)->where('status', 'completed')->sum('total_actual'),
                 'pending_revenue' => (clone $query)->whereIn('status', ['confirmed', 'in_progress'])->sum('total_estimated'),
             ],
-            'trends' => $this->getDashboardTrends($startDate, $endDate),
-            'top_customers' => $this->getTopCustomers($startDate, $endDate),
+            'trends' => $this->getDashboardTrends(clone $query, $startDate, $endDate),
+            'top_customers' => $this->getTopCustomers(clone $query),
             'vehicle_utilization' => $this->getVehicleUtilization($startDate, $endDate),
-            'service_type_breakdown' => $this->getServiceTypeBreakdown($startDate, $endDate),
-            'recent_activities' => $this->getRecentActivities($startDate, $endDate),
-            'alerts' => $this->getDashboardAlerts(),
+            'service_type_breakdown' => $this->getServiceTypeBreakdown(clone $query),
+            'recent_activities' => $this->getRecentActivities($params, $startDate, $endDate),
+            'alerts' => $this->getDashboardAlerts($params),
             'period_info' => [
                 'period' => $period,
                 'start_date' => $startDate->toDateString(),
@@ -11746,22 +12048,38 @@ class BookingFlowService
             'needs_approval',
             'needs_assignment',
             'ready_to_dispatch',
+            'pickup_today',
+            'dropoff_today',
             'active',
             'return_due',
             'qc_pending',
             'repair_pending',
             'ready_to_complete',
             'payment_attention',
+            'payment_confirmation_pending',
         ] as $queue) {
             $queueQuery = clone $query;
             $queueQuery->reorder();
             $this->applyOperationsQueueFilter($queueQuery, $queue);
-            $counts[$queue] = in_array($queue, ['needs_responsible_owner', 'needs_responsible_owner_past_target'], true)
+            $counts[$queue] = in_array($queue, ['needs_responsible_owner', 'needs_responsible_owner_past_target', 'payment_confirmation_pending'], true)
                 ? $queueQuery->distinct()->count('booking_items.booking_id')
                 : $queueQuery->count('booking_items.id');
         }
 
         return $counts;
+    }
+
+    private function businessLocalDayUtcRange(): array
+    {
+        $settings = app(WebsiteSettingsService::class);
+        $companyId = $settings->resolveCurrentCompanyId();
+        $timezone = trim((string) $settings->get('site_timezone', config('app.timezone', 'UTC'), $companyId));
+        if (!TimezoneService::isValidTimezone($timezone)) {
+            $timezone = config('app.timezone', 'UTC');
+        }
+
+        $start = Carbon::now($timezone)->startOfDay();
+        return [$start->copy()->utc(), $start->copy()->addDay()->utc()];
     }
 
     /**
@@ -11811,15 +12129,24 @@ class BookingFlowService
         }
     }
 
-    // Placeholder methods for complex analytics (implement as needed)
-    private function getDashboardTrends($startDate, $endDate): array
+    private function getDashboardTrends($query, $startDate, $endDate): array
     {
-        return [];
+        $days = $startDate->diffInDays($endDate);
+        $format = $days <= 31 ? 'Y-m-d' : 'Y-m';
+        $unit = $days <= 31 ? 'day' : 'month';
+        return $query->selectRaw("DATE_TRUNC('$unit', created_at) as period, COUNT(*) as value")
+            ->groupBy('period')->orderBy('period')->get()
+            ->map(fn ($row) => ['period' => Carbon::parse($row->period)->format($format), 'value' => (int) $row->value])
+            ->all();
     }
 
-    private function getTopCustomers($startDate, $endDate): array
+    private function getTopCustomers($query): array
     {
-        return [];
+        return $query->select('customer_id')->selectRaw('COUNT(*) as bookings')
+            ->whereNotNull('customer_id')->with('customer.user')->groupBy('customer_id')
+            ->orderByDesc('bookings')->limit(6)->get()
+            ->map(fn ($booking) => ['name' => trim(($booking->customer?->user?->first_name ?? '') . ' ' . ($booking->customer?->user?->last_name ?? '')) ?: ($booking->customer?->user?->name ?? 'Customer'), 'bookings' => (int) $booking->bookings])
+            ->all();
     }
 
     private function getVehicleUtilization($startDate, $endDate): array
@@ -11827,19 +12154,54 @@ class BookingFlowService
         return [];
     }
 
-    private function getServiceTypeBreakdown($startDate, $endDate): array
+    private function getServiceTypeBreakdown($query): array
     {
-        return [];
+        return DB::table('booking_items')
+            ->join('bookings', 'bookings.id', '=', 'booking_items.booking_id')
+            ->whereIn('bookings.id', (clone $query)->select('id'))
+            ->join('service_types', 'service_types.id', '=', 'booking_items.service_type_id')
+            ->select('service_types.name')->selectRaw('COUNT(DISTINCT bookings.id) as count')
+            ->groupBy('service_types.name')->orderByDesc('count')->limit(6)->get()
+            ->map(fn ($row) => ['name' => $row->name, 'count' => (int) $row->count])->all();
     }
 
-    private function getRecentActivities($startDate, $endDate): array
+    private function getRecentActivities(array $params, $startDate, $endDate): array
     {
-        return [];
+        $bookings = Booking::query()->select('id');
+        $this->applyBookingCompanyFilter($bookings, $params);
+        if (($params['dashboard_scope'] ?? null) === 'standard') {
+            $bookings->whereNull('corporate_account_id');
+        }
+
+        return BookingActivity::query()->whereIn('booking_id', $bookings)
+            ->whereBetween('event_at', [$startDate, $endDate])
+            ->orderByDesc('event_at')->limit(6)->get()
+            ->map(fn ($activity) => ['message' => $activity->title, 'created_at' => $activity->event_at, 'detail' => $activity->detail])
+            ->all();
     }
 
-    private function getDashboardAlerts(): array
+    private function getDashboardAlerts(array $params): array
     {
-        return [];
+        $companyId = $params['company_id'] ?? app(WebsiteSettingsService::class)->resolveCurrentCompanyId();
+        $eligibleOwners = $companyId
+            ? app(BookingResponsibilityService::class)->eligibleEmployees((string) $companyId)->pluck('id')->map(fn ($id) => (string) $id)->all()
+            : [];
+        $unassigned = Booking::query()
+            ->whereIn('status', array_merge(['inquiry', 'inquiry_qualified'], BookingLifecycleStatus::activeOperationalValues()))
+            ->where(fn ($query) => $query->whereNull('responsible_user_id')->orWhereNotIn('responsible_user_id', $eligibleOwners));
+        $this->applyBookingCompanyFilter($unassigned, $params);
+        if (($params['dashboard_scope'] ?? null) === 'standard') {
+            $unassigned->whereNull('corporate_account_id');
+        }
+
+        $count = $unassigned->count();
+        return $count ? [[
+            'key' => 'unassigned_booking_requests',
+            'message' => $count . ' booking request' . ($count === 1 ? '' : 's') . ' need an employee assigned',
+            'count' => $count,
+            'route' => '/bookings/list',
+            'query_params' => ['queue' => 'needs_responsible_owner'],
+        ]] : [];
     }
 
     private function applyBookingCompanyFilter($query, array $params): void
@@ -12069,6 +12431,31 @@ class BookingFlowService
                 'concurrent_possible' => $this->isConcurrentAssignmentPossible($vehicle, $conflicts),
             ];
         }
+
+        $capacityHoldingStatuses = array_values(array_diff(BookingLifecycleStatus::activeOperationalValues(), ['quotation_requested']));
+        $unassignedReservations = BookingItem::query()
+            ->where('vehicle_group_id', $vehicleGroup->id)
+            ->whereNotIn('status', ['cancelled', 'completed'])
+            ->where('from_date', '<=', $toDate)
+            ->where('to_date', '>=', $fromDate)
+            ->where(function ($query) use ($toDate, $fromDate): void {
+                $query->whereNull('vehicle_id')->orWhereNotExists(function ($assignment) use ($toDate, $fromDate): void {
+                    $assignment->selectRaw('1')->from('vehicle_assignments as capacity_assignment')
+                        ->whereColumn('capacity_assignment.booking_id', 'booking_items.booking_id')
+                        ->whereColumn('capacity_assignment.vehicle_id', 'booking_items.vehicle_id')
+                        ->whereNull('capacity_assignment.deleted_at')
+                        ->where('capacity_assignment.assigned_from', '<=', $toDate)
+                        ->where('capacity_assignment.assigned_to', '>=', $fromDate)
+                        ->whereNotIn('capacity_assignment.status', ['cancelled', 'completed']);
+                });
+            })
+            ->whereHas('booking', fn ($query) => $query
+                ->whereIn('status', $capacityHoldingStatuses)
+                ->whereNull('deleted_at')
+                ->when($excludeBookingId, fn ($booking) => $booking->where('id', '!=', $excludeBookingId)))
+            ->count();
+        $availableCount = max(0, $availableCount - $unassignedReservations);
+        $bookedCount += $unassignedReservations;
 
         return [
             'total_count' => $totalCount,
@@ -13224,7 +13611,12 @@ class BookingFlowService
         return $this->createBookingInquiryFromSource($params, 'respond_io', $eventId, $actorUserId);
     }
 
-    private function createBookingInquiryFromSource(array $params, string $sourceType, string $sourceId, string $actorUserId): array
+    public function createCustomerBookingInquiry(array $params, string $actorUserId): array
+    {
+        return $this->createBookingInquiryFromSource($params, 'customer_profile', null, $actorUserId);
+    }
+
+    private function createBookingInquiryFromSource(array $params, string $sourceType, ?string $sourceId, string $actorUserId): array
     {
         [$booking, $created, $companyId] = DB::transaction(function () use ($params, $sourceType, $sourceId, $actorUserId): array {
             if ($sourceType === 'phone_call') {
@@ -13240,7 +13632,7 @@ class BookingFlowService
                         409, 'This call is already linked to a different booking.');
                     return [$existing, false, $companyId];
                 }
-            } else {
+            } elseif ($sourceType === 'respond_io') {
                 $companyId = (string) (app(SingleCompanyScope::class)->activeDefaultCompany(true)?->id ?? '');
                 abort_unless($companyId !== '', 409, 'No active business is configured.');
                 $source = IntegrationWebhookEvent::query()->where(fn ($_companyIdScope) => \App\Services\CompanyIdScope::constrain($_companyIdScope, 'company_id', $companyId))->where('provider', 'respond_io')
@@ -13254,6 +13646,10 @@ class BookingFlowService
                     return [$existing, false, $companyId];
                 }
                 abort_unless($source->status === 'received' && ! $source->linked_inquiry_id, 409, 'This message has already been reviewed.');
+            } else {
+                $companyId = (string) (app(WebsiteSettingsService::class)->resolveCurrentCompanyId() ?? '');
+                abort_unless($companyId !== '', 409, 'Select an active business before creating a booking request.');
+                app(CompanySettingsAccessService::class)->assertCanAccess(User::query()->findOrFail($actorUserId), $companyId);
             }
 
             $sourceCustomerId = $sourceType === 'phone_call' ? $source->customer_id : null;
@@ -13272,21 +13668,30 @@ class BookingFlowService
                     ->where('owner_type', 'company')->where('owner_id', $companyId)->where('is_active', true)->exists(),
                     422, 'Trip '.($index + 1).' must use an active service from this business.');
                 $item['service_type_id'] = $serviceTypeId;
-                $item['vehicle_id'] = null;
-                $item['driver_id'] = null;
+                unset($item['vehicle_id'], $item['driver_id'], $item['employee_id'], $item['specific_driver_id']);
             }
             unset($item);
 
             $params['customer_id'] = (string) $customerId;
             $params['booking_items'] = $items;
             $params['booking_source'] = 'internal';
-            $createdFrom = $sourceType === 'phone_call' ? 'call_center' : 'respond_io';
+            unset($params['vehicle_id'], $params['driver_id'], $params['employee_id'], $params['corporate_employee_id'], $params['specific_driver_id']);
+            $createdFrom = match ($sourceType) {
+                'phone_call' => 'call_center',
+                'respond_io' => 'respond_io',
+                default => 'internal',
+            };
             $params['created_from'] = $createdFrom;
             unset($params['source_phone_call_id'], $params['source_respond_io_event_id'], $params['send_confirmation_sms'], $params['send_confirmation_emails']);
 
             $booking = $this->saveBookingDraft($params);
-            $originKey = $sourceType === 'phone_call' ? 'phone_call_id' : 'respond_io_event_id';
-            $origin = ['kind' => $sourceType, $originKey => (string) $source->id];
+            $originKey = match ($sourceType) {
+                'phone_call' => 'phone_call_id',
+                'respond_io' => 'respond_io_event_id',
+                default => null,
+            };
+            $origin = ['kind' => $sourceType];
+            if ($originKey) $origin[$originKey] = (string) $source->id;
             $workflowData = is_array($booking->workflow_data) ? $booking->workflow_data : [];
             $booking->forceFill([
                 'status' => 'inquiry',
@@ -13303,19 +13708,23 @@ class BookingFlowService
                 'booking_id' => $booking->id, 'old_status' => null, 'new_status' => 'inquiry',
                 'created_user_id' => $actorUserId, 'updated_user_id' => $actorUserId,
             ]);
-            $activityChannel = $sourceType === 'phone_call' ? 'phone' : 'chat';
-            $sourceLabel = $sourceType === 'phone_call' ? 'phone_call' : 'respond_io';
-            $sourceTitle = $sourceType === 'phone_call' ? 'A booking request was created from a phone call.' : 'A booking request was created from Respond.io.';
+            $activityChannel = match ($sourceType) { 'phone_call' => 'phone', 'respond_io' => 'chat', default => 'internal' };
+            $sourceLabel = $sourceType === 'customer_profile' ? 'staff' : $sourceType;
+            $sourceTitle = match ($sourceType) {
+                'phone_call' => 'A booking request was created from a phone call.',
+                'respond_io' => 'A booking request was created from Respond.io.',
+                default => 'A staff member created a booking request from the customer profile.',
+            };
             BookingActivity::query()->create([
                 'company_id' => $companyId, 'booking_id' => $booking->id, 'event_key' => 'booking_inquiry_created',
                 'channel' => $activityChannel, 'result_status' => 'completed', 'source' => $sourceLabel,
                 'title' => 'Booking request received', 'detail' => $sourceTitle,
                 'idempotency_key' => 'booking-inquiry-created:'.$booking->id,
-                'meta' => [$originKey => (string) $source->id, 'actor_user_id' => $actorUserId], 'event_at' => now(),
+                'meta' => array_filter([$originKey => $sourceId, 'actor_user_id' => $actorUserId], fn ($value) => $value !== null), 'event_at' => now(),
             ]);
             if ($sourceType === 'phone_call') {
                 $source->forceFill(['customer_id' => $customerId, 'booking_id' => $booking->id, 'updated_user_id' => $actorUserId])->save();
-            } else {
+            } elseif ($sourceType === 'respond_io') {
                 $source->forceFill([
                     'linked_booking_id' => $booking->id, 'processed_by_user_id' => $actorUserId,
                     'processed_at' => now(), 'status' => 'processed', 'resolution_code' => 'booking_request',

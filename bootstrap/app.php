@@ -55,6 +55,7 @@ return Application::configure(basePath: dirname(__DIR__))
             'ensure.driver' => \App\Http\Middleware\EnsureDriverContext::class,
             // Corporate portal middleware
             'ensure.corporate' => \App\Http\Middleware\EnsureCorporateContext::class,
+            'corporate.business' => \App\Http\Middleware\EnsureCorporateBusinessScope::class,
             'ensure.internal' => \App\Http\Middleware\EnsureInternalContext::class,
             'business.module' => \App\Http\Middleware\EnsureBusinessModuleEnabled::class,
             'update.api.session' => \App\Http\Middleware\UpdateApiSessionOnRequest::class,

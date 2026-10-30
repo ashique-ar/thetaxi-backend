@@ -13,8 +13,9 @@ class CreateInquiryRequest extends FormRequest
     {
         return [
             'customer_id' => ['nullable', 'exists:customers,id'],
+            'booking_id' => ['nullable', 'exists:bookings,id'],
             'name' => ['required', 'string', 'max:255'],
-            'email' => ['required', 'email', 'max:255'],
+            'email' => ['nullable', 'email', 'max:255'],
             'phone' => ['nullable', 'string', 'max:30'],
             'inquiry_type' => ['required', 'string', 'max:50'],
             'source' => ['nullable', 'string', 'max:50'],
@@ -27,5 +28,14 @@ class CreateInquiryRequest extends FormRequest
             'notes' => ['nullable', 'string'],
             'responded_at' => ['nullable', 'date'],
         ];
+    }
+
+    public function withValidator($validator): void
+    {
+        $validator->after(function ($validator): void {
+            if (blank($this->input('email')) && blank($this->input('phone'))) {
+                $validator->errors()->add('phone', 'Enter a phone number or email address.');
+            }
+        });
     }
 }

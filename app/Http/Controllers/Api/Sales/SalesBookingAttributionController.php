@@ -79,7 +79,7 @@ class SalesBookingAttributionController extends Controller
         ]);
         $data['company_id'] = $this->resolveCompanyId($data['company_id'] ?? null);
         $includeUnassignedOwnerReviews = $this->scope->hasPermission($request->user(), 'sales.attributions.view-all')
-            && (string) $data['company_id'] === $this->currentCompanyId();
+            && \App\Services\CompanyIdScope::sameCompanyId((string) ((string) $data['company_id']), (string) ($this->currentCompanyId()));
 
         $query = DB::table('sales_attribution_exceptions as exception')
             ->join('bookings as booking', 'booking.id', '=', 'exception.booking_id')
@@ -134,7 +134,7 @@ class SalesBookingAttributionController extends Controller
 
         $profileIds = $this->actorProfileIds($request, $data['company_id'] ?? null);
         $includeUnownedOwnerReviews = $this->scope->hasPermission($request->user(), 'sales.attributions.view-all')
-            && (string) $data['company_id'] === $this->currentCompanyId();
+            && \App\Services\CompanyIdScope::sameCompanyId((string) ((string) $data['company_id']), (string) ($this->currentCompanyId()));
         $bookings = Booking::query()
             ->where(fn ($q) => $q->where('confirmed', true)->orWhere('status', 'confirmed')->orWhereNotNull('confirmed_at'))
             ->whereDoesntHave('salesAttribution')
@@ -145,7 +145,7 @@ class SalesBookingAttributionController extends Controller
         $rows = $bookings
             ->map(fn (Booking $booking) => $this->attributions->preview($booking))
             ->filter(function (array $row) use ($profileIds, $data, $includeUnownedOwnerReviews): bool {
-                if (! empty($data['company_id']) && $row['company_id'] !== $data['company_id']) {
+                if (! empty($data['company_id']) && !\App\Services\CompanyIdScope::sameCompanyId((string) ($row['company_id']), (string) ($data['company_id']))) {
                     return false;
                 }
                 if (in_array('historical_company_owner_review_required', $row['holds'], true)) {
@@ -184,10 +184,10 @@ class SalesBookingAttributionController extends Controller
             if($prior){abort_unless(hash_equals($prior->preview_checksum,$data['preview_checksum'])&&hash_equals($prior->booking_scope_checksum,$scopeChecksum),409,'Historical attribution batch key was reused with different evidence.');return response()->json(['status'=>'success','data'=>json_decode($prior->result_snapshot,true,512,JSON_THROW_ON_ERROR),'idempotent_replay'=>true]);}
             $profileIds=$this->actorProfileIds($request,$data['company_id']);
             $includeUnownedOwnerReviews=$this->scope->hasPermission($request->user(),'sales.attributions.view-all')
-                && (string)$data['company_id']===$this->currentCompanyId();
+                && \App\Services\CompanyIdScope::sameCompanyId((string) ((string)$data['company_id']), (string) ($this->currentCompanyId()));
             $bookings=Booking::query()->whereIn('id',$data['booking_ids'])->where(fn($q)=>$q->where('confirmed',true)->orWhere('status','confirmed')->orWhereNotNull('confirmed_at'))->whereDoesntHave('salesAttribution')->orderBy('id')->lockForUpdate()->get();
             abort_unless($bookings->count()===count($data['booking_ids']),409,'The historical booking set changed; create a new preview.');
-            $rows=$bookings->map(fn(Booking $booking)=>$this->attributions->preview($booking))->filter(fn(array$row)=>($row['company_id']===$data['company_id']||($includeUnownedOwnerReviews&&in_array('historical_company_owner_review_required',$row['holds'],true)))&&(in_array('historical_company_owner_review_required',$row['holds'],true)?$includeUnownedOwnerReviews:($profileIds===null||in_array($row['acquisition_sales_profile_id'],$profileIds,true)||in_array($row['collection_sales_profile_id'],$profileIds,true))))->values();
+            $rows=$bookings->map(fn(Booking $booking)=>$this->attributions->preview($booking))->filter(fn(array$row)=>(\App\Services\CompanyIdScope::sameCompanyId((string) ($row['company_id']), (string) ($data['company_id']))||($includeUnownedOwnerReviews&&in_array('historical_company_owner_review_required',$row['holds'],true)))&&(in_array('historical_company_owner_review_required',$row['holds'],true)?$includeUnownedOwnerReviews:($profileIds===null||in_array($row['acquisition_sales_profile_id'],$profileIds,true)||in_array($row['collection_sales_profile_id'],$profileIds,true))))->values();
             abort_unless($rows->count()===$bookings->count(),404,'A historical booking is outside the authorized legal-entity scope.');
             $checksum=hash('sha256',CanonicalJson::encode(['company_id'=>$data['company_id'],'rows'=>$rows->all()]));abort_unless(hash_equals($checksum,$data['preview_checksum']),409,'Historical attribution facts changed; create a new preview.');
             $ownerReviewIds=$rows->filter(fn(array$row)=>in_array('historical_company_owner_review_required',$row['holds'],true))->pluck('booking_id')->flip();
@@ -252,9 +252,8 @@ class SalesBookingAttributionController extends Controller
             'idempotency_key' => ['required', 'string', 'max:153'],
         ]);
         $attribution = $this->scopedAttribution($request, $attribution);
-        $ownerReviewDisposition = ! $attribution->company_id
-            && DB::table('sales_attribution_exceptions')->where('booking_id', $attribution->booking_id)
-                ->where('exception_type', 'historical_company_owner_review_required')->where('status', 'open')->exists();
+        $ownerReviewDisposition = DB::table('sales_attribution_exceptions')->where('booking_id', $attribution->booking_id)
+            ->where('exception_type', 'historical_company_owner_review_required')->where('status', 'open')->exists();
         if ($ownerReviewDisposition) {
             abort_unless($this->scope->hasPermission($request->user(), 'sales.attributions.view-all'), 404);
             $target = SalesProfile::query()->whereKey($data['to_sales_profile_id'])->first();
@@ -584,7 +583,7 @@ class SalesBookingAttributionController extends Controller
             Booking::query()->whereKey($candidate->booking_id)->lockForUpdate()->firstOrFail();
             $locked = SalesBookingAttribution::query()->whereKey($candidate->id)->lockForUpdate()->firstOrFail();
             abort_unless((string) $locked->booking_id === (string) $candidate->booking_id, 409, 'The attribution booking changed; reload before adjusting its value.');
-            abort_unless((string) $locked->company_id === (string) $company->id, 409,
+            abort_unless(\App\Services\CompanyIdScope::sameCompanyId((string) ((string) $locked->company_id), (string) ((string) $company->id)), 409,
                 'The attribution legal entity changed before its commercial value adjustment.');
             $scoped = $this->scopedAttribution($request, (string) $locked->id);
             $this->collectionCompanyIntegrity->assertConsistent($scoped->booking, $scoped->company_id);

@@ -130,7 +130,7 @@ it('accepts every implemented operations queue through either request parameter'
     $controller = file_get_contents(
         __DIR__ . '/../../app/Http/Controllers/Api/Booking/Traits/BookingSubmissionTrait.php'
     );
-    $allowedQueues = 'needs_approval,needs_assignment,ready_to_dispatch,active,return_due,qc_pending,repair_pending,ready_to_complete,payment_pending,payment_attention';
+    $allowedQueues = 'needs_approval,needs_assignment,ready_to_dispatch,pickup_today,dropoff_today,active,return_due,qc_pending,repair_pending,ready_to_complete,payment_pending,payment_attention';
 
     expect($controller)
         ->toContain("'operations_queue' => 'nullable|string|in:{$allowedQueues}'")

@@ -201,7 +201,7 @@ class HikvisionManagementController extends Controller
             $existing = DB::table('hr_attendance_device_maintenance_commands')->where('idempotency_key', $data['idempotency_key'])->first();
             if ($existing) {
                 abort_unless(
-                    $existing->company_id === $device->company_id
+                    \App\Services\CompanyIdScope::sameCompanyId((string) ($existing->company_id), (string) ($device->company_id))
                     && $existing->device_id === $device->id
                     && $existing->command_type === 'reboot'
                     && $existing->reason === $data['reason']

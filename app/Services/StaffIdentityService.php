@@ -222,7 +222,7 @@ class StaffIdentityService
             $oldOwnerId = (string) $task->owner_sales_profile_id;
             $manager = $managerCache[$oldOwnerId] ??= $this->activeReportingManager($oldOwnerId, $profileIds, (string) $staff->company_id);
             $locked = SalesTask::query()->whereKey($task->id)->lockForUpdate()->first();
-            if (! $locked || (string) $locked->company_id !== (string) $staff->company_id
+            if (! $locked || !\App\Services\CompanyIdScope::sameCompanyId((string) ((string) $locked->company_id), (string) ((string) $staff->company_id))
                 || (string) $locked->owner_sales_profile_id !== $oldOwnerId
                 || ! in_array($locked->status, ['open', 'in_progress'], true)) continue;
 
@@ -390,7 +390,7 @@ class StaffIdentityService
             ->orderBy('id')->chunkById(100, function ($inquiries) use ($staff, $departingUser, $actor, &$released): void {
                 foreach ($inquiries as $inquiry) {
                     $locked = DB::table('inquiries')->where('id', $inquiry->id)->lockForUpdate()->first();
-                    if (! $locked || $locked->company_id !== $staff->company_id || $locked->assigned_to !== $departingUser->id) {
+                    if (! $locked || !\App\Services\CompanyIdScope::sameCompanyId((string) ($locked->company_id), (string) ($staff->company_id)) || $locked->assigned_to !== $departingUser->id) {
                         continue;
                     }
 

@@ -26,7 +26,7 @@ class CommissionDisputeService
             return DB::transaction(function () use ($line, $staffId, $data, $companyId) {
             $this->lockActiveCompany((string) $companyId);
             $statement = SalesCommissionStatement::query()->lockForUpdate()->findOrFail($line->statement_id);
-            abort_unless((string) $statement->company_id === (string) $companyId, 409,
+            abort_unless(\App\Services\CompanyIdScope::sameCompanyId((string) ((string) $statement->company_id), (string) ((string) $companyId)), 409,
                 'The statement legal entity changed before the dispute could be raised.');
             abort_unless($statement->staff_id === $staffId, 403, 'Only the statement beneficiary may dispute this line.');
             abort_unless(DB::table('staff')->where('id', $staffId)->where(fn ($_companyIdScope) => \App\Services\CompanyIdScope::constrain($_companyIdScope, 'company_id', $statement->company_id))->exists(), 409,
@@ -118,8 +118,8 @@ class CommissionDisputeService
             $this->lockActiveCompany((string) $companyId);
             $statement = SalesCommissionStatement::query()->lockForUpdate()->findOrFail($dispute->statement_id);
             $dispute = SalesCommissionDispute::query()->lockForUpdate()->findOrFail($dispute->id);
-            abort_unless((string) $companyId === (string) $statement->company_id
-                && $dispute->statement_id === $statement->id && $dispute->company_id === $statement->company_id, 409,
+            abort_unless(\App\Services\CompanyIdScope::sameCompanyId((string) ((string) $companyId), (string) ((string) $statement->company_id))
+                && $dispute->statement_id === $statement->id && \App\Services\CompanyIdScope::sameCompanyId((string) ($dispute->company_id), (string) ($statement->company_id)), 409,
                 'The dispute statement does not match its legal entity.');
             $line = SalesCommissionStatementLine::query()->whereKey($dispute->statement_line_id)
                 ->where('statement_id', $statement->id)->lockForUpdate()->first();

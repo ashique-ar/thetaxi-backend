@@ -222,7 +222,7 @@ class SalesPerformanceController extends Controller
         $data = $request->validate(['company_id' => ['nullable', 'uuid', 'exists:companies,id'], 'sales_profile_id' => ['required', 'uuid', 'exists:sales_profiles,id'], 'period_start' => ['required', 'date'], 'period_end' => ['required', 'date', 'after_or_equal:period_start'], 'new_sales_target_lkr' => ['nullable', 'numeric', 'min:0'], 'eligible_collections_target_lkr' => ['nullable', 'numeric', 'min:0'], 'reason' => ['required', 'string', 'min:10', 'max:2000'], 'idempotency_key' => ['required', 'string', 'max:160']]);
         $data['company_id'] = $this->resolveCompanyId($data['company_id'] ?? null);
         $profile = SalesProfile::query()->findOrFail($data['sales_profile_id']);
-        abort_unless((string) $profile->company_id === $data['company_id'], 422,
+        abort_unless(\App\Services\CompanyIdScope::sameCompanyId((string) ((string) $profile->company_id), (string) ($data['company_id'])), 422,
             'The Sales Profile must belong to the selected legal entity.');
         $this->scope->assertProfile($request->user(), $profile, 'sales.performance.view-all', 'sales.performance.view-team');
         return response()->json(['status' => 'success', 'data' => $performance->createTarget(

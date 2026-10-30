@@ -73,9 +73,8 @@ class BookingPaymentAdjustmentController extends Controller
                     ->whereIn('decision.status', ['earned', 'shadow_earned']);
             })
             ->whereNull('component.deleted_at')->whereNull('receipt.deleted_at')->whereNull('attribution.deleted_at')
-            ->whereNotNull('receipt.company_id')
             ->where(fn ($_companyIdScope) => \App\Services\CompanyIdScope::constrain($_companyIdScope, 'receipt.company_id', $data['company_id']))
-            ->whereColumn('receipt.company_id', 'attribution.company_id')
+            ->where(fn ($sameCompany) => \App\Services\CompanyIdScope::sameCompany($sameCompany, 'receipt.company_id', 'attribution.company_id'))
             ->where('receipt.finality_status', 'confirmed');
         if ($profileIds !== null) $query->whereIn('attribution.collection_sales_profile_id', $profileIds);
         if ($search = trim((string) ($data['search'] ?? ''))) {
@@ -215,7 +214,7 @@ class BookingPaymentAdjustmentController extends Controller
             abort_unless($company, 422, 'Select an active legal entity.');
             $booking = Booking::query()->whereKey($booking->id)->lockForUpdate()->firstOrFail();
             $attribution = SalesBookingAttribution::query()->where('booking_id', $booking->id)->lockForUpdate()->firstOrFail();
-            abort_unless((string) $attribution->company_id === (string) $company->id, 409,
+            abort_unless(\App\Services\CompanyIdScope::sameCompanyId((string) ((string) $attribution->company_id), (string) ((string) $company->id)), 409,
                 'The booking legal entity changed before payment-adjustment review.');
             $profileIds = $this->profileIds($request, $attribution->company_id);
             abort_unless($profileIds === null || in_array($attribution->collection_sales_profile_id, $profileIds, true), 403,
