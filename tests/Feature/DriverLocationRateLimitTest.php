@@ -33,6 +33,7 @@ it('keeps driver location and recovery traffic in separate rate limit buckets', 
     expect($routes)
         ->toContain("'throttle:driver-location-live'")
         ->toContain("'throttle:driver-location-bulk'")
+        ->toContain("'throttle:driver-location-incidents'")
         ->toContain("'throttle:driver-diagnostic-reports'")
         ->toContain("'throttle:driver-hire-recovery'");
 });
