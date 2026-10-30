@@ -52,7 +52,7 @@ class CommissionDisputeService
                     'This dispute key is already bound to different or unverified facts.');
                 return $duplicate;
             }
-            $responseDays = $this->policySettings->disputeResponseDays((string) $statement->company_id);
+            $responseDays = $this->policySettings->disputeResponseDays();
             abort_unless($responseDays !== null, 409,
                 'An approved commission-dispute response-window policy is required before a dispute can be raised.');
             abort_if(in_array($statement->status, ['paid', 'void'], true), 422, 'Paid or void statements cannot accept a new dispute.');

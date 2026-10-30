@@ -3,8 +3,6 @@
 use App\Models\Staff;
 use App\Models\Company;
 use App\Models\UserContext;
-use App\Models\Booking\BookingPaymentReceipt;
-use App\Services\BookingPaymentLedgerService;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Str;
@@ -13,7 +11,7 @@ use function Pest\Laravel\actingAs;
 
 uses(RefreshDatabase::class);
 
-it('blocks payment-finality policy writes when the company is inactive or deleted', function () {
+it('creates payment-finality policies without a company assignment', function () {
     [, $company] = hr_seed_admin_actor();
     $maker = Staff::factory()->create(['company_id' => $company->id]);
     $checker = Staff::factory()->create(['company_id' => $company->id]);
@@ -25,7 +23,6 @@ it('blocks payment-finality policy writes when the company is inactive or delete
     $policyId = (string) Str::uuid();
     DB::table('booking_payment_finality_policies')->insert([
         'id' => $policyId,
-        'company_id' => $company->id,
         'payment_method' => 'cash',
         'official_collection_state' => 'confirmed',
         'can_earn_before_final' => false,
@@ -38,7 +35,6 @@ it('blocks payment-finality policy writes when the company is inactive or delete
         'updated_at' => now(),
     ]);
     $storePayload = [
-        'company_id' => $company->id,
         'payment_method' => 'cash',
         'official_collection_state' => 'confirmed',
         'can_earn_before_final' => false,
@@ -46,23 +42,12 @@ it('blocks payment-finality policy writes when the company is inactive or delete
         'effective_from' => now()->toDateString(),
     ];
     $company->update(['is_active' => false]);
-
-    actingAs($maker->user, 'api')->postJson('/api/sales/payment-finality-policies', $storePayload)
-        ->assertUnprocessable();
+    actingAs($maker->user, 'api')->postJson('/api/sales/payment-finality-policies', $storePayload)->assertCreated();
     actingAs($checker->user, 'api')->postJson('/api/sales/payment-finality-policies/'.$policyId.'/approve')
-        ->assertUnprocessable();
+        ->assertOk();
     $this->assertDatabaseHas('booking_payment_finality_policies', [
-        'id' => $policyId,
-        'status' => 'draft',
-        'approved_by' => null,
+        'payment_method' => 'cash', 'status' => 'draft', 'created_by' => $maker->user_id,
     ]);
-    expect(DB::table('booking_payment_finality_policies')->where('company_id', $company->id)->count())->toBe(1);
-
-    $company->update(['is_active' => true]);
-    $company->delete();
-    actingAs($maker->user, 'api')->postJson('/api/sales/payment-finality-policies', $storePayload)
-        ->assertUnprocessable();
-    expect(DB::table('booking_payment_finality_policies')->where('company_id', $company->id)->count())->toBe(1);
 });
 
 it('replays finality-policy approval for its original checker and rejects another checker', function () {
@@ -79,7 +64,7 @@ it('replays finality-policy approval for its original checker and rejects anothe
     $otherChecker->user->givePermissionTo('sales.payment-finality.approve');
     $policyId = (string) Str::uuid();
     DB::table('booking_payment_finality_policies')->insert([
-        'id' => $policyId, 'company_id' => $company->id, 'payment_method' => 'cash',
+        'id' => $policyId, 'payment_method' => 'cash',
         'official_collection_state' => 'confirmed', 'can_earn_before_final' => false,
         'hold_payout_until_final' => true, 'effective_from' => now()->toDateString(),
         'version' => 1, 'status' => 'draft', 'created_by' => $maker->user_id,
@@ -95,27 +80,9 @@ it('replays finality-policy approval for its original checker and rejects anothe
         ->and(DB::table('booking_payment_finality_policies')->where('id', $policyId)->value('updated_at'))->toBe($approved->updated_at)
         ->and(DB::table('activity_log')->where('description', 'payment_finality_policy_approved')->count())->toBe(1);
     expect(json_decode((string) DB::table('activity_log')->where('description', 'payment_finality_policy_approved')->value('properties'), true, 512, JSON_THROW_ON_ERROR))
-        ->toBe(['company_id' => $company->id, 'status' => 'approved',
+        ->toBe(['status' => 'approved',
             'effective_from' => \Illuminate\Support\Carbon::parse($approved->effective_from)->toISOString(), 'version' => 1]);
 
     actingAs($otherChecker->user, 'api')->postJson($url)->assertStatus(409);
     expect(DB::table('activity_log')->where('description', 'payment_finality_policy_approved')->count())->toBe(1);
-});
-
-it('blocks receipt finality transitions for an inactive or deleted company before touching its booking', function () {
-    [, $activeCompany] = hr_seed_admin_actor();
-    $deletedCompany = Company::create(['name' => 'Deleted finality company', 'is_default' => false]);
-    foreach (['inactive' => $activeCompany, 'deleted' => $deletedCompany] as $state => $company) {
-        if ($state === 'inactive') $company->update(['is_active' => false]);
-        else $company->delete();
-
-        $receipt = new BookingPaymentReceipt([
-            'company_id' => $company->id,
-            'booking_id' => (string) Str::uuid(),
-        ]);
-
-        expect(fn () => app(BookingPaymentLedgerService::class)->transitionReceiptFinality(
-            $receipt, 'failed', 'test transition', null, (string) Str::uuid(), (string) Str::uuid(),
-        ))->toThrow(\Symfony\Component\HttpKernel\Exception\HttpException::class);
-    }
 });

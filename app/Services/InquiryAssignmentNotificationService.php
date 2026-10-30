@@ -12,7 +12,7 @@ class InquiryAssignmentNotificationService
     public function notifyAssigned(Inquiry $inquiry): void
     {
         $recipient = $inquiry->assigned_to
-            ? app(InquiryAssignmentService::class)->eligibleAssignees((string) $inquiry->company_id)
+            ? app(InquiryAssignmentService::class)->eligibleAssignees()
                 ->where('users.id', $inquiry->assigned_to)->first(['users.id'])
             : null;
         if (! $recipient) return;

@@ -1099,15 +1099,10 @@ class BookingPaymentLedgerService
 
     private function canonicalReceiptFields(Booking $booking, array $data): array
     {
-        $attribution = SalesBookingAttribution::query()->where('booking_id', $booking->id)->first();
-        $companyId = $attribution?->company_id ?: \App\Services\CompanyIdScope::defaultCompanyId();
         $sourceAmount = round((float) ($data['source_amount'] ?? $data['amount']), 4);
         $sourceCurrency = strtoupper((string) ($data['source_currency'] ?? $booking->currency ?? 'LKR'));
         $fxRate = $sourceCurrency === 'LKR' ? 1.0 : (isset($data['fx_rate_to_lkr']) ? (float) $data['fx_rate_to_lkr'] : null);
-        $finality = $this->resolveFinality($companyId, strtolower((string) $data['payment_method']), $data['received_at']);
-        if (! $attribution || ! $companyId) {
-            throw ValidationException::withMessages(['booking' => ['Sales attribution and legal entity are required before a canonical receipt can be activated.']]);
-        }
+        $finality = $this->resolveFinality(strtolower((string) $data['payment_method']), $data['received_at']);
         if (empty($data['idempotency_key'])) {
             throw ValidationException::withMessages([
                 'idempotency_key' => ['A persistent payment source identity is required for canonical receipts.'],
@@ -1118,7 +1113,6 @@ class BookingPaymentLedgerService
         }
 
         return [
-            'company_id' => $companyId,
             'source_amount' => $sourceAmount,
             'source_currency' => $sourceCurrency,
             'lkr_amount' => $fxRate !== null ? round($sourceAmount * $fxRate, 4) : null,
@@ -1172,22 +1166,21 @@ class BookingPaymentLedgerService
         ]);
     }
 
-    private function resolveFinality(?string $companyId, string $paymentMethod, $receivedAt): array
+    private function resolveFinality(string $paymentMethod, $receivedAt): array
     {
-        $policy = $companyId ? DB::table('booking_payment_finality_policies')
-            ->where(fn ($_companyIdScope) => \App\Services\CompanyIdScope::constrain($_companyIdScope, 'company_id', $companyId))
+        $policy = DB::table('booking_payment_finality_policies')
             ->where('payment_method', $paymentMethod)
             ->where('status', 'approved')
             ->where('effective_from', '<=', $receivedAt)
             ->where(fn ($query) => $query->whereNull('effective_until')->orWhere('effective_until', '>', $receivedAt))
             ->orderByDesc('version')
-            ->first() : null;
+            ->first();
 
         if ($policy) {
             return ['status' => $policy->official_collection_state];
         }
 
-        return ['status' => $companyId && $this->policySettings->featureEnabled($companyId, 'enforce_payment_finality')
+        return ['status' => $this->policySettings->featureEnabled('enforce_payment_finality')
             ? 'policy_missing' : 'confirmed'];
     }
 
@@ -1200,14 +1193,8 @@ class BookingPaymentLedgerService
         string $actorUserId
     ): BookingPaymentReceipt {
         return DB::transaction(function () use ($receipt, $toStatus, $reason, $evidenceReference, $idempotencyKey, $actorUserId) {
-            $company = DB::table('companies')->where('id', $receipt->company_id)
-                ->where('is_active', true)->whereNull('deleted_at')->lockForUpdate()->first();
-            abort_unless($company, 422, 'Receipt finality requires an active legal entity.');
             $booking = Booking::query()->lockForUpdate()->findOrFail($receipt->booking_id);
-            $attribution = SalesBookingAttribution::query()->where('booking_id', $booking->id)->lockForUpdate()->first();
             $receipt = BookingPaymentReceipt::query()->lockForUpdate()->findOrFail($receipt->id);
-            abort_unless($attribution && \App\Services\CompanyIdScope::sameCompanyId((string) $attribution->company_id, (string) $receipt->company_id), 409,
-                'Receipt finality cannot change while its booking or receipt company ownership is unresolved.');
             $duplicate = BookingPaymentReceiptFinalityEvent::query()
                 ->where('booking_payment_receipt_id', $receipt->id)
                 ->where('idempotency_key', $idempotencyKey)
@@ -1216,7 +1203,6 @@ class BookingPaymentLedgerService
                 abort_unless($duplicate->to_status === $toStatus, 422, 'This finality key was already used for another transition.');
                 return $receipt;
             }
-            $this->collectionCompanyIntegrity->assertConsistent($booking, (string) $attribution->company_id);
             abort_if($receipt->finality_status === $toStatus, 422, 'The receipt already has the requested finality status.');
             $knownStatuses = ['pending_clearance', 'policy_missing', 'confirmed', 'failed'];
             $allowed = [
@@ -1241,7 +1227,6 @@ class BookingPaymentLedgerService
                     || ! in_array($receipt->finality_status, $knownStatuses, true))
                 && $toStatus === 'confirmed') {
                 $policies = BookingPaymentFinalityPolicy::query()
-                    ->where(fn ($_companyIdScope) => \App\Services\CompanyIdScope::constrain($_companyIdScope, 'company_id', $receipt->company_id))
                     ->where('payment_method', strtolower((string) $receipt->payment_method))
                     ->where('status', 'approved')
                     ->whereNotNull('approved_by')->whereNotNull('approved_at')

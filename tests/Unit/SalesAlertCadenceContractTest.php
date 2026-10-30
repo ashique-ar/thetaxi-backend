@@ -35,7 +35,7 @@ it('evaluates the policy frozen by period close on its due schedule exactly once
         ->toContain("'sales_alert_evaluation_runs'")
         ->toContain("'scheduled_for' => \$dueAt")
         ->toContain("'result_checksum'")
-        ->toContain("featureEnabled((string) \$snapshot->company_id, 'performance_alert_evaluations')")
+        ->toContain("featureEnabled('performance_alert_evaluations')")
         ->and($command)
         ->toContain("{--commit}")
         ->toContain('Preview only; rerun with --commit')

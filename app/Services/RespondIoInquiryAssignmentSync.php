@@ -19,18 +19,16 @@ class RespondIoInquiryAssignmentSync
             return ['status' => 'disabled'];
         }
 
-        $connection = IntegrationConnection::query()->where(fn ($_companyIdScope) => \App\Services\CompanyIdScope::constrain($_companyIdScope, 'company_id', $inquiry->company_id))
+        $event = IntegrationWebhookEvent::query()->where('provider', 'respond_io')->where('linked_inquiry_id', $inquiry->id)
+            ->whereNotNull('external_contact_id')->latest('received_at')->first(['connection_id', 'external_contact_id']);
+        if (! $event) {
+            return ['status' => 'missing_contact'];
+        }
+
+        $connection = IntegrationConnection::query()->whereKey($event->connection_id)
             ->where('provider', 'respond_io')->where('enabled', true)->first();
         if (! $connection?->respond_io_api_token) {
             return ['status' => 'not_configured'];
-        }
-
-        $contactId = IntegrationWebhookEvent::query()->where(fn ($_companyIdScope) => \App\Services\CompanyIdScope::constrain($_companyIdScope, 'company_id', $inquiry->company_id))
-            ->where('connection_id', $connection->id)->where('provider', 'respond_io')
-            ->where('linked_inquiry_id', $inquiry->id)->whereNotNull('external_contact_id')
-            ->latest('received_at')->value('external_contact_id');
-        if (! $contactId) {
-            return ['status' => 'missing_contact'];
         }
 
         $email = trim((string) $inquiry->assignedUser()->value('email'));
@@ -40,7 +38,7 @@ class RespondIoInquiryAssignmentSync
 
         try {
             $response = Http::withToken($connection->respond_io_api_token)->acceptJson()->timeout(10)
-                ->post('https://api.respond.io/v2/contact/'.rawurlencode('id:'.$contactId).'/conversation/assignee', [
+                ->post('https://api.respond.io/v2/contact/'.rawurlencode('id:'.$event->external_contact_id).'/conversation/assignee', [
                     'assignee' => $email,
                 ]);
         } catch (\Throwable $exception) {

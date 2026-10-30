@@ -382,10 +382,7 @@ class User extends Authenticatable
 
     private function isMasterAdmin(): bool
     {
-        return $this->roles()
-            ->where('name', 'super-admin')
-            ->where('guard_name', config('permissions.canonical_guard', 'api'))
-            ->exists();
+        return app(PermissionEvaluator::class)->hasInternalRole($this, 'super-admin');
     }
 
     /**
@@ -475,6 +472,11 @@ class User extends Authenticatable
     public function contexts()
     {
         return $this->hasMany(UserContext::class);
+    }
+
+    public function corporateEmployees()
+    {
+        return $this->hasMany(\App\Models\Corporate\CorporateEmployee::class, 'user_id');
     }
 
     /**

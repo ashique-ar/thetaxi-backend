@@ -21,8 +21,8 @@ class ProcessSalesTasks extends Command
 
     public function handle(): int
     {
-        if (! Schema::hasTable('sales_tasks') || ! Schema::hasTable('sales_company_feature_settings')
-            || ! DB::table('sales_company_feature_settings')->where('feature_key', 'crm')->where('status', 'approved')->where('enabled', true)->exists()) return self::SUCCESS;
+        if (! Schema::hasTable('sales_tasks') || ! Schema::hasTable('sales_feature_settings')
+            || ! DB::table('sales_feature_settings')->where('feature_key', 'crm')->where('status', 'approved')->where('enabled', true)->exists()) return self::SUCCESS;
         $dryRun = (bool) $this->option('dry-run'); $count = 0; $nowUtc = now('UTC');
         SalesTask::query()->whereIn('status', ['open', 'in_progress'])
             ->where(fn ($q) => $q->where(fn ($r) => $r->whereNull('reminder_dispatched_at')->whereNotNull('remind_at')->where('remind_at', '<=', $nowUtc))

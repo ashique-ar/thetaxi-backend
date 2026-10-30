@@ -166,7 +166,7 @@ class StaffIdentityService
         $managerCounts = [];
         foreach ($opportunities as $opportunity) {
             $oldOwnerId = (string) $opportunity->owner_sales_profile_id;
-            $manager = $managerCache[$oldOwnerId] ??= $this->activeReportingManager($oldOwnerId, $profileIds, (string) $staff->company_id);
+            $manager = $managerCache[$oldOwnerId] ??= $this->activeReportingManager($oldOwnerId, $profileIds);
             if (! $manager) {
                 $needsManagerReview++;
                 continue;
@@ -218,7 +218,7 @@ class StaffIdentityService
         $needsManagerReview = 0;
         foreach ($tasks as $task) {
             $oldOwnerId = (string) $task->owner_sales_profile_id;
-            $manager = $managerCache[$oldOwnerId] ??= $this->activeReportingManager($oldOwnerId, $profileIds, (string) $staff->company_id);
+            $manager = $managerCache[$oldOwnerId] ??= $this->activeReportingManager($oldOwnerId, $profileIds);
             $locked = SalesTask::query()->whereKey($task->id)->lockForUpdate()->first();
             if (! $locked || !\App\Services\CompanyIdScope::sameCompanyId((string) ((string) $locked->company_id), (string) ((string) $staff->company_id))
                 || (string) $locked->owner_sales_profile_id !== $oldOwnerId
@@ -273,13 +273,13 @@ class StaffIdentityService
         return ['reassigned' => array_sum($counts), 'needs_manager_review' => $needsManagerReview];
     }
 
-    private function activeReportingManager(string $memberProfileId, array $leaverProfileIds, string $companyId): ?SalesProfile
+    private function activeReportingManager(string $memberProfileId, array $leaverProfileIds): ?SalesProfile
     {
         $frontier = [$memberProfileId];
         $visited = $frontier;
         $now = now();
         while ($frontier !== []) {
-            $rows = DB::table('sales_reporting_assignments')->where(fn ($_companyIdScope) => \App\Services\CompanyIdScope::constrain($_companyIdScope, 'company_id', $companyId))
+            $rows = DB::table('sales_reporting_assignments')
                 ->whereIn('member_sales_profile_id', $frontier)->whereNull('deleted_at')
                 ->where('effective_from', '<=', $now)
                 ->where(fn ($query) => $query->whereNull('effective_until')->orWhere('effective_until', '>', $now))
@@ -289,7 +289,7 @@ class StaffIdentityService
                 $managerId = (string) $row->manager_sales_profile_id;
                 if (in_array($managerId, $visited, true)) continue;
                 $visited[] = $managerId;
-                $manager = SalesProfile::query()->whereKey($managerId)->where(fn ($_companyIdScope) => \App\Services\CompanyIdScope::constrain($_companyIdScope, 'company_id', $companyId))
+                $manager = SalesProfile::query()->whereKey($managerId)
                     ->activeAt($now)->configured()
                     ->whereHas('staff', fn ($staff) => $staff->whereNull('deleted_at')
                         ->where(fn ($employment) => $employment->whereNull('employment_ended_at')->orWhere('employment_ended_at', '>', $now)))
@@ -308,19 +308,16 @@ class StaffIdentityService
 
     private function releaseMissedCalls(Staff $staff, User $departingUser, User $actor): int
     {
-        $calls = PhoneCall::query()->where(fn ($_companyIdScope) => \App\Services\CompanyIdScope::constrain($_companyIdScope, 'company_id', $staff->company_id))
-            ->where('assigned_user_id', $departingUser->id)->whereIn('call_status', ['Missed', 'Notanswered'])
+        $calls = PhoneCall::query()->where('assigned_user_id', $departingUser->id)->whereIn('call_status', ['Missed', 'Notanswered'])
             ->orderBy('id')->get(['id']);
         $released = 0;
         foreach ($calls as $call) {
-            $locked = PhoneCall::query()->where(fn ($_companyIdScope) => \App\Services\CompanyIdScope::constrain($_companyIdScope, 'company_id', $staff->company_id))
-                ->whereKey($call->id)->where('assigned_user_id', $departingUser->id)
+            $locked = PhoneCall::query()->whereKey($call->id)->where('assigned_user_id', $departingUser->id)
                 ->whereIn('call_status', ['Missed', 'Notanswered'])->lockForUpdate()->first();
             if (! $locked) continue;
             $locked->update(['assigned_user_id' => null, 'updated_user_id' => $actor->id]);
             PhoneCallAssignment::create([
                 'phone_call_id' => $locked->id,
-                'company_id' => $locked->company_id,
                 'from_user_id' => $departingUser->id,
                 'to_user_id' => null,
                 'actor_user_id' => $actor->id,
@@ -383,12 +380,11 @@ class StaffIdentityService
     private function releaseInquiries(Staff $staff, User $departingUser, User $actor): int
     {
         $released = 0;
-        DB::table('inquiries')->where(fn ($_companyIdScope) => \App\Services\CompanyIdScope::constrain($_companyIdScope, 'company_id', $staff->company_id))
-            ->where('assigned_to', $departingUser->id)->whereIn('status', ['open', 'in_progress'])
+        DB::table('inquiries')->where('assigned_to', $departingUser->id)->whereIn('status', ['open', 'in_progress'])
             ->orderBy('id')->chunkById(100, function ($inquiries) use ($staff, $departingUser, $actor, &$released): void {
                 foreach ($inquiries as $inquiry) {
                     $locked = DB::table('inquiries')->where('id', $inquiry->id)->lockForUpdate()->first();
-                    if (! $locked || !\App\Services\CompanyIdScope::sameCompanyId((string) ($locked->company_id), (string) ($staff->company_id)) || $locked->assigned_to !== $departingUser->id) {
+                    if (! $locked || $locked->assigned_to !== $departingUser->id) {
                         continue;
                     }
 
@@ -400,7 +396,6 @@ class StaffIdentityService
                     ]);
                     DB::table('inquiry_assignment_events')->insert([
                         'id' => (string) Str::uuid(),
-                        'company_id' => $locked->company_id,
                         'inquiry_id' => $locked->id,
                         'from_user_id' => $departingUser->id,
                         'to_user_id' => null,

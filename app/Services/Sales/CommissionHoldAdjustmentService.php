@@ -102,7 +102,7 @@ class CommissionHoldAdjustmentService
         }
         $policy = $decision->finality_policy_id
             ? BookingPaymentFinalityPolicy::query()->whereKey($decision->finality_policy_id)
-                ->where(fn ($_companyIdScope) => \App\Services\CompanyIdScope::constrain($_companyIdScope, 'company_id', $decision->company_id))->where('status', 'approved')
+                ->where('status', 'approved')
                 ->whereNotNull('approved_by')->whereNotNull('approved_at')
                 ->where('effective_from', '<=', $receipt->received_at)
                 ->where(fn ($query) => $query->whereNull('effective_until')->orWhere('effective_until', '>', $receipt->received_at))
@@ -121,9 +121,9 @@ class CommissionHoldAdjustmentService
             || !\App\Services\CompanyIdScope::sameCompanyId((string) ($attribution->company_id), (string) ($decision->company_id)) || ! $attribution->commission_plan_family_id
             || ! $attribution->commission_plan_assignment_id || $attribution->secured_at->gt($receipt->received_at)
             || ! SalesCommissionPlanFamily::query()->whereKey($attribution->commission_plan_family_id)
-                ->where(fn ($_companyIdScope) => \App\Services\CompanyIdScope::constrain($_companyIdScope, 'company_id', $decision->company_id))->where('status', 'approved')->exists()
+                ->where('status', 'approved')->exists()
             || ! SalesCommissionPlanAssignment::query()->whereKey($attribution->commission_plan_assignment_id)
-                ->where(fn ($_companyIdScope) => \App\Services\CompanyIdScope::constrain($_companyIdScope, 'company_id', $decision->company_id))->where('plan_family_id', $attribution->commission_plan_family_id)
+                ->where('plan_family_id', $attribution->commission_plan_family_id)
                 ->where('status', 'approved')->where('effective_from', '<=', $attribution->secured_at)
                 ->where(fn ($query) => $query->whereNull('effective_until')->orWhere('effective_until', '>', $attribution->secured_at))
                 ->exists()) {
@@ -221,7 +221,7 @@ class CommissionHoldAdjustmentService
         }
 
         $policies = BookingPaymentFinalityPolicy::query()
-            ->where(fn ($_companyIdScope) => \App\Services\CompanyIdScope::constrain($_companyIdScope, 'company_id', $decision->company_id))
+
             ->where('payment_method', strtolower((string) $receipt->payment_method))
             ->where('status', 'approved')->whereNotNull('approved_by')->whereNotNull('approved_at')
             ->where('effective_from', '<=', $receipt->received_at)
@@ -243,7 +243,7 @@ class CommissionHoldAdjustmentService
 
         $events = BookingPaymentReceiptFinalityEvent::query()
             ->where('booking_payment_receipt_id', $receipt->id)
-            ->where(fn ($_companyIdScope) => \App\Services\CompanyIdScope::constrain($_companyIdScope, 'company_id', $decision->company_id))
+
             ->where('finality_policy_id', $policy->id)
             ->where('from_status', $originalFinalityStatus)->where('to_status', 'confirmed')
             ->whereNotNull('performed_by')->get();
@@ -309,16 +309,16 @@ class CommissionHoldAdjustmentService
                 'The original decision lacks a positive reproducible frozen commission formula.');
         }
         if (! SalesCommissionPlanFamily::query()->whereKey($decision->plan_family_id)
-            ->where(fn ($_companyIdScope) => \App\Services\CompanyIdScope::constrain($_companyIdScope, 'company_id', $decision->company_id))->where('status', 'approved')->exists()
+            ->where('status', 'approved')->exists()
             || ! SalesCommissionPlanAssignment::query()->whereKey($decision->plan_assignment_id)
-                ->where(fn ($_companyIdScope) => \App\Services\CompanyIdScope::constrain($_companyIdScope, 'company_id', $decision->company_id))->where('plan_family_id', $decision->plan_family_id)
+                ->where('plan_family_id', $decision->plan_family_id)
                 ->where('status', 'approved')->exists()
             || ($decision->plan_version_id && ! SalesCommissionPlanVersion::query()->whereKey($decision->plan_version_id)
                 ->where('plan_family_id', $decision->plan_family_id)->where('status', 'approved')->exists())
             || ($decision->plan_tier_id && ! SalesCommissionPlanTier::query()->whereKey($decision->plan_tier_id)
                 ->where('plan_version_id', $decision->plan_version_id)->exists())
             || ($decision->staff_override_id && ! SalesCommissionStaffOverride::query()->whereKey($decision->staff_override_id)
-                ->where(fn ($_companyIdScope) => \App\Services\CompanyIdScope::constrain($_companyIdScope, 'company_id', $decision->company_id))->where('staff_id', $decision->beneficiary_staff_id)
+                ->where('staff_id', $decision->beneficiary_staff_id)
                 ->where('status', 'approved')->exists())) {
             return $this->blocked($decision, 'The frozen approved plan, tier, assignment, or Staff override evidence is unavailable.');
         }
@@ -343,7 +343,7 @@ class CommissionHoldAdjustmentService
             'receipt_finality_status' => $receipt->finality_status,
             'finality_policy_id' => $policy->id, 'finality_policy_version' => $policy->version,
             'finality_policy_snapshot' => $policy->only([
-                'company_id', 'payment_method', 'official_collection_state', 'can_earn_before_final',
+                'payment_method', 'official_collection_state', 'can_earn_before_final',
                 'hold_payout_until_final', 'clearance_timeout_hours', 'required_evidence_type',
                 'effective_from', 'effective_until', 'created_by', 'approved_by', 'approved_at',
             ]),
@@ -411,7 +411,7 @@ class CommissionHoldAdjustmentService
         }
 
         $policies = BookingPaymentFinalityPolicy::query()
-            ->where(fn ($_companyIdScope) => \App\Services\CompanyIdScope::constrain($_companyIdScope, 'company_id', $decision->company_id))
+
             ->where('payment_method', strtolower((string) $receipt->payment_method))
             ->where('status', 'approved')->whereNotNull('approved_by')->whereNotNull('approved_at')
             ->where('effective_from', '<=', $receipt->received_at)
@@ -428,7 +428,7 @@ class CommissionHoldAdjustmentService
 
         $events = BookingPaymentReceiptFinalityEvent::query()
             ->where('booking_payment_receipt_id', $receipt->id)
-            ->where(fn ($_companyIdScope) => \App\Services\CompanyIdScope::constrain($_companyIdScope, 'company_id', $decision->company_id))
+
             ->where('from_status', $originalFinalityStatus)->where('to_status', 'confirmed')
             ->whereNotNull('performed_by')->get();
         if ($events->count() !== 1) {
@@ -493,16 +493,16 @@ class CommissionHoldAdjustmentService
                 'The original decision lacks a positive reproducible frozen commission formula.');
         }
         if (! SalesCommissionPlanFamily::query()->whereKey($decision->plan_family_id)
-            ->where(fn ($_companyIdScope) => \App\Services\CompanyIdScope::constrain($_companyIdScope, 'company_id', $decision->company_id))->where('status', 'approved')->exists()
+            ->where('status', 'approved')->exists()
             || ! SalesCommissionPlanAssignment::query()->whereKey($decision->plan_assignment_id)
-                ->where(fn ($_companyIdScope) => \App\Services\CompanyIdScope::constrain($_companyIdScope, 'company_id', $decision->company_id))->where('plan_family_id', $decision->plan_family_id)
+                ->where('plan_family_id', $decision->plan_family_id)
                 ->where('status', 'approved')->exists()
             || ($decision->plan_version_id && ! SalesCommissionPlanVersion::query()->whereKey($decision->plan_version_id)
                 ->where('plan_family_id', $decision->plan_family_id)->where('status', 'approved')->exists())
             || ($decision->plan_tier_id && ! SalesCommissionPlanTier::query()->whereKey($decision->plan_tier_id)
                 ->where('plan_version_id', $decision->plan_version_id)->exists())
             || ($decision->staff_override_id && ! SalesCommissionStaffOverride::query()->whereKey($decision->staff_override_id)
-                ->where(fn ($_companyIdScope) => \App\Services\CompanyIdScope::constrain($_companyIdScope, 'company_id', $decision->company_id))->where('staff_id', $decision->beneficiary_staff_id)
+                ->where('staff_id', $decision->beneficiary_staff_id)
                 ->where('status', 'approved')->exists())) {
             return $this->blocked($decision, 'The frozen approved plan, tier, assignment, or Staff override evidence is unavailable.');
         }
@@ -527,7 +527,7 @@ class CommissionHoldAdjustmentService
             'receipt_finality_status' => $receipt->finality_status,
             'finality_policy_id' => $policy->id, 'finality_policy_version' => $policy->version,
             'finality_policy_snapshot' => $policy->only([
-                'company_id', 'payment_method', 'official_collection_state', 'can_earn_before_final',
+                'payment_method', 'official_collection_state', 'can_earn_before_final',
                 'hold_payout_until_final', 'clearance_timeout_hours', 'required_evidence_type',
                 'effective_from', 'effective_until', 'created_by', 'approved_by', 'approved_at',
             ]),
@@ -584,7 +584,7 @@ class CommissionHoldAdjustmentService
         }
 
         $policies = BookingPaymentFinalityPolicy::query()
-            ->where(fn ($_companyIdScope) => \App\Services\CompanyIdScope::constrain($_companyIdScope, 'company_id', $decision->company_id))
+
             ->where('payment_method', strtolower((string) $receipt->payment_method))
             ->where('status', 'approved')->whereNotNull('approved_by')->whereNotNull('approved_at')
             ->where('effective_from', '<=', $receipt->received_at)
@@ -653,9 +653,9 @@ class CommissionHoldAdjustmentService
         }
 
         if (! SalesCommissionPlanFamily::query()->whereKey($decision->plan_family_id)
-            ->where(fn ($_companyIdScope) => \App\Services\CompanyIdScope::constrain($_companyIdScope, 'company_id', $decision->company_id))->where('status', 'approved')->exists()
+            ->where('status', 'approved')->exists()
             || ! SalesCommissionPlanAssignment::query()->whereKey($decision->plan_assignment_id)
-                ->where(fn ($_companyIdScope) => \App\Services\CompanyIdScope::constrain($_companyIdScope, 'company_id', $decision->company_id))->where('plan_family_id', $decision->plan_family_id)
+                ->where('plan_family_id', $decision->plan_family_id)
                 ->where('status', 'approved')->where('effective_from', '<=', $attribution->secured_at)
                 ->where(fn ($query) => $query->whereNull('effective_until')->orWhere('effective_until', '>', $attribution->secured_at))
                 ->exists()) {
@@ -731,7 +731,7 @@ class CommissionHoldAdjustmentService
             return $this->blocked($decision, 'The original receipt does not have confirmed finality evidence.');
         }
         $policies = BookingPaymentFinalityPolicy::query()
-            ->where(fn ($_companyIdScope) => \App\Services\CompanyIdScope::constrain($_companyIdScope, 'company_id', $decision->company_id))
+
             ->where('payment_method', strtolower((string) $receipt->payment_method))
             ->where('status', 'approved')->whereNotNull('approved_by')->whereNotNull('approved_at')
             ->where('effective_from', '<=', $receipt->received_at)
@@ -791,10 +791,10 @@ class CommissionHoldAdjustmentService
                 'The corrected attribution still lacks a uniquely approved historical commission plan family; resolve the plan family first.');
         }
         if (! SalesCommissionPlanFamily::query()->whereKey($attribution->commission_plan_family_id)
-            ->where(fn ($_companyIdScope) => \App\Services\CompanyIdScope::constrain($_companyIdScope, 'company_id', $decision->company_id))->where('status', 'approved')
+            ->where('status', 'approved')
             ->where('commission_category', $attribution->commission_category)->exists()
             || ! SalesCommissionPlanAssignment::query()->whereKey($attribution->commission_plan_assignment_id)
-                ->where(fn ($_companyIdScope) => \App\Services\CompanyIdScope::constrain($_companyIdScope, 'company_id', $decision->company_id))->where('plan_family_id', $attribution->commission_plan_family_id)
+                ->where('plan_family_id', $attribution->commission_plan_family_id)
                 ->where('status', 'approved')->where('effective_from', '<=', $attribution->secured_at)
                 ->where(fn ($query) => $query->whereNull('effective_until')->orWhere('effective_until', '>', $attribution->secured_at))
                 ->exists()) {
@@ -885,7 +885,7 @@ class CommissionHoldAdjustmentService
             return $this->blocked($decision, 'The original receipt does not have confirmed finality evidence.');
         }
         $policies = BookingPaymentFinalityPolicy::query()
-            ->where(fn ($_companyIdScope) => \App\Services\CompanyIdScope::constrain($_companyIdScope, 'company_id', $decision->company_id))
+
             ->where('payment_method', strtolower((string) $receipt->payment_method))
             ->where('status', 'approved')->whereNotNull('approved_by')->whereNotNull('approved_at')
             ->where('effective_from', '<=', $receipt->received_at)
@@ -911,10 +911,10 @@ class CommissionHoldAdjustmentService
                 'The attribution still lacks a uniquely approved historical commission plan family; resolve the plan family first.');
         }
         if (! SalesCommissionPlanFamily::query()->whereKey($attribution->commission_plan_family_id)
-            ->where(fn ($_companyIdScope) => \App\Services\CompanyIdScope::constrain($_companyIdScope, 'company_id', $decision->company_id))->where('status', 'approved')
+            ->where('status', 'approved')
             ->where('commission_category', $attribution->commission_category)->exists()
             || ! SalesCommissionPlanAssignment::query()->whereKey($attribution->commission_plan_assignment_id)
-                ->where(fn ($_companyIdScope) => \App\Services\CompanyIdScope::constrain($_companyIdScope, 'company_id', $decision->company_id))->where('plan_family_id', $attribution->commission_plan_family_id)
+                ->where('plan_family_id', $attribution->commission_plan_family_id)
                 ->where('status', 'approved')->where('effective_from', '<=', $attribution->secured_at)
                 ->where(fn ($query) => $query->whereNull('effective_until')->orWhere('effective_until', '>', $attribution->secured_at))
                 ->exists()) {
@@ -1022,7 +1022,7 @@ class CommissionHoldAdjustmentService
             return $this->blocked($decision, 'The original receipt does not have confirmed finality evidence.');
         }
         $policies = BookingPaymentFinalityPolicy::query()
-            ->where(fn ($_companyIdScope) => \App\Services\CompanyIdScope::constrain($_companyIdScope, 'company_id', $decision->company_id))
+
             ->where('payment_method', strtolower((string) $receipt->payment_method))
             ->where('status', 'approved')->whereNotNull('approved_by')->whereNotNull('approved_at')
             ->where('effective_from', '<=', $receipt->received_at)
@@ -1055,7 +1055,7 @@ class CommissionHoldAdjustmentService
         }
         $sourceEvent = $events->first();
         $assignment = SalesCommissionPlanAssignment::query()->whereKey($attribution->commission_plan_assignment_id)
-            ->where(fn ($_companyIdScope) => \App\Services\CompanyIdScope::constrain($_companyIdScope, 'company_id', $decision->company_id))
+
             ->where('plan_family_id', $attribution->commission_plan_family_id)
             ->where('status', 'approved')->whereNotNull('created_by')->whereNotNull('approved_by')->whereNotNull('approved_at')
             ->whereColumn('created_by', '<>', 'approved_by')
@@ -1063,7 +1063,7 @@ class CommissionHoldAdjustmentService
             ->where(fn ($query) => $query->whereNull('effective_until')->orWhere('effective_until', '>', $attribution->secured_at))
             ->first();
         if (! $assignment || ! SalesCommissionPlanFamily::query()->whereKey($attribution->commission_plan_family_id)
-            ->where(fn ($_companyIdScope) => \App\Services\CompanyIdScope::constrain($_companyIdScope, 'company_id', $decision->company_id))->where('status', 'approved')
+            ->where('status', 'approved')
             ->where('commission_category', $decision->commission_category)->exists()) {
             return $this->blocked($decision, 'The corrected approved plan family or assignment evidence is unavailable.');
         }
@@ -1135,7 +1135,7 @@ class CommissionHoldAdjustmentService
         }
 
         $policies = BookingPaymentFinalityPolicy::query()
-            ->where(fn ($_companyIdScope) => \App\Services\CompanyIdScope::constrain($_companyIdScope, 'company_id', $decision->company_id))
+
             ->where('payment_method', strtolower((string) $receipt->payment_method))
             ->where('status', 'approved')->whereNotNull('approved_by')->whereNotNull('approved_at')
             ->where('effective_from', '<=', $receipt->received_at)
@@ -1186,9 +1186,9 @@ class CommissionHoldAdjustmentService
         }
 
         if (! SalesCommissionPlanFamily::query()->whereKey($decision->plan_family_id)
-            ->where(fn ($_companyIdScope) => \App\Services\CompanyIdScope::constrain($_companyIdScope, 'company_id', $decision->company_id))->where('status', 'approved')->exists()
+            ->where('status', 'approved')->exists()
             || ! SalesCommissionPlanAssignment::query()->whereKey($decision->plan_assignment_id)
-                ->where(fn ($_companyIdScope) => \App\Services\CompanyIdScope::constrain($_companyIdScope, 'company_id', $decision->company_id))->where('plan_family_id', $decision->plan_family_id)
+                ->where('plan_family_id', $decision->plan_family_id)
                 ->where('status', 'approved')->where('effective_from', '<=', $attribution->secured_at)
                 ->where(fn ($query) => $query->whereNull('effective_until')->orWhere('effective_until', '>', $attribution->secured_at))
                 ->exists()) {
@@ -1378,7 +1378,7 @@ class CommissionHoldAdjustmentService
         }, 3);
     }
 
-    private function hasIntactFinalityEvidence(?string $evidenceId, string $companyId, string $receiptId, string $requiredType): bool
+    private function hasIntactFinalityEvidence(?string $evidenceId, ?string $companyId, string $receiptId, string $requiredType): bool
     {
         if (! $evidenceId) return false;
         try {

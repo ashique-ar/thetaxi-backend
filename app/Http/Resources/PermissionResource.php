@@ -2,6 +2,7 @@
 
 namespace App\Http\Resources;
 
+use App\Services\PermissionRegistry;
 use Illuminate\Http\Request;
 use Illuminate\Http\Resources\Json\JsonResource;
 
@@ -15,10 +16,15 @@ class PermissionResource extends JsonResource
      */
     public function toArray(Request $request): array
     {
+        $metadata = app(PermissionRegistry::class)->formatPermission($this->resource);
+
         return [
             'id' => $this->id,
             'name' => $this->name,
             'guard_name' => $this->guard_name,
+            'module' => $metadata['module'],
+            'module_label' => $metadata['module_label'],
+            'action' => $metadata['action'],
             'display_name' => $this->display_name ?? ucfirst(str_replace('-', ' ', $this->name)),
             'description' => $this->description,
             'roles_count' => $this->when($request->has('include_counts'), function () {

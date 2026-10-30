@@ -16,7 +16,6 @@ use App\Support\PhoneNumberMatch;
 use App\Services\InquiryAssignmentService;
 use App\Services\InquiryAssignmentNotificationService;
 use App\Services\BookingFlowService;
-use App\Services\SingleCompanyScope;
 use App\Notifications\RespondIoInquiryNeedsOwnerNotification;
 use Illuminate\Database\QueryException;
 use Illuminate\Http\JsonResponse;
@@ -31,7 +30,7 @@ class RespondIoIntegrationController extends Controller
 {
     public function connection(): JsonResponse
     {
-        $connection = $this->companyConnection();
+        $connection = $this->integrationConnection();
         return response()->json(['status' => 'success', 'data' => $connection ? [
             'id' => $connection->id, 'name' => $connection->name, 'enabled' => $connection->enabled,
             'default_inquiry_assignee_user_id' => $connection->default_inquiry_assignee_user_id,
@@ -43,12 +42,10 @@ class RespondIoIntegrationController extends Controller
     public function createConnection(Request $request): JsonResponse
     {
         $data = $request->validate(['name' => ['required', 'string', 'max:120']]);
-        $company = app(SingleCompanyScope::class)->activeDefaultCompany();
-        abort_unless($company, 409, 'No active business is configured.');
-        abort_if($this->companyConnection(), 409, 'A respond.io connection already exists for this business.');
+        abort_if($this->integrationConnection(), 409, 'A respond.io connection already exists for this installation.');
         $secret = bin2hex(random_bytes(32));
         $connection = IntegrationConnection::create([
-            'company_id' => $company->id, 'provider' => 'respond_io', 'name' => trim($data['name']),
+            'provider' => 'respond_io', 'name' => trim($data['name']),
             'webhook_secret_hash' => hash('sha256', $secret), 'created_user_id' => $request->user()->id,
         ]);
 
@@ -65,14 +62,13 @@ class RespondIoIntegrationController extends Controller
             'name' => ['sometimes', 'required', 'string', 'max:120'],
             'enabled' => ['sometimes', 'required', 'boolean'],
             'default_inquiry_assignee_user_id' => ['sometimes', 'nullable', 'uuid', function ($attribute, $value, $fail): void {
-                $companyId = app(SingleCompanyScope::class)->activeDefaultCompany()?->id;
-                if ($value && (! $companyId || ! app(InquiryAssignmentService::class)->eligibleAssignees((string) $companyId)->where('users.id', $value)->exists())) {
-                    $fail('Choose an active employee in the current company.');
+                if ($value && ! app(InquiryAssignmentService::class)->eligibleAssignees()->where('users.id', $value)->exists()) {
+                    $fail('Choose an active employee.');
                 }
             }],
             'api_token' => ['sometimes', 'required', 'string', 'min:10', 'max:4096'],
         ]);
-        $connection = $this->companyConnection();
+        $connection = $this->integrationConnection();
         abort_unless($connection, 404, 'No respond.io connection is configured.');
         if (array_key_exists('api_token', $data)) {
             try {
@@ -99,27 +95,26 @@ class RespondIoIntegrationController extends Controller
 
     public function assigneeOptions(InquiryAssignmentService $assignments): JsonResponse
     {
-        $companyId = app(SingleCompanyScope::class)->activeDefaultCompany()?->id;
-        return response()->json(['status' => 'success', 'data' => ($companyId ? $assignments->eligibleAssignees((string) $companyId)
+        return response()->json(['status' => 'success', 'data' => $assignments->eligibleAssignees()
             ->select(['users.id', 'users.first_name', 'users.last_name', 'staff.code'])
             ->get()
             ->map(fn ($employee) => [
                 'id' => (string) $employee->id,
                 'name' => trim($employee->first_name . ' ' . $employee->last_name),
                 'code' => $employee->code,
-            ]) : collect())]);
+            ])]);
     }
 
     public function agentMappings(InquiryAssignmentService $assignments): JsonResponse
     {
-        $connection = $this->companyConnection();
+        $connection = $this->integrationConnection();
         if (! $connection) return response()->json(['status' => 'success', 'data' => []]);
-        $eligibleIds = $assignments->eligibleAssignees((string) $connection->company_id)->pluck('users.id')
+        $eligibleIds = $assignments->eligibleAssignees()->pluck('users.id')
             ->map(fn ($id) => (string) $id)->flip();
         $mappings = DB::table('respond_io_agent_mappings as mapping')
             ->join('users as employee', 'employee.id', '=', 'mapping.erp_user_id')
             ->leftJoin('users as mapper', 'mapper.id', '=', 'mapping.mapped_by_user_id')
-            ->where('mapping.connection_id', $connection->id)->where(fn ($_companyIdScope) => \App\Services\CompanyIdScope::constrain($_companyIdScope, 'mapping.company_id', $connection->company_id))
+            ->where('mapping.connection_id', $connection->id)
             ->orderBy('mapping.external_agent_name')->orderBy('mapping.external_agent_email')
             ->get(['mapping.id', 'mapping.external_agent_id', 'mapping.external_agent_name', 'mapping.external_agent_email',
                 'mapping.erp_user_id', 'mapping.updated_at', 'employee.first_name', 'employee.last_name', 'employee.email as employee_email',
@@ -141,17 +136,17 @@ class RespondIoIntegrationController extends Controller
 
     public function removeAgentMapping(string $mapping): JsonResponse
     {
-        $connection = $this->companyConnection();
+        $connection = $this->integrationConnection();
         abort_unless($connection, 404, 'No respond.io connection is configured.');
         $deleted = DB::table('respond_io_agent_mappings')->where('id', $mapping)
-            ->where('connection_id', $connection->id)->where(fn ($_companyIdScope) => \App\Services\CompanyIdScope::constrain($_companyIdScope, 'company_id', $connection->company_id))->delete();
+            ->where('connection_id', $connection->id)->delete();
         abort_unless($deleted, 404, 'This Respond.io employee mapping no longer exists.');
         return response()->json(['status' => 'success', 'message' => 'Respond.io employee mapping removed.']);
     }
 
     public function rotateSecret(): JsonResponse
     {
-        $connection = $this->companyConnection();
+        $connection = $this->integrationConnection();
         abort_unless($connection, 404, 'No respond.io connection is configured.');
         $secret = bin2hex(random_bytes(32));
         $connection->update(['webhook_secret_hash' => hash('sha256', $secret)]);
@@ -163,9 +158,9 @@ class RespondIoIntegrationController extends Controller
     public function events(Request $request): JsonResponse
     {
         $request->validate(['status' => ['nullable', 'in:received,processed,reply_failed,not_a_lead'], 'per_page' => ['nullable', 'integer', 'min:1', 'max:100']]);
-        $connection = $this->companyConnection();
+        $connection = $this->integrationConnection();
         abort_unless($connection, 404, 'No respond.io connection is configured.');
-        $events = IntegrationWebhookEvent::query()->where(fn ($_companyIdScope) => \App\Services\CompanyIdScope::constrain($_companyIdScope, 'company_id', $connection->company_id))->where('provider', 'respond_io')
+        $events = IntegrationWebhookEvent::query()->where('connection_id', $connection->id)->where('provider', 'respond_io')
             ->when($request->get('status') === 'reply_failed', fn ($query) => $query->whereIn('outbound_status', ['failed', 'uncertain']))
             ->when($request->filled('status') && $request->get('status') !== 'reply_failed', fn ($query) => $query->where('status', $request->get('status')))
             ->latest('received_at')->paginate($request->integer('per_page', 25));
@@ -180,13 +175,12 @@ class RespondIoIntegrationController extends Controller
 
     public function event(IntegrationWebhookEvent $event): JsonResponse
     {
-        $connection = $this->companyConnection();
-        abort_unless($connection && $event->connection_id === $connection->id
-            && \App\Services\CompanyIdScope::sameCompanyId((string) ($event->company_id), (string) ($connection->company_id)) && $event->provider === 'respond_io', 404);
+        $connection = $this->integrationConnection();
+        abort_unless($connection && $event->connection_id === $connection->id && $event->provider === 'respond_io', 404);
         $linkedBookingNumber = $event->linked_booking_id
-            ? $this->companyBookingQuery((string) $connection->company_id, (string) $event->linked_booking_id)->value('booking_number')
+            ? $this->bookingQuery((string) $event->linked_booking_id)->value('booking_number')
             : ($event->linked_inquiry_id
-            ? Inquiry::query()->where(fn ($_companyIdScope) => \App\Services\CompanyIdScope::constrain($_companyIdScope, 'company_id', $connection->company_id))->whereKey($event->linked_inquiry_id)
+            ? Inquiry::query()->whereKey($event->linked_inquiry_id)
                 ->with('booking:id,booking_number')->first()?->booking?->booking_number
             : null);
 
@@ -211,9 +205,8 @@ class RespondIoIntegrationController extends Controller
 
     public function bookingRequestContext(IntegrationWebhookEvent $event): JsonResponse
     {
-        $connection = $this->companyConnection();
-        abort_unless($connection && $event->connection_id === $connection->id
-            && \App\Services\CompanyIdScope::sameCompanyId((string) ($event->company_id), (string) ($connection->company_id)) && $event->provider === 'respond_io', 404);
+        $connection = $this->integrationConnection();
+        abort_unless($connection && $event->connection_id === $connection->id && $event->provider === 'respond_io', 404);
         abort_unless($event->status === 'received' && ! $event->linked_inquiry_id && ! $event->linked_booking_id
             && $this->isRespondIoMessageEvent($event->event_type, $event->message_direction), 409, 'This message has already been reviewed.');
 
@@ -248,9 +241,8 @@ class RespondIoIntegrationController extends Controller
             'luggage_count' => ['nullable', 'integer', 'min:0', 'max:100'],
             'special_requirements' => ['nullable', 'string', 'max:5000'],
         ]);
-        $connection = $this->companyConnection();
-        abort_unless($connection && $event->connection_id === $connection->id
-            && \App\Services\CompanyIdScope::sameCompanyId((string) ($event->company_id), (string) ($connection->company_id)) && $event->provider === 'respond_io', 404);
+        $connection = $this->integrationConnection();
+        abort_unless($connection && $event->connection_id === $connection->id && $event->provider === 'respond_io', 404);
 
         $bookingFlow = app(BookingFlowService::class);
         $params = $bookingFlow->normalizeDynamicCalculationParams($request->all());
@@ -273,26 +265,23 @@ class RespondIoIntegrationController extends Controller
             'selected_id' => ['nullable', 'uuid'], 'page' => ['nullable', 'integer', 'min:1'],
             'per_page' => ['nullable', 'integer', 'min:1', 'max:50'],
         ]);
-        $connection = $this->companyConnection();
-        abort_unless($connection && $event->connection_id === $connection->id
-            && \App\Services\CompanyIdScope::sameCompanyId((string) ($event->company_id), (string) ($connection->company_id)) && $event->provider === 'respond_io', 404);
+        $connection = $this->integrationConnection();
+        abort_unless($connection && $event->connection_id === $connection->id && $event->provider === 'respond_io', 404);
 
-        $inquiries = Inquiry::query()->where(fn ($_companyIdScope) => \App\Services\CompanyIdScope::constrain($_companyIdScope, 'company_id', $connection->company_id))->whereNull('deleted_at')
+        $inquiries = Inquiry::query()->whereNull('deleted_at')
             ->when(empty($data['selected_id']), fn ($query) => $query->where(fn ($active) => $active->whereIn('status', ['open', 'in_progress'])
-                ->orWhereHas('booking', fn ($booking) => \App\Services\CompanyBookingScope::constrain($booking, 'bookings', (string) $connection->company_id))))
+                ->orWhereHas('booking')))
             ->when(! empty($data['customer_id']), fn ($query) => $query->where('customer_id', $data['customer_id']))
             ->when(! empty($data['selected_id']), fn ($query) => $query->whereKey($data['selected_id']))
-            ->when(empty($data['selected_id']) && ! empty($data['search']), function ($query) use ($data, $connection): void {
+            ->when(empty($data['selected_id']) && ! empty($data['search']), function ($query) use ($data): void {
                 $term = '%'.addcslashes(trim($data['search']), '%_\\').'%';
                 $query->where(fn ($search) => $search->where('name', 'like', $term)
                     ->orWhere('email', 'like', $term)->orWhere('phone', 'like', $term)->orWhere('subject', 'like', $term)
-                    ->orWhereHas('booking', function ($booking) use ($connection, $term): void {
+                    ->orWhereHas('booking', function ($booking) use ($term): void {
                         $booking->where('booking_number', 'like', $term);
-                        \App\Services\CompanyBookingScope::constrain($booking, 'bookings', (string) $connection->company_id);
                     }));
             })
-            ->with(['booking' => function ($booking) use ($connection): void {
-                \App\Services\CompanyBookingScope::constrain($booking, 'bookings', (string) $connection->company_id);
+            ->with(['booking' => function ($booking): void {
                 $booking->select(['id', 'booking_number']);
             }])
             ->select(['id', 'name', 'subject', 'status', 'customer_id', 'booking_id', 'created_at'])
@@ -310,20 +299,19 @@ class RespondIoIntegrationController extends Controller
     public function linkInquiry(Request $request, IntegrationWebhookEvent $event): JsonResponse
     {
         $data = $request->validate(['inquiry_id' => ['required', 'uuid']]);
-        $connection = $this->companyConnection();
+        $connection = $this->integrationConnection();
         abort_unless($connection && $event->connection_id === $connection->id
-            && \App\Services\CompanyIdScope::sameCompanyId((string) ($event->company_id), (string) ($connection->company_id)) && $event->provider === 'respond_io', 404);
+            && $event->provider === 'respond_io', 404);
         abort_unless($this->isRespondIoMessageEvent($event->event_type, $event->message_direction), 409, 'Only incoming Respond.io messages can be linked to an inquiry.');
 
         $duplicate = DB::transaction(function () use ($request, $data, $connection, $event): bool {
-            abort_unless(\App\Services\CompanyIdScope::sameCompanyId((string) (app(SingleCompanyScope::class)->activeDefaultCompany(true)?->id), (string) ($connection->company_id)), 409, 'Business changed; retry event review.');
             $lockedEvent = IntegrationWebhookEvent::query()->whereKey($event->id)->lockForUpdate()->firstOrFail();
-            abort_unless($lockedEvent->connection_id === $connection->id && \App\Services\CompanyIdScope::sameCompanyId((string) ($lockedEvent->company_id), (string) ($connection->company_id)), 404);
+            abort_unless($lockedEvent->connection_id === $connection->id, 404);
             if ($lockedEvent->status === 'processed' && (string) $lockedEvent->linked_inquiry_id === (string) $data['inquiry_id']) return true;
             abort_unless($lockedEvent->status === 'received' && $this->isRespondIoMessageEvent($lockedEvent->event_type, $lockedEvent->message_direction), 409, 'This message has already been reviewed.');
-            $inquiry = Inquiry::query()->where(fn ($_companyIdScope) => \App\Services\CompanyIdScope::constrain($_companyIdScope, 'company_id', $connection->company_id))->whereNull('deleted_at')
+            $inquiry = Inquiry::query()->whereNull('deleted_at')
                 ->where(fn ($active) => $active->whereIn('status', ['open', 'in_progress'])
-                    ->orWhereHas('booking', fn ($booking) => \App\Services\CompanyBookingScope::constrain($booking, 'bookings', (string) $connection->company_id)))
+                    ->orWhereHas('booking'))
                 ->lockForUpdate()->findOrFail($data['inquiry_id']);
             $lockedEvent->forceFill([
                 'linked_inquiry_id' => $inquiry->id,
@@ -349,9 +337,8 @@ class RespondIoIntegrationController extends Controller
             'email' => ['nullable', 'email', 'max:255'],
             'phone' => ['nullable', 'string', 'max:30'],
         ]);
-        $connection = $this->companyConnection();
-        abort_unless($connection && $connection->enabled && $event->connection_id === $connection->id
-            && \App\Services\CompanyIdScope::sameCompanyId((string) ($event->company_id), (string) ($connection->company_id)) && $event->provider === 'respond_io', 404);
+        $connection = $this->integrationConnection();
+        abort_unless($connection && $connection->enabled && $event->connection_id === $connection->id && $event->provider === 'respond_io', 404);
         abort_unless($connection->respond_io_api_token, 409, 'Connect a Respond.io Developer API token first.');
 
         $identifier = ! empty($data['email'])
@@ -390,7 +377,6 @@ class RespondIoIntegrationController extends Controller
                 if ($contactEmail !== '') $identity->orWhereRaw('LOWER(TRIM(users.email)) = ?', [$contactEmail]);
                 if ($contactPhone !== '') $identity->orWhereRaw(PhoneNumberMatch::sqlExpression('users.phone').' = ?', [$contactPhone]);
             });
-        \App\Services\CompanyCustomerScope::constrain($customerMatches, 'customers', (string) $connection->company_id);
         $customerMatches = $contactEmail === '' && $contactPhone === '' ? collect()
             : $customerMatches->orderBy('customers.id')->limit(2)
                 ->get(['customers.id', 'customers.code', 'users.first_name', 'users.last_name', 'users.email', 'users.phone']);
@@ -401,13 +387,12 @@ class RespondIoIntegrationController extends Controller
             ->join('staff', 'staff.user_id', '=', 'mapping.erp_user_id')
             ->join('users', 'users.id', '=', 'staff.user_id')
             ->where('mapping.connection_id', $connection->id)->where('mapping.external_agent_id', $providerAssigneeId)
-            ->where(fn ($_companyIdScope) => \App\Services\CompanyIdScope::constrain($_companyIdScope, 'mapping.company_id', $connection->company_id))->where(fn ($_companyIdScope) => \App\Services\CompanyIdScope::constrain($_companyIdScope, 'staff.company_id', $connection->company_id))
             ->whereNull('staff.deleted_at')->whereNull('staff.employment_ended_at')
             ->whereNull('users.deleted_at')->where('users.is_active', true)
             ->orderBy('staff.id')->limit(2)->get(['users.id', 'users.first_name', 'users.last_name', 'staff.code']) : collect();
         $employeeMatches = $providerAssigneeEmail !== ''
             ? DB::table('staff')->join('users', 'users.id', '=', 'staff.user_id')
-                ->where(fn ($_companyIdScope) => \App\Services\CompanyIdScope::constrain($_companyIdScope, 'staff.company_id', $connection->company_id))->whereNull('staff.deleted_at')
+                ->whereNull('staff.deleted_at')
                 ->whereNull('staff.employment_ended_at')->whereNull('users.deleted_at')->where('users.is_active', true)
                 ->whereRaw('LOWER(users.email) = ?', [$providerAssigneeEmail])
                 ->orderBy('users.id')->limit(2)->get(['users.id', 'users.first_name', 'users.last_name', 'staff.code'])
@@ -453,11 +438,10 @@ class RespondIoIntegrationController extends Controller
             'erp_user_id' => ['required', 'uuid'],
             'external_agent_id' => ['required', 'string', 'max:120'],
         ]);
-        $connection = $this->companyConnection();
+        $connection = $this->integrationConnection();
         abort_unless($connection && $connection->enabled && $connection->respond_io_api_token
-            && $event->connection_id === $connection->id && \App\Services\CompanyIdScope::sameCompanyId((string) ($event->company_id), (string) ($connection->company_id))
-            && $event->provider === 'respond_io' && $event->external_contact_id, 404);
-        abort_unless(app(InquiryAssignmentService::class)->eligibleAssignees((string) $connection->company_id)
+            && $event->connection_id === $connection->id && $event->provider === 'respond_io' && $event->external_contact_id, 404);
+        abort_unless(app(InquiryAssignmentService::class)->eligibleAssignees()
             ->where('users.id', $data['erp_user_id'])->exists(), 422, 'Choose an active employee in this business.');
 
         try {
@@ -477,12 +461,10 @@ class RespondIoIntegrationController extends Controller
         abort_unless(hash_equals($agentId, trim($data['external_agent_id'])), 409, 'The Respond.io contact owner changed. Refresh the contact before saving the mapping.');
         $now = now();
         DB::transaction(function () use ($connection, $agent, $agentId, $data, $request, $now): void {
-            abort_unless(\App\Services\CompanyIdScope::sameCompanyId((string) (app(SingleCompanyScope::class)->activeDefaultCompany(true)?->id), (string) ($connection->company_id)), 409, 'Company changed; retry mapping.');
             IntegrationConnection::query()->whereKey($connection->id)->lockForUpdate()->firstOrFail();
             $mapping = DB::table('respond_io_agent_mappings')->where('connection_id', $connection->id)
                 ->where('external_agent_id', $agentId)->lockForUpdate()->first();
             $values = [
-                'company_id' => $connection->company_id,
                 'external_agent_name' => trim((string) (($agent['firstName'] ?? '').' '.($agent['lastName'] ?? ''))) ?: null,
                 'external_agent_email' => is_string($agent['email'] ?? null) ? Str::limit(trim($agent['email']), 255, '') : null,
                 'erp_user_id' => $data['erp_user_id'], 'mapped_by_user_id' => $request->user()->id, 'updated_at' => $now,
@@ -497,7 +479,7 @@ class RespondIoIntegrationController extends Controller
             }
         });
 
-        $employee = app(InquiryAssignmentService::class)->eligibleAssignees((string) $connection->company_id)
+        $employee = app(InquiryAssignmentService::class)->eligibleAssignees()
             ->where('users.id', $data['erp_user_id'])->first();
         abort_unless($employee, 409, 'Employee access changed. Refresh and try again.');
         return response()->json(['status' => 'success', 'message' => 'Respond.io agent is mapped to this employee for future contact reviews.', 'data' => [
@@ -509,9 +491,9 @@ class RespondIoIntegrationController extends Controller
     public function contactHistory(Request $request, IntegrationWebhookEvent $event): JsonResponse
     {
         $data = $request->validate(['cursor_id' => ['nullable', 'string', 'max:255']]);
-        $connection = $this->companyConnection();
+        $connection = $this->integrationConnection();
         abort_unless($connection && $connection->enabled && $event->connection_id === $connection->id
-            && \App\Services\CompanyIdScope::sameCompanyId((string) ($event->company_id), (string) ($connection->company_id)) && $event->provider === 'respond_io', 404);
+            && $event->provider === 'respond_io', 404);
         abort_unless($connection->respond_io_api_token, 409, 'Connect a Respond.io Developer API token first.');
         abort_unless($event->external_contact_id, 422, 'This event has no Respond.io contact ID.');
 
@@ -597,11 +579,10 @@ class RespondIoIntegrationController extends Controller
             'message_ids.*' => ['required', 'string', 'max:120', 'distinct'],
             'cursor_id' => ['nullable', 'string', 'max:255'],
         ]);
-        $connection = $this->companyConnection();
+        $connection = $this->integrationConnection();
         abort_unless($connection && $connection->enabled && $event->connection_id === $connection->id
-            && \App\Services\CompanyIdScope::sameCompanyId((string) ($event->company_id), (string) ($connection->company_id)) && $event->provider === 'respond_io', 404);
+            && $event->provider === 'respond_io', 404);
         $customerQuery = Customer::query()->whereKey($data['customer_id']);
-        \App\Services\CompanyCustomerScope::constrain($customerQuery, 'customers', $connection->company_id);
         $customer = $customerQuery->firstOrFail();
 
         $history = $this->contactHistory($request, $event);
@@ -630,7 +611,7 @@ class RespondIoIntegrationController extends Controller
                     try { $sentAt = Carbon::parse($message['sent_at']); } catch (\Throwable) { }
                 }
                 $record ??= new IntegrationContactMessage([
-                    'connection_id' => $connection->id, 'company_id' => $connection->company_id,
+                    'connection_id' => $connection->id,
                     'provider' => 'respond_io', 'external_contact_id' => $event->external_contact_id,
                     'external_message_id' => $message['id'],
                 ]);
@@ -659,15 +640,13 @@ class RespondIoIntegrationController extends Controller
     public function sendInquiryReply(Request $request, Inquiry $inquiry): JsonResponse
     {
         $data = $request->validate(['message' => ['required', 'string', 'max:7000']]);
-        $companyId = app(SingleCompanyScope::class)->activeDefaultCompany(true)?->id;
-        abort_unless($companyId && \App\Services\CompanyIdScope::sameCompanyId((string) ((string) $inquiry->company_id), (string) ((string) $companyId))
-            && $inquiry->source === 'respond_io', 404);
-        $connection = $this->companyConnection();
+        abort_unless($inquiry->source === 'respond_io', 404);
+        $connection = $this->integrationConnection();
         abort_unless($connection && $connection->enabled && $connection->respond_io_api_token, 409,
             'Enable the Respond.io connection and verify its Developer API token first.');
 
         $event = DB::transaction(function () use ($inquiry, $connection, $request, $data): IntegrationWebhookEvent {
-            $event = IntegrationWebhookEvent::query()->where(fn ($_companyIdScope) => \App\Services\CompanyIdScope::constrain($_companyIdScope, 'company_id', $connection->company_id))
+            $event = IntegrationWebhookEvent::query()
                 ->where('connection_id', $connection->id)->where('provider', 'respond_io')
                 ->where('linked_inquiry_id', $inquiry->id)->incomingMessage()
                 ->latest('received_at')->lockForUpdate()->firstOrFail();
@@ -708,7 +687,7 @@ class RespondIoIntegrationController extends Controller
 
         $sentAt = now();
         DB::transaction(function () use ($connection, $event, $inquiry, $response, $sentAt, $request): void {
-            $lockedEvent = IntegrationWebhookEvent::query()->where(fn ($_companyIdScope) => \App\Services\CompanyIdScope::constrain($_companyIdScope, 'company_id', $connection->company_id))
+            $lockedEvent = IntegrationWebhookEvent::query()->where('connection_id', $connection->id)
                 ->lockForUpdate()->findOrFail($event->id);
             $lockedEvent->forceFill([
                 'outbound_status' => 'sent',
@@ -716,8 +695,7 @@ class RespondIoIntegrationController extends Controller
                 'outbound_sent_at' => $sentAt,
             ])->save();
 
-            $lockedInquiry = Inquiry::query()->where(fn ($_companyIdScope) => \App\Services\CompanyIdScope::constrain($_companyIdScope, 'company_id', $connection->company_id))
-                ->lockForUpdate()->findOrFail($inquiry->id);
+            $lockedInquiry = Inquiry::query()->lockForUpdate()->findOrFail($inquiry->id);
             $changes = ['responded_at' => $sentAt, 'updated_user_id' => $request->user()->id];
             if (! $lockedInquiry->first_response_sent_at) $changes['first_response_sent_at'] = $sentAt;
             $lockedInquiry->update($changes);
@@ -744,26 +722,25 @@ class RespondIoIntegrationController extends Controller
             'booking_id' => ['nullable', 'uuid'],
             'assigned_to' => ['nullable', 'uuid'],
         ]);
-        $connection = $this->companyConnection();
+        $connection = $this->integrationConnection();
         abort_unless($connection && $event->connection_id === $connection->id
-            && \App\Services\CompanyIdScope::sameCompanyId((string) ($event->company_id), (string) ($connection->company_id)) && $event->provider === 'respond_io', 404);
+            && $event->provider === 'respond_io', 404);
 
         [$inquiry, $duplicate] = DB::transaction(function () use ($request, $data, $connection, $event): array {
-            abort_unless(\App\Services\CompanyIdScope::sameCompanyId((string) (app(SingleCompanyScope::class)->activeDefaultCompany(true)?->id), (string) ($connection->company_id)), 409, 'Company changed; retry event conversion.');
             $locked = IntegrationWebhookEvent::query()->whereKey($event->id)->lockForUpdate()->firstOrFail();
-            abort_unless($locked->connection_id === $connection->id && \App\Services\CompanyIdScope::sameCompanyId((string) ($locked->company_id), (string) ($connection->company_id)), 404);
+            abort_unless($locked->connection_id === $connection->id , 404);
             if ($locked->status === 'processed' && $locked->linked_inquiry_id) {
                 abort_unless($locked->resolution_code !== 'support_request', 409, 'This event was already routed as a support request.');
-                return [Inquiry::query()->where(fn ($_companyIdScope) => \App\Services\CompanyIdScope::constrain($_companyIdScope, 'company_id', $connection->company_id))->whereKey($locked->linked_inquiry_id)->firstOrFail(), true];
+                return [Inquiry::query()->whereKey($locked->linked_inquiry_id)->firstOrFail(), true];
             }
             abort_unless($locked->status === 'received', 409, 'Only received Respond.io events can be converted into inquiries.');
             abort_unless($this->isRespondIoMessageEvent($locked->event_type, $locked->message_direction), 409, 'Only incoming message events can be added to an inquiry.');
-            $customer = $this->selectedCompanyCustomer($data['customer_id'] ?? null, (string) $connection->company_id);
-            $booking = $this->selectedCompanyBooking($data['booking_id'] ?? null, (string) $connection->company_id, $customer?->id);
+            $customer = $this->selectedCustomer($data['customer_id'] ?? null);
+            $booking = $this->selectedBooking($data['booking_id'] ?? null, $customer?->id);
             if ($booking && ! $customer) $customer = Customer::query()->findOrFail($booking->customer_id);
             [$assigneeId, $assignmentReason] = $this->resolveInquiryAssignee($connection, $customer, true);
             if (! empty($data['assigned_to'])) {
-                $eligible = app(InquiryAssignmentService::class)->eligibleAssignees((string) $connection->company_id)
+                $eligible = app(InquiryAssignmentService::class)->eligibleAssignees()
                     ->where('users.id', $data['assigned_to'])->lockForUpdate()->exists();
                 abort_unless($eligible, 422, 'Select an active employee in this business.');
                 $assigneeId = $data['assigned_to'];
@@ -771,7 +748,6 @@ class RespondIoIntegrationController extends Controller
             }
 
             $inquiry = Inquiry::createWithUniqueNumber([
-                'company_id' => $connection->company_id,
                 'customer_id' => $customer?->id,
                 'booking_id' => $booking?->id,
                 'name' => trim($data['name']),
@@ -805,7 +781,7 @@ class RespondIoIntegrationController extends Controller
             return [$inquiry, false];
         });
 
-        if (! $duplicate && ! $inquiry->assigned_to) $this->notifyUnassignedInquiry($connection, $inquiry);
+        if (! $duplicate && ! $inquiry->assigned_to) $this->notifyUnassignedInquiry($inquiry);
         $assignmentSync = ! $duplicate && $inquiry->assigned_to
             ? app(\App\Services\RespondIoInquiryAssignmentSync::class)->sync($inquiry)
             : ['status' => 'not_applicable'];
@@ -828,26 +804,24 @@ class RespondIoIntegrationController extends Controller
             'customer_id' => ['nullable', 'uuid'],
             'booking_id' => ['nullable', 'uuid'],
         ]);
-        $connection = $this->companyConnection();
+        $connection = $this->integrationConnection();
         abort_unless($connection && $event->connection_id === $connection->id
-            && \App\Services\CompanyIdScope::sameCompanyId((string) ($event->company_id), (string) ($connection->company_id)) && $event->provider === 'respond_io', 404);
+            && $event->provider === 'respond_io', 404);
 
         [$inquiry, $duplicate] = DB::transaction(function () use ($request, $data, $connection, $event): array {
-            abort_unless(\App\Services\CompanyIdScope::sameCompanyId((string) (app(SingleCompanyScope::class)->activeDefaultCompany(true)?->id), (string) ($connection->company_id)), 409, 'Company changed; retry support request conversion.');
             $locked = IntegrationWebhookEvent::query()->whereKey($event->id)->lockForUpdate()->firstOrFail();
-            abort_unless($locked->connection_id === $connection->id && \App\Services\CompanyIdScope::sameCompanyId((string) ($locked->company_id), (string) ($connection->company_id)), 404);
+            abort_unless($locked->connection_id === $connection->id , 404);
             if ($locked->status === 'processed' && $locked->linked_inquiry_id && $locked->resolution_code === 'support_request') {
-                return [Inquiry::query()->where(fn ($_companyIdScope) => \App\Services\CompanyIdScope::constrain($_companyIdScope, 'company_id', $connection->company_id))->whereKey($locked->linked_inquiry_id)->firstOrFail(), true];
+                return [Inquiry::query()->whereKey($locked->linked_inquiry_id)->firstOrFail(), true];
             }
             abort_unless($locked->status === 'received', 409, 'Only received Respond.io events can become support requests.');
             abort_unless($this->isRespondIoMessageEvent($locked->event_type, $locked->message_direction), 409, 'Only incoming message events can be added to a support request.');
-            $customer = $this->selectedCompanyCustomer($data['customer_id'] ?? null, (string) $connection->company_id);
-            $booking = $this->selectedCompanyBooking($data['booking_id'] ?? null, (string) $connection->company_id, $customer?->id);
+            $customer = $this->selectedCustomer($data['customer_id'] ?? null);
+            $booking = $this->selectedBooking($data['booking_id'] ?? null, $customer?->id);
             if ($booking && ! $customer) $customer = Customer::query()->findOrFail($booking->customer_id);
             [$assigneeId, $assignmentReason] = $this->resolveInquiryAssignee($connection, $customer, false);
 
             $inquiry = Inquiry::createWithUniqueNumber([
-                'company_id' => $connection->company_id,
                 'customer_id' => $customer?->id,
                 'booking_id' => $booking?->id,
                 'name' => trim($data['name']),
@@ -881,7 +855,7 @@ class RespondIoIntegrationController extends Controller
             return [$inquiry, false];
         });
 
-        if (! $duplicate && ! $inquiry->assigned_to) $this->notifyUnassignedInquiry($connection, $inquiry);
+        if (! $duplicate && ! $inquiry->assigned_to) $this->notifyUnassignedInquiry($inquiry);
 
         return response()->json(['status' => 'success', 'duplicate' => $duplicate, 'data' => [
             'inquiry' => new InquiryResource($inquiry->load('booking')),
@@ -895,14 +869,13 @@ class RespondIoIntegrationController extends Controller
             'resolution_code' => ['required', 'string', 'in:existing_customer,duplicate,spam,not_a_request,other'],
             'resolution_note' => ['required', 'string', 'max:1000'],
         ]);
-        $connection = $this->companyConnection();
+        $connection = $this->integrationConnection();
         abort_unless($connection && $event->connection_id === $connection->id
-            && \App\Services\CompanyIdScope::sameCompanyId((string) ($event->company_id), (string) ($connection->company_id)) && $event->provider === 'respond_io', 404);
+            && $event->provider === 'respond_io', 404);
 
         [$duplicate, $review] = DB::transaction(function () use ($request, $data, $connection, $event): array {
-            abort_unless(\App\Services\CompanyIdScope::sameCompanyId((string) (app(SingleCompanyScope::class)->activeDefaultCompany(true)?->id), (string) ($connection->company_id)), 409, 'Company changed; retry event review.');
             $locked = IntegrationWebhookEvent::query()->whereKey($event->id)->lockForUpdate()->firstOrFail();
-            abort_unless($locked->connection_id === $connection->id && \App\Services\CompanyIdScope::sameCompanyId((string) ($locked->company_id), (string) ($connection->company_id)), 404);
+            abort_unless($locked->connection_id === $connection->id , 404);
             if ($locked->status === 'not_a_lead') {
                 return [true, $locked];
             }
@@ -929,21 +902,19 @@ class RespondIoIntegrationController extends Controller
     public function applyContactAssignee(Request $request, IntegrationWebhookEvent $event): JsonResponse
     {
         $data = $request->validate(['assigned_to' => ['required', 'uuid']]);
-        $connection = $this->companyConnection();
+        $connection = $this->integrationConnection();
         abort_unless($connection && $event->connection_id === $connection->id
-            && \App\Services\CompanyIdScope::sameCompanyId((string) ($event->company_id), (string) ($connection->company_id)) && $event->provider === 'respond_io', 404);
+            && $event->provider === 'respond_io', 404);
         abort_unless(str_contains(strtolower((string) $event->event_type), 'assignee'), 409, 'This is not a Respond.io assignment event.');
         abort_unless($event->linked_inquiry_id, 409, 'This contact is not linked to one clear inquiry yet. Link or review the inquiry first.');
 
         [$inquiry, $changed] = DB::transaction(function () use ($request, $data, $connection, $event): array {
-            abort_unless(\App\Services\CompanyIdScope::sameCompanyId((string) (app(SingleCompanyScope::class)->activeDefaultCompany(true)?->id), (string) ($connection->company_id)), 409, 'Company changed; retry assignment.');
             $lockedEvent = IntegrationWebhookEvent::query()->whereKey($event->id)->lockForUpdate()->firstOrFail();
-            abort_unless($lockedEvent->connection_id === $connection->id && \App\Services\CompanyIdScope::sameCompanyId((string) ($lockedEvent->company_id), (string) ($connection->company_id))
-                && str_contains(strtolower((string) $lockedEvent->event_type), 'assignee'), 404);
+            abort_unless($lockedEvent->connection_id === $connection->id && str_contains(strtolower((string) $lockedEvent->event_type), 'assignee'), 404);
             abort_unless($lockedEvent->status === 'received' && $lockedEvent->linked_inquiry_id, 409, 'This assignment event has already been reviewed or has no linked inquiry.');
-            $lockedInquiry = Inquiry::query()->whereKey($lockedEvent->linked_inquiry_id)->where(fn ($_companyIdScope) => \App\Services\CompanyIdScope::constrain($_companyIdScope, 'company_id', $connection->company_id))->lockForUpdate()->firstOrFail();
+            $lockedInquiry = Inquiry::query()->whereKey($lockedEvent->linked_inquiry_id)->lockForUpdate()->firstOrFail();
             $eligible = DB::table('staff')->join('users', 'users.id', '=', 'staff.user_id')
-                ->where(fn ($_companyIdScope) => \App\Services\CompanyIdScope::constrain($_companyIdScope, 'staff.company_id', $connection->company_id))->where('users.id', $data['assigned_to'])
+                ->where('users.id', $data['assigned_to'])
                 ->whereNull('staff.deleted_at')->whereNull('staff.employment_ended_at')
                 ->whereNull('users.deleted_at')->where('users.is_active', true)->lockForUpdate()->exists();
             abort_unless($eligible, 422, 'Choose an active employee in this business.');
@@ -956,7 +927,7 @@ class RespondIoIntegrationController extends Controller
             );
             if ((string) $fromUserId !== (string) $data['assigned_to']) {
                 DB::table('inquiry_assignment_events')->insert([
-                    'id' => (string) Str::uuid(), 'company_id' => $connection->company_id, 'inquiry_id' => $lockedInquiry->id,
+                    'id' => (string) Str::uuid(), 'inquiry_id' => $lockedInquiry->id,
                     'from_user_id' => $fromUserId, 'to_user_id' => $data['assigned_to'], 'actor_user_id' => $request->user()->id,
                     'event_type' => 'assigned', 'reason' => 'Assigned after reviewing a Respond.io contact assignment event.',
                     'idempotency_key' => 'respond_io:'.$lockedEvent->id.':assignment_review', 'occurred_at' => now(), 'created_at' => now(), 'updated_at' => now(),
@@ -972,6 +943,7 @@ class RespondIoIntegrationController extends Controller
 
     public function receive(Request $request, string $connection, string $token): JsonResponse
     {
+        abort_unless((string) $this->integrationConnection()?->id === $connection, 404);
         $config = IntegrationConnection::query()->whereKey($connection)->where('provider', 'respond_io')->firstOrFail();
         abort_unless($config->enabled && hash_equals($config->webhook_secret_hash, hash('sha256', $token)), 403, 'Invalid or disabled webhook URL.');
         $raw = $request->getContent();
@@ -985,7 +957,7 @@ class RespondIoIntegrationController extends Controller
 
         try {
             $event = IntegrationWebhookEvent::create([
-                'connection_id' => $config->id, 'company_id' => $config->company_id, 'provider' => $config->provider,
+                'connection_id' => $config->id, 'provider' => $config->provider,
                 'event_type' => $eventType, ...$identity, 'payload_hash' => $hash, 'payload' => $payload,
                 'status' => 'received', 'received_at' => now(),
             ]);
@@ -1006,7 +978,7 @@ class RespondIoIntegrationController extends Controller
                 ->where('status', 'processed')->whereNotNull('linked_inquiry_id')
                 ->whereIn('resolution_code', ['sales_lead', 'support_request', 'conversation_update'])
                 ->value('linked_inquiry_id');
-            if ($priorInquiryId && Inquiry::query()->whereKey($priorInquiryId)->where(fn ($_companyIdScope) => \App\Services\CompanyIdScope::constrain($_companyIdScope, 'company_id', $config->company_id))->exists()) {
+            if ($priorInquiryId && Inquiry::query()->whereKey($priorInquiryId)->exists()) {
                 $event->forceFill([
                     'linked_inquiry_id' => $priorInquiryId,
                     'status' => 'processed',
@@ -1021,7 +993,7 @@ class RespondIoIntegrationController extends Controller
                 ->where('external_contact_id', $identity['external_contact_id'])->where('status', 'processed')
                 ->whereNotNull('linked_inquiry_id')->whereIn('resolution_code', ['sales_lead', 'support_request', 'conversation_update'])
                 ->distinct()->pluck('linked_inquiry_id');
-            if ($inquiryIds->count() === 1 && Inquiry::query()->whereKey($inquiryIds->first())->where(fn ($_companyIdScope) => \App\Services\CompanyIdScope::constrain($_companyIdScope, 'company_id', $config->company_id))->exists()) {
+            if ($inquiryIds->count() === 1 && Inquiry::query()->whereKey($inquiryIds->first())->exists()) {
                 $event->forceFill(['linked_inquiry_id' => $inquiryIds->first()])->save();
             }
         }
@@ -1101,48 +1073,44 @@ class RespondIoIntegrationController extends Controller
             ]);
     }
 
-    private function companyConnection(): ?IntegrationConnection
+    private function integrationConnection(): ?IntegrationConnection
     {
-        $companyId = app(SingleCompanyScope::class)->activeDefaultCompany()?->id;
-        return $companyId ? IntegrationConnection::query()->where(fn ($_companyIdScope) => \App\Services\CompanyIdScope::constrain($_companyIdScope, 'company_id', $companyId))->where('provider', 'respond_io')->first() : null;
+        return IntegrationConnection::query()->where('provider', 'respond_io')
+            ->orderByDesc('enabled')->orderByDesc('updated_at')->orderByDesc('id')->first();
     }
 
-    private function selectedCompanyCustomer(?string $customerId, string $companyId): ?Customer
+    private function selectedCustomer(?string $customerId): ?Customer
     {
         if (! $customerId) return null;
         $customer = Customer::query()->whereKey($customerId)->whereNull('deleted_at')->firstOrFail();
         $linkedBooking = DB::table('bookings as linked_booking')->where('linked_booking.customer_id', $customerId)->whereNull('linked_booking.deleted_at');
-        \App\Services\CompanyBookingScope::constrain($linkedBooking, 'linked_booking', $companyId);
-        $linked = DB::table('customer_relationship_owner_assignments')->where('customer_id', $customerId)->where(fn ($_companyIdScope) => \App\Services\CompanyIdScope::constrain($_companyIdScope, 'company_id', $companyId))->exists()
-            || DB::table('sales_opportunities')->where('customer_id', $customerId)->where(fn ($_companyIdScope) => \App\Services\CompanyIdScope::constrain($_companyIdScope, 'company_id', $companyId))->whereNull('deleted_at')->exists()
-            || DB::table('inquiries')->where('customer_id', $customerId)->where(fn ($_companyIdScope) => \App\Services\CompanyIdScope::constrain($_companyIdScope, 'company_id', $companyId))->whereNull('deleted_at')->exists()
+        $linked = DB::table('customer_relationship_owner_assignments')->where('customer_id', $customerId)->exists()
+            || DB::table('sales_opportunities')->where('customer_id', $customerId)->whereNull('deleted_at')->exists()
+            || DB::table('inquiries')->where('customer_id', $customerId)->whereNull('deleted_at')->exists()
             || $linkedBooking->exists();
-        abort_unless($linked, 422, 'Choose a customer already associated with this business.');
+        abort_unless($linked, 422, 'Choose a customer already linked to a booking, inquiry, or CRM record.');
         return $customer;
     }
 
-    private function selectedCompanyBooking(?string $bookingId, string $companyId, ?string $customerId): ?\App\Models\Booking\Booking
+    private function selectedBooking(?string $bookingId, ?string $customerId): ?\App\Models\Booking\Booking
     {
         if (! $bookingId) return null;
         $query = \App\Models\Booking\Booking::query()->whereKey($bookingId)->whereNull('deleted_at');
-        \App\Services\CompanyBookingScope::constrain($query, 'bookings', $companyId);
         $booking = $query->firstOrFail();
         abort_unless($booking->customer_id && (! $customerId || (string) $booking->customer_id === $customerId), 422,
             'Choose a booking for the selected customer.');
         return $booking;
     }
 
-    private function companyBookingQuery(string $companyId, string $bookingId)
+    private function bookingQuery(string $bookingId)
     {
-        $query = Booking::query()->whereKey($bookingId);
-        \App\Services\CompanyBookingScope::constrain($query, 'bookings', $companyId);
-        return $query;
+        return Booking::query()->whereKey($bookingId);
     }
 
     private function eligibleDefaultAssignee(IntegrationConnection $connection): ?string
     {
         if (! $connection->default_inquiry_assignee_user_id) return null;
-        return app(InquiryAssignmentService::class)->eligibleAssignees((string) $connection->company_id)
+        return app(InquiryAssignmentService::class)->eligibleAssignees()
             ->where('users.id', $connection->default_inquiry_assignee_user_id)->value('users.id');
     }
 
@@ -1152,14 +1120,14 @@ class RespondIoIntegrationController extends Controller
             $ownerId = DB::table('customer_relationship_owner_assignments as assignment')
                 ->join('sales_profiles as profile', 'profile.id', '=', 'assignment.owner_sales_profile_id')
                 ->join('staff', 'staff.id', '=', 'profile.staff_id')
-                ->where('assignment.customer_id', $customer->id)->where(fn ($_companyIdScope) => \App\Services\CompanyIdScope::constrain($_companyIdScope, 'assignment.company_id', $connection->company_id))
-                ->where(fn ($_companyIdScope) => \App\Services\CompanyIdScope::constrain($_companyIdScope, 'profile.company_id', $connection->company_id))->where('profile.status', 'active')
+                ->where('assignment.customer_id', $customer->id)
+                ->where('profile.status', 'active')
                 ->where('profile.effective_from', '<=', now())
                 ->where(fn ($query) => $query->whereNull('profile.effective_until')->orWhere('profile.effective_until', '>', now()))
                 ->whereNull('staff.deleted_at')->whereNull('staff.employment_ended_at')
                 ->whereNull('assignment.ended_at')->value('staff.user_id');
             $eligibleOwner = $ownerId
-                ? app(InquiryAssignmentService::class)->eligibleAssignees((string) $connection->company_id)
+                ? app(InquiryAssignmentService::class)->eligibleAssignees()
                     ->where('users.id', $ownerId)->value('users.id')
                 : null;
             if ($eligibleOwner) return [$eligibleOwner, 'Assigned to the customer\'s active relationship owner.'];
@@ -1176,7 +1144,6 @@ class RespondIoIntegrationController extends Controller
 
         DB::table('inquiry_assignment_events')->insertOrIgnore([
             'id' => (string) Str::uuid(),
-            'company_id' => $event->company_id,
             'inquiry_id' => $inquiry->id,
             'from_user_id' => null,
             'to_user_id' => $inquiry->assigned_to,
@@ -1191,17 +1158,15 @@ class RespondIoIntegrationController extends Controller
         app(InquiryAssignmentNotificationService::class)->notifyAssigned($inquiry);
     }
 
-    private function notifyUnassignedInquiry(IntegrationConnection $connection, Inquiry $inquiry): void
+    private function notifyUnassignedInquiry(Inquiry $inquiry): void
     {
         try {
             $recipients = User::permission('inquiries.view')->permission('inquiries.edit')->where('is_active', true)->whereNull('deleted_at')
-                ->whereHas('staff', fn ($query) => $query->where(fn ($_companyIdScope) => \App\Services\CompanyIdScope::constrain($_companyIdScope, 'company_id', $connection->company_id))
-                    ->whereNull('deleted_at')->whereNull('employment_ended_at'))->get();
+                ->whereHas('staff', fn ($query) => $query->whereNull('deleted_at')->whereNull('employment_ended_at'))->get();
             foreach ($recipients as $recipient) $recipient->notify(new RespondIoInquiryNeedsOwnerNotification($inquiry));
         } catch (\Throwable $exception) {
             Log::warning('Unassigned Respond.io inquiry notification could not be queued', [
                 'inquiry_id' => $inquiry->id,
-                'company_id' => $connection->company_id,
                 'error' => $exception->getMessage(),
             ]);
         }

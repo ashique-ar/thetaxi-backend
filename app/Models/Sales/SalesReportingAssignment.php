@@ -8,7 +8,7 @@ use Illuminate\Database\Eloquent\Relations\BelongsTo;
 class SalesReportingAssignment extends BaseModel
 {
     protected $fillable = [
-        'company_id', 'manager_sales_profile_id', 'member_sales_profile_id', 'team_code',
+        'manager_sales_profile_id', 'member_sales_profile_id', 'team_code',
         'effective_from', 'effective_until', 'created_user_id', 'updated_user_id',
     ];
 

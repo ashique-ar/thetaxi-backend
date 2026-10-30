@@ -1,6 +1,6 @@
 <?php
 
-use App\Models\Sales\SalesCompanyFeatureSetting;
+use App\Models\Sales\SalesFeatureSetting;
 use App\Models\Sales\SalesPolicySetting;
 use App\Models\Sales\SalesStaffCategoryDefinition;
 use App\Models\Staff;
@@ -23,23 +23,23 @@ it('returns screen fields to viewers and reveals policy rationale only to makers
     $reason = 'Approved business decision is recorded here.';
 
     SalesPolicySetting::query()->create([
-        'company_id' => $company->id, 'policy_kind' => 'business_timezone', 'version' => 1,
+        'policy_kind' => 'business_timezone', 'version' => 1,
         'status' => 'draft', 'business_timezone' => 'Asia/Colombo', 'reason' => $reason,
         'created_by' => $maker->id,
     ]);
-    SalesCompanyFeatureSetting::query()->create([
-        'company_id' => $company->id, 'feature_key' => 'crm', 'version' => 1, 'enabled' => true,
+    SalesFeatureSetting::query()->create([
+        'feature_key' => 'crm', 'version' => 1, 'enabled' => true,
         'status' => 'draft', 'reason' => $reason, 'created_by' => $maker->id,
     ]);
     SalesStaffCategoryDefinition::query()->create([
-        'company_id' => $company->id, 'category_name' => 'Sales Specialist', 'status' => 'draft',
+        'category_name' => 'Sales Specialist', 'status' => 'draft',
         'reason' => $reason, 'created_by' => $maker->id,
     ]);
 
-    $url = '/api/sales/policy-settings?company_id='.$company->id;
+    $url = '/api/sales/policy-settings';
     $viewerResponse = actingAs($viewer, 'api')->getJson($url)->assertOk();
     $viewerPolicy = $viewerResponse->json('data.policy_settings.business_timezone.0');
-    $viewerFeature = $viewerResponse->json('data.company_features.0');
+    $viewerFeature = $viewerResponse->json('data.feature_settings.0');
     $viewerCategory = $viewerResponse->json('data.staff_categories.0');
     expect(array_keys($viewerPolicy))->toBe([
         'id', 'policy_kind', 'version', 'status', 'fx_quote_base', 'fx_calculation_mode', 'fx_max_rate_age_hours',
@@ -54,7 +54,7 @@ it('returns screen fields to viewers and reveals policy rationale only to makers
     $viewer->givePermissionTo(Permission::findByName('sales.policy-settings.approve', 'api'));
     $reviewerResponse = actingAs($viewer, 'api')->getJson($url)->assertOk();
     expect($reviewerResponse->json('data.policy_settings.business_timezone.0.reason'))->toBe($reason)
-        ->and($reviewerResponse->json('data.company_features.0.reason'))->toBe($reason)
+        ->and($reviewerResponse->json('data.feature_settings.0.reason'))->toBe($reason)
         ->and($reviewerResponse->json('data.staff_categories.0.reason'))->toBe($reason)
         ->and($reviewerResponse->json('data.policy_settings.business_timezone.0'))->not->toHaveKey('created_by')
         ->and($reviewerResponse->json('data.policy_settings.business_timezone.0'))->not->toHaveKey('approved_by')

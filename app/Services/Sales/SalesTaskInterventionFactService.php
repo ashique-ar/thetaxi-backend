@@ -20,7 +20,7 @@ class SalesTaskInterventionFactService
         string $cutoffAt,
         array $rules,
     ): array {
-        $timezone = $this->policySettings->businessTimezone($companyId);
+        $timezone = $this->policySettings->businessTimezone();
         abort_unless(is_string($timezone) && in_array($timezone, DateTimeZone::listIdentifiers(), true), 409,
             'An approved Sales business timezone is required for task intervention facts.');
         $lookbackMonths = $rules['repeatedly_missed_next_actions']['lookback_completed_months'];

@@ -66,7 +66,6 @@ class PhoneCall extends BaseModel
         'follow_up_notes',
         'follow_up_completed_at',
         'assigned_user_id',
-        'company_id',
     ];
 
     /**

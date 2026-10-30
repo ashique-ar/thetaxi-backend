@@ -5,9 +5,7 @@ namespace App\Http\Controllers\Api\Sales;
 use App\Http\Controllers\Controller;
 use App\Models\Sales\SalesProfile;
 use App\Models\Sales\SalesReportingAssignment;
-use App\Services\CompanySettingsAccessService;
 use App\Services\Sales\SalesAccessScope;
-use App\Services\WebsiteSettingsService;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
@@ -19,31 +17,27 @@ class SalesReportingAssignmentController extends Controller
 
     public function index(Request $request): JsonResponse
     {
-        $data = $request->validate(['company_id' => ['nullable', 'uuid', 'exists:companies,id'], 'per_page' => ['nullable', 'integer', 'min:1', 'max:100']]);
-        $data['company_id'] = $this->resolveCompanyId($data['company_id'] ?? null);
+        $data = $request->validate(['per_page' => ['nullable', 'integer', 'min:1', 'max:100']]);
         $profileIds = $this->scope->profileIds(
             $request->user(),
             'sales.profiles.view-all',
             'sales.profiles.view-team',
-            $data['company_id'],
         );
         $manageableIds = $this->scope->authorizedProfileIds(
             $request->user(),
             'sales.profiles.manage',
             'sales.profiles.manage-all',
             'sales.profiles.manage-team',
-            $data['company_id'],
         );
         $rows = SalesReportingAssignment::query()
             ->with(['manager.staff.user', 'member.staff.user'])
-            ->where(fn ($_companyIdScope) => \App\Services\CompanyIdScope::constrain($_companyIdScope, 'company_id', $data['company_id']))
             ->when($profileIds !== null, fn ($query) => $query
                 ->whereIn('manager_sales_profile_id', $profileIds)
                 ->whereIn('member_sales_profile_id', $profileIds))
             ->orderByDesc('effective_from')
             ->paginate($this->paginationSize($request, 50));
         $rows->setCollection($rows->getCollection()->map(fn ($row) => [
-            'id' => $row->id, 'company_id' => $row->company_id,
+            'id' => $row->id,
             'manager_sales_profile_id' => $row->manager_sales_profile_id,
             'member_sales_profile_id' => $row->member_sales_profile_id,
             'manager' => $this->profileReference($row->manager),
@@ -61,7 +55,6 @@ class SalesReportingAssignmentController extends Controller
     public function store(Request $request): JsonResponse
     {
         $data = $request->validate([
-            'company_id' => ['nullable', 'uuid', 'exists:companies,id'],
             'manager_sales_profile_id' => ['required', 'uuid', 'exists:sales_profiles,id', 'different:member_sales_profile_id'],
             'member_sales_profile_id' => ['required', 'uuid', 'exists:sales_profiles,id'],
             'team_code' => ['nullable', 'string', 'max:80'],
@@ -69,13 +62,7 @@ class SalesReportingAssignmentController extends Controller
             'effective_until' => ['nullable', 'date', 'after:effective_from'],
             'reason' => ['required', 'string', 'max:2000'],
         ]);
-        $data['company_id'] = $this->resolveCompanyId($data['company_id'] ?? null);
-        $this->scope->assertCompany($request->user(), $data['company_id'], 'sales.profiles.manage-all');
-
         $assignment = DB::transaction(function () use ($data, $request) {
-            $company = DB::table('companies')->where('id', $data['company_id'])->where('is_active', true)
-                ->whereNull('deleted_at')->lockForUpdate()->first();
-            abort_unless($company, 422, 'New reporting assignments require an active legal entity.');
             $profiles = SalesProfile::query()
                 ->whereIn('id', [$data['manager_sales_profile_id'], $data['member_sales_profile_id']])
                 ->orderBy('id')
@@ -88,8 +75,6 @@ class SalesReportingAssignmentController extends Controller
             $member = $profiles->get($data['member_sales_profile_id']);
             $this->scope->assertProfile($request->user(), $manager, 'sales.profiles.manage-all', 'sales.profiles.manage-team');
             $this->scope->assertProfile($request->user(), $member, 'sales.profiles.manage-all', 'sales.profiles.manage-team');
-            abort_unless($profiles->every(fn (SalesProfile $profile) => \App\Services\CompanyIdScope::sameCompanyId((string) ($profile->company_id), (string) ($data['company_id']))),
-                422, 'Manager and member must belong to the selected legal entity.');
             abort_unless($profiles->every(fn (SalesProfile $profile) => $this->supportsAssignmentInterval($profile, $data)),
                 422, 'Reporting assignments must remain inside configured active Sales Profile intervals.');
 
@@ -101,7 +86,6 @@ class SalesReportingAssignmentController extends Controller
                 ->first(['id']);
             abort_if($overlap, 422, 'The member already has an overlapping reporting assignment.');
             $edges = SalesReportingAssignment::query()
-                ->where(fn ($_companyIdScope) => \App\Services\CompanyIdScope::constrain($_companyIdScope, 'company_id', $data['company_id']))
                 ->where('effective_from', '<', $data['effective_until'] ?? '9999-12-31')
                 ->where(fn ($query) => $query->whereNull('effective_until')->orWhere('effective_until', '>', $data['effective_from']))
                 ->lockForUpdate()->get(['manager_sales_profile_id', 'member_sales_profile_id']);
@@ -121,7 +105,7 @@ class SalesReportingAssignmentController extends Controller
             DB::table('sales_reporting_assignment_events')->insert([
                 'id' => (string) Str::uuid(), 'sales_reporting_assignment_id' => $assignment->id,
                 'event_type' => 'assigned', 'before_snapshot' => null,
-                'after_snapshot' => json_encode($assignment->only(['company_id', 'manager_sales_profile_id', 'member_sales_profile_id', 'team_code', 'effective_from', 'effective_until']), JSON_THROW_ON_ERROR),
+                'after_snapshot' => json_encode($assignment->only(['manager_sales_profile_id', 'member_sales_profile_id', 'team_code', 'effective_from', 'effective_until']), JSON_THROW_ON_ERROR),
                 'reason' => $data['reason'], 'actor_user_id' => $request->user()->id,
                 'occurred_at' => now(), 'created_at' => now(), 'updated_at' => now(),
             ]);
@@ -133,14 +117,11 @@ class SalesReportingAssignmentController extends Controller
 
     public function end(Request $request, SalesReportingAssignment $assignment): JsonResponse
     {
-        $this->assertSelectedStaffCompany($request, (string) $assignment->company_id);
-        $this->scope->assertCompany($request->user(), $assignment->company_id, 'sales.profiles.manage-all');
         $data = $request->validate([
             'effective_until' => ['required', 'date'],
             'reason' => ['required', 'string', 'max:2000'],
         ]);
         $assignment = DB::transaction(function () use ($assignment, $data, $request) {
-            DB::table('companies')->where('id', $assignment->company_id)->lockForUpdate()->firstOrFail();
             $assignment = SalesReportingAssignment::query()->lockForUpdate()->findOrFail($assignment->id);
             $profiles = SalesProfile::query()
                 ->withTrashed()
@@ -158,7 +139,7 @@ class SalesReportingAssignmentController extends Controller
             abort_unless($profiles->every(fn (SalesProfile $profile) => ! $profile->effective_until
                 || $profile->effective_until->gte($data['effective_until'])),
                 422, 'The reporting end must remain inside both Sales Profile intervals.');
-            $before = $assignment->only(['company_id', 'manager_sales_profile_id', 'member_sales_profile_id', 'team_code', 'effective_from', 'effective_until']);
+            $before = $assignment->only(['manager_sales_profile_id', 'member_sales_profile_id', 'team_code', 'effective_from', 'effective_until']);
             $assignment->update(['effective_until' => $data['effective_until'], 'updated_user_id' => $request->user()->id]);
             DB::table('sales_reporting_assignment_events')->insert([
                 'id' => (string) Str::uuid(), 'sales_reporting_assignment_id' => $assignment->id,
@@ -203,19 +184,4 @@ class SalesReportingAssignmentController extends Controller
         ];
     }
 
-    private function resolveCompanyId(?string $companyId): string
-    {
-        $resolved = $companyId ?: app(WebsiteSettingsService::class)->resolveCurrentCompanyId();
-        abort_unless($resolved, 409, 'Select an active business for Sales work.');
-        $this->assertSelectedStaffCompany(request(), (string) $resolved);
-
-        return (string) $resolved;
-    }
-
-    private function assertSelectedStaffCompany(Request $request, string $companyId): void
-    {
-        if ($request->header('X-Active-Context-Type') === 'staff') {
-            app(CompanySettingsAccessService::class)->assertCanAccess($request->user(), $companyId);
-        }
-    }
 }

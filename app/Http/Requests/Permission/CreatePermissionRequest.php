@@ -50,8 +50,9 @@ class CreatePermissionRequest extends FormRequest
      */
     protected function prepareForValidation(): void
     {
+        $name = strtolower((string) $this->input('name', ''));
         $this->merge([
-            'name' => strtolower($this->input('name')),
+            'name' => config("permissions.aliases.{$name}", $name),
             'guard_name' => $this->input('guard_name', config('permissions.canonical_guard', 'api')),
         ]);
     }

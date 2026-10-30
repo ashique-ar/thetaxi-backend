@@ -185,6 +185,7 @@ class AllPermissionsSeeder extends Seeder
         'bookings.tracking_replay',
         'bookings.tracking_estimate',
         'collection-commissions.pay',
+        'corporate.audit-logs.view',
         'create_bookings',
         'create_bookings_for_others',
         'customers.analytics',
@@ -1007,6 +1008,7 @@ class AllPermissionsSeeder extends Seeder
                 $allPermissions,
                 fn (string $permission) => ! preg_match('/^(roles|permissions|system)\./', $permission)
                 && ! in_array($permission, self::denyByDefaultPermissions(), true)
+                && ! PermissionRegistry::isAdminOnlyPermissionName($permission)
             )),
             'data-entry' => $this->matchingPermissions(
                 $allPermissions,
@@ -1272,7 +1274,7 @@ class AllPermissionsSeeder extends Seeder
                 'manage_rate_charts',
                 'view_reports',
                 'schedule_reports',
-                'view_audit_log',
+                'corporate.audit-logs.view',
                 'bookings.view',
                 'bookings.create',
             ],
@@ -1300,18 +1302,19 @@ class AllPermissionsSeeder extends Seeder
         ];
 
         foreach ($rolePermissions as $roleName => $permissions) {
-            if ($roleName !== 'Corporate_Master_Admin') {
-                $permissions = array_values(array_filter($permissions, fn (string $permission) =>
-                    ! PermissionRegistry::isAdminOnlyPermissionName($permission)
-                ));
-            }
+            $permissions = array_values(array_filter($permissions, fn (string $permission) =>
+                ! PermissionRegistry::isAdminOnlyPermissionName($permission)
+            ));
             $role = Role::firstOrCreate(['name' => $roleName, 'guard_name' => $guard]);
             $this->addPermissionsToRole($role, $permissions, $permissionModels);
+            $this->revokeAnyAdminOnlyPermissions($role);
 
         }
 
+        $staffOperations = Role::firstOrCreate(['name' => 'staff-operations', 'guard_name' => $guard]);
+        $this->revokeAnyAdminOnlyPermissions($staffOperations);
         $this->revokePermissionsFromRole(
-            Role::firstOrCreate(['name' => 'staff-operations', 'guard_name' => $guard]),
+            $staffOperations,
             ['drivers.onboarding.view', 'drivers.onboarding.manage', 'drivers.onboarding-drafts.view'],
             $permissionModels
         );

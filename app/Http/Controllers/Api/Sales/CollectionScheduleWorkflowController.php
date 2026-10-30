@@ -229,7 +229,7 @@ class CollectionScheduleWorkflowController extends Controller
             ? BookingPaymentScheduleRule::query()->where('booking_id', $booking->id)->first()
             : null;
         $rollingEnabled = $attribution?->company_id
-            && $this->policySettings->featureEnabled((string) $attribution->company_id, 'rolling_payment_schedules')
+            && $this->policySettings->featureEnabled('rolling_payment_schedules')
             && Schema::hasTable('booking_payment_schedule_rules');
         $rollingHandlerEligible = $attribution?->collection_sales_profile_id
             ? SalesProfile::query()

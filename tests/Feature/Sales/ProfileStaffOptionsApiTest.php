@@ -18,7 +18,7 @@ it('searches and hydrates only current Staff eligible for scoped Sales enrollmen
         'is_active' => true, 'created_user_id' => $admin->id]);
     $actor->user->givePermissionTo(['sales.profiles.view', 'sales.profiles.manage']);
     SalesStaffCategoryDefinition::query()->create([
-        'company_id' => $company->id, 'category_name' => 'sales', 'status' => 'approved',
+        'category_name' => 'sales', 'status' => 'approved',
         'reason' => 'Approved test category', 'created_by' => $admin->id, 'approved_by' => $admin->id, 'approved_at' => now(),
     ]);
     SalesProfile::query()->create([

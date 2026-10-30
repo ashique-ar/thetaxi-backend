@@ -3,7 +3,7 @@
 use App\Models\Company;
 use App\Models\Booking\Booking;
 use App\Models\Customer;
-use App\Models\Sales\SalesCompanyFeatureSetting;
+use App\Models\Sales\SalesFeatureSetting;
 use App\Models\Sales\SalesOpportunity;
 use App\Models\Sales\SalesProfile;
 use App\Models\Sales\SalesTask;
@@ -25,8 +25,8 @@ it('scopes task links and makes create, transition, and transfer commands replay
     $actor->givePermissionTo(Permission::findByName('sales.crm.manage', 'api'));
     $actor->givePermissionTo(Permission::findByName('sales.crm.manage-all', 'api'));
     config()->set('sales.features.crm', true);
-    SalesCompanyFeatureSetting::query()->create([
-        'company_id' => $company->id, 'feature_key' => 'crm', 'version' => 1,
+    SalesFeatureSetting::query()->create([
+        'feature_key' => 'crm', 'version' => 1,
         'enabled' => true, 'status' => 'approved', 'reason' => 'Feature test setup',
         'created_by' => $actor->id, 'approved_by' => $actor->id, 'approved_at' => now(),
     ]);

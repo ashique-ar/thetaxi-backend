@@ -7,7 +7,6 @@ use App\Models\BaseModel;
 class SalesStaffCategoryDefinition extends BaseModel
 {
     protected $fillable = [
-        'company_id',
         'category_name',
         'status',
         'reason',

@@ -27,7 +27,7 @@ it('provides server generated management exports and permissioned monthly delive
 it('separates corporate portal permissions and returns a role specific workspace', function () {
     $roles = file_get_contents(app_path('Http/Controllers/Api/Corporate/CorporateRoleController.php'));
     $workspace = file_get_contents(app_path('Http/Controllers/Api/Corporate/CorporateWorkspaceController.php'));
-    expect($roles)->toContain('create_bookings', 'create_bookings_for_others', 'approve_bookings', 'view_payments', 'view_reports', 'manage_employees', 'view_audit_log')
+    expect($roles)->toContain('create_bookings', 'create_bookings_for_others', 'approve_bookings', 'view_payments', 'view_reports', 'manage_employees', 'corporate.audit-logs.view')
         ->and($workspace)->toContain("'role_mode'", "'scope' => \$all ? 'company' : 'employee'", "'tasks' => \$tasks", "'capabilities'");
 });
 

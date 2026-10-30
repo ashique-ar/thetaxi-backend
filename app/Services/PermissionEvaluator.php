@@ -199,10 +199,23 @@ class PermissionEvaluator
             ->whereNull('user_contexts.deleted_at')
             ->where('permissions.guard_name', $this->registry->canonicalGuard())
             ->get(['permissions.*']);
+        $externalContextPermissionIds = DB::table('user_context_permission_grants as grants')
+            ->join('user_contexts', 'user_contexts.id', '=', 'grants.user_context_id')
+            ->where('user_contexts.user_id', $user->id)
+            ->where('user_contexts.context_type', '!=', 'staff')
+            ->pluck('grants.permission_id')
+            ->unique();
+        $directPermissionIds = DB::table('user_direct_permission_grants')
+            ->where('user_id', $user->id)
+            ->pluck('permission_id');
+        $directPermissions = $user->getDirectPermissions()
+            ->where('guard_name', $this->registry->canonicalGuard())
+            ->reject(fn (Permission $permission) => $externalContextPermissionIds->contains($permission->id)
+                && ! $directPermissionIds->contains($permission->id));
 
         return $this->rolesForInternalContext($user)
             ->flatMap(fn ($role) => $role->permissions)
-            ->merge($user->getDirectPermissions()->where('guard_name', $this->registry->canonicalGuard()))
+            ->merge($directPermissions)
             ->merge($staffContextPermissions)
             ->reject(fn ($permission) => ! $canUseProtectedPermissions
                 && PermissionRegistry::isAdminOnlyPermissionName($this->registry->resolveKey((string) $permission->name)))
@@ -273,11 +286,35 @@ class PermissionEvaluator
             || $this->isMasterAdmin($user);
     }
 
+    public function hasInternalRole(User $user, string $roleName): bool
+    {
+        if ($user->roles()
+            ->where('name', $roleName)
+            ->where('guard_name', $this->registry->canonicalGuard())
+            ->exists()) {
+            return true;
+        }
+
+        return $user->contexts()
+            ->where('context_type', 'staff')
+            ->where('is_active', true)
+            ->whereIn('context_id', function ($staff) use ($user): void {
+                $staff->select('id')
+                    ->from('staff')
+                    ->where('user_id', $user->id)
+                    ->whereNull('deleted_at')
+                    ->where(fn ($employment) => $employment
+                        ->whereNull('employment_ended_at')
+                        ->orWhere('employment_ended_at', '>', now()));
+            })
+            ->whereHas('roles', fn ($roles) => $roles
+                ->where('name', $roleName)
+                ->where('guard_name', $this->registry->canonicalGuard()))
+            ->exists();
+    }
+
     private function isMasterAdmin(User $user): bool
     {
-        return $user->roles()
-            ->where('name', 'super-admin')
-            ->where('guard_name', $this->registry->canonicalGuard())
-            ->exists();
+        return $this->hasInternalRole($user, 'super-admin');
     }
 }

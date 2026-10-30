@@ -25,7 +25,7 @@ class SalesPeriodCloseService
 
     public function preview(string $companyId, string $periodStart, string $cutoffAt): array
     {
-        $timezone = $this->policySettings->businessTimezone($companyId);
+        $timezone = $this->policySettings->businessTimezone();
         abort_unless(is_string($timezone) && $timezone !== '' && in_array($timezone, DateTimeZone::listIdentifiers(), true),
             409, 'An approved Sales business timezone is required before a performance period can close.');
         $start = CarbonImmutable::parse($periodStart, $timezone)->startOfDay();
@@ -39,7 +39,7 @@ class SalesPeriodCloseService
             ->where('period_type', 'month')->where('period_start', $start->utc())
             ->where('period_end', $endExclusiveUtc)->first();
         $blockers = [];
-        if (! $this->policySettings->featureEnabled($companyId, 'performance_snapshots')) {
+        if (! $this->policySettings->featureEnabled('performance_snapshots')) {
             $blockers[] = ['code' => 'performance_snapshots_not_activated', 'count' => 1];
         }
         if ($cutoff->lt($endExclusiveUtc)) $blockers[] = ['code' => 'period_not_complete', 'count' => 1];
@@ -275,7 +275,7 @@ class SalesPeriodCloseService
                     'The period-reopen idempotency key was reused with different evidence.');
                 return $this->result($existing->id);
             }
-            abort_unless($this->policySettings->featureEnabled((string) $lock->company_id, 'performance_snapshots'), 409,
+            abort_unless($this->policySettings->featureEnabled('performance_snapshots'), 409,
                 'Sales performance snapshot writes are not activated for this legal entity.');
             abort_unless($lock->state === 'locked', 409, 'Only a locked Sales period can be reopened.');
             abort_unless((int) $lock->lock_version === $expectedVersion, 409, 'The Sales period lock version is stale.');

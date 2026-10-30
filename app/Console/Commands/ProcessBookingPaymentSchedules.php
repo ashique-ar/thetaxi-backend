@@ -234,7 +234,7 @@ class ProcessBookingPaymentSchedules extends Command
 
     private function extendRollingHorizons($asOf, bool $dryRun): array
     {
-        if (! Schema::hasTable('sales_company_feature_settings')) {
+        if (! Schema::hasTable('sales_feature_settings')) {
             return [0, 0, 0];
         }
         if (! Schema::hasTable('booking_payment_schedule_rules')
@@ -250,7 +250,7 @@ class ProcessBookingPaymentSchedules extends Command
         BookingPaymentScheduleRule::query()->where('status', 'active')->orderBy('id')
             ->chunkById(100, function ($rules) use ($asOf, $dryRun, &$rulesExtended, &$occurrences, &$failures): void {
                 foreach ($rules as $rule) {
-                    if (! $this->policySettings->featureEnabled((string) $rule->company_id, 'rolling_payment_schedules')) {
+                    if (! $this->policySettings->featureEnabled('rolling_payment_schedules')) {
                         continue;
                     }
                     try {

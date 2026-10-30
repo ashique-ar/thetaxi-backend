@@ -20,7 +20,7 @@ class SalesMetricBreakdownService
      */
     public function resolve(Collection $facts, string $companyId, string $from, string $to): array
     {
-        $timezone = $this->policySettings->businessTimezone($companyId);
+        $timezone = $this->policySettings->businessTimezone();
         abort_unless(is_string($timezone) && in_array($timezone, DateTimeZone::listIdentifiers(), true),
             409, 'An approved Sales business timezone is required for metric cohort calculations.');
         $fromDate = CarbonImmutable::parse($from, $timezone)->startOfDay();

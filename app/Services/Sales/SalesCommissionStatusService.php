@@ -18,7 +18,7 @@ class SalesCommissionStatusService
      */
     public function source(string $companyId, array $profileIds, string $from, string $to): array
     {
-        $timezone = $this->policySettings->businessTimezone($companyId);
+        $timezone = $this->policySettings->businessTimezone();
         abort_unless(is_string($timezone) && in_array($timezone, DateTimeZone::listIdentifiers(), true),
             409, 'An approved Sales business timezone is required for commission status reporting.');
         $today = CarbonImmutable::now($timezone)->toDateString();

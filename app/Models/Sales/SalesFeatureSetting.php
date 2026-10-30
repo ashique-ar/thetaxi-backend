@@ -4,10 +4,11 @@ namespace App\Models\Sales;
 
 use App\Models\BaseModel;
 
-class SalesCompanyFeatureSetting extends BaseModel
+class SalesFeatureSetting extends BaseModel
 {
+    protected $table = 'sales_feature_settings';
+
     protected $fillable = [
-        'company_id',
         'feature_key',
         'version',
         'enabled',

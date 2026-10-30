@@ -17,6 +17,7 @@ class CorporateRoleController extends Controller
      * Corporate-scoped permissions that can be assigned to roles.
      */
     private const CORPORATE_PERMISSIONS = [
+        'manage-roles',
         'manage_employees',
         'manage_departments',
         'manage_divisions',
@@ -29,7 +30,7 @@ class CorporateRoleController extends Controller
         'manage_rate_charts',
         'view_reports',
         'schedule_reports',
-        'view_audit_log',
+        'corporate.audit-logs.view',
         'corporate.view',
         'bookings.view',
         'bookings.create',

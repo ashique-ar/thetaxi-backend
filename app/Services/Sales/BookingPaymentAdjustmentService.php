@@ -303,10 +303,10 @@ class BookingPaymentAdjustmentService
         if (!$companyId) {
             throw ValidationException::withMessages(['receipt_component_id' => ['No active default legal entity is configured.']]);
         }
-        if (!$this->policySettings->featureEnabled((string) $companyId, 'fx_corrections')) {
+        if (!$this->policySettings->featureEnabled('fx_corrections')) {
             throw ValidationException::withMessages(['impact_dimension' => ['FX establishment is disabled until Finance approves the operating policy.']]);
         }
-        $policy = $this->policySettings->fxCorrectionsPolicy((string) $companyId);
+        $policy = $this->policySettings->fxCorrectionsPolicy();
         if (
             !$policy['approved_quote_base'] || !in_array(
                 $policy['calculation_mode'] ?? null,
@@ -423,10 +423,10 @@ class BookingPaymentAdjustmentService
             if (!$companyId) {
                 throw ValidationException::withMessages(['receipt_component_id' => ['No active default legal entity is configured.']]);
             }
-            if (!$this->policySettings->featureEnabled((string) $companyId, 'fx_corrections')) {
+            if (!$this->policySettings->featureEnabled('fx_corrections')) {
                 throw ValidationException::withMessages(['impact_dimension' => ['Reporting-FX corrections are disabled until Finance approves the operating policy.']]);
             }
-            $policy = $this->policySettings->fxCorrectionsPolicy((string) $companyId);
+            $policy = $this->policySettings->fxCorrectionsPolicy();
             if (
                 !$policy['approved_quote_base'] || !in_array(
                     $policy['calculation_mode'] ?? null,

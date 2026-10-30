@@ -7,7 +7,6 @@ use Illuminate\Database\Eloquent\Relations\BelongsTo;
 class StaffScopeAssignment extends BaseModel
 {
     protected $fillable = [
-        'company_id',
         'manager_staff_id',
         'member_staff_id',
         'effective_from',

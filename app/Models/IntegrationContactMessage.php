@@ -11,7 +11,7 @@ class IntegrationContactMessage extends Model
     use HasUuids;
 
     protected $fillable = [
-        'connection_id', 'company_id', 'provider', 'external_contact_id', 'external_message_id',
+        'connection_id', 'provider', 'external_contact_id', 'external_message_id',
         'traffic', 'sender_source', 'message_type', 'content', 'sent_at', 'synced_at',
         'linked_customer_id', 'linked_by_user_id', 'linked_at',
     ];

@@ -3,6 +3,7 @@
 namespace App\Http\Requests\Permission;
 
 use Illuminate\Foundation\Http\FormRequest;
+use Illuminate\Support\Facades\DB;
 use Illuminate\Validation\Rule;
 
 class UpdatePermissionRequest extends FormRequest
@@ -54,8 +55,9 @@ class UpdatePermissionRequest extends FormRequest
     protected function prepareForValidation(): void
     {
         if ($this->filled('name')) {
+            $name = strtolower((string) $this->input('name'));
             $this->merge([
-                'name' => strtolower($this->input('name')),
+                'name' => config("permissions.aliases.{$name}", $name),
             ]);
         }
     }
@@ -67,8 +69,16 @@ class UpdatePermissionRequest extends FormRequest
             $nameChanged = $this->filled('name') && $this->input('name') !== $permission->name;
             $guardChanged = $this->filled('guard_name') && $this->input('guard_name') !== $permission->guard_name;
 
-            if ((! $nameChanged && ! $guardChanged)
-                || (! $permission->roles()->exists() && ! $permission->users()->exists())) {
+            if (! $nameChanged && ! $guardChanged) {
+                return;
+            }
+
+            $hasAssignments = $permission->roles()->exists()
+                || $permission->users()->exists()
+                || DB::table('user_context_permission_grants')->where('permission_id', $permission->id)->exists()
+                || DB::table('user_direct_permission_grants')->where('permission_id', $permission->id)->exists();
+
+            if (! $hasAssignments) {
                 return;
             }
 

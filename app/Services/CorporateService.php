@@ -19,57 +19,6 @@ use Spatie\Permission\Models\Role;
 
 class CorporateService
 {
-    private const CORPORATE_ROLE_PERMISSIONS = [
-        'Corporate_Master_Admin' => [
-            'manage-roles',
-            'manage-permissions',
-            'manage_employees',
-            'manage_departments',
-            'manage_divisions',
-            'create_bookings',
-            'create_bookings_for_others',
-            'view_all_bookings',
-            'approve_bookings',
-            'view_payments',
-            'view_reports',
-            'schedule_reports',
-            'view_audit_log',
-            'corporate.view',
-            'bookings.view',
-            'bookings.create',
-            'staff-transport.view',
-            'staff-transport.manage',
-            'staff-transport.override',
-            'staff-transport.generate',
-        ],
-        'Transport_Coordinator' => [
-            'corporate.view',
-            'manage-roles',
-            'manage_employees',
-            'create_bookings',
-            'create_bookings_for_others',
-            'view_all_bookings',
-            'bookings.view',
-            'bookings.create',
-            'staff-transport.view',
-            'staff-transport.manage',
-            'staff-transport.override',
-            'staff-transport.generate',
-        ],
-        'Approval_Manager' => [
-            'corporate.view',
-            'approve_bookings',
-            'view_all_bookings',
-        ],
-        'Corporate_Employee' => [
-            'corporate.view',
-            'create_bookings',
-            'bookings.view',
-            'bookings.create',
-            'staff-transport.view',
-        ],
-    ];
-
     // ─── Corporate CRUD ───────────────────────────────────────────────
 
     public function createCorporate(array $data): Corporate

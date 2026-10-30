@@ -10,7 +10,7 @@ class PhoneCallFollowUpAttempt extends Model
 {
     use HasUuids;
 
-    protected $fillable = ['phone_call_id', 'company_id', 'actor_user_id', 'idempotency_key', 'outcome', 'notes', 'attempted_at'];
+    protected $fillable = ['phone_call_id', 'actor_user_id', 'idempotency_key', 'outcome', 'notes', 'attempted_at'];
 
     protected $casts = ['attempted_at' => 'datetime'];
 

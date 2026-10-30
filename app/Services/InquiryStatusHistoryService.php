@@ -15,7 +15,6 @@ class InquiryStatusHistoryService
         $now = now();
         DB::table('inquiry_status_events')->insert([
             'id' => (string) Str::uuid(),
-            'company_id' => $inquiry->company_id,
             'inquiry_id' => $inquiry->id,
             'from_status' => $from,
             'to_status' => $to,

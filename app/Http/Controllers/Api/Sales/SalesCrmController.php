@@ -68,7 +68,7 @@ class SalesCrmController extends Controller
             ->latest()->paginate($this->paginationSize($request, 25));
         $stageLabels = $this->opportunityStageLabels($rows->getCollection());
         $rows->setCollection($rows->getCollection()->map(fn ($row) => $this->opportunityPayload($row, false, $stageLabels[(string) $row->id] ?? SalesPolicySettingsService::STAGE_LABEL_DEFAULTS)));
-        return response()->json(['status' => 'success', 'stage_labels' => $this->policySettings->stageLabels((string) $data['company_id']), 'data' => $rows]);
+        return response()->json(['status' => 'success', 'stage_labels' => $this->policySettings->stageLabels(), 'data' => $rows]);
     }
 
     public function opportunityCompanyOptions(Request $request): JsonResponse
@@ -123,7 +123,6 @@ class SalesCrmController extends Controller
         ]);
         $companyId = $this->resolveCompanyId($data['company_id'] ?? null);
         $ids = $this->scope->profileIds($request->user(), 'sales.crm.manage-all', 'sales.crm.manage-team', $companyId);
-        $featureTableReady = Schema::hasTable('sales_company_feature_settings');
         $query = DB::table('sales_profiles as profile')
             ->join('staff', 'staff.id', '=', 'profile.staff_id')
             ->join('users', 'users.id', '=', 'staff.user_id')
@@ -140,14 +139,7 @@ class SalesCrmController extends Controller
                 ->orWhere('profile.collection_eligible', true)->orWhere('profile.commission_eligible', true))
             ->when($ids !== null, fn ($profiles) => $profiles->whereIn('profile.id', $ids))
             ->where(fn ($_companyIdScope) => \App\Services\CompanyIdScope::constrain($_companyIdScope, 'profile.company_id', $companyId));
-        if ($featureTableReady) {
-            $query->whereExists(fn ($feature) => $feature->selectRaw('1')->from('sales_company_feature_settings as setting')
-                ->where(fn ($sameCompany) => \App\Services\CompanyIdScope::sameCompany($sameCompany, 'setting.company_id', 'profile.company_id'))->where('setting.feature_key', 'crm')
-                ->where('setting.version', DB::table('sales_company_feature_settings as current_setting')->selectRaw('MAX(current_setting.version)')
-                    ->where(fn ($sameCompany) => \App\Services\CompanyIdScope::sameCompany($sameCompany, 'current_setting.company_id', 'setting.company_id'))
-                    ->whereColumn('current_setting.feature_key', 'setting.feature_key')->where('current_setting.status', 'approved')->whereNull('current_setting.deleted_at'))
-                ->where('setting.enabled', true)->where('setting.status', 'approved')->whereNull('setting.deleted_at'));
-        } else $query->whereRaw('1 = 0');
+        if (! $this->policySettings->featureEnabled('crm')) $query->whereRaw('1 = 0');
         if (! empty($data['selected_id'])) $query->where('profile.id', $data['selected_id']);
         else {
             $query->when($data['search'] ?? null, function ($profiles, $search) {
@@ -206,14 +198,14 @@ class SalesCrmController extends Controller
         $companyId = $this->resolveCompanyId($data['company_id'] ?? null);
         abort_unless(DB::table('companies')->where('id', $companyId)->where('is_active', true)
             ->whereNull('deleted_at')->exists(), 422, 'Select an active legal entity.');
-        abort_unless($this->policySettings->featureEnabled($companyId, 'crm'), 422,
+        abort_unless($this->policySettings->featureEnabled('crm'), 422,
             'CRM source selection is not enabled for this legal entity.');
         $userIds = $this->sourceUserIds($request, $companyId);
         $selected = ! empty($data['selected_id']);
 
         if ($data['source_type'] === 'inquiry') {
             $query = DB::table('inquiries as source')->leftJoin('sales_opportunities as opportunity', 'opportunity.inquiry_id', '=', 'source.id')
-                ->where(fn ($_companyIdScope) => \App\Services\CompanyIdScope::constrain($_companyIdScope, 'source.company_id', $companyId))->whereNull('source.deleted_at')->whereNull('opportunity.id')
+                ->whereNull('source.deleted_at')->whereNull('opportunity.id')
                 ->where(fn ($scope) => $scope
                     ->where(fn ($assigned) => $assigned->whereNotNull('source.assigned_to')->whereIn('source.assigned_to', $userIds))
                     ->orWhere(fn ($created) => $created->whereNull('source.assigned_to')->whereIn('source.created_user_id', $userIds)));
@@ -432,7 +424,7 @@ class SalesCrmController extends Controller
                             })))))
                 ->orWhereExists(fn ($directInquiry) => $directInquiry->selectRaw('1')->from('inquiries as activity_inquiry')
                     ->whereColumn('activity_inquiry.id', 'sales_activities.inquiry_id')
-                    ->where(fn ($sameCompany) => \App\Services\CompanyIdScope::sameCompany($sameCompany, 'activity_inquiry.company_id', 'sales_activities.company_id'))->whereNull('activity_inquiry.deleted_at')
+                    ->whereNull('activity_inquiry.deleted_at')
                     ->where(fn ($customer) => $customer->whereNull('sales_activities.customer_id')
                         ->orWhereColumn('sales_activities.customer_id', 'activity_inquiry.customer_id')))
                 ->orWhereExists(fn ($directBooking) => $directBooking->selectRaw('1')->from('bookings as activity_booking')
@@ -585,16 +577,13 @@ class SalesCrmController extends Controller
                         ->orWhereColumn('sales_tasks.customer_id', 'task_booking.customer_id')))
                 ->orWhereExists(fn ($inquiry) => $inquiry->selectRaw('1')->from('inquiries as task_inquiry')
                     ->whereColumn('task_inquiry.id', 'sales_tasks.inquiry_id')->whereNull('task_inquiry.deleted_at')
-                    ->where(fn ($sameCompany) => \App\Services\CompanyIdScope::sameCompany($sameCompany, 'task_inquiry.company_id', 'sales_tasks.company_id'))
                     ->whereNull('sales_tasks.opportunity_id')->whereNull('sales_tasks.booking_id')
                     ->where(function ($source) {
                         $source->whereExists(fn ($staff) => $staff->selectRaw('1')->from('staff as inquiry_owner')
-                            ->whereColumn('inquiry_owner.user_id', 'task_inquiry.assigned_to')
-                            ->where(fn ($sameCompany) => \App\Services\CompanyIdScope::sameCompany($sameCompany, 'inquiry_owner.company_id', 'sales_tasks.company_id')))
+                            ->whereColumn('inquiry_owner.user_id', 'task_inquiry.assigned_to'))
                             ->orWhere(function ($unassigned) {
                                 $unassigned->whereNull('task_inquiry.assigned_to')->whereExists(fn ($staff) => $staff->selectRaw('1')->from('staff as inquiry_creator')
-                                    ->whereColumn('inquiry_creator.user_id', 'task_inquiry.created_user_id')
-                                    ->where(fn ($sameCompany) => \App\Services\CompanyIdScope::sameCompany($sameCompany, 'inquiry_creator.company_id', 'sales_tasks.company_id')));
+                                    ->whereColumn('inquiry_creator.user_id', 'task_inquiry.created_user_id'));
                             });
                     })
                     ->where(fn ($customer) => $customer->whereNull('sales_tasks.customer_id')
@@ -720,7 +709,7 @@ class SalesCrmController extends Controller
         $profileIds = $this->scope->profileIds($request->user(), 'sales.crm.manage-all', 'sales.crm.manage-team', $companyId);
         $this->assertActiveListCompany($companyId, $profileIds);
         $sourceUsers = $this->sourceUserIds($request, $companyId);
-        $query = DB::table('inquiries as inquiry')->where(fn ($_companyIdScope) => \App\Services\CompanyIdScope::constrain($_companyIdScope, 'inquiry.company_id', $companyId))->whereNull('inquiry.deleted_at')
+        $query = DB::table('inquiries as inquiry')->whereNull('inquiry.deleted_at')
             ->where(function ($scope) use ($sourceUsers) {
                 $scope->whereIn('inquiry.assigned_to', $sourceUsers)
                     ->orWhere(function ($created) use ($sourceUsers) {
@@ -991,7 +980,7 @@ class SalesCrmController extends Controller
             'company_id' => $companyId,
             'owner_sales_profile_id' => (string) $row->owner_sales_profile_id,
             'state_version' => $row->state_version,
-            'crm_enabled' => $companyId ? $this->policySettings->featureEnabled($companyId, 'crm') : false,
+            'crm_enabled' => $companyId ? $this->policySettings->featureEnabled('crm') : false,
             'prospect_name' => $row->prospect_name,
             'prospect_email' => $row->prospect_email,
             'prospect_phone' => $row->prospect_phone,
@@ -1013,7 +1002,7 @@ class SalesCrmController extends Controller
     private function opportunityStageLabels($opportunities): array
     {
         $defaults = SalesPolicySettingsService::STAGE_LABEL_DEFAULTS;
-        if (! Schema::hasColumn('sales_company_feature_settings', 'stage_label')) {
+        if (! Schema::hasColumn('sales_feature_settings', 'stage_label')) {
             return $opportunities->mapWithKeys(fn ($row) => [(string) $row->id => $defaults])->all();
         }
         $mapping = [
@@ -1023,13 +1012,12 @@ class SalesCrmController extends Controller
             'workflow_negotiation_stage_setting_id' => ['negotiation', 'crm_negotiation_stage'],
         ];
         $ids = $opportunities->flatMap(fn ($row) => collect(array_map(fn ($column) => $row->{$column}, array_keys($mapping)))->filter())->unique();
-        $settings = $ids->isEmpty() ? collect() : DB::table('sales_company_feature_settings')->whereIn('id', $ids)->get(['id', 'company_id', 'feature_key', 'stage_label'])->keyBy('id');
+        $settings = $ids->isEmpty() ? collect() : DB::table('sales_feature_settings')->whereIn('id', $ids)->get(['id', 'feature_key', 'stage_label'])->keyBy('id');
         return $opportunities->mapWithKeys(function ($row) use ($defaults, $mapping, $settings) {
             $labels = $defaults;
             foreach ($mapping as $column => [$stage, $feature]) {
                 $setting = $settings->get($row->{$column});
-                if ($setting && \App\Services\CompanyIdScope::sameCompanyId((string) ((string) $setting->company_id), (string) ((string) $row->company_id))
-                    && $setting->feature_key === $feature && trim((string) $setting->stage_label) !== '') {
+                if ($setting && $setting->feature_key === $feature && trim((string) $setting->stage_label) !== '') {
                     $labels[$stage] = trim((string) $setting->stage_label);
                 }
             }

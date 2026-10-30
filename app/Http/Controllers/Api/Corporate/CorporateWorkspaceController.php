@@ -38,7 +38,7 @@ class CorporateWorkspaceController extends Controller
             'role_mode' => $can('manage_employees') ? 'administrator' : ($can('view_payments') ? 'finance' : ($can('approve_bookings') ? 'approver' : ($all ? 'coordinator' : 'employee'))),
             'scope' => $all ? 'company' : 'employee',
             'tasks' => $tasks,
-            'capabilities' => collect(['create_bookings', 'create_bookings_for_others', 'view_all_bookings', 'approve_bookings', 'view_payments', 'view_reports', 'manage_employees', 'view_audit_log'])->mapWithKeys(fn ($permission) => [$permission => $can($permission)]),
+            'capabilities' => collect(['create_bookings', 'create_bookings_for_others', 'view_all_bookings', 'approve_bookings', 'view_payments', 'view_reports', 'manage_employees', 'corporate.audit-logs.view'])->mapWithKeys(fn ($permission) => [$permission => $can($permission)]),
         ]]);
     }
 }

@@ -10,7 +10,6 @@ class InquiryOutboundResponse extends BaseModel
     protected $table = 'inquiry_outbound_responses';
 
     protected $fillable = [
-        'company_id',
         'inquiry_id',
         'sent_by_user_id',
         'idempotency_key',

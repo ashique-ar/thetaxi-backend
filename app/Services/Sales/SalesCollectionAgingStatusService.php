@@ -14,7 +14,7 @@ class SalesCollectionAgingStatusService
     /** @return array<string, mixed> */
     public function source(string $companyId, array $profileIds, string $from, string $to): array
     {
-        $timezoneName = $this->policySettings->businessTimezone($companyId);
+        $timezoneName = $this->policySettings->businessTimezone();
         abort_unless(is_string($timezoneName) && $timezoneName !== '', 409,
             'An approved Sales business timezone is required for collection aging.');
         try {

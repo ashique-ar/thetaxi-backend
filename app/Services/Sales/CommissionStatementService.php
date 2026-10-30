@@ -44,7 +44,7 @@ class CommissionStatementService
         try {
             return DB::transaction(function () use ($profile, $data, $actorUserId, $companyId, &$scope, &$facts) {
             $this->lockActiveCompany((string) $companyId);
-            abort_unless($this->policySettings->featureEnabled((string) $companyId, 'statements'), 409,
+            abort_unless($this->policySettings->featureEnabled('statements'), 409,
                 'Commission statement generation is not activated for this legal entity.');
             $profile = SalesProfile::query()->with('staff')->lockForUpdate()->findOrFail($profile->id);
             abort_unless(\App\Services\CompanyIdScope::sameCompanyId((string) ((string) $profile->company_id), (string) ((string) $companyId)), 409,

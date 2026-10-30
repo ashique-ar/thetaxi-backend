@@ -198,7 +198,7 @@ class MyWorkController extends Controller
                     'link' => '/communication/inquiries/'.$row->id, 'sort_at' => strtotime((string) $row->created_at) ?: PHP_INT_MAX];
             }
 
-            $responseTargetMinutes = app(SalesPolicySettingsService::class)->inquiryFirstResponseMinutes($companyId);
+            $responseTargetMinutes = app(SalesPolicySettingsService::class)->inquiryFirstResponseMinutes();
             if ($responseTargetMinutes !== null) {
                 $hasUnconfirmedEmail = static fn ($query) => $query->selectRaw('1')->from('inquiry_outbound_responses as email_attempt')
                     ->whereColumn('email_attempt.inquiry_id', 'inquiries.id')
@@ -373,7 +373,7 @@ class MyWorkController extends Controller
         }
 
         if ($request->user()->can('sales.crm.view')) {
-            $businessTimezone = app(SalesPolicySettingsService::class)->businessTimezone($companyId) ?: config('app.timezone');
+            $businessTimezone = app(SalesPolicySettingsService::class)->businessTimezone() ?: config('app.timezone');
             $workdayEndUtc = now($businessTimezone)->endOfDay()->utc();
             $profile = DB::table('sales_profiles as profile')->join('staff as owner_staff', 'owner_staff.id', '=', 'profile.staff_id')
                 ->join('users as owner_user', 'owner_user.id', '=', 'owner_staff.user_id')

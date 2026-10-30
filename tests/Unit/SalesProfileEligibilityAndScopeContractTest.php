@@ -25,7 +25,7 @@ it('scopes reporting edges and direct mutations through the internal Sales acces
         ->toContain("'sales.profiles.manage-team'")
         ->toContain("'manager' => \$this->profileReference")
         ->toContain("'can_manage' => \$manageableIds === null")
-        ->toContain("DB::table('companies')")
+        ->not->toContain("DB::table('companies')", 'company_id', 'sameCompanyId')
         ->toContain('lockForUpdate()')
         ->and($scope)
         ->toContain('PermissionEvaluator')

@@ -82,7 +82,7 @@ class BookingPaymentAdjustmentController extends Controller
                 ->orWhere('receipt.reference', 'like', "%{$search}%"));
         }
 
-        $policy = $this->policySettings->fxCorrectionsPolicy($data['company_id']);
+        $policy = $this->policySettings->fxCorrectionsPolicy();
         $query->select([
             'booking.id as booking_id', 'booking.booking_number', 'component.id as receipt_component_id',
             'component.component_type', 'component.source_amount', 'component.adjusted_source_amount',
@@ -105,8 +105,8 @@ class BookingPaymentAdjustmentController extends Controller
 
         return response()->json(['status' => 'success', 'data' => $query
             ->orderByDesc('receipt.received_at')->paginate($this->paginationSize($request, 25)), 'meta' => [
-            'fx_corrections_enabled' => $this->policySettings->featureEnabled($data['company_id'], 'fx_corrections'),
-            'policy_ready' => $this->policySettings->featureEnabled($data['company_id'], 'fx_corrections') && ! empty($policy['approved_quote_base'])
+            'fx_corrections_enabled' => $this->policySettings->featureEnabled('fx_corrections'),
+            'policy_ready' => $this->policySettings->featureEnabled('fx_corrections') && ! empty($policy['approved_quote_base'])
                 && in_array($policy['calculation_mode'] ?? null, ['multiply_source_by_rate', 'divide_source_by_rate'], true)
                 && $policy['max_rate_age_hours'] !== null && $policy['rounding_scale'] !== null,
             'approved_quote_base' => $policy['approved_quote_base'] ?? null,

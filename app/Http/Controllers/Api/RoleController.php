@@ -29,10 +29,11 @@ class RoleController extends Controller
     {
         $this->assignmentService = $assignmentService;
         $this->contextService = $contextService;
-        $this->middleware('permission:roles.view')->only(['index', 'show']);
-        $this->middleware('permission:roles.create')->only(['store']);
-        $this->middleware('permission:roles.edit')->only(['update']);
-        $this->middleware('permission:roles.delete')->only(['destroy']);
+        $this->middleware('permission:roles.view|roles.create|roles.edit|roles.delete|roles.manage|users.edit')->only(['index']);
+        $this->middleware('permission:roles.view|roles.edit|roles.manage')->only(['show']);
+        $this->middleware('permission:roles.create|roles.manage')->only(['store']);
+        $this->middleware('permission:roles.edit|roles.manage')->only(['update']);
+        $this->middleware('permission:roles.delete|roles.manage')->only(['destroy']);
         // $this->middleware('permission:manage-roles')->only(['assignPermissions', 'revokePermissions']);
     }
 
@@ -53,14 +54,13 @@ class RoleController extends Controller
         $query->where(fn ($roles) => $roles->whereNull('context_types')
             ->orWhereJsonDoesntContain('context_types', 'corporate'));
 
-        $actorRoles = $request->user()->roles()
-            ->whereIn('name', ['admin', 'super-admin'])
-            ->where('guard_name', config('permissions.canonical_guard', 'api'))
-            ->pluck('name');
-        if (!$actorRoles->contains('super-admin')) {
+        $evaluator = app(\App\Services\PermissionEvaluator::class);
+        $isMasterAdmin = $evaluator->hasInternalRole($request->user(), 'super-admin');
+        $isAdmin = $evaluator->hasInternalRole($request->user(), 'admin');
+        if (!$isMasterAdmin) {
             $query->where('name', '!=', 'super-admin');
         }
-        if (!$actorRoles->contains('admin') && !$actorRoles->contains('super-admin')) {
+        if (!$isAdmin && !$isMasterAdmin) {
             $query->where('name', '!=', 'admin');
         }
 
@@ -81,6 +81,9 @@ class RoleController extends Controller
         }
 
         $roles = $query->paginate($request->per_page ?? 15);
+        $roles->setCollection($roles->getCollection()->reject(fn (Role $role) =>
+            in_array(strtolower($role->name), ['admin', 'super-admin'], true) && $role->name !== strtolower($role->name)
+        )->values());
         return RoleResource::collection($roles);
     }
 
@@ -94,6 +97,9 @@ class RoleController extends Controller
     {
         try {
             $data = $request->validated();
+            if (in_array($data['name'], ['admin', 'super-admin'], true)) {
+                throw ValidationException::withMessages(['name' => 'System role names are reserved.']);
+            }
             if (CorporateRoleStarterService::isCorporateRoleName($data['name'])) {
                 throw ValidationException::withMessages(['name' => 'Corporate roles must be managed in Corporate Management.']);
             }
@@ -166,8 +172,19 @@ class RoleController extends Controller
                 && isset($data['name']) && $data['name'] !== $role->name) {
                 throw ValidationException::withMessages(['name' => 'The canonical system role name cannot be changed.']);
             }
+            if (isset($data['name']) && in_array($data['name'], ['admin', 'super-admin'], true)
+                && $data['name'] !== $role->name) {
+                throw ValidationException::withMessages(['name' => 'System role names are reserved.']);
+            }
             if (isset($data['name']) && CorporateRoleStarterService::isCorporateRoleName($data['name'])) {
                 throw ValidationException::withMessages(['name' => 'Corporate roles must be managed in Corporate Management.']);
+            }
+            if (in_array($role->name, ['admin', 'super-admin'], true)
+                && isset($data['context_types'])
+                && array_diff($data['context_types'] ?? [], ['staff']) !== []) {
+                throw ValidationException::withMessages([
+                    'context_types' => 'Admin and Master Admin roles can only be mapped to staff contexts.',
+                ]);
             }
             $permissions = $data['permissions'] ?? null;
             unset($data['permissions']);
@@ -533,14 +550,16 @@ class RoleController extends Controller
         abort_if(CorporateRoleStarterService::isCorporateRoleName($role->name), 404, 'Role not found.');
         abort_if($this->isCorporateScopedRole($role), 404, 'Role not found.');
 
-        if (in_array($role->name, ['admin', 'super-admin'], true)) {
-            $actorRoles = request()->user()?->roles()
-                ->whereIn('name', ['admin', 'super-admin'])
-                ->where('guard_name', config('permissions.canonical_guard', 'api'))
-                ->pluck('name') ?? collect();
-            $canManage = $role->name === 'admin'
-                ? $actorRoles->contains('admin') || $actorRoles->contains('super-admin')
-                : $actorRoles->contains('super-admin');
+        $systemRoleName = strtolower($role->name);
+        if (in_array($systemRoleName, ['admin', 'super-admin'], true)) {
+            abort_unless($role->name === $systemRoleName, 404, 'Role not found.');
+            $actor = request()->user();
+            $evaluator = app(\App\Services\PermissionEvaluator::class);
+            $isAdmin = $actor && $evaluator->hasInternalRole($actor, 'admin');
+            $isMasterAdmin = $actor && $evaluator->hasInternalRole($actor, 'super-admin');
+            $canManage = $systemRoleName === 'admin'
+                ? $isAdmin || $isMasterAdmin
+                : $isMasterAdmin;
 
             abort_unless($canManage, 403, 'You are not allowed to manage this system role.');
         }

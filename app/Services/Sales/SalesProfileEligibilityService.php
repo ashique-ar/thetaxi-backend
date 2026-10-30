@@ -32,7 +32,6 @@ class SalesProfileEligibilityService
         ?string $profileId,
         array $eligibilities,
         CarbonInterface $at,
-        ?string $companyId = null,
     ): ?SalesProfile {
         if (! $profileId) {
             return null;
@@ -41,7 +40,6 @@ class SalesProfileEligibilityService
         $profile = SalesProfile::query()
             ->withTrashed()
             ->whereKey($profileId)
-            ->when($companyId, fn ($query, string $id) => $query->where(fn ($_companyIdScope) => \App\Services\CompanyIdScope::constrain($_companyIdScope, 'company_id', $id)))
             ->effectiveAt($at)
             ->first();
 
@@ -72,7 +70,6 @@ class SalesProfileEligibilityService
 
         $configuration = $this->configurationAt($profile, $at);
         if (! $configuration
-            || !\App\Services\CompanyIdScope::sameCompanyId((string) ($configuration['company_id'] ?? null), (string) ($profile->company_id))
             || ($configuration['staff_id'] ?? null) !== $profile->staff_id
             || ! is_string($configuration['staff_category_snapshot'] ?? null)
             || trim($configuration['staff_category_snapshot']) === ''

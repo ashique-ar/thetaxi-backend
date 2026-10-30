@@ -9,6 +9,7 @@ use App\Models\Corporate\CorporateDepartment;
 use App\Models\Corporate\CorporateDivision;
 use App\Models\Corporate\CorporateEmployee;
 use App\Models\User;
+use App\Services\CorporatePortalPermission;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Carbon;
@@ -16,13 +17,10 @@ use Illuminate\Support\Str;
 
 class CorporateAuditLogController extends Controller
 {
-    public function __construct()
-    {
-        $this->middleware('permission:view_audit_log');
-    }
-
     public function index(Request $request): JsonResponse
     {
+        abort_unless(CorporatePortalPermission::allows($request, 'corporate.audit-logs.view'), 403);
+
         $corporateId = $request->corporate_id;
 
         $baseQuery = AuditLog::where(function ($q) use ($corporateId) {

@@ -46,7 +46,6 @@ class SalesCrmService
             $owner = $this->lockActiveSalesProfile((string) $data['owner_sales_profile_id'], (string) $data['company_id']);
             if (! empty($data['inquiry_id'])) {
                 $inquiry = Inquiry::query()->lockForUpdate()->findOrFail($data['inquiry_id']);
-                abort_unless(\App\Services\CompanyIdScope::sameCompanyId((string) ($inquiry->company_id), (string) ($data['company_id'])), 422, 'Inquiry must belong to the Opportunity legal entity.');
                 $sourceOwnerId = $inquiry->assigned_to ?: $inquiry->created_user_id;
                 abort_unless($sourceUserIds !== null && $sourceOwnerId
                     && in_array((string) $sourceOwnerId, $sourceUserIds, true), 403,
@@ -58,8 +57,6 @@ class SalesCrmService
                 $data['prospect_phone'] = $data['prospect_phone'] ?? $inquiry->phone;
             } elseif (! empty($data['source_phone_call_id'])) {
                 $phoneCall = PhoneCall::query()->lockForUpdate()->findOrFail($data['source_phone_call_id']);
-                abort_unless(\App\Services\CompanyIdScope::sameCompanyId((string) ((string) $phoneCall->company_id), (string) ((string) $data['company_id'])), 422,
-                    'Phone Call must belong to the Opportunity legal entity.');
                 abort_unless($sourceUserIds !== null && $phoneCall->created_user_id
                     && in_array((string) $phoneCall->created_user_id, $sourceUserIds, true), 403,
                     'The Phone Call source is outside your authorised Sales scope.');
@@ -79,13 +76,13 @@ class SalesCrmService
                 abort_if(SalesOpportunity::query()->where('source_phone_call_id', $data['source_phone_call_id'])->exists(), 409, 'This Phone Call is already linked to an opportunity.');
             }
             $data['workflow_quotation_stage_setting_id'] = $this->policySettings
-                ->approvedFeatureSetting((string) $data['company_id'], 'crm_quotation_stage')?->id;
+                ->approvedFeatureSetting('crm_quotation_stage')?->id;
             foreach ([
                 'workflow_contact_stage_setting_id' => 'crm_contact_stage',
                 'workflow_qualification_stage_setting_id' => 'crm_qualification_stage',
                 'workflow_negotiation_stage_setting_id' => 'crm_negotiation_stage',
             ] as $column => $feature) {
-                $data[$column] = $this->policySettings->approvedFeatureSetting((string) $data['company_id'], $feature)?->id;
+                $data[$column] = $this->policySettings->approvedFeatureSetting($feature)?->id;
             }
             $opportunity = SalesOpportunity::create($data + [
                 'opportunity_number' => 'OPP-'.now()->format('Ym').'-'.strtoupper(Str::random(8)),
@@ -224,8 +221,7 @@ class SalesCrmService
                 $enabled[$stage] = true;
                 continue;
             }
-            $setting = DB::table('sales_company_feature_settings')->where('id', $settingId)
-                ->where(fn ($_companyIdScope) => \App\Services\CompanyIdScope::constrain($_companyIdScope, 'company_id', $opportunity->company_id))->where('feature_key', $feature)->first();
+            $setting = DB::table('sales_feature_settings')->where('id', $settingId)->where('feature_key', $feature)->first();
             abort_unless($setting, 409, 'Opportunity workflow version is unavailable.');
             $enabled[$stage] = (bool) $setting->enabled;
         }
@@ -754,11 +750,11 @@ class SalesCrmService
     {
         $companyId = $booking->company_id ?: \App\Services\CompanyIdScope::defaultCompanyId();
         if (! $companyId || ! $booking->customer_id || ! $booking->completed_at
-            || ! $this->policySettings->featureEnabled((string) $companyId, 'crm')) {
+            || ! $this->policySettings->featureEnabled('crm')) {
             return null;
         }
 
-        $policy = $this->policySettings->current((string) $companyId, 'repeat_booking_followup');
+        $policy = $this->policySettings->current('repeat_booking_followup');
         if (! $policy?->repeat_booking_followup_enabled || ! $policy->repeat_booking_followup_days
             || ($policy->approved_at && $booking->completed_at->lt($policy->approved_at))) return null;
 
@@ -902,12 +898,11 @@ class SalesCrmService
         if (! $task->opportunity_id) {
             if ($task->inquiry_id) {
                 abort_unless(! $task->booking_id, 409, 'An Inquiry task cannot also link to a Booking.');
-                $inquiry = DB::table('inquiries')->where('id', $task->inquiry_id)->where(fn ($_companyIdScope) => \App\Services\CompanyIdScope::constrain($_companyIdScope, 'company_id', $task->company_id))->whereNull('deleted_at')->lockForUpdate()->first();
+                $inquiry = DB::table('inquiries')->where('id', $task->inquiry_id)->whereNull('deleted_at')->lockForUpdate()->first();
                 abort_unless($inquiry, 409, 'Task Inquiry is no longer available.');
                 $sourceUserId = $inquiry->assigned_to ?: $inquiry->created_user_id;
-                abort_unless($sourceUserId && DB::table('staff')->where('user_id', $sourceUserId)
-                    ->where(fn ($_companyIdScope) => \App\Services\CompanyIdScope::constrain($_companyIdScope, 'company_id', $task->company_id))->exists(), 409,
-                    'Task Inquiry must belong to the task legal entity.');
+                abort_unless($sourceUserId && DB::table('staff')->where('user_id', $sourceUserId)->exists(), 409,
+                    'Task Inquiry must have an active Staff owner or creator.');
                 abort_unless(empty($task->customer_id) || $task->customer_id === $inquiry->customer_id, 409,
                     'Task Customer must match the selected Inquiry.');
                 return;
@@ -1012,7 +1007,7 @@ class SalesCrmService
     private function opportunityStageLabels(SalesOpportunity $opportunity): array
     {
         $labels = SalesPolicySettingsService::STAGE_LABEL_DEFAULTS;
-        if (! Schema::hasColumn('sales_company_feature_settings', 'stage_label')) return $labels;
+        if (! Schema::hasColumn('sales_feature_settings', 'stage_label')) return $labels;
         $mappings = [
             'contacted' => ['workflow_contact_stage_setting_id', 'crm_contact_stage'],
             'qualified' => ['workflow_qualification_stage_setting_id', 'crm_qualification_stage'],
@@ -1021,8 +1016,7 @@ class SalesCrmService
         ];
         $ids = collect($mappings)->map(fn ($mapping) => $opportunity->{$mapping[0]})->filter()->unique()->values();
         if ($ids->isEmpty()) return $labels;
-        $settings = DB::table('sales_company_feature_settings')->whereIn('id', $ids)
-            ->where(fn ($_companyIdScope) => \App\Services\CompanyIdScope::constrain($_companyIdScope, 'company_id', $opportunity->company_id))->get(['id', 'feature_key', 'stage_label'])->keyBy('id');
+        $settings = DB::table('sales_feature_settings')->whereIn('id', $ids)->get(['id', 'feature_key', 'stage_label'])->keyBy('id');
         foreach ($mappings as $stage => [$column, $feature]) {
             $setting = $settings->get($opportunity->{$column});
             if ($setting && $setting->feature_key === $feature && trim((string) $setting->stage_label) !== '') {
@@ -1076,7 +1070,7 @@ class SalesCrmService
 
     private function assertEnabled(string $companyId): void
     {
-        abort_unless($this->policySettings->featureEnabled($companyId, 'crm'), 409,
+        abort_unless($this->policySettings->featureEnabled('crm'), 409,
             'Sales CRM writes are not activated for this legal entity.');
     }
 

@@ -275,7 +275,6 @@ class CommissionDecisionService
     private function finalityPolicy(BookingPaymentReceipt $receipt): ?BookingPaymentFinalityPolicy
     {
         return BookingPaymentFinalityPolicy::query()
-            ->where(fn ($_companyIdScope) => \App\Services\CompanyIdScope::constrain($_companyIdScope, 'company_id', $receipt->company_id))
             ->where('payment_method', strtolower((string) $receipt->payment_method))
             ->where('status', 'approved')
             ->where('effective_from', '<=', $receipt->received_at)

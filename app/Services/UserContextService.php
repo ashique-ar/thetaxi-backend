@@ -12,6 +12,7 @@ use Exception;
 use Illuminate\Http\Request;
 use Illuminate\Support\Collection;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Validation\ValidationException;
 use Spatie\Permission\Models\Permission;
 use Spatie\Permission\Models\Role;
 use Spatie\Permission\PermissionRegistrar;
@@ -387,6 +388,13 @@ class UserContextService
 
                 if (!$roleModel || $roleModel->guard_name !== config('permissions.canonical_guard', 'api')) {
                     continue;
+                }
+
+                if ($userContext->context_type !== 'staff'
+                    && in_array($roleModel->name, ['admin', 'super-admin'], true)) {
+                    throw ValidationException::withMessages([
+                        'roles' => 'Admin and Master Admin roles can only be assigned to staff contexts.',
+                    ]);
                 }
 
                 $exists = DB::table('user_context_roles')

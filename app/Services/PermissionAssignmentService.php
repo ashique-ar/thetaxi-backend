@@ -129,10 +129,7 @@ class PermissionAssignmentService
             return;
         }
 
-        $isMasterAdmin = $actor->roles()
-            ->where('name', 'super-admin')
-            ->where('guard_name', $this->registry->canonicalGuard())
-            ->exists();
+        $isMasterAdmin = app(PermissionEvaluator::class)->hasInternalRole($actor, 'super-admin');
 
         if (! $isMasterAdmin) {
             throw ValidationException::withMessages([
@@ -180,9 +177,25 @@ class PermissionAssignmentService
 
     public function syncDirectUserPermissions(User $user, array $permissionIdentifiers): Collection
     {
-        $permissions = $this->registry->ensureCanonicalPermissions(
-            $this->normalizePermissionNames($permissionIdentifiers)
-        );
+        $permissionNames = $this->normalizePermissionNames($permissionIdentifiers);
+        $this->assertCanManageProtectedPermissions($permissionNames);
+        $actor = request()->user();
+        $isMasterAdmin = $actor
+            ? app(PermissionEvaluator::class)->hasInternalRole($actor, 'super-admin')
+            : false;
+        if (! $isMasterAdmin) {
+            $permissionNames = array_values(array_unique(array_merge(
+                $permissionNames,
+                DB::table('user_direct_permission_grants as grants')
+                    ->join('permissions', 'permissions.id', '=', 'grants.permission_id')
+                    ->where('grants.user_id', $user->id)
+                    ->where('permissions.guard_name', $this->registry->canonicalGuard())
+                    ->pluck('permissions.name')
+                    ->filter(PermissionRegistry::isAdminOnlyPermissionName(...))
+                    ->all()
+            )));
+        }
+        $permissions = $this->registry->ensureCanonicalPermissions($permissionNames);
 
         $added = $removed = [];
         DB::transaction(function () use ($user, $permissions, &$added, &$removed): void {
@@ -234,14 +247,16 @@ class PermissionAssignmentService
 
         app(PermissionRegistrar::class)->forgetCachedPermissions();
 
-        return $permissions;
+        return $isMasterAdmin
+            ? $permissions
+            : $permissions->reject(fn (Permission $permission) => PermissionRegistry::isAdminOnlyPermissionName($permission->name))->values();
     }
 
     public function grantDirectUserPermissions(User $user, array $permissionIdentifiers): Collection
     {
-        $permissions = $this->registry->ensureCanonicalPermissions(
-            $this->normalizePermissionNames($permissionIdentifiers)
-        );
+        $permissionNames = $this->normalizePermissionNames($permissionIdentifiers);
+        $this->assertCanManageProtectedPermissions($permissionNames);
+        $permissions = $this->registry->ensureCanonicalPermissions($permissionNames);
 
         $added = [];
         DB::transaction(function () use ($user, $permissions, &$added): void {
@@ -271,6 +286,7 @@ class PermissionAssignmentService
     public function revokeDirectUserPermissions(User $user, array $permissionIdentifiers): void
     {
         $names = $this->normalizePermissionNames($permissionIdentifiers);
+        $this->assertCanManageProtectedPermissions($names);
         $removed = [];
         DB::transaction(function () use ($user, $names, &$removed): void {
             User::query()->whereKey($user->id)->lockForUpdate()->firstOrFail();

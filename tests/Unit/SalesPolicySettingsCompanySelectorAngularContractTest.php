@@ -1,16 +1,13 @@
 <?php
 
-it('uses a bounded active-Staff-scoped company selector for governed Sales settings', function () {
+it('keeps governed Sales settings installation-wide in routes and portal', function () {
     $controller = file_get_contents(app_path('Http/Controllers/Api/Sales/SalesPolicySettingsController.php'));
     $routes = file_get_contents(base_path('routes/api.php'));
     $component = file_get_contents(base_path('../portal-thetaxi/src/app/modules/sales/components/sales-policy-settings/sales-policy-settings.component.ts'));
     $template = file_get_contents(base_path('../portal-thetaxi/src/app/modules/sales/components/sales-policy-settings/sales-policy-settings.component.html'));
 
-    expect($routes)->toContain("Route::get('policy-settings/company-options', [SalesPolicySettingsController::class, 'companyOptions'])")
-        ->and($controller)->toContain("'per_page' => ['nullable', 'integer', 'min:1', 'max:50']")
-        ->toContain("whereNull('employment_ended_at')->orWhere('employment_ended_at', '>', now())")
-        ->toContain("where('id', \$companyId)->whereNull('deleted_at')->exists()")
-        ->and($component)->toContain('UiManagedRecordSelectComponent', 'policySettingsCompanyOptions()', 'preselectedCompany(response)', 'companyContextRequestVersion')->not->toContain('policySettingsContext()', 'companies = signal', 'per_page: 1')
-        ->and($template)->toContain('endpoint="/sales/policy-settings/company-options"', 'title="Select a legal entity"')
-        ->not->toContain('*ngFor="let company of companies()"');
+    expect($routes)->not->toContain('policy-settings/company-options')
+        ->and($controller)->not->toContain('company_id', 'companyOptions', 'default_company_id')
+        ->and($component)->toContain('feature_settings')->not->toContain('policySettingsCompanyOptions', 'companyId', 'companies = signal')
+        ->and($template)->not->toContain('company-options', 'Select a legal entity');
 });

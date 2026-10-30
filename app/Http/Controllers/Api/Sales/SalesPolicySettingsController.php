@@ -4,14 +4,11 @@ namespace App\Http\Controllers\Api\Sales;
 
 use App\Http\Controllers\Controller;
 use App\Models\Sales\SalesPolicySetting;
-use App\Models\Sales\SalesCompanyFeatureSetting;
+use App\Models\Sales\SalesFeatureSetting;
 use App\Models\Sales\SalesStaffCategoryDefinition;
-use App\Services\CompanySettingsAccessService;
 use App\Services\Sales\SalesPolicySettingsService;
-use App\Services\WebsiteSettingsService;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
-use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Schema;
 use Illuminate\Validation\Rule;
 use Illuminate\Validation\ValidationException;
@@ -24,44 +21,8 @@ class SalesPolicySettingsController extends Controller
     {
     }
 
-    public function context(Request $request): JsonResponse
-    {
-        $companyIds = $this->actorCompanyIds($request);
-        $companies = DB::table('companies')->whereNull('deleted_at')
-            ->when($companyIds !== null, fn($query) => $query->whereIn('id', $companyIds))
-            ->orderBy('name')->get(['id', 'name']);
-
-        return response()->json(['status' => 'success', 'data' => ['companies' => $companies]]);
-    }
-
-    public function companyOptions(Request $request): JsonResponse
-    {
-        $data = $request->validate([
-            'search' => ['nullable', 'string', 'max:120'], 'selected_id' => ['nullable', 'uuid'],
-            'page' => ['nullable', 'integer', 'min:1'], 'per_page' => ['nullable', 'integer', 'min:1', 'max:50'],
-        ]);
-        $companyIds = $this->actorCompanyIds($request);
-        $defaultCompanyId = app(WebsiteSettingsService::class)->resolveCurrentCompanyId();
-        if ($defaultCompanyId && $companyIds !== null && ! in_array($defaultCompanyId, $companyIds, true)) $defaultCompanyId = null;
-        $query = DB::table('companies')->whereNull('deleted_at')
-            ->when($companyIds !== null, fn ($company) => $company->whereIn('id', $companyIds));
-        if (! empty($data['selected_id'])) $query->where('id', $data['selected_id']);
-        elseif (! empty($data['search'])) {
-            $term = '%' . addcslashes($data['search'], '%_\\') . '%';
-            $query->where(fn ($company) => $company->where('name', 'like', $term)->orWhere('city', 'like', $term));
-        }
-        $rows = $query->select(['id', 'name', 'city', 'is_active', 'is_default'])->orderByDesc('is_active')->orderByDesc('is_default')->orderBy('name')->orderBy('id')->paginate($data['per_page'] ?? 25);
-        $rows->getCollection()->transform(fn ($company) => ['value' => (string) $company->id, 'label' => $company->name,
-            'metadata' => array_filter(['city' => $company->city, 'availability' => $company->is_active ? null : 'Inactive']) + ['is_default' => (bool) $company->is_default],
-            'status' => $company->is_active ? 'active' : 'inactive']);
-        return response()->json(['status' => 'success', 'data' => $rows, 'default_company_id' => $defaultCompanyId]);
-    }
-
     public function index(Request $request): JsonResponse
     {
-        $data = $request->validate(['company_id' => ['nullable', 'uuid', 'exists:companies,id']]);
-        $data['company_id'] = $this->resolveCompanyId($data['company_id'] ?? null);
-        $this->assertCompany($request, $data['company_id']);
         $canReviewRationale = $request->user()->can('sales.policy-settings.manage')
             || $request->user()->can('sales.policy-settings.approve');
         $policyColumns = [
@@ -70,7 +31,7 @@ class SalesPolicySettingsController extends Controller
         ];
         if (Schema::hasColumn('sales_policy_settings', 'inquiry_response_business_hours')) $policyColumns[] = 'inquiry_response_business_hours';
         $featureColumns = ['id', 'feature_key', 'version', 'enabled', 'status'];
-        if (Schema::hasColumn('sales_company_feature_settings', 'stage_label')) $featureColumns[] = 'stage_label';
+        if (Schema::hasColumn('sales_feature_settings', 'stage_label')) $featureColumns[] = 'stage_label';
         $categoryColumns = ['id', 'category_name', 'status'];
         if ($canReviewRationale) {
             $policyColumns[] = 'reason';
@@ -78,17 +39,19 @@ class SalesPolicySettingsController extends Controller
             $categoryColumns[] = 'reason';
         }
         $byKind = collect(SalesPolicySettingsService::KINDS)
-            ->mapWithKeys(fn(string $kind) => [$kind => SalesPolicySetting::query()->where(fn ($_companyIdScope) => \App\Services\CompanyIdScope::constrain($_companyIdScope, 'company_id', $data['company_id']))
-                ->where('policy_kind', $kind)->orderByDesc('version')->get($policyColumns)]);
+            ->mapWithKeys(fn(string $kind) => [$kind => SalesPolicySetting::query()
+                ->where('policy_kind', $kind)->orderByDesc('version')->orderByRaw('CASE WHEN approved_at IS NULL THEN 1 ELSE 0 END')
+                ->orderByDesc('approved_at')->orderByDesc('id')->get($policyColumns)]);
 
         return response()->json([
             'status' => 'success',
             'data' => [
                 'policy_settings' => $byKind,
-                'staff_categories' => SalesStaffCategoryDefinition::query()->where(fn ($_companyIdScope) => \App\Services\CompanyIdScope::constrain($_companyIdScope, 'company_id', $data['company_id']))
+                'staff_categories' => SalesStaffCategoryDefinition::query()
                     ->orderBy('category_name')->get($categoryColumns),
-                'company_features' => SalesCompanyFeatureSetting::query()->where(fn ($_companyIdScope) => \App\Services\CompanyIdScope::constrain($_companyIdScope, 'company_id', $data['company_id']))
-                    ->orderBy('feature_key')->orderByDesc('version')->get($featureColumns),
+                'feature_settings' => SalesFeatureSetting::query()
+                    ->orderBy('feature_key')->orderByRaw('CASE WHEN approved_at IS NULL THEN 1 ELSE 0 END')
+                    ->orderByDesc('approved_at')->orderByDesc('version')->orderByDesc('id')->get($featureColumns),
                 'deployment_feature_availability' => $this->settings->featureAvailability(),
             ]
         ]);
@@ -105,7 +68,6 @@ class SalesPolicySettingsController extends Controller
             $request->merge(['inquiry_response_business_hours' => $businessHours]);
         }
         $data = $request->validate([
-            'company_id' => ['nullable', 'uuid', 'exists:companies,id'],
             'policy_kind' => ['required', Rule::in(SalesPolicySettingsService::KINDS)],
             'fx_quote_base' => ['required_if:policy_kind,fx_corrections', 'nullable', 'string', 'max:40'],
             'fx_calculation_mode' => ['required_if:policy_kind,fx_corrections', 'nullable', Rule::in(['multiply_source_by_rate', 'divide_source_by_rate'])],
@@ -137,16 +99,13 @@ class SalesPolicySettingsController extends Controller
                 || ! Schema::hasColumn('inquiries', 'first_response_due_at'))) {
             throw ValidationException::withMessages(['inquiry_response_business_hours' => ['Business-hour reply targets need the latest database update. Ask your system administrator to apply the pending update.']]);
         }
-        $data['company_id'] = $this->resolveCompanyId($data['company_id'] ?? null);
-        $this->assertCompany($request, $data['company_id']);
-        $setting = $this->settings->create($data['company_id'], $data['policy_kind'], $data, (string) $request->user()->id);
+        $setting = $this->settings->create($data['policy_kind'], $data, (string) $request->user()->id);
 
         return response()->json(['status' => 'success', 'data' => $this->writeConfirmation($setting)], 201);
     }
 
     public function approve(Request $request, SalesPolicySetting $setting): JsonResponse
     {
-        $this->assertCompany($request, $setting->company_id);
         $updated = $this->settings->approve($setting->id, (string) $request->user()->id);
 
         return response()->json(['status' => 'success', 'data' => $this->writeConfirmation($updated)]);
@@ -155,43 +114,34 @@ class SalesPolicySettingsController extends Controller
     public function storeFeature(Request $request): JsonResponse
     {
         $data = $request->validate([
-            'company_id' => ['nullable', 'uuid', 'exists:companies,id'],
             'feature_key' => ['required', Rule::in(SalesPolicySettingsService::FEATURES)],
             'enabled' => ['required', 'boolean'],
             'stage_label' => ['nullable', 'string', 'max:80'],
             'reason' => ['required', 'string', 'min:3', 'max:2000'],
         ]);
-        $data['company_id'] = $this->resolveCompanyId($data['company_id'] ?? null);
-        $this->assertCompany($request, $data['company_id']);
-        $setting = $this->settings->createFeature($data['company_id'], $data['feature_key'], $data['enabled'], $data['reason'], (string) $request->user()->id, $data['stage_label'] ?? null);
+        $setting = $this->settings->createFeature($data['feature_key'], $data['enabled'], $data['reason'], (string) $request->user()->id, $data['stage_label'] ?? null);
 
         return response()->json(['status' => 'success', 'data' => $this->writeConfirmation($setting)], 201);
     }
 
-    public function approveFeature(Request $request, SalesCompanyFeatureSetting $feature): JsonResponse
+    public function approveFeature(Request $request, SalesFeatureSetting $feature): JsonResponse
     {
-        $this->assertCompany($request, $feature->company_id);
-
         return response()->json(['status' => 'success', 'data' => $this->writeConfirmation($this->settings->approveFeature($feature->id, (string) $request->user()->id))]);
     }
 
     public function storeStaffCategory(Request $request): JsonResponse
     {
         $data = $request->validate([
-            'company_id' => ['nullable', 'uuid', 'exists:companies,id'],
             'category_name' => ['required', 'string', 'max:80'],
             'reason' => ['nullable', 'string', 'max:2000'],
         ]);
-        $data['company_id'] = $this->resolveCompanyId($data['company_id'] ?? null);
-        $this->assertCompany($request, $data['company_id']);
-        $category = $this->settings->createStaffCategory($data['company_id'], $data['category_name'], $data['reason'] ?? null, (string) $request->user()->id);
+        $category = $this->settings->createStaffCategory($data['category_name'], $data['reason'] ?? null, (string) $request->user()->id);
 
         return response()->json(['status' => 'success', 'data' => $this->writeConfirmation($category)], 201);
     }
 
     public function approveStaffCategory(Request $request, SalesStaffCategoryDefinition $category): JsonResponse
     {
-        $this->assertCompany($request, $category->company_id);
         $updated = $this->settings->approveStaffCategory($category->id, (string) $request->user()->id);
 
         return response()->json(['status' => 'success', 'data' => $this->writeConfirmation($updated)]);
@@ -199,7 +149,6 @@ class SalesPolicySettingsController extends Controller
 
     public function retireStaffCategory(Request $request, SalesStaffCategoryDefinition $category): JsonResponse
     {
-        $this->assertCompany($request, $category->company_id);
         $data = $request->validate(['reason' => ['required', 'string', 'max:2000']]);
         $updated = $this->settings->retireStaffCategory($category->id, $data['reason'], (string) $request->user()->id);
 
@@ -214,46 +163,4 @@ class SalesPolicySettingsController extends Controller
         return $confirmation;
     }
 
-    private function resolveCompanyId(?string $companyId): string
-    {
-        $resolved = $companyId ?: app(WebsiteSettingsService::class)->resolveCurrentCompanyId();
-        abort_unless($resolved, 409, 'Select an active business for Sales work.');
-        if (request()->header('X-Active-Context-Type') === 'staff') {
-            app(CompanySettingsAccessService::class)->assertCanAccess(request()->user(), (string) $resolved);
-        }
-
-        return (string) $resolved;
-    }
-
-    private function assertCompany(Request $request, string $companyId): void
-    {
-        if ($request->header('X-Active-Context-Type') === 'staff') {
-            app(CompanySettingsAccessService::class)->assertCanAccess($request->user(), $companyId, true);
-        }
-        abort_unless(DB::table('companies')->where('id', $companyId)->whereNull('deleted_at')->exists(), 422, 'Select an available legal entity.');
-        abort_unless(
-            $request->user()->can('sales.policy-settings.manage-all') || in_array($companyId, $this->actorCompanyIds($request) ?? [], true),
-            403,
-            'Sales policy setting is outside your legal entity.',
-        );
-    }
-
-    /** @return array<int, string>|null */
-    private function actorCompanyIds(Request $request): ?array
-    {
-        if ($request->header('X-Active-Context-Type') === 'staff') {
-            $companyId = app(WebsiteSettingsService::class)->resolveCurrentCompanyId();
-            abort_unless($companyId, 409, 'Select an active business for Sales work.');
-            app(CompanySettingsAccessService::class)->assertCanAccess($request->user(), (string) $companyId);
-
-            return [(string) $companyId];
-        }
-        if ($request->user()->can('sales.policy-settings.manage-all')) {
-            return null;
-        }
-
-        return DB::table('staff')->where('user_id', $request->user()->id)->whereNull('deleted_at')
-            ->where(fn ($staff) => $staff->whereNull('employment_ended_at')->orWhere('employment_ended_at', '>', now()))
-            ->pluck('company_id')->map(fn ($id) => $id ?: \App\Services\CompanyIdScope::defaultCompanyId())->filter()->unique()->values()->all();
-    }
 }

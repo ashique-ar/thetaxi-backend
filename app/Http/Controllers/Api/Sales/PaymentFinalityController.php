@@ -5,10 +5,7 @@ namespace App\Http\Controllers\Api\Sales;
 use App\Http\Controllers\Controller;
 use App\Models\Booking\BookingPaymentFinalityPolicy;
 use App\Models\Booking\BookingPaymentReceipt;
-use App\Models\Staff;
 use App\Services\BookingPaymentLedgerService;
-use App\Services\CompanySettingsAccessService;
-use App\Services\WebsiteSettingsService;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
@@ -27,85 +24,24 @@ class PaymentFinalityController extends Controller
     public function index(Request $request): JsonResponse
     {
         $data = $request->validate([
-            'company_id' => ['nullable', 'uuid', 'exists:companies,id'],
             'payment_method' => ['nullable', 'string', 'max:50'],
             'status' => ['nullable', Rule::in(['draft', 'approved', 'retired'])],
         ]);
-        $data['company_id'] = $this->resolveCompanyId($request, $data['company_id'] ?? null);
-        $this->assertCompanyScope($request, $data['company_id']);
-        $query = BookingPaymentFinalityPolicy::query()
-            ->leftJoin('companies', 'companies.id', '=', 'booking_payment_finality_policies.company_id')
-            ->select(['booking_payment_finality_policies.*', 'companies.name as company_name']);
-
-        return response()->json(['status' => 'success', 'data' => $query
-            ->where(fn ($_companyIdScope) => \App\Services\CompanyIdScope::constrain($_companyIdScope, 'booking_payment_finality_policies.company_id', $data['company_id']))
+        return response()->json(['status' => 'success', 'data' => BookingPaymentFinalityPolicy::query()
             ->when($data['payment_method'] ?? null, fn ($q, $method) => $q->where('booking_payment_finality_policies.payment_method', strtolower($method)))
             ->when($data['status'] ?? null, fn ($q, $status) => $q->where('booking_payment_finality_policies.status', $status))
-            ->orderBy('booking_payment_finality_policies.payment_method')->orderByDesc('booking_payment_finality_policies.version')->get()]);
-    }
-
-    public function companyOptions(Request $request): JsonResponse
-    {
-        $data = $request->validate([
-            'search' => ['nullable', 'string', 'max:120'],
-            'selected_id' => ['nullable', 'uuid'],
-            'page' => ['nullable', 'integer', 'min:1'],
-            'per_page' => ['nullable', 'integer', 'min:1', 'max:50'],
-        ]);
-        $companyIds = $request->user()->can('sales.payment-finality.manage-all') ? null : $this->actorCompanyIds($request);
-        $defaultCompanyId = app(WebsiteSettingsService::class)->resolveCurrentCompanyId();
-        if ($request->header('X-Active-Context-Type') === 'staff') {
-            abort_unless($defaultCompanyId, 409, 'Select an active business for Sales work.');
-            app(CompanySettingsAccessService::class)->assertCanAccess($request->user(), (string) $defaultCompanyId);
-            $companyIds = [(string) $defaultCompanyId];
-        }
-        if ($defaultCompanyId && $companyIds !== null && ! in_array($defaultCompanyId, $companyIds, true)) $defaultCompanyId = null;
-        $query = DB::table('companies')->whereNull('deleted_at')
-            ->when($companyIds !== null, fn ($companies) => $companies->whereIn('id', $companyIds));
-        if (! empty($data['selected_id'])) {
-            $query->where('id', $data['selected_id']);
-        } elseif (! empty($data['search'])) {
-            $term = '%' . addcslashes($data['search'], '%_\\') . '%';
-            $query->where(fn ($q) => $q->where('name', 'like', $term)->orWhere('city', 'like', $term));
-        }
-        $rows = $query->select(['id', 'name', 'city', 'is_active', 'is_default'])->orderByDesc('is_active')->orderByDesc('is_default')->orderBy('name')->orderBy('id')
-            ->paginate($data['per_page'] ?? 25);
-        $rows->getCollection()->transform(fn ($company) => [
-            'value' => (string) $company->id,
-            'label' => $company->name,
-            'metadata' => array_filter(['city' => $company->city, 'availability' => $company->is_active ? null : 'Inactive']) + ['is_default' => (bool) $company->is_default],
-            'status' => $company->is_active ? 'active' : 'inactive',
-        ]);
-        return response()->json(['status' => 'success', 'data' => $rows, 'default_company_id' => $defaultCompanyId]);
-    }
-
-    public function context(Request $request): JsonResponse
-    {
-        $ids = $request->user()->can('sales.payment-finality.manage-all') ? DB::table('companies')->pluck('id') : collect($this->actorCompanyIds($request));
-        if ($request->header('X-Active-Context-Type') === 'staff') {
-            $companyId = app(WebsiteSettingsService::class)->resolveCurrentCompanyId();
-            abort_unless($companyId, 409, 'Select an active business for Sales work.');
-            app(CompanySettingsAccessService::class)->assertCanAccess($request->user(), (string) $companyId);
-            $ids = collect([(string) $companyId]);
-        }
-        $companies = DB::table('companies')->whereIn('id', $ids)->orderBy('name')->get(['id', 'name']);
-        return response()->json(['status' => 'success', 'data' => [
-            'companies' => $companies,
-            'enforcement_enabled_by_company' => $companies->mapWithKeys(fn ($company) => [
-                $company->id => $this->policySettings->featureEnabled((string) $company->id, 'enforce_payment_finality'),
-            ]),
-        ]]);
+            ->orderBy('booking_payment_finality_policies.payment_method')->orderByDesc('booking_payment_finality_policies.version')
+            ->get(['id', 'payment_method', 'official_collection_state', 'can_earn_before_final', 'hold_payout_until_final',
+                'clearance_timeout_hours', 'required_evidence_type', 'effective_from', 'effective_until', 'version', 'status',
+                'created_by', 'approved_by', 'approved_at', 'created_at', 'updated_at'])]);
     }
 
     public function receipts(Request $request): JsonResponse
     {
-        $data = $request->validate(['company_id' => ['nullable', 'uuid', 'exists:companies,id'], 'finality_status' => ['nullable', Rule::in(['pending_clearance', 'confirmed', 'failed'])], 'per_page' => ['nullable', 'integer', 'min:1', 'max:100']]);
-        $data['company_id'] = $this->resolveCompanyId($request, $data['company_id'] ?? null);
-        $this->assertCompanyScope($request, $data['company_id']);
+        $data = $request->validate(['finality_status' => ['nullable', Rule::in(['pending_clearance', 'confirmed', 'failed'])], 'per_page' => ['nullable', 'integer', 'min:1', 'max:100']]);
         $query = BookingPaymentReceipt::query()->join('bookings', 'bookings.id', '=', 'booking_payment_receipts.booking_id')
-            ->where(fn ($_companyIdScope) => \App\Services\CompanyIdScope::constrain($_companyIdScope, 'booking_payment_receipts.company_id', $data['company_id']))
             ->when($data['finality_status'] ?? null, fn ($q, $status) => $q->where('booking_payment_receipts.finality_status', $status))
-            ->select(['booking_payment_receipts.id', 'booking_payment_receipts.company_id', 'booking_payment_receipts.booking_id', 'bookings.booking_number', 'booking_payment_receipts.source_amount', 'booking_payment_receipts.source_currency', 'booking_payment_receipts.lkr_amount', 'booking_payment_receipts.payment_method', 'booking_payment_receipts.reference', 'booking_payment_receipts.received_at', 'booking_payment_receipts.finality_status', 'booking_payment_receipts.finalized_at'])
+            ->select(['booking_payment_receipts.id', 'booking_payment_receipts.booking_id', 'bookings.booking_number', 'booking_payment_receipts.source_amount', 'booking_payment_receipts.source_currency', 'booking_payment_receipts.lkr_amount', 'booking_payment_receipts.payment_method', 'booking_payment_receipts.reference', 'booking_payment_receipts.received_at', 'booking_payment_receipts.finality_status', 'booking_payment_receipts.finalized_at'])
             ->addSelect([
                 'commission_decision_count' => DB::table('sales_commission_decisions as decision')
                     ->join('booking_payment_receipt_components as component', 'component.id', '=', 'decision.receipt_component_id')
@@ -146,7 +82,6 @@ class PaymentFinalityController extends Controller
     public function store(Request $request): JsonResponse
     {
         $data = $request->validate([
-            'company_id' => ['nullable', 'uuid', 'exists:companies,id'],
             'payment_method' => ['required', 'string', 'max:50'],
             'official_collection_state' => ['required', Rule::in(['confirmed', 'pending_clearance'])],
             'can_earn_before_final' => ['required', 'boolean'],
@@ -156,17 +91,12 @@ class PaymentFinalityController extends Controller
             'effective_from' => ['required', 'date'],
             'effective_until' => ['nullable', 'date', 'after:effective_from'],
         ]);
-        $data['company_id'] = $this->resolveCompanyId($request, $data['company_id'] ?? null);
-        $this->assertCompanyScope($request, $data['company_id']);
         $data['payment_method'] = strtolower($data['payment_method']);
         $this->validatePendingClearancePolicy($data);
 
         $policy = DB::transaction(function () use ($request, $data) {
-            $company = DB::table('companies')->where('id', $data['company_id'])->where('is_active', true)
-                ->whereNull('deleted_at')->lockForUpdate()->first();
-            abort_unless($company, 422, 'Select an active legal entity.');
             $version = (int) BookingPaymentFinalityPolicy::query()
-                ->where(fn ($_companyIdScope) => \App\Services\CompanyIdScope::constrain($_companyIdScope, 'company_id', $data['company_id']))->where('payment_method', $data['payment_method'])
+                ->where('payment_method', $data['payment_method'])
                 ->lockForUpdate()->max('version') + 1;
             return BookingPaymentFinalityPolicy::create($data + ['version' => $version, 'status' => 'draft', 'created_by' => $request->user()->id]);
         });
@@ -176,12 +106,8 @@ class PaymentFinalityController extends Controller
 
     public function approve(Request $request, BookingPaymentFinalityPolicy $policy): JsonResponse
     {
-        $this->assertCompanyScope($request, $policy->company_id);
         $policy = DB::transaction(function () use ($policy, $request): BookingPaymentFinalityPolicy {
-            $company = DB::table('companies')->where('id', $policy->company_id)->where('is_active', true)
-                ->whereNull('deleted_at')->lockForUpdate()->first();
-            abort_unless($company, 422, 'The payment-finality policy legal entity is no longer active.');
-            $policy = BookingPaymentFinalityPolicy::query()->where(fn ($_companyIdScope) => \App\Services\CompanyIdScope::constrain($_companyIdScope, 'company_id', $company->id))->lockForUpdate()->findOrFail($policy->id);
+            $policy = BookingPaymentFinalityPolicy::query()->lockForUpdate()->findOrFail($policy->id);
             if ($policy->status === 'approved') {
                 abort_unless((string) $policy->approved_by === (string) $request->user()->id, 409, 'Finality policy was approved by another user.');
 
@@ -191,7 +117,7 @@ class PaymentFinalityController extends Controller
             $this->validatePendingClearancePolicy($policy->toArray());
             abort_if($policy->created_by === $request->user()->id, 409, 'Finality-policy creator cannot approve the same version.');
             $overlap = BookingPaymentFinalityPolicy::query()
-                ->where(fn ($_companyIdScope) => \App\Services\CompanyIdScope::constrain($_companyIdScope, 'company_id', $policy->company_id))->where('payment_method', $policy->payment_method)
+                ->where('payment_method', $policy->payment_method)
                 ->where('status', 'approved')->where('id', '!=', $policy->id)
                 ->where('effective_from', '<', $policy->effective_until ?? '9999-12-31')
                 ->where(fn ($q) => $q->whereNull('effective_until')->orWhere('effective_until', '>', $policy->effective_from))
@@ -199,7 +125,7 @@ class PaymentFinalityController extends Controller
             abort_if($overlap, 422, 'An approved finality policy already overlaps this effective period.');
             $policy->update(['status' => 'approved', 'approved_by' => $request->user()->id, 'approved_at' => now()]);
             activity('sales-payment-finality')->causedBy($request->user())
-                ->withProperties(['company_id' => $policy->company_id, 'status' => 'approved', 'effective_from' => $policy->effective_from, 'version' => $policy->version])
+                ->withProperties(['status' => 'approved', 'effective_from' => $policy->effective_from, 'version' => $policy->version])
                 ->log('payment_finality_policy_approved');
 
             return $policy->fresh();
@@ -217,14 +143,13 @@ class PaymentFinalityController extends Controller
             'evidence_file_id' => ['nullable', 'uuid', 'exists:domain_evidence_files,id'],
             'idempotency_key' => ['required', 'string', 'max:160'],
         ]);
-        $this->assertCompanyScope($request, $receipt->company_id);
         $policy = DB::table('booking_payment_finality_policies')
-            ->where(fn ($_companyIdScope) => \App\Services\CompanyIdScope::constrain($_companyIdScope, 'company_id', $receipt->company_id))->where('payment_method', strtolower((string) $receipt->payment_method))
+            ->where('payment_method', strtolower((string) $receipt->payment_method))
             ->where('status', 'approved')->where('effective_from', '<=', $receipt->received_at)
             ->where(fn ($query) => $query->whereNull('effective_until')->orWhere('effective_until', '>', $receipt->received_at))
             ->orderByDesc('version')->first();
         if ($data['to_status'] === 'confirmed'
-            && $this->policySettings->featureEnabled((string) $receipt->company_id, 'enforce_payment_finality')) {
+            && $this->policySettings->featureEnabled('enforce_payment_finality')) {
             abort_unless($policy, 422, 'An approved payment-method finality policy is required before confirmation.');
         }
         if ($policy?->required_evidence_type) {
@@ -232,7 +157,7 @@ class PaymentFinalityController extends Controller
         }
         if (! empty($data['evidence_file_id'])) {
             $evidence = app(SalesEvidenceIntegrityService::class)->assertAttachedFile(
-                $data['evidence_file_id'], (string) $receipt->company_id, 'booking_payment_receipt', [$receipt->id],
+                $data['evidence_file_id'], null, 'booking_payment_receipt', [$receipt->id],
             );
             abort_unless(! $policy?->required_evidence_type || $evidence->evidence_type === $policy->required_evidence_type,
                 422, 'The uploaded evidence type does not satisfy the approved finality policy.');
@@ -242,37 +167,6 @@ class PaymentFinalityController extends Controller
             $receipt, $data['to_status'], $data['reason'], $data['evidence_file_id'] ?? ($data['evidence_reference'] ?? null),
             $data['idempotency_key'], (string) $request->user()->id,
         )]);
-    }
-
-    private function assertCompanyScope(Request $request, ?string $companyId): void
-    {
-        if ($request->header('X-Active-Context-Type') === 'staff') {
-            abort_unless($companyId && $companyId === (string) app(WebsiteSettingsService::class)->resolveCurrentCompanyId(), 403,
-                'Payment-finality record is outside your selected Staff business.');
-            app(CompanySettingsAccessService::class)->assertCanAccess($request->user(), $companyId, true);
-        }
-        if ($request->user()->can('sales.payment-finality.manage-all')) {
-            return;
-        }
-        abort_unless($companyId && in_array($companyId, $this->actorCompanyIds($request), true), 403, 'Payment-finality record is outside your legal entity.');
-    }
-
-    private function resolveCompanyId(Request $request, ?string $companyId): string
-    {
-        $resolved = $companyId ?: app(WebsiteSettingsService::class)->resolveCurrentCompanyId();
-        abort_unless($resolved, 409, 'Select an active business for Sales work.');
-        if ($request->header('X-Active-Context-Type') === 'staff') {
-            app(CompanySettingsAccessService::class)->assertCanAccess($request->user(), (string) $resolved);
-        }
-
-        return (string) $resolved;
-    }
-
-    private function actorCompanyIds(Request $request): array
-    {
-        return Staff::query()->where('user_id', $request->user()->id)
-            ->where(fn ($query) => $query->whereNull('employment_ended_at')->orWhere('employment_ended_at', '>', now()))
-            ->pluck('company_id')->filter()->unique()->values()->all();
     }
 
     private function validatePendingClearancePolicy(array $policy): void

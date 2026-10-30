@@ -234,7 +234,7 @@ class SalesPerformanceService
             );
             abort_unless($locked->status === 'draft', 422, 'Only draft targets can be approved.');
             abort_if($locked->prepared_by === $actorUserId, 403, 'Target maker and approver must be different users.');
-            $timezone = $this->policySettings->businessTimezone((string) $locked->company_id);
+            $timezone = $this->policySettings->businessTimezone();
             abort_unless(
                 is_string($timezone) && in_array($timezone, \DateTimeZone::listIdentifiers(), true),
                 409,
@@ -1010,7 +1010,7 @@ class SalesPerformanceService
             }
 
             abort_unless(
-                $this->policySettings->featureEnabled((string) $locked->company_id, 'performance_alert_actions'),
+                $this->policySettings->featureEnabled('performance_alert_actions'),
                 409,
                 'Sales performance alert actions are not activated for this legal entity.'
             );
@@ -1272,7 +1272,7 @@ class SalesPerformanceService
 
     private function proratedTargets(Collection $targets, string $companyId, string $from, string $to): array
     {
-        $businessTimezone = $this->policySettings->businessTimezone($companyId);
+        $businessTimezone = $this->policySettings->businessTimezone();
         abort_unless(
             is_string($businessTimezone) && in_array($businessTimezone, \DateTimeZone::listIdentifiers(), true),
             409,
@@ -1371,7 +1371,7 @@ class SalesPerformanceService
     public function alertEvaluationContext(SalesKpiSnapshot $snapshot): array
     {
         abort_unless(
-            $this->policySettings->featureEnabled((string) $snapshot->company_id, 'performance_alert_evaluations'),
+            $this->policySettings->featureEnabled('performance_alert_evaluations'),
             409,
             'Sales performance alert evaluation is not activated for this legal entity.'
         );
@@ -1397,7 +1397,7 @@ class SalesPerformanceService
         $rules = $this->alertPolicyContract->normalize($policy->rules);
         abort_unless($this->activeAlertOwnerIdentity($snapshot->company_id, $rules['evaluation']['owner_user_id']), 409,
             'The frozen alert policy owner is no longer an active internal Staff user with an active Staff context in this legal entity.');
-        $timezone = $this->policySettings->businessTimezone((string) $snapshot->company_id);
+        $timezone = $this->policySettings->businessTimezone();
         abort_unless(
             is_string($timezone) && in_array($timezone, \DateTimeZone::listIdentifiers(), true),
             409,

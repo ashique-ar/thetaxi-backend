@@ -201,11 +201,10 @@ class UserController extends Controller
         abort_if(in_array(auth()->id(), $data['user_ids'], true) && in_array($data['action'], ['deactivate', 'delete'], true), 422, 'You cannot deactivate or delete your own account.');
         $users = User::whereIn('id', $data['user_ids'])->get();
         if ($data['action'] === 'assign_role') {
-            $existingPrivilegedRoles = $users->flatMap(fn (User $target) => $target->roles()
-                ->whereIn('name', ['admin', 'super-admin'])
+            $existingRoles = $users->flatMap(fn (User $target) => $target->roles()
                 ->where('guard_name', config('permissions.canonical_guard', 'api'))
                 ->pluck('name')->all())->all();
-            $this->assertCanChangePrivilegedRoles(array_merge([$data['role']], $existingPrivilegedRoles));
+            $this->assertCanChangePrivilegedRoles(array_merge([$data['role']], $existingRoles));
         }
         DB::transaction(function () use ($users, $data) {
             foreach ($users as $user) {
@@ -238,7 +237,7 @@ class UserController extends Controller
     public function store(CreateUserRequest $request): JsonResponse
     {
         $data = $request->validated();
-        $this->assertCanChangePrivilegedRoles($this->roleIdentifiers($data), !empty($data['permissions']));
+        $this->assertCanChangePrivilegedRoles($this->roleIdentifiers($data));
 
         try {
             $user = $this->userService->createUser($data);
@@ -288,12 +287,13 @@ class UserController extends Controller
     {
         $data = $request->validated();
         if (array_key_exists('roles', $data) || array_key_exists('role_id', $data) || array_key_exists('permissions', $data)) {
+            $existingRoles = $user->roles()
+                ->where('guard_name', config('permissions.canonical_guard', 'api'));
+            if (! array_key_exists('roles', $data) && ! array_key_exists('role_id', $data)) {
+                $existingRoles->whereIn('name', ['admin', 'super-admin']);
+            }
             $this->assertCanChangePrivilegedRoles(
-                array_merge($this->roleIdentifiers($data), $user->roles()
-                    ->whereIn('name', ['admin', 'super-admin'])
-                    ->where('guard_name', config('permissions.canonical_guard', 'api'))
-                    ->pluck('name')->all()),
-                array_key_exists('permissions', $data)
+                array_merge($this->roleIdentifiers($data), $existingRoles->pluck('name')->all())
             );
         }
 
@@ -435,30 +435,16 @@ class UserController extends Controller
             ->where('model_has_permissions.model_id', $user->id)
             ->select('permissions.*')
             ->get();
-
-        $rolePermissions = Permission::query()
-            ->join('role_has_permissions', 'permissions.id', '=', 'role_has_permissions.permission_id')
-            ->join('model_has_roles', 'role_has_permissions.role_id', '=', 'model_has_roles.role_id')
-            ->where('permissions.guard_name', config('permissions.canonical_guard', 'api'))
-            ->where('model_has_roles.model_type', User::class)
-            ->where('model_has_roles.model_id', $user->id)
-            ->select('permissions.*')
-            ->get();
-
-        $contextRolePermissions = Permission::query()
-            ->join('role_has_permissions', 'permissions.id', '=', 'role_has_permissions.permission_id')
-            ->join('user_context_roles', 'role_has_permissions.role_id', '=', 'user_context_roles.role_id')
-            ->join('user_contexts', 'user_contexts.id', '=', 'user_context_roles.user_context_id')
-            ->where('user_contexts.user_id', $user->id)
-            ->where('user_contexts.is_active', true)
-            ->whereNull('user_contexts.deleted_at')
-            ->where('permissions.guard_name', config('permissions.canonical_guard', 'api'))
-            ->select('permissions.*')
-            ->get();
+        $evaluator = app(\App\Services\PermissionEvaluator::class);
+        $rolePermissions = $evaluator->rolesForInternalContext($user)
+            ->flatMap(fn (Role $role) => $role->permissions)
+            ->unique('id')
+            ->values();
 
         $contextPermissionIds = DB::table('user_context_permission_grants as grants')
             ->join('user_contexts', 'user_contexts.id', '=', 'grants.user_context_id')
             ->where('user_contexts.user_id', $user->id)
+            ->where('user_contexts.context_type', 'staff')
             ->where('user_contexts.is_active', true)
             ->whereNull('user_contexts.deleted_at')
             ->pluck('grants.permission_id')->unique();
@@ -466,30 +452,46 @@ class UserController extends Controller
             ->join('user_context_permission_grants as grants', 'permissions.id', '=', 'grants.permission_id')
             ->join('user_contexts', 'user_contexts.id', '=', 'grants.user_context_id')
             ->where('user_contexts.user_id', $user->id)
+            ->where('user_contexts.context_type', 'staff')
             ->where('user_contexts.is_active', true)
             ->whereNull('user_contexts.deleted_at')
             ->where('permissions.guard_name', config('permissions.canonical_guard', 'api'))
             ->select('permissions.*')
             ->get();
+        $externalContextPermissionIds = DB::table('user_context_permission_grants as grants')
+            ->join('user_contexts', 'user_contexts.id', '=', 'grants.user_context_id')
+            ->where('user_contexts.user_id', $user->id)
+            ->where('user_contexts.context_type', '!=', 'staff')
+            ->pluck('grants.permission_id')->unique();
         $explicitPermissionIds = DB::table('user_direct_permission_grants')
             ->where('user_id', $user->id)->pluck('permission_id')->unique();
+        $directPermissions = $directPermissions->reject(fn (Permission $permission) =>
+            $externalContextPermissionIds->contains($permission->id)
+            && ! $explicitPermissionIds->contains($permission->id)
+        )->values();
         $contextNames = $directPermissions->whereIn('id', $contextPermissionIds)->pluck('name')
             ->merge($contextPermissionGrants->pluck('name'))->unique();
         $directNames = $directPermissions->filter(fn ($permission) =>
             !$contextPermissionIds->contains($permission->id) || $explicitPermissionIds->contains($permission->id)
         )->pluck('name')->unique();
-        $roleNames = $rolePermissions->merge($contextRolePermissions)->pluck('name')->unique();
+        $roleNames = $rolePermissions->pluck('name')->unique();
         $permissions = $directPermissions->merge($rolePermissions)
-            ->merge($contextRolePermissions)->merge($contextPermissionGrants)->unique('name')->values();
-        $isMasterAdmin = $user->roles()
-            ->where('name', 'super-admin')
-            ->where('guard_name', config('permissions.canonical_guard', 'api'))
-            ->exists();
+            ->merge($contextPermissionGrants)->unique('name')->values();
+        $isMasterAdmin = $evaluator->hasInternalRole($user, 'super-admin');
         if (! $isMasterAdmin) {
             $permissions = $permissions->reject(fn (Permission $permission) =>
                 PermissionRegistry::isAdminOnlyPermissionName($permission->name)
             )->values();
         }
+
+        $registry = app(PermissionRegistry::class);
+        $canonicalName = fn (string $name) => $registry->resolveKey($name);
+        $directNames = $directNames->map($canonicalName)->unique();
+        $contextNames = $contextNames->map($canonicalName)->unique();
+        $roleNames = $roleNames->map($canonicalName)->unique();
+        $permissions = $permissions
+            ->unique(fn (Permission $permission) => $canonicalName($permission->name))
+            ->values();
         
         return response()->json([
             'status' => 'success',
@@ -497,7 +499,7 @@ class UserController extends Controller
                 'permissions' => $permissions->map(function ($permission) use ($directNames, $contextNames, $roleNames) {
                     return [
                         'id' => $permission->id,
-                        'name' => $permission->name,
+                        'name' => $registry->resolveKey($permission->name),
                         'guard_name' => $permission->guard_name,
                         'source' => $directNames->contains($permission->name)
                             ? 'direct grant'
@@ -528,7 +530,7 @@ class UserController extends Controller
             'permissions' => ['required', 'array'],
             'permissions.*' => ['required', 'string', Rule::exists('permissions', 'name')->where('guard_name', config('permissions.canonical_guard', 'api'))],
         ]);
-        $this->assertCanChangePrivilegedRoles([], true);
+        $this->assertCanChangePrivilegedRoles([]);
 
         try {
             $this->permissionAssignmentService->grantDirectUserPermissions($user, $request->permissions);
@@ -537,6 +539,8 @@ class UserController extends Controller
                 'status' => 'success',
                 'message' => 'Permissions assigned successfully'
             ]);
+        } catch (ValidationException $e) {
+            throw $e;
         } catch (\Exception $e) {
             return response()->json([
                 'status' => 'error',
@@ -559,7 +563,7 @@ class UserController extends Controller
             'permissions' => ['required', 'array'],
             'permissions.*' => ['required', 'string', Rule::exists('permissions', 'name')->where('guard_name', config('permissions.canonical_guard', 'api'))],
         ]);
-        $this->assertCanChangePrivilegedRoles([], true);
+        $this->assertCanChangePrivilegedRoles([]);
 
         try {
             $this->permissionAssignmentService->revokeDirectUserPermissions($user, $request->permissions);
@@ -568,6 +572,8 @@ class UserController extends Controller
                 'status' => 'success',
                 'message' => 'Permissions revoked successfully'
             ]);
+        } catch (ValidationException $e) {
+            throw $e;
         } catch (\Exception $e) {
             return response()->json([
                 'status' => 'error',
@@ -665,7 +671,7 @@ class UserController extends Controller
             'permissions' => ['present', 'array'],
             'permissions.*' => ['string'],
         ]);
-        $this->assertCanChangePrivilegedRoles([], true);
+        $this->assertCanChangePrivilegedRoles([]);
 
         $permissions = $this->permissionAssignmentService->syncDirectUserPermissions($user, $request->permissions);
 
@@ -775,6 +781,8 @@ class UserController extends Controller
             }
 
             return response()->json(['status' => 'success', 'message' => 'Roles assigned', 'data' => ['contexts' => $activeContexts]]);
+        } catch (ValidationException $e) {
+            throw $e;
         } catch (\Exception $e) {
             return response()->json(['status' => 'error', 'message' => 'Failed to assign roles', 'error' => $e->getMessage()], 500);
         }
@@ -1019,6 +1027,8 @@ class UserController extends Controller
                 'status' => 'error',
                 'message' => $e->getMessage() ?: 'The selected context is unavailable.',
             ], $e->getStatusCode());
+        } catch (ValidationException $e) {
+            throw $e;
         } catch (\Exception $e) {
             return response()->json([
                 'status' => 'error',
@@ -1465,21 +1475,31 @@ class UserController extends Controller
             ->all();
     }
 
-    private function assertCanChangePrivilegedRoles(array $roleNames, bool $changesDirectPermissions = false): void
+    private function assertCanChangePrivilegedRoles(array $roleNames): void
     {
+        $normalizedRoleNames = collect($roleNames)
+            ->map(fn ($name) => strtolower(trim((string) $name)));
         $actor = request()->user();
-        $actorRoles = $actor?->roles()
-            ->whereIn('name', ['admin', 'super-admin'])
-            ->where('guard_name', config('permissions.canonical_guard', 'api'))
-            ->pluck('name') ?? collect();
-        $isMasterAdmin = $actorRoles->contains('super-admin');
-        $isAdmin = $isMasterAdmin || $actorRoles->contains('admin');
-        abort_if($changesDirectPermissions && ! $isMasterAdmin, 403, 'Only a Master Admin can grant direct permissions.');
+        $evaluator = app(\App\Services\PermissionEvaluator::class);
+        $isMasterAdmin = $actor && $evaluator->hasInternalRole($actor, 'super-admin');
+        $isAdmin = $isMasterAdmin || ($actor && $evaluator->hasInternalRole($actor, 'admin'));
+        if (! $isMasterAdmin && $roleNames !== []) {
+            $hasProtectedRole = Role::query()
+                ->where('guard_name', config('permissions.canonical_guard', 'api'))
+                ->whereIn('name', $roleNames)
+                ->with(['permissions' => fn ($permissions) => $permissions
+                    ->where('guard_name', config('permissions.canonical_guard', 'api'))])
+                ->get()
+                ->contains(fn (Role $role) => $role->permissions->contains(fn (Permission $permission) =>
+                    PermissionRegistry::isAdminOnlyPermissionName($permission->name)
+                ));
+            abort_if($hasProtectedRole, 403, 'Only a Master Admin can assign roles with protected permissions.');
+        }
         abort_if(
-            ! $isAdmin && collect($roleNames)->intersect(['admin', 'super-admin'])->isNotEmpty(),
+            ! $isAdmin && $normalizedRoleNames->intersect(['admin', 'super-admin'])->isNotEmpty(),
             403,
             'Only an Admin can assign or manage Admin roles.'
         );
-        abort_if(! $isMasterAdmin && collect($roleNames)->contains('super-admin'), 403, 'Only a Master Admin can assign or manage the Master Admin role.');
+        abort_if(! $isMasterAdmin && $normalizedRoleNames->contains('super-admin'), 403, 'Only a Master Admin can assign or manage the Master Admin role.');
     }
 }

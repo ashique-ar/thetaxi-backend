@@ -58,7 +58,7 @@ class SalesCommissionNotificationService
                 'updated_at' => now(),
             ];
 
-            if (! $this->policySettings->featureEnabled((string) $companyId, 'commission_notifications')) {
+            if (! $this->policySettings->featureEnabled('commission_notifications')) {
                 $this->persist($id, $existing, $base, $this->blocked('feature_disabled'));
                 return;
             }
@@ -127,14 +127,14 @@ class SalesCommissionNotificationService
     public function refreshBlocked(int $limit = 100): int
     {
         if (! Schema::hasTable('sales_commission_notification_deliveries')
-            || ! Schema::hasTable('sales_company_feature_settings')) {
+            || ! Schema::hasTable('sales_feature_settings')
+            || ! $this->policySettings->featureEnabled('commission_notifications')) {
             return 0;
         }
 
         $rows = DB::table('sales_commission_notification_deliveries')
             ->whereIn('status', ['blocked_configuration', 'blocked_recipient', 'blocked_preference'])
             ->where('blocked_code', '!=', 'feature_disabled')
-            ->where(fn ($_companyIdScope) => \App\Services\CompanyIdScope::constrainIn($_companyIdScope, 'company_id', $this->enabledCompanyIds()))
             ->oldest('created_at')->limit($limit)->get();
         foreach ($rows as $row) {
             $event = DB::table('domain_outbox_events')->where('id', $row->source_outbox_event_id)->first();
@@ -149,21 +149,22 @@ class SalesCommissionNotificationService
     public function countDue(): int
     {
         return Schema::hasTable('sales_commission_notification_deliveries')
-            && Schema::hasTable('sales_company_feature_settings')
+            && Schema::hasTable('sales_feature_settings')
+            && $this->policySettings->featureEnabled('commission_notifications')
             ? DB::table('sales_commission_notification_deliveries')->where('status', 'queued')
-                ->where(fn ($_companyIdScope) => \App\Services\CompanyIdScope::constrainIn($_companyIdScope, 'company_id', $this->enabledCompanyIds()))->where('available_at', '<=', now())->count()
+                ->where('available_at', '<=', now())->count()
             : 0;
     }
 
     public function deliverDue(int $limit = 100): int
     {
         if (! Schema::hasTable('sales_commission_notification_deliveries')
-            || ! Schema::hasTable('sales_company_feature_settings')) {
+            || ! Schema::hasTable('sales_feature_settings')
+            || ! $this->policySettings->featureEnabled('commission_notifications')) {
             return 0;
         }
 
         $ids = DB::table('sales_commission_notification_deliveries')->where('status', 'queued')
-            ->where(fn ($_companyIdScope) => \App\Services\CompanyIdScope::constrainIn($_companyIdScope, 'company_id', $this->enabledCompanyIds()))
             ->where('available_at', '<=', now())->oldest('available_at')->limit($limit)->pluck('id');
         $delivered = 0;
         foreach ($ids as $id) {
@@ -214,7 +215,7 @@ class SalesCommissionNotificationService
         if (! $row || $row->status !== 'queued') {
             return 0;
         }
-        if (! $this->policySettings->featureEnabled((string) $row->company_id, 'commission_notifications')) {
+        if (! $this->policySettings->featureEnabled('commission_notifications')) {
             return 0;
         }
         $decision = DB::table('sales_commission_decisions')->where('id', $row->commission_decision_id)->first();
@@ -390,9 +391,4 @@ class SalesCommissionNotificationService
         return substr($hash, 0, 8).'-'.substr($hash, 8, 4).'-4'.substr($hash, 13, 3).'-a'.substr($hash, 17, 3).'-'.substr($hash, 20, 12);
     }
 
-    private function enabledCompanyIds(): \Illuminate\Database\Query\Builder
-    {
-        return DB::table('sales_company_feature_settings')->select('company_id')
-            ->where('feature_key', 'commission_notifications')->where('status', 'approved')->where('enabled', true);
-    }
 }

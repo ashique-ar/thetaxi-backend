@@ -474,7 +474,7 @@ class CommissionStatementController extends Controller
             $ids = array_merge($ids, DB::table('sales_reporting_assignments as reporting')
                 ->join('sales_profiles as member', 'member.id', '=', 'reporting.member_sales_profile_id')
                 ->where('reporting.manager_sales_profile_id', $profile->id)
-                ->where(fn ($_companyIdScope) => \App\Services\CompanyIdScope::constrain($_companyIdScope, 'reporting.company_id', $staff->company_id))->whereNull('reporting.deleted_at')
+                ->whereNull('reporting.deleted_at')
                 ->where('reporting.effective_from', '<=', now())
                 ->where(fn ($q) => $q->whereNull('reporting.effective_until')->orWhere('reporting.effective_until', '>', now()))
                 ->where(fn ($_companyIdScope) => \App\Services\CompanyIdScope::constrain($_companyIdScope, 'member.company_id', $staff->company_id))

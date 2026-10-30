@@ -227,14 +227,12 @@ class BookingAttributionService
                 $acquisitionProfileId,
                 ['acquisition'],
                 $root->secured_at,
-                $companyId,
             );
             $collectionProfileId = $this->collectionProfileAt($root, $securedAt);
             $collectionProfile = $this->profileEligibility->byIdAt(
                 $collectionProfileId,
                 ['collection'],
                 $securedAt,
-                $companyId,
             );
 
             return [

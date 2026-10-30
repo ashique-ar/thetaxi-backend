@@ -104,26 +104,21 @@ class SalesProfileController extends Controller
     public function export(Request $request, SalesProfileExportService $exports): JsonResponse
     {
         $data = $request->validate([
-            'company_id' => ['nullable', 'uuid', 'exists:companies,id'],
             'status' => ['nullable', Rule::in(['active', 'suspended', 'ended'])],
             'idempotency_key' => ['required', 'string', 'max:160'],
         ]);
-        $data['company_id'] = $this->resolveCompanyId($data['company_id'] ?? null);
 
         $query = SalesProfile::query()
-            ->where(fn ($_companyIdScope) => \App\Services\CompanyIdScope::constrain($_companyIdScope, 'company_id', $data['company_id']))
             ->when($data['status'] ?? null, fn (Builder $builder, string $status) => $builder->where('status', $status));
         $query = $this->scope->scopeProfiles(
             $query,
             $request->user(),
             'sales.profiles.view-all',
             'sales.profiles.view-team',
-            $data['company_id'],
         );
 
         $export = $exports->generate(
             $query,
-            $data['company_id'],
             $data['status'] ?? null,
             $this->scope->scopeType($request->user(), 'sales.profiles.view-all', 'sales.profiles.view-team'),
             $data['idempotency_key'],
@@ -156,8 +151,7 @@ class SalesProfileController extends Controller
         if ($export->generated_by !== (string) $request->user()->id) {
             abort(404, 'Sales Profile export is unavailable.');
         }
-        $companyId = $export->company_id ?: \App\Services\CompanyIdScope::defaultCompanyId();
-        if (! $companyId || ! in_array($export->scope_type, ['self', 'team', 'all'], true)) {
+        if (! in_array($export->scope_type, ['self', 'team', 'all'], true)) {
             $this->fail('RECONCILIATION_BLOCK', 'The Sales Profile export has no verifiable frozen authorization scope.', 409);
         }
         if ($export->expires_at?->isPast()) {
@@ -166,7 +160,6 @@ class SalesProfileController extends Controller
 
         $profileIds = collect($export->scope_profile_ids ?? [])->map(fn ($id) => (string) $id)->sort()->values()->all();
         $expectedScopeChecksum = $exports::scopeChecksum(
-            (string) $export->company_id,
             (string) $export->scope_type,
             $profileIds,
         );
@@ -178,7 +171,6 @@ class SalesProfileController extends Controller
             $request->user(),
             'sales.profiles.view-all',
             'sales.profiles.view-team',
-            $companyId,
         );
         if ($currentIds !== null && array_diff($profileIds, $currentIds) !== []) {
             abort(404, 'Sales Profile export is unavailable.');
@@ -206,7 +198,7 @@ class SalesProfileController extends Controller
             DB::table('domain_audit_events')->insert([
                 'id' => (string) Str::uuid(),
                 'domain' => 'sales',
-                'company_id' => $locked->company_id,
+                'company_id' => null,
                 'subject_type' => 'sales_profile_export',
                 'subject_id' => $locked->id,
                 'event_type' => 'sales.profile_export.downloaded',
@@ -492,7 +484,7 @@ class SalesProfileController extends Controller
             $company->id => $this->salesStaffCategories((string) $company->id),
         ]);
         $exportReadyByCompany = $companies->mapWithKeys(fn ($company) => [
-            $company->id => ($this->policySettings->profileExportRetentionDays((string) $company->id) ?? 0) > 0,
+            $company->id => ($this->policySettings->profileExportRetentionDays() ?? 0) > 0,
         ]);
 
         return response()->json(['status' => 'success', 'data' => [
@@ -569,19 +561,15 @@ class SalesProfileController extends Controller
     public function reportingProfileOptions(Request $request): JsonResponse
     {
         $data = $request->validate([
-            'company_id' => ['nullable', 'uuid', 'exists:companies,id'],
             'search' => ['nullable', 'string', 'max:120'], 'selected_id' => ['nullable', 'uuid'],
             'page' => ['nullable', 'integer', 'min:1'], 'per_page' => ['nullable', 'integer', 'min:1', 'max:50'],
         ]);
-        $data['company_id'] = $this->resolveCompanyId($data['company_id'] ?? null);
-        abort_unless(DB::table('companies')->where('id', $data['company_id'])->where('is_active', true)->whereNull('deleted_at')->exists(), 422, 'Select an active legal entity.');
-        $this->scope->assertCompany($request->user(), $data['company_id'], 'sales.profiles.manage-all');
 
         $query = SalesProfile::query()->with('staff.user:id,first_name,last_name')
-            ->where(fn ($_companyIdScope) => \App\Services\CompanyIdScope::constrain($_companyIdScope, 'company_id', $data['company_id']))->activeAt(now())->configured()
+            ->activeAt(now())->configured()
             ->whereHas('staff', fn (Builder $staff) => $staff->whereNull('deleted_at')
                 ->where(fn (Builder $employment) => $employment->whereNull('employment_ended_at')->orWhere('employment_ended_at', '>', now())));
-        $query = $this->scope->scopeProfiles($query, $request->user(), 'sales.profiles.manage-all', 'sales.profiles.manage-team', $data['company_id']);
+        $query = $this->scope->scopeProfiles($query, $request->user(), 'sales.profiles.manage-all', 'sales.profiles.manage-team');
         if (! empty($data['selected_id'])) $query->whereKey($data['selected_id']);
         elseif (! empty($data['search'])) {
             $term = '%' . addcslashes($data['search'], '%_\\') . '%';
@@ -768,7 +756,7 @@ class SalesProfileController extends Controller
 
     private function salesStaffCategories(string $companyId): array
     {
-        return $this->policySettings->approvedStaffCategories($companyId);
+        return $this->policySettings->approvedStaffCategories();
     }
 
     private function resolveCompanyId(?string $companyId): string

@@ -22,7 +22,7 @@ class UserService
      */
     public function getAllUsers(array $filters = []): LengthAwarePaginator
     {
-        $query = User::with(['role', 'agent', 'permissions', 'roles', 'contexts']);
+        $query = User::with(['role', 'agent', 'permissions', 'roles', 'contexts.corporateEmployee.corporate', 'corporateEmployees.corporate']);
 
         // Apply filters
         if (!empty($filters['search'])) {

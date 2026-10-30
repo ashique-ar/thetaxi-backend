@@ -11,7 +11,7 @@ it('freezes explicit UTC task deadlines without guessing legacy timezone provena
         ->and($service)
         ->toContain("'contract_version' => 'explicit_utc_v1'")
         ->toContain("'deadline_checksum' => hash('sha256', CanonicalJson::encode(\$deadline))")
-        ->toContain("featureEnabled(\$companyId, 'crm')")
+        ->toContain("featureEnabled('crm')")
         ->and($command)
         ->toContain("where('feature_key', 'crm')->where('status', 'approved')->where('enabled', true)")
         ->and($migration)

@@ -19,7 +19,7 @@ class CorporateRoleStarterService
                 'manage-roles', 'manage_employees', 'manage_departments', 'manage_divisions',
                 'create_bookings', 'create_bookings_for_others', 'view_all_bookings',
                 'approve_bookings', 'view_payments', 'manage_billing', 'manage_rate_charts',
-                'view_reports', 'schedule_reports', 'view_audit_log', 'corporate.view',
+                'view_reports', 'schedule_reports', 'corporate.audit-logs.view', 'corporate.view',
                 'bookings.view', 'bookings.create', 'staff-transport.view',
                 'staff-transport.manage', 'staff-transport.override', 'staff-transport.generate',
             ],

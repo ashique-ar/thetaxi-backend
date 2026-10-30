@@ -97,13 +97,12 @@ class StaffWorkloadController extends Controller
         if ($request->user()->can('inquiries.view')) {
             $available[] = 'open_inquiries';
             $eligibleInquiryAssignees = app(InquiryAssignmentService::class)->eligibleAssigneeIds();
-            foreach (DB::table('inquiries')->where(fn ($_companyIdScope) => \App\Services\CompanyIdScope::constrain($_companyIdScope, 'company_id', $companyId))->whereNull('deleted_at')
+            foreach (DB::table('inquiries')->whereNull('deleted_at')
                 ->whereIn('status', ['open', 'in_progress'])->whereIn('assigned_to', $eligibleInquiryAssignees)
                 ->selectRaw('assigned_to, COUNT(*) as total')->groupBy('assigned_to')->get() as $count) {
                 $this->setCount($employees, (string) $count->assigned_to, 'open_inquiries', (int) $count->total);
             }
-            $unassigned['open_inquiries'] = (int) DB::table('inquiries')->where(fn ($_companyIdScope) => \App\Services\CompanyIdScope::constrain($_companyIdScope, 'company_id', $companyId))
-                ->whereNull('deleted_at')->whereIn('status', ['open', 'in_progress'])
+            $unassigned['open_inquiries'] = (int) DB::table('inquiries')->whereNull('deleted_at')->whereIn('status', ['open', 'in_progress'])
                 ->where(fn ($owner) => $owner->whereNull('assigned_to')->orWhereNotIn('assigned_to', $eligibleInquiryAssignees))
                 ->count();
         }
@@ -112,15 +111,15 @@ class StaffWorkloadController extends Controller
             $available[] = 'calls_last_7_days';
             $since = now()->subDays(7);
             $eligibleCallAssignees = User::permission('phone-calls.view')->whereHas('staff', fn ($staff) => $staff
-                ->where(fn ($_companyIdScope) => \App\Services\CompanyIdScope::constrain($_companyIdScope, 'company_id', $companyId))->whereNull('deleted_at')
+                ->whereNull('deleted_at')
                 ->where(fn ($employment) => $employment->whereNull('employment_ended_at')->orWhere('employment_ended_at', '>', now())))
                 ->where('is_active', true)->whereNull('deleted_at')->select('id');
-            foreach (DB::table('phone_calls')->where(fn ($_companyIdScope) => \App\Services\CompanyIdScope::constrain($_companyIdScope, 'company_id', $companyId))->whereNull('deleted_at')
+            foreach (DB::table('phone_calls')->whereNull('deleted_at')
                 ->where('created_at', '>=', $since)->whereIn('assigned_user_id', $eligibleCallAssignees)
                 ->selectRaw('assigned_user_id, COUNT(*) as total')->groupBy('assigned_user_id')->get() as $count) {
                 $this->setCount($employees, (string) $count->assigned_user_id, 'calls_last_7_days', (int) $count->total);
             }
-            $unassigned['calls_last_7_days'] = (int) DB::table('phone_calls')->where(fn ($_companyIdScope) => \App\Services\CompanyIdScope::constrain($_companyIdScope, 'company_id', $companyId))
+            $unassigned['calls_last_7_days'] = (int) DB::table('phone_calls')
                 ->whereNull('deleted_at')->where('created_at', '>=', $since)
                 ->where(fn ($owner) => $owner->whereNull('assigned_user_id')->orWhereNotIn('assigned_user_id', $eligibleCallAssignees))
                 ->count();

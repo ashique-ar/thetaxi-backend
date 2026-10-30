@@ -5,7 +5,6 @@ namespace App\Http\Controllers\Api;
 
 use App\Http\Controllers\Controller;
 use App\Models\Inquiry;
-use App\Models\Company;
 use App\Support\PhoneNumberMatch;
 use App\Models\InquiryOutboundResponse;
 use App\Models\IntegrationWebhookEvent;
@@ -17,10 +16,6 @@ use App\Services\InquiryAssignmentService;
 use App\Services\AuthService;
 use App\Services\MailDispatchService;
 use App\Mail\InquiryResponseMail;
-use App\Services\CompanySettingsAccessService;
-use App\Services\WebsiteSettingsService;
-use App\Services\CompanyBookingScope;
-use App\Services\CompanyCustomerScope;
 use App\Services\Sales\SalesPolicySettingsService;
 use App\Services\Sales\InquiryFirstResponseDeadlineService;
 use App\Models\Website\CmsContent;
@@ -41,10 +36,7 @@ class InquiryController extends Controller
 {
     public function __construct()
     {
-        $this->middleware('permission:inquiries.view')->only(['index', 'show', 'filterOptions', 'assigneeOptions', 'responseMetrics', 'unscoped']);
-        $this->middleware('permission:inquiries.edit')->only(['scopeUnassigned']);
-        $this->middleware('permission:companies.edit')->only(['unscoped', 'scopeUnassigned']);
-        $this->middleware('permission:companies.view')->only(['unscoped', 'scopeUnassigned', 'companyOptions']);
+        $this->middleware('permission:inquiries.view')->only(['index', 'show', 'filterOptions', 'assigneeOptions', 'responseMetrics']);
         $this->middleware('permission:inquiries.view|communication.manage')->only(['customerOptions', 'bookingOptions']);
         $this->middleware('permission:inquiries.create')->only(['store']);
         $this->middleware('permission:inquiries.edit')->only(['update', 'assign', 'updateStatus', 'respond', 'sendEmailResponse', 'markRead', 'createCustomerFromInquiry']);
@@ -53,15 +45,13 @@ class InquiryController extends Controller
 
     public function filterOptions(): JsonResponse
     {
-        $companyId = $this->currentCompanyId();
-
         return response()->json(['status' => 'success', 'data' => [
             'services' => CmsContent::withInactive()->withTrashed()
-                ->whereHas('inquiries', fn ($query) => $query->where(fn ($_companyIdScope) => \App\Services\CompanyIdScope::constrain($_companyIdScope, 'company_id', $companyId)))->orderBy('title')->get(['id', 'title']),
+                ->whereHas('inquiries')->orderBy('title')->get(['id', 'title']),
             'forms' => InquiryForm::withInactive()->withTrashed()
-                ->whereHas('cmsServices.inquiries', fn ($query) => $query->where(fn ($_companyIdScope) => \App\Services\CompanyIdScope::constrain($_companyIdScope, 'company_id', $companyId)))->orderBy('name')->get(['id', 'name']),
-            'workflows' => Inquiry::where(fn ($query) => \App\Services\CompanyIdScope::constrain($query, 'company_id', $companyId))->distinct()->whereNotNull('inquiry_type')->pluck('inquiry_type'),
-            'statuses' => Inquiry::where(fn ($query) => \App\Services\CompanyIdScope::constrain($query, 'company_id', $companyId))->distinct()->whereNotNull('status')->pluck('status'),
+                ->whereHas('cmsServices.inquiries')->orderBy('name')->get(['id', 'name']),
+            'workflows' => Inquiry::distinct()->whereNotNull('inquiry_type')->pluck('inquiry_type'),
+            'statuses' => Inquiry::distinct()->whereNotNull('status')->pluck('status'),
         ]]);
     }
 
@@ -83,13 +73,12 @@ class InquiryController extends Controller
             'date_to' => ['nullable', 'date', 'after_or_equal:date_from'],
             'per_page' => ['nullable', 'integer', 'min:1', 'max:100'],
         ]);
-        $companyId = $this->currentCompanyId();
-        $q = Inquiry::where(fn ($query) => \App\Services\CompanyIdScope::constrain($query, 'company_id', $companyId))->with(['cmsContent', 'inquiryServicePage', 'assignedUser.staff', 'firstResponseSavedBy']);
+        $q = Inquiry::with(['cmsContent', 'inquiryServicePage', 'assignedUser.staff', 'firstResponseSavedBy']);
         $q->addSelect([
             'email_response_status' => InquiryOutboundResponse::query()->select('status')
-                ->where(fn ($sameCompany) => \App\Services\CompanyIdScope::sameCompany($sameCompany, 'company_id', 'inquiries.company_id'))->whereColumn('inquiry_id', 'inquiries.id')->latest('created_at')->limit(1),
+                ->whereColumn('inquiry_id', 'inquiries.id')->latest('created_at')->limit(1),
             'respond_io_reply_status' => IntegrationWebhookEvent::query()->select('outbound_status')
-                ->where(fn ($sameCompany) => \App\Services\CompanyIdScope::sameCompany($sameCompany, 'company_id', 'inquiries.company_id'))->whereColumn('linked_inquiry_id', 'inquiries.id')
+                ->whereColumn('linked_inquiry_id', 'inquiries.id')
                 ->incomingMessage()->latest('received_at')->limit(1),
         ]);
         if ($request->filled('search')) {
@@ -107,13 +96,13 @@ class InquiryController extends Controller
         if ($request->boolean('actionable_only')) {
             $q->whereIn('status', ['open', 'in_progress']);
         }
-        $responseTargetMinutes = app(SalesPolicySettingsService::class)->inquiryFirstResponseMinutes((string) $companyId);
+        $responseTargetMinutes = app(SalesPolicySettingsService::class)->inquiryFirstResponseMinutes();
         if (in_array($filters['first_response_state'] ?? null, ['awaiting', 'check', 'overdue'], true)) {
             $hasUnconfirmedEmail = static fn ($attempt) => $attempt->selectRaw('1')->from('inquiry_outbound_responses as email_attempt')
-                ->where(fn ($sameCompany) => \App\Services\CompanyIdScope::sameCompany($sameCompany, 'email_attempt.company_id', 'inquiries.company_id'))->whereColumn('email_attempt.inquiry_id', 'inquiries.id')
+                ->whereColumn('email_attempt.inquiry_id', 'inquiries.id')
                 ->whereIn('email_attempt.status', ['sending', 'uncertain']);
             $hasUnconfirmedRespondIo = static fn ($attempt) => $attempt->selectRaw('1')->from('integration_webhook_events as reply_attempt')
-                ->where(fn ($sameCompany) => \App\Services\CompanyIdScope::sameCompany($sameCompany, 'reply_attempt.company_id', 'inquiries.company_id'))->whereColumn('reply_attempt.linked_inquiry_id', 'inquiries.id')
+                ->whereColumn('reply_attempt.linked_inquiry_id', 'inquiries.id')
                 ->whereIn('reply_attempt.outbound_status', ['sending', 'uncertain']);
             $q->whereNotIn('status', ['closed', 'resolved', 'archived']);
             if ($filters['first_response_state'] === 'check') {
@@ -163,22 +152,19 @@ class InquiryController extends Controller
     public function store(CreateInquiryRequest $request): JsonResponse
     {
         $data = $request->validated();
-        $data['company_id'] = $this->currentCompanyId();
         if (($data['source'] ?? null) === 'respond_io') {
-            $this->ensureRespondIoEnabled((string) $data['company_id']);
+            $this->ensureRespondIoEnabled();
         }
         if (! empty($data['booking_id'])) {
             $booking = DB::table('bookings')->where('id', $data['booking_id']);
-            CompanyBookingScope::constrain($booking, 'bookings', (string) $data['company_id']);
             $bookingCustomerId = $booking->value('customer_id');
-            abort_unless($bookingCustomerId, 422, 'Choose a booking linked to a customer in this business.');
+            abort_unless($bookingCustomerId, 422, 'Choose a booking linked to a customer.');
             abort_unless(empty($data['customer_id']) || (string) $data['customer_id'] === (string) $bookingCustomerId,
                 422, 'Choose a booking for the selected customer.');
             $data['customer_id'] = (string) $bookingCustomerId;
         }
         if (! empty($data['customer_id'])) {
-            $customer = Customer::query()->findOrFail($data['customer_id']);
-            $this->assertCustomerInCompany($customer, (string) $data['company_id']);
+            Customer::query()->whereNull('deleted_at')->findOrFail($data['customer_id']);
         }
         $data['created_user_id'] = $request->user()->id;
         $inq = Inquiry::createWithUniqueNumber($data);
@@ -192,15 +178,12 @@ class InquiryController extends Controller
 
     public function show(Request $request, Inquiry $inquiry): JsonResponse
     {
-        $this->assertInquiryCompany($inquiry);
         $inquiry->load(['cmsContent', 'inquiryServicePage', 'assignedUser.staff', 'firstResponseSavedBy', 'booking']);
         if ($inquiry->source === 'respond_io') {
-            $replyEvent = IntegrationWebhookEvent::query()->where(fn ($_companyIdScope) => \App\Services\CompanyIdScope::constrain($_companyIdScope, 'company_id', $inquiry->company_id))
-                ->where('linked_inquiry_id', $inquiry->id)->incomingMessage()->latest('received_at')->first();
+            $replyEvent = IntegrationWebhookEvent::query()->where('linked_inquiry_id', $inquiry->id)->incomingMessage()->latest('received_at')->first();
             $inquiry->setAttribute('respond_io_reply_status', $replyEvent?->outbound_status);
         } else {
-            $emailResponse = InquiryOutboundResponse::query()->where(fn ($_companyIdScope) => \App\Services\CompanyIdScope::constrain($_companyIdScope, 'company_id', $inquiry->company_id))
-                ->where('inquiry_id', $inquiry->id)->latest('created_at')->first(['status', 'sent_at', 'idempotency_key']);
+            $emailResponse = InquiryOutboundResponse::query()->where('inquiry_id', $inquiry->id)->latest('created_at')->first(['status', 'sent_at', 'idempotency_key']);
             $inquiry->setAttribute('email_response_status', $emailResponse?->status);
             $inquiry->setAttribute('email_response_sent_at', $emailResponse?->sent_at);
             if ($request->user()->can('inquiries.edit')) {
@@ -209,7 +192,7 @@ class InquiryController extends Controller
         }
         if ($request->user()->can('sales.crm.view')) {
             $inquiry->setAttribute('linked_opportunity_id', DB::table('sales_opportunities')->where('inquiry_id', $inquiry->id)
-                ->where(fn ($_companyIdScope) => \App\Services\CompanyIdScope::constrain($_companyIdScope, 'company_id', $inquiry->company_id))->whereNull('deleted_at')->value('id'));
+                ->whereNull('deleted_at')->value('id'));
         }
         return response()->json([
             'status' => 'success',
@@ -219,17 +202,16 @@ class InquiryController extends Controller
 
     public function responseMetrics(SalesPolicySettingsService $settings): JsonResponse
     {
-        $companyId = $this->currentCompanyId();
-        $inquiries = DB::table('inquiries')->where(fn ($_companyIdScope) => \App\Services\CompanyIdScope::constrain($_companyIdScope, 'company_id', $companyId))->whereNull('deleted_at');
+        $inquiries = DB::table('inquiries')->whereNull('deleted_at');
         $hasUnconfirmedEmail = static fn ($query) => $query->selectRaw('1')->from('inquiry_outbound_responses as email_attempt')
-            ->where(fn ($sameCompany) => \App\Services\CompanyIdScope::sameCompany($sameCompany, 'email_attempt.company_id', 'inquiries.company_id'))->whereColumn('email_attempt.inquiry_id', 'inquiries.id')
+            ->whereColumn('email_attempt.inquiry_id', 'inquiries.id')
             ->whereIn('email_attempt.status', ['sending', 'uncertain']);
         $hasUnconfirmedRespondIo = static fn ($query) => $query->selectRaw('1')->from('integration_webhook_events as reply_attempt')
-            ->where(fn ($sameCompany) => \App\Services\CompanyIdScope::sameCompany($sameCompany, 'reply_attempt.company_id', 'inquiries.company_id'))->whereColumn('reply_attempt.linked_inquiry_id', 'inquiries.id')
+            ->whereColumn('reply_attempt.linked_inquiry_id', 'inquiries.id')
             ->whereIn('reply_attempt.outbound_status', ['sending', 'uncertain']);
         $activeOpen = fn () => (clone $inquiries)->whereNotIn('status', ['closed', 'resolved', 'archived']);
         $activeUnanswered = fn () => $activeOpen()->whereNull('first_response_sent_at');
-        $targetMinutes = $settings->inquiryFirstResponseMinutes((string) $companyId);
+        $targetMinutes = $settings->inquiryFirstResponseMinutes();
         $pastFirstResponse = null;
         if ($targetMinutes !== null) {
             $pastFirstResponseQuery = $activeUnanswered()->whereNotExists($hasUnconfirmedEmail)->whereNotExists($hasUnconfirmedRespondIo);
@@ -261,21 +243,17 @@ class InquiryController extends Controller
 
     public function update(UpdateInquiryRequest $request, Inquiry $inquiry): JsonResponse
     {
-        $this->assertInquiryCompany($inquiry);
         $data = $request->validated();
         $data['updated_user_id'] = $request->user()->id;
         DB::transaction(function () use ($inquiry, $data, $request): void {
             $locked = Inquiry::query()->whereKey($inquiry->id)->lockForUpdate()->firstOrFail();
-            $companyId = $this->currentCompanyId(true);
-            abort_unless($companyId && \App\Services\CompanyIdScope::sameCompanyId((string) ($locked->company_id), (string) ($companyId)), 404);
             if (($data['source'] ?? null) === 'respond_io' && $locked->source !== 'respond_io') {
-                $this->ensureRespondIoEnabled((string) $companyId);
+                $this->ensureRespondIoEnabled();
             }
             if (! empty($data['booking_id'])) {
                 $booking = DB::table('bookings')->where('id', $data['booking_id']);
-                CompanyBookingScope::constrain($booking, 'bookings', (string) $companyId);
                 $bookingCustomerId = $booking->value('customer_id');
-                abort_unless($bookingCustomerId, 422, 'Choose a booking linked to a customer in this business.');
+                abort_unless($bookingCustomerId, 422, 'Choose a booking linked to a customer.');
                 $requestedCustomerId = $data['customer_id'] ?? $locked->customer_id;
                 abort_unless($requestedCustomerId === null || (string) $requestedCustomerId === (string) $bookingCustomerId,
                     422, 'Choose a booking for the selected customer.');
@@ -288,8 +266,7 @@ class InquiryController extends Controller
                         422, 'This inquiry is linked to a booking for a different customer.');
                 }
                 if ($customerId !== null) {
-                    $customer = Customer::query()->whereKey($customerId)->whereNull('deleted_at')->firstOrFail();
-                    $this->assertCustomerInCompany($customer, $companyId);
+                    Customer::query()->whereKey($customerId)->whereNull('deleted_at')->firstOrFail();
                 }
                 $payload = $locked->payload ?? [];
                 $linkEvent = [
@@ -393,14 +370,11 @@ class InquiryController extends Controller
             'allow_shared_phone_duplicate' => ['sometimes', 'boolean'],
             'link_existing_account' => ['sometimes', 'boolean'],
         ]);
-        $this->assertInquiryCompany($inquiry);
-        $companyId = $this->currentCompanyId(true);
-        $phoneCallingCode = \App\Services\CompanyCustomerScope::phoneCallingCode((string) $companyId);
+        $phoneCallingCode = null;
 
         try {
-            [$inquiry, $created, $createdUserId, $linkedExisting] = DB::transaction(function () use ($request, $inquiry, $companyId, $phoneCallingCode, $contexts): array {
-                abort_unless($this->currentCompanyId(true) === $companyId, 409, 'Business changed; retry customer creation.');
-                $locked = Inquiry::query()->where(fn ($_companyIdScope) => \App\Services\CompanyIdScope::constrain($_companyIdScope, 'company_id', $companyId))->lockForUpdate()->findOrFail($inquiry->id);
+            [$inquiry, $created, $createdUserId, $linkedExisting] = DB::transaction(function () use ($request, $inquiry, $phoneCallingCode, $contexts): array {
+                $locked = Inquiry::query()->lockForUpdate()->findOrFail($inquiry->id);
                 if ($locked->customer_id) {
                     return [$locked, false, null, data_get($locked->payload, 'customer_link.action') === 'linked_existing_customer_account'];
                 }
@@ -418,12 +392,11 @@ class InquiryController extends Controller
                 $phoneMatches = Customer::query()->join('users', 'users.id', '=', 'customers.user_id')
                     ->whereNull('customers.deleted_at')->whereNull('users.deleted_at')
                     ->whereRaw($phoneColumn.' = ?', [$normalizedPhone]);
-                \App\Services\CompanyCustomerScope::constrain($phoneMatches, 'customers', $companyId);
                 if ($normalizedPhone !== '' && $phoneMatches->exists() && ! $request->boolean('allow_shared_phone_duplicate')) {
                     throw new HttpResponseException(response()->json([
                         'status' => 'error',
                         'code' => 'phone_match_requires_review',
-                        'message' => 'A customer in this business already uses this phone. Search and link that person, or confirm this is a different person sharing the number.',
+                        'message' => 'A customer already uses this phone. Search and link that person, or confirm this is a different person sharing the number.',
                     ], 409));
                 }
                 if ($email) {
@@ -443,13 +416,13 @@ class InquiryController extends Controller
                                 'status' => 'error',
                                 'code' => 'customer_exists_elsewhere',
                                 'match_type' => 'email',
-                                'message' => 'A customer account already uses this email. Review the inquiry and confirm if you want to link that account to this business.',
+                                'message' => 'A customer account already uses this email. Review the inquiry and confirm if you want to link that account.',
                             ], 409));
                         }
                         abort_unless($existingCustomer && $request->boolean('link_existing_account'), 409,
                             'An account already uses this email, but it cannot be linked as a customer. Ask a manager to review it.');
 
-                        return [$this->linkExistingInquiryCustomer($locked, $existingCustomer, $companyId, (string) $request->user()->id), false, null, true];
+                        return [$this->linkExistingInquiryCustomer($locked, $existingCustomer, (string) $request->user()->id), false, null, true];
                     }
                 }
 
@@ -489,7 +462,7 @@ class InquiryController extends Controller
                                 ->lockForUpdate()->first()
                             : null;
                         abort_unless($existingCustomer, 409, 'The matching customer account is no longer available. Search for the customer or ask a manager to review the inquiry.');
-                        return [$this->linkExistingInquiryCustomer($locked, $existingCustomer, $companyId, (string) $request->user()->id), false, null, true];
+                        return [$this->linkExistingInquiryCustomer($locked, $existingCustomer, (string) $request->user()->id), false, null, true];
                     }
                 }
                 abort_if($request->boolean('link_existing_account'), 409, 'The matching customer account is no longer available. Search for the customer or ask a manager to review the inquiry.');
@@ -512,13 +485,6 @@ class InquiryController extends Controller
                     'default_payment_arrangement' => 'account_credit',
                 ], (string) $request->user()->id);
                 $customerId = (string) $context->context_id;
-                DB::table('customer_relationship_owner_assignments')->insert([
-                    'id' => (string) Str::uuid(), 'customer_id' => $customerId, 'company_id' => $companyId,
-                    'owner_sales_profile_id' => null, 'assigned_by_user_id' => $request->user()->id,
-                    'reason' => 'Created from an inquiry; assign a customer owner after review.',
-                    'effective_from' => now(), 'created_at' => now(), 'updated_at' => now(),
-                ]);
-
                 $payload = $locked->payload ?? [];
                 $event = [
                     'from_customer_id' => null, 'to_customer_id' => $customerId,
@@ -577,7 +543,6 @@ class InquiryController extends Controller
 
     public function destroy(Inquiry $inquiry): JsonResponse
     {
-        $this->assertInquiryCompany($inquiry);
         $inquiry->delete();
         return response()->json([
             'status' => 'success',
@@ -590,12 +555,10 @@ class InquiryController extends Controller
         $data = $request->validate([
             'assigned_to' => ['required', 'uuid'],
         ]);
-        $companyId = $this->assignmentCompany($request);
-        [$assignedInquiry, $assignmentChanged] = DB::transaction(function () use ($inquiry, $data, $request, $companyId): array {
-            abort_unless($this->currentCompanyId(true) === $companyId, 409, 'Business changed; retry assignment.');
+        $this->assertAssignmentActor($request);
+        [$assignedInquiry, $assignmentChanged] = DB::transaction(function () use ($inquiry, $data, $request): array {
             $locked = Inquiry::query()->whereKey($inquiry->id)->lockForUpdate()->firstOrFail();
-            abort_unless(\App\Services\CompanyIdScope::sameCompanyId((string) ($locked->company_id), (string) ($companyId)), 404);
-            abort_unless($this->eligibleAssignees($companyId)->where('users.id', $data['assigned_to'])->lockForUpdate()->first(['users.id']), 422, 'Select an active Staff assignee.');
+            abort_unless($this->eligibleAssignees()->where('users.id', $data['assigned_to'])->lockForUpdate()->first(['users.id']), 422, 'Select an active Staff assignee.');
             $fromUserId = $locked->assigned_to;
             $locked->update([
                 'assigned_to' => $data['assigned_to'],
@@ -605,7 +568,6 @@ class InquiryController extends Controller
             if ($fromUserId !== $data['assigned_to']) {
                 DB::table('inquiry_assignment_events')->insert([
                     'id' => (string) Str::uuid(),
-                    'company_id' => $companyId,
                     'inquiry_id' => $locked->id,
                     'from_user_id' => $fromUserId,
                     'to_user_id' => $data['assigned_to'],
@@ -636,14 +598,14 @@ class InquiryController extends Controller
 
     public function assigneeOptions(Request $request): JsonResponse
     {
-        $companyId = $this->assignmentCompany($request);
+        $this->assertAssignmentActor($request);
         $data = $request->validate([
             'search' => ['nullable', 'string', 'max:120'],
             'selected_id' => ['nullable', 'uuid'],
             'page' => ['nullable', 'integer', 'min:1'],
             'per_page' => ['nullable', 'integer', 'min:1', 'max:50'],
         ]);
-        $query = app(InquiryAssignmentService::class)->eligibleAssignees($companyId);
+        $query = app(InquiryAssignmentService::class)->eligibleAssignees();
         if (! empty($data['selected_id'])) {
             $query->where('users.id', $data['selected_id']);
         } elseif (! empty($data['search'])) {
@@ -663,20 +625,17 @@ class InquiryController extends Controller
         return response()->json(['status' => 'success', 'data' => $rows]);
     }
 
-    private function assignmentCompany(Request $request): string
+    private function assertAssignmentActor(Request $request): void
     {
-        $companyId = $this->currentCompanyId();
-        abort_unless(app(InquiryAssignmentService::class)->eligibleAssignees($companyId)->where('users.id', $request->user()->id)->exists(), 403);
-
-        return $companyId;
+        abort_unless(app(InquiryAssignmentService::class)->eligibleAssignees()->where('users.id', $request->user()->id)->exists(), 403);
     }
 
-    private function eligibleAssignees(string $companyId)
+    private function eligibleAssignees()
     {
-        return app(InquiryAssignmentService::class)->eligibleAssignees($companyId);
+        return app(InquiryAssignmentService::class)->eligibleAssignees();
     }
 
-    private function ensureRespondIoEnabled(string $companyId): void
+    private function ensureRespondIoEnabled(): void
     {
         abort_unless(filter_var(app(\App\Services\WebsiteSettingsService::class)
             ->get('feature_respond_io_enabled', false), FILTER_VALIDATE_BOOL), 422,
@@ -685,12 +644,11 @@ class InquiryController extends Controller
 
     public function updateStatus(Request $request, Inquiry $inquiry): JsonResponse
     {
-        $this->assertInquiryCompany($inquiry);
         $data = $request->validate([
             'status' => ['required', 'in:open,in_progress,closed,archived'],
         ]);
         $inquiry = DB::transaction(function () use ($request, $inquiry, $data): Inquiry {
-            $locked = Inquiry::query()->where(fn ($_companyIdScope) => \App\Services\CompanyIdScope::constrain($_companyIdScope, 'company_id', $inquiry->company_id))->lockForUpdate()->findOrFail($inquiry->id);
+            $locked = Inquiry::query()->lockForUpdate()->findOrFail($inquiry->id);
             $fromStatus = $locked->status;
             $locked->update(['status' => $data['status'], 'updated_user_id' => $request->user()->id]);
             app(\App\Services\InquiryStatusHistoryService::class)->record(
@@ -708,15 +666,12 @@ class InquiryController extends Controller
 
     public function respond(Request $request, Inquiry $inquiry): JsonResponse
     {
-        $this->assertInquiryCompany($inquiry);
         $data = $request->validate([
             'message' => ['required', 'string'],
             'status' => ['sometimes', 'nullable', 'in:open,in_progress,closed,archived'],
         ]);
-        $companyId = $this->currentCompanyId(true);
-        abort_unless($companyId && \App\Services\CompanyIdScope::sameCompanyId((string) ($inquiry->company_id), (string) ($companyId)), 404);
-        $inquiry = DB::transaction(function () use ($inquiry, $data, $request, $companyId): Inquiry {
-            $locked = Inquiry::query()->where(fn ($_companyIdScope) => \App\Services\CompanyIdScope::constrain($_companyIdScope, 'company_id', $companyId))->lockForUpdate()->findOrFail($inquiry->id);
+        $inquiry = DB::transaction(function () use ($inquiry, $data, $request): Inquiry {
+            $locked = Inquiry::query()->lockForUpdate()->findOrFail($inquiry->id);
             $attributes = [
                 'response' => $data['message'],
                 'status' => $data['status'] ?? 'in_progress',
@@ -747,26 +702,22 @@ class InquiryController extends Controller
             'message' => ['required', 'string', 'max:10000'],
             'idempotency_key' => ['required', 'uuid'],
         ]);
-        $this->assertInquiryCompany($inquiry);
         abort_if($inquiry->source === 'respond_io', 422, 'Send Respond.io replies through the connected conversation.');
         $recipient = trim((string) $inquiry->email);
         abort_unless(filter_var($recipient, FILTER_VALIDATE_EMAIL), 422, 'Add a valid customer email before sending a response.');
-        $companyId = $inquiry->company_id ?: \App\Services\CompanyIdScope::defaultCompanyId();
-        abort_unless($companyId, 409, 'No active default legal entity is configured.');
 
         try {
-            [$outbound, $shouldSend] = DB::transaction(function () use ($request, $data, $inquiry, $recipient, $companyId): array {
-                $locked = Inquiry::query()->where(fn ($_companyIdScope) => \App\Services\CompanyIdScope::constrain($_companyIdScope, 'company_id', $companyId))->lockForUpdate()->findOrFail($inquiry->id);
+            [$outbound, $shouldSend] = DB::transaction(function () use ($request, $data, $inquiry, $recipient): array {
+                $locked = Inquiry::query()->lockForUpdate()->findOrFail($inquiry->id);
                 $existing = InquiryOutboundResponse::query()->where('idempotency_key', $data['idempotency_key'])->lockForUpdate()->first();
                 if ($existing) {
-                    abort_unless(\App\Services\CompanyIdScope::sameCompanyId((string) ($existing->company_id), (string) ($companyId)) && $existing->inquiry_id === $locked->id
+                    abort_unless($existing->inquiry_id === $locked->id
                         && $existing->recipient_email === $recipient && $existing->message === $data['message'],
                         409, 'This send key was already used for a different response.');
                     return [$existing, false];
                 }
 
                 $outbound = InquiryOutboundResponse::create([
-                    'company_id' => $companyId,
                     'inquiry_id' => $locked->id,
                     'sent_by_user_id' => $request->user()->id,
                     'idempotency_key' => $data['idempotency_key'],
@@ -781,7 +732,7 @@ class InquiryController extends Controller
         } catch (QueryException $exception) {
             $outbound = InquiryOutboundResponse::query()->where('idempotency_key', $data['idempotency_key'])->first();
             if (! $outbound) throw $exception;
-            abort_unless(\App\Services\CompanyIdScope::sameCompanyId((string) ($outbound->company_id), (string) ($companyId)) && $outbound->inquiry_id === $inquiry->id
+            abort_unless($outbound->inquiry_id === $inquiry->id
                 && $outbound->recipient_email === $recipient && $outbound->message === $data['message'],
                 409, 'This send key was already used for a different response.');
             $shouldSend = false;
@@ -810,11 +761,11 @@ class InquiryController extends Controller
         }
 
         $sentAt = now();
-        DB::transaction(function () use ($outbound, $inquiry, $data, $request, $companyId, $sentAt): void {
-            $locked = InquiryOutboundResponse::query()->where(fn ($_companyIdScope) => \App\Services\CompanyIdScope::constrain($_companyIdScope, 'company_id', $companyId))->lockForUpdate()->findOrFail($outbound->id);
+        DB::transaction(function () use ($outbound, $inquiry, $data, $request, $sentAt): void {
+            $locked = InquiryOutboundResponse::query()->lockForUpdate()->findOrFail($outbound->id);
             if ($locked->status !== 'sending') return;
             $locked->update(['status' => 'sent', 'sent_at' => $sentAt]);
-            $lockedInquiry = Inquiry::query()->where(fn ($_companyIdScope) => \App\Services\CompanyIdScope::constrain($_companyIdScope, 'company_id', $companyId))->whereKey($inquiry->id)->lockForUpdate()->firstOrFail();
+            $lockedInquiry = Inquiry::query()->whereKey($inquiry->id)->lockForUpdate()->firstOrFail();
             $inquiryChanges = ['response' => $data['message'], 'responded_at' => $sentAt, 'updated_user_id' => $request->user()->id];
             if (! $lockedInquiry->first_response_sent_at) $inquiryChanges['first_response_sent_at'] = $sentAt;
             $lockedInquiry->update($inquiryChanges);
@@ -827,9 +778,8 @@ class InquiryController extends Controller
 
     public function markRead(Request $request, Inquiry $inquiry): JsonResponse
     {
-        $this->assertInquiryCompany($inquiry);
         $inquiry = DB::transaction(function () use ($request, $inquiry): Inquiry {
-            $locked = Inquiry::query()->where(fn ($_companyIdScope) => \App\Services\CompanyIdScope::constrain($_companyIdScope, 'company_id', $inquiry->company_id))->lockForUpdate()->findOrFail($inquiry->id);
+            $locked = Inquiry::query()->lockForUpdate()->findOrFail($inquiry->id);
             $fromStatus = $locked->status;
             $locked->update(['status' => $locked->status ?: 'read', 'updated_user_id' => $request->user()->id]);
             app(\App\Services\InquiryStatusHistoryService::class)->record(
@@ -845,39 +795,8 @@ class InquiryController extends Controller
         ]);
     }
 
-    private function currentCompanyId(bool $forUpdate = false): string
+    private function linkExistingInquiryCustomer(Inquiry $inquiry, Customer $customer, string $actorId): Inquiry
     {
-        $companyId = app(WebsiteSettingsService::class)->resolveCurrentCompanyId();
-        abort_unless($companyId, 409, 'Select an active business before managing inquiries.');
-        app(CompanySettingsAccessService::class)->assertCanAccess(request()->user(), (string) $companyId);
-        if ($forUpdate) {
-            $companyId = Company::query()->whereKey($companyId)->where('is_active', true)
-                ->whereNull('deleted_at')->lockForUpdate()->value('id');
-            abort_unless($companyId, 409, 'The selected business is no longer active.');
-        }
-
-        return (string) $companyId;
-    }
-
-    private function assertInquiryCompany(Inquiry $inquiry): void
-    {
-        $companyId = $this->currentCompanyId();
-        abort_unless($companyId && \App\Services\CompanyIdScope::sameCompanyId((string) ($inquiry->company_id), (string) $companyId), 404);
-    }
-
-    private function linkExistingInquiryCustomer(Inquiry $inquiry, Customer $customer, string $companyId, string $actorId): Inquiry
-    {
-        $hasBusinessLink = DB::table('customer_relationship_owner_assignments')->where('customer_id', $customer->id)
-            ->where(fn ($_companyIdScope) => \App\Services\CompanyIdScope::constrain($_companyIdScope, 'company_id', $companyId))->exists();
-        if (! $hasBusinessLink) {
-            DB::table('customer_relationship_owner_assignments')->insert([
-                'id' => (string) Str::uuid(), 'customer_id' => $customer->id, 'company_id' => $companyId,
-                'owner_sales_profile_id' => null, 'assigned_by_user_id' => $actorId,
-                'reason' => 'Linked from an inquiry; assign a customer owner after review.',
-                'effective_from' => now(), 'created_at' => now(), 'updated_at' => now(),
-            ]);
-        }
-
         $payload = $inquiry->payload ?? [];
         $event = [
             'from_customer_id' => null, 'to_customer_id' => (string) $customer->id,
@@ -891,10 +810,4 @@ class InquiryController extends Controller
         return $inquiry->fresh();
     }
 
-    private function assertCustomerInCompany(Customer $customer, string $companyId): void
-    {
-        $query = Customer::query()->whereKey($customer->id);
-        CompanyCustomerScope::constrain($query, 'customers', $companyId);
-        abort_unless($query->exists(), 422, 'Choose a customer already associated with this business.');
-    }
 }

@@ -29,8 +29,6 @@ it('reports the real availability of scoped Sales legal-entity options', functio
     foreach ([
         '/api/sales/attribution-company-options',
         '/api/sales/payment-adjustment-company-options',
-        '/api/sales/payment-finality-company-options',
-        '/api/sales/policy-settings/company-options',
         '/api/sales/commission-configuration/company-options',
         '/api/sales/performance/company-options',
     ] as $endpoint) {

@@ -47,7 +47,7 @@ class CommissionPayoutService
                 422, 'A payout cannot cross legal entities or Staff beneficiaries.');
             $this->assertFrozenProfileBeneficiaries($statements);
             $statements = $statements->sortBy([['period_end', 'asc'], ['id', 'asc']])->values();
-            abort_unless($this->policySettings->featureEnabled((string) $companyId, 'payouts'), 409,
+            abort_unless($this->policySettings->featureEnabled('payouts'), 409,
                 'Commission payouts are not activated for this legal entity.');
             abort_if($statements->contains(fn ($statement) => ! in_array($statement->status, ['approved', 'partially_paid'], true)),
                 422, 'Only approved or partially paid statements can be paid.');
@@ -139,7 +139,7 @@ class CommissionPayoutService
                 abort_unless(hash_equals($duplicate->request_payload_checksum, $checksum), 422, 'This payout reversal key was already used with different facts.');
                 return $duplicate;
             }
-            abort_unless($this->policySettings->featureEnabled((string) $companyId, 'payouts'), 409,
+            abort_unless($this->policySettings->featureEnabled('payouts'), 409,
                 'Commission payouts are not activated for this legal entity.');
             abort_unless($original->status === 'confirmed' && ! $original->reverses_payout_id, 422, 'Only a confirmed original payout can be reversed once.');
             abort_if($original->paid_by === $actorUserId, 403, 'The original payer cannot approve their own payout reversal.');

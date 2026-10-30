@@ -1,6 +1,6 @@
 <?php
 
-it('gates the Sales Profile roster export/download behind a deny-by-default permission and legal-entity scope', function () {
+it('gates the Sales Profile roster export/download behind permission and profile authorization', function () {
     $seeder = file_get_contents(database_path('seeders/AllPermissionsSeeder.php'));
     $routes = file_get_contents(base_path('routes/api.php'));
     $controller = file_get_contents(app_path('Http/Controllers/Api/Sales/SalesProfileController.php'));
@@ -22,18 +22,19 @@ it('gates the Sales Profile roster export/download behind a deny-by-default perm
         ->toContain('scopeChecksum(');
 });
 
-it('defaults Sales Profile exports to the active entity and freezes the evaluated row scope', function () {
+it('freezes the installation-wide Sales Profile export row scope', function () {
     $controller = file_get_contents(app_path('Http/Controllers/Api/Sales/SalesProfileController.php'));
     $service = file_get_contents(app_path('Services/Sales/SalesProfileExportService.php'));
+    $exportMethod = substr($controller, strpos($controller, 'public function export('), strpos($controller, 'public function downloadExport(') - strpos($controller, 'public function export('));
 
     expect($controller)
-        ->toContain("'company_id' => ['nullable', 'uuid', 'exists:companies,id']")
-        ->toContain('->resolveCompanyId($data[\'company_id\'] ?? null)')
         ->toContain('scopeType(')
+        ->and($exportMethod)->not->toContain('company_id', 'resolveCompanyId')
         ->and($service)
         ->toContain("'scope_profile_ids' => \$profileIds")
         ->toContain("'scope_checksum' => \$scopeChecksum")
-        ->toContain("'request_checksum' => \$requestChecksum");
+        ->toContain("'request_checksum' => \$requestChecksum")
+        ->not->toContain('$companyFilter');
 });
 
 it('rejects an idempotency key reused across a different Sales Profile export scope instead of silently returning it', function () {

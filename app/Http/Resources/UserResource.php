@@ -70,6 +70,11 @@ class UserResource extends JsonResource
                     ];
                 });
             }),
+            'corporate_names' => $this->whenLoaded('corporateEmployees', fn () => $this->corporateEmployees
+                ->map(fn ($employee) => $employee->corporate?->name)
+                ->filter()
+                ->unique()
+                ->values()),
             'statistics' => $this->when($request->has('include_stats'), function () {
                 return [
                     'total_bookings' => $this->bookings()->count(),

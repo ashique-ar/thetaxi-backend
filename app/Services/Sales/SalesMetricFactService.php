@@ -49,7 +49,7 @@ class SalesMetricFactService
                 'The metric source was already projected with different facts.');
             if ($existing) return $existing;
 
-            $timezone = $this->policySettings->businessTimezone($payload['company_id']);
+            $timezone = $this->policySettings->businessTimezone();
             $timezoneIsApproved = is_string($timezone) && $timezone !== ''
                 && in_array($timezone, DateTimeZone::listIdentifiers(), true);
             if (! $timezoneIsApproved) {

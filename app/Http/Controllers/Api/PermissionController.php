@@ -21,10 +21,10 @@ class PermissionController extends Controller
 {
     public function __construct(private PermissionAssignmentService $assignmentService)
     {
-        $this->middleware('permission:permissions.view')->only(['index', 'show']);
-        $this->middleware('permission:permissions.create')->only(['store']);
-        $this->middleware('permission:permissions.edit')->only(['update']);
-        $this->middleware('permission:permissions.delete')->only(['destroy']);
+        $this->middleware('permission:permissions.view|permissions.create|permissions.edit|permissions.delete|permissions.manage')->only(['index', 'show']);
+        $this->middleware('permission:permissions.create|permissions.manage')->only(['store']);
+        $this->middleware('permission:permissions.edit|permissions.manage')->only(['update']);
+        $this->middleware('permission:permissions.delete|permissions.manage')->only(['destroy']);
     }
 
     public function registry(Request $request, PermissionRegistry $registry): JsonResponse
@@ -51,7 +51,8 @@ class PermissionController extends Controller
             $query->where('name', 'like', '%' . $request->search . '%');
         }
 
-        $query->where('guard_name', config('permissions.canonical_guard', 'api'));
+        $query->where('guard_name', config('permissions.canonical_guard', 'api'))
+            ->whereNotIn('name', array_keys(config('permissions.aliases', [])));
 
         $sortable = ['id', 'name', 'guard_name', 'created_at'];
         $sortBy = $request->get('sort_by');

@@ -91,7 +91,7 @@ class PermissionRegistry
                         ! self::isAdminOnlyPermissionName($permission)
                     ));
                 }
-                if (! in_array($key, ['admin', 'master-admin'], true)) {
+                if (! in_array($key, ['admin', 'master-admin', 'fleet-manager', 'driver-coordinator', 'accountant'], true)) {
                     $permissionNames = array_values(array_diff($permissionNames, AllPermissionsSeeder::baselineDeniedPermissionNames()));
                 }
 
@@ -119,7 +119,7 @@ class PermissionRegistry
             ->values();
     }
 
-    private function formatPermission(Permission $permission): array
+    public function formatPermission(Permission $permission): array
     {
         $name = $this->resolveKey($permission->name);
         $parts = explode('.', $name);
@@ -131,6 +131,7 @@ class PermissionRegistry
             'name' => $name,
             'guard_name' => $permission->guard_name,
             'module' => $module,
+            'module_label' => config("permissions.modules.{$module}.label", Str::headline(str_replace(['.', '-', '_'], ' ', $module))),
             'action' => $action,
             'display_name' => $permission->display_name ?? Str::headline(str_replace(['.', '-', '_'], ' ', $name)),
             'description' => $permission->description,
@@ -139,7 +140,7 @@ class PermissionRegistry
 
     private function moduleFor(string $name, string $fallback): string
     {
-        if ($legacyModule = config("permissions.legacy_modules.{$name}")) {
+        if ($legacyModule = (config('permissions.legacy_modules', [])[$name] ?? null)) {
             return $legacyModule;
         }
 

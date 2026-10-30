@@ -475,18 +475,18 @@ Route::middleware(['auth:api'])->group(function () {
     Route::post('business-codes/{entity}/reserve', [UserController::class, 'reserveBusinessCode'])
         ->middleware('permission:customers.create|staff.create|drivers.create');
 
+    Route::middleware('ensure.internal')->group(function () {
     Route::middleware(['permission:users.view'])->group(function () {
         Route::get('users', [UserController::class, 'index']);
         Route::get('users/filter-options', [UserController::class, 'filterOptions']);
         Route::post('users/search/advanced', [UserController::class, 'advancedSearch']);
         Route::get('users/export', [UserController::class, 'export'])->middleware('permission:users.manage');
-        Route::get('users/{user}', [UserController::class, 'show']);
-        Route::get('users/{user}/permissions', [UserController::class, 'permissions'])->middleware('permission:permissions.manage');
-        Route::get('users/{user}/roles', [UserController::class, 'roles'])->middleware('permission:users.edit');
-
-        // Admin: view contexts for a specific user
-        Route::get('users/{user}/contexts', [UserController::class, 'contexts']);
     });
+    Route::get('users/{user}', [UserController::class, 'show'])->middleware('permission:users.view|users.edit');
+    Route::get('users/{user}/permissions', [UserController::class, 'permissions'])
+        ->middleware('permission:users.view|users.edit|permissions.manage');
+    Route::get('users/{user}/roles', [UserController::class, 'roles'])->middleware('permission:users.edit');
+    Route::get('users/{user}/contexts', [UserController::class, 'contexts'])->middleware('permission:users.edit');
     Route::post('users', [UserController::class, 'store'])->middleware('permission:users.create');
     Route::post('users/import', [UserController::class, 'import'])->middleware('permission:users.manage');
     Route::post('users/bulk', [UserController::class, 'bulk'])->middleware('permission:users.manage');
@@ -506,6 +506,7 @@ Route::middleware(['auth:api'])->group(function () {
     Route::post('users/{user}/contexts/deactivate', [UserController::class, 'deactivateContext'])->middleware('permission:users.edit');
     Route::post('users/{user}/contexts/{context}/roles', [UserController::class, 'assignContextRoles'])->middleware('permission:users.edit');
     Route::delete('users/{user}/contexts/{context}/roles', [UserController::class, 'revokeContextRole'])->middleware('permission:users.edit');
+    });
 
     /*
     |--------------------------------------------------------------------------
@@ -551,16 +552,22 @@ Route::middleware(['auth:api'])->group(function () {
     |--------------------------------------------------------------------------
     */
 
-    Route::middleware(['permission:roles.view'])->group(function () {
-        Route::post('roles/ai-permission-suggestions', [RolePermissionAssistantController::class, 'suggest'])->middleware('permission:permissions.manage');
-        Route::apiResource('roles', RoleController::class);
-        Route::get('roles/{role}/permissions', [RoleController::class, 'permissions']);
-        Route::put('roles/{role}/permissions/sync', [RoleController::class, 'syncPermissions'])->middleware('permission:permissions.manage');
-        Route::post('roles/{role}/permissions/apply-template', [RoleController::class, 'applyTemplate'])->middleware('permission:permissions.manage');
-        Route::post('roles/{role}/permissions', [RoleController::class, 'assignPermissions'])->middleware('permission:permissions.manage');
-        Route::delete('roles/{role}/permissions', [RoleController::class, 'revokePermissions'])->middleware('permission:permissions.manage');
-        Route::get('roles/{role}/users', [RoleController::class, 'users']);
-    });
+    Route::middleware('ensure.internal')->group(function () {
+    Route::post('roles/ai-permission-suggestions', [RolePermissionAssistantController::class, 'suggest'])
+        ->middleware('permission:roles.edit|roles.manage');
+    Route::apiResource('roles', RoleController::class);
+    Route::get('roles/{role}/permissions', [RoleController::class, 'permissions'])
+        ->middleware('permission:roles.view|roles.edit|roles.manage');
+    Route::put('roles/{role}/permissions/sync', [RoleController::class, 'syncPermissions'])
+        ->middleware('permission:roles.edit|roles.manage');
+    Route::post('roles/{role}/permissions/apply-template', [RoleController::class, 'applyTemplate'])
+        ->middleware('permission:roles.edit|roles.manage');
+    Route::post('roles/{role}/permissions', [RoleController::class, 'assignPermissions'])
+        ->middleware('permission:roles.edit|roles.manage');
+    Route::delete('roles/{role}/permissions', [RoleController::class, 'revokePermissions'])
+        ->middleware('permission:roles.edit|roles.manage');
+    Route::get('roles/{role}/users', [RoleController::class, 'users'])
+        ->middleware('permission:roles.view|roles.edit|roles.manage');
 
     /*
     |--------------------------------------------------------------------------
@@ -568,14 +575,18 @@ Route::middleware(['auth:api'])->group(function () {
     |--------------------------------------------------------------------------
     */
 
-    Route::get('permissions/registry', [PermissionController::class, 'registry'])->middleware('permission:permissions.view');
-    Route::get('permissions', [PermissionController::class, 'index'])->middleware('permission:permissions.view');
-    Route::get('permissions/{permission}', [PermissionController::class, 'show'])->middleware('permission:permissions.view');
-    Route::post('permissions', [PermissionController::class, 'store'])->middleware('permission:permissions.manage');
-    Route::put('permissions/{permission}', [PermissionController::class, 'update'])->middleware('permission:permissions.manage');
-    Route::delete('permissions/{permission}', [PermissionController::class, 'destroy'])->middleware('permission:permissions.manage');
-    Route::get('permissions/{permission}/roles', [PermissionController::class, 'roles'])->middleware('permission:permissions.view');
-    Route::get('permissions/{permission}/users', [PermissionController::class, 'users'])->middleware('permission:permissions.view');
+    Route::get('permissions/registry', [PermissionController::class, 'registry'])
+        ->middleware('permission:permissions.view|permissions.manage|roles.create|roles.edit|roles.manage');
+    Route::get('permissions', [PermissionController::class, 'index'])
+        ->middleware('permission:permissions.view|permissions.create|permissions.edit|permissions.delete|permissions.manage');
+    Route::get('permissions/{permission}', [PermissionController::class, 'show'])
+        ->middleware('permission:permissions.view|permissions.create|permissions.edit|permissions.delete|permissions.manage');
+    Route::post('permissions', [PermissionController::class, 'store'])->middleware('permission:permissions.create|permissions.manage');
+    Route::put('permissions/{permission}', [PermissionController::class, 'update'])->middleware('permission:permissions.edit|permissions.manage');
+    Route::delete('permissions/{permission}', [PermissionController::class, 'destroy'])->middleware('permission:permissions.delete|permissions.manage');
+    Route::get('permissions/{permission}/roles', [PermissionController::class, 'roles'])->middleware('permission:permissions.view|permissions.manage');
+    Route::get('permissions/{permission}/users', [PermissionController::class, 'users'])->middleware('permission:permissions.view|permissions.manage');
+    });
 
     /*
     |--------------------------------------------------------------------------
@@ -725,10 +736,6 @@ Route::middleware(['auth:api'])->group(function () {
             ->whereUuid('submission')->middleware('permission:sales.collections.verify');
         Route::get('payment-finality-policies', [PaymentFinalityController::class, 'index'])
             ->middleware('permission:sales.payment-finality.manage|sales.payment-finality.approve');
-        Route::get('payment-finality-context', [PaymentFinalityController::class, 'context'])
-            ->middleware('permission:sales.payment-finality.manage|sales.payment-finality.approve');
-        Route::get('payment-finality-company-options', [PaymentFinalityController::class, 'companyOptions'])
-            ->middleware('permission:sales.payment-finality.manage|sales.payment-finality.approve|sales.payment-finality.transition');
         Route::get('payment-finality-receipts', [PaymentFinalityController::class, 'receipts'])
             ->middleware('permission:sales.payment-finality.transition');
         Route::post('payment-finality-policies', [PaymentFinalityController::class, 'store'])
@@ -749,10 +756,6 @@ Route::middleware(['auth:api'])->group(function () {
             ->whereUuid('booking')->middleware('permission:sales.payment-ledger.reconcile');
         Route::post('payment-receipts/{receipt}/repair-components', [PaymentLedgerReconciliationController::class, 'repairComponents'])
             ->whereUuid('receipt')->middleware('permission:sales.payment-ledger.reconcile');
-        Route::get('policy-settings/context', [SalesPolicySettingsController::class, 'context'])
-            ->middleware('permission:sales.policy-settings.view');
-        Route::get('policy-settings/company-options', [SalesPolicySettingsController::class, 'companyOptions'])
-            ->middleware('permission:sales.policy-settings.view');
         Route::get('policy-settings', [SalesPolicySettingsController::class, 'index'])
             ->middleware('permission:sales.policy-settings.view');
         Route::post('policy-settings', [SalesPolicySettingsController::class, 'store'])
@@ -2214,9 +2217,6 @@ Route::middleware(['auth:api'])->group(function () {
     */
 
     // Inquiry routes use their own view/create/edit/delete permissions in the controller.
-    Route::get('inquiries/unscoped', [InquiryController::class, 'unscoped']);
-    Route::get('inquiries/company-options', [InquiryController::class, 'companyOptions']);
-    Route::put('inquiries/{inquiry}/company-scope', [InquiryController::class, 'scopeUnassigned'])->whereUuid('inquiry');
     Route::get('inquiries/filter-options', [InquiryController::class, 'filterOptions']);
     Route::get('inquiries/assignee-options', [InquiryController::class, 'assigneeOptions']);
     Route::get('inquiries/customer-options', [InquiryController::class, 'customerOptions']);

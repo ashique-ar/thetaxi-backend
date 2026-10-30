@@ -1,7 +1,7 @@
 <?php
 
 use App\Models\Company;
-use App\Models\Sales\SalesCompanyFeatureSetting;
+use App\Models\Sales\SalesFeatureSetting;
 use App\Models\Sales\SalesProfile;
 use App\Models\Sales\SalesOpportunity;
 use App\Models\Staff;
@@ -15,8 +15,8 @@ uses(RefreshDatabase::class);
 it('searches and hydrates only active scoped opportunity owners for companies with CRM enabled', function () {
     [$admin, $company] = hr_seed_admin_actor(['name' => 'CRM Owner Company']);
     config()->set('sales.features.crm', true);
-    SalesCompanyFeatureSetting::query()->create([
-        'company_id' => $company->id, 'feature_key' => 'crm', 'version' => 1,
+    SalesFeatureSetting::query()->create([
+        'feature_key' => 'crm', 'version' => 1,
         'enabled' => true, 'status' => 'approved', 'reason' => 'Feature test setup',
         'created_by' => $admin->id, 'approved_by' => $admin->id, 'approved_at' => now(),
     ]);
@@ -70,8 +70,8 @@ it('rejects a forged contextless CRM owner before recording an opportunity', fun
     $admin->givePermissionTo('sales.crm.manage');
     config()->set('sales.features.sales_profiles', true);
     config()->set('sales.features.crm', true);
-    SalesCompanyFeatureSetting::query()->create([
-        'company_id' => $company->id, 'feature_key' => 'crm', 'version' => 1,
+    SalesFeatureSetting::query()->create([
+        'feature_key' => 'crm', 'version' => 1,
         'enabled' => true, 'status' => 'approved', 'reason' => 'Feature test setup',
         'created_by' => $admin->id, 'approved_by' => $admin->id, 'approved_at' => now(),
     ]);

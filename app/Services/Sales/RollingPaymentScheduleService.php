@@ -392,7 +392,7 @@ class RollingPaymentScheduleService
 
     private function assertEnabled(string $companyId): void
     {
-        abort_unless($this->policySettings->featureEnabled($companyId, 'rolling_payment_schedules'), 503,
+        abort_unless($this->policySettings->featureEnabled('rolling_payment_schedules'), 503,
             'Rolling payment schedules are not enabled for this legal entity.');
         abort_unless(
             Schema::hasTable('booking_payment_schedule_rules')

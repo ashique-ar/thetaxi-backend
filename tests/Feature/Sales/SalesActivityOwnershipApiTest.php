@@ -5,7 +5,7 @@ use App\Models\Booking\Booking;
 use App\Models\Customer;
 use App\Models\Booking\BookingActivity;
 use App\Models\Sales\SalesActivity;
-use App\Models\Sales\SalesCompanyFeatureSetting;
+use App\Models\Sales\SalesFeatureSetting;
 use App\Models\Sales\SalesMetricFact;
 use App\Models\Sales\SalesOpportunity;
 use App\Models\Sales\SalesProfile;
@@ -26,8 +26,8 @@ it('records an authorized opportunity activity once and rejects cross-company re
     $actor->givePermissionTo(Permission::findByName('sales.crm.manage', 'api'));
     $actor->givePermissionTo(Permission::findByName('sales.crm.manage-all', 'api'));
     config()->set('sales.features.crm', true);
-    SalesCompanyFeatureSetting::query()->create([
-        'company_id' => $company->id, 'feature_key' => 'crm', 'version' => 1,
+    SalesFeatureSetting::query()->create([
+        'feature_key' => 'crm', 'version' => 1,
         'enabled' => true, 'status' => 'approved', 'reason' => 'Feature test setup',
         'created_by' => $actor->id, 'approved_by' => $actor->id, 'approved_at' => now(),
     ]);

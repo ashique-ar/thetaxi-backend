@@ -7,7 +7,6 @@ use App\Models\BaseModel;
 class SalesPolicySetting extends BaseModel
 {
     protected $fillable = [
-        'company_id',
         'policy_kind',
         'version',
         'status',

@@ -40,7 +40,7 @@ class SalesProfileExportService
                         DB::table('domain_audit_events')->insert([
                             'id' => (string) Str::uuid(),
                             'domain' => 'sales',
-                            'company_id' => $locked->company_id,
+                            'company_id' => null,
                             'subject_type' => 'sales_profile_export',
                             'subject_id' => $locked->id,
                             'event_type' => 'sales.profile_export.purged',
@@ -70,12 +70,11 @@ class SalesProfileExportService
 
     /**
      * Generate a private CSV roster export from an already row-scoped query
-     * (the caller must apply the same self/legal-entity authorization it
+     * (the caller must apply the same self/team authorization it
      * uses for the equivalent list endpoint before calling this).
      */
     public function generate(
         Builder $scopedQuery,
-        string $companyFilter,
         ?string $statusFilter,
         string $scopeType,
         string $key,
@@ -84,7 +83,7 @@ class SalesProfileExportService
         ?string $sourceIp = null,
     ): SalesProfileExport
     {
-        $retentionDays = $this->policySettings->profileExportRetentionDays($companyFilter);
+        $retentionDays = $this->policySettings->profileExportRetentionDays();
         if (! is_int($retentionDays) || $retentionDays < 1) {
             $this->fail(
                 'CONFIGURATION_MISSING',
@@ -95,7 +94,6 @@ class SalesProfileExportService
 
         $requestChecksum = hash('sha256', CanonicalJson::encode([
             'actor_user_id' => $actorUserId,
-            'company_id' => $companyFilter,
             'scope_type' => $scopeType,
             'status_filter' => $statusFilter,
         ]));
@@ -108,7 +106,6 @@ class SalesProfileExportService
         try {
             return DB::transaction(function () use (
                 $scopedQuery,
-                $companyFilter,
                 $statusFilter,
                 $scopeType,
                 $actorUserId,
@@ -126,11 +123,14 @@ class SalesProfileExportService
                     ->lockForUpdate()
                     ->first();
                 if ($duplicate) {
+                    $sameRequest = $duplicate->request_checksum === null
+                        ? $duplicate->status_filter === $statusFilter && $duplicate->scope_type === $scopeType
+                        : hash_equals((string) $duplicate->request_checksum, $requestChecksum);
                     if ($duplicate->generated_by !== $actorUserId
-                        || ! hash_equals((string) $duplicate->request_checksum, $requestChecksum)) {
+                        || ! $sameRequest) {
                         $this->fail(
                             'IDEMPOTENCY_PAYLOAD_MISMATCH',
-                            'The export key was already used for a different actor, scope, or filter.',
+                            'The export key was already used for a different actor, authorization scope, or filter.',
                             Response::HTTP_UNPROCESSABLE_ENTITY,
                         );
                     }
@@ -144,17 +144,16 @@ class SalesProfileExportService
                     ->orderBy('id')
                     ->get();
                 $profileIds = $profiles->pluck('id')->map(fn ($id) => (string) $id)->sort()->values()->all();
-                $scopeChecksum = self::scopeChecksum($companyFilter, $scopeType, $profileIds);
+                $scopeChecksum = self::scopeChecksum($scopeType, $profileIds);
                 $content = $this->csv($profiles);
                 $fileName = 'sales-profiles-'.now()->format('Ymd-His').'-'.Str::random(8).'.csv';
-                $path = 'sales-profile-exports/'.$companyFilter.'/'.$fileName;
+                $path = 'sales-profile-exports/'.$fileName;
 
                 if (! Storage::disk('sales_private')->put($path, $content)) {
                     throw new RuntimeException('The private Sales Profile export could not be written.');
                 }
 
                 $export = SalesProfileExport::create([
-                    'company_id' => $companyFilter,
                     'status_filter' => $statusFilter,
                     'scope_type' => $scopeType,
                     'scope_profile_ids' => $profileIds,
@@ -176,7 +175,7 @@ class SalesProfileExportService
                 DB::table('domain_audit_events')->insert([
                     'id' => (string) Str::uuid(),
                     'domain' => 'sales',
-                    'company_id' => $companyFilter,
+                    'company_id' => null,
                     'subject_type' => 'sales_profile_export',
                     'subject_id' => $export->id,
                     'event_type' => 'sales.profile_export.generated',
@@ -203,12 +202,11 @@ class SalesProfileExportService
         }
     }
 
-    public static function scopeChecksum(string $companyId, string $scopeType, array $profileIds): string
+    public static function scopeChecksum(string $scopeType, array $profileIds): string
     {
         sort($profileIds, SORT_STRING);
 
         return hash('sha256', CanonicalJson::encode([
-            'company_id' => $companyId,
             'scope_type' => $scopeType,
             'profile_ids' => array_values($profileIds),
         ]));
@@ -223,14 +221,13 @@ class SalesProfileExportService
 
         try {
             $this->writeRow($stream, [
-                'Sales code', 'Company ID', 'Staff code', 'Staff name', 'Staff category snapshot', 'Status',
+                'Sales code', 'Staff code', 'Staff name', 'Staff category snapshot', 'Status',
                 'Acquisition eligible', 'Collection eligible', 'Commission eligible', 'Reporting currency',
                 'Effective from', 'Effective until',
             ]);
             foreach ($profiles as $profile) {
                 $this->writeRow($stream, [
                     $this->spreadsheetSafe($profile->sales_code),
-                    $profile->company_id,
                     $this->spreadsheetSafe($profile->staff?->code),
                     $this->spreadsheetSafe(trim((string) ($profile->staff?->user?->first_name.' '.$profile->staff?->user?->last_name))),
                     $this->spreadsheetSafe($profile->staff_category_snapshot),

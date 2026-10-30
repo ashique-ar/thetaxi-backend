@@ -1005,7 +1005,7 @@ class CustomerController extends Controller
         }
 
         if ($request->user()->can('inquiries.view')) {
-            $inquiries = DB::table('inquiries as inquiry')->where(fn ($_companyIdScope) => \App\Services\CompanyIdScope::constrain($_companyIdScope, 'inquiry.company_id', $companyId))->where('inquiry.customer_id', $customer->id)->whereNull('inquiry.deleted_at')
+            $inquiries = DB::table('inquiries as inquiry')->where('inquiry.customer_id', $customer->id)->whereNull('inquiry.deleted_at')
                 ->selectRaw("CONCAT('inquiry:', inquiry.id) as id, 'inquiry' as event_type, COALESCE(inquiry.subject, inquiry.inquiry_type, 'Customer request') as title, inquiry.status as status, inquiry.created_at as occurred_at, inquiry.inquiry_number as reference, NULL as booking_id, inquiry.source as detail");
             $events->unionAll($inquiries);
 
@@ -1013,7 +1013,6 @@ class CustomerController extends Controller
             $inquiryStatusEvents = DB::table('inquiry_status_events as status')
                 ->join('inquiries as inquiry', 'inquiry.id', '=', 'status.inquiry_id')
                 ->leftJoin('users as status_actor', 'status_actor.id', '=', 'status.actor_user_id')
-                ->where(fn ($_companyIdScope) => \App\Services\CompanyIdScope::constrain($_companyIdScope, 'status.company_id', $companyId))->where(fn ($_companyIdScope) => \App\Services\CompanyIdScope::constrain($_companyIdScope, 'inquiry.company_id', $companyId))
                 ->where('inquiry.customer_id', $customer->id)->whereNull('inquiry.deleted_at')
                 ->selectRaw("CONCAT('inquiry-status:', status.id, ':', inquiry.id) as id, 'inquiry_status' as event_type, 'Request status changed' as title, status.to_status as status, status.occurred_at as occurred_at, inquiry.inquiry_number as reference, {$inquiryBookingField} as booking_id, CONCAT(COALESCE(status.from_status, 'New'), ' → ', status.to_status, CASE WHEN COALESCE(status.reason, '') = '' THEN '' ELSE CONCAT(' · ', status.reason) END, CASE WHEN status_actor.id IS NULL THEN '' ELSE CONCAT(' · by ', CONCAT_WS(' ', status_actor.first_name, status_actor.last_name)) END) as detail");
             $events->unionAll($inquiryStatusEvents);
@@ -1023,27 +1022,16 @@ class CustomerController extends Controller
                 ->leftJoin('users as from_user', 'from_user.id', '=', 'assignment.from_user_id')
                 ->leftJoin('users as to_user', 'to_user.id', '=', 'assignment.to_user_id')
                 ->leftJoin('users as assignment_actor', 'assignment_actor.id', '=', 'assignment.actor_user_id')
-                ->where(fn ($_companyIdScope) => \App\Services\CompanyIdScope::constrain($_companyIdScope, 'assignment.company_id', $companyId))->where(fn ($_companyIdScope) => \App\Services\CompanyIdScope::constrain($_companyIdScope, 'inquiry.company_id', $companyId))
                 ->where('inquiry.customer_id', $customer->id)->whereNull('inquiry.deleted_at')
                 ->selectRaw("CONCAT('inquiry-assignment:', assignment.id, ':', inquiry.id) as id, 'inquiry_assignment' as event_type, 'Request employee changed' as title, assignment.event_type as status, assignment.occurred_at as occurred_at, inquiry.inquiry_number as reference, {$inquiryBookingField} as booking_id, CONCAT(COALESCE(NULLIF(CONCAT_WS(' ', from_user.first_name, from_user.last_name), ''), 'Unassigned'), ' → ', COALESCE(NULLIF(CONCAT_WS(' ', to_user.first_name, to_user.last_name), ''), 'Unassigned'), CASE WHEN COALESCE(assignment.reason, '') = '' THEN '' ELSE CONCAT(' · ', assignment.reason) END, CASE WHEN assignment_actor.id IS NULL THEN '' ELSE CONCAT(' · by ', CONCAT_WS(' ', assignment_actor.first_name, assignment_actor.last_name)) END) as detail");
             $events->unionAll($inquiryAssignmentEvents);
 
-            $inquiryScopeEvents = DB::table('inquiry_company_scope_events as scope')
-                ->join('inquiries as inquiry', 'inquiry.id', '=', 'scope.inquiry_id')
-                ->leftJoin('users as scope_actor', 'scope_actor.id', '=', 'scope.actor_user_id')
-                ->where(fn ($_companyIdScope) => \App\Services\CompanyIdScope::constrain($_companyIdScope, 'scope.company_id', $companyId))->where(fn ($_companyIdScope) => \App\Services\CompanyIdScope::constrain($_companyIdScope, 'inquiry.company_id', $companyId))
-                ->where('inquiry.customer_id', $customer->id)->whereNull('inquiry.deleted_at')
-                ->selectRaw("CONCAT('inquiry-scope:', scope.id, ':', inquiry.id) as id, 'inquiry_scope' as event_type, 'Request added to this business' as title, NULL as status, scope.occurred_at as occurred_at, inquiry.inquiry_number as reference, {$inquiryBookingField} as booking_id, CONCAT(scope.reason, CASE WHEN scope_actor.id IS NULL THEN '' ELSE CONCAT(' · by ', CONCAT_WS(' ', scope_actor.first_name, scope_actor.last_name)) END) as detail");
-            $events->unionAll($inquiryScopeEvents);
         }
 
         if ($request->user()->can('communication.view')) {
             $respondIoMessages = DB::table('integration_webhook_events as provider_event')
-            ->join('inquiries as linked_inquiry', function ($join): void {
-                $join->on('linked_inquiry.id', '=', 'provider_event.linked_inquiry_id')
-                    ->where(fn ($sameCompany) => \App\Services\CompanyIdScope::sameCompany($sameCompany, 'linked_inquiry.company_id', 'provider_event.company_id'));
-            })
-            ->where(fn ($_companyIdScope) => \App\Services\CompanyIdScope::constrain($_companyIdScope, 'provider_event.company_id', $companyId))->where('provider_event.provider', 'respond_io')
+            ->join('inquiries as linked_inquiry', 'linked_inquiry.id', '=', 'provider_event.linked_inquiry_id')
+            ->where('provider_event.provider', 'respond_io')
             ->where('provider_event.status', 'processed')->whereNotNull('provider_event.external_message_id')
             ->whereRaw('LOWER(provider_event.event_type) LIKE ?', ['%message%'])
             ->whereRaw('LOWER(provider_event.event_type) NOT LIKE ?', ['%status%'])->whereRaw('LOWER(provider_event.event_type) NOT LIKE ?', ['%echo%'])
@@ -1064,15 +1052,15 @@ class CustomerController extends Controller
 
         if ($request->user()->can('communication.view')) {
             $syncedRespondIoMessages = DB::table('integration_contact_messages as synced_message')
-                ->where(fn ($_companyIdScope) => \App\Services\CompanyIdScope::constrain($_companyIdScope, 'synced_message.company_id', $companyId))->where('synced_message.linked_customer_id', $customer->id)
+                ->where('synced_message.linked_customer_id', $customer->id)
                 ->whereNotExists(function ($existing) use ($customer, $companyId): void {
                     $existing->selectRaw('1')->from('integration_webhook_events as provider_event')
                         ->whereColumn('provider_event.external_message_id', 'synced_message.external_message_id')
-                        ->where(fn ($sameCompany) => \App\Services\CompanyIdScope::sameCompany($sameCompany, 'provider_event.company_id', 'synced_message.company_id'))->where('provider_event.provider', 'respond_io')
+                        ->where('provider_event.provider', 'respond_io')
                         ->where('provider_event.status', 'processed')->whereNotNull('provider_event.linked_inquiry_id')
                         ->whereExists(fn ($linkedInquiry) => $linkedInquiry->selectRaw('1')->from('inquiries as linked_inquiry')
                             ->whereColumn('linked_inquiry.id', 'provider_event.linked_inquiry_id')
-                            ->where(fn ($_companyIdScope) => \App\Services\CompanyIdScope::constrain($_companyIdScope, 'linked_inquiry.company_id', $companyId))->where('linked_inquiry.customer_id', $customer->id)->whereNull('linked_inquiry.deleted_at'));
+                            ->where('linked_inquiry.customer_id', $customer->id)->whereNull('linked_inquiry.deleted_at'));
                 })
                 ->selectRaw("CONCAT('respond-io-history:', synced_message.id) as id, 'respond_io_history_message' as event_type, CASE WHEN synced_message.traffic = 'outgoing' THEN 'Outgoing Respond.io message' WHEN synced_message.traffic = 'incoming' THEN 'Incoming Respond.io message' ELSE 'Respond.io message' END as title, synced_message.message_type as status, synced_message.sent_at as occurred_at, NULL as reference, NULL as booking_id, NULL as detail");
             $events->unionAll($syncedRespondIoMessages);
@@ -1090,7 +1078,6 @@ class CustomerController extends Controller
                 ->leftJoin('users as from_user', 'from_user.id', '=', 'assignment.from_user_id')
                 ->leftJoin('users as to_user', 'to_user.id', '=', 'assignment.to_user_id')
                 ->leftJoin('users as actor', 'actor.id', '=', 'assignment.actor_user_id')
-                ->where(fn ($_companyIdScope) => \App\Services\CompanyIdScope::constrain($_companyIdScope, 'assignment.company_id', $companyId))->where(fn ($_companyIdScope) => \App\Services\CompanyIdScope::constrain($_companyIdScope, 'call.company_id', $companyId))
                 ->where('call.customer_id', $customer->id)->whereNull('call.deleted_at')
                 ->selectRaw("CONCAT('call-assignment:', call.id, ':', assignment.id) as id, 'call_assignment' as event_type, 'Call employee changed' as title, 'assigned' as status, assignment.event_at as occurred_at, call.phone as reference, {$callBookingField} as booking_id, CONCAT(COALESCE(NULLIF(CONCAT_WS(' ', from_user.first_name, from_user.last_name), ''), 'Unassigned'), ' → ', COALESCE(NULLIF(CONCAT_WS(' ', to_user.first_name, to_user.last_name), ''), 'Unassigned'), CASE WHEN COALESCE(assignment.reason, '') = '' THEN '' ELSE CONCAT(' · ', assignment.reason) END, CASE WHEN actor.id IS NULL THEN '' ELSE CONCAT(' · by ', CONCAT_WS(' ', actor.first_name, actor.last_name)) END) as detail");
             $events->unionAll($callAssignments);
@@ -1098,7 +1085,6 @@ class CustomerController extends Controller
             $callFollowUpAttempts = DB::table('phone_call_follow_up_attempts as attempt')
                 ->join('phone_calls as call', 'call.id', '=', 'attempt.phone_call_id')
                 ->leftJoin('users as actor', 'actor.id', '=', 'attempt.actor_user_id')
-                ->where(fn ($_companyIdScope) => \App\Services\CompanyIdScope::constrain($_companyIdScope, 'attempt.company_id', $companyId))->where(fn ($_companyIdScope) => \App\Services\CompanyIdScope::constrain($_companyIdScope, 'call.company_id', $companyId))
                 ->where('call.customer_id', $customer->id)->whereNull('call.deleted_at')
                 ->selectRaw("CONCAT('phone-call-follow-up:', call.id, ':', attempt.id) as id, 'call_follow_up' as event_type, CASE attempt.outcome WHEN 'contacted' THEN 'Callback: reached customer' WHEN 'no_answer' THEN 'Callback: no answer' WHEN 'not_interested' THEN 'Callback: not interested' ELSE 'Callback: result recorded' END as title, CASE WHEN attempt.outcome = 'no_answer' THEN 'rescheduled' ELSE 'completed' END as status, attempt.attempted_at as occurred_at, call.phone as reference, {$callBookingField} as booking_id, CONCAT(COALESCE(NULLIF(CONCAT_WS(' ', actor.first_name, actor.last_name), ''), 'Employee'), CASE WHEN COALESCE(attempt.notes, '') = '' THEN '' ELSE CONCAT(' · ', attempt.notes) END) as detail");
             $events->unionAll($callFollowUpAttempts);
@@ -1114,7 +1100,7 @@ class CustomerController extends Controller
             ->where(function ($scope) use ($customer, $companyId, $canViewBookings, $canViewCommunication) {
                 if ($canViewCommunication) {
                     $scope->whereExists(fn ($inquiry) => $inquiry->selectRaw('1')->from('inquiries as linked_inquiry')
-                        ->whereColumn('linked_inquiry.id', 'activity.inquiry_id')->where(fn ($_companyIdScope) => \App\Services\CompanyIdScope::constrain($_companyIdScope, 'linked_inquiry.company_id', $companyId))->where('linked_inquiry.customer_id', $customer->id)->whereNull('linked_inquiry.deleted_at'));
+                        ->whereColumn('linked_inquiry.id', 'activity.inquiry_id')->where('linked_inquiry.customer_id', $customer->id)->whereNull('linked_inquiry.deleted_at'));
                 }
                 if ($canViewBookings) {
                     $bookingScope = fn ($booking) => $booking->selectRaw('1')->from('bookings as linked_booking')
@@ -1190,7 +1176,7 @@ class CustomerController extends Controller
                 ->where(fn ($_companyIdScope) => \App\Services\CompanyIdScope::constrain($_companyIdScope, 'opportunity.company_id', $companyId))->whereNull('opportunity.deleted_at')
                 ->where(fn ($linked) => $linked->where('opportunity.customer_id', $customer->id)
                     ->orWhereExists(fn ($inquiry) => $inquiry->selectRaw('1')->from('inquiries as source_inquiry')
-                        ->whereColumn('source_inquiry.id', 'opportunity.inquiry_id')->where(fn ($_companyIdScope) => \App\Services\CompanyIdScope::constrain($_companyIdScope, 'source_inquiry.company_id', $companyId))
+                        ->whereColumn('source_inquiry.id', 'opportunity.inquiry_id')
                         ->where('source_inquiry.customer_id', $customer->id)->whereNull('source_inquiry.deleted_at')))
                 ->when($opportunityOwnerIds !== null, fn ($query) => $query->where(function ($owners) use ($opportunityOwnerIds): void {
                     $owners->whereIn('stage_event.to_owner_sales_profile_id', $opportunityOwnerIds)
@@ -1206,7 +1192,7 @@ class CustomerController extends Controller
                             ->whereColumn('linked_opportunity.id', 'task.opportunity_id')->where(fn ($_companyIdScope) => \App\Services\CompanyIdScope::constrain($_companyIdScope, 'linked_opportunity.company_id', $companyId))
                             ->where('linked_opportunity.customer_id', $customer->id)->whereNull('linked_opportunity.deleted_at'))
                         ->orWhereExists(fn ($inquiry) => $inquiry->selectRaw('1')->from('inquiries as linked_inquiry')
-                            ->whereColumn('linked_inquiry.id', 'task.inquiry_id')->where(fn ($_companyIdScope) => \App\Services\CompanyIdScope::constrain($_companyIdScope, 'linked_inquiry.company_id', $companyId))
+                            ->whereColumn('linked_inquiry.id', 'task.inquiry_id')
                             ->where('linked_inquiry.customer_id', $customer->id)->whereNull('linked_inquiry.deleted_at'))
                         ->orWhereExists(function ($booking) use ($customer, $companyId): void {
                             $booking->selectRaw('1')->from('bookings as linked_booking')
@@ -1236,11 +1222,11 @@ class CustomerController extends Controller
                 ->map(fn ($entry) => Str::after($entry->id, 'respond-io-history:'))->all();
             $providerEventIds = $timeline->getCollection()->filter(fn ($entry) => $entry->event_type === 'respond_io_message')
                 ->map(fn ($entry) => Str::after($entry->id, 'respond-io-message:'))->all();
-            $externalIdsByEvent = $providerEventIds ? IntegrationWebhookEvent::query()->where(fn ($_companyIdScope) => \App\Services\CompanyIdScope::constrain($_companyIdScope, 'company_id', $companyId))
+            $externalIdsByEvent = $providerEventIds ? IntegrationWebhookEvent::query()
                 ->where('provider', 'respond_io')->whereIn('id', $providerEventIds)->pluck('external_message_id', 'id') : collect();
             $externalMessageIds = $externalIdsByEvent->filter()->values();
             $syncedMessages = ($historyIds || $externalMessageIds->isNotEmpty())
-                ? IntegrationContactMessage::query()->where(fn ($_companyIdScope) => \App\Services\CompanyIdScope::constrain($_companyIdScope, 'company_id', $companyId))->where('linked_customer_id', $customer->id)
+                ? IntegrationContactMessage::query()->where('linked_customer_id', $customer->id)
                     ->where(function ($query) use ($historyIds, $externalMessageIds): void {
                         if ($historyIds) $query->whereIn('id', $historyIds);
                         if ($externalMessageIds->isNotEmpty()) $query->orWhereIn('external_message_id', $externalMessageIds);

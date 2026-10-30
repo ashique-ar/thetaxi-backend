@@ -3,7 +3,7 @@
 namespace App\Services\Sales;
 
 use App\Models\Sales\SalesPolicySetting;
-use App\Models\Sales\SalesCompanyFeatureSetting;
+use App\Models\Sales\SalesFeatureSetting;
 use App\Models\Sales\SalesStaffCategoryDefinition;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Schema;
@@ -22,35 +22,35 @@ class SalesPolicySettingsService
     public const KINDS = ['fx_corrections', 'commission_dispute', 'profile_export_retention', 'business_timezone', 'inquiry_response', 'booking_assignment', 'repeat_booking_followup'];
     public const STAGE_LABEL_DEFAULTS = ['new' => 'New', 'contacted' => 'Contacted', 'qualified' => 'Qualified', 'quotation' => 'Quotation', 'negotiation' => 'Negotiation', 'won' => 'Won', 'lost' => 'Lost'];
     public const STAGE_FEATURES = ['crm_contact_stage' => 'contacted', 'crm_qualification_stage' => 'qualified', 'crm_quotation_stage' => 'quotation', 'crm_negotiation_stage' => 'negotiation'];
-    // Expose a tenant toggle only after every runtime path for it is company-aware.
     public const FEATURES = ['fx_corrections', 'rolling_payment_schedules', 'enforce_payment_finality', 'statements', 'payouts', 'performance_snapshots', 'performance_alert_evaluations', 'performance_alert_actions', 'crm', 'crm_contact_stage', 'crm_qualification_stage', 'crm_quotation_stage', 'crm_negotiation_stage', 'commission_notifications'];
 
-    public function approvedFeatureSetting(string $companyId, string $feature): ?SalesCompanyFeatureSetting
+    public function approvedFeatureSetting(string $feature): ?SalesFeatureSetting
     {
-        if (! in_array($feature, self::FEATURES, true) || ! Schema::hasTable('sales_company_feature_settings')) return null;
+        if (! in_array($feature, self::FEATURES, true) || ! Schema::hasTable('sales_feature_settings')) return null;
 
-        return SalesCompanyFeatureSetting::query()->where(fn ($_companyIdScope) => \App\Services\CompanyIdScope::constrain($_companyIdScope, 'company_id', $companyId))
-            ->where('feature_key', $feature)->where('status', 'approved')->orderByDesc('version')->first();
+        return SalesFeatureSetting::query()->where('feature_key', $feature)->where('status', 'approved')
+            ->orderByRaw('CASE WHEN approved_at IS NULL THEN 1 ELSE 0 END')->orderByDesc('approved_at')
+            ->orderByDesc('created_at')->orderByDesc('id')->first();
     }
 
-    public function featureEnabled(string $companyId, string $feature): bool
+    public function featureEnabled(string $feature): bool
     {
         if (!in_array($feature, self::FEATURES, true)
-            || ! Schema::hasTable('sales_company_feature_settings')) {
+            || ! Schema::hasTable('sales_feature_settings')) {
             return false;
         }
 
-        return (bool) $this->approvedFeatureSetting($companyId, $feature)?->enabled;
+        return (bool) $this->approvedFeatureSetting($feature)?->enabled;
     }
 
-    public function stageLabels(string $companyId): array
+    public function stageLabels(): array
     {
         $labels = self::STAGE_LABEL_DEFAULTS;
-        if (! Schema::hasColumn('sales_company_feature_settings', 'stage_label')) return $labels;
+        if (! Schema::hasColumn('sales_feature_settings', 'stage_label')) return $labels;
 
-        $settings = DB::table('sales_company_feature_settings')->where(fn ($_companyIdScope) => \App\Services\CompanyIdScope::constrain($_companyIdScope, 'company_id', $companyId))
-            ->whereIn('feature_key', array_keys(self::STAGE_FEATURES))->where('status', 'approved')
-            ->whereNull('deleted_at')->orderByDesc('version')->get(['feature_key', 'stage_label']);
+        $settings = DB::table('sales_feature_settings')->whereIn('feature_key', array_keys(self::STAGE_FEATURES))
+            ->where('status', 'approved')->whereNull('deleted_at')->orderByRaw('CASE WHEN approved_at IS NULL THEN 1 ELSE 0 END')->orderByDesc('approved_at')
+            ->orderByDesc('created_at')->orderByDesc('id')->get(['feature_key', 'stage_label'])->unique('feature_key');
         foreach ($settings as $setting) {
             $stage = self::STAGE_FEATURES[$setting->feature_key] ?? null;
             if ($stage && isset($labels[$stage]) && trim((string) $setting->stage_label) !== '') {
@@ -68,7 +68,7 @@ class SalesPolicySettingsService
         ])->all();
     }
 
-    public function createFeature(string $companyId, string $feature, bool $enabled, string $reason, string $actorUserId, ?string $stageLabel = null): SalesCompanyFeatureSetting
+    public function createFeature(string $feature, bool $enabled, string $reason, string $actorUserId, ?string $stageLabel = null): SalesFeatureSetting
     {
         if (!in_array($feature, self::FEATURES, true)) {
             throw ValidationException::withMessages(['feature_key' => ['Unknown Sales feature.']]);
@@ -78,13 +78,10 @@ class SalesPolicySettingsService
             throw ValidationException::withMessages(['stage_label' => ['Only Sales stage settings can have a custom stage name.']]);
         }
 
-        return DB::transaction(function () use ($companyId, $feature, $enabled, $reason, $actorUserId, $stageLabel) {
-            DB::table('companies')->where('id', $companyId)->lockForUpdate()->firstOrFail();
-            $version = (int) SalesCompanyFeatureSetting::query()->where(fn ($_companyIdScope) => \App\Services\CompanyIdScope::constrain($_companyIdScope, 'company_id', $companyId))
-                ->where('feature_key', $feature)->lockForUpdate()->max('version') + 1;
+        return DB::transaction(function () use ($feature, $enabled, $reason, $actorUserId, $stageLabel) {
+            $version = (int) SalesFeatureSetting::query()->where('feature_key', $feature)->lockForUpdate()->max('version') + 1;
 
-            return SalesCompanyFeatureSetting::create([
-                'company_id' => $companyId,
+            return SalesFeatureSetting::create([
                 'feature_key' => $feature,
                 'version' => $version,
                 'enabled' => $enabled,
@@ -96,17 +93,14 @@ class SalesPolicySettingsService
         });
     }
 
-    public function approveFeature(string $id, string $actorUserId): SalesCompanyFeatureSetting
+    public function approveFeature(string $id, string $actorUserId): SalesFeatureSetting
     {
         return DB::transaction(function () use ($id, $actorUserId) {
-            $candidate = SalesCompanyFeatureSetting::query()->findOrFail($id);
-            abort_unless(DB::table('companies')->where('id', $candidate->company_id)->whereNull('deleted_at')
-                ->lockForUpdate()->first(), 404, 'The feature-setting company is unavailable.');
-            $setting = SalesCompanyFeatureSetting::query()->lockForUpdate()->findOrFail($id);
-            abort_unless($setting->status === 'draft', 422, 'Only a draft company feature setting can be approved.');
+            $candidate = SalesFeatureSetting::query()->findOrFail($id);
+            $setting = SalesFeatureSetting::query()->lockForUpdate()->findOrFail($id);
+            abort_unless($setting->status === 'draft', 422, 'Only a draft installation feature setting can be approved.');
             abort_if($setting->created_by === $actorUserId, 409, 'The feature-setting creator cannot approve the same version.');
-            SalesCompanyFeatureSetting::query()->where(fn ($_companyIdScope) => \App\Services\CompanyIdScope::constrain($_companyIdScope, 'company_id', $setting->company_id))
-                ->where('feature_key', $setting->feature_key)->where('status', 'approved')->lockForUpdate()
+            SalesFeatureSetting::query()->where('feature_key', $setting->feature_key)->where('status', 'approved')->lockForUpdate()
                 ->update(['status' => 'retired']);
             $setting->update(['status' => 'approved', 'approved_by' => $actorUserId, 'approved_at' => now()]);
 
@@ -114,15 +108,16 @@ class SalesPolicySettingsService
         });
     }
 
-    public function current(string $companyId, string $kind): ?SalesPolicySetting
+    public function current(string $kind): ?SalesPolicySetting
     {
-        return SalesPolicySetting::query()->where(fn ($_companyIdScope) => \App\Services\CompanyIdScope::constrain($_companyIdScope, 'company_id', $companyId))->where('policy_kind', $kind)->where('status', 'approved')
-            ->orderByDesc('version')->first();
+        return SalesPolicySetting::query()->where('policy_kind', $kind)->where('status', 'approved')
+            ->orderByRaw('CASE WHEN approved_at IS NULL THEN 1 ELSE 0 END')->orderByDesc('approved_at')
+            ->orderByDesc('created_at')->orderByDesc('id')->first();
     }
 
-    public function fxCorrectionsPolicy(string $companyId): array
+    public function fxCorrectionsPolicy(): array
     {
-        $policy = $this->current($companyId, 'fx_corrections');
+        $policy = $this->current('fx_corrections');
 
         return [
             'approved_quote_base' => $policy?->fx_quote_base,
@@ -132,60 +127,59 @@ class SalesPolicySettingsService
         ];
     }
 
-    public function disputeResponseDays(string $companyId): ?int
+    public function disputeResponseDays(): ?int
     {
-        return $this->current($companyId, 'commission_dispute')?->dispute_response_days;
+        return $this->current('commission_dispute')?->dispute_response_days;
     }
 
-    public function profileExportRetentionDays(string $companyId): ?int
+    public function profileExportRetentionDays(): ?int
     {
-        return $this->current($companyId, 'profile_export_retention')?->profile_export_retention_days;
+        return $this->current('profile_export_retention')?->profile_export_retention_days;
     }
 
-    public function businessTimezone(string $companyId): ?string
+    public function businessTimezone(): ?string
     {
-        return $this->current($companyId, 'business_timezone')?->business_timezone;
+        return $this->current('business_timezone')?->business_timezone;
     }
 
-    public function inquiryFirstResponseMinutes(string $companyId): ?int
+    public function inquiryFirstResponseMinutes(): ?int
     {
-        return $this->current($companyId, 'inquiry_response')?->inquiry_first_response_minutes;
+        return SalesPolicySetting::query()->where('policy_kind', 'inquiry_response')->where('status', 'approved')
+            ->orderByRaw('CASE WHEN approved_at IS NULL THEN 1 ELSE 0 END')->orderByDesc('approved_at')->orderByDesc('created_at')->orderByDesc('id')
+            ->value('inquiry_first_response_minutes');
     }
 
-    public function inquiryResponseBusinessHours(string $companyId): ?array
+    public function inquiryResponseBusinessHours(): ?array
     {
-        return $this->current($companyId, 'inquiry_response')?->inquiry_response_business_hours;
+        return $this->current('inquiry_response')?->inquiry_response_business_hours;
     }
 
     public function bookingAssignmentTargetMinutes(): ?int
     {
-        $value = SalesPolicySetting::query()->where('policy_kind', 'booking_assignment')
-            ->where('status', 'approved')->orderByDesc('version')->value('booking_assignment_target_minutes');
+        $value = $this->current('booking_assignment')?->booking_assignment_target_minutes;
 
         return is_numeric($value) ? (int) $value : null;
     }
 
     /** @return array<int, string> */
-    public function approvedStaffCategories(?string $companyId = null): array
+    public function approvedStaffCategories(): array
     {
         return SalesStaffCategoryDefinition::query()->where('status', 'approved')
-            ->orderBy('category_name')->pluck('category_name')->all();
+            ->orderBy('category_name')->distinct()->pluck('category_name')->all();
     }
 
-    public function create(string $companyId, string $kind, array $data, string $actorUserId): SalesPolicySetting
+    public function create(string $kind, array $data, string $actorUserId): SalesPolicySetting
     {
         if (!in_array($kind, self::KINDS, true)) {
             throw ValidationException::withMessages(['policy_kind' => ['Unknown governed policy kind.']]);
         }
         $values = $this->kindValues($kind, $data);
 
-        return DB::transaction(function () use ($companyId, $kind, $values, $data, $actorUserId) {
-            DB::table('companies')->where('id', $companyId)->lockForUpdate()->firstOrFail();
-            $version = (int) SalesPolicySetting::query()->where(fn ($_companyIdScope) => \App\Services\CompanyIdScope::constrain($_companyIdScope, 'company_id', $companyId))->where('policy_kind', $kind)->lockForUpdate()->max('version') + 1;
+        return DB::transaction(function () use ($kind, $values, $data, $actorUserId) {
+            $version = (int) SalesPolicySetting::query()->where('policy_kind', $kind)->lockForUpdate()->max('version') + 1;
 
             return SalesPolicySetting::create($values + [
                 'policy_kind' => $kind,
-                'company_id' => $companyId,
                 'version' => $version,
                 'status' => 'draft',
                 'reason' => trim((string) ($data['reason'] ?? '')) ?: null,
@@ -201,7 +195,7 @@ class SalesPolicySettingsService
             abort_unless($setting->status === 'draft', 422, 'Only a draft governed policy setting can be approved.');
             abort_if($setting->created_by === $actorUserId, 409, 'The policy-setting creator cannot approve the same version.');
 
-            SalesPolicySetting::query()->where(fn ($_companyIdScope) => \App\Services\CompanyIdScope::constrain($_companyIdScope, 'company_id', $setting->company_id))->where('policy_kind', $setting->policy_kind)->where('status', 'approved')
+            SalesPolicySetting::query()->where('policy_kind', $setting->policy_kind)->where('status', 'approved')
                 ->lockForUpdate()->update(['status' => 'retired']);
             $setting->update(['status' => 'approved', 'approved_by' => $actorUserId, 'approved_at' => now()]);
 
@@ -235,18 +229,17 @@ class SalesPolicySettingsService
         return $values;
     }
 
-    public function createStaffCategory(string $companyId, string $name, ?string $reason, string $actorUserId): SalesStaffCategoryDefinition
+    public function createStaffCategory(string $name, ?string $reason, string $actorUserId): SalesStaffCategoryDefinition
     {
         $normalized = trim($name);
         if ($normalized === '') {
             throw ValidationException::withMessages(['category_name' => ['A category name is required.']]);
         }
-        if (SalesStaffCategoryDefinition::query()->where(fn ($_companyIdScope) => \App\Services\CompanyIdScope::constrain($_companyIdScope, 'company_id', $companyId))->whereRaw('lower(category_name) = ?', [mb_strtolower($normalized)])->exists()) {
+        if (SalesStaffCategoryDefinition::query()->whereRaw('lower(category_name) = ?', [mb_strtolower($normalized)])->exists()) {
             throw ValidationException::withMessages(['category_name' => ['This Sales staff category already exists.']]);
         }
 
         return SalesStaffCategoryDefinition::create([
-            'company_id' => $companyId,
             'category_name' => $normalized,
             'status' => 'draft',
             'reason' => $reason ? trim($reason) : null,

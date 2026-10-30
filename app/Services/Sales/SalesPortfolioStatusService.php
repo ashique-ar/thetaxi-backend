@@ -112,7 +112,7 @@ class SalesPortfolioStatusService
         int $requestedPage,
         int $perPage,
     ): array {
-        $timezoneName = $this->policySettings->businessTimezone($companyId);
+        $timezoneName = $this->policySettings->businessTimezone();
         abort_unless(is_string($timezoneName) && $timezoneName !== '', 409,
             'CONFIGURATION_MISSING: an approved Sales business timezone is required for active portfolio reporting.');
         try {

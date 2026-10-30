@@ -10,7 +10,7 @@ class PhoneCallAssignment extends Model
 {
     use HasUuids;
 
-    protected $fillable = ['phone_call_id', 'company_id', 'from_user_id', 'to_user_id', 'actor_user_id', 'reason', 'event_at'];
+    protected $fillable = ['phone_call_id', 'from_user_id', 'to_user_id', 'actor_user_id', 'reason', 'event_at'];
     protected $casts = ['event_at' => 'datetime'];
 
     public function phoneCall(): BelongsTo { return $this->belongsTo(PhoneCall::class); }
