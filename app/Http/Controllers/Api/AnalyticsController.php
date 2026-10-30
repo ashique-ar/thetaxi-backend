@@ -3,15 +3,11 @@
 namespace App\Http\Controllers\Api;
 
 use App\Http\Controllers\Controller;
-use App\Models\User;
 use App\Models\Customer;
 use App\Models\Driver\Driver;
 use App\Models\Agent\Agent;
 use App\Models\Vehicle\Vehicle;
 use App\Models\Booking\Booking;
-use App\Services\CompanyBookingScope;
-use App\Services\CompanyIdScope;
-use App\Services\CompanyCustomerScope;
 use Illuminate\Http\Request;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Support\Facades\Cache;
@@ -38,13 +34,12 @@ class AnalyticsController extends Controller
      */
     public function getDashboardStats(Request $request): JsonResponse
     {
-        $companyId = 'installation';
-        $stats = Cache::remember('dashboard_stats.' . $companyId, 300, function () use ($companyId) {
-            $customers = $this->companyCustomerQuery($companyId);
-            $drivers = $this->companyDriverQuery($companyId);
-            $vehicles = $this->companyVehicleQuery($companyId);
-            $agents = $this->companyAgentQuery($companyId);
-            $bookings = $this->companyBookingQuery(Booking::query(), $companyId);
+        $stats = Cache::remember('dashboard_stats.installation', 300, function () {
+            $customers = Customer::query();
+            $drivers = $this->driversWithActiveStaff();
+            $vehicles = Vehicle::query();
+            $agents = Agent::query();
+            $bookings = Booking::query();
             return [
                 'total_customers' => $customers->count(),
                 'total_drivers' => $drivers->count(),
@@ -73,7 +68,7 @@ class AnalyticsController extends Controller
                     ->count(),
                 'available_vehicles' => (clone $vehicles)->where('status', 'available')->count(),
                 'active_drivers' => (clone $drivers)->where('status', 'active')->count(),
-                'top_performing_agents' => $this->companyAgentQuery($companyId)->select(
+                'top_performing_agents' => $this->agentsWithBookings()->select(
                     'agents.id',
                     'users.first_name',
                     'users.last_name'
@@ -81,12 +76,11 @@ class AnalyticsController extends Controller
                     ->selectRaw('COUNT(bookings.id) as total_bookings')
                     ->join('users', 'agents.user_id', '=', 'users.id')
                     ->leftJoin('bookings', 'agents.id', '=', 'bookings.agent_id')
-                    ->where(fn ($q) => CompanyBookingScope::constrain($q, 'bookings', $companyId))
                     ->groupBy('agents.id', 'users.first_name', 'users.last_name')
                     ->orderByDesc('total_bookings')
                     ->limit(5)
                     ->get(),
-                'recent_bookings' => $this->companyBookingQuery(Booking::with(['customer.user', 'vehicle', 'driver.user']), $companyId)
+                'recent_bookings' => Booking::with(['customer.user', 'vehicle', 'driver.user'])
                     ->latest()
                     ->limit(5)
                     ->get()
@@ -105,7 +99,6 @@ class AnalyticsController extends Controller
      */
     public function getBookingTrends(Request $request): JsonResponse
     {
-        $companyId = 'installation';
         $filters = $request->validate([
             'period' => ['sometimes', 'in:day,week,month,year'],
             'limit' => ['sometimes', 'integer', 'min:1', 'max:365'],
@@ -113,10 +106,10 @@ class AnalyticsController extends Controller
         $period = $filters['period'] ?? 'month';
         $limit = (int) ($filters['limit'] ?? 30);
 
-        $cacheKey = "booking_trends_{$companyId}_{$period}_{$limit}";
+        $cacheKey = "booking_trends_installation_{$period}_{$limit}";
 
-        $trends = Cache::remember($cacheKey, 300, function () use ($period, $limit, $companyId) {
-            $query = $this->companyBookingQuery(Booking::query(), $companyId)->selectRaw($this->getDateFormat($period) . ' as date')
+        $trends = Cache::remember($cacheKey, 300, function () use ($period, $limit) {
+            $query = Booking::query()->selectRaw($this->getDateFormat($period) . ' as date')
                 ->selectRaw('COUNT(*) as total_bookings')
                 ->selectRaw("SUM(CASE WHEN status = 'completed' THEN 1 ELSE 0 END) as completed_bookings")
                 ->selectRaw("SUM(CASE WHEN status = 'cancelled' THEN 1 ELSE 0 END) as cancelled_bookings")
@@ -144,14 +137,13 @@ class AnalyticsController extends Controller
      */
     public function getRevenueStats(Request $request): JsonResponse
     {
-        $companyId = 'installation';
         $filters = $request->validate(['period' => ['sometimes', 'in:day,week,month,year']]);
         $period = $filters['period'] ?? 'month';
-        $cacheKey = "revenue_stats_{$companyId}_{$period}";
+        $cacheKey = "revenue_stats_installation_{$period}";
 
-        $stats = Cache::remember($cacheKey, 300, function () use ($period, $companyId) {
+        $stats = Cache::remember($cacheKey, 300, function () use ($period) {
             $dateRange = $this->getDateRange($period);
-            $bookingValueStats = $this->companyBookingQuery(Booking::query(), $companyId)->where('status', 'completed')
+            $bookingValueStats = Booking::query()->where('status', 'completed')
                 ->whereBetween('created_at', $dateRange)
                 ->selectRaw('AVG(COALESCE(total_actual, total_estimated, 0)) as average_booking_value')
                 ->selectRaw('MAX(COALESCE(total_actual, total_estimated, 0)) as highest_booking_value')
@@ -159,27 +151,25 @@ class AnalyticsController extends Controller
                 ->first();
 
             return [
-                'total_revenue' => $this->companyBookingQuery(Booking::query(), $companyId)->where('status', 'completed')
+                'total_revenue' => Booking::query()->where('status', 'completed')
                     ->whereBetween('created_at', $dateRange)
                     ->selectRaw('SUM(COALESCE(total_actual, total_estimated, 0)) as revenue')
                     ->value('revenue') ?? 0,
                 'average_booking_value' => $bookingValueStats->average_booking_value ?? 0,
                 'highest_booking_value' => $bookingValueStats->highest_booking_value ?? 0,
                 'lowest_booking_value' => $bookingValueStats->lowest_booking_value ?? 0,
-                'revenue_by_vehicle_type' => $this->companyVehicleQuery($companyId)->select('vehicle_categories.name as category')
+                'revenue_by_vehicle_type' => Vehicle::query()->select('vehicle_categories.name as category')
                     ->selectRaw("COALESCE(NULLIF(UPPER(booking_items.currency), ''), NULLIF(UPPER(bookings.currency), ''), 'LKR') as currency")
                     ->selectRaw("SUM(CASE WHEN bookings.status = 'completed' THEN COALESCE(booking_items.total_price, 0) ELSE 0 END) as revenue")
                     ->join('vehicle_categories', 'vehicles.category_id', '=', 'vehicle_categories.id')
                     ->leftJoin('booking_items', 'vehicles.id', '=', 'booking_items.vehicle_id')
                     ->leftJoin('bookings', 'booking_items.booking_id', '=', 'bookings.id')
-                    ->where(fn ($_companyIdScope) => \App\Services\CompanyIdScope::constrain($_companyIdScope, 'vehicles.company_id', $companyId))
                     ->whereNull('booking_items.deleted_at')
-                    ->where(fn ($query) => CompanyBookingScope::constrain($query, 'bookings', $companyId))
                     ->whereBetween('bookings.created_at', $dateRange)
                     ->groupBy('vehicle_categories.id', 'vehicle_categories.name', 'currency')
                     ->orderByDesc('revenue')
                     ->get(),
-                'revenue_by_agent' => $this->companyAgentQuery($companyId)->select(
+                'revenue_by_agent' => $this->agentsWithBookings()->select(
                     'agents.id',
                     'users.first_name',
                     'users.last_name'
@@ -187,7 +177,6 @@ class AnalyticsController extends Controller
                     ->selectRaw("SUM(CASE WHEN bookings.status = 'completed' THEN COALESCE(bookings.total_actual, bookings.total_estimated, 0) ELSE 0 END) as revenue")
                     ->join('users', 'agents.user_id', '=', 'users.id')
                     ->leftJoin('bookings', 'agents.id', '=', 'bookings.agent_id')
-                    ->where(fn ($q) => CompanyBookingScope::constrain($q, 'bookings', $companyId))
                     ->whereBetween('bookings.created_at', $dateRange)
                     ->groupBy('agents.id', 'users.first_name', 'users.last_name')
                     ->orderByDesc('revenue')
@@ -208,19 +197,17 @@ class AnalyticsController extends Controller
      */
     public function getCustomerAnalytics(Request $request): JsonResponse
     {
-        $companyId = 'installation';
-        $stats = Cache::remember('customer_analytics.' . $companyId, 300, function () use ($companyId) {
-            $customers = $this->companyCustomerQuery($companyId);
+        $stats = Cache::remember('customer_analytics.installation', 300, function () {
+            $customers = Customer::query();
             return [
                 'total_customers' => (clone $customers)->count(),
                 'new_customers_this_month' => (clone $customers)->whereMonth('customers.created_at', Carbon::now()->month)
                     ->whereYear('created_at', Carbon::now()->year)
                     ->count(),
-                'active_customers' => (clone $customers)->whereHas('bookings', function ($query) use ($companyId) {
-                    CompanyBookingScope::constrain($query, 'bookings', $companyId);
+                'active_customers' => (clone $customers)->whereHas('bookings', function ($query) {
                     $query->where('created_at', '>=', Carbon::now()->subDays(30));
                 })->count(),
-                'top_customers' => $this->companyCustomerQuery($companyId)->select(
+                'top_customers' => Customer::query()->select(
                     'customers.id',
                     'users.first_name',
                     'users.last_name',
@@ -230,13 +217,12 @@ class AnalyticsController extends Controller
                     ->selectRaw("SUM(CASE WHEN bookings.status = 'completed' THEN COALESCE(bookings.total_actual, bookings.total_estimated, 0) ELSE 0 END) as total_spent")
                     ->join('users', 'customers.user_id', '=', 'users.id')
                     ->leftJoin('bookings', 'customers.id', '=', 'bookings.customer_id')
-                    ->where(fn ($query) => CompanyBookingScope::constrain($query, 'bookings', $companyId))
                     ->groupBy('customers.id', 'users.first_name', 'users.last_name', 'users.email')
                     ->orderByDesc('total_spent')
                     ->limit(10)
                     ->get(),
-                'customer_loyalty_distribution' => $this->getCustomerLoyaltyDistribution($companyId),
-                'customer_registration_trends' => $this->companyCustomerQuery($companyId)->selectRaw('DATE(customers.created_at) as date')
+                'customer_loyalty_distribution' => $this->getCustomerLoyaltyDistribution(),
+                'customer_registration_trends' => Customer::query()->selectRaw('DATE(customers.created_at) as date')
                     ->selectRaw('COUNT(*) as registrations')
                     ->where('customers.created_at', '>=', Carbon::now()->subDays(30))
                     ->groupBy('date')
@@ -257,14 +243,13 @@ class AnalyticsController extends Controller
      */
     public function getDriverPerformance(Request $request): JsonResponse
     {
-        $companyId = 'installation';
-        $stats = Cache::remember('driver_performance.' . $companyId, 300, function () use ($companyId) {
+        $stats = Cache::remember('driver_performance.installation', 300, function () {
             $driverBookings = \Illuminate\Support\Facades\DB::table('booking_items')
                 ->select('driver_id', 'booking_id')
                 ->whereNotNull('driver_id')
                 ->whereNull('deleted_at')
                 ->distinct();
-            $topDrivers = $this->companyDriverQuery($companyId)->select(
+            $topDrivers = $this->driversWithActiveStaff()->select(
                 'drivers.id', 'users.first_name', 'users.last_name',
             )
                 ->selectRaw('COUNT(DISTINCT bookings.id) as total_bookings')
@@ -273,9 +258,8 @@ class AnalyticsController extends Controller
                 ->join('users', 'drivers.user_id', '=', 'users.id')
                 ->leftJoinSub($driverBookings, 'driver_bookings', fn ($join) => $join->on('driver_bookings.driver_id', '=', 'drivers.id'))
                 ->leftJoin('bookings', 'driver_bookings.booking_id', '=', 'bookings.id');
-            CompanyBookingScope::constrain($topDrivers, 'bookings', $companyId);
 
-            $driverRatings = $this->companyBookingQuery(Booking::query(), $companyId)->selectRaw('CASE
+            $driverRatings = Booking::query()->selectRaw('CASE
                         WHEN driver_rating >= 4.5 THEN \'5 Stars\'
                         WHEN driver_rating >= 3.5 THEN \'4 Stars\'
                         WHEN driver_rating >= 2.5 THEN \'3 Stars\'
@@ -284,10 +268,10 @@ class AnalyticsController extends Controller
                     END as rating_category')
                 ->selectRaw('COUNT(*) as count')->whereNotNull('driver_rating')->groupBy('rating_category');
             return [
-                'total_drivers' => $this->companyDriverQuery($companyId)->count(),
-                'active_drivers' => $this->companyDriverQuery($companyId)->where('status', 'active')->count(),
+                'total_drivers' => $this->driversWithActiveStaff()->count(),
+                'active_drivers' => $this->driversWithActiveStaff()->where('status', 'active')->count(),
                 'top_drivers' => $topDrivers->groupBy('drivers.id', 'users.first_name', 'users.last_name')->orderByDesc('total_revenue')->limit(10)->get(),
-                'driver_status_distribution' => $this->companyDriverQuery($companyId)->select('status')
+                'driver_status_distribution' => $this->driversWithActiveStaff()->select('status')
                     ->selectRaw('COUNT(*) as count')
                     ->groupBy('status')
                     ->get(),
@@ -307,9 +291,8 @@ class AnalyticsController extends Controller
      */
     public function getVehicleUtilization(Request $request): JsonResponse
     {
-        $companyId = 'installation';
-        $stats = Cache::remember('vehicle_utilization.' . $companyId, 300, function () use ($companyId) {
-            $mostBooked = $this->companyVehicleQuery($companyId)->select(
+        $stats = Cache::remember('vehicle_utilization.installation', 300, function () {
+            $mostBooked = Vehicle::query()->select(
                 'vehicles.id', 'vehicles.registration_number', 'vehicle_makes.name as make', 'vehicle_models.name as model',
             )
                 ->selectRaw("COALESCE(NULLIF(UPPER(booking_items.currency), ''), NULLIF(UPPER(bookings.currency), ''), 'LKR') as currency")
@@ -320,9 +303,8 @@ class AnalyticsController extends Controller
                 ->leftJoin('booking_items', 'vehicles.id', '=', 'booking_items.vehicle_id')
                 ->leftJoin('bookings', 'booking_items.booking_id', '=', 'bookings.id');
             $mostBooked->whereNull('booking_items.deleted_at');
-            CompanyBookingScope::constrain($mostBooked, 'bookings', $companyId);
 
-            $categoryPerformance = $this->companyVehicleQuery($companyId)->select('vehicle_categories.name as category')
+            $categoryPerformance = Vehicle::query()->select('vehicle_categories.name as category')
                 ->selectRaw("COALESCE(NULLIF(UPPER(booking_items.currency), ''), NULLIF(UPPER(bookings.currency), ''), 'LKR') as currency")
                 ->selectRaw('COUNT(DISTINCT vehicles.id) as total_vehicles')
                 ->selectRaw('COUNT(DISTINCT bookings.id) as total_bookings')
@@ -331,16 +313,15 @@ class AnalyticsController extends Controller
                 ->leftJoin('booking_items', 'vehicles.id', '=', 'booking_items.vehicle_id')
                 ->leftJoin('bookings', 'booking_items.booking_id', '=', 'bookings.id');
             $categoryPerformance->whereNull('booking_items.deleted_at');
-            CompanyBookingScope::constrain($categoryPerformance, 'bookings', $companyId);
 
-            $vehicles = $this->companyVehicleQuery($companyId);
+            $vehicles = Vehicle::query();
             return [
                 'total_vehicles' => (clone $vehicles)->count(),
                 'available_vehicles' => (clone $vehicles)->where('status', 'available')->count(),
                 'in_use_vehicles' => (clone $vehicles)->where('status', 'in_use')->count(),
                 'maintenance_vehicles' => (clone $vehicles)->where('status', 'maintenance')->count(),
                 'most_booked_vehicles' => $mostBooked->groupBy('vehicles.id', 'vehicles.registration_number', 'vehicle_makes.name', 'vehicle_models.name', 'currency')->orderByDesc('total_bookings')->limit(10)->get(),
-                'vehicle_status_distribution' => $this->companyVehicleQuery($companyId)->select('status')
+                'vehicle_status_distribution' => Vehicle::query()->select('status')
                     ->selectRaw('COUNT(*) as count')
                     ->groupBy('status')
                     ->get(),
@@ -360,26 +341,24 @@ class AnalyticsController extends Controller
      */
     public function getAgentPerformance(Request $request): JsonResponse
     {
-        $companyId = 'installation';
-        $stats = Cache::remember('agent_performance.' . $companyId, 300, function () use ($companyId) {
+        $stats = Cache::remember('agent_performance.installation', 300, function () {
             $commissionsByBooking = \Illuminate\Support\Facades\DB::table('agent_commissions')
                 ->selectRaw('booking_id, agent_id, SUM(amount) as amount')
                 ->whereNull('deleted_at')
                 ->groupBy('booking_id', 'agent_id');
-            $topAgents = $this->companyAgentQuery($companyId)->select(
+            $topAgents = $this->agentsWithBookings()->select(
                 'agents.id', 'users.first_name', 'users.last_name', 'users.email',
             )
                 ->selectRaw('COUNT(bookings.id) as total_bookings')
                 ->selectRaw("SUM(CASE WHEN bookings.status = 'completed' THEN COALESCE(bookings.total_actual, bookings.total_estimated, 0) ELSE 0 END) as total_revenue")
-                ->selectRaw('SUM(company_commissions.amount) as total_commission')
+                ->selectRaw('SUM(agent_commissions.amount) as total_commission')
                 ->join('users', 'agents.user_id', '=', 'users.id')
                 ->leftJoin('bookings', 'agents.id', '=', 'bookings.agent_id')
-                ->leftJoinSub($commissionsByBooking, 'company_commissions', fn ($join) => $join
-                    ->on('company_commissions.agent_id', '=', 'agents.id')
-                    ->on('company_commissions.booking_id', '=', 'bookings.id'));
-            CompanyBookingScope::constrain($topAgents, 'bookings', $companyId);
+                ->leftJoinSub($commissionsByBooking, 'agent_commissions', fn ($join) => $join
+                    ->on('agent_commissions.agent_id', '=', 'agents.id')
+                    ->on('agent_commissions.booking_id', '=', 'bookings.id'));
 
-            $monthlyAgents = $this->companyAgentQuery($companyId)->select(
+            $monthlyAgents = $this->agentsWithBookings()->select(
                 'agents.id', 'users.first_name', 'users.last_name',
             )
                 ->selectRaw('COUNT(bookings.id) as monthly_bookings')
@@ -388,13 +367,12 @@ class AnalyticsController extends Controller
                 ->leftJoin('bookings', 'agents.id', '=', 'bookings.agent_id')
                 ->whereMonth('bookings.created_at', Carbon::now()->month)
                 ->whereYear('bookings.created_at', Carbon::now()->year);
-            CompanyBookingScope::constrain($monthlyAgents, 'bookings', $companyId);
 
             return [
-                'total_agents' => $this->companyAgentQuery($companyId)->count(),
-                'active_agents' => $this->companyAgentQuery($companyId)->where('status', 'active')->count(),
+                'total_agents' => Agent::query()->count(),
+                'active_agents' => Agent::query()->where('status', 'active')->count(),
                 'top_agents' => $topAgents->groupBy('agents.id', 'users.first_name', 'users.last_name', 'users.email')->orderByDesc('total_revenue')->limit(10)->get(),
-                'agent_status_distribution' => $this->companyAgentQuery($companyId)->select('status')
+                'agent_status_distribution' => Agent::query()->select('status')
                     ->selectRaw('COUNT(*) as count')
                     ->groupBy('status')
                     ->get(),
@@ -408,49 +386,27 @@ class AnalyticsController extends Controller
         ]);
     }
 
-    private function companyBookingQuery($query, string $companyId)
-    {
-        CompanyBookingScope::constrain($query, 'bookings', $companyId);
-
-        return $query;
-    }
-
-    private function companyCustomerQuery(string $companyId)
-    {
-        $query = Customer::query();
-        CompanyCustomerScope::constrain($query, 'customers', $companyId);
-
-        return $query;
-    }
-
-    private function companyDriverQuery(string $companyId)
+    private function driversWithActiveStaff()
     {
         return Driver::query()->whereExists(fn ($staff) => $staff->selectRaw('1')->from('staff')
             ->whereColumn('staff.user_id', 'drivers.user_id')
-            ->where(fn ($company) => CompanyIdScope::constrain($company, 'staff.company_id', $companyId))
             ->whereNull('staff.deleted_at')->whereNull('staff.employment_ended_at'));
     }
 
-    private function companyVehicleQuery(string $companyId)
+    private function agentsWithBookings()
     {
-        return Vehicle::query()->where(fn ($company) => CompanyIdScope::constrain($company, 'vehicles.company_id', $companyId));
-    }
-
-    private function companyAgentQuery(string $companyId)
-    {
-        return Agent::query()->whereExists(function ($bookings) use ($companyId): void {
-            $bookings->selectRaw('1')->from('bookings as scoped_booking')
-                ->whereColumn('scoped_booking.agent_id', 'agents.id');
-            CompanyBookingScope::constrain($bookings, 'scoped_booking', $companyId);
+        return Agent::query()->whereExists(function ($bookings): void {
+            $bookings->selectRaw('1')->from('bookings as agent_booking')
+                ->whereColumn('agent_booking.agent_id', 'agents.id');
         });
     }
 
     /**
      * Get customer loyalty distribution
      */
-    private function getCustomerLoyaltyDistribution(string $companyId): array
+    private function getCustomerLoyaltyDistribution(): array
     {
-        $customers = $this->companyCustomerQuery($companyId)->select([
+        $customers = Customer::query()->select([
             'customers.id',
             'users.' . config('gamify.reputation_column', 'reputation') . ' as points'
         ])

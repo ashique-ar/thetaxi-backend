@@ -5,7 +5,6 @@ namespace App\Models\Vehicle;
 use App\Models\BaseModel;
 use App\Models\Booking\Booking;
 use App\Models\Booking\BookingItem;
-use App\Models\Company;
 use App\Models\Document;
 use App\Models\Driver\Driver;
 use App\Traits\UUID;
@@ -74,7 +73,6 @@ class Vehicle extends BaseModel
         'vehicle_group_id',
         'make_id',
         'model_id',
-        'company_id',
         'ownership_type',
         'usage_type',
         'payment_model',
@@ -344,16 +342,6 @@ class Vehicle extends BaseModel
         return $this->hasMany(VehicleMaintenanceRecord::class);
     }
 
-    /**
-     * Get the company that owns this vehicle.
-     *
-     * @return \Illuminate\Database\Eloquent\Relations\BelongsTo
-     */
-    public function company()
-    {
-        return $this->belongsTo(\App\Models\Company::class, 'company_id');
-    }
-
     public function defaultDriver()
     {
         return $this->belongsTo(Driver::class, 'default_driver_id');
@@ -374,17 +362,6 @@ class Vehicle extends BaseModel
                     ->orWhere('effective_to', '>=', now()->toDateString());
             })
             ->latest('effective_from');
-    }
-
-    /**
-     * Get all companies associated with this vehicle (many-to-many).
-     * This can be used if a vehicle can belong to multiple companies.
-     *
-     * @return \Illuminate\Database\Eloquent\Relations\BelongsToMany
-     */
-    public function companies()
-    {
-        return $this->belongsToMany(Company::class, 'vehicle_companies', 'vehicle_id', 'company_id');
     }
 
     /**

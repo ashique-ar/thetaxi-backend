@@ -205,13 +205,7 @@ class MedicalRecordController extends Controller
     {
         $exists = match ($type) {
             'staff' => Staff::query()->whereKey($id)->where(fn ($_companyIdScope) => \App\Services\CompanyIdScope::constrain($_companyIdScope, 'company_id', $companyId))->exists(),
-            'vehicle' => DB::table('vehicles')->where('id', $id)->whereNull('deleted_at')
-                ->where(fn ($query) => $query->where(fn ($_companyIdScope) => \App\Services\CompanyIdScope::constrain($_companyIdScope, 'company_id', $companyId))
-                    ->orWhereExists(fn ($company) => $company->selectRaw('1')->from('vehicle_companies')
-                        ->whereColumn('vehicle_companies.vehicle_id', 'vehicles.id')
-                        ->where(fn ($_companyIdScope) => \App\Services\CompanyIdScope::constrain($_companyIdScope, 'vehicle_companies.company_id', $companyId))
-                        ->where('vehicle_companies.is_active', true)->whereNull('vehicle_companies.deleted_at')))
-                ->exists(),
+            'vehicle' => DB::table('vehicles')->where('id', $id)->whereNull('deleted_at')->exists(),
             default => false,
         };
         abort_unless($exists, 404, 'The selected medical-record subject is not available in the default company.');

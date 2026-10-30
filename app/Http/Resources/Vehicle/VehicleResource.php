@@ -11,7 +11,6 @@ class VehicleResource extends JsonResource
     {
         return [
             'id' => $this->id,
-            'company_id' => $this->company_id,
             'is_active' => (bool) $this->is_active,
             'wialon_unit_id' => $this->wialon_unit_id,
             'wialon_mileage' => $this->wialon_mileage !== null ? (float) $this->wialon_mileage : null,
