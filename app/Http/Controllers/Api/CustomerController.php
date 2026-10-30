@@ -296,13 +296,8 @@ class CustomerController extends Controller
             'Payment method management permission is required.');
         if ($dob = SriLankanNic::dateOfBirth($data['nic'] ?? null)) $data['dob'] = $dob;
         $data['created_user_id'] = $request->user()->id;
-        $companyId = $this->currentCompanyId();
-        if (! $companyId) {
-            return response()->json(['status' => 'error', 'message' => 'Select an active company before creating a customer.'], 409);
-        }
-
         try {
-            return DB::transaction(function () use ($data, $companyId) {
+            return DB::transaction(function () use ($data) {
                 $existingUser = !empty($data['user_id'])
                     ? User::lockForUpdate()->findOrFail($data['user_id'])
                     : (!empty($data['email']) ? User::whereRaw('LOWER(email) = ?', [strtolower(trim($data['email']))])->lockForUpdate()->first() : null);
@@ -346,8 +341,6 @@ class CustomerController extends Controller
 
                 $context = $this->contextService->switchContext($existingUser, 'customer', $contextData);
                 $customer = Customer::with(['user', 'state', 'paymentMethods'])->find($context->getAttribute('context_id'));
-                $this->linkCustomerToCompany($customer, $companyId, $data['created_user_id']);
-
                 if (array_key_exists('payment_methods', $data)) {
                     app(PaymentMethodSyncService::class)->syncMany($customer, $data['payment_methods'] ?? [], $data['created_user_id']);
                     $customer->load('paymentMethods');
@@ -395,8 +388,6 @@ class CustomerController extends Controller
 
                 $context = $this->contextService->switchContext($user, 'customer', $contextData);
                 $customer = Customer::with(['user', 'state', 'paymentMethods'])->find($context->getAttribute('context_id'));
-                $this->linkCustomerToCompany($customer, $companyId, $data['created_user_id']);
-
                 if (array_key_exists('payment_methods', $data)) {
                     app(PaymentMethodSyncService::class)->syncMany($customer, $data['payment_methods'] ?? [], $data['created_user_id']);
                     $customer->load('paymentMethods');
@@ -417,22 +408,6 @@ class CustomerController extends Controller
                 'error' => $e->getMessage()
             ], 500);
         }
-    }
-
-    private function linkCustomerToCompany(Customer $customer, string $companyId, string $actorId): void
-    {
-        if (DB::table('customer_relationship_owner_assignments')->where('customer_id', $customer->id)
-            ->where(fn ($_companyIdScope) => \App\Services\CompanyIdScope::constrain($_companyIdScope, 'company_id', $companyId))->exists()) {
-            return;
-        }
-
-        $now = now();
-        DB::table('customer_relationship_owner_assignments')->insert([
-            'id' => (string) Str::uuid(), 'customer_id' => $customer->id, 'company_id' => $companyId,
-            'owner_sales_profile_id' => null, 'assigned_by_user_id' => $actorId,
-            'reason' => 'Customer registered by staff; relationship owner pending assignment.',
-            'effective_from' => $now, 'created_at' => $now, 'updated_at' => $now,
-        ]);
     }
 
     public function show(Customer $customer): JsonResponse
