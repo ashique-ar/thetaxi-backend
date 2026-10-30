@@ -4,18 +4,11 @@ namespace App\Services\Sms;
 
 use App\Models\Booking\BookingActivity;
 use App\Models\Sms\SmsMessage;
-use App\Services\SingleCompanyScope;
 
 class BookingCommunicationActivityService
 {
     public function record(array $data): BookingActivity
     {
-        $defaultCompanyId = app(SingleCompanyScope::class)->defaultCompany()?->id;
-        $companyId = $data['company_id'] ?? $defaultCompanyId;
-        if (! $defaultCompanyId || $companyId !== $defaultCompanyId) {
-            throw new \RuntimeException('Booking communication activity requires the active default company.');
-        }
-
         $identity = (string) ($data['idempotency_key'] ?? hash('sha256', implode('|', [
             $data['booking_id'] ?? $data['inquiry_id'] ?? 'none',
             $data['event_key'],
@@ -26,7 +19,6 @@ class BookingCommunicationActivityService
         $activity = BookingActivity::query()->firstOrCreate(
             ['idempotency_key' => $identity],
             [
-                'company_id' => $companyId,
                 'booking_id' => $data['booking_id'] ?? null,
                 'booking_item_id' => $data['booking_item_id'] ?? null,
                 'driver_assignment_id' => $data['driver_assignment_id'] ?? null,
@@ -43,17 +35,12 @@ class BookingCommunicationActivityService
                 'event_at' => $data['event_at'] ?? now(),
             ]
         );
-        if (!\App\Services\CompanyIdScope::sameCompanyId((string) ($activity->company_id), (string) ($companyId))) {
-            throw new \RuntimeException('This booking communication activity key belongs to another company.');
-        }
-
         return $activity;
     }
 
     public function recordMessage(SmsMessage $message, string $resultStatus): BookingActivity
     {
         return $this->record([
-            'company_id' => $message->company_id,
             'booking_id' => $message->booking_id,
             'booking_item_id' => $message->booking_item_id,
             'driver_assignment_id' => $message->driver_assignment_id,

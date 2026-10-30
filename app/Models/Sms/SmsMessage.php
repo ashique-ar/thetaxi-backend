@@ -11,7 +11,6 @@ use Illuminate\Database\Eloquent\Relations\BelongsTo;
 class SmsMessage extends BaseModel
 {
     protected $fillable = [
-        'company_id',
         'campaign_id',
         'provider',
         'channel',

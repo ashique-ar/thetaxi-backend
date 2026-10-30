@@ -4,7 +4,6 @@ namespace App\Http\Controllers\Api\Sms;
 
 use App\Http\Controllers\Controller;
 use App\Models\Booking\Booking;
-use App\Models\Company;
 use App\Models\Sms\SmsCampaign;
 use App\Models\Sms\SmsMessage;
 use App\Services\Sms\SmsService;
@@ -12,8 +11,6 @@ use App\Services\Sms\SmsProviderManager;
 use App\Services\Sms\SmsAutomationService;
 use App\Services\Sms\SmsSettingsService;
 use App\Services\WebsiteSettingsService;
-use App\Services\SingleCompanyScope;
-use App\Services\StaffAccessService;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
@@ -74,8 +71,7 @@ class SmsManagementController extends Controller
 
     public function overview(Request $request): JsonResponse
     {
-        $company = $this->campaignCompany($request);
-        $overview = $this->smsService->getOverview($company->id);
+        $overview = $this->smsService->getOverview();
         $canManageMessages = $this->canManageMessages($request);
         $overview['recent_messages'] = collect($overview['recent_messages'] ?? [])
             ->map(fn (SmsMessage $message): array => $this->messagePayload($message, $canManageMessages))
@@ -167,20 +163,12 @@ class SmsManagementController extends Controller
             'sms_esms_delivery_callback_url' => ['nullable', 'url'],
         ]);
 
-        $companyId = $this->websiteSettingsService->resolveCurrentCompanyId();
-
         foreach ($data as $type => $value) {
             if ($type === 'sms_admin_booking_summary_numbers') {
                 $value = $this->smsSettingsService->protectAdminNumbers($value);
             }
 
-            // Queue workers have no HTTP/company context, so they consume the
-            // deployment-global copy. Keep the active company copy in sync so
-            // the settings screen reads back exactly what was submitted.
             $this->websiteSettingsService->setGlobal($type, $value);
-            if ($companyId !== null) {
-                $this->websiteSettingsService->set($type, $value, $companyId);
-            }
         }
 
         return response()->json([
@@ -213,7 +201,6 @@ class SmsManagementController extends Controller
 
     public function send(Request $request): JsonResponse
     {
-        $this->campaignCompany($request);
         $validator = Validator::make($request->all(), [
             'message' => ['required', 'string'],
             'sender_mask' => ['nullable', 'string', 'max:50'],
@@ -247,7 +234,6 @@ class SmsManagementController extends Controller
 
     public function sendTest(Request $request): JsonResponse
     {
-        $this->campaignCompany($request);
         $data = $request->validate([
             'recipient' => ['required', 'string'],
             'message' => ['nullable', 'string'],
@@ -271,7 +257,6 @@ class SmsManagementController extends Controller
 
     public function messages(Request $request): JsonResponse
     {
-        $company = $this->campaignCompany($request);
         $filters = $request->validate([
             'status' => ['nullable', 'string', 'max:30'],
             'channel' => ['nullable', 'string', 'max:30'],
@@ -279,7 +264,7 @@ class SmsManagementController extends Controller
             'search' => ['nullable', 'string', 'max:120'],
             'per_page' => ['nullable', 'integer', 'min:1', 'max:100'],
         ]);
-        $messages = $this->smsService->getMessages($filters, $company->id);
+        $messages = $this->smsService->getMessages($filters);
         $canManageMessages = $this->canManageMessages($request);
         $messages->setCollection($messages->getCollection()->map(
             fn (SmsMessage $message): array => $this->messagePayload($message, $canManageMessages)
@@ -299,7 +284,6 @@ class SmsManagementController extends Controller
 
     public function showMessage(Request $request, SmsMessage $smsMessage): JsonResponse
     {
-        abort_unless(\App\Services\CompanyIdScope::sameCompanyId((string) ($smsMessage->company_id), (string) ($this->campaignCompany($request)->id)), 404);
         $smsMessage->loadMissing(['booking:id,booking_number', 'bookingItem:id,booking_id,trip_number']);
         return response()->json([
             'status' => 'success',
@@ -312,12 +296,11 @@ class SmsManagementController extends Controller
 
     public function complianceReport(Request $request): JsonResponse
     {
-        $company = $this->campaignCompany($request);
         $data = $request->validate(['days' => ['nullable', 'integer', 'min:1', 'max:365']]);
 
         return response()->json([
             'status' => 'success',
-            'data' => $this->smsService->getTransactionalComplianceReport((int) ($data['days'] ?? 30), $company->id),
+            'data' => $this->smsService->getTransactionalComplianceReport((int) ($data['days'] ?? 30)),
         ]);
     }
 
@@ -368,13 +351,8 @@ class SmsManagementController extends Controller
     public function bookingOptions(Request $request): JsonResponse
     {
         abort_unless($request->user()->can('bookings.view'), 403);
-        $company = $this->campaignCompany($request);
         $data = $request->validate(['search' => ['nullable', 'string', 'max:120'], 'selected_id' => ['nullable', 'uuid'], 'page' => ['nullable', 'integer', 'min:1'], 'per_page' => ['nullable', 'integer', 'min:1', 'max:50']]);
-        $companyBookingIds = DB::table('sales_booking_attributions')
-            ->where(fn ($_companyIdScope) => \App\Services\CompanyIdScope::constrain($_companyIdScope, 'company_id', $company->id))
-            ->whereNull('deleted_at')
-            ->select('booking_id');
-        $query = Booking::query()->whereIn('id', $companyBookingIds)
+        $query = Booking::query()
             ->when($data['selected_id'] ?? null, fn ($q, $id) => $q->whereKey($id));
         if (empty($data['selected_id']) && !empty($data['search'])) {
             $term = '%' . addcslashes($data['search'], '%_\\') . '%';
@@ -394,19 +372,11 @@ class SmsManagementController extends Controller
     {
         if (!$bookingId) return null;
         abort_unless($request->user()->can('bookings.view'), 403);
-        $company = $this->campaignCompany($request);
-
-        return Booking::query()->whereKey($bookingId)
-            ->whereIn('id', DB::table('sales_booking_attributions')
-                ->where(fn ($_companyIdScope) => \App\Services\CompanyIdScope::constrain($_companyIdScope, 'company_id', $company->id))
-                ->whereNull('deleted_at')
-                ->select('booking_id'))
-            ->firstOrFail();
+        return Booking::query()->whereKey($bookingId)->firstOrFail();
     }
 
     public function retryMessage(Request $request, SmsMessage $smsMessage): JsonResponse
     {
-        abort_unless(\App\Services\CompanyIdScope::sameCompanyId((string) ($smsMessage->company_id), (string) ($this->campaignCompany($request)->id)), 404);
         $data = $request->validate(['reason' => ['required', 'string', 'min:3', 'max:500']]);
 
         try {
@@ -427,13 +397,12 @@ class SmsManagementController extends Controller
 
     public function campaigns(Request $request): JsonResponse
     {
-        $company = $this->campaignCompany($request);
         $filters = $request->validate([
             'status' => ['nullable', 'string', 'max:30'],
             'search' => ['nullable', 'string', 'max:120'],
             'per_page' => ['nullable', 'integer', 'min:1', 'max:100'],
         ]);
-        $campaigns = $this->smsService->getCampaigns($filters, $company->id);
+        $campaigns = $this->smsService->getCampaigns($filters);
 
         return response()->json([
             'status' => 'success',
@@ -443,14 +412,12 @@ class SmsManagementController extends Controller
                 'last_page' => $campaigns->lastPage(),
                 'per_page' => $campaigns->perPage(),
                 'total' => $campaigns->total(),
-                'company_name' => $company->name,
             ],
         ]);
     }
 
     public function createCampaign(Request $request): JsonResponse
     {
-        $company = $this->campaignCompany($request);
         $data = $request->validate([
             'name' => ['required', 'string', 'max:255'],
             'message' => ['required', 'string'],
@@ -463,7 +430,6 @@ class SmsManagementController extends Controller
             'launch_now' => ['nullable', 'boolean'],
             'consent_confirmed' => ['required_if:audience_type,manual', 'accepted'],
         ]);
-        $data['company_id'] = $company->id;
         $campaign = $this->smsService->createCampaign($data);
         if (($data['launch_now'] ?? false) === true) {
             $this->registerCampaignTask($request, $campaign);
@@ -480,7 +446,6 @@ class SmsManagementController extends Controller
 
     public function showCampaign(Request $request, SmsCampaign $smsCampaign): JsonResponse
     {
-        abort_unless(\App\Services\CompanyIdScope::sameCompanyId((string) ($smsCampaign->company_id), (string) ($this->campaignCompany($request)->id)), 404);
         $smsCampaign->load('messages');
 
         return response()->json([
@@ -491,7 +456,6 @@ class SmsManagementController extends Controller
 
     public function launchCampaign(Request $request, SmsCampaign $smsCampaign): JsonResponse
     {
-        abort_unless(\App\Services\CompanyIdScope::sameCompanyId((string) ($smsCampaign->company_id), (string) ($this->campaignCompany($request)->id)), 404);
 
         $taskId = $this->registerCampaignTask($request, $smsCampaign);
 
@@ -578,7 +542,6 @@ class SmsManagementController extends Controller
 
     public function checkMessageStatus(Request $request, SmsMessage $smsMessage): JsonResponse
     {
-        abort_unless(\App\Services\CompanyIdScope::sameCompanyId((string) ($smsMessage->company_id), (string) ($this->campaignCompany($request)->id)), 404);
         try {
             return response()->json([
                 'status' => 'success',
@@ -595,7 +558,6 @@ class SmsManagementController extends Controller
 
     public function reconcileProcessing(Request $request): JsonResponse
     {
-        $company = $this->campaignCompany($request);
         $data = $request->validate([
             'older_than_minutes' => ['nullable', 'integer', 'min:5', 'max:1440'],
             'limit' => ['nullable', 'integer', 'min:1', 'max:500'],
@@ -607,7 +569,6 @@ class SmsManagementController extends Controller
             'data' => $this->smsService->reconcileStaleProcessing(
                 (int) ($data['older_than_minutes'] ?? 15),
                 (int) ($data['limit'] ?? 100),
-                $company->id,
             ),
         ]);
     }
@@ -645,15 +606,6 @@ class SmsManagementController extends Controller
     {
         return (bool) ($request->user()?->can('communication.manage')
             || $request->user()?->can('sms.messages.manage'));
-    }
-
-    private function campaignCompany(Request $request): Company
-    {
-        $company = app(SingleCompanyScope::class)->defaultCompany();
-        abort_unless($company, 409, 'Set one active default company before managing SMS campaigns.');
-        abort_unless(\App\Services\CompanyIdScope::sameCompanyId((string) (app(StaffAccessService::class)->currentActorStaff($request->user())->company_id), (string) ($company->id)), 403);
-
-        return $company;
     }
 
     private function messagePayload(SmsMessage $message, bool $canManage): array
