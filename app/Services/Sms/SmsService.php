@@ -7,7 +7,6 @@ use App\Jobs\LaunchSmsCampaignJob;
 use App\Jobs\SendSmsMessageJob;
 use App\Models\Sms\SmsCampaign;
 use App\Models\Sms\SmsMessage;
-use App\Services\SingleCompanyScope;
 use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Contracts\Pagination\LengthAwarePaginator;
 use Illuminate\Support\Carbon;
@@ -27,10 +26,10 @@ class SmsService
     {
     }
 
-    public function getOverview(string $companyId): array
+    public function getOverview(): array
     {
         $since = now()->subDays(30);
-        $messages = fn (): Builder => SmsMessage::query()->where(fn ($_companyIdScope) => \App\Services\CompanyIdScope::constrain($_companyIdScope, 'company_id', $companyId));
+        $messages = fn (): Builder => SmsMessage::query();
 
         return [
             'messages' => [
@@ -42,21 +41,21 @@ class SmsService
                 'failed' => $messages()->where('status', 'failed')->count(),
             ],
             'campaigns' => [
-                'total' => SmsCampaign::query()->where(fn ($_companyIdScope) => \App\Services\CompanyIdScope::constrain($_companyIdScope, 'company_id', $companyId))->count(),
-                'draft' => SmsCampaign::query()->where(fn ($_companyIdScope) => \App\Services\CompanyIdScope::constrain($_companyIdScope, 'company_id', $companyId))->where('status', 'draft')->count(),
-                'scheduled' => SmsCampaign::query()->where(fn ($_companyIdScope) => \App\Services\CompanyIdScope::constrain($_companyIdScope, 'company_id', $companyId))->where('status', 'scheduled')->count(),
-                'processing' => SmsCampaign::query()->where(fn ($_companyIdScope) => \App\Services\CompanyIdScope::constrain($_companyIdScope, 'company_id', $companyId))->where('status', 'processing')->count(),
-                'completed' => SmsCampaign::query()->where(fn ($_companyIdScope) => \App\Services\CompanyIdScope::constrain($_companyIdScope, 'company_id', $companyId))->where('status', 'completed')->count(),
+                'total' => SmsCampaign::query()->count(),
+                'draft' => SmsCampaign::query()->where('status', 'draft')->count(),
+                'scheduled' => SmsCampaign::query()->where('status', 'scheduled')->count(),
+                'processing' => SmsCampaign::query()->where('status', 'processing')->count(),
+                'completed' => SmsCampaign::query()->where('status', 'completed')->count(),
             ],
             'recent_messages' => $messages()->with(['booking:id,booking_number', 'bookingItem:id,booking_id,trip_number'])->latest()->limit(10)->get(),
-            'recent_campaigns' => SmsCampaign::query()->where(fn ($_companyIdScope) => \App\Services\CompanyIdScope::constrain($_companyIdScope, 'company_id', $companyId))->latest()->limit(10)->get(),
-            'health' => $this->getOperationalHealth($companyId),
+            'recent_campaigns' => SmsCampaign::query()->latest()->limit(10)->get(),
+            'health' => $this->getOperationalHealth(),
         ];
     }
 
-    public function getOperationalHealth(string $companyId): array
+    public function getOperationalHealth(): array
     {
-        $messages = fn (): Builder => SmsMessage::query()->where(fn ($_companyIdScope) => \App\Services\CompanyIdScope::constrain($_companyIdScope, 'company_id', $companyId));
+        $messages = fn (): Builder => SmsMessage::query();
         $queueAgeMinutes = (int) config('sms.health.queue_age_minutes', 10);
         $callbackAgeMinutes = (int) config('sms.health.callback_age_minutes', 30);
         $failureWindowMinutes = (int) config('sms.health.failure_window_minutes', 60);
@@ -138,15 +137,7 @@ class SmsService
         $campaign = !empty($payload['campaign_id'])
             ? SmsCampaign::query()->findOrFail($payload['campaign_id'])
             : null;
-        $defaultCompanyId = app(SingleCompanyScope::class)->defaultCompany()?->id;
-        $companyId = $campaign?->company_id ?: $defaultCompanyId;
-        if (!$defaultCompanyId || !$companyId || $companyId !== $defaultCompanyId
-            || (!empty($payload['company_id']) && !\App\Services\CompanyIdScope::sameCompanyId((string) ($payload['company_id']), (string) ($companyId)))) {
-            throw new RuntimeException('Select the active default company before queuing SMS.');
-        }
-
         $attributes = [
-            'company_id' => $companyId,
             'campaign_id' => $payload['campaign_id'] ?? null,
             'provider' => $this->settingsService->getActiveProvider(),
             'channel' => $payload['channel'] ?? 'single',
@@ -185,10 +176,6 @@ class SmsService
             ? SmsMessage::firstOrCreate(['idempotency_key' => $idempotencyKey], $attributes)
             : SmsMessage::create($attributes);
 
-        if (!\App\Services\CompanyIdScope::sameCompanyId((string) ($message->company_id), (string) ($companyId))) {
-            throw new RuntimeException('This SMS idempotency key belongs to another company.');
-        }
-
         if (!$message->wasRecentlyCreated) {
             return $message;
         }
@@ -221,11 +208,6 @@ class SmsService
 
     public function queueBulkMessages(array $payload): Collection
     {
-        $companyId = app(SingleCompanyScope::class)->defaultCompany()?->id;
-        if (!$companyId || (!empty($payload['company_id']) && !\App\Services\CompanyIdScope::sameCompanyId((string) ($payload['company_id']), (string) ($companyId)))) {
-            throw new RuntimeException('Select the active default company before queuing SMS.');
-        }
-        $payload['company_id'] = $companyId;
         $recipients = $this->normalizeRecipients($payload['recipients'] ?? []);
 
         return collect($recipients)->map(function (string $recipient) use ($payload) {
@@ -240,15 +222,11 @@ class SmsService
     public function createCampaign(array $payload): SmsCampaign
     {
         $audienceType = $payload['audience_type'] ?? 'manual';
-        $company = app(SingleCompanyScope::class)->defaultCompany();
-        if (! $company || !\App\Services\CompanyIdScope::sameCompanyId((string) ($payload['company_id'] ?? null), (string) ($company->id))) {
-            throw new RuntimeException('Select the active default company before creating a campaign.');
-        }
         if (! in_array($audienceType, ['manual', 'customers'], true)) {
             throw new RuntimeException('Unsupported campaign audience.');
         }
         if ($audienceType === 'customers' && ! empty($payload['audience_filters'])) {
-            throw new RuntimeException('Customer ID filters are unavailable for the default-company audience.');
+            throw new RuntimeException('Customer ID filters are not supported for campaigns.');
         }
         $recipients = $this->resolveAudienceRecipients(
             $audienceType,
@@ -257,7 +235,6 @@ class SmsService
         );
 
         $campaign = SmsCampaign::create([
-            'company_id' => $company->id,
             'name' => trim((string) ($payload['name'] ?? 'Untitled campaign')),
             'message' => trim((string) ($payload['message'] ?? '')),
             'provider' => $this->settingsService->getActiveProvider(),
@@ -287,11 +264,6 @@ class SmsService
 
     public function scheduleCampaignLaunch(SmsCampaign $campaign): void
     {
-        $company = app(SingleCompanyScope::class)->defaultCompany();
-        if (! $company || !\App\Services\CompanyIdScope::sameCompanyId((string) ($campaign->company_id), (string) ($company->id))) {
-            throw new RuntimeException('This campaign has no current default-company ownership.');
-        }
-
         $campaign->update([
             'status' => $campaign->scheduled_at ? 'scheduled' : 'processing',
         ]);
@@ -306,19 +278,6 @@ class SmsService
     {
         if ($campaign->status === 'completed' || $campaign->messages()->exists()) {
             return $campaign;
-        }
-
-        $company = app(SingleCompanyScope::class)->defaultCompany();
-        if (! $company || !\App\Services\CompanyIdScope::sameCompanyId((string) ($campaign->company_id), (string) ($company->id))) {
-            $campaign->update([
-                'status' => 'failed',
-                'completed_at' => now(),
-                'meta' => array_merge($campaign->meta ?? [], [
-                    'error' => 'Campaign default-company ownership is unavailable.',
-                ]),
-            ]);
-
-            return $campaign->fresh();
         }
 
         $recipients = $this->normalizeRecipients($campaign->recipient_snapshot ?? []);
@@ -351,7 +310,6 @@ class SmsService
 
         foreach ($recipients as $recipient) {
             $message = SmsMessage::create([
-                'company_id' => $campaign->company_id,
                 'campaign_id' => $campaign->id,
                 'provider' => $campaign->provider,
                 'channel' => 'campaign',
@@ -379,20 +337,6 @@ class SmsService
 
     public function processQueuedMessage(SmsMessage $message): SmsMessage
     {
-        $defaultCompanyId = app(SingleCompanyScope::class)->defaultCompany()?->id;
-        if (!$defaultCompanyId || !\App\Services\CompanyIdScope::sameCompanyId((string) ($message->company_id), (string) ($defaultCompanyId))) {
-            SmsMessage::query()->whereKey($message->id)->whereIn('status', ['queued', 'pending', 'processing', 'failed'])->update([
-                'status' => 'failed',
-                'provider_status' => 'failed',
-                'provider_status_at' => now(),
-                'error_message' => 'SMS ownership is unavailable for the active default company.',
-                'failed_at' => now(),
-                'processing_at' => null,
-            ]);
-
-            return $message->fresh();
-        }
-
         $claimed = SmsMessage::query()
             ->whereKey($message->id)
             ->whereIn('status', ['queued', 'pending', 'failed'])
