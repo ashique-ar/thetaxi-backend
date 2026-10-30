@@ -4,13 +4,10 @@ namespace App\Http\Controllers\Api;
 
 use App\Enums\BookingLifecycleStatus;
 use App\Http\Controllers\Controller;
-use App\Services\CompanyBookingScope;
-use App\Services\CompanyCustomerScope;
 use App\Services\BookingResponsibilityService;
 use App\Services\InquiryAssignmentService;
 use App\Services\Sales\SalesPolicySettingsService;
 use App\Services\Sales\InquiryFirstResponseDeadlineService;
-use App\Services\CompanySettingsAccessService;
 use App\Services\WebsiteSettingsService;
 use App\Models\User;
 use Illuminate\Http\JsonResponse;
@@ -22,9 +19,8 @@ class MyWorkController extends Controller
 {
     public function __invoke(Request $request): JsonResponse
     {
-        $companyId = (string) (app(WebsiteSettingsService::class)->resolveCurrentCompanyId() ?? '');
-        abort_unless($companyId !== '', 409, 'No active business is configured.');
-        app(CompanySettingsAccessService::class)->assertCanAccess($request->user(), $companyId);
+        // These legacy policy accessors now resolve installation-wide values.
+        $companyId = '';
         $userId = (string) $request->user()->id;
         $queues = [];
         $attention = [];
@@ -43,13 +39,11 @@ class MyWorkController extends Controller
             $bookings = DB::table('bookings as booking')->whereNull('booking.deleted_at')
                 ->where('booking.responsible_user_id', $userId)
                 ->whereIn('booking.status', array_merge(['draft'], $activeBookingStatuses));
-            CompanyBookingScope::constrain($bookings, 'booking', $companyId);
             $queues[] = ['group' => 'mine', 'title' => 'My bookings in progress', 'help' => 'Bookings assigned to you that are not finished yet', 'icon' => 'directions_car',
                 'link' => '/bookings/list?mine_only=true&work_only=true', 'count' => (int) $bookings->distinct('booking.id')->count('booking.id')];
             $rows = DB::table('bookings as booking')->whereNull('booking.deleted_at')
                 ->where('booking.responsible_user_id', $userId)
                 ->whereIn('booking.status', array_merge(['draft'], $activeBookingStatuses));
-            CompanyBookingScope::constrain($rows, 'booking', $companyId);
             foreach ($this->withBookingAttentionContext($rows)->orderBy('booking.created_at')->limit(5)->get() as $row) {
                 $attention[] = ['id' => 'booking:'.$row->id, 'group' => 'mine', 'type' => 'Booking', 'title' => $this->bookingAttentionTitle($row),
                     'detail' => $this->bookingAttentionDetail($row, 'Assigned to you'), 'when' => $row->created_at, 'link' => '/bookings/'.$row->id,
@@ -90,7 +84,6 @@ class MyWorkController extends Controller
                 ->select(['item.id', 'item.workflow_config_snapshot', 'item.service_type_id', 'booking.booking_number', 'return_service.workflow_config'])
                 ->selectSub($expectedReturn, 'due_return_at')
                 ->selectRaw("NULLIF(CONCAT_WS(' ', return_customer_user.first_name, return_customer_user.last_name), '') as customer_name");
-            CompanyBookingScope::constrain($dueReturns, 'booking', $companyId);
 
             $returnStageResolver = app(\App\Services\BookingWorkflowSettingsResolver::class);
             $returnCount = 0;
@@ -129,7 +122,6 @@ class MyWorkController extends Controller
             $unassigned = DB::table('bookings as booking')->whereNull('booking.deleted_at')
                 ->whereIn('booking.status', $activeBookingStatuses)
                 ->where(fn ($owner) => $owner->whereNull('booking.responsible_user_id')->orWhereNotIn('booking.responsible_user_id', $eligibleOwners));
-            CompanyBookingScope::constrain($unassigned, 'booking', $companyId);
             $queues[] = ['group' => 'assignment', 'title' => 'Bookings to assign', 'help' => 'New or active bookings waiting for an employee', 'icon' => 'person_add',
                 'link' => '/bookings/list?queue=needs_responsible_owner', 'count' => (int) $unassigned->distinct('booking.id')->count('booking.id')];
 
@@ -137,7 +129,6 @@ class MyWorkController extends Controller
                 ->where('booking.booking_origin', 'website')->where('booking.payment_method', 'online')
                 ->whereIn('booking.payment_type', ['full', 'advance'])->where('booking.payment_status', 'pending')
                 ->whereIn('booking.status', ['pending', 'payment_processing']);
-            CompanyBookingScope::constrain($paymentsAwaitingConfirmation, 'booking', $companyId);
             $paymentCount = (int) (clone $paymentsAwaitingConfirmation)->distinct('booking.id')->count('booking.id');
             if ($paymentCount > 0) {
                 $queues[] = ['group' => 'assignment', 'title' => 'Website payments to follow up',
@@ -177,7 +168,6 @@ class MyWorkController extends Controller
                     ->whereIn('booking.status', $activeBookingStatuses)
                     ->where(fn ($owner) => $owner->whereNull('booking.responsible_user_id')->orWhereNotIn('booking.responsible_user_id', $eligibleOwners))
                     ->where('booking.created_at', '<=', now()->subMinutes($assignmentTargetMinutes));
-                CompanyBookingScope::constrain($pastTarget, 'booking', $companyId);
                 $queues[] = ['group' => 'assignment', 'title' => 'Bookings past assignment target', 'help' => 'Unassigned bookings that have waited longer than the approved target', 'icon' => 'schedule',
                     'link' => '/bookings/list?queue=needs_responsible_owner_past_target', 'count' => (int) $pastTarget->distinct('booking.id')->count('booking.id')];
                 foreach ($this->withBookingAttentionContext(clone $pastTarget)->orderBy('booking.created_at')->limit(4)->get() as $row) {
@@ -188,7 +178,6 @@ class MyWorkController extends Controller
             }
             $waitingBookings = DB::table('bookings as booking')->whereNull('booking.deleted_at')->whereIn('booking.status', $activeBookingStatuses)
                 ->where(fn ($owner) => $owner->whereNull('booking.responsible_user_id')->orWhereNotIn('booking.responsible_user_id', $eligibleOwners));
-            CompanyBookingScope::constrain($waitingBookings, 'booking', $companyId);
             foreach ($this->withBookingAttentionContext($waitingBookings)->orderBy('booking.created_at')->limit(4)->get() as $row) {
                 $attention[] = ['id' => 'booking-assignment:'.$row->id, 'group' => 'assignment', 'type' => 'Booking to assign',
                     'title' => $this->bookingAttentionTitle($row), 'detail' => $this->bookingAttentionDetail($row, 'Choose an employee'), 'when' => $row->created_at,
@@ -199,9 +188,9 @@ class MyWorkController extends Controller
         if ($request->user()->can('inquiries.view')) {
             $queues[] = ['group' => 'mine', 'title' => 'Customer requests to answer', 'help' => 'Requests assigned to you that still need a reply', 'icon' => 'chat',
                 'link' => '/communication/inquiries?mine_only=true&actionable_only=true', 'count' => (int) DB::table('inquiries')
-                    ->where(fn ($_companyIdScope) => \App\Services\CompanyIdScope::constrain($_companyIdScope, 'company_id', $companyId))->whereNull('deleted_at')->where('assigned_to', $userId)
+                    ->whereNull('deleted_at')->where('assigned_to', $userId)
                     ->whereIn('status', ['open', 'in_progress'])->count()];
-            foreach (DB::table('inquiries')->where(fn ($_companyIdScope) => \App\Services\CompanyIdScope::constrain($_companyIdScope, 'company_id', $companyId))->whereNull('deleted_at')->where('assigned_to', $userId)
+            foreach (DB::table('inquiries')->whereNull('deleted_at')->where('assigned_to', $userId)
                 ->whereIn('status', ['open', 'in_progress'])->orderBy('created_at')->limit(5)
                 ->get(['id', 'name', 'subject', 'created_at']) as $row) {
                 $attention[] = ['id' => 'inquiry:'.$row->id, 'group' => 'mine', 'type' => 'Request', 'title' => $row->subject ?: 'Customer request',
@@ -212,12 +201,12 @@ class MyWorkController extends Controller
             $responseTargetMinutes = app(SalesPolicySettingsService::class)->inquiryFirstResponseMinutes($companyId);
             if ($responseTargetMinutes !== null) {
                 $hasUnconfirmedEmail = static fn ($query) => $query->selectRaw('1')->from('inquiry_outbound_responses as email_attempt')
-                    ->where(fn ($sameCompany) => \App\Services\CompanyIdScope::sameCompany($sameCompany, 'email_attempt.company_id', 'inquiries.company_id'))->whereColumn('email_attempt.inquiry_id', 'inquiries.id')
+                    ->whereColumn('email_attempt.inquiry_id', 'inquiries.id')
                     ->whereIn('email_attempt.status', ['sending', 'uncertain']);
                 $hasUnconfirmedRespondIo = static fn ($query) => $query->selectRaw('1')->from('integration_webhook_events as reply_attempt')
-                    ->where(fn ($sameCompany) => \App\Services\CompanyIdScope::sameCompany($sameCompany, 'reply_attempt.company_id', 'inquiries.company_id'))->whereColumn('reply_attempt.linked_inquiry_id', 'inquiries.id')
+                    ->whereColumn('reply_attempt.linked_inquiry_id', 'inquiries.id')
                     ->whereIn('reply_attempt.outbound_status', ['sending', 'uncertain']);
-                $overdueFirstResponses = DB::table('inquiries')->where(fn ($_companyIdScope) => \App\Services\CompanyIdScope::constrain($_companyIdScope, 'company_id', $companyId))->whereNull('deleted_at')
+                $overdueFirstResponses = DB::table('inquiries')->whereNull('deleted_at')
                     ->whereIn('status', ['open', 'in_progress'])->whereNull('first_response_sent_at');
                 app(InquiryFirstResponseDeadlineService::class)->constrainOverdue($overdueFirstResponses, $responseTargetMinutes, now());
                 $overdueFirstResponses->whereNotExists($hasUnconfirmedEmail)->whereNotExists($hasUnconfirmedRespondIo);
@@ -242,7 +231,7 @@ class MyWorkController extends Controller
                 }
 
                 if ($request->user()->can('inquiries.edit')) {
-                    $eligibleInquiryAssignees = app(InquiryAssignmentService::class)->eligibleAssigneeIds($companyId);
+                    $eligibleInquiryAssignees = app(InquiryAssignmentService::class)->eligibleAssigneeIds();
                     $unassignedOverdueResponses = (clone $overdueFirstResponses)->where(fn ($owner) =>
                         $owner->whereNull('assigned_to')->orWhereNotIn('assigned_to', $eligibleInquiryAssignees));
                     $queues[] = ['group' => 'assignment', 'title' => 'Overdue replies needing an owner', 'help' => 'Assign an employee and have them reply to these waiting requests', 'icon' => 'person_add',
@@ -253,13 +242,13 @@ class MyWorkController extends Controller
         }
 
         if ($request->user()->can('inquiries.view') && $request->user()->can('inquiries.edit')) {
-            $eligibleInquiryAssignees = app(InquiryAssignmentService::class)->eligibleAssigneeIds($companyId);
+            $eligibleInquiryAssignees = app(InquiryAssignmentService::class)->eligibleAssigneeIds();
             $queues[] = ['group' => 'assignment', 'title' => 'Inquiries to assign', 'help' => 'New inquiries waiting for an employee', 'icon' => 'person_add',
                 'link' => '/communication/inquiries?unassigned_only=true&actionable_only=true', 'count' => (int) DB::table('inquiries')
-                    ->where(fn ($_companyIdScope) => \App\Services\CompanyIdScope::constrain($_companyIdScope, 'company_id', $companyId))->whereNull('deleted_at')
+                    ->whereNull('deleted_at')
                     ->where(fn ($unassigned) => $unassigned->whereNull('assigned_to')->orWhereNotIn('assigned_to', $eligibleInquiryAssignees))
                     ->whereIn('status', ['open', 'in_progress'])->count()];
-            foreach (DB::table('inquiries')->where(fn ($_companyIdScope) => \App\Services\CompanyIdScope::constrain($_companyIdScope, 'company_id', $companyId))->whereNull('deleted_at')
+            foreach (DB::table('inquiries')->whereNull('deleted_at')
                 ->where(fn ($unassigned) => $unassigned->whereNull('assigned_to')->orWhereNotIn('assigned_to', $eligibleInquiryAssignees))
                 ->whereIn('status', ['open', 'in_progress'])->orderBy('created_at')->limit(4)
                 ->get(['id', 'name', 'subject', 'created_at']) as $row) {
@@ -272,22 +261,20 @@ class MyWorkController extends Controller
 
         if ($request->user()->can('customers.view') && $request->user()->can('customers.edit')) {
             $customers = DB::table('customers')->whereNull('customers.deleted_at');
-            CompanyCustomerScope::constrain($customers, 'customers', $companyId);
             $unassignedOwner = DB::table('customer_relationship_owner_assignments as assignment')->selectRaw('1')
                 ->join('sales_profiles as profile', 'profile.id', '=', 'assignment.owner_sales_profile_id')
                 ->join('staff as owner_staff', 'owner_staff.id', '=', 'profile.staff_id')
                 ->join('users as owner_user', 'owner_user.id', '=', 'owner_staff.user_id')
-                ->whereColumn('assignment.customer_id', 'customers.id')->where(fn ($_companyIdScope) => \App\Services\CompanyIdScope::constrain($_companyIdScope, 'assignment.company_id', $companyId))
+                ->whereColumn('assignment.customer_id', 'customers.id')
                 ->whereNull('assignment.ended_at')->where('assignment.effective_from', '<=', now())
-                ->where(fn ($_companyIdScope) => \App\Services\CompanyIdScope::constrain($_companyIdScope, 'profile.company_id', $companyId))->where('profile.status', 'active')->whereNull('profile.deleted_at')
+                ->where('profile.status', 'active')->whereNull('profile.deleted_at')
                 ->where('profile.effective_from', '<=', now())->where(fn ($query) => $query->whereNull('profile.effective_until')->orWhere('profile.effective_until', '>', now()))
-                ->where(fn ($_companyIdScope) => \App\Services\CompanyIdScope::constrain($_companyIdScope, 'owner_staff.company_id', $companyId))->whereNull('owner_staff.deleted_at')
+                ->whereNull('owner_staff.deleted_at')
                 ->where(fn ($query) => $query->whereNull('owner_staff.employment_ended_at')->orWhere('owner_staff.employment_ended_at', '>', now()))
                 ->where('owner_user.is_active', true)->whereNull('owner_user.deleted_at');
             $queues[] = ['group' => 'assignment', 'title' => 'Customers to assign', 'help' => 'Choose a staff member to look after each customer', 'icon' => 'group_add',
                 'link' => '/customers?owner_status=unassigned', 'count' => (int) $customers->whereNotExists($unassignedOwner)->count()];
             $waitingCustomers = DB::table('customers')->whereNull('customers.deleted_at');
-            CompanyCustomerScope::constrain($waitingCustomers, 'customers', $companyId);
             foreach ($waitingCustomers->leftJoin('users as attention_customer_user', function ($join): void {
                 $join->on('attention_customer_user.id', '=', 'customers.user_id')->whereNull('attention_customer_user.deleted_at');
             })->whereNotExists($unassignedOwner)->orderBy('customers.created_at')->limit(4)
@@ -303,9 +290,9 @@ class MyWorkController extends Controller
         if ($request->user()->can('phone-calls.view')) {
             $queues[] = ['group' => 'mine', 'title' => 'Callbacks to make', 'help' => 'Missed calls waiting for a callback', 'icon' => 'call',
                 'link' => '/communication/calls?mine_only=true&needs_follow_up=true', 'count' => (int) DB::table('phone_calls')
-                    ->where(fn ($_companyIdScope) => \App\Services\CompanyIdScope::constrain($_companyIdScope, 'company_id', $companyId))->whereNull('deleted_at')->where('assigned_user_id', $userId)
+                    ->whereNull('deleted_at')->where('assigned_user_id', $userId)
                     ->whereIn('call_status', ['Missed', 'Notanswered'])->whereNull('follow_up_task_id')->whereNull('follow_up_completed_at')->count()];
-            foreach (DB::table('phone_calls')->where(fn ($_companyIdScope) => \App\Services\CompanyIdScope::constrain($_companyIdScope, 'company_id', $companyId))->whereNull('deleted_at')->where('assigned_user_id', $userId)
+            foreach (DB::table('phone_calls')->whereNull('deleted_at')->where('assigned_user_id', $userId)
                 ->whereIn('call_status', ['Missed', 'Notanswered'])->whereNull('follow_up_task_id')->whereNull('follow_up_completed_at')
                 ->orderByRaw('CASE WHEN follow_up_due_at IS NULL THEN 0 ELSE 1 END')->orderBy('follow_up_due_at')->orderBy('call_time')->limit(5)
                 ->get(['id', 'client_name', 'phone', 'call_time', 'follow_up_due_at', 'follow_up_notes', 'created_at']) as $row) {
@@ -318,15 +305,15 @@ class MyWorkController extends Controller
 
         if ($request->user()->can('phone-calls.view') && $request->user()->can('phone-calls.edit')) {
             $eligibleCallAssignees = User::permission('phone-calls.view')->whereHas('staff', fn ($staff) => $staff
-                ->where(fn ($_companyIdScope) => \App\Services\CompanyIdScope::constrain($_companyIdScope, 'company_id', $companyId))->whereNull('deleted_at')
+                ->whereNull('deleted_at')
                 ->where(fn ($employment) => $employment->whereNull('employment_ended_at')->orWhere('employment_ended_at', '>', now())))
                 ->where('is_active', true)->whereNull('deleted_at')->select('id');
             $queues[] = ['group' => 'assignment', 'title' => 'Missed calls to assign', 'help' => 'Unassigned missed calls with no follow-up scheduled', 'icon' => 'person_add',
                 'link' => '/communication/calls?unassigned_follow_up=true', 'count' => (int) DB::table('phone_calls')
-                    ->where(fn ($_companyIdScope) => \App\Services\CompanyIdScope::constrain($_companyIdScope, 'company_id', $companyId))->whereNull('deleted_at')
+                ->whereNull('deleted_at')
                     ->where(fn ($owner) => $owner->whereNull('assigned_user_id')->orWhereNotIn('assigned_user_id', $eligibleCallAssignees))
                     ->whereIn('call_status', ['Missed', 'Notanswered'])->whereNull('follow_up_task_id')->whereNull('follow_up_completed_at')->count()];
-            foreach (DB::table('phone_calls')->where(fn ($_companyIdScope) => \App\Services\CompanyIdScope::constrain($_companyIdScope, 'company_id', $companyId))->whereNull('deleted_at')
+            foreach (DB::table('phone_calls')->whereNull('deleted_at')
                 ->where(fn ($owner) => $owner->whereNull('assigned_user_id')->orWhereNotIn('assigned_user_id', $eligibleCallAssignees))
                 ->whereIn('call_status', ['Missed', 'Notanswered'])->whereNull('follow_up_task_id')->whereNull('follow_up_completed_at')->orderBy('call_time')->limit(4)
                 ->get(['id', 'client_name', 'phone', 'call_time', 'created_at']) as $row) {
@@ -337,11 +324,11 @@ class MyWorkController extends Controller
             }
         }
 
-        $respondIoEnabled = filter_var(app(WebsiteSettingsService::class)->get('feature_respond_io_enabled', false, $companyId), FILTER_VALIDATE_BOOL);
+        $respondIoEnabled = filter_var(app(WebsiteSettingsService::class)->get('feature_respond_io_enabled', false, ''), FILTER_VALIDATE_BOOL);
         if ($respondIoEnabled && $request->user()->can('communication.manage')) {
             foreach ([['received', 'New messages or updates', 'Review new information from Respond.io before linking it to customer work'],
                 ['reply_failed', 'Replies to check', 'Check whether the reply was accepted before trying again']] as [$status, $title, $help]) {
-                $events = DB::table('integration_webhook_events')->where(fn ($_companyIdScope) => \App\Services\CompanyIdScope::constrain($_companyIdScope, 'company_id', $companyId))
+                $events = DB::table('integration_webhook_events')
                     ->where('provider', 'respond_io')
                     ->when($status === 'reply_failed', fn ($query) => $query->whereIn('outbound_status', ['failed', 'uncertain']))
                     ->when($status !== 'reply_failed', fn ($query) => $query->where('status', $status));
@@ -365,15 +352,14 @@ class MyWorkController extends Controller
                     ->orWhere(fn ($sender) => $sender->whereNull('booking.responsible_user_id')
                         ->whereRaw("booking.workflow_data->>'quotation_requested_by' = ?", [$userId])))
                 ->whereExists(fn ($sent) => $sent->selectRaw('1')->from('booking_activities as sent_quote')
-                    ->whereColumn('sent_quote.booking_id', 'booking.id')->where(fn ($_companyIdScope) => \App\Services\CompanyIdScope::constrain($_companyIdScope, 'sent_quote.company_id', $companyId))->whereNull('sent_quote.deleted_at')
+                    ->whereColumn('sent_quote.booking_id', 'booking.id')->whereNull('sent_quote.deleted_at')
                     ->where('sent_quote.event_key', 'quotation_email_sent')->where('sent_quote.result_status', 'sent'));
-            CompanyBookingScope::constrain($quotes, 'booking', $companyId);
             $queues[] = ['group' => 'mine', 'title' => 'Quotes waiting for an answer',
                 'help' => 'Quotes you sent that the customer has not answered yet', 'icon' => 'request_quote',
                 'link' => '/bookings/list?status=quotation_requested', 'count' => (int) (clone $quotes)->distinct('booking.id')->count('booking.id')];
 
             $sentAt = DB::table('booking_activities as sent_quote')->select('sent_quote.event_at')
-                ->whereColumn('sent_quote.booking_id', 'booking.id')->where(fn ($_companyIdScope) => \App\Services\CompanyIdScope::constrain($_companyIdScope, 'sent_quote.company_id', $companyId))->whereNull('sent_quote.deleted_at')
+                ->whereColumn('sent_quote.booking_id', 'booking.id')->whereNull('sent_quote.deleted_at')
                 ->where('sent_quote.event_key', 'quotation_email_sent')->where('sent_quote.result_status', 'sent')
                 ->orderByDesc('sent_quote.event_at')->limit(1);
             foreach ($this->withBookingAttentionContext(clone $quotes)->selectSub($sentAt, 'quotation_sent_at')
@@ -391,19 +377,19 @@ class MyWorkController extends Controller
             $workdayEndUtc = now($businessTimezone)->endOfDay()->utc();
             $profile = DB::table('sales_profiles as profile')->join('staff as owner_staff', 'owner_staff.id', '=', 'profile.staff_id')
                 ->join('users as owner_user', 'owner_user.id', '=', 'owner_staff.user_id')
-                ->where(fn ($_companyIdScope) => \App\Services\CompanyIdScope::constrain($_companyIdScope, 'profile.company_id', $companyId))->where('profile.status', 'active')->whereNull('profile.deleted_at')
+                ->where('profile.status', 'active')->whereNull('profile.deleted_at')
                 ->where('profile.effective_from', '<=', now())
-                ->where(fn ($_companyIdScope) => \App\Services\CompanyIdScope::constrain($_companyIdScope, 'owner_staff.company_id', $companyId))->whereNull('owner_staff.deleted_at')
+                ->whereNull('owner_staff.deleted_at')
                 ->where(fn ($employment) => $employment->whereNull('owner_staff.employment_ended_at')->orWhere('owner_staff.employment_ended_at', '>', now()))
                 ->whereNull('owner_user.deleted_at')->where('owner_user.is_active', true)->where('owner_staff.user_id', $userId)
                 ->value('profile.id');
             if ($profile) {
-                $count = DB::table('sales_tasks as task')->where(fn ($_companyIdScope) => \App\Services\CompanyIdScope::constrain($_companyIdScope, 'task.company_id', $companyId))
+                $count = DB::table('sales_tasks as task')
                     ->where('task.owner_sales_profile_id', $profile)->whereIn('task.status', ['open', 'in_progress'])
                     ->where('task.due_at', '<=', $workdayEndUtc)->count();
                 $queues[] = ['group' => 'mine', 'title' => 'My follow-up tasks', 'help' => 'Tasks due today or late', 'icon' => 'task_alt',
                     'link' => '/sales/work', 'count' => (int) $count];
-                foreach (DB::table('sales_tasks')->where(fn ($_companyIdScope) => \App\Services\CompanyIdScope::constrain($_companyIdScope, 'company_id', $companyId))->where('owner_sales_profile_id', $profile)
+                foreach (DB::table('sales_tasks')->where('owner_sales_profile_id', $profile)
                     ->whereIn('status', ['open', 'in_progress'])->where('due_at', '<=', $workdayEndUtc)->orderBy('due_at')->limit(5)
                     ->get(['id', 'title', 'due_at']) as $row) {
                     $attention[] = ['id' => 'task:'.$row->id, 'group' => 'mine', 'type' => 'Follow-up', 'title' => $row->title,

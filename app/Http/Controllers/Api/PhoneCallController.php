@@ -361,7 +361,7 @@ class PhoneCallController extends Controller
             $this->assertCallLinksInCompany($customerId, $bookingId, $companyId);
 
             $assigneeId = $call->assigned_user_id && in_array((string) $call->assigned_user_id,
-                app(\App\Services\InquiryAssignmentService::class)->eligibleAssigneeIds($companyId), true)
+                app(\App\Services\InquiryAssignmentService::class)->eligibleAssigneeIds(), true)
                 ? (string) $call->assigned_user_id : null;
             $inquiry = \App\Models\Inquiry::createWithUniqueNumber([
                 'company_id' => $companyId,

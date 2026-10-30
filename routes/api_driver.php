@@ -59,9 +59,9 @@ Route::middleware('business.module:driver')->group(function () {
     Route::middleware(['auth:api', 'ensure.driver'])->group(function () {
 
         Route::post('diagnostic-reports', [DiagnosticReportController::class, 'store'])
-            ->middleware('throttle:30,60');
+            ->middleware('throttle:driver-diagnostic-reports');
         Route::post('hire-recovery-events', [HireRecoveryController::class, 'store'])
-            ->middleware('throttle:60,1');
+            ->middleware('throttle:driver-hire-recovery');
 
         // Authentication routes
         Route::prefix('auth')->group(function () {
@@ -83,11 +83,11 @@ Route::middleware('business.module:driver')->group(function () {
 
         // Location routes
         Route::prefix('location')->group(function () {
-            Route::post('', [LocationController::class, 'update'])->middleware('throttle:60,1');
-            Route::post('bulk', [LocationController::class, 'bulkUpdate'])->middleware('throttle:10,1');
+            Route::post('', [LocationController::class, 'update'])->middleware('throttle:driver-location-live');
+            Route::post('bulk', [LocationController::class, 'bulkUpdate'])->middleware('throttle:driver-location-bulk');
             Route::post('health', [LocationController::class, 'health']);
             Route::post('tracking-incidents', [LocationController::class, 'trackingIncident'])
-                ->middleware('throttle:30,1');
+                ->middleware('throttle:driver-location-incidents');
             Route::get('history', [LocationController::class, 'history']);
         });
 

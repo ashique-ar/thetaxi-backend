@@ -202,6 +202,16 @@ class AppServiceProvider extends ServiceProvider
             ->by($request->user()?->id ?: $request->ip()));
         RateLimiter::for('sms-webhook', fn (Request $request) => Limit::perMinute(120)
             ->by($request->ip()));
+        RateLimiter::for('driver-location-live', fn (Request $request) => Limit::perMinute(60)
+            ->by('driver-location-live:' . ($request->user()?->getAuthIdentifier() ?: $request->ip())));
+        RateLimiter::for('driver-location-bulk', fn (Request $request) => Limit::perMinute(10)
+            ->by('driver-location-bulk:' . ($request->user()?->getAuthIdentifier() ?: $request->ip())));
+        RateLimiter::for('driver-location-incidents', fn (Request $request) => Limit::perMinute(30)
+            ->by('driver-location-incidents:' . ($request->user()?->getAuthIdentifier() ?: $request->ip())));
+        RateLimiter::for('driver-diagnostic-reports', fn (Request $request) => Limit::perMinutes(60, 30)
+            ->by('driver-diagnostic-reports:' . ($request->user()?->getAuthIdentifier() ?: $request->ip())));
+        RateLimiter::for('driver-hire-recovery', fn (Request $request) => Limit::perMinute(60)
+            ->by('driver-hire-recovery:' . ($request->user()?->getAuthIdentifier() ?: $request->ip())));
 
         Relation::morphMap([
             'driver' => \App\Models\Driver\Driver::class,

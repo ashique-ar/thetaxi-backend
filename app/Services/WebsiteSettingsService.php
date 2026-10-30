@@ -1094,7 +1094,7 @@ class WebsiteSettingsService
             'sms_esms_delivery_callback_url',
         ];
 
-        return $this->getMultiple($types);
+        return $this->getMultiple($types, null);
     }
 
     /**

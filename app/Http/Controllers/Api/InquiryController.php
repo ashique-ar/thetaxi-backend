@@ -132,7 +132,7 @@ class InquiryController extends Controller
         if ($request->boolean('mine_only')) {
             $q->where('assigned_to', $request->user()->id);
         } elseif ($request->boolean('unassigned_only')) {
-            $eligibleAssignees = app(InquiryAssignmentService::class)->eligibleAssigneeIds((string) $companyId);
+            $eligibleAssignees = app(InquiryAssignmentService::class)->eligibleAssigneeIds();
             $q->where(fn ($unassigned) => $unassigned->whereNull('assigned_to')->orWhereNotIn('assigned_to', $eligibleAssignees));
         } elseif (! empty($filters['assigned_to'])) {
             $q->where('assigned_to', $filters['assigned_to']);

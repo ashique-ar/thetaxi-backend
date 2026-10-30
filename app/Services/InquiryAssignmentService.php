@@ -7,17 +7,17 @@ use Illuminate\Support\Facades\DB;
 
 class InquiryAssignmentService
 {
-    public function eligibleAssignees(string $companyId)
+    public function eligibleAssignees()
     {
         return DB::table('staff')->join('users', 'users.id', '=', 'staff.user_id')
-            ->where(fn ($_companyIdScope) => \App\Services\CompanyIdScope::constrain($_companyIdScope, 'staff.company_id', $companyId))->whereNull('staff.deleted_at')
+            ->whereNull('staff.deleted_at')
             ->where(fn ($employment) => $employment->whereNull('staff.employment_ended_at')->orWhere('staff.employment_ended_at', '>', now()))
             ->whereNull('users.deleted_at')->where('users.is_active', true)
             ->whereIn('users.id', User::permission('inquiries.view')->select('id'));
     }
 
-    public function eligibleAssigneeIds(string $companyId): array
+    public function eligibleAssigneeIds(): array
     {
-        return $this->eligibleAssignees($companyId)->pluck('users.id')->map(fn ($id) => (string) $id)->all();
+        return $this->eligibleAssignees()->pluck('users.id')->map(fn ($id) => (string) $id)->all();
     }
 }

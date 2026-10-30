@@ -96,7 +96,7 @@ class StaffWorkloadController extends Controller
 
         if ($request->user()->can('inquiries.view')) {
             $available[] = 'open_inquiries';
-            $eligibleInquiryAssignees = app(InquiryAssignmentService::class)->eligibleAssigneeIds((string) $companyId);
+            $eligibleInquiryAssignees = app(InquiryAssignmentService::class)->eligibleAssigneeIds();
             foreach (DB::table('inquiries')->where(fn ($_companyIdScope) => \App\Services\CompanyIdScope::constrain($_companyIdScope, 'company_id', $companyId))->whereNull('deleted_at')
                 ->whereIn('status', ['open', 'in_progress'])->whereIn('assigned_to', $eligibleInquiryAssignees)
                 ->selectRaw('assigned_to, COUNT(*) as total')->groupBy('assigned_to')->get() as $count) {

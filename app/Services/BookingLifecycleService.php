@@ -780,9 +780,7 @@ class BookingLifecycleService
     public function requestReplacement(string $bookingId, string $bookingItemId, string $reason, ?string $notes = null): array
     {
         return DB::transaction(function () use ($bookingId, $bookingItemId, $reason, $notes): array {
-            $companyId = $this->selectedCompanyId();
             $bookingQuery = Booking::query()->with(['bookingItems', 'dispatches', 'qcs'])->whereKey($bookingId);
-            CompanyBookingScope::constrain($bookingQuery, 'bookings', $companyId);
             $booking = $bookingQuery->lockForUpdate()->firstOrFail();
             $item = BookingItem::query()->whereKey($bookingItemId)->where('booking_id', $booking->id)->lockForUpdate()->firstOrFail();
             $dispatch = $this->resolveItemDispatch($booking, ['booking_item' => $item, 'booking_item_id' => $item->id]);
@@ -822,9 +820,7 @@ class BookingLifecycleService
     public function closeReplacementRequest(string $bookingId, string $bookingItemId, string $resolutionReason): array
     {
         return DB::transaction(function () use ($bookingId, $bookingItemId, $resolutionReason): array {
-            $companyId = $this->selectedCompanyId();
             $bookingQuery = Booking::query()->with(['bookingItems', 'dispatches', 'qcs'])->whereKey($bookingId);
-            CompanyBookingScope::constrain($bookingQuery, 'bookings', $companyId);
             $booking = $bookingQuery->lockForUpdate()->firstOrFail();
             $item = BookingItem::query()->whereKey($bookingItemId)->where('booking_id', $booking->id)->lockForUpdate()->firstOrFail();
             $lifecycleData = is_array($item->lifecycle_data) ? $item->lifecycle_data : [];
@@ -3574,7 +3570,6 @@ class BookingLifecycleService
 
         if (!$activity) {
             $activity = new BookingActivity([
-                'company_id' => $vehicle->company_id ?: \App\Services\CompanyIdScope::defaultCompanyId(),
                 'booking_id' => $booking->id,
                 'booking_item_id' => $bookingItem?->id,
                 'event_key' => 'post_trip_maintenance',
@@ -3689,14 +3684,7 @@ class BookingLifecycleService
                 $bookingItem = $booking->bookingItems->first();
             }
         }
-        $companyId = $booking?->company_id ?: \App\Services\CompanyIdScope::defaultCompanyId();
-        if (! $companyId && $bookingItem?->service_type_id) {
-            $serviceType = $bookingItem->relationLoaded('serviceType')
-                ? $bookingItem->serviceType
-                : $bookingItem->serviceType()->first(['id', 'owner_type', 'owner_id']);
-            $companyId = $serviceType?->owner_type === 'company' ? (string) $serviceType->owner_id : null;
-        }
-        return $this->workflowSettingsResolver->resolve($bookingItem?->workflow_config_snapshot, $companyId);
+        return $this->workflowSettingsResolver->resolve($bookingItem?->workflow_config_snapshot);
     }
 
     /**
@@ -5190,18 +5178,6 @@ class BookingLifecycleService
                 'updated_at' => now()->toISOString(),
             ];
         });
-    }
-
-    private function selectedCompanyId(): string
-    {
-        $user = Auth::user();
-        $companyId = app(WebsiteSettingsService::class)->resolveCurrentCompanyId();
-        if (! $user || ! $companyId) {
-            throw new \DomainException('Select an active business before managing this booking.');
-        }
-        app(CompanySettingsAccessService::class)->assertCanAccess($user, (string) $companyId);
-
-        return (string) $companyId;
     }
 
     private function bookingDateTime(mixed $date, mixed $time = null): Carbon
