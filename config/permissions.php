@@ -68,8 +68,12 @@ return [
         ],
         'fleet-manager' => [
             'label' => 'Fleet Manager',
-            'description' => 'Vehicle and driver management.',
-            'patterns' => ['vehicles.*', 'drivers.*', 'vehicle-*', 'reports.view'],
+            'description' => 'Vehicle lease and driver onboarding management.',
+            'patterns' => [
+                'vehicle-leases.view', 'vehicle-leases.create', 'vehicle-leases.edit', 'vehicle-leases.manage', 'vehicle-leases.release',
+                'vehicle-makes.view', 'vehicle-models.view',
+                'drivers.onboarding.view', 'drivers.onboarding.manage', 'drivers.onboarding-drafts.view',
+            ],
         ],
         'accountant' => [
             'label' => 'Accountant',

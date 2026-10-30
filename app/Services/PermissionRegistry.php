@@ -86,6 +86,11 @@ class PermissionRegistry
                     $template['patterns'] ?? ['*'],
                     $template['exclude'] ?? []
                 );
+                if ($key !== 'master-admin') {
+                    $permissionNames = array_values(array_filter($permissionNames, fn (string $permission) =>
+                        ! self::isAdminOnlyPermissionName($permission)
+                    ));
+                }
                 if (! in_array($key, ['admin', 'master-admin'], true)) {
                     $permissionNames = array_values(array_diff($permissionNames, AllPermissionsSeeder::baselineDeniedPermissionNames()));
                 }

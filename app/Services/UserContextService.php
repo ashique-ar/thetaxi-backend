@@ -12,6 +12,7 @@ use Exception;
 use Illuminate\Http\Request;
 use Illuminate\Support\Collection;
 use Illuminate\Support\Facades\DB;
+use Spatie\Permission\Models\Permission;
 use Spatie\Permission\Models\Role;
 use Spatie\Permission\PermissionRegistrar;
 
@@ -1145,6 +1146,11 @@ class UserContextService
 
         $permissions = $roles
             ->flatMap(fn ($role) => $role->permissions ?? collect())
+            ->merge(Permission::query()
+                ->join('user_context_permission_grants as grants', 'permissions.id', '=', 'grants.permission_id')
+                ->where('grants.user_context_id', $userContext->id)
+                ->where('permissions.guard_name', config('permissions.canonical_guard', 'api'))
+                ->get(['permissions.*']))
             ->filter()
             ->unique('id')
             ->values();
@@ -1325,7 +1331,7 @@ class UserContextService
                 return [
                     'id' => (string) $role->id,
                     'name' => $role->name,
-                    'display_name' => $role->display_name ?? $role->name,
+                    'display_name' => $role->display_name ?? CorporateRoleStarterService::displayName($role->name),
                 ];
             })
             ->values()

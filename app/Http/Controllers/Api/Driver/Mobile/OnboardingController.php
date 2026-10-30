@@ -198,7 +198,13 @@ class OnboardingController extends Controller
         $status = $request->string('status', 'submitted')->toString();
         abort_unless(in_array($status, ['submitted', 'draft', 'changes_requested', 'approved', 'rejected'], true), 422, 'Invalid application status.');
         if ($status === 'draft') {
-            abort_unless($request->user()->can('drivers.onboarding-drafts.view'), 403, 'You do not have permission to view onboarding drafts.');
+            $canViewDrafts = app(\App\Services\PermissionEvaluator::class)->userHasAnyForRequest(
+                $request->user(),
+                ['drivers.onboarding-drafts.view'],
+                $request->attributes->get('resolved_active_context_type', $request->header('X-Active-Context-Type')),
+                $request->attributes->get('resolved_active_context_id', $request->header('X-Active-Context-Id'))
+            );
+            abort_unless($canViewDrafts, 403, 'You do not have permission to view onboarding drafts.');
         }
 
         $applications = DriverOnboardingApplication::with(['user', 'documents', 'vehicle:id,vehicle_group_id'])

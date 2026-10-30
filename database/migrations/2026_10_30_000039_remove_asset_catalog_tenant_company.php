@@ -64,6 +64,15 @@ return new class extends Migration
         }
 
         Schema::table($tableName, function (Blueprint $table) use ($columns, $name, $unique): void {
+            if (DB::getDriverName() === 'pgsql') {
+                $grammar = DB::connection()->getQueryGrammar();
+                $indexType = $unique ? 'UNIQUE ' : '';
+                $wrappedColumns = implode(', ', array_map($grammar->wrap(...), $columns));
+                DB::statement('CREATE '.$indexType.'INDEX IF NOT EXISTS '.$grammar->wrap($name).' ON '.$grammar->wrapTable($tableName).' ('.$wrappedColumns.')');
+
+                return;
+            }
+
             $unique ? $table->unique($columns, $name) : $table->index($columns, $name);
         });
     }

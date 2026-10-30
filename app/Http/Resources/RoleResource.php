@@ -3,8 +3,10 @@
 namespace App\Http\Resources;
 
 use App\Services\CorporateRoleStarterService;
+use App\Models\User;
 use Illuminate\Http\Request;
 use Illuminate\Http\Resources\Json\JsonResource;
+use Illuminate\Support\Facades\DB;
 
 class RoleResource extends JsonResource
 {
@@ -36,7 +38,18 @@ class RoleResource extends JsonResource
                 });
             }),
             'users_count' => $this->when($request->has('include_counts'), function () {
-                return $this->users()->count();
+                $globalUsers = DB::table('model_has_roles')
+                    ->where('role_id', $this->id)
+                    ->where('model_type', User::class)
+                    ->select('model_id as user_id');
+                $contextUsers = DB::table('user_context_roles')
+                    ->join('user_contexts', 'user_contexts.id', '=', 'user_context_roles.user_context_id')
+                    ->where('user_context_roles.role_id', $this->id)
+                    ->where('user_contexts.is_active', true)
+                    ->whereNull('user_contexts.deleted_at')
+                    ->select('user_contexts.user_id');
+
+                return DB::query()->fromSub($globalUsers->union($contextUsers), 'assigned_users')->count();
             }),
             'created_at' => $this->created_at,
             'updated_at' => $this->updated_at,

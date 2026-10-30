@@ -647,7 +647,6 @@ class AllPermissionsSeeder extends Seeder
                     'bookings.process_return', 'bookings.qc_inspect', 'bookings.complete_repairs',
                     'view_all_bookings', 'create_bookings', 'create_bookings_for_others', 'approve_bookings',
                     'dashboard.view', 'customers.view', 'customers.create', 'customers.edit',
-                    'drivers.onboarding.view', 'drivers.onboarding.manage', 'drivers.onboarding-drafts.view',
                     'service-types.view', 'service-packages.view', 'addons.view',
                 ]
             ))),
@@ -1204,10 +1203,16 @@ class AllPermissionsSeeder extends Seeder
                 'collection-commissions.view',
                 'collection-commissions.view-team',
             ],
-            'driver-coordinator' => $this->permissionsForResources(
-                ['driver-logs', 'driving-licenses'],
-                ['view', 'create', 'edit', 'delete']
-            ),
+            'driver-coordinator' => array_values(array_unique(array_merge(
+                $this->permissionsForResources(
+                    ['driver-logs', 'driving-licenses'],
+                    ['view', 'create', 'edit', 'delete']
+                ),
+                [
+                    'vehicle-makes.view', 'vehicle-models.view',
+                    'drivers.onboarding.view', 'drivers.onboarding.manage', 'drivers.onboarding-drafts.view',
+                ]
+            ))),
             'driver' => ['driver-logs.view', 'driver-logs.create', 'driving-licenses.view'],
             'agent' => ['bookings.view', 'bookings.create', 'agent-commissions.view'],
             'corporate' => ['bookings.view', 'bookings.create', 'vehicle-discounts.view'],
@@ -1246,6 +1251,11 @@ class AllPermissionsSeeder extends Seeder
                 'vehicle-leases.edit',
                 'vehicle-leases.manage',
                 'vehicle-leases.release',
+                'vehicle-makes.view',
+                'vehicle-models.view',
+                'drivers.onboarding.view',
+                'drivers.onboarding.manage',
+                'drivers.onboarding-drafts.view',
             ],
             'Corporate_Master_Admin' => [
                 'corporate.view',
@@ -1290,10 +1300,21 @@ class AllPermissionsSeeder extends Seeder
         ];
 
         foreach ($rolePermissions as $roleName => $permissions) {
+            if ($roleName !== 'Corporate_Master_Admin') {
+                $permissions = array_values(array_filter($permissions, fn (string $permission) =>
+                    ! PermissionRegistry::isAdminOnlyPermissionName($permission)
+                ));
+            }
             $role = Role::firstOrCreate(['name' => $roleName, 'guard_name' => $guard]);
             $this->addPermissionsToRole($role, $permissions, $permissionModels);
 
         }
+
+        $this->revokePermissionsFromRole(
+            Role::firstOrCreate(['name' => 'staff-operations', 'guard_name' => $guard]),
+            ['drivers.onboarding.view', 'drivers.onboarding.manage', 'drivers.onboarding-drafts.view'],
+            $permissionModels
+        );
     }
 
     /**
@@ -1306,6 +1327,7 @@ class AllPermissionsSeeder extends Seeder
     private static function denyByDefaultPermissions(): array
     {
         return [
+            'drivers.onboarding-drafts.view',
             'uploads.delete-any',
             'hr.medical-records.view',
             'hr.medical-records.manage',
@@ -1623,7 +1645,8 @@ class AllPermissionsSeeder extends Seeder
         return array_values(array_filter($permissions, function (string $permission) use ($templateName, $patterns, $exclusions) {
             $matches = fn (array $set) => collect($set)->contains(fn ($pattern) => $pattern === '*' || \Illuminate\Support\Str::is($pattern, $permission));
             return $matches($patterns) && ! $matches($exclusions)
-                && ($templateName === 'admin' || ! in_array($permission, self::denyByDefaultPermissions(), true));
+                && ($templateName === 'admin' || ! in_array($permission, self::denyByDefaultPermissions(), true))
+                && ($templateName === 'master-admin' || ! PermissionRegistry::isAdminOnlyPermissionName($permission));
         }));
     }
 

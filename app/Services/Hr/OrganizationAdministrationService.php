@@ -237,7 +237,7 @@ class OrganizationAdministrationService
 
         $activeStaff=DB::table('staff')->whereIn('id',$staffIds)
             ->whereNull('employment_ended_at')->whereNull('deleted_at')->orderBy('id')->lockForUpdate()->get(['id']);
-        abort_unless($activeStaff->count()===count($staffIds),422,'Organization manager and HR partner must be active Staff in the same legal entity.');
+        abort_unless($activeStaff->count()===count($staffIds),422,'Organization manager and HR partner must be active Staff.');
     }
 
     private function assertParent(?string $parentId,string $from,?string $until,?string $unitId=null):void

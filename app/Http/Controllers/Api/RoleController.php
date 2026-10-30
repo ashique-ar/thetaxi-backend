@@ -6,6 +6,7 @@ use App\Http\Controllers\Controller;
 use App\Http\Requests\Role\CreateRoleRequest;
 use App\Http\Requests\Role\UpdateRoleRequest;
 use App\Http\Resources\RoleResource;
+use App\Models\User;
 use App\Services\PermissionAssignmentService;
 use App\Services\CorporateRoleStarterService;
 use App\Services\UserContextService;
@@ -51,6 +52,17 @@ class RoleController extends Controller
             ->whereRaw('LOWER(name) NOT IN (?, ?)', ['transport_coordinator', 'approval_manager']);
         $query->where(fn ($roles) => $roles->whereNull('context_types')
             ->orWhereJsonDoesntContain('context_types', 'corporate'));
+
+        $actorRoles = $request->user()->roles()
+            ->whereIn('name', ['admin', 'super-admin'])
+            ->where('guard_name', config('permissions.canonical_guard', 'api'))
+            ->pluck('name');
+        if (!$actorRoles->contains('super-admin')) {
+            $query->where('name', '!=', 'super-admin');
+        }
+        if (!$actorRoles->contains('admin') && !$actorRoles->contains('super-admin')) {
+            $query->where('name', '!=', 'admin');
+        }
 
         if ($request->filled('search')) {
             $query->where('name', 'like', '%' . $request->search . '%');
@@ -208,7 +220,7 @@ class RoleController extends Controller
     public function destroy(Role $role): JsonResponse
     {
         $this->protectManagedRole($role);
-        abort_if($role->name === 'super-admin', 403, 'The Master Admin role cannot be deleted.');
+        abort_if(in_array($role->name, ['admin', 'super-admin'], true), 403, 'System roles cannot be deleted.');
 
         try {
             // Check if role is being used by any users
@@ -344,7 +356,18 @@ class RoleController extends Controller
     {
         $this->protectManagedRole($role);
 
-        $users = $role->users()->select('id', 'first_name', 'last_name', 'email')->get();
+        $globalUsers = DB::table('model_has_roles')
+            ->where('role_id', $role->id)
+            ->where('model_type', User::class)
+            ->select('model_id as user_id');
+        $contextUsers = DB::table('user_context_roles')
+            ->join('user_contexts', 'user_contexts.id', '=', 'user_context_roles.user_context_id')
+            ->where('user_context_roles.role_id', $role->id)
+            ->where('user_contexts.is_active', true)
+            ->whereNull('user_contexts.deleted_at')
+            ->select('user_contexts.user_id');
+        $users = User::query()->whereIn('id', $globalUsers->union($contextUsers))
+            ->select('id', 'first_name', 'last_name', 'email')->get();
         
         return response()->json([
             'status' => 'success',

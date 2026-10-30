@@ -4,6 +4,7 @@ namespace App\Models;
 
 use App\Models\Agent\Agent;
 use App\Models\Booking\Booking;
+use App\Services\PermissionEvaluator;
 use App\Traits\UUID;
 use App\Services\PermissionRegistry;
 use Illuminate\Database\Eloquent\Collection;
@@ -375,28 +376,8 @@ class User extends Authenticatable
      */
     public function getPermissionsArray()
     {
-        $directPermissions = DB::table('model_has_permissions')
-            ->join('permissions', 'permissions.id', '=', 'model_has_permissions.permission_id')
-            ->where('permissions.guard_name', config('permissions.canonical_guard', 'api'))
-            ->where('model_has_permissions.model_type', self::class)
-            ->where('model_has_permissions.model_id', $this->id)
-            ->pluck('permissions.name');
-
-        $rolePermissions = DB::table('model_has_roles')
-            ->join('role_has_permissions', 'role_has_permissions.role_id', '=', 'model_has_roles.role_id')
-            ->join('permissions', 'permissions.id', '=', 'role_has_permissions.permission_id')
-            ->where('permissions.guard_name', config('permissions.canonical_guard', 'api'))
-            ->where('model_has_roles.model_type', self::class)
-            ->where('model_has_roles.model_id', $this->id)
-            ->pluck('permissions.name');
-
-        $permissions = $directPermissions->merge($rolePermissions)->unique()->values();
-
-        if (! $this->isMasterAdmin()) {
-            $permissions = $permissions->reject(fn (string $permission) => PermissionRegistry::isAdminOnlyPermissionName($permission));
-        }
-
-        return $permissions->values()->toArray();
+        return app(PermissionEvaluator::class)->permissionsForInternalContext($this)
+            ->pluck('name')->values()->all();
     }
 
     private function isMasterAdmin(): bool
@@ -414,15 +395,8 @@ class User extends Authenticatable
      */
     public function getRolesArray()
     {
-        return DB::table('model_has_roles')
-            ->join('roles', 'roles.id', '=', 'model_has_roles.role_id')
-            ->where('roles.guard_name', config('permissions.canonical_guard', 'api'))
-            ->where('model_has_roles.model_type', self::class)
-            ->where('model_has_roles.model_id', $this->id)
-            ->pluck('roles.name')
-            ->unique()
-            ->values()
-            ->toArray();
+        return app(PermissionEvaluator::class)->rolesForInternalContext($this)
+            ->pluck('name')->values()->all();
     }
 
     /**

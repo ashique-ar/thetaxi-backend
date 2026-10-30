@@ -445,19 +445,42 @@ class UserController extends Controller
             ->select('permissions.*')
             ->get();
 
+        $contextRolePermissions = Permission::query()
+            ->join('role_has_permissions', 'permissions.id', '=', 'role_has_permissions.permission_id')
+            ->join('user_context_roles', 'role_has_permissions.role_id', '=', 'user_context_roles.role_id')
+            ->join('user_contexts', 'user_contexts.id', '=', 'user_context_roles.user_context_id')
+            ->where('user_contexts.user_id', $user->id)
+            ->where('user_contexts.is_active', true)
+            ->whereNull('user_contexts.deleted_at')
+            ->where('permissions.guard_name', config('permissions.canonical_guard', 'api'))
+            ->select('permissions.*')
+            ->get();
+
         $contextPermissionIds = DB::table('user_context_permission_grants as grants')
             ->join('user_contexts', 'user_contexts.id', '=', 'grants.user_context_id')
             ->where('user_contexts.user_id', $user->id)
             ->where('user_contexts.is_active', true)
+            ->whereNull('user_contexts.deleted_at')
             ->pluck('grants.permission_id')->unique();
+        $contextPermissionGrants = Permission::query()
+            ->join('user_context_permission_grants as grants', 'permissions.id', '=', 'grants.permission_id')
+            ->join('user_contexts', 'user_contexts.id', '=', 'grants.user_context_id')
+            ->where('user_contexts.user_id', $user->id)
+            ->where('user_contexts.is_active', true)
+            ->whereNull('user_contexts.deleted_at')
+            ->where('permissions.guard_name', config('permissions.canonical_guard', 'api'))
+            ->select('permissions.*')
+            ->get();
         $explicitPermissionIds = DB::table('user_direct_permission_grants')
             ->where('user_id', $user->id)->pluck('permission_id')->unique();
-        $contextNames = $directPermissions->whereIn('id', $contextPermissionIds)->pluck('name')->unique();
+        $contextNames = $directPermissions->whereIn('id', $contextPermissionIds)->pluck('name')
+            ->merge($contextPermissionGrants->pluck('name'))->unique();
         $directNames = $directPermissions->filter(fn ($permission) =>
             !$contextPermissionIds->contains($permission->id) || $explicitPermissionIds->contains($permission->id)
         )->pluck('name')->unique();
-        $roleNames = $rolePermissions->pluck('name')->unique();
-        $permissions = $directPermissions->merge($rolePermissions)->unique('name')->values();
+        $roleNames = $rolePermissions->merge($contextRolePermissions)->pluck('name')->unique();
+        $permissions = $directPermissions->merge($rolePermissions)
+            ->merge($contextRolePermissions)->merge($contextPermissionGrants)->unique('name')->values();
         $isMasterAdmin = $user->roles()
             ->where('name', 'super-admin')
             ->where('guard_name', config('permissions.canonical_guard', 'api'))

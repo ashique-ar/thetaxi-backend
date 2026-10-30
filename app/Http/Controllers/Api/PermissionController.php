@@ -14,6 +14,7 @@ use Spatie\Permission\PermissionRegistrar;
 use Illuminate\Http\Request;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Resources\Json\AnonymousResourceCollection;
+use Illuminate\Support\Facades\DB;
 use Illuminate\Validation\ValidationException;
 
 class PermissionController extends Controller
@@ -196,7 +197,10 @@ class PermissionController extends Controller
 
         try {
             // Check if permission is being used by any roles or users
-            if ($permission->roles()->exists() || $permission->users()->exists()) {
+            if ($permission->roles()->exists()
+                || $permission->users()->exists()
+                || DB::table('user_context_permission_grants')->where('permission_id', $permission->id)->exists()
+                || DB::table('user_direct_permission_grants')->where('permission_id', $permission->id)->exists()) {
                 return response()->json([
                     'status' => 'error',
                     'message' => 'Cannot delete permission that is assigned to roles or users'

@@ -140,25 +140,12 @@ class DocumentController extends Controller
 
         if (!empty($data['owner_type'])) {
             $this->assertOwnerAccess($request, $data['owner_type'], 'view', $data['owner_id'] ?? null);
-            $query->where('documentable_type', $this->ownerClass($data['owner_type']));
+            $query->whereIn('documentable_type', $this->ownerMorphTypes($data['owner_type']));
             if ($this->normaliseOwnerType($data['owner_type']) === 'staff' && empty($data['owner_id'])) {
                 $query->whereIn('documentable_id', $this->staffAccess->scope(Staff::query(), $request->user())->select('id'));
             }
-        } elseif (! $request->user()->can('staff-sensitive-documents.view')) {
-            $query->whereNotIn('documentable_type', ['staff', Staff::class]);
         } else {
-            $staffIds = $this->staffAccess->scope(Staff::query(), $request->user())->select('id');
-            $query->where(function ($scope) use ($staffIds) {
-                $scope->whereNotIn('documentable_type', ['staff', Staff::class])
-                    ->orWhere(function ($staffScope) use ($staffIds) {
-                        $staffScope->whereIn('documentable_type', ['staff', Staff::class])
-                            ->whereIn('documentable_id', $staffIds);
-                    });
-            });
-        }
-
-        if (! $request->user()->can('hr.medical-records.view')) {
-            $query->whereNotIn('documentable_type', ['medical_record', MedicalRecord::class]);
+            $this->scopeVisibleDocuments($request, $query);
         }
 
         if (!empty($data['owner_id'])) {
@@ -220,25 +207,12 @@ class DocumentController extends Controller
 
         if (!empty($data['owner_type'])) {
             $this->assertOwnerAccess($request, $data['owner_type'], 'view', $data['owner_id'] ?? null);
-            $query->where('documentable_type', $this->ownerClass($data['owner_type']));
+            $query->whereIn('documentable_type', $this->ownerMorphTypes($data['owner_type']));
             if ($this->normaliseOwnerType($data['owner_type']) === 'staff' && empty($data['owner_id'])) {
                 $query->whereIn('documentable_id', $this->staffAccess->scope(Staff::query(), $request->user())->select('id'));
             }
-        } elseif (! $request->user()->can('staff-sensitive-documents.view')) {
-            $query->whereNotIn('documentable_type', ['staff', Staff::class]);
         } else {
-            $staffIds = $this->staffAccess->scope(Staff::query(), $request->user())->select('id');
-            $query->where(function ($scope) use ($staffIds) {
-                $scope->whereNotIn('documentable_type', ['staff', Staff::class])
-                    ->orWhere(function ($staffScope) use ($staffIds) {
-                        $staffScope->whereIn('documentable_type', ['staff', Staff::class])
-                            ->whereIn('documentable_id', $staffIds);
-                    });
-            });
-        }
-
-        if (! $request->user()->can('hr.medical-records.view')) {
-            $query->whereNotIn('documentable_type', ['medical_record', MedicalRecord::class]);
+            $this->scopeVisibleDocuments($request, $query);
         }
 
         if (!empty($data['owner_id'])) {
@@ -492,6 +466,13 @@ class DocumentController extends Controller
         return self::OWNER_TYPES[$type];
     }
 
+    private function ownerMorphTypes(string $type): array
+    {
+        $class = $this->ownerClass($type);
+
+        return array_values(array_unique([$this->normaliseOwnerType($type), $class, (new $class())->getMorphClass()]));
+    }
+
     private function normaliseOwnerType(string $type): string
     {
         return str_replace('-', '_', Str::snake($type));
@@ -607,18 +588,18 @@ class DocumentController extends Controller
                 'delete' => ['documents.delete', 'uploads.manage'],
                 default => ['documents.view', 'system.view'],
             };
-            $domainPermission = match ($ownerType) {
-                'agreement' => $action === 'view' ? 'agreements.view' : 'documents.create',
-                'customer' => $action === 'view' ? 'customers.view' : 'customers.edit',
-                'driver' => $action === 'view' ? 'drivers.view' : 'drivers.edit',
-                'driver_onboarding_application' => $action === 'view' ? 'drivers.onboarding.view' : 'drivers.edit',
-                'vehicle' => $action === 'view' ? 'vehicles.view' : 'vehicles.edit',
-                'vehicle_owner' => $action === 'view' ? 'vehicle-owners.view' : 'vehicle-owners.edit',
-                'vehicle_lease' => $action === 'view' ? 'vehicle-leases.view' : ($action === 'create' ? 'vehicle-leases.edit' : 'vehicle-leases.manage'),
+            $domainPermissions = match ($ownerType) {
+                'agreement' => [$action === 'view' ? 'agreements.view' : 'documents.create'],
+                'customer' => [$action === 'view' ? 'customers.view' : 'customers.edit'],
+                'driver' => [$action === 'view' ? 'drivers.view' : 'drivers.edit'],
+                'driver_onboarding_application' => $action === 'view' ? ['drivers.onboarding.view', 'drivers.view'] : ['drivers.edit'],
+                'vehicle' => [$action === 'view' ? 'vehicles.view' : 'vehicles.edit'],
+                'vehicle_owner' => [$action === 'view' ? 'vehicle-owners.view' : 'vehicle-owners.edit'],
+                'vehicle_lease' => [$action === 'view' ? 'vehicle-leases.view' : ($action === 'create' ? 'vehicle-leases.edit' : 'vehicle-leases.manage')],
             };
 
             abort_unless(
-                collect([...$globalPermission, $domainPermission])->contains(fn (string $permission) => $this->userCan($request, $permission)),
+                collect([...$globalPermission, ...$domainPermissions])->contains(fn (string $permission) => $this->userCan($request, $permission)),
                 Response::HTTP_FORBIDDEN,
                 'You are not authorized to access documents for this owner type.'
             );
@@ -639,6 +620,63 @@ class DocumentController extends Controller
             $staff = Staff::withTrashed()->findOrFail($ownerId);
             $scopeAction = in_array($action, ['create', 'verify', 'delete'], true) ? 'edit' : 'view';
             $this->staffAccess->authorize($request->user(), $staff, $scopeAction);
+        }
+    }
+
+    private function scopeVisibleDocuments(Request $request, Builder $query): void
+    {
+        if ($this->userCan($request, 'documents.view') || $this->userCan($request, 'system.view')) {
+            if (!$this->userCan($request, 'staff-sensitive-documents.view')) {
+                $query->whereNotIn('documentable_type', ['staff', Staff::class]);
+            } else {
+                $staffIds = $this->staffAccess->scope(Staff::query(), $request->user())->select('id');
+                $query->where(function ($scope) use ($staffIds) {
+                    $scope->whereNotIn('documentable_type', ['staff', Staff::class])
+                        ->orWhere(fn ($staffScope) => $staffScope
+                            ->whereIn('documentable_type', ['staff', Staff::class])
+                            ->whereIn('documentable_id', $staffIds));
+                });
+            }
+        } else {
+            $permissionsByOwner = [
+                'agreement' => ['agreements.view'],
+                'customer' => ['customers.view'],
+                'driver' => ['drivers.view'],
+                'driver_onboarding_application' => ['drivers.onboarding.view', 'drivers.view'],
+                'vehicle' => ['vehicles.view'],
+                'vehicle_lease' => ['vehicle-leases.view'],
+                'vehicle_owner' => ['vehicle-owners.view'],
+            ];
+            $types = collect($permissionsByOwner)
+                ->filter(fn (array $permissions) => collect($permissions)->contains(fn (string $permission) => $this->userCan($request, $permission)))
+                ->keys()
+                ->all();
+
+            if ($this->userCan($request, 'staff-sensitive-documents.view')) {
+                $types[] = 'staff';
+            }
+
+            $classes = collect($types)
+                ->flatMap(fn (string $type) => $this->ownerMorphTypes($type))
+                ->push('medical_record', MedicalRecord::class, (new MedicalRecord())->getMorphClass());
+            if (!$this->userCan($request, 'hr.medical-records.view')) {
+                $classes = $classes->reject(fn (string $class) => in_array($class, ['medical_record', MedicalRecord::class], true));
+            }
+
+            $query->whereIn('documentable_type', $classes->unique()->all());
+            if (in_array('staff', $types, true)) {
+                $query->where(function ($scope) use ($request) {
+                    $scope->whereNotIn('documentable_type', ['staff', Staff::class])
+                        ->orWhere(function ($staffScope) use ($request) {
+                            $staffScope->whereIn('documentable_type', ['staff', Staff::class])
+                                ->whereIn('documentable_id', $this->staffAccess->scope(Staff::query(), $request->user())->select('id'));
+                        });
+                });
+            }
+        }
+
+        if (!$this->userCan($request, 'hr.medical-records.view')) {
+            $query->whereNotIn('documentable_type', ['medical_record', MedicalRecord::class]);
         }
     }
 

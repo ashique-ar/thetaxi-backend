@@ -449,7 +449,7 @@ class SafetyController extends Controller
             DB::table('hr_safety_inspections')->where('id', $id)->update(['status' => 'completed_pending_verification', 'result_snapshot' => json_encode($d['result_snapshot'], JSON_THROW_ON_ERROR), 'result_checksum' => $resultChecksum, 'updated_at' => now()]);
             foreach ($d['actions'] ?? [] as $action) {
                 $owner = Staff::query()->whereKey($action['owner_staff_id'])->whereNull('employment_ended_at')->lockForUpdate()->first();
-                abort_unless($owner, 422, 'Inspection action owner must be active in the same legal entity.');
+                abort_unless($owner, 422, 'Inspection action owner must be active.');
                 $user = $owner->user_id ? \App\Models\User::query()->whereKey($owner->user_id)->where('is_active', true)->lockForUpdate()->first() : null;
                 abort_unless($user && $user->can('hr.safety.action'), 422, 'Inspection action owner must be active and safety-action authorized.');
                 DB::table('hr_safety_actions')->insert($action + ['id' => (string) Str::uuid(), 'inspection_id' => $id, 'action_type' => $action['action_type'], 'status' => 'open', 'created_at' => now(), 'updated_at' => now()]); }$this->registerEvent('inspection', $id, 'completed', $i->status, 'completed_pending_verification', ['result_checksum' => $resultChecksum, 'action_count' => count($d['actions'] ?? [])], $r->user()->id);
