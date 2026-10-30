@@ -587,16 +587,6 @@ class CheckoutController extends Controller
             $contactMethod = 'mobile';
         }
         $request->merge(['contact_method' => $contactMethod]);
-        $onlinePaymentNeedsBothContacts = in_array($request->input('payment_type'), ['full', 'advance'], true)
-            && in_array('online', $allowedPaymentMethodKeys, true);
-        if (! Auth::check() && ! ($customerLookupEnabled && $this->hasRecentCheckoutVerification()) && ! $onlinePaymentNeedsBothContacts) {
-            // Contact choice is enforced server-side; hidden fields cannot become accidental identifiers.
-            if ($contactMethod === 'email') {
-                $request->merge(['phone' => null, 'phone_country_code' => null, 'phone_international' => null]);
-            } else {
-                $request->merge(['email' => null]);
-            }
-        }
         $request->merge([
             'identification' => filled($request->input('identification'))
                 ? strtoupper(trim((string) $request->input('identification')))
@@ -622,10 +612,10 @@ class CheckoutController extends Controller
             'payment_type' => 'required|in:' . implode(',', $allowedPaymentTypes),
             'first_name' => ['required', 'string', 'max:255', 'regex:/^(?=.*\p{L})[\p{L}\p{M} .\x27?-]+$/u'],
             'last_name' => ['nullable', 'string', 'max:255', 'regex:/^(?=.*\p{L})[\p{L}\p{M} .\x27?-]+$/u'],
-            'phone' => ['nullable', 'required_if:contact_method,mobile', 'string', 'min:5', 'max:20', 'regex:/^(?=(?:.*\d){5,})[+\d\s().-]+$/'],
-            'phone_country_code' => 'nullable|required_if:contact_method,mobile|string|max:5',
-            'phone_international' => ['nullable', 'required_if:contact_method,mobile', 'string', 'regex:/^\+[1-9][0-9]{7,14}$/'],
-            'email' => 'nullable|required_if:contact_method,email|email|max:255',
+            'phone' => ['required', 'string', 'min:5', 'max:20', 'regex:/^(?=(?:.*\d){5,})[+\d\s().-]+$/'],
+            'phone_country_code' => 'required|string|max:5',
+            'phone_international' => ['required', 'string', 'regex:/^\+[1-9][0-9]{7,14}$/'],
+            'email' => 'required|email|max:255',
             'identification' => [
                 'nullable', 'string', 'max:50',
                 function ($attribute, $value, $fail): void {
@@ -695,15 +685,6 @@ class CheckoutController extends Controller
                     || $this->normalizeCheckoutMobile((string) $verifiedCustomer->user->phone, $phoneCallingCode) === $submittedMobile))) {
                 throw ValidationException::withMessages(['email' => ['For a returning customer, keep the saved email and mobile number. You can update the other details below.']]);
             }
-        }
-
-        if (in_array($validated['payment_type'], ['full', 'advance'], true)
-            && in_array('online', $allowedPaymentMethodKeys, true)
-            && (! filled($validated['email'] ?? Auth::user()?->email)
-                || ! filled($validated['phone_international'] ?? $validated['phone'] ?? Auth::user()?->phone))) {
-            throw ValidationException::withMessages([
-                'payment_type' => ['Online payment needs both an email address and mobile number. Switch the contact choice to enter each one.'],
-            ]);
         }
 
         // Automatically set payment method based on payment type

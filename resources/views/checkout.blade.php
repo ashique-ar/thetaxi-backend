@@ -203,7 +203,7 @@
                                     <div class="row">
                                         <div class="col-12" id="checkout-contact-method" @if (Auth::user()?->email && Auth::user()?->phone) hidden @endif>
                                             <fieldset class="border-0 p-0 m-0">
-                                                <legend class="form-label fw-semibold mb-2">How should we contact you?</legend>
+                                                <legend class="form-label fw-semibold mb-2">Preferred contact method</legend>
                                                 <div class="d-flex flex-wrap gap-2">
                                                     <label class="btn btn-outline-secondary rounded-pill px-3"><input class="form-check-input me-1" type="radio" name="contact_method" value="mobile" @checked(old('contact_method', Auth::user()?->email ? 'email' : 'mobile') === 'mobile')> Mobile</label>
                                                     <label class="btn btn-outline-secondary rounded-pill px-3"><input class="form-check-input me-1" type="radio" name="contact_method" value="email" @checked(old('contact_method', Auth::user()?->email ? 'email' : 'mobile') === 'email')> Email</label>
@@ -235,6 +235,7 @@
                                                 <label>Mobile Number<span class="checkout-contact-required">*</span></label>
                                                 <input type="tel" id="phone-input" name="phone"
                                                     placeholder="Mobile number" autocomplete="tel"
+                                                    required
                                                     value="{{ old('phone', Auth::user()?->phone) }}" style="padding-left: 48px;">
                                                 <div id="phone-error" class="text-danger mt-2" style="display: none;">
                                                 </div>
@@ -254,6 +255,7 @@
                                             <div class="form-inner two mb-25">
                                                 <label>Email Address<span class="checkout-contact-required">*</span></label>
                                                 <input type="email" name="email" placeholder="Enter email address"
+                                                    required
                                                     value="{{ old('email', Auth::user()?->email) }}">
                                                 @error('email')
                                                     <span class="text-danger">{{ $message }}</span>
@@ -604,7 +606,7 @@
                                             </div>
 
                                             <div class="alert alert-warning mb-3" id="payment-contact-requirement" role="status" hidden>
-                                                Online payment needs both an email address and mobile number. Use the contact choice above to enter both; only one field is shown at a time.
+                                                Enter both a valid email address and mobile number to continue checkout.
                                             </div>
 
                                             <!-- Payment Type Alert -->
@@ -3247,20 +3249,16 @@
                 if (hasVerifiedCustomer || keepAccountContact) {
                     contactMethodInputs.forEach(input => { input.checked = input.value === method; });
                 }
-                const showPhone = hasVerifiedCustomer || method === 'mobile';
-                const showEmail = hasVerifiedCustomer || method === 'email';
-                const validEmail = emailInput.checkValidity();
-                const validPhone = Boolean(window.checkoutIntlTelInput?.isValidNumber());
                 if (contactMethodPanel) contactMethodPanel.hidden = hasVerifiedCustomer || Boolean(keepAccountContact);
-                if (checkoutPhoneField) checkoutPhoneField.hidden = !showPhone;
-                if (checkoutEmailField) checkoutEmailField.hidden = !showEmail;
-                phoneInput.disabled = !showPhone && (!requiresOnlineContact || !validPhone);
-                emailInput.disabled = !showEmail && (!requiresOnlineContact || !validEmail);
-                phoneInput.required = !hasVerifiedCustomer && method === 'mobile';
-                emailInput.required = !hasVerifiedCustomer && method === 'email';
-                phoneInternationalInput.disabled = !showPhone && (!requiresOnlineContact || !validPhone);
+                if (checkoutPhoneField) checkoutPhoneField.hidden = false;
+                if (checkoutEmailField) checkoutEmailField.hidden = false;
+                phoneInput.disabled = false;
+                emailInput.disabled = false;
+                phoneInput.required = true;
+                emailInput.required = true;
+                phoneInternationalInput.disabled = false;
                 const countryCode = document.getElementById('phone-country-code');
-                if (countryCode) countryCode.disabled = !showPhone && (!requiresOnlineContact || !validPhone);
+                if (countryCode) countryCode.disabled = false;
                 syncPaymentContactRequirement();
             };
             const renderCooldown = () => {
