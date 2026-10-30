@@ -7,6 +7,7 @@ use App\Jobs\LaunchSmsCampaignJob;
 use App\Jobs\SendSmsMessageJob;
 use App\Models\Sms\SmsCampaign;
 use App\Models\Sms\SmsMessage;
+use App\Models\Customer;
 use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Contracts\Pagination\LengthAwarePaginator;
 use Illuminate\Support\Carbon;
@@ -739,7 +740,15 @@ class SmsService
     ): array
     {
         if ($audienceType === 'customers') {
-            throw new RuntimeException('Customer company ownership is not defined; customer campaigns are unavailable.');
+            return Customer::query()
+                ->where('marketing_consent', true)
+                ->with('user:id,phone')
+                ->get()
+                ->map(fn (Customer $customer) => $this->normalizeRecipient((string) ($customer->user?->phone ?? '')))
+                ->filter()
+                ->unique()
+                ->values()
+                ->all();
         }
 
         return match ($audienceType) {
