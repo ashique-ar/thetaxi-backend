@@ -26,7 +26,8 @@ class RollingPaymentScheduleService
 
     public function createRule(Booking $booking, array $data, string $actorUserId): array
     {
-        $companyId = SalesBookingAttribution::query()->where('booking_id', $booking->id)->value('company_id');
+        $companyId = SalesBookingAttribution::query()->where('booking_id', $booking->id)->value('company_id')
+            ?: \App\Services\CompanyIdScope::defaultCompanyId();
         abort_unless($companyId, 422, 'Resolve Sales attribution and legal entity before creating a rolling rule.');
         $this->assertEnabled((string) $companyId);
 
@@ -65,8 +66,9 @@ class RollingPaymentScheduleService
             );
 
             $attribution = SalesBookingAttribution::query()->where('booking_id', $booking->id)->lockForUpdate()->first();
-            abort_unless($attribution?->company_id, 422, 'Resolve Sales attribution and legal entity before creating a rolling rule.');
-            $this->companyIntegrity->assertConsistent($booking, $attribution->company_id);
+            $companyId = $attribution?->company_id ?: \App\Services\CompanyIdScope::defaultCompanyId();
+            abort_unless($attribution && $companyId, 422, 'Resolve Sales attribution and legal entity before creating a rolling rule.');
+            $this->companyIntegrity->assertConsistent($booking, $companyId);
             abort_unless($attribution->status === 'active', 422, 'The booking attribution must be active before creating a rolling rule.');
             abort_unless($attribution->commission_category === 'long_term', 422, 'Rolling rules are limited to reviewed long-term bookings.');
             abort_unless($attribution->collection_sales_profile_id, 422, 'Assign the current collection handler before creating a rolling rule.');
@@ -86,7 +88,7 @@ class RollingPaymentScheduleService
             abort_unless($handler, 422, 'The current handler is not an active configured collection-eligible Sales Profile.');
 
             $rule = BookingPaymentScheduleRule::create([
-                'company_id' => $attribution->company_id,
+                'company_id' => $companyId,
                 'booking_id' => $booking->id,
                 'contract_basis' => 'open_ended',
                 'frequency' => 'monthly',
@@ -155,7 +157,8 @@ class RollingPaymentScheduleService
 
     public function transitionRule(Booking $booking, array $data, string $actorUserId): array
     {
-        $companyId = SalesBookingAttribution::query()->where('booking_id', $booking->id)->value('company_id');
+        $companyId = SalesBookingAttribution::query()->where('booking_id', $booking->id)->value('company_id')
+            ?: \App\Services\CompanyIdScope::defaultCompanyId();
         abort_unless($companyId, 422, 'Resolve Sales attribution and legal entity before changing a rolling rule.');
         $this->assertEnabled((string) $companyId);
 

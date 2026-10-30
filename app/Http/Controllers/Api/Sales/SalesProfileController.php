@@ -719,9 +719,10 @@ class SalesProfileController extends Controller
 
     private function payload(SalesProfile $profile, ?bool $canManage = null): array
     {
+        $companyId = $profile->company_id ?: \App\Services\CompanyIdScope::defaultCompanyId();
         $payload = [
             'id' => $profile->id,
-            'company_id' => $profile->company_id,
+            'company_id' => $companyId,
             'staff_id' => $profile->staff_id,
             'staff_category_snapshot' => $profile->staff_category_snapshot,
             'sales_code' => $profile->sales_code,

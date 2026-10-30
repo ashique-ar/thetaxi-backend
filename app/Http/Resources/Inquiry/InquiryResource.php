@@ -17,13 +17,15 @@ class InquiryResource extends JsonResource
         $formName = $payload['form_name'] ?? ($formId ? InquiryForm::withInactive()->withTrashed()->find($formId)?->name : null);
         $serviceSlug = $cms?->slug ?? $legacy?->slug ?? ($payload['service_slug'] ?? null);
         $assignedStaff = $this->assignedUser?->staff;
-        $assignedLabel = $this->assigned_to && $this->company_id && \App\Services\CompanyIdScope::sameCompanyId((string) ($assignedStaff?->company_id), (string) ($this->company_id))
+        $companyId = $this->company_id ?: \App\Services\CompanyIdScope::defaultCompanyId();
+        $assignedLabel = $this->assigned_to && $companyId && \App\Services\CompanyIdScope::sameCompanyId((string) ($assignedStaff?->company_id), (string) $companyId)
             ? trim(($this->assignedUser->first_name ?? '') . ' ' . ($this->assignedUser->last_name ?? ''))
             : null;
         $responseAuthor = $this->relationLoaded('firstResponseSavedBy') ? $this->firstResponseSavedBy : null;
 
         return [
             'id'           => $this->id,
+            'company_id' => $companyId,
             $this->mergeWhen(array_key_exists('linked_opportunity_id', $this->resource->getAttributes()), [
                 'linked_opportunity_id' => $this->linked_opportunity_id,
             ]),

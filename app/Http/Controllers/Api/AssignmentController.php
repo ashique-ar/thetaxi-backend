@@ -531,9 +531,12 @@ class AssignmentController extends Controller
         ]);
         $summary = DB::transaction(function () use ($request, $bookingId, $data) {
             $company = $this->selectedActiveCompanyForUpdate($request);
-            $booking = Booking::query()->where('company_id', $company->id)->whereKey($bookingId)->lockForUpdate()->firstOrFail();
+            $bookingQuery = Booking::query()->whereKey($bookingId);
+            \App\Services\CompanyBookingScope::constrain($bookingQuery, 'bookings', (string) $company->id);
+            $booking = $bookingQuery->lockForUpdate()->firstOrFail();
             $item = \App\Models\Booking\BookingItem::query()->where('booking_id', $booking->id)->whereKey($data['booking_item_id'])->lockForUpdate()->firstOrFail();
-            $existing = BookingActivity::query()->where('company_id', $company->id)->where('booking_id', $booking->id)
+            $existing = BookingActivity::query()->where(fn ($scope) => \App\Services\CompanyIdScope::constrain($scope, 'company_id', (string) $company->id))
+                ->where('booking_id', $booking->id)
                 ->where('idempotency_key', 'additional-rental-charge-'.$data['idempotency_key'])->first();
             if ($existing) {
                 abort_unless(

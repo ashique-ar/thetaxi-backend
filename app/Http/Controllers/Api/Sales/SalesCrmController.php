@@ -353,7 +353,7 @@ class SalesCrmController extends Controller
             ->whereNull('booking.deleted_at')->whereNull('booking.sales_opportunity_id')
             ->where(fn ($query) => $query->whereNull('booking.confirmed')->orWhere('booking.confirmed', false))
             ->whereNull('booking.confirmed_at')->where(fn ($query) => $query->whereNull('booking.status')->orWhere('booking.status', '!=', 'confirmed'))
-            ->where(fn ($company) => $company->where('owner_staff.company_id', $opportunity->company_id)
+            ->where(fn ($company) => \App\Services\CompanyIdScope::constrain($company, 'owner_staff.company_id', $opportunity->company_id)
                 ->orWhere(fn ($creatorCompany) => $creatorCompany->whereNull('owner_staff.company_id')
                     ->where(fn ($scope) => \App\Services\CompanyIdScope::constrain($scope, 'creator_staff.company_id', $opportunity->company_id))))
             ->whereRaw('COALESCE(owner_staff.id, creator_staff.id) = ?', [$ownerStaffId])

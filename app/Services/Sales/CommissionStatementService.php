@@ -36,7 +36,8 @@ class CommissionStatementService
 
     public function generate(SalesProfile $profile, array $data, string $actorUserId): SalesCommissionStatement
     {
-        $companyId = DB::table('sales_profiles')->where('id', $profile->id)->value('company_id');
+        $companyId = DB::table('sales_profiles')->where('id', $profile->id)->value('company_id')
+            ?: \App\Services\CompanyIdScope::defaultCompanyId();
         abort_unless($companyId, 404, 'Sales Profile not found.');
         $scope = null;
         $facts = null;
@@ -48,7 +49,7 @@ class CommissionStatementService
             $profile = SalesProfile::query()->with('staff')->lockForUpdate()->findOrFail($profile->id);
             abort_unless(\App\Services\CompanyIdScope::sameCompanyId((string) ((string) $profile->company_id), (string) ((string) $companyId)), 409,
                 'The Sales Profile legal entity changed before statement generation.');
-            $scope = ['company_id' => $profile->company_id, 'staff_id' => $profile->staff_id];
+            $scope = ['company_id' => $companyId, 'staff_id' => $profile->staff_id];
             $checksum = $this->checksum(['sales_profile_id' => $profile->id, ...$data]);
             $duplicate = SalesCommissionStatement::query()->where('generation_idempotency_key', $data['idempotency_key'])->first();
             if ($duplicate) {
@@ -73,7 +74,7 @@ class CommissionStatementService
                 ->where('cycle_version_id', $facts['cycle']->id)->whereDate('period_start', $facts['period_start'])
                 ->whereDate('period_end', $facts['period_end'])->max('version') + 1;
             $statement = SalesCommissionStatement::create([
-                'company_id' => $profile->company_id, 'staff_id' => $profile->staff_id, 'sales_profile_id' => $profile->id,
+                'company_id' => $companyId, 'staff_id' => $profile->staff_id, 'sales_profile_id' => $profile->id,
                 'cycle_version_id' => $facts['cycle']->id, 'cycle_assignment_id' => $facts['assignment']->id,
                 'business_calendar_id' => $facts['calendar']->id,
                 'statement_number' => 'SCS-'.$facts['period_end']->format('Ym').'-'.strtoupper(substr((string) Str::uuid(), 0, 8)),
@@ -142,7 +143,8 @@ class CommissionStatementService
 
     public function transition(SalesCommissionStatement $statement, string $toStatus, int $expectedVersion, string $reason, string $key, string $actorUserId): SalesCommissionStatement
     {
-        $companyId = DB::table('sales_commission_statements')->where('id', $statement->id)->value('company_id');
+        $companyId = DB::table('sales_commission_statements')->where('id', $statement->id)->value('company_id')
+            ?: \App\Services\CompanyIdScope::defaultCompanyId();
         abort_unless($companyId, 404, 'Commission statement not found.');
 
         return DB::transaction(function () use ($statement, $toStatus, $expectedVersion, $reason, $key, $actorUserId, $companyId) {
@@ -183,7 +185,7 @@ class CommissionStatementService
                 'from_status' => $from, 'to_status' => $toStatus, 'reason' => $reason,
                 'idempotency_key' => $key, 'actor_user_id' => $actorUserId, 'occurred_at' => now(),
             ]);
-            $this->events->record('sales', $statement->company_id, 'commission_statement', $statement->id,
+            $this->events->record('sales', $companyId, 'commission_statement', $statement->id,
                 'sales.commission.statement_'.$toStatus, $toVersion, 1, ['from_status' => $from, 'to_status' => $toStatus], now(), $key);
             return $statement->fresh();
         });

@@ -34,7 +34,7 @@ class BookingExtensionController extends Controller
         app(CompanySettingsAccessService::class)->assertCanAccess($request->user(), (string) $companyId);
 
         $requests = BookingExtensionRequest::query()
-            ->where('company_id', $companyId)
+            ->where(fn ($scope) => \App\Services\CompanyIdScope::constrain($scope, 'company_id', (string) $companyId))
             ->where('status', 'pending')
             ->with([
                 'booking:id,booking_number,customer_id',
@@ -133,7 +133,8 @@ class BookingExtensionController extends Controller
         app(CompanySettingsAccessService::class)->assertCanAccess($request->user(), (string) $companyId);
 
         $extension = DB::transaction(function () use ($data, $request, $companyId, $extensionId) {
-            $extension = BookingExtensionRequest::query()->where('company_id', $companyId)->whereKey($extensionId)->lockForUpdate()->firstOrFail();
+            $extension = BookingExtensionRequest::query()->where(fn ($scope) => \App\Services\CompanyIdScope::constrain($scope, 'company_id', (string) $companyId))
+                ->whereKey($extensionId)->lockForUpdate()->firstOrFail();
             abort_unless($extension->status === 'pending', 409, 'This extension request has already been reviewed.');
             $booking = Booking::query()->whereKey($extension->booking_id)->lockForUpdate()->firstOrFail();
             $item = BookingItem::query()->where('booking_id', $booking->id)->whereKey($extension->booking_item_id)->lockForUpdate()->firstOrFail();

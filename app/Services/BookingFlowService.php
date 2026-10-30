@@ -4162,9 +4162,10 @@ class BookingFlowService
 
             $this->recordPortalPromoUsage($booking, $params);
             $actor = Auth::user();
+            $activityCompanyId = $booking->company_id ?: \App\Services\CompanyIdScope::defaultCompanyId();
             $changedFields = $this->bookingUpdateChangedFieldLabels($original, $originalItemAttributes, $booking);
             BookingActivity::query()->create([
-                'company_id' => $booking->company_id,
+                'company_id' => $activityCompanyId,
                 'booking_id' => $booking->id,
                 'event_key' => 'booking_updated',
                 'channel' => 'system',
@@ -4198,7 +4199,7 @@ class BookingFlowService
                         ? trim(($vehicle->title ?: 'Vehicle').($vehicle->license_plate ? ' · '.$vehicle->license_plate : ''))
                         : 'Unassigned';
                     BookingActivity::query()->create([
-                        'company_id' => $booking->company_id,
+                        'company_id' => $activityCompanyId,
                         'booking_id' => $booking->id,
                         'booking_item_id' => $item->id,
                         'event_key' => 'booking_vehicle_changed',
@@ -8618,8 +8619,9 @@ class BookingFlowService
     {
         try {
             // Find users in this company who can approve bookings
+            $companyId = $booking->company_id ?: \App\Services\CompanyIdScope::defaultCompanyId();
             $approvers = User::permission('bookings.approve')
-                ->when($booking->company_id, fn($q) => $q->where(fn ($_companyIdScope) => \App\Services\CompanyIdScope::constrain($_companyIdScope, 'company_id', $booking->company_id)))
+                ->where(fn ($_companyIdScope) => \App\Services\CompanyIdScope::constrain($_companyIdScope, 'company_id', $companyId))
                 ->get();
 
             $bookingNumber = $booking->booking_number ?? (string) $booking->id;
@@ -9359,8 +9361,8 @@ class BookingFlowService
         $clonedData['approved_at'] = null;
 
         $clonedBooking = Booking::create($clonedData);
-        if ($originalBooking->company_id) {
-            $clonedBooking->company_id = $originalBooking->company_id;
+        $clonedBooking->company_id = $originalBooking->company_id ?: \App\Services\CompanyIdScope::defaultCompanyId();
+        if ($clonedBooking->company_id) {
             $clonedBooking->save();
         }
 

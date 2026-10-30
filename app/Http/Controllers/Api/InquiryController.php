@@ -250,7 +250,7 @@ class InquiryController extends Controller
         });
 
         return response()->json(['status' => 'success', 'message' => 'Inquiry added to the selected business.', 'data' => [
-            'id' => (string) $scoped->id, 'company_id' => (string) $scoped->company_id, 'assigned_to' => $scoped->assigned_to,
+            'id' => (string) $scoped->id, 'company_id' => $scoped->company_id ?: \App\Services\CompanyIdScope::defaultCompanyId(), 'assigned_to' => $scoped->assigned_to,
         ]]);
     }
 
@@ -860,7 +860,8 @@ class InquiryController extends Controller
         abort_if($inquiry->source === 'respond_io', 422, 'Send Respond.io replies through the connected conversation.');
         $recipient = trim((string) $inquiry->email);
         abort_unless(filter_var($recipient, FILTER_VALIDATE_EMAIL), 422, 'Add a valid customer email before sending a response.');
-        $companyId = (string) $inquiry->company_id;
+        $companyId = $inquiry->company_id ?: \App\Services\CompanyIdScope::defaultCompanyId();
+        abort_unless($companyId, 409, 'No active default legal entity is configured.');
 
         try {
             [$outbound, $shouldSend] = DB::transaction(function () use ($request, $data, $inquiry, $recipient, $companyId): array {
@@ -969,7 +970,8 @@ class InquiryController extends Controller
 
     private function assertInquiryCompany(Inquiry $inquiry): void
     {
-        abort_unless($inquiry->company_id && \App\Services\CompanyIdScope::sameCompanyId((string) ($inquiry->company_id), (string) ($this->currentCompanyId())), 404);
+        $companyId = $this->currentCompanyId();
+        abort_unless($companyId && \App\Services\CompanyIdScope::sameCompanyId((string) ($inquiry->company_id), (string) $companyId), 404);
     }
 
     private function linkExistingInquiryCustomer(Inquiry $inquiry, Customer $customer, string $companyId, string $actorId): Inquiry

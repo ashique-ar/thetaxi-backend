@@ -60,7 +60,7 @@ class ProcessBookingPaymentSchedules extends Command
                     $state = DB::transaction(function () use ($schedule, $today, $dryRun): ?array {
                         $booking = Booking::query()->lockForUpdate()->findOrFail($schedule->booking_id);
                         $companyId = DB::table('sales_booking_attributions')->where('booking_id', $booking->id)
-                            ->lockForUpdate()->value('company_id');
+                            ->lockForUpdate()->value('company_id') ?: \App\Services\CompanyIdScope::defaultCompanyId();
                         if (! $companyId) return null;
                         $this->companyIntegrity->assertConsistent($booking, (string) $companyId);
 
@@ -141,7 +141,7 @@ class ProcessBookingPaymentSchedules extends Command
                     DB::transaction(function () use ($schedule, $workItem, $profile, $user, $outstanding, $reminderType, $idempotencyKey): void {
                         $booking = Booking::query()->lockForUpdate()->findOrFail($schedule->booking_id);
                         $companyId = DB::table('sales_booking_attributions')->where('booking_id', $booking->id)
-                            ->lockForUpdate()->value('company_id');
+                            ->lockForUpdate()->value('company_id') ?: \App\Services\CompanyIdScope::defaultCompanyId();
                         if (! $companyId) return;
                         $this->companyIntegrity->assertConsistent($booking, (string) $companyId);
                         $lockedSchedule = BookingPaymentSchedule::query()

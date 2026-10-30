@@ -3691,7 +3691,7 @@ class BookingLifecycleService
                 $bookingItem = $booking->bookingItems->first();
             }
         }
-        $companyId = $booking?->company_id ? (string) $booking->company_id : null;
+        $companyId = $booking?->company_id ?: \App\Services\CompanyIdScope::defaultCompanyId();
         if (! $companyId && $bookingItem?->service_type_id) {
             $serviceType = $bookingItem->relationLoaded('serviceType')
                 ? $bookingItem->serviceType

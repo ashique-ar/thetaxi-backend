@@ -60,7 +60,7 @@ class BookingObservabilityService
 
         $bookingActivities = BookingActivity::query()
             ->where('booking_id', $booking->id)
-            ->where('company_id', $booking->company_id)
+            ->where(fn ($scope) => \App\Services\CompanyIdScope::constrain($scope, 'company_id', $booking->company_id))
             ->whereIn('event_key', ['booking_updated', 'booking_vehicle_changed'])
             ->when($bookingItemId, fn ($query) => $query->where(fn ($scope) => $scope
                 ->whereNull('booking_item_id')->orWhere('booking_item_id', $bookingItemId)))

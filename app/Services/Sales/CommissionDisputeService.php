@@ -20,7 +20,8 @@ class CommissionDisputeService
 
     public function raise(SalesCommissionStatementLine $line, string $staffId, array $data): SalesCommissionDispute
     {
-        $companyId = DB::table('sales_commission_statements')->where('id', $line->statement_id)->value('company_id');
+        $companyId = DB::table('sales_commission_statements')->where('id', $line->statement_id)->value('company_id')
+            ?: \App\Services\CompanyIdScope::defaultCompanyId();
         abort_unless($companyId, 404, 'Commission statement not found.');
         try {
             return DB::transaction(function () use ($line, $staffId, $data, $companyId) {
@@ -64,7 +65,7 @@ class CommissionDisputeService
                 );
             }
             $dispute = SalesCommissionDispute::create([
-                'company_id' => $statement->company_id, 'statement_id' => $statement->id,
+                'company_id' => $companyId, 'statement_id' => $statement->id,
                 'statement_line_id' => $line->id, 'raised_by_staff_id' => $staffId,
                 'category' => $data['category'], 'reason' => $data['reason'],
                 'evidence_file_id' => $data['evidence_file_id'] ?? null, 'contested_amount_lkr' => $amount,
@@ -79,7 +80,7 @@ class CommissionDisputeService
                 'reason' => 'Contested payout hold opened for dispute '.$dispute->id,
                 'idempotency_key' => 'dispute-open:'.$dispute->id, 'actor_user_id' => DB::table('staff')->where('id', $staffId)->value('user_id'), 'occurred_at' => now(),
             ]);
-            $this->events->record('sales', $statement->company_id, 'commission_dispute', $dispute->id,
+            $this->events->record('sales', $companyId, 'commission_dispute', $dispute->id,
                 'sales.commission.dispute_raised', 1, 1, ['statement_id' => $statement->id, 'line_id' => $line->id, 'contested_amount_lkr' => (string) $amount], now(), $data['idempotency_key']);
             return $dispute;
             });
@@ -111,7 +112,8 @@ class CommissionDisputeService
 
     public function resolve(SalesCommissionDispute $dispute, array $data, string $actorUserId): SalesCommissionDispute
     {
-        $companyId = DB::table('sales_commission_disputes')->where('id', $dispute->id)->value('company_id');
+        $companyId = DB::table('sales_commission_disputes')->where('id', $dispute->id)->value('company_id')
+            ?: \App\Services\CompanyIdScope::defaultCompanyId();
         abort_unless($companyId, 404, 'Commission dispute not found.');
         try {
             return DB::transaction(function () use ($dispute, $data, $actorUserId, $companyId) {
@@ -144,7 +146,7 @@ class CommissionDisputeService
             ]);
             if ($data['resolution'] === 'uphold_adjustment') {
                 SalesCommissionStatementAdjustment::create([
-                    'company_id' => $statement->company_id, 'staff_id' => $statement->staff_id,
+                    'company_id' => $companyId, 'staff_id' => $statement->staff_id,
                     'dispute_id' => $dispute->id, 'amount_lkr' => $data['adjustment_lkr'],
                     'reason' => $data['resolution_reason'], 'approved_by' => $actorUserId,
                     'approved_at' => now(), 'idempotency_key' => $data['idempotency_key'],
@@ -166,7 +168,7 @@ class CommissionDisputeService
                 'reason' => 'Contested payout hold resolved for dispute '.$dispute->id,
                 'idempotency_key' => 'dispute-resolve:'.$data['idempotency_key'], 'actor_user_id' => $actorUserId, 'occurred_at' => now(),
             ]);
-            $this->events->record('sales', $statement->company_id, 'commission_dispute', $dispute->id,
+            $this->events->record('sales', $companyId, 'commission_dispute', $dispute->id,
                 'sales.commission.dispute_resolved', 2, 1, ['resolution' => $data['resolution'], 'statement_id' => $statement->id], now(), $data['idempotency_key']);
             return $dispute;
             });

@@ -72,9 +72,10 @@ class PaymentController extends Controller
                     'message' => 'Online payment can only be initiated for bookings with online payment method.',
                 ], 422);
             }
-            $tenantCompanyId = DB::table('sales_booking_attributions')->where('booking_id', $initialBooking->id)
-                ->whereNull('deleted_at')->value('company_id');
-            $tenantCompanyIsActive = $tenantCompanyId && DB::table('companies')->where('id', $tenantCompanyId)
+            $attribution = DB::table('sales_booking_attributions')->where('booking_id', $initialBooking->id)
+                ->whereNull('deleted_at')->first(['company_id']);
+            $tenantCompanyId = $attribution?->company_id ?: \App\Services\CompanyIdScope::defaultCompanyId();
+            $tenantCompanyIsActive = $attribution && $tenantCompanyId && DB::table('companies')->where('id', $tenantCompanyId)
                 ->where('is_active', true)->whereNull('deleted_at')->exists();
             if (! $tenantCompanyIsActive) {
                 abort(409, 'The booking needs a reviewed active legal-entity attribution before payment initiation.');
@@ -468,11 +469,12 @@ class PaymentController extends Controller
                 ], 404);
             }
 
-            $companyId = DB::table('sales_booking_attributions')
+            $attribution = DB::table('sales_booking_attributions')
                 ->where('booking_id', $transaction->booking_id)
                 ->whereNull('deleted_at')
-                ->value('company_id');
-            abort_unless($companyId, 404, 'Transaction not found');
+                ->first(['company_id']);
+            $companyId = $attribution?->company_id ?: \App\Services\CompanyIdScope::defaultCompanyId();
+            abort_unless($attribution && $companyId, 404, 'Transaction not found');
             app(SalesAccessScope::class)->assertCompany(
                 $request->user(),
                 (string) $companyId,
@@ -527,9 +529,10 @@ class PaymentController extends Controller
             abort_unless($transaction && $transaction->status === 'success', 404,
                 'Transaction not found or not eligible for refund.');
 
-            $companyId = DB::table('sales_booking_attributions')->where('booking_id', $transaction->booking_id)
-                ->whereNull('deleted_at')->value('company_id');
-            abort_unless($companyId, 409, 'This payment has no canonical legal-entity attribution.');
+            $attribution = DB::table('sales_booking_attributions')->where('booking_id', $transaction->booking_id)
+                ->whereNull('deleted_at')->first(['company_id']);
+            $companyId = $attribution?->company_id ?: \App\Services\CompanyIdScope::defaultCompanyId();
+            abort_unless($attribution && $companyId, 409, 'This payment has no canonical legal-entity attribution.');
             abort_unless(DB::table('companies')->where('id', $companyId)->where('is_active', true)
                 ->whereNull('deleted_at')->exists(), 409, 'This payment legal entity is inactive.');
             app(SalesAccessScope::class)->assertCompany(
@@ -1008,11 +1011,12 @@ class PaymentController extends Controller
                 ], 404);
             }
 
-            $companyId = DB::table('sales_booking_attributions')
+            $attribution = DB::table('sales_booking_attributions')
                 ->where('booking_id', $transaction->booking_id)
                 ->whereNull('deleted_at')
-                ->value('company_id');
-            abort_unless($companyId, 404, 'Transaction not found');
+                ->first(['company_id']);
+            $companyId = $attribution?->company_id ?: \App\Services\CompanyIdScope::defaultCompanyId();
+            abort_unless($attribution && $companyId, 404, 'Transaction not found');
             app(SalesAccessScope::class)->assertCompany(
                 $request->user(),
                 (string) $companyId,

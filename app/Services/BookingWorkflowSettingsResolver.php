@@ -109,7 +109,7 @@ class BookingWorkflowSettingsResolver
 
         $openItems = DB::table('booking_items as item')
             ->join('bookings as booking', 'booking.id', '=', 'item.booking_id')
-            ->where('booking.company_id', $companyId)
+            ->where(fn ($scope) => \App\Services\CompanyIdScope::constrain($scope, 'booking.company_id', $companyId))
             ->whereNull('booking.deleted_at')->whereNull('item.deleted_at')->whereNull('item.completed_at')
             ->whereNotIn('booking.status', ['completed', 'cancelled', 'canceled', 'booking_cancelled', 'booking_rejected', 'rejected', 'inquiry_cancelled', 'inquiry_canceled'])
             ->where(fn ($status) => $status->whereNull('item.status')->orWhereNotIn('item.status', ['completed', 'cancelled', 'canceled', 'booking_cancelled', 'booking_rejected', 'rejected']))
@@ -154,7 +154,7 @@ class BookingWorkflowSettingsResolver
         }
 
         if (in_array('enable_maintenance_stage', $stageKeys, true) && Schema::hasTable('booking_activities')) {
-            $pendingMaintenance = DB::table('booking_activities')->where('company_id', $companyId)->whereNull('deleted_at')
+            $pendingMaintenance = DB::table('booking_activities')->where(fn ($scope) => \App\Services\CompanyIdScope::constrain($scope, 'company_id', $companyId))->whereNull('deleted_at')
                 ->where('event_key', 'post_trip_maintenance')->where('result_status', 'pending')->exists();
             abort_unless(!$pendingMaintenance, 409, 'Maintenance cannot be turned off while completed trips still have maintenance work waiting. Finish or clear those maintenance tasks first.');
         }

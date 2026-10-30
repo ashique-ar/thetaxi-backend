@@ -13,13 +13,14 @@ class StaffResource extends JsonResource
         $fullName = trim(($this->user?->first_name ?? '').' '.($this->user?->last_name ?? ''));
         $staffType = $this->staff_type;
         $viewer = $request->user();
+        $companyId = $this->company_id ?: \App\Services\CompanyIdScope::defaultCompanyId();
         $canViewSensitivePersonal = $viewer
             && ($viewer->id === $this->user_id || $viewer->can('staff-sensitive-personal.view'));
 
         return [
             'id' => $this->id,
             'user_id' => $this->user_id,
-            'company_id' => $this->company_id,
+            'company_id' => $companyId,
             'company' => $this->company?->name,
             'user' => new UserResource($this->whenLoaded('user')),
             'first_name' => $this->user?->first_name,

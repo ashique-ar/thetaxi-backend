@@ -28,6 +28,7 @@ class CommissionPayoutService
             return DB::transaction(function () use ($statementIds, $data, $actorUserId, $checksum) {
             $companyId = DB::table('sales_commission_payouts')->where('idempotency_key', $data['idempotency_key'])->value('company_id')
                 ?? DB::table('sales_commission_statements')->whereIn('id', $statementIds)->orderBy('id')->value('company_id');
+            $companyId = $companyId ?: \App\Services\CompanyIdScope::defaultCompanyId();
             abort_unless($companyId, 422, 'A payout requires an existing statement in an active legal entity.');
             $this->lockActiveCompany((string) $companyId);
             $duplicate = SalesCommissionPayout::query()->where('idempotency_key', $data['idempotency_key'])->lockForUpdate()->first();
@@ -40,11 +41,13 @@ class CommissionPayoutService
             if ($statements->count() !== count(array_unique($statementIds))) {
                 throw ValidationException::withMessages(['statement_ids' => ['One or more statements no longer exist.']]);
             }
-            abort_if($statements->pluck('company_id')->unique()->count() !== 1 || $statements->pluck('staff_id')->unique()->count() !== 1,
+            $statementCompanies = $statements->map(fn ($statement) => $statement->company_id ?: \App\Services\CompanyIdScope::defaultCompanyId())->unique();
+            abort_if($statementCompanies->count() !== 1 || (string) $statementCompanies->first() !== (string) $companyId
+                || $statements->pluck('staff_id')->unique()->count() !== 1,
                 422, 'A payout cannot cross legal entities or Staff beneficiaries.');
             $this->assertFrozenProfileBeneficiaries($statements);
             $statements = $statements->sortBy([['period_end', 'asc'], ['id', 'asc']])->values();
-            abort_unless($this->policySettings->featureEnabled((string) $statements->first()->company_id, 'payouts'), 409,
+            abort_unless($this->policySettings->featureEnabled((string) $companyId, 'payouts'), 409,
                 'Commission payouts are not activated for this legal entity.');
             abort_if($statements->contains(fn ($statement) => ! in_array($statement->status, ['approved', 'partially_paid'], true)),
                 422, 'Only approved or partially paid statements can be paid.');
@@ -61,12 +64,12 @@ class CommissionPayoutService
             abort_if($amount > $available, 422, "Payout exceeds the uncontested approved balance of {$available} LKR.");
             if (! empty($data['evidence_file_id'])) {
                 app(SalesEvidenceIntegrityService::class)->assertAttachedFile(
-                    $data['evidence_file_id'], (string) $statements->first()->company_id,
+                    $data['evidence_file_id'], (string) $companyId,
                     'commission_statement', $statements->pluck('id')->all(),
                 );
             }
             $payout = SalesCommissionPayout::create([
-                'company_id' => $statements->first()->company_id, 'staff_id' => $statements->first()->staff_id,
+                'company_id' => $companyId, 'staff_id' => $statements->first()->staff_id,
                 'payout_number' => 'SCP-'.now()->format('YmdHis').'-'.strtoupper(substr((string) Str::uuid(), 0, 6)),
                 'amount_lkr' => $amount, 'payment_method' => $data['payment_method'],
                 'payment_account_snapshot' => $data['payment_account_snapshot'],
@@ -126,7 +129,8 @@ class CommissionPayoutService
         $checksum = $this->checksum(['original_payout_id' => $original->id, ...$data]);
         try {
             return DB::transaction(function () use ($original, $data, $actorUserId, $checksum) {
-            $companyId = DB::table('sales_commission_payouts')->where('id', $original->id)->value('company_id');
+            $companyId = DB::table('sales_commission_payouts')->where('id', $original->id)->value('company_id')
+                ?: \App\Services\CompanyIdScope::defaultCompanyId();
             abort_unless($companyId, 404, 'Original commission payout not found.');
             $this->lockActiveCompany((string) $companyId);
             $original = SalesCommissionPayout::query()->lockForUpdate()->findOrFail($original->id);
@@ -135,20 +139,20 @@ class CommissionPayoutService
                 abort_unless(hash_equals($duplicate->request_payload_checksum, $checksum), 422, 'This payout reversal key was already used with different facts.');
                 return $duplicate;
             }
-            abort_unless($this->policySettings->featureEnabled((string) $original->company_id, 'payouts'), 409,
+            abort_unless($this->policySettings->featureEnabled((string) $companyId, 'payouts'), 409,
                 'Commission payouts are not activated for this legal entity.');
             abort_unless($original->status === 'confirmed' && ! $original->reverses_payout_id, 422, 'Only a confirmed original payout can be reversed once.');
             abort_if($original->paid_by === $actorUserId, 403, 'The original payer cannot approve their own payout reversal.');
             abort_unless(! empty($data['evidence_file_id']), 422, 'Payout-reversal evidence is required.');
             app(SalesEvidenceIntegrityService::class)->assertAttachedFile(
-                $data['evidence_file_id'], (string) $original->company_id, 'commission_payout', [$original->id],
+                $data['evidence_file_id'], (string) $companyId, 'commission_payout', [$original->id],
             );
             $allocations = SalesCommissionPayoutAllocation::query()->where('payout_id', $original->id)->lockForUpdate()->get();
             abort_if($allocations->isEmpty(), 422, 'A payout without statement allocations cannot be reversed.');
             $statementIds = $allocations->pluck('statement_id')->unique();
             $statements = SalesCommissionStatement::query()->whereIn('id', $statementIds)->orderBy('id')->lockForUpdate()->get()->keyBy('id');
             abort_if($statements->count() !== $statementIds->count()
-                || $statements->contains(fn ($statement) => !\App\Services\CompanyIdScope::sameCompanyId((string) ((string) $statement->company_id), (string) ((string) $original->company_id))
+                || $statements->contains(fn ($statement) => !\App\Services\CompanyIdScope::sameCompanyId((string) ((string) $statement->company_id), (string) ((string) $companyId))
                     || (string) $statement->staff_id !== (string) $original->staff_id),
                 422, 'Payout reversal allocations must match the original company and Staff beneficiary.');
             $this->assertFrozenProfileBeneficiaries($statements);
@@ -159,7 +163,7 @@ class CommissionPayoutService
             abort_if($allocations->contains(fn ($allocation) => (float) $statements->get($allocation->statement_id)->paid_lkr < (float) $allocation->amount_lkr),
                 422, 'Payout reversal allocation exceeds its statement paid balance.');
             $reversal = SalesCommissionPayout::create([
-                'company_id' => $original->company_id, 'staff_id' => $original->staff_id,
+                'company_id' => $companyId, 'staff_id' => $original->staff_id,
                 'payout_number' => 'SCR-'.now()->format('YmdHis').'-'.strtoupper(substr((string) Str::uuid(), 0, 6)),
                 'amount_lkr' => $original->amount_lkr, 'payment_method' => $data['payment_method'],
                 'payment_account_snapshot' => $original->payment_account_snapshot,
@@ -210,12 +214,14 @@ class CommissionPayoutService
     {
         try {
             return DB::transaction(function () use ($payout, $data, $actorUserId) {
-            $this->lockActiveCompany((string) $payout->company_id);
+            $companyId = $payout->company_id ?: \App\Services\CompanyIdScope::defaultCompanyId();
+            abort_unless($companyId, 422, 'An active legal entity is required for accounting delivery.');
+            $this->lockActiveCompany((string) $companyId);
             $payout = SalesCommissionPayout::query()->lockForUpdate()->findOrFail($payout->id);
             $duplicate = SalesCommissionAccountingDelivery::query()->where('idempotency_key', $data['idempotency_key'])->lockForUpdate()->first();
             if ($duplicate) {
                 $checksum = $this->checksum([
-                    'company_id' => (string) $payout->company_id,
+                    'company_id' => (string) $companyId,
                     'payout_id' => (string) $payout->id,
                     'event_type' => $duplicate->event_type,
                     ...$data,
@@ -231,7 +237,7 @@ class CommissionPayoutService
                 'Accounting delivery can only be recorded for a confirmed payout or its reversal.');
             $eventType = $payout->status === 'reversal' ? 'payout_reversal' : 'payout';
             $checksum = $this->checksum([
-                'company_id' => (string) $payout->company_id,
+                'company_id' => (string) $companyId,
                 'payout_id' => (string) $payout->id,
                 'event_type' => $eventType,
                 ...$data,
@@ -244,7 +250,7 @@ class CommissionPayoutService
                     'This external accounting reference is already recorded; retry with its original request key.');
             }
             $delivery = SalesCommissionAccountingDelivery::create([
-                'company_id' => $payout->company_id, 'payout_id' => $payout->id,
+                'company_id' => $companyId, 'payout_id' => $payout->id,
                 'event_type' => $eventType,
                 'status' => $data['status'], 'external_reference' => $data['external_reference'] ?? null,
                 'message' => $data['message'] ?? null, 'idempotency_key' => $data['idempotency_key'],
@@ -252,7 +258,7 @@ class CommissionPayoutService
                 'recorded_by' => $actorUserId, 'recorded_at' => now(), 'request_payload_checksum' => $checksum,
             ]);
             $payout->update(['accounting_status' => 'delivery_failed']);
-            $this->events->record('sales', $payout->company_id, 'commission_accounting_delivery', $delivery->id,
+            $this->events->record('sales', $companyId, 'commission_accounting_delivery', $delivery->id,
                 'sales.commission.accounting_delivery_recorded', 1, 1, [
                     'payout_id' => $payout->id, 'event_type' => $eventType, 'status' => $delivery->status,
                     'external_reference' => $delivery->external_reference,
@@ -262,12 +268,14 @@ class CommissionPayoutService
             });
         } catch (QueryException $exception) {
             return DB::transaction(function () use ($exception, $payout, $data) {
-                $this->lockActiveCompany((string) $payout->company_id);
+                $companyId = $payout->company_id ?: \App\Services\CompanyIdScope::defaultCompanyId();
+                abort_unless($companyId, 422, 'An active legal entity is required for accounting delivery.');
+                $this->lockActiveCompany((string) $companyId);
                 $duplicate = SalesCommissionAccountingDelivery::query()
                     ->where('idempotency_key', $data['idempotency_key'])->lockForUpdate()->first();
                 if (! $duplicate) throw $exception;
                 $checksum = $this->checksum([
-                    'company_id' => (string) $payout->company_id,
+                    'company_id' => (string) $companyId,
                     'payout_id' => (string) $payout->id,
                     'event_type' => $duplicate->event_type,
                     ...$data,
@@ -285,10 +293,12 @@ class CommissionPayoutService
 
     private function recordAccountingReadyEvent(SalesCommissionPayout $payout, string $causationId, string $idempotencyKey): void
     {
+        $companyId = $payout->company_id ?: \App\Services\CompanyIdScope::defaultCompanyId();
+        abort_unless($companyId, 422, 'An active legal entity is required for accounting delivery.');
         $reversal = (bool) $payout->reverses_payout_id;
         $allocations = DB::table('sales_commission_payout_allocations as allocation')
             ->join('sales_commission_statements as statement', 'statement.id', '=', 'allocation.statement_id')
-            ->where(fn ($_companyIdScope) => \App\Services\CompanyIdScope::constrain($_companyIdScope, 'statement.company_id', $payout->company_id))
+            ->where(fn ($_companyIdScope) => \App\Services\CompanyIdScope::constrain($_companyIdScope, 'statement.company_id', $companyId))
             ->where('allocation.payout_id', $payout->id)
             ->orderBy('statement.period_start')->orderBy('statement.id')
             ->get(['statement.statement_number', 'allocation.amount_lkr'])
@@ -310,7 +320,7 @@ class CommissionPayoutService
             'Accounting-ready event allocations must reconcile to the payout within its legal entity.');
 
         $amount = number_format(abs((float) $payout->amount_lkr), 4, '.', '');
-        $this->events->record('sales', $payout->company_id, 'commission_payout', $payout->id,
+        $this->events->record('sales', $companyId, 'commission_payout', $payout->id,
             'sales.commission.accounting_ready', 2, 1, [
                 'document_type' => $reversal ? 'payout_reversal' : 'payout',
                 'document_id' => $payout->id,
