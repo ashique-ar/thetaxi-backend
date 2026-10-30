@@ -12,10 +12,6 @@ use App\Models\Driver\Driver;
 use App\Models\Vehicle\Vehicle;
 use App\Models\Agent\Agent;
 use App\Services\TimezoneService;
-use App\Services\CompanyBookingScope;
-use App\Services\CompanyCustomerScope;
-use App\Services\WebsiteSettingsService;
-use App\Services\CompanySettingsAccessService;
 use Illuminate\Http\Request;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Response;
@@ -56,7 +52,7 @@ class ReportsController extends Controller
                 'revenue_by_currency' => (clone $completedBookings)
                     ->selectRaw("COALESCE(NULLIF(UPPER(currency), ''), 'LKR') as currency, SUM(COALESCE(total_actual, 0)) as revenue")
                     ->groupBy('currency')->orderBy('currency')->get(),
-            'total_customers'  => $this->companyCustomers($filters)->where('created_at', '>=', TimezoneService::userDateStartUtc($filters['date_from']))
+            'total_customers'  => $this->allCustomers()->where('created_at', '>=', TimezoneService::userDateStartUtc($filters['date_from']))
                     ->where('created_at', '<', $this->exclusiveDateEnd($filters['date_to']))->count(),
             'total_vehicles'   => Vehicle::withInactive()->count(),
                 'booking_trends'   => $this->getBookingTrends($filters),
@@ -217,9 +213,8 @@ class ReportsController extends Controller
         $filters = $this->parseFilters($request);
 
         $analytics = [
-            'total_customers'     => $this->companyCustomers($filters)->count(),
-            'active_customers'    => $this->companyCustomers($filters)->whereHas('bookings', function ($q) use ($filters) {
-                CompanyBookingScope::constrain($q, 'bookings', (string) $filters['company_id']);
+            'total_customers'     => $this->allCustomers()->count(),
+            'active_customers'    => $this->allCustomers()->whereHas('bookings', function ($q) use ($filters) {
                 if (isset($filters['date_from'])) {
                     $q->where('created_at', '>=', TimezoneService::userDateStartUtc($filters['date_from']));
                 }
@@ -451,12 +446,12 @@ class ReportsController extends Controller
 
     private function customerReportQuery(array $filters)
     {
-        return $this->companyCustomers($filters)
+        return $this->allCustomers()
             ->leftJoin('users as report_customer_users', 'customers.user_id', '=', 'report_customer_users.id')
             ->select('customers.*')
             ->with('user')
-            ->withCount(['bookings' => fn ($q) => CompanyBookingScope::constrain($q, 'bookings', (string) $filters['company_id'])])
-            ->withMax(['bookings' => fn ($q) => CompanyBookingScope::constrain($q, 'bookings', (string) $filters['company_id'])], 'created_at')
+            ->withCount('bookings')
+            ->withMax('bookings', 'created_at')
             ->when(!empty($filters['date_from']), fn ($q) => $q->where('customers.created_at', '>=', TimezoneService::userDateStartUtc($filters['date_from'])))
             ->when(!empty($filters['date_to']), fn ($q) => $q->where('customers.created_at', '<', $this->exclusiveDateEnd($filters['date_to'])))
             ->when(!empty($filters['search']), function ($q) use ($filters) {
@@ -471,15 +466,14 @@ class ReportsController extends Controller
 
     private function customerReportSummary(array $filters): array
     {
-        $cohort = $this->companyCustomers($filters)->select('id')
+        $cohort = $this->allCustomers()->select('id')
             ->when(!empty($filters['date_from']), fn ($q) => $q->where('created_at', '>=', TimezoneService::userDateStartUtc($filters['date_from'])))
             ->when(!empty($filters['date_to']), fn ($q) => $q->where('created_at', '<', $this->exclusiveDateEnd($filters['date_to'])));
-        $customers = $this->companyCustomers($filters)
+        $customers = $this->allCustomers()
             ->when(!empty($filters['date_from']), fn ($q) => $q->where('created_at', '>=', TimezoneService::userDateStartUtc($filters['date_from'])))
             ->when(!empty($filters['date_to']), fn ($q) => $q->where('created_at', '<', $this->exclusiveDateEnd($filters['date_to'])));
         $spend = DB::table('bookings')->joinSub($cohort, 'report_customers', 'report_customers.id', '=', 'bookings.customer_id')
             ->where('bookings.status', 'completed');
-        CompanyBookingScope::constrain($spend, 'bookings', (string) $filters['company_id']);
         $spend = $spend
             ->selectRaw("COALESCE(NULLIF(UPPER(bookings.currency), ''), 'LKR') as currency, COUNT(DISTINCT bookings.customer_id) as customers, SUM(COALESCE(bookings.total_actual, 0)) as spent")
             ->groupBy('currency')->orderBy('currency')->get()
@@ -496,7 +490,6 @@ class ReportsController extends Controller
         $spend = DB::table('bookings')
             ->whereIn('customer_id', $customers->pluck('id'))
             ->where('status', 'completed');
-        CompanyBookingScope::constrain($spend, 'bookings', (string) $filters['company_id']);
         $spend = $spend
             ->selectRaw("customer_id, COALESCE(NULLIF(UPPER(currency), ''), 'LKR') as currency, SUM(COALESCE(total_actual, 0)) as total_spent")
             ->groupBy('customer_id', 'currency')
@@ -710,7 +703,6 @@ class ReportsController extends Controller
             ->selectRaw('COUNT(DISTINCT bookings.id) as bookings, COUNT(DISTINCT CASE WHEN bookings.status = \'completed\' THEN bookings.id END) as completed_bookings, SUM(CASE WHEN bookings.status = \'completed\' THEN COALESCE(booking_items.total_price, 0) ELSE 0 END) as completed_revenue')
             ->groupBy('drivers.id', 'users.first_name', 'users.last_name')
             ->groupByRaw("COALESCE(NULLIF(UPPER(booking_items.currency), ''), NULLIF(UPPER(bookings.currency), ''), 'LKR')");
-        CompanyBookingScope::constrain($query, 'bookings', (string) $filters['company_id']);
 
         return $query;
     }
@@ -752,7 +744,6 @@ class ReportsController extends Controller
             ->selectRaw("booking_items.vehicle_id, COALESCE(NULLIF(UPPER(booking_items.currency), ''), NULLIF(UPPER(bookings.currency), ''), 'LKR') as currency, COUNT(*) as trip_count, SUM(CASE WHEN booking_items.status = 'completed' THEN COALESCE(booking_items.total_price, 0) ELSE 0 END) as completed_revenue")
             ->groupBy('booking_items.vehicle_id')
             ->groupByRaw("COALESCE(NULLIF(UPPER(booking_items.currency), ''), NULLIF(UPPER(bookings.currency), ''), 'LKR')");
-        CompanyBookingScope::constrain($query, 'bookings', (string) $filters['company_id']);
 
         return $query;
     }
@@ -836,8 +827,6 @@ class ReportsController extends Controller
             'custom_fields.*' => ['string', 'max:64'],
         ]);
 
-        $companyId = app(WebsiteSettingsService::class)->resolveCurrentCompanyId();
-
         $templateId = $request->input('template_id');
         $reportType = $request->input('report_type') ?: match ($templateId) {
             'financial_report' => 'financial',
@@ -855,7 +844,6 @@ class ReportsController extends Controller
             'status' => 'generating',
             'filters' => array_merge(
                 $request->only(['date_from', 'date_to', 'filters', 'custom_fields', 'period', 'locale']),
-                $companyId ? ['company_id' => (string) $companyId] : [],
             ),
             'metadata' => ['generated_at' => now()->toIso8601String()],
             'created_user_id' => $request->user()?->getAuthIdentifier(),
@@ -968,14 +956,10 @@ class ReportsController extends Controller
             $rules['booking_status.*'] = ['string', 'max:64'];
         }
         $request->validate($rules);
-        $companyId = app(WebsiteSettingsService::class)->resolveCurrentCompanyId();
-        abort_unless($companyId, 409, 'Select a business to view its reports.');
-        app(CompanySettingsAccessService::class)->assertCanAccess($request->user(), (string) $companyId);
         $today = Carbon::today(TimezoneService::getUserTimezone())->toDateString();
         $hasExplicitRange = $request->filled('date_from') || $request->filled('date_to');
 
         return array_filter([
-            'company_id' => (string) $companyId,
             'date_from'      => $request->get('date_from') ?: ($hasExplicitRange ? null : Carbon::today(TimezoneService::getUserTimezone())->startOfMonth()->toDateString()),
             'date_to'        => $request->get('date_to') ?: ($hasExplicitRange ? null : $today),
             'locale'         => $request->get('locale', 'en'),
@@ -1000,7 +984,6 @@ class ReportsController extends Controller
 
     private function applyFilters($query, array $filters, string $dateColumn = 'bookings.created_at'): void
     {
-        CompanyBookingScope::constrain($query, 'bookings', (string) $filters['company_id']);
         $dateColumn = $dateColumn === 'bookings.completed_at'
             ? 'COALESCE(bookings.completed_at, bookings.created_at)'
             : $dateColumn;
@@ -1040,8 +1023,6 @@ class ReportsController extends Controller
                     } else {
                         $query->whereRaw('LOWER(bookings.payment_status) = ?', [strtolower($value)]);
                     }
-                    break;
-                case 'company_id':
                     break;
                 case 'vehicle_group':
                     $query->whereHas('bookingItems.vehicle.group', fn ($q) => $q->whereRaw('LOWER(vehicle_groups.name) = ?', [strtolower($value)]));
@@ -1089,7 +1070,6 @@ class ReportsController extends Controller
         $nestedFilters = $saved['filters'] ?? [];
 
         return array_filter([
-            'company_id' => $saved['company_id'] ?? null,
             'date_from' => $saved['date_from'] ?? null,
             'date_to' => $saved['date_to'] ?? null,
             'period' => $saved['period'] ?? 'monthly',
@@ -1329,7 +1309,7 @@ class ReportsController extends Controller
 
     private function getNewCustomers(array $filters): array
     {
-        $query = $this->companyCustomers($filters);
+        $query = $this->allCustomers();
         if (!empty($filters['date_from'])) {
             $query->where('created_at', '>=', TimezoneService::userDateStartUtc($filters['date_from']));
         }
@@ -1356,11 +1336,9 @@ class ReportsController extends Controller
             ->select('id', 'name')
             ->whereHas('customers', function ($q) use ($filters) {
                 $q->withInactive();
-                CompanyCustomerScope::constrain($q, 'customers', (string) $filters['company_id']);
             })
             ->withCount(['customers' => function ($q) use ($filters) {
                 $q->withInactive();
-                CompanyCustomerScope::constrain($q, 'customers', (string) $filters['company_id']);
             }])
             ->orderByDesc('customers_count')
             ->limit(10)
@@ -1371,8 +1349,8 @@ class ReportsController extends Controller
             ])
             ->toArray();
 
-        $corporate = $this->companyCustomers($filters)->where('type', 'corporate')->count();
-        $individual = $this->companyCustomers($filters)->where('type', '!=', 'corporate')->count();
+        $corporate = $this->allCustomers()->where('type', 'corporate')->count();
+        $individual = $this->allCustomers()->where('type', '!=', 'corporate')->count();
 
         return [
             'by_country'  => $byCountry,
@@ -1385,7 +1363,7 @@ class ReportsController extends Controller
 
     private function getLoyaltyMetrics(array $filters): array
     {
-        $query = CustomerLoyaltyPoint::query()->whereHas('customer', fn ($customer) => CompanyCustomerScope::constrain($customer, 'customers', (string) $filters['company_id']));
+        $query = CustomerLoyaltyPoint::query();
 
         return [
             'total_enrolled'         => $query->count(),
@@ -1405,7 +1383,6 @@ class ReportsController extends Controller
         $completedBookings = Booking::where('status', 'completed')
             ->selectRaw('customer_id, COUNT(*) as booking_count')
             ->groupBy('customer_id');
-        CompanyBookingScope::constrain($completedBookings, 'bookings', (string) $filters['company_id']);
 
         if (!empty($filters['date_from'])) {
             $completedBookings->whereRaw('COALESCE(bookings.completed_at, bookings.created_at) >= ?', [TimezoneService::userDateStartUtc($filters['date_from'])]);
@@ -1447,7 +1424,6 @@ class ReportsController extends Controller
             ->whereNotNull('booking_items.from_date')
             ->whereNotNull('booking_items.vehicle_id')
             ->distinct();
-        CompanyBookingScope::constrain($usedVehicleIds, 'bookings', (string) $filters['company_id']);
         $usedVehicleIds = $usedVehicleIds->pluck('booking_items.vehicle_id');
 
         $utilisationRate = $totalActive > 0
@@ -1462,12 +1438,9 @@ class ReportsController extends Controller
         ];
     }
 
-    private function companyCustomers(array $filters)
+    private function allCustomers()
     {
-        $query = Customer::withInactive();
-        CompanyCustomerScope::constrain($query, 'customers', (string) $filters['company_id']);
-
-        return $query;
+        return Customer::withInactive();
     }
 
     private function getPerformanceByCategory(array $filters): array
@@ -1483,7 +1456,6 @@ class ReportsController extends Controller
             ->whereNotNull('booking_items.from_date')
             ->groupBy('vehicle_groups.id', 'vehicle_groups.name')
             ->orderByDesc('bookings');
-        CompanyBookingScope::constrain($query, 'bookings', (string) $filters['company_id']);
 
         return $query->get()->toArray();
     }
@@ -1542,7 +1514,6 @@ class ReportsController extends Controller
         $receipts = DB::table('booking_payment_receipts as r')
             ->join('bookings as b', 'b.id', '=', 'r.booking_id')
             ->whereNull('r.deleted_at')->where('r.received_at', '>=', $from)->where('r.received_at', '<', $to);
-        CompanyBookingScope::constrain($receipts, 'b', (string) $filters['company_id']);
         $receipts = $receipts
             ->selectRaw("{$receiptCurrency} as currency, COALESCE(NULLIF(r.payment_purpose, ''), 'other') as purpose, COALESCE(NULLIF(r.finality_status, ''), 'unknown') as status, COUNT(*) as records, SUM(COALESCE(r.source_amount, r.amount)) as source_amount, SUM(CASE WHEN {$receiptCurrency} = 'LKR' THEN COALESCE(r.lkr_amount, r.source_amount, r.amount) ELSE r.lkr_amount END) as lkr_amount, SUM(CASE WHEN {$receiptCurrency} <> 'LKR' AND r.lkr_amount IS NULL THEN 1 ELSE 0 END) as missing_lkr_conversion_count")
             ->groupByRaw("{$receiptCurrency}, COALESCE(NULLIF(r.payment_purpose, ''), 'other'), COALESCE(NULLIF(r.finality_status, ''), 'unknown')")
@@ -1560,7 +1531,6 @@ class ReportsController extends Controller
             ->join('bookings as b', 'b.id', '=', 'a.booking_id')
             ->where('a.impact_dimension', 'cash_receipt')
             ->where('a.adjustment_effective_at', '>=', $from)->where('a.adjustment_effective_at', '<', $to);
-        CompanyBookingScope::constrain($adjustments, 'b', (string) $filters['company_id']);
         $adjustments = $adjustments
             ->selectRaw("{$adjustmentCurrency} as currency, COALESCE(NULLIF(r.payment_purpose, ''), 'other') as purpose, a.adjustment_type, a.direction, COUNT(*) as records, SUM(a.source_amount) as source_amount, SUM(CASE WHEN {$adjustmentCurrency} = 'LKR' THEN COALESCE(a.lkr_amount, a.source_amount) ELSE a.lkr_amount END) as lkr_amount, SUM(CASE WHEN {$adjustmentCurrency} <> 'LKR' AND a.lkr_amount IS NULL THEN 1 ELSE 0 END) as missing_lkr_conversion_count")
             ->groupByRaw("{$adjustmentCurrency}, COALESCE(NULLIF(r.payment_purpose, ''), 'other'), a.adjustment_type, a.direction")
