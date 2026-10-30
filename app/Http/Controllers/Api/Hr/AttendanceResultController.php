@@ -46,24 +46,21 @@ class AttendanceResultController extends Controller
 
     public function index(Request $request, StaffAccessService $access): JsonResponse
     {
-        $data = $request->validate(['company_id' => ['nullable', 'uuid'], 'staff_id' => ['nullable', 'uuid'], 'from' => ['nullable', 'date'], 'to' => ['nullable', 'date', 'after_or_equal:from'], 'status' => ['nullable', Rule::in(['present', 'absent', 'incomplete', 'half_day', 'insufficient_hours', 'non_working', 'paid_leave', 'unpaid_leave', 'partial_paid_leave', 'partial_unpaid_leave'])], 'per_page' => ['nullable', 'integer', 'min:1', 'max:100']]);
-        $companyId = $this->actorCompany($request, $data['company_id'] ?? null);
-        $staffIds = $access->scope(Staff::query(), $request->user())->where(fn ($_companyIdScope) => \App\Services\CompanyIdScope::constrain($_companyIdScope, 'company_id', $companyId))->when($data['staff_id'] ?? null, fn($q, $id) => $q->whereKey($id))->select('id');
-        $latest = DB::table('hr_attendance_daily_results')->selectRaw('company_id, staff_id, work_date, max(result_version) as result_version')->where(fn ($_companyIdScope) => \App\Services\CompanyIdScope::constrain($_companyIdScope, 'company_id', $companyId))->whereIn('staff_id', clone $staffIds)->when($data['from'] ?? null, fn($q, $v) => $q->whereDate('work_date', '>=', $v))->when($data['to'] ?? null, fn($q, $v) => $q->whereDate('work_date', '<=', $v))->groupBy('company_id', 'staff_id', 'work_date');
-        $query = DB::table('hr_attendance_daily_results as result')->joinSub($latest, 'latest', fn($join) => $join->where(fn ($sameCompany) => \App\Services\CompanyIdScope::sameCompany($sameCompany, 'latest.company_id', 'result.company_id'))->on('latest.staff_id', '=', 'result.staff_id')->on('latest.work_date', '=', 'result.work_date')->on('latest.result_version', '=', 'result.result_version'))
-            ->where(fn ($_companyIdScope) => \App\Services\CompanyIdScope::constrain($_companyIdScope, 'result.company_id', $companyId))
-            ->join('staff as subject_staff', fn($join) => $join->on('subject_staff.id', '=', 'result.staff_id')->where(fn ($sameCompany) => \App\Services\CompanyIdScope::sameCompany($sameCompany, 'subject_staff.company_id', 'result.company_id')))
+        $data = $request->validate(['staff_id' => ['nullable', 'uuid'], 'from' => ['nullable', 'date'], 'to' => ['nullable', 'date', 'after_or_equal:from'], 'status' => ['nullable', Rule::in(['present', 'absent', 'incomplete', 'half_day', 'insufficient_hours', 'non_working', 'paid_leave', 'unpaid_leave', 'partial_paid_leave', 'partial_unpaid_leave'])], 'per_page' => ['nullable', 'integer', 'min:1', 'max:100']]);
+        $staffIds = $access->scope(Staff::query(), $request->user())->when($data['staff_id'] ?? null, fn($q, $id) => $q->whereKey($id))->select('id');
+        $latest = DB::table('hr_attendance_daily_results')->selectRaw('staff_id, work_date, max(result_version) as result_version')->whereIn('staff_id', clone $staffIds)->when($data['from'] ?? null, fn($q, $v) => $q->whereDate('work_date', '>=', $v))->when($data['to'] ?? null, fn($q, $v) => $q->whereDate('work_date', '<=', $v))->groupBy('staff_id', 'work_date');
+        $query = DB::table('hr_attendance_daily_results as result')->joinSub($latest, 'latest', fn($join) => $join->on('latest.staff_id', '=', 'result.staff_id')->on('latest.work_date', '=', 'result.work_date')->on('latest.result_version', '=', 'result.result_version'))
+            ->join('staff as subject_staff', 'subject_staff.id', '=', 'result.staff_id')
             ->join('users as subject_user', 'subject_user.id', '=', 'subject_staff.user_id')
             ->select(['result.id as attendance_result_id', 'subject_staff.code as staff_code', 'subject_user.first_name as staff_first_name', 'subject_user.last_name as staff_last_name', 'result.work_date', 'result.result_version', 'result.day_status', 'result.first_in_at', 'result.last_out_at', 'result.worked_minutes', 'result.late_minutes', 'result.early_leave_minutes', 'result.payable_minutes', 'result.source_kind'])
             ->when($data['from'] ?? null, fn($q, $v) => $q->whereDate('result.work_date', '>=', $v))->when($data['to'] ?? null, fn($q, $v) => $q->whereDate('result.work_date', '<=', $v))->when($data['status'] ?? null, fn($q, $v) => $q->where('result.day_status', $v))->orderByDesc('result.work_date')->orderBy('result.staff_id');
         $page = $query->paginate($this->paginationSize($request, 50));
-        $companyIds = Staff::query()->whereIn('id', clone $staffIds)->distinct()->pluck('company_id');
         $readiness = [
-            'mapped_event_count' => DB::table('hr_attendance_raw_events')->where(fn ($_companyIdScope) => \App\Services\CompanyIdScope::constrain($_companyIdScope, 'company_id', $companyId))->whereIn('staff_id', clone $staffIds)->where('mapping_status', 'mapped')->when($data['from'] ?? null, fn($q, $v) => $q->whereDate('occurred_at', '>=', $v))->when($data['to'] ?? null, fn($q, $v) => $q->whereDate('occurred_at', '<=', $v))->count(),
-            'active_calendar_count' => DB::table('hr_work_calendars')->where(fn ($_companyIdScope) => \App\Services\CompanyIdScope::constrainIn($_companyIdScope, 'company_id', $companyIds))->where('status', 'active')->count(),
-            'active_shift_count' => DB::table('hr_shift_definitions')->where(fn ($_companyIdScope) => \App\Services\CompanyIdScope::constrainIn($_companyIdScope, 'company_id', $companyIds))->where('status', 'active')->count(),
-            'approved_policy_count' => DB::table('hr_attendance_policies')->where(fn ($_companyIdScope) => \App\Services\CompanyIdScope::constrainIn($_companyIdScope, 'company_id', $companyIds))->where('status', 'approved')->count(),
-            'approved_roster_count' => DB::table('hr_roster_assignments')->where(fn ($_companyIdScope) => \App\Services\CompanyIdScope::constrain($_companyIdScope, 'company_id', $companyId))->whereIn('staff_id', clone $staffIds)->whereNotNull('approved_at')->count(),
+            'mapped_event_count' => DB::table('hr_attendance_raw_events')->whereIn('staff_id', clone $staffIds)->where('mapping_status', 'mapped')->when($data['from'] ?? null, fn($q, $v) => $q->whereDate('occurred_at', '>=', $v))->when($data['to'] ?? null, fn($q, $v) => $q->whereDate('occurred_at', '<=', $v))->count(),
+            'active_calendar_count' => DB::table('hr_work_calendars')->where('status', 'active')->count(),
+            'active_shift_count' => DB::table('hr_shift_definitions')->where('status', 'active')->count(),
+            'approved_policy_count' => DB::table('hr_attendance_policies')->where('status', 'approved')->count(),
+            'approved_roster_count' => DB::table('hr_roster_assignments')->whereIn('staff_id', clone $staffIds)->whereNotNull('approved_at')->count(),
         ];
         return response()->json(['status' => 'success', 'data' => $page, 'meta' => ['readiness' => $readiness, 'filters' => ['from' => $data['from'] ?? null, 'to' => $data['to'] ?? null, 'status' => $data['status'] ?? null]]]);
     }
@@ -71,29 +68,24 @@ class AttendanceResultController extends Controller
     public function report(Request $request, StaffAccessService $access): JsonResponse
     {
         $data = $request->validate([
-            'company_id' => ['nullable', 'uuid'],
             'from' => ['required', 'date'],
             'to' => ['required', 'date', 'after_or_equal:from'],
             'status' => ['nullable', Rule::in(['present', 'absent', 'incomplete', 'half_day', 'insufficient_hours', 'non_working', 'paid_leave', 'unpaid_leave', 'partial_paid_leave', 'partial_unpaid_leave'])],
-            'group_by' => ['required', Rule::in(['work_date', 'status', 'staff', 'company'])],
+            'group_by' => ['required', Rule::in(['work_date', 'status', 'staff'])],
         ]);
         abort_if(CarbonImmutable::parse($data['from'])->diffInDays(CarbonImmutable::parse($data['to'])) > 366, 422, 'Attendance reports are limited to a 367-day range.');
 
-        $companyId = $this->actorCompany($request, $data['company_id'] ?? null);
-        $staffIds = $access->scope(Staff::query(), $request->user())->where(fn ($_companyIdScope) => \App\Services\CompanyIdScope::constrain($_companyIdScope, 'company_id', $companyId))->select('id');
+        $staffIds = $access->scope(Staff::query(), $request->user())->select('id');
         $latest = DB::table('hr_attendance_daily_results')
-            ->selectRaw('company_id, staff_id, work_date, max(result_version) as result_version')
-            ->where(fn ($_companyIdScope) => \App\Services\CompanyIdScope::constrain($_companyIdScope, 'company_id', $companyId))
+            ->selectRaw('staff_id, work_date, max(result_version) as result_version')
             ->whereIn('staff_id', clone $staffIds)
             ->whereDate('work_date', '>=', $data['from'])
             ->whereDate('work_date', '<=', $data['to'])
-            ->groupBy('company_id', 'staff_id', 'work_date');
+            ->groupBy('staff_id', 'work_date');
         $rows = DB::table('hr_attendance_daily_results as result')
-            ->joinSub($latest, 'latest', fn($join) => $join->where(fn ($sameCompany) => \App\Services\CompanyIdScope::sameCompany($sameCompany, 'latest.company_id', 'result.company_id'))->on('latest.staff_id', '=', 'result.staff_id')->on('latest.work_date', '=', 'result.work_date')->on('latest.result_version', '=', 'result.result_version'))
-            ->where(fn ($_companyIdScope) => \App\Services\CompanyIdScope::constrain($_companyIdScope, 'result.company_id', $companyId))
-            ->join('staff', fn ($join) => $join->on('staff.id', '=', 'result.staff_id')->where(fn ($sameCompany) => \App\Services\CompanyIdScope::sameCompany($sameCompany, 'staff.company_id', 'result.company_id')))
+            ->joinSub($latest, 'latest', fn($join) => $join->on('latest.staff_id', '=', 'result.staff_id')->on('latest.work_date', '=', 'result.work_date')->on('latest.result_version', '=', 'result.result_version'))
+            ->join('staff', 'staff.id', '=', 'result.staff_id')
             ->join('users', 'users.id', '=', 'staff.user_id')
-            ->join('companies', 'companies.id', '=', 'result.company_id')
             ->when($data['status'] ?? null, fn($query, $status) => $query->where('result.day_status', $status));
 
         $aggregates = "count(*) as days, count(distinct result.staff_id) as staff_count, sum(case when result.day_status = 'present' then 1 else 0 end) as present_days, sum(case when result.day_status = 'absent' then 1 else 0 end) as absent_days, sum(case when result.day_status in ('incomplete', 'insufficient_hours') then 1 else 0 end) as exception_days, coalesce(sum(result.worked_minutes), 0) as worked_minutes, coalesce(sum(result.late_minutes), 0) as late_minutes, coalesce(sum(result.early_leave_minutes), 0) as early_leave_minutes, coalesce(sum(result.payable_minutes), 0) as payable_minutes";
@@ -103,7 +95,6 @@ class AttendanceResultController extends Controller
             'work_date' => $groupedQuery->selectRaw("result.work_date as key, cast(result.work_date as varchar) as label, {$aggregates}")->groupBy('result.work_date')->orderByDesc('result.work_date'),
             'status' => $groupedQuery->selectRaw("result.day_status as key, result.day_status as label, {$aggregates}")->groupBy('result.day_status')->orderBy('result.day_status'),
             'staff' => $groupedQuery->selectRaw("result.staff_id as key, concat(coalesce(staff.code || ' · ', ''), users.first_name, ' ', users.last_name) as label, {$aggregates}")->groupBy('result.staff_id', 'staff.code', 'users.first_name', 'users.last_name')->orderBy('users.first_name')->orderBy('users.last_name'),
-            'company' => $groupedQuery->selectRaw("staff.company_id as key, companies.name as label, {$aggregates}")->groupBy('staff.company_id', 'companies.name')->orderBy('companies.name'),
         };
         $grouped = $groupedQuery->get()->map(static fn (object $row): array => [
             'label' => $row->label,

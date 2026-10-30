@@ -18,7 +18,6 @@ use App\Models\DriverAssignment;
 use App\Models\Finance\FinancialAuditEvent;
 use App\Models\Invoice;
 use App\Services\Driver\RouteEvidenceService;
-use App\Services\SingleCompanyScope;
 use Carbon\Carbon;
 use Illuminate\Support\Collection;
 use Illuminate\Support\Facades\DB;
@@ -60,7 +59,6 @@ class BookingObservabilityService
 
         $bookingActivities = BookingActivity::query()
             ->where('booking_id', $booking->id)
-            ->where(fn ($scope) => \App\Services\CompanyIdScope::constrain($scope, 'company_id', $booking->company_id))
             ->whereIn('event_key', ['booking_updated', 'booking_vehicle_changed'])
             ->when($bookingItemId, fn ($query) => $query->where(fn ($scope) => $scope
                 ->whereNull('booking_item_id')->orWhere('booking_item_id', $bookingItemId)))
@@ -1037,13 +1035,7 @@ class BookingObservabilityService
                 'source' => 'dispatch_delivery',
             ]);
 
-        $defaultCompanyId = app(SingleCompanyScope::class)->defaultCompany()?->id;
         $smsQuery = SmsMessage::query()->where('booking_id', $booking->id);
-        if ($defaultCompanyId) {
-            $smsQuery->where(fn ($_companyIdScope) => \App\Services\CompanyIdScope::constrain($_companyIdScope, 'company_id', $defaultCompanyId));
-        } else {
-            $smsQuery->whereRaw('1 = 0');
-        }
         $smsEvents = $smsQuery
             ->when($bookingItemId, fn($query) => $query->where(function ($scope) use ($bookingItemId) {
                 $scope->whereNull('booking_item_id')->orWhere('booking_item_id', $bookingItemId);
@@ -1071,9 +1063,6 @@ class BookingObservabilityService
 
         $decisionEvents = BookingActivity::query()->where('booking_id', $booking->id)
             ->whereNull('sms_message_id')
-            ->when($defaultCompanyId,
-                fn ($query) => $query->where(fn ($_companyIdScope) => \App\Services\CompanyIdScope::constrain($_companyIdScope, 'company_id', $defaultCompanyId)),
-                fn ($query) => $query->whereRaw('1 = 0'))
             ->when($bookingItemId, fn($query) => $query->where(function ($scope) use ($bookingItemId) {
                 $scope->whereNull('booking_item_id')->orWhere('booking_item_id', $bookingItemId);
             }))

@@ -769,11 +769,7 @@ class CustomerController extends Controller
      */
     public function getCustomerBookings(Request $request, Customer $customer): JsonResponse
     {
-        $customer = $this->requireCompanyCustomer($customer);
-        $companyId = $this->currentCompanyId();
-        abort_unless($companyId, 409, 'Set one active default company before viewing customer bookings.');
         $bookings = $customer->bookings();
-        \App\Services\CompanyBookingScope::constrain($bookings, 'bookings', $companyId);
         $currentBookings = clone $bookings;
         $currentBookings = $currentBookings
             ->whereNotIn('status', ['completed', 'cancelled', 'canceled', 'rejected'])
@@ -818,10 +814,7 @@ class CustomerController extends Controller
 
     public function getCustomerInquiries(Customer $customer): JsonResponse
     {
-        $customer = $this->requireCompanyCustomer($customer);
-        $companyId = $this->currentCompanyId();
-        abort_unless($companyId, 409, 'Set one active default company before viewing customer inquiries.');
-        $inquiries = DB::table('inquiries')->where(fn ($_companyIdScope) => \App\Services\CompanyIdScope::constrain($_companyIdScope, 'company_id', $companyId))->where('customer_id', $customer->id)->whereNull('deleted_at')
+        $inquiries = DB::table('inquiries')->where('customer_id', $customer->id)->whereNull('deleted_at')
             ->latest('created_at')->select(['id', 'inquiry_number', 'inquiry_type', 'subject', 'status', 'source', 'created_at'])
             ->paginate(15);
 
@@ -836,10 +829,8 @@ class CustomerController extends Controller
 
     public function getCustomerTimeline(Request $request, Customer $customer): JsonResponse
     {
-        $customer = $this->requireCompanyCustomer($customer);
         $request->validate(['page' => ['nullable', 'integer', 'min:1'], 'per_page' => ['nullable', 'integer', 'min:1', 'max:50']]);
-        $companyId = $this->currentCompanyId();
-        abort_unless($companyId, 409, 'Set one active default company before viewing the customer timeline.');
+        $companyId = null;
 
         $bookings = DB::table('bookings as booking')->where('booking.customer_id', $customer->id)->whereNull('booking.deleted_at');
         $this->constrainBookingsToCompany($bookings, 'booking', $companyId);
@@ -1090,7 +1081,6 @@ class CustomerController extends Controller
         if ($request->user()->can('phone-calls.view')) {
             $calls = DB::table('phone_calls as call')->leftJoin('users as assigned_user', 'assigned_user.id', '=', 'call.assigned_user_id')
                 ->where('call.customer_id', $customer->id)->whereNull('call.deleted_at');
-            $companyId ? $calls->where(fn ($_companyIdScope) => \App\Services\CompanyIdScope::constrain($_companyIdScope, 'call.company_id', $companyId)) : $calls->whereRaw('1 = 0');
             $callBookingField = $request->user()->can('bookings.view') ? 'call.booking_id' : 'NULL';
             $calls->selectRaw("CONCAT('phone-call:', call.id) as id, 'call' as event_type, CONCAT('Phone call · ', COALESCE(NULLIF(CONCAT_WS(' ', assigned_user.first_name, assigned_user.last_name), ''), 'Unassigned')) as title, COALESCE(call.call_status, 'logged') as status, COALESCE(call.call_started_at, call.call_time) as occurred_at, call.phone as reference, {$callBookingField} as booking_id, call.summary as detail");
             $events->unionAll($calls);
@@ -1323,11 +1313,9 @@ class CustomerController extends Controller
      */
     public function getCustomerFeedback(Customer $customer): JsonResponse
     {
-        $customer = $this->requireCompanyCustomer($customer);
         $feedback = Booking::query()->where('customer_id', $customer->id)
             ->whereNotNull('customer_rating')->where('status', 'completed')
             ->with(['customer.user', 'serviceType'])->orderByDesc('customer_feedback_submitted_at')->orderByDesc('updated_at');
-        \App\Services\CompanyBookingScope::constrain($feedback, 'bookings', $this->requireActiveCompanyId());
 
         return response()->json([
             'status' => 'success',
@@ -1341,7 +1329,6 @@ class CustomerController extends Controller
      */
     public function addCustomerFeedback(Request $request, Customer $customer): JsonResponse
     {
-        $customer = $this->requireCompanyCustomer($customer);
         $data = $request->validate(['booking_id' => ['required', 'uuid'], 'rating' => ['required', 'integer', 'min:1', 'max:5'], 'comment' => ['nullable', 'string', 'max:1000']]);
         $booking = $this->saveBookingFeedback($data['booking_id'], $customer->id, $data);
         return response()->json([
@@ -1621,7 +1608,6 @@ class CustomerController extends Controller
     public function getFeedbackStats(): JsonResponse
     {
         $base = Booking::query()->whereNotNull('customer_rating')->where('status', 'completed');
-        \App\Services\CompanyBookingScope::constrain($base, 'bookings', $this->requireActiveCompanyId());
         $summary = (clone $base)->selectRaw('COUNT(*) as total_feedback, AVG(customer_rating) as average_rating')->first();
         $distribution = (clone $base)->select('customer_rating')->selectRaw('COUNT(*) as total')
             ->groupBy('customer_rating')->pluck('total', 'customer_rating')->all();
@@ -1653,7 +1639,6 @@ class CustomerController extends Controller
             ->whereNotNull('customer_rating')->where('status', 'completed')
             ->when(isset($data['rating']), fn ($query) => $query->where('customer_rating', $data['rating']))
             ->orderByDesc('customer_feedback_submitted_at')->orderByDesc('updated_at');
-        \App\Services\CompanyBookingScope::constrain($feedback, 'bookings', $this->requireActiveCompanyId());
         $page = $feedback->paginate($data['per_page'] ?? 10, ['*'], 'page', $data['page'] ?? 1);
 
         return response()->json([
@@ -1672,7 +1657,7 @@ class CustomerController extends Controller
     public function submitCustomerFeedback(Request $request): JsonResponse
     {
         $data = $request->validate(['customer_id' => ['required', 'uuid'], 'booking_id' => ['required', 'uuid'], 'rating' => ['required', 'integer', 'min:1', 'max:5'], 'comment' => ['nullable', 'string', 'max:1000']]);
-        $customer = $this->requireCompanyCustomer(Customer::query()->findOrFail($data['customer_id']));
+        $customer = Customer::query()->findOrFail($data['customer_id']);
         $booking = $this->saveBookingFeedback($data['booking_id'], $customer->id, $data);
         return response()->json([
             'status' => 'success',
@@ -1691,10 +1676,8 @@ class CustomerController extends Controller
             'response' => ['required', 'string', 'min:10', 'max:2000'],
         ]);
 
-        $companyId = $this->requireActiveCompanyId();
-        $booking = DB::transaction(function () use ($feedbackId, $data, $request, $companyId): Booking {
+        $booking = DB::transaction(function () use ($feedbackId, $data, $request): Booking {
             $bookingQuery = Booking::query()->whereKey($feedbackId)->whereNotNull('customer_rating')->where('status', 'completed')->lockForUpdate();
-            \App\Services\CompanyBookingScope::constrain($bookingQuery, 'bookings', $companyId);
             $booking = $bookingQuery->firstOrFail();
             $response = trim($data['response']);
             if ($booking->customer_feedback_response) {
@@ -1717,10 +1700,8 @@ class CustomerController extends Controller
 
     private function saveBookingFeedback(string $bookingId, string $customerId, array $data): Booking
     {
-        $companyId = $this->requireActiveCompanyId();
-        return DB::transaction(function () use ($bookingId, $customerId, $data, $companyId): Booking {
+        return DB::transaction(function () use ($bookingId, $customerId, $data): Booking {
             $query = Booking::query()->whereKey($bookingId)->where('customer_id', $customerId)->lockForUpdate();
-            \App\Services\CompanyBookingScope::constrain($query, 'bookings', $companyId);
             $booking = $query->firstOrFail();
             abort_unless($booking->status === 'completed', 409, 'Feedback can only be recorded for a completed booking.');
             if ($booking->customer_rating !== null) {

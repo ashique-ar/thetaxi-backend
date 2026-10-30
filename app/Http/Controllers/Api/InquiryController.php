@@ -413,25 +413,12 @@ class InquiryController extends Controller
             'selected_id' => ['nullable', 'uuid'], 'page' => ['nullable', 'integer', 'min:1'],
             'per_page' => ['nullable', 'integer', 'min:1', 'max:50'],
         ]);
-        $companyId = $this->currentCompanyId();
-        $phoneCallingCode = \App\Services\CompanyCustomerScope::phoneCallingCode((string) $companyId);
+        $phoneCallingCode = null;
         if (! empty($data['inquiry_id'])) {
-            Inquiry::query()->where(fn ($_companyIdScope) => \App\Services\CompanyIdScope::constrain($_companyIdScope, 'company_id', $companyId))->findOrFail($data['inquiry_id']);
+            Inquiry::query()->findOrFail($data['inquiry_id']);
         }
         $customers = DB::table('customers')->join('users', 'users.id', '=', 'customers.user_id')
             ->whereNull('customers.deleted_at')
-            ->where(function ($scope) use ($companyId): void {
-                $scope->whereExists(fn ($q) => $q->selectRaw('1')->from('customer_relationship_owner_assignments as owner')
-                    ->whereColumn('owner.customer_id', 'customers.id')->where(fn ($_companyIdScope) => \App\Services\CompanyIdScope::constrain($_companyIdScope, 'owner.company_id', $companyId)))
-                    ->orWhereExists(fn ($q) => $q->selectRaw('1')->from('sales_opportunities as opportunity')
-                        ->whereColumn('opportunity.customer_id', 'customers.id')->where(fn ($_companyIdScope) => \App\Services\CompanyIdScope::constrain($_companyIdScope, 'opportunity.company_id', $companyId))->whereNull('opportunity.deleted_at'))
-                    ->orWhereExists(fn ($q) => $q->selectRaw('1')->from('inquiries as linked_inquiry')
-                        ->whereColumn('linked_inquiry.customer_id', 'customers.id')->where(fn ($_companyIdScope) => \App\Services\CompanyIdScope::constrain($_companyIdScope, 'linked_inquiry.company_id', $companyId))->whereNull('linked_inquiry.deleted_at'))
-                    ->orWhereExists(function ($booking) use ($companyId): void {
-                        $booking->selectRaw('1')->from('bookings')->whereColumn('bookings.customer_id', 'customers.id')->whereNull('bookings.deleted_at');
-                        \App\Services\CompanyBookingScope::constrain($booking, 'bookings', $companyId);
-                    });
-            })
             ->when(! empty($data['selected_id']), fn ($query) => $query->where('customers.id', $data['selected_id']))
             ->when(empty($data['selected_id']) && ! empty($data['search']), function ($query) use ($data, $phoneCallingCode): void {
                 $term = '%' . addcslashes(trim($data['search']), '%_\\') . '%';
@@ -468,9 +455,8 @@ class InquiryController extends Controller
             'search' => ['nullable', 'string', 'max:120'], 'selected_id' => ['nullable', 'uuid'],
             'page' => ['nullable', 'integer', 'min:1'], 'per_page' => ['nullable', 'integer', 'min:1', 'max:50'],
         ]);
-        $companyId = $this->currentCompanyId();
         if (! empty($data['inquiry_id'])) {
-            $inquiry = Inquiry::query()->where(fn ($_companyIdScope) => \App\Services\CompanyIdScope::constrain($_companyIdScope, 'company_id', $companyId))->findOrFail($data['inquiry_id']);
+            $inquiry = Inquiry::query()->findOrFail($data['inquiry_id']);
             abort_unless((string) $inquiry->customer_id === (string) $data['customer_id'], 422, 'Choose a booking for the linked customer.');
         }
         $bookings = DB::table('bookings')->where('bookings.customer_id', $data['customer_id'])
@@ -483,7 +469,6 @@ class InquiryController extends Controller
             })
             ->select(['bookings.id', 'bookings.booking_number', 'bookings.log_code', 'bookings.created_at'])
             ->orderByDesc('bookings.created_at');
-        \App\Services\CompanyBookingScope::constrain($bookings, 'bookings', $companyId);
         $bookings = $bookings->paginate($data['per_page'] ?? 25);
         $bookings->getCollection()->transform(fn ($booking) => [
             'value' => (string) $booking->id,

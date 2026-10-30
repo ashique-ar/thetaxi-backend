@@ -25,21 +25,17 @@ use Illuminate\Database\Eloquent\Relations\BelongsTo;
  */
 class BusinessSetting extends BaseModel
 {
-    public const COMPANY_SCOPED_WORKFLOW_KEYS = [
+    public const INSTALLATION_WIDE_WORKFLOW_KEYS = [
         'feature_vehicle_return_management_enabled',
         'assignment_enable_qc_stage',
         'assignment_enable_maintenance_stage',
         'booking_signed_agreement_required',
     ];
 
-    public const COMPANY_SCOPED_KEYS = [
-        'feature_vehicle_return_management_enabled',
-        'assignment_enable_qc_stage',
-        'assignment_enable_maintenance_stage',
-        'booking_signed_agreement_required',
+    public const INSTALLATION_WIDE_WEBSITE_KEYS = [
+        ...self::INSTALLATION_WIDE_WORKFLOW_KEYS,
         'corporate_booking_notification_email',
     ];
-    
 
     /**
      * The table associated with the model.

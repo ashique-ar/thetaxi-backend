@@ -70,7 +70,6 @@ class WebsiteSettingsService
         'feature_3cx_enabled',
         'feature_driver_management_enabled',
         'driver_form_public_enabled',
-        'assignment_enable_maintenance_stage',
         'internal_pricing_mode',
         'driver_mobile_latest_version',
         'driver_mobile_mandatory_update',
@@ -127,13 +126,11 @@ class WebsiteSettingsService
             return WebsiteSetting::getValue($type, false, null);
         }
 
-        $companyId ??= $this->resolveCurrentCompanyId();
+        $companyId = null;
 
-        if (in_array($type, BusinessSetting::COMPANY_SCOPED_WORKFLOW_KEYS, true)) {
-            if ($companyId) {
-                $companyValue = WebsiteSetting::query()->where('type', $type)->where(fn ($locationScope) => CompanyLocationScope::constrain($locationScope, 'company_id', $companyId, false))->value('value');
-                if ($companyValue !== null) return $companyValue;
-            }
+        if (in_array($type, BusinessSetting::INSTALLATION_WIDE_WEBSITE_KEYS, true)) {
+            $websiteValue = WebsiteSetting::getValue($type, null, null);
+            if ($websiteValue !== null) return $websiteValue;
         }
 
         if (in_array($type, self::BUSINESS_OWNED_KEYS, true)) {
@@ -145,8 +142,8 @@ class WebsiteSettingsService
 
         $cacheKey = self::CACHE_PREFIX . ($companyId ?: 'global') . '_' . $type;
 
-        return Cache::remember($cacheKey, self::CACHE_DURATION, function () use ($type, $default, $companyId) {
-            return WebsiteSetting::getValue($type, $default, $companyId);
+        return Cache::remember($cacheKey, self::CACHE_DURATION, function () use ($type, $default) {
+            return WebsiteSetting::getValue($type, $default);
         });
     }
 
@@ -155,9 +152,8 @@ class WebsiteSettingsService
      */
     public function set(string $type, $value, ?string $companyId = null): void
     {
-        $companyId ??= $this->resolveCurrentCompanyId();
-        WebsiteSetting::setValue($type, $value, $companyId);
-        $this->clearCache($type, $companyId);
+        WebsiteSetting::setValue($type, $value);
+        $this->clearCache($type);
     }
 
     /**
@@ -175,9 +171,7 @@ class WebsiteSettingsService
      */
     public function getMultiple(array $types, ?string $companyId = null): array
     {
-        if (func_num_args() === 1) {
-            $companyId = $this->resolveCurrentCompanyId();
-        }
+        $companyId = null;
         $result = [];
         $uncachedTypes = [];
         $cacheKeysByType = [];
@@ -204,7 +198,7 @@ class WebsiteSettingsService
 
         // Fetch uncached values from database
         if (!empty($uncachedTypes)) {
-            $uncachedValues = WebsiteSetting::getValues($uncachedTypes, $companyId);
+            $uncachedValues = WebsiteSetting::getValues($uncachedTypes);
             $valuesToCache = [];
 
             foreach ($uncachedValues as $type => $value) {
@@ -237,18 +231,13 @@ class WebsiteSettingsService
             ->pluck('value', 'type')
             ->all();
 
-        $companyWorkflowValues = $companyId
-            ? WebsiteSetting::query()->whereIn('type', BusinessSetting::COMPANY_SCOPED_WORKFLOW_KEYS)
-                ->where(fn ($locationScope) => CompanyLocationScope::constrain($locationScope, 'company_id', $companyId, false))->pluck('value', 'type')->all()
-            : [];
-
         foreach ($businessValues as $type => $value) {
             if ($type === 'feature_hr_attendance_ingestion_enabled') {
                 continue;
             }
-            $result[$type] = in_array($type, BusinessSetting::COMPANY_SCOPED_WORKFLOW_KEYS, true)
-                ? ($companyWorkflowValues[$type] ?? $value)
-                : $value;
+            if (in_array($type, BusinessSetting::INSTALLATION_WIDE_WEBSITE_KEYS, true)
+                && ($result[$type] ?? null) !== null) continue;
+            $result[$type] = $value;
         }
 
         return $result;
@@ -1009,7 +998,7 @@ class WebsiteSettingsService
         $settings = $this->getMultiple($types);
         $webxpayTypes = array_values(array_filter($types, static fn (string $type): bool => str_starts_with($type, 'webxpay_')));
 
-        return array_replace($settings, $this->getMultiple($webxpayTypes, Company::getDefaultCompany()?->id));
+        return array_replace($settings, $this->getMultiple($webxpayTypes));
     }
 
     /**
@@ -1493,36 +1482,23 @@ class WebsiteSettingsService
         $companyId = $request->header('X-Company-Id') ?: $request->query('company_id');
         if ($companyId) {
             $activeCompanyId = Company::query()->whereKey($companyId)->where('is_active', true)->value('id');
-            if ($activeCompanyId) {
-                return (string) $activeCompanyId;
-            }
+            if ($activeCompanyId) return (string) $activeCompanyId;
         }
 
-        if ($host === '') {
-            return null;
-        }
-
-        $company = Company::query()
-            ->where('is_active', true)
-            ->where(function ($query) use ($host) {
-                $query->whereRaw('LOWER(domain) = ?', [$host])
-                    ->orWhereRaw('LOWER(website) = ?', [$host])
-                    ->orWhereRaw('LOWER(website) = ?', ['https://' . $host])
-                    ->orWhereRaw('LOWER(website) = ?', ['http://' . $host]);
-            })
-            ->first(['id']);
+        if ($host === '') return null;
+        $company = Company::query()->where('is_active', true)->where(function ($query) use ($host) {
+            $query->whereRaw('LOWER(domain) = ?', [$host])
+                ->orWhereRaw('LOWER(website) = ?', [$host])
+                ->orWhereRaw('LOWER(website) = ?', ['https://' . $host])
+                ->orWhereRaw('LOWER(website) = ?', ['http://' . $host]);
+        })->first(['id']);
 
         if (!$company) {
-            // Preview hosts can use a registered location's parent domain.
-            $company = Company::query()
-                ->where('is_active', true)
-                ->orderByRaw('LENGTH(domain) DESC')
-                ->get(['id', 'domain', 'website'])
-                ->first(function (Company $candidate) use ($host): bool {
+            $company = Company::query()->where('is_active', true)->orderByRaw('LENGTH(domain) DESC')
+                ->get(['id', 'domain', 'website'])->first(function (Company $candidate) use ($host): bool {
                     $websiteHost = parse_url((string) $candidate->website, PHP_URL_HOST)
                         ?: parse_url('//' . (string) $candidate->website, PHP_URL_HOST);
                     $domain = strtolower(trim((string) ($candidate->domain ?: $websiteHost), '. '));
-
                     return $domain !== '' && ($host === $domain || str_ends_with($host, '.' . $domain));
                 });
         }

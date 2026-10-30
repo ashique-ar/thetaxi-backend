@@ -5,7 +5,6 @@ namespace App\Models\Website;
 use App\Models\BaseModel;
 use App\Traits\UUID;
 use App\Models\User;
-use App\Models\Company;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 
 /**
@@ -30,7 +29,7 @@ class WebsiteSetting extends BaseModel
         static::saving(function (WebsiteSetting $setting): void {
             if ($setting->exists && ! $setting->isDirty('value')) return;
             $enabled = filter_var($setting->value, FILTER_VALIDATE_BOOL, FILTER_NULL_ON_FAILURE);
-            if ($enabled !== false || ! $setting->company_id) return;
+            if ($enabled !== false) return;
 
             $stageKeys = match ((string) $setting->type) {
                 'feature_vehicle_return_management_enabled' => ['enable_return_stage', 'enable_qc_stage'],
@@ -53,7 +52,6 @@ class WebsiteSetting extends BaseModel
     protected $fillable = [
         'type',
         'value',
-        'company_id',
         'created_user_id',
         'updated_user_id',
     ];
@@ -85,32 +83,12 @@ class WebsiteSetting extends BaseModel
         return $this->belongsTo(User::class, 'updated_user_id');
     }
 
-    public function company(): BelongsTo
-    {
-        return $this->belongsTo(Company::class);
-    }
-
     /**
      * Get a setting value by type.
      */
     public static function getValue(string $type, $default = null, ?string $companyId = null)
     {
-        if (func_num_args() < 3) {
-            $companyId = app(\App\Services\WebsiteSettingsService::class)->resolveCurrentCompanyId();
-        }
-
-        $query = static::query()->where('type', $type);
-        if ($companyId) {
-            $query->where(fn ($locationScope) => \App\Services\CompanyLocationScope::constrain($locationScope, 'company_id', $companyId))
-                ->orderByRaw('CASE WHEN company_id = ? THEN 0 ELSE 1 END', [$companyId]);
-        } else {
-            $query->whereNull('company_id');
-        }
-        $setting = $query->first();
-
-        if (!$setting && $companyId) {
-            $setting = static::where('type', $type)->whereNull('company_id')->first();
-        }
+        $setting = static::query()->where('type', $type)->first();
 
         return $setting ? $setting->value : $default;
     }
@@ -121,7 +99,7 @@ class WebsiteSetting extends BaseModel
     public static function setValue(string $type, $value, ?string $companyId = null): void
     {
         static::updateOrCreate(
-            ['type' => $type, 'company_id' => $companyId],
+            ['type' => $type],
             ['value' => static::normalizeValue($value)]
         );
     }
@@ -156,27 +134,13 @@ class WebsiteSetting extends BaseModel
      */
     public static function getValues(array $types, ?string $companyId = null): array
     {
-        if (func_num_args() < 2) {
-            $companyId = app(\App\Services\WebsiteSettingsService::class)->resolveCurrentCompanyId();
-        }
-
-        $globalSettings = static::whereIn('type', $types)
-            ->whereNull('company_id')
+        $settings = static::whereIn('type', $types)
             ->get()
             ->keyBy('type');
-
-        $companySettings = collect();
-        if ($companyId) {
-            $companySettings = static::whereIn('type', $types)
-                ->where(fn ($locationScope) => \App\Services\CompanyLocationScope::constrain($locationScope, 'company_id', $companyId))
-                ->orderByRaw('CASE WHEN company_id = ? THEN 0 ELSE 1 END', [$companyId])
-                ->get()
-                ->keyBy('type');
-        }
         
         $result = [];
         foreach ($types as $type) {
-            $setting = $companySettings->get($type) ?? $globalSettings->get($type);
+            $setting = $settings->get($type);
             $result[$type] = $setting ? $setting->value : null;
         }
         

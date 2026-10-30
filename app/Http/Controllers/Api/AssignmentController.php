@@ -571,7 +571,6 @@ class AssignmentController extends Controller
                 'payment_collection_status' => $summary['due_amount'] <= 0 ? 'paid' : ($summary['paid_amount'] > 0 ? 'partially_paid' : 'pending'),
             ]);
             BookingActivity::create([
-                'company_id' => $booking->company_id,
                 'booking_id' => $booking->id,
                 'booking_item_id' => $item->id,
                 'event_key' => 'additional_rental_charge_added',

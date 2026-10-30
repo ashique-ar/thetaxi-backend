@@ -439,7 +439,6 @@ class StaffIdentityService
                 $now = now();
                 $locked->forceFill(['responsible_user_id' => null, 'updated_user_id' => $actor->id])->save();
                 BookingActivity::create([
-                    'company_id' => $locked->company_id,
                     'booking_id' => $locked->id,
                     'event_key' => 'booking_responsible_user_changed',
                     'channel' => 'system',
