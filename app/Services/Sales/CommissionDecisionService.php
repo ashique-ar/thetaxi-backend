@@ -39,7 +39,7 @@ class CommissionDecisionService
             $receipt = BookingPaymentReceipt::query()->findOrFail($receipt->id);
             $finalityPolicy = $this->finalityPolicy($receipt);
             $attribution = SalesBookingAttribution::query()->where('booking_id', $receipt->booking_id)->first();
-            $companyId = $attribution?->company_id ?: \App\Services\CompanyIdScope::defaultCompanyId();
+            $companyId = $attribution?->company_id;
             $sourceBasis = max(0, round((float) $component->source_amount - (float) $component->adjusted_source_amount, 4));
             $lkrBasis = $component->lkr_amount !== null && (float) $component->source_amount > 0
                 ? round((float) $component->lkr_amount * ($sourceBasis / (float) $component->source_amount), 4)
@@ -73,17 +73,11 @@ class CommissionDecisionService
             if (! $attribution) {
                 return $this->hold($base, 'attribution_missing', 'Booking attribution is missing.');
             }
-            if (! $companyId) {
-                return $this->hold($base, 'legal_entity_missing', 'No active default legal entity is configured.');
-            }
             $acquisitionProfile = $attribution->acquisition_sales_profile_id
                 ? SalesProfile::query()->withTrashed()->find($attribution->acquisition_sales_profile_id)
                 : null;
             if (! $acquisitionProfile) {
                 return $this->hold($base, 'acquisition_profile_missing', 'The frozen acquisition Sales Profile is missing.');
-            }
-            if (!\App\Services\CompanyIdScope::sameCompanyId((string) ($acquisitionProfile->company_id), (string) ($companyId))) {
-                return $this->hold($base, 'legal_entity_mismatch', 'The acquisition Sales Profile belongs to a different legal entity.');
             }
             if (! $this->profileEligibility->isEligibleAt($acquisitionProfile, ['acquisition'], $attribution->secured_at)) {
                 return $this->hold(
@@ -108,9 +102,6 @@ class CommissionDecisionService
             if (! $profile?->staff_id || ! $profile->staff) {
                 return $this->hold($base, 'beneficiary_missing', 'No eligible collection handler Staff record exists at receipt time.');
             }
-            if (!\App\Services\CompanyIdScope::sameCompanyId((string) ($profile->company_id), (string) ($companyId))) {
-                return $this->hold($base, 'legal_entity_mismatch', 'The collection beneficiary belongs to a different legal entity.');
-            }
             if (($profile->staff->employment_ended_at && $profile->staff->employment_ended_at->lte($receipt->received_at))
                 || ($profile->staff->deleted_at && $profile->staff->deleted_at->lte($receipt->received_at))) {
                 return $this->hold($base, 'employment_inactive', 'The collection handler Staff identity was inactive at receipt time.');
@@ -130,7 +121,7 @@ class CommissionDecisionService
                 );
             }
             $overrides = SalesCommissionStaffOverride::query()
-                ->where(fn ($_companyIdScope) => \App\Services\CompanyIdScope::constrain($_companyIdScope, 'company_id', $attribution->company_id))->where('staff_id', $profile->staff_id)
+                ->where('staff_id', $profile->staff_id)
                 ->where('status', 'approved')->where('effective_from', '<=', $receipt->received_at)
                 ->where(fn ($q) => $q->whereNull('effective_until')->orWhere('effective_until', '>', $receipt->received_at))->get();
             if ($overrides->count() > 1) {

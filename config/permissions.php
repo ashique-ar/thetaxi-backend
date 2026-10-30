@@ -30,6 +30,7 @@ return [
         'manage_departments' => 'corporate',
         'manage_divisions' => 'corporate',
         'manage_employees' => 'corporate',
+        'manage_billing' => 'corporate',
         'manage_rate_charts' => 'vehicle-pricing',
         'schedule_reports' => 'reports',
         'view_audit_log' => 'system',

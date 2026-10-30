@@ -91,7 +91,9 @@ it('holds commission when frozen acquisition, collection, or beneficiary eligibi
         ->toContain('acquisition_profile_ineligible')
         ->toContain('collection_handler_ineligible')
         ->toContain('commission_beneficiary_ineligible')
-        ->toContain('legal_entity_mismatch');
+        ->not->toContain('legal_entity_mismatch')
+        ->not->toContain('CompanyIdScope')
+        ->not->toContain('defaultCompanyId');
 });
 
 it('requires reasoned optimistic profile configuration changes with versioned before and after evidence', function () {

@@ -36,15 +36,19 @@ return new class extends Migration
             Schema::table($tableName, fn (Blueprint $table) => $table->dropColumn('company_id'));
         }
 
-        $typeCodeCollision = DB::table('hr_asset_types')->select('code')->groupBy('code')->havingRaw('COUNT(*) > 1')->exists();
-        $this->createIndex('hr_asset_types', ['code'], $typeCodeCollision
-            ? 'hr_asset_types_installation_code_idx'
-            : 'hr_asset_types_installation_code_unique', ! $typeCodeCollision);
+        if (Schema::hasTable('hr_asset_types')) {
+            $typeCodeCollision = DB::table('hr_asset_types')->select('code')->groupBy('code')->havingRaw('COUNT(*) > 1')->exists();
+            $this->createIndex('hr_asset_types', ['code'], $typeCodeCollision
+                ? 'hr_asset_types_installation_code_idx'
+                : 'hr_asset_types_installation_code_unique', ! $typeCodeCollision);
+        }
 
-        $assetTagCollision = DB::table('hr_asset_items')->select('asset_tag')->groupBy('asset_tag')->havingRaw('COUNT(*) > 1')->exists();
-        $this->createIndex('hr_asset_items', ['asset_tag'], $assetTagCollision
-            ? 'hr_asset_items_installation_tag_idx'
-            : 'hr_asset_items_installation_tag_unique', ! $assetTagCollision);
+        if (Schema::hasTable('hr_asset_items')) {
+            $assetTagCollision = DB::table('hr_asset_items')->select('asset_tag')->groupBy('asset_tag')->havingRaw('COUNT(*) > 1')->exists();
+            $this->createIndex('hr_asset_items', ['asset_tag'], $assetTagCollision
+                ? 'hr_asset_items_installation_tag_idx'
+                : 'hr_asset_items_installation_tag_unique', ! $assetTagCollision);
+        }
     }
 
     private function createIndex(string $tableName, array $columns, string $baseName, bool $unique = false): void
@@ -72,7 +76,7 @@ return new class extends Migration
             return;
         }
 
-        Schema::table($tableName, function (Blueprint $table) use ($tableName, $columns, $name, $unique): void {
+        Schema::table($tableName, function (Blueprint $table) use ($columns, $name, $unique): void {
             $unique ? $table->unique($columns, $name) : $table->index($columns, $name);
         });
     }

@@ -4,6 +4,7 @@ namespace App\Http\Controllers\Api\Corporate;
 
 use App\Http\Controllers\Controller;
 use App\Models\Corporate\CorporateEmployee;
+use App\Services\CorporateRoleStarterService;
 use App\Services\PermissionRegistry;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
@@ -54,7 +55,7 @@ class CorporateRoleController extends Controller
         }
 
         $prefix = $this->customRolePrefix($request->corporate_id);
-        app(\App\Services\CorporateRoleStarterService::class)
+        app(CorporateRoleStarterService::class)
             ->provision(\App\Models\Corporate\Corporate::findOrFail($request->corporate_id));
         $roles = Role::where('guard_name', 'api')
             ->where('name', 'like', $prefix.'%')
@@ -134,6 +135,11 @@ class CorporateRoleController extends Controller
             ], 409);
         }
 
+        if ($this->isDefaultRole($role, $request->corporate_id) && $request->filled('name')) {
+            $requestedKey = (string) Str::of($request->name)->trim()->replace([' ', '-'], '_');
+            abort_unless($requestedKey === Str::after($role->name, $this->customRolePrefix($request->corporate_id)), 422, 'Default corporate roles cannot be renamed.');
+        }
+
         if ($request->filled('name')) {
             $roleName = $this->customRolePrefix($request->corporate_id)
                 .Str::of($request->name)->trim()->replace([' ', '-'], '_');
@@ -162,6 +168,8 @@ class CorporateRoleController extends Controller
         $role = Role::where('guard_name', 'api')
             ->where('name', 'like', $this->customRolePrefix($request->corporate_id).'%')
             ->findOrFail($id);
+
+        abort_if($this->isDefaultRole($role, $request->corporate_id), 403, 'Default corporate roles cannot be deleted.');
 
         // Guard deletion when employees are assigned to this role
         $assignedCount = CorporateEmployee::query()
@@ -197,6 +205,15 @@ class CorporateRoleController extends Controller
     private function customRolePrefix(string $corporateId): string
     {
         return 'Corporate_'.$corporateId.'_';
+    }
+
+    private function isDefaultRole(Role $role, string $corporateId): bool
+    {
+        return in_array(
+            Str::after($role->name, $this->customRolePrefix($corporateId)),
+            array_column(CorporateRoleStarterService::TEMPLATES, 'key'),
+            true
+        );
     }
 
     public function permissions(): JsonResponse

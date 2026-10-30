@@ -12,9 +12,6 @@ use App\Services\Sales\BookingAttributionService;
 use App\Services\Sales\BookingCommercialValueAdjustmentService;
 use App\Services\Sales\CommissionPlanResolver;
 use App\Services\Sales\SalesAccessScope;
-use App\Services\Sales\SalesCollectionCompanyIntegrity;
-use App\Services\CompanySettingsAccessService;
-use App\Services\WebsiteSettingsService;
 use Carbon\Carbon;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Exceptions\HttpResponseException;
@@ -32,22 +29,18 @@ class SalesBookingAttributionController extends Controller
         private readonly BookingCommercialValueAdjustmentService $commercialValueAdjustments,
         private readonly CommissionPlanResolver $commissionPlans,
         private readonly SalesAccessScope $scope,
-        private readonly SalesCollectionCompanyIntegrity $collectionCompanyIntegrity,
     ) {}
 
     public function index(Request $request): JsonResponse
     {
         $data = $request->validate([
-            'company_id' => ['nullable', 'uuid', 'exists:companies,id'],
             'sales_profile_id' => ['nullable', 'uuid', 'exists:sales_profiles,id'],
             'status' => ['nullable', Rule::in(['active', 'held', 'ended'])],
             'from' => ['nullable', 'date'],
             'to' => ['nullable', 'date', 'after:from'],
             'per_page' => ['nullable', 'integer', 'min:1', 'max:100'],
         ]);
-        $data['company_id'] = $this->resolveCompanyId($data['company_id'] ?? null);
-
-        $allowedProfileIds = $this->actorProfileIds($request, $data['company_id'] ?? null);
+        $allowedProfileIds = $this->actorProfileIds($request);
         $profile = fn ($query) => $query->with('staff.user:id,first_name,last_name')
             ->when($allowedProfileIds !== null, fn ($profiles) => $profiles->whereIn('id', $allowedProfileIds));
         $query = SalesBookingAttribution::query()->with([
@@ -55,10 +48,9 @@ class SalesBookingAttributionController extends Controller
             'acquisitionProfile' => $profile,
             'collectionProfile' => $profile,
         ]);
-        $this->applyActorScope($query, $request, 'sales_booking_attributions', $data['company_id'] ?? null);
+        $this->applyActorScope($query, $request, 'sales_booking_attributions');
 
         $rows = $query
-            ->when($data['company_id'] ?? null, fn ($q, $id) => $q->where(fn ($_companyIdScope) => \App\Services\CompanyIdScope::constrain($_companyIdScope, 'company_id', $id)))
             ->when($data['sales_profile_id'] ?? null, fn ($q, $id) => $q->where(fn ($owners) => $owners->where('acquisition_sales_profile_id', $id)->orWhere('collection_sales_profile_id', $id)))
             ->when($data['status'] ?? null, fn ($q, $status) => $q->where('status', $status))
             ->when($data['from'] ?? null, fn ($q, $from) => $q->where('secured_at', '>=', $from))
@@ -72,14 +64,11 @@ class SalesBookingAttributionController extends Controller
     public function exceptions(Request $request): JsonResponse
     {
         $data = $request->validate([
-            'company_id' => ['nullable', 'uuid', 'exists:companies,id'],
             'status' => ['nullable', Rule::in(['open', 'resolved', 'waived'])],
             'exception_type' => ['nullable', 'string', 'max:80'],
             'per_page' => ['nullable', 'integer', 'min:1', 'max:100'],
         ]);
-        $data['company_id'] = $this->resolveCompanyId($data['company_id'] ?? null);
-        $includeUnassignedOwnerReviews = $this->scope->hasPermission($request->user(), 'sales.attributions.view-all')
-            && \App\Services\CompanyIdScope::sameCompanyId((string) ((string) $data['company_id']), (string) ($this->currentCompanyId()));
+        $includeUnassignedOwnerReviews = $this->scope->hasPermission($request->user(), 'sales.attributions.view-all');
 
         $query = DB::table('sales_attribution_exceptions as exception')
             ->join('bookings as booking', 'booking.id', '=', 'exception.booking_id')
@@ -88,32 +77,16 @@ class SalesBookingAttributionController extends Controller
                 'exception.*',
                 'booking.booking_number',
                 'attribution.id as attribution_id',
-                'attribution.company_id',
                 'attribution.acquisition_sales_profile_id',
                 'attribution.collection_sales_profile_id',
                 'attribution.secured_at',
                 'attribution.version',
             );
         if (! $includeUnassignedOwnerReviews) {
-            $this->applyActorScope($query, $request, 'attribution', $data['company_id'] ?? null);
+            $this->applyActorScope($query, $request, 'attribution');
         }
 
         $rows = $query
-            ->when($data['company_id'] ?? null, function ($q, $id) use ($includeUnassignedOwnerReviews): void {
-                $q->where(function ($scope) use ($id, $includeUnassignedOwnerReviews): void {
-                    $scope->where(fn ($_companyIdScope) => \App\Services\CompanyIdScope::constrain($_companyIdScope, 'attribution.company_id', $id));
-                    if ($includeUnassignedOwnerReviews) {
-                        $scope->orWhere(fn ($unassigned) => $unassigned->whereNull('attribution.company_id')
-                            ->whereNotNull('attribution.id')->whereNull('attribution.acquisition_sales_profile_id')
-                            ->whereNull('attribution.collection_sales_profile_id')->where('attribution.status', 'held')
-                            ->whereIn('exception.exception_type', ['legal_entity_missing', 'historical_company_owner_review_required'])
-                            ->whereExists(fn ($review) => $review->selectRaw('1')->from('sales_attribution_exceptions as owner_review')
-                                ->whereColumn('owner_review.booking_id', 'booking.id')
-                                ->where('owner_review.exception_type', 'historical_company_owner_review_required')
-                                ->where('owner_review.status', 'open')));
-                    }
-                });
-            })
             ->when($data['status'] ?? null, fn ($q, $status) => $q->where('exception.status', $status))
             ->when($data['exception_type'] ?? null, fn ($q, $type) => $q->where('exception.exception_type', $type))
             ->orderByDesc('exception.detected_at')
@@ -125,16 +98,12 @@ class SalesBookingAttributionController extends Controller
     public function dryRun(Request $request): JsonResponse
     {
         $data = $request->validate([
-            'company_id' => ['nullable', 'uuid', 'exists:companies,id'],
             'booking_ids' => ['nullable', 'array', 'max:500'],
             'booking_ids.*' => ['uuid', 'exists:bookings,id'],
             'limit' => ['nullable', 'integer', 'min:1', 'max:500'],
         ]);
-        $data['company_id'] = $this->resolveCompanyId($data['company_id'] ?? null);
-
-        $profileIds = $this->actorProfileIds($request, $data['company_id'] ?? null);
-        $includeUnownedOwnerReviews = $this->scope->hasPermission($request->user(), 'sales.attributions.view-all')
-            && \App\Services\CompanyIdScope::sameCompanyId((string) ((string) $data['company_id']), (string) ($this->currentCompanyId()));
+        $profileIds = $this->actorProfileIds($request);
+        $includeUnownedOwnerReviews = $this->scope->hasPermission($request->user(), 'sales.attributions.view-all');
         $bookings = Booking::query()
             ->where(fn ($q) => $q->where('confirmed', true)->orWhere('status', 'confirmed')->orWhereNotNull('confirmed_at'))
             ->whereDoesntHave('salesAttribution')
@@ -144,10 +113,7 @@ class SalesBookingAttributionController extends Controller
             ->get();
         $rows = $bookings
             ->map(fn (Booking $booking) => $this->attributions->preview($booking))
-            ->filter(function (array $row) use ($profileIds, $data, $includeUnownedOwnerReviews): bool {
-                if (! empty($data['company_id']) && !\App\Services\CompanyIdScope::sameCompanyId((string) ($row['company_id']), (string) ($data['company_id']))) {
-                    return false;
-                }
+            ->filter(function (array $row) use ($profileIds, $includeUnownedOwnerReviews): bool {
                 if (in_array('historical_company_owner_review_required', $row['holds'], true)) {
                     return $includeUnownedOwnerReviews;
                 }
@@ -161,7 +127,7 @@ class SalesBookingAttributionController extends Controller
             ->take($data['limit'] ?? 100)
             ->values();
 
-        $checksum=hash('sha256',CanonicalJson::encode(['company_id'=>$data['company_id']??null,'rows'=>$rows->all()]));
+        $checksum=hash('sha256',CanonicalJson::encode(['rows'=>$rows->all()]));
         return response()->json([
             'status' => 'success',
             'data' => [
@@ -174,26 +140,23 @@ class SalesBookingAttributionController extends Controller
 
     public function applyHistoricalBatch(Request $request): JsonResponse
     {
-        $data=$request->validate(['company_id'=>['nullable','uuid','exists:companies,id'],'booking_ids'=>['required','array','min:1','max:500'],'booking_ids.*'=>['uuid','distinct','exists:bookings,id'],'preview_checksum'=>['required','string','size:64'],'idempotency_key'=>['required','string','max:160']]);
-        $data['company_id']=$this->resolveCompanyId($data['company_id']??null);
+        $data=$request->validate(['booking_ids'=>['required','array','min:1','max:500'],'booking_ids.*'=>['uuid','distinct','exists:bookings,id'],'preview_checksum'=>['required','string','size:64'],'idempotency_key'=>['required','string','max:160']]);
         abort_unless($this->scope->hasPermission($request->user(),'sales.attributions.correct'),403);
         return DB::transaction(function()use($request,$data){
-            DB::table('companies')->where('id',$data['company_id'])->lockForUpdate()->firstOrFail();
             $scopeChecksum=hash('sha256',CanonicalJson::encode(collect($data['booking_ids'])->sort()->values()->all()));
-            $prior=DB::table('sales_attribution_migration_batches')->where(fn ($_companyIdScope) => \App\Services\CompanyIdScope::constrain($_companyIdScope, 'company_id', $data['company_id']))->where('idempotency_key',$data['idempotency_key'])->lockForUpdate()->first();
+            $prior=DB::table('sales_attribution_migration_batches')->where('idempotency_key',$data['idempotency_key'])->lockForUpdate()->first();
             if($prior){abort_unless(hash_equals($prior->preview_checksum,$data['preview_checksum'])&&hash_equals($prior->booking_scope_checksum,$scopeChecksum),409,'Historical attribution batch key was reused with different evidence.');return response()->json(['status'=>'success','data'=>json_decode($prior->result_snapshot,true,512,JSON_THROW_ON_ERROR),'idempotent_replay'=>true]);}
-            $profileIds=$this->actorProfileIds($request,$data['company_id']);
-            $includeUnownedOwnerReviews=$this->scope->hasPermission($request->user(),'sales.attributions.view-all')
-                && \App\Services\CompanyIdScope::sameCompanyId((string) ((string)$data['company_id']), (string) ($this->currentCompanyId()));
+            $profileIds=$this->actorProfileIds($request);
+            $includeUnownedOwnerReviews=$this->scope->hasPermission($request->user(),'sales.attributions.view-all');
             $bookings=Booking::query()->whereIn('id',$data['booking_ids'])->where(fn($q)=>$q->where('confirmed',true)->orWhere('status','confirmed')->orWhereNotNull('confirmed_at'))->whereDoesntHave('salesAttribution')->orderBy('id')->lockForUpdate()->get();
             abort_unless($bookings->count()===count($data['booking_ids']),409,'The historical booking set changed; create a new preview.');
-            $rows=$bookings->map(fn(Booking $booking)=>$this->attributions->preview($booking))->filter(fn(array$row)=>(\App\Services\CompanyIdScope::sameCompanyId((string) ($row['company_id']), (string) ($data['company_id']))||($includeUnownedOwnerReviews&&in_array('historical_company_owner_review_required',$row['holds'],true)))&&(in_array('historical_company_owner_review_required',$row['holds'],true)?$includeUnownedOwnerReviews:($profileIds===null||in_array($row['acquisition_sales_profile_id'],$profileIds,true)||in_array($row['collection_sales_profile_id'],$profileIds,true))))->values();
-            abort_unless($rows->count()===$bookings->count(),404,'A historical booking is outside the authorized legal-entity scope.');
-            $checksum=hash('sha256',CanonicalJson::encode(['company_id'=>$data['company_id'],'rows'=>$rows->all()]));abort_unless(hash_equals($checksum,$data['preview_checksum']),409,'Historical attribution facts changed; create a new preview.');
+            $rows=$bookings->map(fn(Booking $booking)=>$this->attributions->preview($booking))->filter(fn(array$row)=>in_array('historical_company_owner_review_required',$row['holds'],true)?$includeUnownedOwnerReviews:($profileIds===null||in_array($row['acquisition_sales_profile_id'],$profileIds,true)||in_array($row['collection_sales_profile_id'],$profileIds,true)))->values();
+            abort_unless($rows->count()===$bookings->count(),404,'A historical booking is outside the authorized Sales profile scope.');
+            $checksum=hash('sha256',CanonicalJson::encode(['rows'=>$rows->all()]));abort_unless(hash_equals($checksum,$data['preview_checksum']),409,'Historical attribution facts changed; create a new preview.');
             $ownerReviewIds=$rows->filter(fn(array$row)=>in_array('historical_company_owner_review_required',$row['holds'],true))->pluck('booking_id')->flip();
             $created=0;foreach($bookings as$booking){if(!$booking->salesAttribution()->exists()){$this->attributions->captureConfirmation($booking,$ownerReviewIds->has($booking->id));$created++;}}
             $result=['requested'=>count($data['booking_ids']),'created'=>$created,'preview_checksum'=>$checksum,'reconciliation'=>['remaining_confirmed_without_attribution'=>Booking::query()->where(fn($q)=>$q->where('confirmed',true)->orWhere('status','confirmed')->orWhereNotNull('confirmed_at'))->whereDoesntHave('salesAttribution')->count()]];
-            DB::table('sales_attribution_migration_batches')->insert(['id'=>(string)\Illuminate\Support\Str::uuid(),'company_id'=>$data['company_id'],'idempotency_key'=>$data['idempotency_key'],'preview_checksum'=>$checksum,'booking_scope_checksum'=>$scopeChecksum,'requested_count'=>count($data['booking_ids']),'created_count'=>$created,'result_snapshot'=>json_encode($result,JSON_THROW_ON_ERROR),'applied_by'=>$request->user()->id,'applied_at'=>now(),'created_at'=>now(),'updated_at'=>now()]);
+            DB::table('sales_attribution_migration_batches')->insert(['id'=>(string)\Illuminate\Support\Str::uuid(),'idempotency_key'=>$data['idempotency_key'],'preview_checksum'=>$checksum,'booking_scope_checksum'=>$scopeChecksum,'requested_count'=>count($data['booking_ids']),'created_count'=>$created,'result_snapshot'=>json_encode($result,JSON_THROW_ON_ERROR),'applied_by'=>$request->user()->id,'applied_at'=>now(),'created_at'=>now(),'updated_at'=>now()]);
             return response()->json(['status'=>'success','data'=>$result]);
         },3);
     }
@@ -208,7 +171,7 @@ class SalesBookingAttributionController extends Controller
         ]);
         $attribution = $this->scopedAttribution($request, $attribution);
         $target = ! empty($data['to_sales_profile_id'])
-            ? $this->scopedProfile($request, $data['to_sales_profile_id'], $attribution->company_id)
+            ? $this->scopedProfile($request, $data['to_sales_profile_id'])
             : null;
 
         $updated = $this->mutations->transferCollectionHandler(
@@ -231,39 +194,9 @@ class SalesBookingAttributionController extends Controller
             'idempotency_key' => ['required', 'string', 'max:160'],
         ]);
         $attribution = $this->scopedAttribution($request, $attribution);
-        $target = $this->scopedProfile($request, $data['to_sales_profile_id'], $attribution->company_id);
+        $target = $this->scopedProfile($request, $data['to_sales_profile_id']);
 
         $updated = $this->mutations->correctAcquisitionOwner(
-            $attribution,
-            $target,
-            $data['reason'],
-            $data['idempotency_key'],
-            $request->user()->id,
-        );
-
-        return response()->json(['status' => 'success', 'data' => $updated]);
-    }
-
-    public function establishLegalEntity(Request $request, string $attribution): JsonResponse
-    {
-        $data = $request->validate([
-            'to_sales_profile_id' => ['required', 'uuid'],
-            'reason' => ['required', 'string', 'max:2000'],
-            'idempotency_key' => ['required', 'string', 'max:153'],
-        ]);
-        $attribution = $this->scopedAttribution($request, $attribution);
-        $ownerReviewDisposition = DB::table('sales_attribution_exceptions')->where('booking_id', $attribution->booking_id)
-            ->where('exception_type', 'historical_company_owner_review_required')->where('status', 'open')->exists();
-        if ($ownerReviewDisposition) {
-            abort_unless($this->scope->hasPermission($request->user(), 'sales.attributions.view-all'), 404);
-            $target = SalesProfile::query()->whereKey($data['to_sales_profile_id'])->first();
-            $authorizedCompanyIds = $this->scope->companyIds($request->user(), 'sales.attributions.view-all');
-            abort_unless($target && ($authorizedCompanyIds === null || in_array($target->company_id, $authorizedCompanyIds, true)), 404);
-        } else {
-            $target = $this->scopedProfile($request, $data['to_sales_profile_id'], $attribution->company_id);
-        }
-
-        $updated = $this->mutations->establishLegalEntity(
             $attribution,
             $target,
             $data['reason'],
@@ -283,7 +216,7 @@ class SalesBookingAttributionController extends Controller
             'idempotency_key' => ['required', 'string', 'max:160'],
         ]);
         $attribution = $this->scopedAttribution($request, $attribution);
-        $target = $this->scopedProfile($request, $data['to_sales_profile_id'], $attribution->company_id);
+        $target = $this->scopedProfile($request, $data['to_sales_profile_id']);
 
         $updated = $this->mutations->correctCollectionHandler(
             $attribution,
@@ -346,7 +279,6 @@ class SalesBookingAttributionController extends Controller
     public function commercialValueAdjustmentHistory(Request $request, string $attribution): JsonResponse
     {
         $attribution = $this->scopedAttribution($request, $attribution);
-        $this->collectionCompanyIntegrity->assertConsistent($attribution->booking, $attribution->company_id);
         $rows = BookingCommercialValueAdjustment::query()
             ->where('booking_id', $attribution->booking_id)
             ->orderByDesc('effective_at')->orderByDesc('created_at')
@@ -397,7 +329,7 @@ class SalesBookingAttributionController extends Controller
         $profile = $this->scopedProfile($request, $profile);
 
         $replacement = ! empty($data['replacement_sales_profile_id'])
-            ? $this->scopedProfile($request, $data['replacement_sales_profile_id'], $profile->company_id)
+            ? $this->scopedProfile($request, $data['replacement_sales_profile_id'])
             : null;
         abort_if($replacement?->id === $profile->id, 422, 'A leaver cannot replace their own portfolio.');
         $count = $this->mutations->closeLeaverPortfolio(
@@ -417,83 +349,23 @@ class SalesBookingAttributionController extends Controller
 
     public function administrationContext(Request $request): JsonResponse
     {
-        $data = $request->validate(['company_id' => ['nullable', 'uuid', 'exists:companies,id']]);
-        if (! empty($data['company_id'])) {
-            $this->assertSelectedStaffCompany($request, (string) $data['company_id']);
-            abort_unless(DB::table('companies')->where('id', $data['company_id'])->whereNull('deleted_at')->exists(), 422, 'Select an available legal entity.');
-            $this->scope->assertCompany($request->user(), $data['company_id'], 'sales.attributions.view-all');
-        }
-        $companyIds = $this->scope->companyIds($request->user(), 'sales.attributions.view-all');
-        $authorizedCompanies = DB::table('companies')->whereNull('deleted_at')->where('is_active', true)
-            ->when($companyIds !== null, fn ($query) => $query->whereIn('id', $companyIds))
-            ->get(['id', 'is_default']);
-        $defaultCompanyId = $this->currentCompanyId() ?: null;
-        if ($defaultCompanyId && ! $authorizedCompanies->contains('id', $defaultCompanyId)) $defaultCompanyId = null;
         return response()->json(['status' => 'success', 'data' => [
             'can_correct' => $this->scope->hasPermission($request->user(), 'sales.attributions.correct'),
-            'default_company_id' => $defaultCompanyId,
         ]]);
-    }
-
-    public function companyOptions(Request $request): JsonResponse
-    {
-        $data = $request->validate([
-            'search' => ['nullable', 'string', 'max:120'], 'selected_id' => ['nullable', 'uuid'],
-            'page' => ['nullable', 'integer', 'min:1'], 'per_page' => ['nullable', 'integer', 'min:1', 'max:50'],
-        ]);
-        $companyIds = $this->scope->companyIds($request->user(), 'sales.attributions.view-all');
-        $defaultCompanyId = $this->currentCompanyId() ?: null;
-        if ($request->header('X-Active-Context-Type') === 'staff') {
-            abort_unless($defaultCompanyId, 409, 'Select an active business for Sales work.');
-            $this->assertSelectedStaffCompany($request, $defaultCompanyId);
-            $companyIds = [(string) $defaultCompanyId];
-        }
-        if ($defaultCompanyId && $companyIds !== null && ! in_array($defaultCompanyId, $companyIds, true)) $defaultCompanyId = null;
-        $query = DB::table('companies')->whereNull('deleted_at')
-            ->when($companyIds !== null, fn ($company) => $company->whereIn('id', $companyIds));
-        if (! empty($data['selected_id'])) $query->where('id', $data['selected_id']);
-        elseif (! empty($data['search'])) {
-            $term = '%' . addcslashes($data['search'], '%_\\') . '%';
-            $query->where(fn ($company) => $company->where('name', 'like', $term)->orWhere('city', 'like', $term));
-        }
-        $rows = $query->select(['id', 'name', 'city', 'is_active', 'is_default'])->orderByDesc('is_active')->orderByDesc('is_default')->orderBy('name')->orderBy('id')->paginate($data['per_page'] ?? 25);
-        $rows->getCollection()->transform(fn ($company) => ['value' => (string) $company->id, 'label' => $company->name,
-            'metadata' => array_filter(['city' => $company->city, 'availability' => $company->is_active ? null : 'Inactive']) + ['is_default' => (bool) $company->is_default],
-            'status' => $company->is_active ? 'active' : 'inactive']);
-        return response()->json(['status' => 'success', 'data' => $rows, 'default_company_id' => $defaultCompanyId]);
     }
 
     public function profileOptions(Request $request): JsonResponse
     {
         $data = $request->validate([
             'purpose' => ['required', Rule::in(['acquisition', 'collection'])],
-            'company_id' => ['nullable', 'uuid', 'exists:companies,id'],
-            'cross_company' => ['sometimes', 'boolean'],
             'effective_at' => ['nullable', 'date'],
             'search' => ['nullable', 'string', 'max:120'], 'selected_id' => ['nullable', 'uuid'],
             'page' => ['nullable', 'integer', 'min:1'], 'per_page' => ['nullable', 'integer', 'min:1', 'max:50'],
         ]);
-        $companyId = $data['company_id'] ?? null;
-        if (! $companyId && ! ($data['cross_company'] ?? false)) {
-            $companyId = $this->resolveCompanyId(null);
-        }
-        if ($companyId) {
-            abort_unless(DB::table('companies')->where('id', $companyId)->where('is_active', true)->whereNull('deleted_at')->exists(), 422, 'Select an active legal entity.');
-            $this->scope->assertCompany($request->user(), $companyId, 'sales.attributions.view-all');
-        }
-
         $at = isset($data['effective_at']) ? Carbon::parse($data['effective_at']) : now();
         $eligibility = $data['purpose'].'_eligible';
-        $companyIds = $this->scope->companyIds($request->user(), 'sales.attributions.view-all');
-        if (($data['cross_company'] ?? false) && ! $this->scope->hasPermission($request->user(), 'sales.attributions.view-all')) {
-            $companyIds = [];
-        }
         $query = SalesProfile::query()
-            ->select('sales_profiles.*', 'companies.name as company_name')
-            ->join('companies', 'companies.id', '=', 'sales_profiles.company_id')
             ->with('staff.user:id,first_name,last_name')
-            ->where('companies.is_active', true)
-            ->whereNull('companies.deleted_at')
             ->where('sales_profiles.status', 'active')
             ->where("sales_profiles.{$eligibility}", true)
             ->where('sales_profiles.effective_from', '<=', $at)
@@ -501,32 +373,20 @@ class SalesBookingAttributionController extends Controller
             ->whereNotNull('sales_profiles.reporting_currency')
             ->whereNotNull('sales_profiles.staff_category_snapshot')
             ->whereHas('staff', fn ($staff) => $staff->whereNull('deleted_at')
-                ->where(fn ($employment) => $employment->whereNull('employment_ended_at')->orWhere('employment_ended_at', '>', $at)))
-            ->when($companyId, fn ($profiles) => $profiles->where(fn ($_companyIdScope) => \App\Services\CompanyIdScope::constrain($_companyIdScope, 'sales_profiles.company_id', $companyId)))
-            ->when($companyIds !== null, fn ($profiles) => $profiles->where(fn ($_companyIdScope) => \App\Services\CompanyIdScope::constrainIn($_companyIdScope, 'sales_profiles.company_id', $companyIds)));
-
-        if ($companyId) {
-            $this->scope->scopeProfiles($query, $request->user(), 'sales.attributions.view-all', 'sales.attributions.view-team', $companyId);
-        } elseif ($companyIds !== null) {
-            $profileIds = collect($companyIds)->flatMap(fn ($id) => $this->scope->profileIds(
-                $request->user(), 'sales.attributions.view-all', 'sales.attributions.view-team', $id,
-            ) ?? [])->unique()->values()->all();
-            $query->whereIn('sales_profiles.id', $profileIds);
-        }
+                ->where(fn ($employment) => $employment->whereNull('employment_ended_at')->orWhere('employment_ended_at', '>', $at)));
+        $this->scope->scopeProfiles($query, $request->user(), 'sales.attributions.view-all', 'sales.attributions.view-team');
 
         if (! empty($data['selected_id'])) $query->where('sales_profiles.id', $data['selected_id']);
         elseif (! empty($data['search'])) {
             $term = '%'.addcslashes($data['search'], '%_\\').'%';
             $query->where(fn ($profiles) => $profiles->where('sales_profiles.sales_code', 'like', $term)
-                ->orWhereHas('staff.user', fn ($user) => $user->where('first_name', 'like', $term)->orWhere('last_name', 'like', $term))
-                ->orWhere('companies.name', 'like', $term));
+                ->orWhereHas('staff.user', fn ($user) => $user->where('first_name', 'like', $term)->orWhere('last_name', 'like', $term)));
         }
 
         $rows = $query->orderBy('sales_profiles.sales_code')->orderBy('sales_profiles.id')->paginate($data['per_page'] ?? 25);
         $rows->getCollection()->transform(fn (SalesProfile $profile) => [
             'value' => (string) $profile->id,
             'label' => trim($profile->sales_code.' — '.($profile->staff?->user?->first_name.' '.$profile->staff?->user?->last_name)),
-            'metadata' => ['company' => $profile->company_name],
             'status' => $profile->status,
         ]);
 
@@ -537,10 +397,9 @@ class SalesBookingAttributionController extends Controller
         $query,
         Request $request,
         string $alias = 'sales_booking_attributions',
-        ?string $companyId = null,
     ): void
     {
-        $profileIds = $this->actorProfileIds($request, $companyId);
+        $profileIds = $this->actorProfileIds($request);
         if ($profileIds === null) {
             return;
         }
@@ -558,7 +417,7 @@ class SalesBookingAttributionController extends Controller
             abort(404, 'Attribution was not found in the current scope.');
         }
         try {
-            $profileIds = $this->actorProfileIds($request, $attribution->company_id);
+            $profileIds = $this->actorProfileIds($request);
         } catch (HttpResponseException) {
             abort(404, 'Attribution was not found in the current scope.');
         }
@@ -576,28 +435,20 @@ class SalesBookingAttributionController extends Controller
         $candidate = SalesBookingAttribution::query()->findOrFail($attributionId);
 
         return DB::transaction(function () use ($request, $candidate, $operation): JsonResponse {
-            abort_unless($candidate->company_id, 409, 'This attribution needs a reviewed legal entity before commercial adjustments.');
-            $company = DB::table('companies')->where('id', $candidate->company_id)->where('is_active', true)
-                ->whereNull('deleted_at')->lockForUpdate()->first(['id']);
-            abort_unless($company, 422, 'Select an active legal entity.');
             Booking::query()->whereKey($candidate->booking_id)->lockForUpdate()->firstOrFail();
             $locked = SalesBookingAttribution::query()->whereKey($candidate->id)->lockForUpdate()->firstOrFail();
             abort_unless((string) $locked->booking_id === (string) $candidate->booking_id, 409, 'The attribution booking changed; reload before adjusting its value.');
-            abort_unless(\App\Services\CompanyIdScope::sameCompanyId((string) ((string) $locked->company_id), (string) ((string) $company->id)), 409,
-                'The attribution legal entity changed before its commercial value adjustment.');
             $scoped = $this->scopedAttribution($request, (string) $locked->id);
-            $this->collectionCompanyIntegrity->assertConsistent($scoped->booking, $scoped->company_id);
 
             return $operation($scoped);
         });
     }
 
-    private function scopedProfile(Request $request, string $profileId, ?string $companyId = null): SalesProfile
+    private function scopedProfile(Request $request, string $profileId): SalesProfile
     {
-        $profileIds = $this->actorProfileIds($request, $companyId);
+        $profileIds = $this->actorProfileIds($request);
         $profile = SalesProfile::query()
             ->whereKey($profileId)
-            ->when($companyId, fn ($query) => $query->where(fn ($_companyIdScope) => \App\Services\CompanyIdScope::constrain($_companyIdScope, 'company_id', $companyId)))
             ->when($profileIds !== null, fn ($query) => $query->whereIn('id', $profileIds))
             ->first();
 
@@ -606,38 +457,13 @@ class SalesBookingAttributionController extends Controller
         return $profile;
     }
 
-    private function actorProfileIds(Request $request, ?string $companyId): ?array
+    private function actorProfileIds(Request $request): ?array
     {
         return $this->scope->profileIds(
             $request->user(),
             'sales.attributions.view-all',
             'sales.attributions.view-team',
-            $companyId,
         );
     }
 
-    private function resolveCompanyId(?string $companyId): string
-    {
-        $companyId = $companyId ?: $this->currentCompanyId();
-        abort_unless($companyId, 409, 'Select an active business for Sales work.');
-        if (request()->header('X-Active-Context-Type') === 'staff') {
-            $this->assertSelectedStaffCompany(request(), (string) $companyId);
-        }
-
-        return (string) $companyId;
-    }
-
-    private function currentCompanyId(): ?string
-    {
-        $companyId = app(WebsiteSettingsService::class)->resolveCurrentCompanyId();
-
-        return $companyId ? (string) $companyId : null;
-    }
-
-    private function assertSelectedStaffCompany(Request $request, string $companyId): void
-    {
-        if ($request->header('X-Active-Context-Type') === 'staff') {
-            app(CompanySettingsAccessService::class)->assertCanAccess($request->user(), $companyId);
-        }
-    }
 }

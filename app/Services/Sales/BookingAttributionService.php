@@ -7,7 +7,6 @@ use App\Models\Booking\Booking;
 use App\Models\Sales\SalesBookingAttribution;
 use App\Models\Sales\SalesProfile;
 use App\Models\Staff;
-use App\Services\SingleCompanyScope;
 use Carbon\CarbonInterface;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Str;
@@ -71,7 +70,7 @@ class BookingAttributionService
                 'fx_rate_to_lkr' => $currency === 'LKR' ? 1 : null,
                 'fx_rate_at' => $currency === 'LKR' ? $securedAt : null,
                 'new_customer_status' => $newCustomerStatus,
-                'status' => $acquisitionProfile && $collectionProfile && $companyId ? 'active' : 'held',
+                'status' => $acquisitionProfile && $collectionProfile ? 'active' : 'held',
                 'version' => 1,
                 'created_user_id' => $booking->created_user_id,
             ]);
@@ -96,7 +95,6 @@ class BookingAttributionService
                 $acquisitionProfile,
                 $collectionProfileId,
                 $collectionProfile,
-                $companyId,
                 $currency,
             );
             if ($stageUnownedHistorical && ! $this->hasHistoricalCompanySource($booking)) {
@@ -132,7 +130,7 @@ class BookingAttributionService
                 "booking:{$booking->id}",
             );
 
-            if (! $stageUnownedHistorical || $companyId) {
+            if (! $stageUnownedHistorical || $this->hasHistoricalCompanySource($booking)) {
                 $this->crm->markWonFromBooking($booking);
             }
             $this->metricFacts->projectBookingConfirmation($attribution);
@@ -172,7 +170,6 @@ class BookingAttributionService
                 $acquisitionProfileId && ! $acquisitionProfile ? 'acquisition_owner_ineligible' : null,
                 ! $collectionProfileId ? 'collection_handler_missing' : null,
                 $collectionProfileId && ! $collectionProfile ? 'collection_handler_ineligible' : null,
-                $companyId ? null : 'legal_entity_missing',
                 $historicalCompanyReviewRequired ? 'historical_company_owner_review_required' : null,
                 $currency === 'LKR' ? null : 'fx_snapshot_missing',
             ])),
@@ -317,7 +314,6 @@ class BookingAttributionService
         ?SalesProfile $acquisitionProfile,
         ?string $collectionProfileId,
         ?SalesProfile $collectionProfile,
-        ?string $companyId,
         string $currency,
     ): void {
         $exceptions = array_filter([
@@ -327,7 +323,6 @@ class BookingAttributionService
             'collection_handler_missing' => $collectionProfileId ? null : 'No collection handler was assigned at the secured time.',
             'collection_handler_ineligible' => $collectionProfileId && ! $collectionProfile
                 ? 'The collection handler lacked explicit collection eligibility or a governed reporting currency at the secured time.' : null,
-            'legal_entity_missing' => $companyId ? null : 'The booking attribution has no immutable legal entity.',
             'fx_snapshot_missing' => $currency === 'LKR' ? null : "No governed LKR FX snapshot exists for {$currency}.",
         ]);
 

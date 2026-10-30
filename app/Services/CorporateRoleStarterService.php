@@ -28,7 +28,7 @@ class CorporateRoleStarterService
             'label' => 'Transport Coordinator',
             'key' => 'Transport_Coordinator',
             'permissions' => [
-                'corporate.view', 'manage_employees', 'create_bookings',
+                'corporate.view', 'manage-roles', 'manage_employees', 'create_bookings',
                 'create_bookings_for_others', 'view_all_bookings', 'bookings.view',
                 'bookings.create', 'staff-transport.view', 'staff-transport.manage',
                 'staff-transport.override', 'staff-transport.generate',
@@ -74,8 +74,6 @@ class CorporateRoleStarterService
                     ]);
                     $role->syncPermissions($this->permissions($template['permissions']));
                     $created++;
-                } elseif ($template['key'] === 'Master_Administrator' || $template['key'] === 'Transport_Coordinator') {
-                    $role->givePermissionTo($this->permissions(['manage-roles']));
                 }
 
                 $legacyRole = Role::where('guard_name', 'api')->where('name', $legacyName)->first();

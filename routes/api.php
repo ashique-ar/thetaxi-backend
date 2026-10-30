@@ -659,7 +659,6 @@ Route::middleware(['auth:api'])->group(function () {
         Route::get('attributions', [SalesBookingAttributionController::class, 'index'])->middleware('permission:sales.attributions.view');
         Route::get('attribution-exceptions', [SalesBookingAttributionController::class, 'exceptions'])->middleware('permission:sales.attributions.view');
         Route::get('attribution-administration-context', [SalesBookingAttributionController::class, 'administrationContext'])->middleware('permission:sales.attributions.view');
-        Route::get('attribution-company-options', [SalesBookingAttributionController::class, 'companyOptions'])->middleware('permission:sales.attributions.view');
         Route::get('attribution-profile-options', [SalesBookingAttributionController::class, 'profileOptions'])->middleware('permission:sales.attributions.correct');
         Route::get('collection-company-mismatches', [SalesCollectionCompanyRepairController::class, 'index'])->middleware('permission:sales.payment-ledger.reconcile');
         Route::get('collection-company-repair-company-options', [SalesCollectionCompanyRepairController::class, 'companyOptions'])->middleware('permission:sales.payment-ledger.reconcile');
@@ -673,8 +672,6 @@ Route::middleware(['auth:api'])->group(function () {
         Route::post('attributions/{attribution}/transfer-handler', [SalesBookingAttributionController::class, 'transferHandler'])
             ->whereUuid('attribution')->middleware('permission:sales.attributions.correct');
         Route::post('attributions/{attribution}/correct-owner', [SalesBookingAttributionController::class, 'correctOwner'])
-            ->whereUuid('attribution')->middleware('permission:sales.attributions.correct');
-        Route::post('attributions/{attribution}/establish-legal-entity', [SalesBookingAttributionController::class, 'establishLegalEntity'])
             ->whereUuid('attribution')->middleware('permission:sales.attributions.correct');
         Route::post('attributions/{attribution}/correct-collection-handler', [SalesBookingAttributionController::class, 'correctCollectionHandler'])
             ->whereUuid('attribution')->middleware('permission:sales.attributions.correct');

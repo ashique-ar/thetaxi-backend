@@ -217,6 +217,7 @@ class AllPermissionsSeeder extends Seeder
         'manage_divisions',
         'manage_employees',
         'manage_rate_charts',
+        'manage_billing',
         'manage-roles',
         'manage-permissions',
         'notifications.broadcast',
