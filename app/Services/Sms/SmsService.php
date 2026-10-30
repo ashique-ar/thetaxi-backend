@@ -426,11 +426,6 @@ class SmsService
 
     public function markDelivery(array $payload): array
     {
-        $defaultCompanyId = app(SingleCompanyScope::class)->defaultCompany()?->id;
-        if (! $defaultCompanyId) {
-            return ['updated' => false];
-        }
-
         $transactionId = $payload['transaction_id'] ?? $payload['transactionId'] ?? null;
         $messageId = $payload['message_id'] ?? $payload['messageId'] ?? null;
         if (!$transactionId && !$messageId) {
@@ -438,7 +433,6 @@ class SmsService
         }
 
         $query = SmsMessage::query()
-            ->where(fn ($_companyIdScope) => \App\Services\CompanyIdScope::constrain($_companyIdScope, 'company_id', $defaultCompanyId))
             ->when($transactionId, fn($q) => $q->where('provider_transaction_id', $transactionId))
             ->when($messageId, fn($q) => $q->where('provider_message_id', $messageId));
         if ((clone $query)->count() > 1) {
@@ -510,9 +504,9 @@ class SmsService
         return $message->fresh();
     }
 
-    public function getMessages(array $filters, string $companyId): LengthAwarePaginator
+    public function getMessages(array $filters): LengthAwarePaginator
     {
-        return SmsMessage::query()->where(fn ($_companyIdScope) => \App\Services\CompanyIdScope::constrain($_companyIdScope, 'company_id', $companyId))->with(['booking:id,booking_number', 'bookingItem:id,booking_id,trip_number'])
+        return SmsMessage::query()->with(['booking:id,booking_number', 'bookingItem:id,booking_id,trip_number'])
             ->when(!empty($filters['status']), fn($query) => $query->where('status', $filters['status']))
             ->when(!empty($filters['channel']), fn($query) => $query->where('channel', $filters['channel']))
             ->when(!empty($filters['campaign_id']), fn($query) => $query->where('campaign_id', $filters['campaign_id']))
@@ -526,7 +520,7 @@ class SmsService
             ->paginate((int) ($filters['per_page'] ?? 20));
     }
 
-    public function getTransactionalComplianceReport(int $days, string $companyId): array
+    public function getTransactionalComplianceReport(int $days): array
     {
         $since = now()->subDays($days);
         $standardEvents = ['booking.confirmed', 'driver.dispatched', 'driver.arrived'];
@@ -535,7 +529,6 @@ class SmsService
         $driverOnlyEvents = ['driver.assignment_fallback'];
 
         $messages = SmsMessage::query()
-            ->where(fn ($_companyIdScope) => \App\Services\CompanyIdScope::constrain($_companyIdScope, 'company_id', $companyId))
             ->where('source', 'automation')
             ->where('created_at', '>=', $since)
             ->whereNotNull('event_key')
@@ -626,10 +619,9 @@ class SmsService
             : 'sms';
     }
 
-    public function getCampaigns(array $filters, string $companyId): LengthAwarePaginator
+    public function getCampaigns(array $filters): LengthAwarePaginator
     {
         return SmsCampaign::query()
-            ->where(fn ($_companyIdScope) => \App\Services\CompanyIdScope::constrain($_companyIdScope, 'company_id', $companyId))
             ->when(!empty($filters['status']), fn($query) => $query->where('status', $filters['status']))
             ->when(!empty($filters['search']), fn($query) => $query->where('name', 'like', '%' . $filters['search'] . '%'))
             ->latest()
@@ -675,10 +667,9 @@ class SmsService
         ]);
     }
 
-    public function reconcileStaleProcessing(int $olderThanMinutes, int $limit, string $companyId): array
+    public function reconcileStaleProcessing(int $olderThanMinutes, int $limit): array
     {
         $messages = SmsMessage::query()
-            ->where(fn ($_companyIdScope) => \App\Services\CompanyIdScope::constrain($_companyIdScope, 'company_id', $companyId))
             ->where('status', 'processing')
             ->where('processing_at', '<=', now()->subMinutes(max(1, $olderThanMinutes)))
             ->whereNotNull('provider_transaction_id')
