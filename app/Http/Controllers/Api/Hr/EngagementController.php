@@ -31,7 +31,7 @@ class EngagementController extends Controller
                 ->select(['id','code','name','unit_type','status'])->orderBy('name')->orderBy('id');
             $map=fn($row)=>['value'=>(string)$row->id,'label'=>$row->name.' · '.$row->code,'metadata'=>['unit_type'=>$row->unit_type],'status'=>$row->status];
         }elseif($data['record_type']==='location'){
-            $query=DB::table('hr_employment_assignments')->where(fn ($_companyIdScope) => \App\Services\CompanyIdScope::constrain($_companyIdScope, 'company_id', $actor->company_id))->whereNotNull('location_code')->where('location_code','<>','')
+            $query=DB::table('hr_employment_assignments')->whereNotNull('location_code')->where('location_code','<>','')
                 ->when($selected,fn($q)=>$q->whereIn('location_code',$selected))->when($term!==''&&!$selected,fn($q)=>$q->whereLike('location_code','%'.$term.'%'))
                 ->select('location_code')->distinct()->orderBy('location_code');
             $map=fn($row)=>['value'=>$row->location_code,'label'=>$row->location_code,'metadata'=>[],'status'=>'active'];
@@ -523,7 +523,7 @@ class EngagementController extends Controller
         $staffTypes=array_values(array_unique($audience['staff_types']));
         if($staffTypes)abort_unless(DB::table('staff')->where(fn ($_companyIdScope) => \App\Services\CompanyIdScope::constrain($_companyIdScope, 'company_id', $companyId))->whereNull('deleted_at')->whereNull('employment_ended_at')->whereIn('staff_type',$staffTypes)->distinct()->pluck('staff_type')->count()===count($staffTypes),422,'Every audience Staff type must be active in your legal entity.');
         $locations=array_values(array_unique($audience['location_codes']));
-        if($locations)abort_unless(DB::table('hr_employment_assignments')->where(fn ($_companyIdScope) => \App\Services\CompanyIdScope::constrain($_companyIdScope, 'company_id', $companyId))->whereIn('location_code',$locations)->distinct()->pluck('location_code')->count()===count($locations),422,'Every audience location must be configured in your legal entity.');
+        if($locations)abort_unless(DB::table('hr_employment_assignments')->whereIn('location_code',$locations)->distinct()->pluck('location_code')->count()===count($locations),422,'Every audience location must be configured.');
     }
 
     private function assertQuestions(array $questions): void

@@ -7,18 +7,15 @@ use App\Models\NavigationMenu;
 use Illuminate\Http\Request;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Validation\Rule;
-use App\Services\WebsiteSettingsService;
 
 class NavigationMenuController extends Controller
 {
-    public function __construct(private WebsiteSettingsService $settings) {}
-
     /**
      * Display a listing of navigation menus
      */
     public function index(Request $request): JsonResponse
     {
-        $query = $this->companyQuery();
+        $query = NavigationMenu::query();
 
         // Filter by parent_id
         if ($request->has('parent_id')) {
@@ -87,7 +84,7 @@ class NavigationMenuController extends Controller
     public function store(Request $request): JsonResponse
     {
         $validatedData = $request->validate([
-            'parent_id' => ['nullable', $this->companyExistsRule()],
+            'parent_id' => ['nullable', 'exists:navigation_menus,id'],
             'title' => 'required|string|max:255',
             'url' => 'nullable|string|max:500',
             'route_name' => 'nullable|string|max:255',
@@ -104,11 +101,11 @@ class NavigationMenuController extends Controller
 
         // Set default sort order if not provided
         if (!isset($validatedData['sort_order'])) {
-            $maxOrder = $this->companyQuery()->where('parent_id', $validatedData['parent_id'] ?? null)->max('sort_order');
+            $maxOrder = NavigationMenu::query()->where('parent_id', $validatedData['parent_id'] ?? null)->max('sort_order');
             $validatedData['sort_order'] = ($maxOrder ?? 0) + 1;
         }
 
-        $navigationMenu = NavigationMenu::create($validatedData + ['company_id' => $this->companyId()]);
+        $navigationMenu = NavigationMenu::create($validatedData);
 
         return response()->json([
             'message' => 'Navigation menu created successfully',
@@ -121,7 +118,6 @@ class NavigationMenuController extends Controller
      */
     public function show(NavigationMenu $navigationMenu): JsonResponse
     {
-        $this->assertCompanyOwner($navigationMenu);
         $navigationMenu->load(['parent', 'children' => function ($q) {
             $q->where('is_active', true)->orderBy('sort_order');
         }]);
@@ -134,9 +130,8 @@ class NavigationMenuController extends Controller
      */
     public function update(Request $request, NavigationMenu $navigationMenu): JsonResponse
     {
-        $this->assertCompanyOwner($navigationMenu);
         $validatedData = $request->validate([
-            'parent_id' => ['nullable', $this->companyExistsRule()],
+            'parent_id' => ['nullable', 'exists:navigation_menus,id'],
             'title' => 'required|string|max:255',
             'url' => 'nullable|string|max:500',
             'route_name' => 'nullable|string|max:255',
@@ -171,7 +166,6 @@ class NavigationMenuController extends Controller
      */
     public function destroy(NavigationMenu $navigationMenu): JsonResponse
     {
-        $this->assertCompanyOwner($navigationMenu);
         // Check if menu has children
         if ($navigationMenu->hasChildren()) {
             return response()->json([
@@ -193,13 +187,13 @@ class NavigationMenuController extends Controller
     {
         $validatedData = $request->validate([
             'items' => 'required|array',
-            'items.*.id' => ['required', $this->companyExistsRule()],
+            'items.*.id' => ['required', 'exists:navigation_menus,id'],
             'items.*.sort_order' => 'required|integer|min:0',
-            'items.*.parent_id' => ['nullable', $this->companyExistsRule()]
+            'items.*.parent_id' => ['nullable', 'exists:navigation_menus,id']
         ]);
 
         foreach ($validatedData['items'] as $item) {
-            $this->companyQuery()->where('id', $item['id'])->update([
+            NavigationMenu::query()->where('id', $item['id'])->update([
                 'sort_order' => $item['sort_order'],
                 'parent_id' => $item['parent_id'] ?? null
             ]);
@@ -217,7 +211,7 @@ class NavigationMenuController extends Controller
     {
         $location = $request->get('location'); // header, footer, or all
 
-        $query = $this->companyQuery()->with(['children' => function ($q) {
+        $query = NavigationMenu::query()->with(['children' => function ($q) {
             $q->where('is_active', true)->orderBy('sort_order');
         }])->where('is_active', true)->whereNull('parent_id');
 
@@ -237,7 +231,6 @@ class NavigationMenuController extends Controller
      */
     public function duplicate(NavigationMenu $navigationMenu): JsonResponse
     {
-        $this->assertCompanyOwner($navigationMenu);
         $newMenu = $navigationMenu->replicate();
         $newMenu->title = $navigationMenu->title . ' (Copy)';
         $newMenu->save();
@@ -248,29 +241,4 @@ class NavigationMenuController extends Controller
         ], 201);
     }
 
-    private function companyId(): ?string
-    {
-        return $this->settings->resolveCurrentCompanyId();
-    }
-
-    private function companyQuery()
-    {
-        $companyId = $this->companyId();
-
-        return NavigationMenu::query()->where(fn ($locationScope) => \App\Services\CompanyLocationScope::constrain($locationScope, 'company_id', $companyId));
-    }
-
-    private function assertCompanyOwner(NavigationMenu $navigationMenu): void
-    {
-        abort_unless($navigationMenu->company_id === $this->companyId() || $navigationMenu->company_id === null, 404);
-    }
-
-    private function companyExistsRule()
-    {
-        $companyId = $this->companyId();
-
-        return Rule::exists('navigation_menus', 'id')->where(
-            fn ($query) => $query->where(fn ($locationScope) => \App\Services\CompanyLocationScope::constrain($locationScope, 'company_id', $companyId))
-        );
-    }
 }

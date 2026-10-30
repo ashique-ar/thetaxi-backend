@@ -773,7 +773,7 @@ class InquiryController extends Controller
     private function ensureRespondIoEnabled(string $companyId): void
     {
         abort_unless(filter_var(app(\App\Services\WebsiteSettingsService::class)
-            ->get('feature_respond_io_enabled', false, $companyId), FILTER_VALIDATE_BOOL), 422,
+            ->get('feature_respond_io_enabled', false), FILTER_VALIDATE_BOOL), 422,
             'Respond.io is turned off in Business Settings.');
     }
 

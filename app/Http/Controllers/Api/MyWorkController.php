@@ -324,7 +324,7 @@ class MyWorkController extends Controller
             }
         }
 
-        $respondIoEnabled = filter_var(app(WebsiteSettingsService::class)->get('feature_respond_io_enabled', false, ''), FILTER_VALIDATE_BOOL);
+        $respondIoEnabled = filter_var(app(WebsiteSettingsService::class)->get('feature_respond_io_enabled', false), FILTER_VALIDATE_BOOL);
         if ($respondIoEnabled && $request->user()->can('communication.manage')) {
             foreach ([['received', 'New messages or updates', 'Review new information from Respond.io before linking it to customer work'],
                 ['reply_failed', 'Replies to check', 'Check whether the reply was accepted before trying again']] as [$status, $title, $help]) {

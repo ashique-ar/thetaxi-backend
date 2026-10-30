@@ -123,19 +123,22 @@ class PermissionRegistry
 
     private function moduleFor(string $name, string $fallback): string
     {
-        if (Str::startsWith($name, ['user', 'role', 'permission'])) {
-            return 'admin';
+        if ($legacyModule = config("permissions.legacy_modules.{$name}")) {
+            return $legacyModule;
         }
 
-        if (Str::startsWith($name, ['vehicle', 'driver', 'assignment'])) {
-            return 'vehicles';
+        $parts = explode('.', $name);
+        if (count($parts) > 1) {
+            if ($this->actionFor($name) !== 'other') {
+                return implode('.', array_slice($parts, 0, -1));
+            }
+
+            if (count($parts) > 2) {
+                return implode('.', array_slice($parts, 0, 2));
+            }
         }
 
-        if (Str::startsWith($name, ['sms', 'notification'])) {
-            return 'communication';
-        }
-
-        return $fallback ?: 'other';
+        return $parts[0] ?: ($fallback ?: 'other');
     }
 
     private function actionFor(string $name): string

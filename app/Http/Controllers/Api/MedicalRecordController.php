@@ -6,8 +6,6 @@ use App\Http\Controllers\Controller;
 use App\Models\MedicalCategory;
 use App\Models\MedicalRecord;
 use App\Models\Staff;
-use App\Services\SingleCompanyScope;
-use App\Services\StaffAccessService;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Crypt;
@@ -21,7 +19,6 @@ class MedicalRecordController extends Controller
 {
     public function index(Request $request): JsonResponse
     {
-        $companyId = $this->actorCompanyId($request);
         $filters = $request->validate([
             'search' => ['nullable', 'string', 'max:120'],
             'subject_type' => ['nullable', Rule::in(['vehicle', 'staff'])],
@@ -34,7 +31,7 @@ class MedicalRecordController extends Controller
             'per_page' => ['nullable', 'integer', 'min:1', 'max:50'],
         ]);
 
-        $query = MedicalRecord::query()->where(fn ($_companyIdScope) => \App\Services\CompanyIdScope::constrain($_companyIdScope, 'company_id', $companyId))
+        $query = MedicalRecord::query()
             ->when($filters['subject_type'] ?? null, fn ($q, $value) => $q->where('subject_type', $value))
             ->when($filters['subject_id'] ?? null, fn ($q, $value) => $q->where('subject_id', $value))
             ->when($filters['category_id'] ?? null, fn ($q, $value) => $q->where('medical_category_id', $value))
@@ -54,16 +51,14 @@ class MedicalRecordController extends Controller
 
         $page = $query->orderByDesc('created_at')->orderBy('id')->paginate($filters['per_page'] ?? 25);
         $page->getCollection()->transform(fn (MedicalRecord $record) => $this->serializeRecord($record));
-        $this->auditListView($request, $companyId);
+        $this->auditListView($request);
 
         return response()->json(['status' => 'success', 'data' => $page]);
     }
 
     public function categories(Request $request): JsonResponse
     {
-        $companyId = $this->actorCompanyId($request);
         $categories = MedicalCategory::query()->where('is_active', true)
-            ->where(fn ($_companyIdScope) => \App\Services\CompanyIdScope::constrain($_companyIdScope, 'company_id', $companyId))
             ->orderBy('name')->orderBy('id')->get(['id', 'code', 'name', 'description']);
 
         return response()->json(['status' => 'success', 'data' => $categories]);
@@ -71,23 +66,21 @@ class MedicalRecordController extends Controller
 
     public function store(Request $request): JsonResponse
     {
-        $companyId = $this->actorCompanyId($request);
         $data = $request->validate([
             'subject_type' => ['required', Rule::in(['vehicle', 'staff'])],
             'subject_id' => ['required', 'uuid'],
             'medical_category_id' => ['required', 'uuid'],
             'title' => ['required', 'string', 'max:255'],
             'description' => ['nullable', 'string', 'max:10000'],
-            'record_number' => ['nullable', 'string', 'max:80', Rule::unique('medical_records', 'record_number')->where(fn ($_companyIdScope) => \App\Services\CompanyIdScope::constrain($_companyIdScope, 'company_id', $companyId))],
+            'record_number' => ['nullable', 'string', 'max:80', Rule::unique('medical_records', 'record_number')],
             'issued_date' => ['required', 'date'],
             'valid_until' => ['nullable', 'date', 'after_or_equal:issued_date'],
             'issuing_authority' => ['nullable', 'string', 'max:255'],
         ]);
-        $this->authorizeSubject($data['subject_type'], $data['subject_id'], $companyId);
+        $this->authorizeSubject($data['subject_type'], $data['subject_id']);
         abort_unless(MedicalCategory::query()->whereKey($data['medical_category_id'])->where('is_active', true)
-            ->where(fn ($_companyIdScope) => \App\Services\CompanyIdScope::constrain($_companyIdScope, 'company_id', $companyId))->exists(), 422, 'Select an active medical category.');
+            ->exists(), 422, 'Select an active medical category.');
 
-        $data['company_id'] = $companyId;
         $data['record_number'] = ($data['record_number'] ?? null) ?: 'MED-'.Str::upper(Str::random(12));
         $data['status'] = 'active';
         $record = MedicalRecord::create($data);
@@ -97,17 +90,15 @@ class MedicalRecordController extends Controller
 
     public function show(Request $request, string $id): JsonResponse
     {
-        $companyId = $this->actorCompanyId($request);
-        $record = $this->record($id, $companyId);
-        $this->auditRecordView($request, $record, $companyId);
+        $record = $this->record($id);
+        $this->auditRecordView($request, $record);
 
         return response()->json(['status' => 'success', 'data' => $this->serializeRecord($record)]);
     }
 
     public function update(Request $request, string $id): JsonResponse
     {
-        $companyId = $this->actorCompanyId($request);
-        $record = $this->record($id, $companyId);
+        $record = $this->record($id);
         $data = $request->validate([
             'title' => ['sometimes', 'required', 'string', 'max:255'],
             'description' => ['sometimes', 'nullable', 'string', 'max:10000'],
@@ -124,10 +115,9 @@ class MedicalRecordController extends Controller
         return response()->json(['status' => 'success', 'data' => $this->serializeRecord($record->fresh())]);
     }
 
-    public function destroy(Request $request, string $id): JsonResponse
+    public function destroy(string $id): JsonResponse
     {
-        $companyId = $this->actorCompanyId($request);
-        $record = $this->record($id, $companyId);
+        $record = $this->record($id);
         $record->delete();
 
         return response()->json(['status' => 'success', 'message' => 'Medical record archived.']);
@@ -135,8 +125,7 @@ class MedicalRecordController extends Controller
 
     public function uploadDocument(Request $request, string $id): JsonResponse
     {
-        $companyId = $this->actorCompanyId($request);
-        $record = $this->record($id, $companyId);
+        $record = $this->record($id);
         $data = $request->validate([
             'file' => ['required', 'file', 'mimes:pdf,jpg,jpeg,png', 'max:10240'],
             'description' => ['nullable', 'string', 'max:500'],
@@ -144,7 +133,7 @@ class MedicalRecordController extends Controller
 
         $file = $data['file'];
         $documentId = (string) Str::uuid();
-        $path = 'medical-records/'.$companyId.'/'.$record->id.'/'.$documentId.'.enc';
+        $path = 'medical-records/'.$record->id.'/'.$documentId.'.enc';
         $encrypted = Crypt::encryptString($file->get());
         abort_unless(Storage::disk('local')->put($path, $encrypted), 500, 'The private medical document could not be stored.');
 
@@ -175,8 +164,7 @@ class MedicalRecordController extends Controller
 
     public function downloadDocument(Request $request, string $id, string $documentId): StreamedResponse
     {
-        $companyId = $this->actorCompanyId($request);
-        $record = $this->record($id, $companyId);
+        $record = $this->record($id);
         $document = $record->documents()->whereKey($documentId)->firstOrFail();
         abort_unless($document->disk === 'local' && Storage::disk('local')->exists($document->path), 404, 'Medical document is unavailable.');
 
@@ -184,36 +172,26 @@ class MedicalRecordController extends Controller
         $metadata = $document->metadata ?? [];
         $filename = isset($metadata['original_name']) ? Crypt::decryptString($metadata['original_name']) : 'medical-document';
         $mime = $metadata['mime_type'] ?? 'application/octet-stream';
-        $this->auditRecordView($request, $record, $companyId, 'medical_document_downloaded');
+        $this->auditRecordView($request, $record, 'medical_document_downloaded');
 
         return response()->streamDownload(static function () use ($content): void {
             echo $content;
         }, basename($filename), ['Content-Type' => $mime, 'Cache-Control' => 'private, no-store']);
     }
 
-    private function actorCompanyId(Request $request): string
-    {
-        $companyId = app(SingleCompanyScope::class)->activeDefaultCompany()?->id;
-        abort_unless($companyId, 403, 'Medical records require one active default company.');
-        $actor = app(StaffAccessService::class)->currentActorStaff($request->user());
-        abort_unless($actor && \App\Services\CompanyIdScope::sameCompanyId((string) ((string) $actor->company_id), (string) ((string) $companyId)), 403, 'Medical records are available only in the active default company context.');
-
-        return (string) $companyId;
-    }
-
-    private function authorizeSubject(string $type, string $id, string $companyId): void
+    private function authorizeSubject(string $type, string $id): void
     {
         $exists = match ($type) {
-            'staff' => Staff::query()->whereKey($id)->where(fn ($_companyIdScope) => \App\Services\CompanyIdScope::constrain($_companyIdScope, 'company_id', $companyId))->exists(),
+            'staff' => Staff::query()->whereKey($id)->exists(),
             'vehicle' => DB::table('vehicles')->where('id', $id)->whereNull('deleted_at')->exists(),
             default => false,
         };
-        abort_unless($exists, 404, 'The selected medical-record subject is not available in the default company.');
+        abort_unless($exists, 404, 'The selected medical-record subject is unavailable.');
     }
 
-    private function record(string $id, string $companyId): MedicalRecord
+    private function record(string $id): MedicalRecord
     {
-        return MedicalRecord::query()->where(fn ($_companyIdScope) => \App\Services\CompanyIdScope::constrain($_companyIdScope, 'company_id', $companyId))->whereKey($id)->firstOrFail();
+        return MedicalRecord::query()->whereKey($id)->firstOrFail();
     }
 
     private function serializeRecord(MedicalRecord $record): array
@@ -222,7 +200,6 @@ class MedicalRecordController extends Controller
 
         return [
             'id' => (string) $record->id,
-            'company_id' => (string) $record->company_id,
             'subject_type' => $record->subject_type,
             'subject_id' => (string) $record->subject_id,
             'subject_name' => $this->subjectName($record),
@@ -275,15 +252,15 @@ class MedicalRecordController extends Controller
         return $name !== '' ? $name : ($subject->code ?? $subject->registration_no ?? $subject->license_plate ?? 'Unnamed subject');
     }
 
-    private function auditListView(Request $request, string $companyId): void
+    private function auditListView(Request $request): void
     {
         activity('hr-sensitive-data')->causedBy($request->user())->event('medical_record_list_viewed')
-            ->withProperties(['company_id' => $companyId])->log('medical_record_list_viewed');
+            ->log('medical_record_list_viewed');
     }
 
-    private function auditRecordView(Request $request, MedicalRecord $record, string $companyId, string $event = 'medical_record_viewed'): void
+    private function auditRecordView(Request $request, MedicalRecord $record, string $event = 'medical_record_viewed'): void
     {
         activity('hr-sensitive-data')->causedBy($request->user())->performedOn($record)->event($event)
-            ->withProperties(['company_id' => $companyId])->log($event);
+            ->log($event);
     }
 }

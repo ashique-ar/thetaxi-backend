@@ -2,7 +2,6 @@
 
 namespace Database\Seeders;
 
-use App\Models\Company;
 use App\Models\NavigationMenu;
 use App\Models\Website\WebsiteSetting;
 use Illuminate\Database\Seeder;
@@ -11,19 +10,14 @@ class ThemeFourCompanySeeder extends Seeder
 {
     public function run(): void
     {
-        $company = Company::updateOrCreate(
-            ['domain' => 'casons.lk'],
-            ['name' => 'Casons', 'website' => 'https://casons.lk', 'is_active' => true, 'is_default' => false]
-        );
-
         foreach (['active_theme' => 'theme-04', 'site_name' => 'Casons', 'header_help_label' => 'Call Us', 'header_cart_label' => 'Booking Cart'] as $type => $value) {
-            WebsiteSetting::setValue($type, $value, $company->id);
+            WebsiteSetting::setValue($type, $value);
         }
 
-        $this->seedHeader($company->id);
+        $this->seedHeader();
     }
 
-    private function seedHeader(?string $companyId): void
+    private function seedHeader(): void
     {
         $items = [
             ['Home', '/', 1],
@@ -32,14 +26,14 @@ class ThemeFourCompanySeeder extends Seeder
             ['Inquiry', '/inquiry', 4],
         ];
 
-        NavigationMenu::where('company_id', $companyId)
+        NavigationMenu::query()
             ->whereNull('parent_id')
             ->whereNotIn('title', array_column($items, 0))
             ->update(['is_active' => false]);
 
         foreach ($items as [$title, $url, $order]) {
             NavigationMenu::updateOrCreate(
-                ['company_id' => $companyId, 'parent_id' => null, 'title' => $title],
+                ['parent_id' => null, 'title' => $title],
                 ['url' => $url, 'target' => '_self', 'sort_order' => $order, 'is_active' => true, 'show_in_header' => true, 'show_in_footer' => false]
             );
         }

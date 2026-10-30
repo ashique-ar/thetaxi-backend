@@ -5,7 +5,6 @@ namespace App\Services;
 use Illuminate\Support\Facades\Http;
 use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Facades\URL;
-use App\Models\Company;
 use App\Models\Booking\Booking;
 use App\Models\Website\WebsiteSetting;
 use App\Services\CurrencyService;
@@ -369,7 +368,7 @@ class WebXPayService
 
     protected function getSettingValue(string $key, $default = null)
     {
-        $value = WebsiteSetting::getValue($key, null, Company::getDefaultCompany()?->id);
+        $value = WebsiteSetting::getValue($key);
         if ($value !== null && $value !== '') {
             return $value;
         }

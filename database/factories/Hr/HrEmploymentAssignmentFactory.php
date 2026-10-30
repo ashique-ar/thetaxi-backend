@@ -2,7 +2,6 @@
 
 namespace Database\Factories\Hr;
 
-use App\Models\Company;
 use App\Models\Hr\HrEmploymentAssignment;
 use App\Models\Hr\HrEmploymentSpell;
 use App\Models\Staff;
@@ -18,10 +17,8 @@ class HrEmploymentAssignmentFactory extends Factory
     /**
      * Define the model's default state.
      *
-     * `employment_spell_id`, `staff_id`, and `company_id` each default
-     * independently for standalone use — override all three together to
-     * keep them consistent for a specific Staff member, e.g.:
-     * `HrEmploymentAssignment::factory()->create(['employment_spell_id' => $spell->id, 'staff_id' => $staff->id, 'company_id' => $staff->company_id])`.
+     * `employment_spell_id` and `staff_id` default independently for
+     * standalone use. Override both together for a specific Staff member.
      *
      * @return array<string, mixed>
      */
@@ -30,7 +27,6 @@ class HrEmploymentAssignmentFactory extends Factory
         return [
             'employment_spell_id' => HrEmploymentSpell::factory(),
             'staff_id' => Staff::factory(),
-            'company_id' => fn () => Company::getDefaultCompany()?->id ?? Company::create(['name' => 'Factory Test Company', 'is_default' => true])->id,
             'position_id' => null,
             'organization_unit_id' => null,
             'manager_staff_id' => null,

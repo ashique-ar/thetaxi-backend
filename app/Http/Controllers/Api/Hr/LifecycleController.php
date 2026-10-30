@@ -4,19 +4,18 @@ use App\Http\Controllers\Controller;use App\Models\Staff;use App\Services\Hr\Lif
 class LifecycleController extends Controller{
  public function cases(Request $r, StaffAccessService $access): JsonResponse
  {
-     $companyId = $this->actorCompanyId($r);
-     $staff = $access->scope(Staff::query(), $r->user())->where(fn ($_companyIdScope) => \App\Services\CompanyIdScope::constrain($_companyIdScope, 'company_id', $companyId))->select('id');
-     $rows = DB::table('hr_lifecycle_cases as c')->leftJoin('staff as s', fn ($join) => $join->on('s.id', '=', 'c.staff_id')->where(fn ($sameCompany) => \App\Services\CompanyIdScope::sameCompany($sameCompany, 's.company_id', 'c.company_id')))
-         ->leftJoin('users as u', 'u.id', '=', 's.user_id')->where(fn ($_companyIdScope) => \App\Services\CompanyIdScope::constrain($_companyIdScope, 'c.company_id', $companyId))
+     $staff = $access->scope(Staff::query(), $r->user())->select('id');
+     $rows = DB::table('hr_lifecycle_cases as c')->leftJoin('staff as s', 's.id', '=', 'c.staff_id')
+         ->leftJoin('users as u', 'u.id', '=', 's.user_id')
          ->where(function ($visibility) use ($staff) {
              $visibility->whereIn('c.staff_id', $staff)
                  ->orWhere(function ($preHire) {
                      $preHire->whereNotNull('c.application_id')->whereExists(fn ($application) => $application
                          ->selectRaw('1')->from('hr_candidate_applications as a')
-                         ->whereColumn('a.id', 'c.application_id')->where(fn ($sameCompany) => \App\Services\CompanyIdScope::sameCompany($sameCompany, 'a.company_id', 'c.company_id')));
+                         ->whereColumn('a.id', 'c.application_id'));
                  });
          })
-         ->select(['c.id', 'c.company_id', 'c.staff_id', 'c.application_id', 'c.template_id', 'c.case_type', 'c.status', 'c.effective_date', 'c.case_snapshot', 'c.opened_by', 'c.closed_at', 'c.closed_by', 'c.created_at', 'c.updated_at', 's.code as staff_code', 'u.first_name as staff_first_name', 'u.last_name as staff_last_name'])
+         ->select(['c.id', 'c.staff_id', 'c.application_id', 'c.template_id', 'c.case_type', 'c.status', 'c.effective_date', 'c.case_snapshot', 'c.opened_by', 'c.closed_at', 'c.closed_by', 'c.created_at', 'c.updated_at', 's.code as staff_code', 'u.first_name as staff_first_name', 'u.last_name as staff_last_name'])
          ->latest('c.created_at')->paginate($this->paginationSize($r, 50));
 
      $caseIds = $rows->getCollection()->pluck('id');
@@ -35,12 +34,10 @@ class LifecycleController extends Controller{
  }
  public function clearanceItems(Request $r): JsonResponse
  {
-     $companyId = $this->actorCompanyId($r);
      $rows = DB::table('hr_exit_clearance_items as item')
          ->join('hr_exit_cases as exit_case', 'exit_case.id', '=', 'item.exit_case_id')
-         ->leftJoin('staff', fn ($join) => $join->on('staff.id', '=', 'exit_case.staff_id')->where(fn ($sameCompany) => \App\Services\CompanyIdScope::sameCompany($sameCompany, 'staff.company_id', 'exit_case.company_id')))
+         ->leftJoin('staff', 'staff.id', '=', 'exit_case.staff_id')
          ->leftJoin('users', 'users.id', '=', 'staff.user_id')
-         ->where(fn ($_companyIdScope) => \App\Services\CompanyIdScope::constrain($_companyIdScope, 'exit_case.company_id', $companyId))
          ->select(['item.id', 'item.exit_case_id', 'item.clearance_type', 'item.title', 'item.status', 'item.completed_at', 'staff.code as staff_code', 'users.first_name', 'users.last_name'])
          ->latest('item.created_at')->paginate($this->paginationSize($r, 50));
 
@@ -48,12 +45,10 @@ class LifecycleController extends Controller{
  }
  public function probationCases(Request $r): JsonResponse
  {
-     $companyId = $this->actorCompanyId($r);
      $rows = DB::table('hr_probation_cases as probation')
          ->join('hr_employment_spells as spell', 'spell.id', '=', 'probation.employment_spell_id')
-         ->join('staff', fn ($join) => $join->on('staff.id', '=', 'probation.staff_id')->where(fn ($sameCompany) => \App\Services\CompanyIdScope::sameCompany($sameCompany, 'staff.company_id', 'spell.company_id')))
+         ->join('staff', 'staff.id', '=', 'probation.staff_id')
          ->leftJoin('users', 'users.id', '=', 'staff.user_id')
-         ->where(fn ($_companyIdScope) => \App\Services\CompanyIdScope::constrain($_companyIdScope, 'spell.company_id', $companyId))
          ->whereColumn('spell.staff_id', 'probation.staff_id')
          ->select(['probation.id', 'probation.starts_at', 'probation.review_due_at', 'probation.current_end_at', 'probation.status', 'probation.proposed_outcome', 'probation.final_outcome', 'users.first_name', 'users.last_name', 'staff.code as staff_code'])
          ->latest('probation.created_at')->paginate($this->paginationSize($r, 50));
@@ -67,48 +62,45 @@ class LifecycleController extends Controller{
   * and a pending template had no way to be found to approve it. The same "create exists,
   * no read-back" gap already closed for Attendance/Leave configuration.
   */
- public function templates(Request$r):JsonResponse{$companyId=$this->actorCompanyId($r);$q=DB::table('hr_lifecycle_templates')->where(fn ($_companyIdScope) => \App\Services\CompanyIdScope::constrain($_companyIdScope, 'company_id', $companyId))->select(['id', 'company_id', 'case_type', 'code', 'version', 'applicability', 'task_definitions', 'status', 'created_by', 'approved_by', 'approved_at', 'created_at', 'updated_at'])->when($r->case_type,fn($b,$v)=>$b->where('case_type',$v))->when($r->status,fn($b,$v)=>$b->where('status',$v))->latest('created_at');$rows=$q->paginate($this->paginationSize($r, 50));$rows->getCollection()->transform(fn($row)=>array_merge((array)$row,['applicability'=>json_decode($row->applicability,true,512,JSON_THROW_ON_ERROR),'task_definitions'=>json_decode($row->task_definitions,true,512,JSON_THROW_ON_ERROR)]));return response()->json(['status'=>'success','data'=>$rows]);}
- public function templateOptions(Request$r):JsonResponse{$d=$r->validate(['company_id'=>['nullable','uuid'],'search'=>['nullable','string','max:120'],'selected_id'=>['nullable','uuid'],'page'=>['nullable','integer','min:1'],'per_page'=>['nullable','integer','min:1','max:50']]);$d['company_id']=$d['company_id']??$this->actorCompanyId($r);$this->company($r,$d['company_id']);$q=DB::table('hr_lifecycle_templates')->where(fn ($_companyIdScope) => \App\Services\CompanyIdScope::constrain($_companyIdScope, 'company_id', $d['company_id']))->where('status','approved');if(!empty($d['selected_id']))$q->where('id',$d['selected_id']);elseif(!empty($d['search'])){$term='%'.strtolower(addcslashes(trim($d['search']),'%_\\')).'%';$q->where(fn($match)=>$match->whereRaw('LOWER(code) LIKE ?',[$term])->orWhereRaw('LOWER(case_type) LIKE ?',[$term]));}$q->select(['id','code','version','case_type'])->orderBy('code')->orderByDesc('version')->orderBy('id');$map=fn($template)=>['value'=>(string)$template->id,'label'=>$template->code.' v'.$template->version.' ('.$template->case_type.')','metadata'=>['case_type'=>$template->case_type],'status'=>'approved'];if(!empty($d['selected_id']))return response()->json(['status'=>'success','data'=>$q->limit(1)->get()->map($map)->values()]);$rows=$q->paginate($d['per_page']??25);$rows->getCollection()->transform($map);return response()->json(['status'=>'success','data'=>$rows]);}
- public function caseSubjectOptions(Request$r):JsonResponse{$d=$r->validate(['company_id'=>['nullable','uuid'],'record_type'=>['required',Rule::in(['staff','application'])],'search'=>['nullable','string','max:120'],'selected_id'=>['nullable','uuid'],'page'=>['nullable','integer','min:1'],'per_page'=>['nullable','integer','min:1','max:50']]);$d['company_id']=$d['company_id']??$this->actorCompanyId($r);$this->company($r,$d['company_id']);$term=trim((string)($d['search']??''));if($d['record_type']==='staff'){$q=DB::table('staff')->leftJoin('users','users.id','=','staff.user_id')->where(fn ($_companyIdScope) => \App\Services\CompanyIdScope::constrain($_companyIdScope, 'staff.company_id', $d['company_id']))->whereNull('staff.deleted_at')->whereNull('staff.employment_ended_at')->when($d['selected_id']??null,fn($b,$id)=>$b->where('staff.id',$id))->when($term!==''&&empty($d['selected_id']),fn($b)=>$b->where(fn($m)=>$m->whereRaw('LOWER(staff.code) LIKE ?',['%'.mb_strtolower($term).'%'])->orWhereRaw('LOWER(users.first_name) LIKE ?',['%'.mb_strtolower($term).'%'])->orWhereRaw('LOWER(users.last_name) LIKE ?',['%'.mb_strtolower($term).'%'])))->select(['staff.id','staff.code','staff.staff_type','users.first_name','users.last_name'])->orderBy('users.first_name')->orderBy('staff.id');$map=fn($row)=>['value'=>(string)$row->id,'label'=>trim(trim(($row->first_name??'').' '.($row->last_name??'')).' · '.($row->code?:'No Staff code')),'metadata'=>['staff_type'=>$row->staff_type],'status'=>'active'];}else{$q=DB::table('hr_candidate_applications as app')->join('hr_candidates as candidate','candidate.id','=','app.candidate_id')->join('hr_job_requisitions as req','req.id','=','app.requisition_id')->where(fn ($_companyIdScope) => \App\Services\CompanyIdScope::constrain($_companyIdScope, 'app.company_id', $d['company_id']))->where('app.status','active')->when($d['selected_id']??null,fn($b,$id)=>$b->where('app.id',$id))->when($term!==''&&empty($d['selected_id']),fn($b)=>$b->where(fn($m)=>$m->whereRaw('LOWER(candidate.candidate_code) LIKE ?',['%'.mb_strtolower($term).'%'])->orWhereRaw('LOWER(req.code) LIKE ?',['%'.mb_strtolower($term).'%'])->orWhereRaw('LOWER(req.title) LIKE ?',['%'.mb_strtolower($term).'%'])))->select(['app.id','app.stage','candidate.candidate_code','req.code as requisition_code','req.title as requisition_title'])->orderBy('candidate.candidate_code')->orderBy('app.id');$map=fn($row)=>['value'=>(string)$row->id,'label'=>$row->candidate_code.' · '.$row->requisition_title,'metadata'=>['requisition'=>$row->requisition_code,'stage'=>$row->stage],'status'=>'active'];}$rows=$q->paginate((int)($d['per_page']??25));$rows->getCollection()->transform($map);return response()->json(['status'=>'success','data'=>$rows]);}
+ public function templates(Request$r):JsonResponse{$q=DB::table('hr_lifecycle_templates')->select(['id', 'case_type', 'code', 'version', 'applicability', 'task_definitions', 'status', 'created_by', 'approved_by', 'approved_at', 'created_at', 'updated_at'])->when($r->case_type,fn($b,$v)=>$b->where('case_type',$v))->when($r->status,fn($b,$v)=>$b->where('status',$v))->latest('created_at');$rows=$q->paginate($this->paginationSize($r, 50));$rows->getCollection()->transform(fn($row)=>array_merge((array)$row,['applicability'=>json_decode($row->applicability,true,512,JSON_THROW_ON_ERROR),'task_definitions'=>json_decode($row->task_definitions,true,512,JSON_THROW_ON_ERROR)]));return response()->json(['status'=>'success','data'=>$rows]);}
+ public function templateOptions(Request$r):JsonResponse{$d=$r->validate(['search'=>['nullable','string','max:120'],'selected_id'=>['nullable','uuid'],'page'=>['nullable','integer','min:1'],'per_page'=>['nullable','integer','min:1','max:50']]);$q=DB::table('hr_lifecycle_templates')->where('status','approved');if(!empty($d['selected_id']))$q->where('id',$d['selected_id']);elseif(!empty($d['search'])){$term='%'.strtolower(addcslashes(trim($d['search']),'%_\\')).'%';$q->where(fn($match)=>$match->whereRaw('LOWER(code) LIKE ?',[$term])->orWhereRaw('LOWER(case_type) LIKE ?',[$term]));}$q->select(['id','code','version','case_type'])->orderBy('code')->orderByDesc('version')->orderBy('id');$map=fn($template)=>['value'=>(string)$template->id,'label'=>$template->code.' v'.$template->version.' ('.$template->case_type.')','metadata'=>['case_type'=>$template->case_type],'status'=>'approved'];if(!empty($d['selected_id']))return response()->json(['status'=>'success','data'=>$q->limit(1)->get()->map($map)->values()]);$rows=$q->paginate($d['per_page']??25);$rows->getCollection()->transform($map);return response()->json(['status'=>'success','data'=>$rows]);}
+ public function caseSubjectOptions(Request$r):JsonResponse{$d=$r->validate(['record_type'=>['required',Rule::in(['staff','application'])],'search'=>['nullable','string','max:120'],'selected_id'=>['nullable','uuid'],'page'=>['nullable','integer','min:1'],'per_page'=>['nullable','integer','min:1','max:50']]);$term=trim((string)($d['search']??''));if($d['record_type']==='staff'){$q=DB::table('staff')->leftJoin('users','users.id','=','staff.user_id')->whereNull('staff.deleted_at')->whereNull('staff.employment_ended_at')->when($d['selected_id']??null,fn($b,$id)=>$b->where('staff.id',$id))->when($term!==''&&empty($d['selected_id']),fn($b)=>$b->where(fn($m)=>$m->whereRaw('LOWER(staff.code) LIKE ?',['%'.mb_strtolower($term).'%'])->orWhereRaw('LOWER(users.first_name) LIKE ?',['%'.mb_strtolower($term).'%'])->orWhereRaw('LOWER(users.last_name) LIKE ?',['%'.mb_strtolower($term).'%'])))->select(['staff.id','staff.code','staff.staff_type','users.first_name','users.last_name'])->orderBy('users.first_name')->orderBy('staff.id');$map=fn($row)=>['value'=>(string)$row->id,'label'=>trim(trim(($row->first_name??'').' '.($row->last_name??'')).' · '.($row->code?:'No Staff code')),'metadata'=>['staff_type'=>$row->staff_type],'status'=>'active'];}else{$q=DB::table('hr_candidate_applications as app')->join('hr_candidates as candidate','candidate.id','=','app.candidate_id')->join('hr_job_requisitions as req','req.id','=','app.requisition_id')->where('app.status','active')->when($d['selected_id']??null,fn($b,$id)=>$b->where('app.id',$id))->when($term!==''&&empty($d['selected_id']),fn($b)=>$b->where(fn($m)=>$m->whereRaw('LOWER(candidate.candidate_code) LIKE ?',['%'.mb_strtolower($term).'%'])->orWhereRaw('LOWER(req.code) LIKE ?',['%'.mb_strtolower($term).'%'])->orWhereRaw('LOWER(req.title) LIKE ?',['%'.mb_strtolower($term).'%'])))->select(['app.id','app.stage','candidate.candidate_code','req.code as requisition_code','req.title as requisition_title'])->orderBy('candidate.candidate_code')->orderBy('app.id');$map=fn($row)=>['value'=>(string)$row->id,'label'=>$row->candidate_code.' · '.$row->requisition_title,'metadata'=>['requisition'=>$row->requisition_code,'stage'=>$row->stage],'status'=>'active'];}$rows=$q->paginate((int)($d['per_page']??25));$rows->getCollection()->transform($map);return response()->json(['status'=>'success','data'=>$rows]);}
  public function storeTemplate(Request $r): JsonResponse
  {
-     
+
      $data = $r->validate([
-         'company_id' => ['nullable', 'uuid'], 'case_type' => ['required', Rule::in(['preboarding', 'onboarding', 'probation', 'transfer', 'offboarding'])],
+         'case_type' => ['required', Rule::in(['preboarding', 'onboarding', 'probation', 'transfer', 'offboarding'])],
          'code' => ['required', 'string', 'max:80'], 'version' => ['required', 'integer', 'min:1'],
          'applicability' => ['present', 'array'], 'task_definitions' => ['required', 'array', 'min:1'],
          'task_definitions.*.code' => ['required', 'string', 'max:80'], 'task_definitions.*.title' => ['required', 'string', 'max:255'],
          'idempotency_key' => ['required', 'uuid'],
      ]);
-     $data['company_id']=$data['company_id']??$this->actorCompanyId($r);$this->company($r, $data['company_id']);
      $data['code'] = trim($data['code']);
      $key = $data['idempotency_key'];
      unset($data['idempotency_key']);
      $checksum = hash('sha256', json_encode([
-         'company_id' => $data['company_id'], 'case_type' => $data['case_type'], 'code' => $data['code'],
+         'case_type' => $data['case_type'], 'code' => $data['code'],
          'version' => (int) $data['version'], 'applicability' => $data['applicability'],
          'task_definitions' => array_values($data['task_definitions']),
      ], JSON_UNESCAPED_SLASHES | JSON_THROW_ON_ERROR));
 
      try {
          return DB::transaction(function () use ($r, $data, $key, $checksum): JsonResponse {
-             $existing = DB::table('hr_lifecycle_templates')->where(fn ($_companyIdScope) => \App\Services\CompanyIdScope::constrain($_companyIdScope, 'company_id', $data['company_id']))
-                 ->where('idempotency_key', $key)->lockForUpdate()->first();
+             $existing = DB::table('hr_lifecycle_templates')->where('idempotency_key', $key)->lockForUpdate()->first();
              if ($existing) {
                  abort_unless(hash_equals((string) $existing->request_payload_checksum, $checksum), 409,
                      'This lifecycle template key was already used with different request facts.');
                  return response()->json(['status' => 'success', 'data' => [
-                     'id' => $existing->id, 'company_id' => $existing->company_id, 'case_type' => $existing->case_type,
+                     'id' => $existing->id, 'case_type' => $existing->case_type,
                      'code' => $existing->code, 'version' => $existing->version, 'status' => $existing->status,
                  ]]);
              }
-             abort_if(DB::table('hr_lifecycle_templates')->where(fn ($_companyIdScope) => \App\Services\CompanyIdScope::constrain($_companyIdScope, 'company_id', $data['company_id']))
-                 ->where('code', $data['code'])->where('version', $data['version'])->exists(), 409,
-                 'A lifecycle template with this company, code, and version already exists.');
+             abort_if(DB::table('hr_lifecycle_templates')->where('code', $data['code'])->where('version', $data['version'])->exists(), 409,
+                 'A lifecycle template with this code and version already exists.');
 
              $id = (string) Str::uuid();
              DB::table('hr_lifecycle_templates')->insert([
-                 'id' => $id, 'company_id' => $data['company_id'], 'case_type' => $data['case_type'],
+                 'id' => $id, 'case_type' => $data['case_type'],
                  'code' => $data['code'], 'version' => $data['version'],
                  'applicability' => json_encode($data['applicability'], JSON_THROW_ON_ERROR),
                  'task_definitions' => json_encode(array_values($data['task_definitions']), JSON_THROW_ON_ERROR),
@@ -116,54 +108,50 @@ class LifecycleController extends Controller{
                  'idempotency_key' => $key, 'request_payload_checksum' => $checksum, 'created_at' => now(), 'updated_at' => now(),
              ]);
              activity('hr-lifecycle')->causedBy($r->user())->withProperties([
-                 'template_id' => $id, 'company_id' => $data['company_id'], 'case_type' => $data['case_type'],
+                 'template_id' => $id, 'case_type' => $data['case_type'],
              ])->log('lifecycle_template_submitted');
 
              return response()->json(['status' => 'success', 'data' => [
-                 'id' => $id, 'company_id' => $data['company_id'], 'case_type' => $data['case_type'],
+                 'id' => $id, 'case_type' => $data['case_type'],
                  'code' => $data['code'], 'version' => $data['version'], 'status' => 'pending_approval',
              ]], 201);
          });
      } catch (\Illuminate\Database\QueryException $e) {
-         $existing = DB::table('hr_lifecycle_templates')->where(fn ($_companyIdScope) => \App\Services\CompanyIdScope::constrain($_companyIdScope, 'company_id', $data['company_id']))
-             ->where('idempotency_key', $key)->first();
+         $existing = DB::table('hr_lifecycle_templates')->where('idempotency_key', $key)->first();
          if ($existing) {
              abort_unless(hash_equals((string) $existing->request_payload_checksum, $checksum), 409,
                  'This lifecycle template key was already used with different request facts.');
              return response()->json(['status' => 'success', 'data' => [
-                 'id' => $existing->id, 'company_id' => $existing->company_id, 'case_type' => $existing->case_type,
+                 'id' => $existing->id, 'case_type' => $existing->case_type,
                  'code' => $existing->code, 'version' => $existing->version, 'status' => $existing->status,
              ]]);
          }
-         if (DB::table('hr_lifecycle_templates')->where(fn ($_companyIdScope) => \App\Services\CompanyIdScope::constrain($_companyIdScope, 'company_id', $data['company_id']))
-             ->where('code', $data['code'])->where('version', $data['version'])->exists()) {
-             abort(409, 'A lifecycle template with this company, code, and version already exists.');
+         if (DB::table('hr_lifecycle_templates')->where('code', $data['code'])->where('version', $data['version'])->exists()) {
+             abort(409, 'A lifecycle template with this code and version already exists.');
          }
          throw $e;
      }
  }
- public function approveTemplate(Request$r,string$id):JsonResponse{return DB::transaction(function()use($r,$id){$row=DB::table('hr_lifecycle_templates')->where('id',$id)->lockForUpdate()->first();abort_unless($row,404);$this->company($r,$row->company_id);abort_if($row->created_by===$r->user()->id,409,'Template creator cannot approve it.');abort_unless($row->status==='pending_approval',409);DB::table('hr_lifecycle_templates')->where('id',$id)->update(['status'=>'approved','approved_by'=>$r->user()->id,'approved_at'=>now(),'updated_at'=>now()]);return response()->json(['status'=>'success','data'=>DB::table('hr_lifecycle_templates')->select(['id','company_id','case_type','code','version','status','created_by','approved_by','approved_at','created_at','updated_at'])->find($id)]);});}
+ public function approveTemplate(Request$r,string$id):JsonResponse{return DB::transaction(function()use($r,$id){$row=DB::table('hr_lifecycle_templates')->where('id',$id)->lockForUpdate()->first();abort_unless($row,404);abort_if($row->created_by===$r->user()->id,409,'Template creator cannot approve it.');abort_unless($row->status==='pending_approval',409);DB::table('hr_lifecycle_templates')->where('id',$id)->update(['status'=>'approved','approved_by'=>$r->user()->id,'approved_at'=>now(),'updated_at'=>now()]);return response()->json(['status'=>'success','data'=>DB::table('hr_lifecycle_templates')->select(['id','case_type','code','version','status','created_by','approved_by','approved_at','created_at','updated_at'])->find($id)]);});}
  public function openCase(Request $r, LifecycleService $s): JsonResponse
  {
-     
+
      $data = $r->validate([
-         'company_id' => ['nullable', 'uuid'], 'staff_id' => ['nullable', 'uuid', 'required_without:application_id', 'prohibits:application_id'],
+         'staff_id' => ['nullable', 'uuid', 'required_without:application_id', 'prohibits:application_id'],
          'application_id' => ['nullable', 'uuid', 'required_without:staff_id', 'prohibits:staff_id'],
          'template_id' => ['required', 'uuid'], 'effective_date' => ['required', 'date'], 'idempotency_key' => ['required', 'uuid'],
      ]);
-     $data['company_id']=$data['company_id']??$this->actorCompanyId($r);$this->company($r, $data['company_id']);
      $key = $data['idempotency_key'];
      unset($data['idempotency_key']);
      $checksum = hash('sha256', json_encode([
-         'company_id' => $data['company_id'], 'staff_id' => $data['staff_id'] ?? null,
+         'staff_id' => $data['staff_id'] ?? null,
          'application_id' => $data['application_id'] ?? null, 'template_id' => $data['template_id'],
          'effective_date' => $data['effective_date'],
      ], JSON_UNESCAPED_SLASHES | JSON_THROW_ON_ERROR));
 
      try {
          return DB::transaction(function () use ($r, $s, $data, $key, $checksum): JsonResponse {
-             $existing = DB::table('hr_lifecycle_cases')->where(fn ($_companyIdScope) => \App\Services\CompanyIdScope::constrain($_companyIdScope, 'company_id', $data['company_id']))
-                 ->where('idempotency_key', $key)->lockForUpdate()->first();
+             $existing = DB::table('hr_lifecycle_cases')->where('idempotency_key', $key)->lockForUpdate()->first();
              if ($existing) {
                  abort_unless(hash_equals((string) $existing->request_payload_checksum, $checksum), 409,
                      'This lifecycle case key was already used with different request facts.');
@@ -178,7 +166,7 @@ class LifecycleController extends Controller{
                  'idempotency_key' => $key, 'request_payload_checksum' => $checksum,
              ]);
              activity('hr-lifecycle')->causedBy($r->user())->withProperties([
-                 'case_id' => $case->id, 'company_id' => $data['company_id'], 'case_type' => $case->case_type,
+                 'case_id' => $case->id, 'case_type' => $case->case_type,
              ])->log('lifecycle_case_opened');
 
              return response()->json(['status' => 'success', 'data' => [
@@ -187,8 +175,7 @@ class LifecycleController extends Controller{
              ]], 201);
          });
      } catch (\Illuminate\Database\QueryException $e) {
-         $existing = DB::table('hr_lifecycle_cases')->where(fn ($_companyIdScope) => \App\Services\CompanyIdScope::constrain($_companyIdScope, 'company_id', $data['company_id']))
-             ->where('idempotency_key', $key)->first();
+         $existing = DB::table('hr_lifecycle_cases')->where('idempotency_key', $key)->first();
          if ($existing) {
              abort_unless(hash_equals((string) $existing->request_payload_checksum, $checksum), 409,
                  'This lifecycle case key was already used with different request facts.');
@@ -200,10 +187,10 @@ class LifecycleController extends Controller{
          throw $e;
      }
  }
- public function completeTask(Request$r,string$id,LifecycleService$s):JsonResponse{$d=$r->validate(['evidence'=>['required','array','min:1'],'idempotency_key'=>['required','uuid']]);$result=$s->completeTask($id,$d['evidence'],$r->user()->id,$this->actorCompanyId($r),$d['idempotency_key']);return response()->json(['status'=>'success','data'=>$result['task'],'idempotent_replay'=>$result['replayed']]);}
+ public function completeTask(Request$r,string$id,LifecycleService$s):JsonResponse{$d=$r->validate(['evidence'=>['required','array','min:1'],'idempotency_key'=>['required','uuid']]);$result=$s->completeTask($id,$d['evidence'],$r->user()->id,$d['idempotency_key']);return response()->json(['status'=>'success','data'=>$result['task'],'idempotent_replay'=>$result['replayed']]);}
  public function startProbation(Request $request): JsonResponse
  {
-     
+
      $data = $request->validate([
          'staff_id' => ['required', 'uuid', 'exists:staff,id'],
          'starts_at' => ['required', 'date'],
@@ -216,12 +203,10 @@ class LifecycleController extends Controller{
          $staff = Staff::query()->whereKey($data['staff_id'])
              ->where(fn ($employment) => $employment->whereNull('employment_ended_at')->orWhere('employment_ended_at', '>', now()))
              ->lockForUpdate()->firstOrFail();
-         $this->company($request, $staff->company_id);
-
          $spell = DB::table('hr_employment_spells')->where('staff_id', $staff->id)
-             ->where(fn ($_companyIdScope) => \App\Services\CompanyIdScope::constrain($_companyIdScope, 'company_id', $staff->company_id))->where('status', 'active')->whereNull('terminated_at')
+             ->where('status', 'active')->whereNull('terminated_at')
              ->lockForUpdate()->first();
-         abort_unless($spell, 422, 'An active employment spell in the Staff legal entity is required.');
+         abort_unless($spell, 422, 'An active employment spell is required.');
          abort_if(
              DB::table('hr_probation_cases')->where('employment_spell_id', $spell->id)->where('status', 'active')->exists(),
              409,
@@ -241,7 +226,7 @@ class LifecycleController extends Controller{
  }
  public function decideProbation(Request $r, string $id): JsonResponse
  {
-     
+
      $data = $r->validate([
          'outcome' => ['required', Rule::in(['confirmed', 'extended', 'separated'])],
          'new_end_at' => ['nullable', 'required_if:outcome,extended', 'prohibited_unless:outcome,extended', 'date_format:Y-m-d'],
@@ -251,11 +236,10 @@ class LifecycleController extends Controller{
      $result = DB::transaction(function () use ($r, $id, $data) {
          $row = DB::table('hr_probation_cases')->where('id', $id)->lockForUpdate()->first();
          abort_unless($row, 404);
-         $companyId = $this->actorCompanyId($r);
-         $staff = Staff::query()->whereKey($row->staff_id)->where(fn ($_companyIdScope) => \App\Services\CompanyIdScope::constrain($_companyIdScope, 'company_id', $companyId))->firstOrFail();
+         $staff = Staff::query()->whereKey($row->staff_id)->firstOrFail();
          $spell = DB::table('hr_employment_spells')->where('id', $row->employment_spell_id)
-             ->where('staff_id', $staff->id)->where(fn ($_companyIdScope) => \App\Services\CompanyIdScope::constrain($_companyIdScope, 'company_id', $companyId))->lockForUpdate()->first();
-         abort_unless($spell, 409, 'The probation employment spell does not match this Staff legal entity.');
+             ->where('staff_id', $staff->id)->lockForUpdate()->first();
+         abort_unless($spell, 409, 'The probation employment spell does not match this Staff member.');
          $summary = fn () => DB::table('hr_probation_cases')->select([
              'id', 'starts_at', 'review_due_at', 'current_end_at', 'status', 'proposed_outcome', 'final_outcome', 'decided_at',
          ])->where('id', $id)->firstOrFail();
@@ -293,13 +277,12 @@ class LifecycleController extends Controller{
                  'decided_at' => now(), 'updated_at' => now(),
              ]);
              if ($data['outcome'] === 'confirmed') {
-                 DB::table('hr_employment_spells')->where('id', $row->employment_spell_id)
-                     ->where(fn ($_companyIdScope) => \App\Services\CompanyIdScope::constrain($_companyIdScope, 'company_id', $companyId))->update(['confirmation_date' => now()->toDateString(), 'updated_at' => now()]);
+                 DB::table('hr_employment_spells')->where('id', $row->employment_spell_id)->update(['confirmation_date' => now()->toDateString(), 'updated_at' => now()]);
              }
          }
 
          activity('hr-lifecycle')->causedBy($r->user())->withProperties([
-             'probation_case_id' => $id, 'staff_id' => $staff->id, 'company_id' => $staff->company_id,
+             'probation_case_id' => $id, 'staff_id' => $staff->id,
              'outcome' => $data['outcome'],
          ])->log('probation_decided');
 
@@ -308,10 +291,10 @@ class LifecycleController extends Controller{
 
      return response()->json(['status' => 'success', 'data' => $result['data'], 'idempotent_replay' => $result['replayed']]);
  }
- public function assignCustody(Request$r):JsonResponse{$d=$r->validate(['company_id'=>['nullable','uuid'],'staff_id'=>['required','uuid'],'custody_type'=>['required',Rule::in(['asset','access','phone_sim'])],'item_code'=>['required','string','max:120'],'item_name'=>['required','string','max:255'],'details'=>['nullable','array'],'assigned_at'=>['required','date'],'due_back_at'=>['nullable','date','after_or_equal:assigned_at'],'condition_snapshot'=>['nullable','array']]);$d['company_id']=$d['company_id']??$this->actorCompanyId($r);$this->company($r,$d['company_id']);abort_if(true&&in_array($d['custody_type'],['asset','phone_sim'],true),409,'Use the governed advanced asset request, approval, and issue workflow.');abort_unless(Staff::query()->whereKey($d['staff_id'])->where(fn ($_companyIdScope) => \App\Services\CompanyIdScope::constrain($_companyIdScope, 'company_id', $d['company_id']))->exists(),422);$id=(string)Str::uuid();DB::table('hr_custody_assignments')->insert(['id'=>$id,'company_id'=>$d['company_id'],'staff_id'=>$d['staff_id'],'custody_type'=>$d['custody_type'],'item_code'=>$d['item_code'],'item_name'=>$d['item_name'],'encrypted_details'=>isset($d['details'])?encrypt($d['details']):null,'assigned_at'=>$d['assigned_at'],'due_back_at'=>$d['due_back_at']??null,'status'=>'assigned','condition_snapshot'=>json_encode($d['condition_snapshot']??null,JSON_THROW_ON_ERROR),'assigned_by'=>$r->user()->id,'created_at'=>now(),'updated_at'=>now()]);return response()->json(['status'=>'success','data'=>DB::table('hr_custody_assignments')->select(['id','staff_id','custody_type','item_code','item_name','assigned_at','due_back_at','status'])->find($id)],201);}
+ public function assignCustody(Request$r):JsonResponse{$d=$r->validate(['company_id'=>['nullable','uuid'],'staff_id'=>['required','uuid'],'custody_type'=>['required',Rule::in(['asset','access','phone_sim'])],'item_code'=>['required','string','max:120'],'item_name'=>['required','string','max:255'],'details'=>['nullable','array'],'assigned_at'=>['required','date'],'due_back_at'=>['nullable','date','after_or_equal:assigned_at'],'condition_snapshot'=>['nullable','array']]);abort_if(true&&in_array($d['custody_type'],['asset','phone_sim'],true),409,'Use the governed advanced asset request, approval, and issue workflow.');abort_unless(Staff::query()->whereKey($d['staff_id'])->where(fn ($_companyIdScope) => \App\Services\CompanyIdScope::constrain($_companyIdScope, 'company_id', $d['company_id']))->exists(),422);$id=(string)Str::uuid();DB::table('hr_custody_assignments')->insert(['id'=>$id,'company_id'=>$d['company_id'],'staff_id'=>$d['staff_id'],'custody_type'=>$d['custody_type'],'item_code'=>$d['item_code'],'item_name'=>$d['item_name'],'encrypted_details'=>isset($d['details'])?encrypt($d['details']):null,'assigned_at'=>$d['assigned_at'],'due_back_at'=>$d['due_back_at']??null,'status'=>'assigned','condition_snapshot'=>json_encode($d['condition_snapshot']??null,JSON_THROW_ON_ERROR),'assigned_by'=>$r->user()->id,'created_at'=>now(),'updated_at'=>now()]);return response()->json(['status'=>'success','data'=>DB::table('hr_custody_assignments')->select(['id','staff_id','custody_type','item_code','item_name','assigned_at','due_back_at','status'])->find($id)],201);}
  public function requestChange(Request $r, string $staffId, LifecycleService $service, StaffAccessService $access): JsonResponse
  {
-     
+
      $data = $r->validate([
          'change_type' => ['required', Rule::in(['transfer', 'promotion', 'manager_change', 'location_change', 'work_pattern_change'])],
          'effective_date' => ['required', 'date'],
@@ -323,15 +306,42 @@ class LifecycleController extends Controller{
          'idempotency_key' => ['required', 'string', 'max:160'],
      ]);
      $staff = Staff::query()->findOrFail($staffId);
-     $this->company($r, $staff->company_id);
      $access->authorize($r->user(), $staff, 'view');
 
      return response()->json(['status' => 'success', 'data' => $service->requestChange($staff, $data, $r->user()->id)], 201);
  }
- public function approveChange(Request$r,string$id,LifecycleService$s):JsonResponse{$row=DB::table('hr_employee_change_requests')->find($id);abort_unless($row,404);$this->company($r,$row->company_id);return response()->json(['status'=>'success','data'=>$s->approveChange($id,$r->user()->id,(string)$row->company_id)]);}
- public function openExit(Request$r,LifecycleService$s):JsonResponse{$d=$r->validate(['company_id'=>['nullable','uuid'],'staff_id'=>['required','uuid'],'exit_type'=>['required',Rule::in(['resignation','termination','retirement','death_in_service'])],'notice_date'=>['nullable','date'],'proposed_last_working_date'=>['required','date'],'reason_code'=>['required','string','max:80'],'protected_reason'=>['nullable','string','max:4000'],'impact_snapshot'=>['required','array'],'rehire_eligible'=>['nullable','boolean']]);$d['company_id']=$d['company_id']??$this->actorCompanyId($r);$this->company($r,$d['company_id']);abort_unless(Staff::query()->whereKey($d['staff_id'])->where(fn ($_companyIdScope) => \App\Services\CompanyIdScope::constrain($_companyIdScope, 'company_id', $d['company_id']))->exists(),422);$id=(string)Str::uuid();$d['impact_snapshot']=json_encode($d['impact_snapshot'],JSON_THROW_ON_ERROR);$d['protected_reason']=isset($d['protected_reason'])?encrypt($d['protected_reason']):null;DB::table('hr_exit_cases')->insert($d+['id'=>$id,'status'=>'pending_approval','opened_by'=>$r->user()->id,'created_at'=>now(),'updated_at'=>now()]);app(\App\Services\Hr\Ess\HrRequestIndexService::class)->register($d['company_id'],$d['staff_id'],'exit','exit_case',$id,'pending_approval','Employment exit request',null,48,$r->user()->id,['attendance'=>true,'leave'=>true,'payroll'=>true]);return response()->json(['status'=>'success','data'=>DB::table('hr_exit_cases')->select(['id','staff_id','exit_type','proposed_last_working_date','reason_code','status'])->find($id)],201);}
- public function approveExit(Request$r,string$id,LifecycleService$s):JsonResponse{$row=DB::table('hr_exit_cases')->find($id);abort_unless($row,404);$this->company($r,$row->company_id);return response()->json(['status'=>'success','data'=>$s->approveExit($id,$r->user()->id,(string)$row->company_id)]);}
- public function completeClearance(Request$r,string$id,LifecycleService$s):JsonResponse{$d=$r->validate(['resolution'=>['required','string','max:2000']]);$result=$s->completeClearance($id,$d['resolution'],$r->user()->id,$this->actorCompanyId($r));return response()->json(['status'=>'success','data'=>$result['item'],'idempotent_replay'=>$result['replayed']]);}
- public function finalizeExit(Request$r,string$id,LifecycleService$s):JsonResponse{$row=DB::table('hr_exit_cases')->find($id);abort_unless($row,404);$this->company($r,$row->company_id);return response()->json(['status'=>'success','data'=>$s->finalizeExit($id,$r->user(),(string)$row->company_id)]);}
- private function actorCompanyId(Request$r):string{$company=app(StaffAccessService::class)->currentActorStaff($r->user())->company_id??app(\App\Services\SingleCompanyScope::class)->activeDefaultCompany()?->id;abort_unless($company,409,'No active default company is configured.');return(string)$company;}private function company(Request$r,string$id):void{abort_unless($this->actorCompanyId($r)===$id,403,'Lifecycle data is outside your legal entity.');}
+ public function approveChange(Request$r,string$id,LifecycleService$s):JsonResponse{$row=DB::table('hr_employee_change_requests')->find($id);abort_unless($row,404);return response()->json(['status'=>'success','data'=>$s->approveChange($id,$r->user()->id)]);}
+ public function openExit(Request $r): JsonResponse
+ {
+     $data = $r->validate([
+         'staff_id' => ['required', 'uuid', 'exists:staff,id'],
+         'exit_type' => ['required', Rule::in(['resignation', 'termination', 'retirement', 'death_in_service'])],
+         'notice_date' => ['nullable', 'date'], 'proposed_last_working_date' => ['required', 'date'],
+         'reason_code' => ['required', 'string', 'max:80'], 'protected_reason' => ['nullable', 'string', 'max:4000'],
+         'impact_snapshot' => ['required', 'array'], 'rehire_eligible' => ['nullable', 'boolean'],
+     ]);
+     $data['impact_snapshot'] = json_encode($data['impact_snapshot'], JSON_THROW_ON_ERROR);
+     $data['protected_reason'] = isset($data['protected_reason']) ? encrypt($data['protected_reason']) : null;
+     $id = (string) Str::uuid();
+     DB::table('hr_exit_cases')->insert($data + ['id' => $id, 'status' => 'pending_approval', 'opened_by' => $r->user()->id, 'created_at' => now(), 'updated_at' => now()]);
+     app(\App\Services\Hr\Ess\HrRequestIndexService::class)->register($data['staff_id'], 'exit', 'exit_case', $id, 'pending_approval', 'Employment exit request', null, 48, $r->user()->id, ['attendance' => true, 'leave' => true, 'payroll' => true]);
+     return response()->json(['status' => 'success', 'data' => DB::table('hr_exit_cases')->select(['id', 'staff_id', 'exit_type', 'proposed_last_working_date', 'reason_code', 'status'])->find($id)], 201);
+ }
+ public function approveExit(Request $r, string $id, LifecycleService $s): JsonResponse
+ {
+     $row = DB::table('hr_exit_cases')->find($id); abort_unless($row, 404);
+     return response()->json(['status' => 'success', 'data' => $s->approveExit($id, $r->user()->id)]);
+ }
+ public function completeClearance(Request $r, string $id, LifecycleService $s): JsonResponse
+ {
+     $data = $r->validate(['resolution' => ['required', 'string', 'max:2000']]);
+     $result = $s->completeClearance($id, $data['resolution'], $r->user()->id);
+     return response()->json(['status' => 'success', 'data' => $result['item'], 'idempotent_replay' => $result['replayed']]);
+ }
+ public function finalizeExit(Request $r, string $id, LifecycleService $s): JsonResponse
+ {
+     $row = DB::table('hr_exit_cases')->find($id); abort_unless($row, 404);
+     return response()->json(['status' => 'success', 'data' => $s->finalizeExit($id, $r->user())]);
+ }
+
 }

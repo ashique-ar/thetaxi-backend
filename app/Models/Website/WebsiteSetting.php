@@ -86,7 +86,7 @@ class WebsiteSetting extends BaseModel
     /**
      * Get a setting value by type.
      */
-    public static function getValue(string $type, $default = null, ?string $companyId = null)
+    public static function getValue(string $type, $default = null)
     {
         $setting = static::query()->where('type', $type)->first();
 
@@ -96,7 +96,7 @@ class WebsiteSetting extends BaseModel
     /**
      * Set a setting value by type.
      */
-    public static function setValue(string $type, $value, ?string $companyId = null): void
+    public static function setValue(string $type, $value): void
     {
         static::updateOrCreate(
             ['type' => $type],
@@ -132,7 +132,7 @@ class WebsiteSetting extends BaseModel
     /**
      * Get multiple settings by types.
      */
-    public static function getValues(array $types, ?string $companyId = null): array
+    public static function getValues(array $types): array
     {
         $settings = static::whereIn('type', $types)
             ->get()

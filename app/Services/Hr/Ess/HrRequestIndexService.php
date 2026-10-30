@@ -7,12 +7,12 @@ use Illuminate\Support\Str;
 
 class HrRequestIndexService
 {
-    public function register(string $company, string $staff, string $type, string $sourceType, string $sourceId, string $status, string $summary, ?string $ownerStaff, ?int $slaHours, string $actor, array $capabilities=[]): ?object
+    public function register(string $staff, string $type, string $sourceType, string $sourceId, string $status, string $summary, ?string $ownerStaff, ?int $slaHours, string $actor, array $capabilities=[]): ?object
     {
         
         if ($existing=DB::table('hr_request_index')->where('source_type',$sourceType)->where('source_id',$sourceId)->first()) return $existing;
         $id=(string)Str::uuid();
-        DB::table('hr_request_index')->insert(['id'=>$id,'company_id'=>$company,'requester_staff_id'=>$staff,'request_type'=>$type,'source_type'=>$sourceType,'source_id'=>$sourceId,'status'=>$status,'summary'=>$summary,'current_owner_staff_id'=>$ownerStaff,'due_at'=>$slaHours?now()->addHours($slaHours):null,'capability_snapshot'=>json_encode($capabilities,JSON_THROW_ON_ERROR),'submitted_at'=>now(),'created_at'=>now(),'updated_at'=>now()]);
+        DB::table('hr_request_index')->insert(['id'=>$id,'requester_staff_id'=>$staff,'request_type'=>$type,'source_type'=>$sourceType,'source_id'=>$sourceId,'status'=>$status,'summary'=>$summary,'current_owner_staff_id'=>$ownerStaff,'due_at'=>$slaHours?now()->addHours($slaHours):null,'capability_snapshot'=>json_encode($capabilities,JSON_THROW_ON_ERROR),'submitted_at'=>now(),'created_at'=>now(),'updated_at'=>now()]);
         $this->event($id,'submitted',null,$status,'Request submitted.',$actor,[]);
         return DB::table('hr_request_index')->find($id);
     }

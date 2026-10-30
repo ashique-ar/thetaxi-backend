@@ -76,7 +76,7 @@ class BookingFlowService
      * Request-scope cache for distance calculations to avoid repeated external calls
      * when the same route is priced across multiple vehicle groups.
      */
-    private array $companyDistanceCache = [];
+    private array $routeDistanceCache = [];
     private ?bool $includeGarageDistanceForPricing = null;
 
     /** Reuse pricing metadata while ranking groups in one availability request. */
@@ -1554,11 +1554,10 @@ class BookingFlowService
         $isReturnTrip = $params['is_return_trip'] ?? false;
 
         if ($routeDistanceRequired && $hasUsablePickup && $hasUsableDropoff) {
-            $distanceData = $this->calculateCompanyDistances(
+            $distanceData = $this->calculateRouteDistances(
                 $pickupLocation,
                 $dropoffLocation,
                 $serviceType,
-                null,
                 $additionalPickupLocations,
                 $additionalDropoffLocations,
                 $orderedAdditionalStops
@@ -1568,7 +1567,7 @@ class BookingFlowService
 
             // For return trips, calculate the return journey distance (dropoff back to pickup)
             if ($isReturnTrip && $outboundDistanceKm) {
-                $returnDistanceData = $this->calculateCompanyDistances($dropoffLocation, $pickupLocation, $serviceType);
+                $returnDistanceData = $this->calculateRouteDistances($dropoffLocation, $pickupLocation, $serviceType);
                 $returnDistanceKm = $returnDistanceData['journey_distance'] ?? null;
                 $returnDurationSeconds = $returnDistanceData['journey_duration_seconds'] ?? null;
 
@@ -5623,11 +5622,10 @@ class BookingFlowService
                 : (is_string($serviceTypeId) && Str::isUuid($serviceTypeId) ? $serviceTypeId : null);
             $serviceType = $params['service_type'] ?? null;
 
-            $distanceCalculations = $this->calculateCompanyDistances(
+            $distanceCalculations = $this->calculateRouteDistances(
                 $pickupLocation,
                 $dropoffLocation,
                 $serviceType,
-                $params['vehicle_id'] ?? null,
                 $additionalPickupLocations,
                 $additionalDropoffLocations,
                 $orderedAdditionalStops,
@@ -7173,11 +7171,10 @@ class BookingFlowService
         }
     }
 
-    private function calculateCompanyDistances(
+    private function calculateRouteDistances(
         $pickupLocation,
         $dropoffLocation,
         ?string $serviceType = null,
-        ?string $specificVehicleId = null,
         array $additionalPickupLocations = [],
         array $additionalDropoffLocations = [],
         array $orderedAdditionalStops = [],
@@ -7211,65 +7208,20 @@ class BookingFlowService
                 return $contractualDistances + [
                     'additional_stops_count' => max(0, count($routePoints) - 2),
                     'service_type_used' => $serviceType,
-                    'company_used' => null,
-                    'company_location' => null,
-                    'company_id' => null,
                 ];
             }
-        }
-
-        // Check if this is a preview calculation
-        // For preview mode, always use default company to ensure consistent pricing
-        // For confirmed bookings, use the specific vehicle's company for accurate distance
-        $isPreviewMode = request()->input('is_preview_calculation', false);
-
-        if ($isPreviewMode) {
-            // Always use default company for preview calculations to ensure consistent pricing
-            $company = \App\Models\Company::getDefaultCompany();
-        } else {
-            // For confirmed bookings, try to use vehicle-specific company
-            // If vehicle has no company or vehicle_id is not provided, fallback to default company
-            $vehicle = $specificVehicleId ? Vehicle::find($specificVehicleId) : null;
-            $vehicleCompany = $vehicle ? $vehicle->company : null;
-
-            // IMPORTANT: Always fallback to default company if vehicle company is null
-            // This ensures consistent garage distance calculations for pricing
-            $company = $vehicleCompany ?? \App\Models\Company::getDefaultCompany();
-
-        }
-
-        if ($company && $company->latitude !== null && $company->longitude !== null) {
-            if ($this->matchesCompanyLocation($pickupLocation, $company)) {
-                $pickupLocation['latitude'] = (float) $company->latitude;
-                $pickupLocation['longitude'] = (float) $company->longitude;
-            }
-            if ($this->matchesCompanyLocation($dropoffLocation, $company)) {
-                $dropoffLocation['latitude'] = (float) $company->latitude;
-                $dropoffLocation['longitude'] = (float) $company->longitude;
-            }
-
-            $routePoints = $this->buildJourneyRoutePoints(
-                $pickupLocation,
-                $dropoffLocation,
-                $additionalPickupLocations,
-                $additionalDropoffLocations,
-                $orderedAdditionalStops
-            );
         }
 
         $includeGarageDistance = $this->includeGarageDistanceForPricing();
 
         $cacheKey = md5(json_encode([
             'service_type' => $serviceType,
-            'specific_vehicle_id' => $specificVehicleId,
-            'company_id' => $company->id ?? null,
             'include_garage_distance' => $includeGarageDistance,
-            'is_preview_mode' => $isPreviewMode,
             'route_points' => $routePoints,
         ]));
 
-        if (isset($this->companyDistanceCache[$cacheKey])) {
-            return $this->companyDistanceCache[$cacheKey];
+        if (isset($this->routeDistanceCache[$cacheKey])) {
+            return $this->routeDistanceCache[$cacheKey];
         }
 
         $journeyData = $this->calculateRouteDistanceAndDuration($routePoints);
@@ -7285,153 +7237,27 @@ class BookingFlowService
                 'calculation_possible' => false,
                 'service_type_used' => $serviceType,
                 'include_garage_distance' => $includeGarageDistance,
-                'company_used' => [
-                    'id' => $company ? $company->id : null,
-                    'name' => $company ? $company->name : null,
-                    'coordinates' => $company ? [$company->latitude, $company->longitude] : null
-                ],
-                'company_location' => $company ? [
-                    'latitude' => $company->latitude,
-                    'longitude' => $company->longitude
-                ] : null,
-                'company_id' => $company ? $company->id : null
             ];
-            $this->companyDistanceCache[$cacheKey] = $result;
+            $this->routeDistanceCache[$cacheKey] = $result;
             return $result;
         }
 
         $journeyDistance = $journeyData['distance_km'];
         $journeyDuration = $journeyData['duration_seconds'];
-        $routeStart = $routePoints[0] ?? $pickupLocation;
-        $routeEnd = $routePoints[count($routePoints) - 1] ?? $dropoffLocation;
-
-        if (!$company || !$company->latitude || !$company->longitude) {
-            $fallbackPickup = 0.0;
-            $fallbackDelivery = 0.0;
-            $totalDistance = $includeGarageDistance
-                ? round($journeyDistance + $fallbackPickup + $fallbackDelivery, 2)
-                : round($journeyDistance, 2);
-
-            $result = [
-                'pickup_distance' => $fallbackPickup,
-                'delivery_distance' => $fallbackDelivery,
-                'journey_distance' => round($journeyDistance, 2),
-                'journey_duration_seconds' => $journeyDuration,
-                'additional_stops_count' => max(0, count($routePoints) - 2),
-                'total_distance' => $totalDistance,
-                'total_duration_seconds' => $journeyDuration,
-                'calculation_possible' => true,
-                'service_type_used' => $serviceType,
-                'include_garage_distance' => $includeGarageDistance,
-                'garage_distance_failed' => true,
-                'company_used' => [
-                    'id' => $company->id ?? null,
-                    'name' => $company->name ?? null,
-                    'coordinates' => null
-                ],
-                'company_location' => null,
-                'company_id' => $company->id ?? null
-            ];
-            $this->companyDistanceCache[$cacheKey] = $result;
-            return $result;
-        }
-
-        $companyLocation = [
-            'latitude' => $company->latitude,
-            'longitude' => $company->longitude
-        ];
-
-        // Determine service type category
-        $isWithDriver = $this->isWithDriverService($serviceType);
-
-        $distances = [];
-        $durations = [];
-
-        if ($isWithDriver) {
-            // With Driver Services:
-            // - Pickup Distance: From company to customer's starting location (driver goes to pickup)
-            // - Delivery Distance: From customer's drop-off location to company (driver returns)
-            $pickupData = $this->calculateDistance($companyLocation, $routeStart);
-            $deliveryData = $this->calculateDistance($routeEnd, $companyLocation);
-
-            $distances['pickup_distance'] = $pickupData ? $pickupData['distance_km'] : null;
-            $distances['delivery_distance'] = $deliveryData ? $deliveryData['distance_km'] : null;
-            $durations['pickup_duration_seconds'] = $pickupData ? $pickupData['duration_seconds'] : null;
-            $durations['delivery_duration_seconds'] = $deliveryData ? $deliveryData['duration_seconds'] : null;
-        } else {
-            // Self Drive Services:
-            // - Pickup Distance: From customer's drop-off location to company (customer returns vehicle)
-            // - Delivery Distance: From company to customer's starting location (vehicle delivery)
-            $pickupData = $this->calculateDistance($routeEnd, $companyLocation);
-            $deliveryData = $this->calculateDistance($companyLocation, $routeStart);
-
-            $distances['pickup_distance'] = $pickupData ? $pickupData['distance_km'] : null;
-            $distances['delivery_distance'] = $deliveryData ? $deliveryData['distance_km'] : null;
-            $durations['pickup_duration_seconds'] = $pickupData ? $pickupData['duration_seconds'] : null;
-            $durations['delivery_duration_seconds'] = $deliveryData ? $deliveryData['duration_seconds'] : null;
-        }
-
-        // Check if any distance calculation failed
-        if ($distances['pickup_distance'] === null || $distances['delivery_distance'] === null) {
-            $result = [
-                'pickup_distance' => $distances['pickup_distance'],
-                'delivery_distance' => $distances['delivery_distance'],
-                'journey_distance' => round($journeyDistance, 2),
-                'journey_duration_seconds' => $journeyDuration,
-                'additional_stops_count' => max(0, count($routePoints) - 2),
-                'total_distance' => round($journeyDistance, 2), // Fallback to journey distance only
-                'total_duration_seconds' => $journeyDuration,
-                'calculation_possible' => true, // Still possible to calculate based on journey
-                'service_type_used' => $serviceType,
-                'include_garage_distance' => $includeGarageDistance,
-                'garage_distance_failed' => true,
-                'company_used' => [
-                    'id' => $company->id ?? null,
-                    'name' => $company->name ?? null,
-                    'coordinates' => $companyLocation
-                ],
-                'company_location' => $companyLocation,
-                'company_id' => $company->id ?? null
-            ];
-            $this->companyDistanceCache[$cacheKey] = $result;
-            return $result;
-        }
-
-        // Calculate total distance based on setting
-        // If include_garage_distance is true: total = journey + pickup + delivery (garage-to-garage)
-        // If include_garage_distance is false: total = journey only
-        $totalDistance = $includeGarageDistance
-            ? round($journeyDistance + $distances['pickup_distance'] + $distances['delivery_distance'], 2)
-            : round($journeyDistance, 2);
-
-        // Calculate total duration based on setting
-        $totalDuration = $includeGarageDistance
-            ? $journeyDuration + ($durations['pickup_duration_seconds'] ?? 0) + ($durations['delivery_duration_seconds'] ?? 0)
-            : $journeyDuration;
-
-        // Enhanced return structure with all required fields for pricing calculations (no costs here)
         $result = [
+            'pickup_distance' => 0.0,
+            'delivery_distance' => 0.0,
             'journey_distance' => round($journeyDistance, 2),
             'journey_duration_seconds' => $journeyDuration,
             'additional_stops_count' => max(0, count($routePoints) - 2),
-            'pickup_distance' => round($distances['pickup_distance'], 2),
-            'pickup_duration_seconds' => $durations['pickup_duration_seconds'],
-            'delivery_distance' => round($distances['delivery_distance'], 2),
-            'delivery_duration_seconds' => $durations['delivery_duration_seconds'],
-            'total_distance' => $totalDistance, // Respects the include_garage_distance setting
-            'total_duration_seconds' => $totalDuration, // Total duration respecting the setting
-            'include_garage_distance' => $includeGarageDistance, // Flag to indicate which calculation method was used
+            'total_distance' => round($journeyDistance, 2),
+            'total_duration_seconds' => $journeyDuration,
             'calculation_possible' => true,
             'service_type_used' => $serviceType,
-            'company_used' => [
-                'id' => $company->id,
-                'name' => $company->name,
-                'coordinates' => $companyLocation
-            ],
-            'company_location' => $companyLocation,
-            'company_id' => $company->id
+            'include_garage_distance' => $includeGarageDistance,
+            'garage_distance_failed' => true,
         ];
-        $this->companyDistanceCache[$cacheKey] = $result;
+        $this->routeDistanceCache[$cacheKey] = $result;
         return $result;
     }
 
@@ -12034,7 +11860,7 @@ class BookingFlowService
     private function businessLocalDayUtcRange(): array
     {
         $settings = app(WebsiteSettingsService::class);
-        $businessSettings = $settings->getMultiple(['site_timezone'], null);
+        $businessSettings = $settings->getMultiple(['site_timezone']);
         $timezone = trim((string) ($businessSettings['site_timezone'] ?: config('app.timezone', 'UTC')));
         if (!TimezoneService::isValidTimezone($timezone)) {
             $timezone = config('app.timezone', 'UTC');

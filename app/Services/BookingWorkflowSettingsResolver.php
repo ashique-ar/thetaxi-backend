@@ -179,7 +179,7 @@ class BookingWorkflowSettingsResolver
 
     private function enabled(string $key, bool $default = false): bool
     {
-        $value = $this->websiteSettings->getMultiple([$key], null)[$key] ?? $default;
+        $value = $this->websiteSettings->getMultiple([$key])[$key] ?? $default;
         if (is_bool($value)) return $value;
         if (is_numeric($value)) return (int) $value === 1;
         return in_array(strtolower(trim((string) $value)), ['1', 'true', 'yes', 'on', 'enabled'], true);

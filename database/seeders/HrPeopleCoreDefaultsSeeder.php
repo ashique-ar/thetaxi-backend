@@ -11,13 +11,13 @@ use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Str;
 
 /**
- * Links every Staff row for the default Company into the HR people-core
+ * Links every active Staff row in the installation into the HR people-core
  * domain (hr_employment_types, hr_employment_spells, hr_employment_assignments)
  * so the Employee Directory shows real employment history/assignment data
  * instead of bare `staff` rows.
  *
- * Must run after CompanySeeder, StaffSeeder and HrOrganizationDefaultsSeeder
- * (positions created there are round-robin assigned to staff here).
+ * Must run after StaffSeeder and HrOrganizationDefaultsSeeder (positions are
+ * round-robin assigned to active staff here).
  *
  * Schema reference: database/migrations/2026_08_12_147000_create_hr_people_core.php
  * and database/migrations/2026_08_31_173000_align_employment_models_with_base_model.php.
@@ -29,19 +29,13 @@ class HrPeopleCoreDefaultsSeeder extends Seeder
 {
     public function run(): void
     {
-        $company = DB::table('companies')->where('is_default', true)->whereNull('deleted_at')->first();
-        if (!$company) {
-            $this->command?->warn('HR people-core defaults skipped: no default company exists.');
-            return;
-        }
-
-        $actor = DB::table('staff')->where('company_id', $company->id)->whereNotNull('user_id')->whereNull('employment_ended_at')->whereNull('deleted_at')->orderBy('created_at')->value('user_id');
+        $actor = DB::table('staff')->whereNotNull('user_id')->whereNull('employment_ended_at')->whereNull('deleted_at')->orderBy('created_at')->value('user_id');
         if (!$actor) {
-            $this->command?->warn('HR people-core defaults skipped: the default company has no active Staff user for audit ownership.');
+            $this->command?->warn('HR people-core defaults skipped: no active Staff user is available for audit ownership.');
             return;
         }
 
-        $positions = DB::table('hr_positions')->where('company_id', $company->id)->orderBy('position_number')->get();
+        $positions = DB::table('hr_positions')->orderBy('position_number')->get();
         if ($positions->isEmpty()) {
             $this->command?->warn('HR people-core defaults skipped: no HR positions exist yet. Run HrOrganizationDefaultsSeeder first.');
             return;
@@ -50,13 +44,12 @@ class HrPeopleCoreDefaultsSeeder extends Seeder
         $from = CarbonImmutable::today('Asia/Colombo')->startOfYear()->toDateString();
         $now = now();
 
-        // Default employment type ("Permanent"), created once for the company.
-        $employmentType = DB::table('hr_employment_types')->where('company_id', $company->id)->where('code', 'PERM')->first();
+        // Default employment type ("Permanent"), shared across the installation.
+        $employmentType = DB::table('hr_employment_types')->where('code', 'PERM')->orderBy('id')->first();
         if (!$employmentType) {
             $employmentTypeId = (string) Str::uuid();
             DB::table('hr_employment_types')->insert([
                 'id' => $employmentTypeId,
-                'company_id' => $company->id,
                 'code' => 'PERM',
                 'name' => 'Permanent',
                 'is_employee' => true,
@@ -68,7 +61,7 @@ class HrPeopleCoreDefaultsSeeder extends Seeder
             $employmentTypeId = $employmentType->id;
         }
 
-        $staffMembers = Staff::where('company_id', $company->id)->whereNull('deleted_at')->whereNull('employment_ended_at')->orderBy('code')->get();
+        $staffMembers = Staff::whereNull('deleted_at')->whereNull('employment_ended_at')->orderBy('code')->get();
 
         $spellsCreated = 0;
         $assignmentsCreated = 0;
@@ -80,7 +73,6 @@ class HrPeopleCoreDefaultsSeeder extends Seeder
             $spell = HrEmploymentSpell::firstOrCreate(
                 ['staff_id' => $staff->id, 'spell_number' => 1],
                 [
-                    'company_id' => $company->id,
                     'employment_type_id' => $employmentTypeId,
                     'joined_at' => $joinedAt,
                     'service_date' => $joinedAt,
@@ -99,7 +91,6 @@ class HrPeopleCoreDefaultsSeeder extends Seeder
                 HrEmploymentAssignment::create([
                     'employment_spell_id' => $spell->id,
                     'staff_id' => $staff->id,
-                    'company_id' => $company->id,
                     'position_id' => $position->id,
                     'organization_unit_id' => $position->organization_unit_id,
                     'cost_centre_code' => null,
@@ -120,6 +111,6 @@ class HrPeopleCoreDefaultsSeeder extends Seeder
             }
         }
 
-        $this->command?->info("HR people-core defaults ready for {$company->name}: {$spellsCreated} employment spells, {$assignmentsCreated} employment assignments created (existing rows retained).");
+        $this->command?->info("HR people-core defaults ready: {$spellsCreated} employment spells, {$assignmentsCreated} employment assignments created (existing rows retained).");
     }
 }

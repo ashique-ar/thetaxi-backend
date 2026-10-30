@@ -3,6 +3,7 @@
 namespace App\Http\Requests\Role;
 
 use Illuminate\Foundation\Http\FormRequest;
+use Illuminate\Validation\Rule;
 
 class CreateRoleRequest extends FormRequest
 {
@@ -14,11 +15,22 @@ class CreateRoleRequest extends FormRequest
      */
     public function rules(): array
     {
+        $guardName = $this->input('guard_name', config('permissions.canonical_guard', 'api'));
+        $guards = array_values(array_unique(array_merge(
+            [config('permissions.canonical_guard', 'api')],
+            config('permissions.legacy_guards', ['web'])
+        )));
+
         return [
-            'name' => ['required', 'string', 'max:255', 'unique:roles,name'],
+            'name' => [
+                'required',
+                'string',
+                'max:255',
+                Rule::unique('roles', 'name')->where(fn ($query) => $query->where('guard_name', $guardName)),
+            ],
             'display_name' => ['nullable', 'string', 'max:255'],
             'description' => ['nullable', 'string', 'max:1000'],
-            'guard_name' => ['nullable', 'string', 'max:255'],
+            'guard_name' => ['required', 'string', Rule::in($guards)],
             'context_types' => ['nullable', 'array'],
             'context_types.*' => ['string', 'in:customer,vehicle_owner,staff,agent,driver,corporate,internal'],
             'auto_assign_contexts' => ['sometimes', 'boolean'],

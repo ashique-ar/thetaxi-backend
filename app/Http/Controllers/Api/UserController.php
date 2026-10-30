@@ -12,6 +12,7 @@ use App\Services\AuthService;
 use App\Services\UserService;
 use App\Services\UserContextService;
 use App\Services\PermissionAssignmentService;
+use App\Services\CorporateRoleStarterService;
 use App\Services\BusinessCodeGenerator;
 use Illuminate\Http\Request;
 use Illuminate\Http\JsonResponse;
@@ -481,7 +482,7 @@ class UserController extends Controller
             'permissions' => ['required', 'array'],
             'permissions.*' => ['required', 'string', 'exists:permissions,name'],
             'apply_to_guards' => ['sometimes', 'array'],
-            'apply_to_guards.*' => ['string', Rule::in(['web', 'api'])],
+            'apply_to_guards.*' => ['string', Rule::in($this->supportedPermissionGuards())],
         ]);
 
         try {
@@ -513,7 +514,7 @@ class UserController extends Controller
             'permissions' => ['required', 'array'],
             'permissions.*' => ['required', 'string', 'exists:permissions,name'],
             'apply_to_guards' => ['sometimes', 'array'],
-            'apply_to_guards.*' => ['string', Rule::in(['web', 'api'])],
+            'apply_to_guards.*' => ['string', Rule::in($this->supportedPermissionGuards())],
         ]);
 
         try {
@@ -969,8 +970,9 @@ class UserController extends Controller
             'roles' => ['required', 'array'],
             'roles.*' => ['required', 'string', 'exists:roles,name'],
             'apply_to_guards' => ['sometimes', 'array'],
-            'apply_to_guards.*' => ['string', Rule::in(['web', 'api'])],
+            'apply_to_guards.*' => ['string', Rule::in($this->supportedPermissionGuards())],
         ]);
+        abort_if($this->containsCorporateRole($request->input('roles', [])), 422, 'Corporate roles must be assigned within the employee corporate context.');
         $this->assertCanChangePrivilegedRoles($request->input('roles', []));
 
         try {
@@ -1031,8 +1033,9 @@ class UserController extends Controller
             'roles' => ['required', 'array'],
             'roles.*' => ['required', 'string', 'exists:roles,name'],
             'apply_to_guards' => ['sometimes', 'array'],
-            'apply_to_guards.*' => ['string', Rule::in(['web', 'api'])],
+            'apply_to_guards.*' => ['string', Rule::in($this->supportedPermissionGuards())],
         ]);
+        abort_if($this->containsCorporateRole($request->input('roles', [])), 422, 'Corporate roles must be revoked within the employee corporate context.');
         $this->assertCanChangePrivilegedRoles($request->input('roles', []));
 
         try {
@@ -1288,10 +1291,30 @@ class UserController extends Controller
     {
         $guards = $request->input('apply_to_guards');
         if (!is_array($guards) || empty($guards)) {
-            return ['web', 'api'];
+            return $this->supportedPermissionGuards();
         }
 
-        return array_values(array_unique(array_intersect($guards, ['web', 'api'])));
+        return array_values(array_unique(array_intersect($guards, $this->supportedPermissionGuards())));
+    }
+
+    private function supportedPermissionGuards(): array
+    {
+        return array_values(array_unique(array_merge(
+            [config('permissions.canonical_guard', 'api')],
+            config('permissions.legacy_guards', ['web'])
+        )));
+    }
+
+    private function containsCorporateRole(array $roleNames): bool
+    {
+        $corporateTemplateNames = collect(array_keys(CorporateRoleStarterService::TEMPLATES))
+            ->map(fn (string $name) => strtolower(str_replace([' ', '-'], '_', $name)));
+
+        return collect($roleNames)->contains(function (string $name) use ($corporateTemplateNames): bool {
+            $normalized = strtolower(str_replace([' ', '-'], '_', trim($name)));
+
+            return Str::startsWith($normalized, 'corporate_') || $corporateTemplateNames->contains($normalized);
+        });
     }
 
     private function buildUserResponse(User $user, Request $request): array

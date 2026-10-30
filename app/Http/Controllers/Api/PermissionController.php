@@ -8,6 +8,7 @@ use App\Http\Requests\Permission\UpdatePermissionRequest;
 use App\Http\Resources\PermissionResource;
 use App\Services\PermissionRegistry;
 use Spatie\Permission\Models\Permission;
+use Spatie\Permission\PermissionRegistrar;
 use Illuminate\Http\Request;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Resources\Json\AnonymousResourceCollection;
@@ -95,6 +96,8 @@ class PermissionController extends Controller
                 throw $e;
             }
 
+            app(PermissionRegistrar::class)->forgetCachedPermissions();
+
             return response()->json([
                 'status' => 'success',
                 'message' => 'Permission created successfully',
@@ -138,6 +141,7 @@ class PermissionController extends Controller
     {
         try {
             $permission->update($request->validated());
+            app(PermissionRegistrar::class)->forgetCachedPermissions();
 
             return response()->json([
                 'status' => 'success',
@@ -173,6 +177,7 @@ class PermissionController extends Controller
             }
 
             $permission->delete();
+            app(PermissionRegistrar::class)->forgetCachedPermissions();
 
             return response()->json([
                 'status' => 'success',

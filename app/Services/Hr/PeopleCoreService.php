@@ -24,18 +24,15 @@ class PeopleCoreService
     public function initializeStaff(Staff $staff, array $input, string $actorUserId): Staff
     {
         
-        $staff->company_id = $staff->company_id ?: app(\App\Services\SingleCompanyScope::class)->activeDefaultCompany()?->id;
-        if (! $staff->company_id) return $staff;
         return DB::transaction(function () use ($staff, $input, $actorUserId) {
-            abort_unless(DB::table('companies')->where('id',$staff->company_id)->where('is_active',true)->whereNull('deleted_at')->lockForUpdate()->first(),409,'Staff initialization requires an active legal entity.');
             $staff = Staff::query()->lockForUpdate()->findOrFail($staff->id);
             $this->numbers->allocate($staff, $actorUserId, $input['code'] ?? null, $input['employee_number_override_reason'] ?? null);
-            $this->assertEmploymentType($input['employment_type_id'] ?? null, $staff->company_id);
+            $this->assertEmploymentType($input['employment_type_id'] ?? null);
             $spell = HrEmploymentSpell::query()->where('staff_id', $staff->id)->where('status', 'active')->lockForUpdate()->first();
             if (! $spell) {
                 $joined = $input['joined_at'] ?? now()->toDateString();
                 $spell = HrEmploymentSpell::create([
-                    'staff_id'=>$staff->id,'company_id'=>$staff->company_id,'employment_type_id'=>$input['employment_type_id']??null,
+                    'staff_id'=>$staff->id,'employment_type_id'=>$input['employment_type_id']??null,
                     'spell_number'=>(int) HrEmploymentSpell::query()->where('staff_id',$staff->id)->max('spell_number')+1,
                     'joined_at'=>$joined,'service_date'=>$input['service_date']??$joined,'confirmation_date'=>$input['confirmation_date']??null,
                     'status'=>'active','gratuity_service_start'=>$input['service_date']??$joined,
@@ -50,18 +47,14 @@ class PeopleCoreService
 
     public function closeEmployment(Staff $staff, string $reason, string $actorUserId): ?HrEmploymentSpell
     {
-        $staff->company_id = $staff->company_id ?: \App\Services\CompanyIdScope::defaultCompanyId();
-        abort_unless($staff->company_id, 409, 'No active default legal entity is configured.');
         return DB::transaction(function()use($staff,$reason,$actorUserId){
-            abort_unless(DB::table('companies')->where('id',$staff->company_id)->where('is_active',true)->whereNull('deleted_at')->lockForUpdate()->first(),404,'Staff legal entity was not found.');
             $staff=Staff::withTrashed()->lockForUpdate()->findOrFail($staff->id);
-            $staff->company_id = $staff->company_id ?: \App\Services\CompanyIdScope::defaultCompanyId();
             $spell=HrEmploymentSpell::query()->where('staff_id',$staff->id)->where('status','active')->lockForUpdate()->first();
             if(!$spell)return null;
             $date=now()->toDateString();
             $spell->update(['last_working_date'=>$date,'terminated_at'=>$date,'termination_reason'=>$reason,'status'=>'terminated']);
             HrEmploymentAssignment::query()->where('employment_spell_id',$spell->id)->whereNull('effective_until')->update(['effective_until'=>$date]);
-            $this->reportingLines->closeForEmploymentEnd($staff->id,$staff->company_id,$date,$actorUserId,'Employment ended: '.$reason);
+            $this->reportingLines->closeForEmploymentEnd($staff->id,$date,$actorUserId,'Employment ended: '.$reason);
             $this->timeline($staff,$spell,'employment','employment_terminated','Employment terminated',['reason'=>$reason],"employment-terminated:{$spell->id}",now());
             return$spell->refresh();
         });
@@ -71,12 +64,7 @@ class PeopleCoreService
     {
         
         return DB::transaction(function () use ($staff, $data, $actorUserId) {
-            $companyId = (string) ($staff->company_id ?: \App\Services\CompanyIdScope::defaultCompanyId());
-            abort_unless($companyId, 409, 'No active default legal entity is configured.');
-            abort_unless(DB::table('companies')->where('id', $companyId)->where('is_active', true)->whereNull('deleted_at')->lockForUpdate()->first(), 409, 'Rehire requires an active legal entity.');
             $staff = Staff::withTrashed()->whereKey($staff->id)->lockForUpdate()->firstOrFail();
-            $staff->company_id = $staff->company_id ?: $companyId;
-            abort_unless(\App\Services\CompanyIdScope::sameCompanyId((string) ((string) $staff->company_id), (string) ($companyId)), 409, 'The employee legal entity changed; reload the rehire review.');
             abort_unless($staff->trashed() || $staff->employment_ended_at, 422, 'Only a former employee can enter rehire review.');
             $prior = HrEmploymentSpell::query()->where('staff_id',$staff->id)->where('status','terminated')->latest('spell_number')->lockForUpdate()->firstOrFail();
             $checksum=hash('sha256',json_encode(['staff_id'=>$staff->id,'prior_spell_id'=>$prior->id,'data'=>$data],JSON_UNESCAPED_SLASHES));
@@ -85,7 +73,7 @@ class PeopleCoreService
                 return $existing;
             }
             return HrRehireCase::create([
-                'staff_id'=>$staff->id,'company_id'=>$companyId,'prior_spell_id'=>$prior->id,'status'=>'pending_approval',
+                'staff_id'=>$staff->id,'prior_spell_id'=>$prior->id,'status'=>'pending_approval',
                 'proposed_rehire_date'=>$data['proposed_rehire_date'],
                 'duplicate_match_snapshot'=>['staff_id'=>$staff->id,'user_id'=>$staff->user_id,'employee_number'=>$staff->code,'nic_fingerprint'=>$staff->nic_fingerprint],
                 'eligibility_snapshot'=>$data['eligibility_snapshot'],'prior_service_decisions'=>$data['prior_service_decisions'],
@@ -99,10 +87,7 @@ class PeopleCoreService
     {
         
         return DB::transaction(function () use ($case,$assignment,$actorUserId) {
-            $companyId = $case->company_id ?: \App\Services\CompanyIdScope::defaultCompanyId();
-            abort_unless($companyId && DB::table('companies')->where('id',$companyId)->where('is_active',true)->whereNull('deleted_at')->lockForUpdate()->first(),409,'Rehire requires an active legal entity.');
             $case=HrRehireCase::query()->lockForUpdate()->findOrFail($case->id);
-            $case->company_id = $case->company_id ?: $companyId;
             $approvalPayload = array_map(fn (string $field) => $assignment[$field] ?? null, [
                 'employment_type_id', 'position_id', 'organization_unit_id', 'manager_staff_id',
                 'cost_centre_code', 'location_code', 'payroll_group_code', 'default_shift_code', 'work_pattern_code',
@@ -119,13 +104,11 @@ class PeopleCoreService
             abort_unless($case->status==='pending_approval',422,'Rehire case is not pending approval.');
             abort_if($case->prepared_by===$actorUserId,403,'Rehire preparer and approver must be different users.');
             $staff=Staff::withTrashed()->lockForUpdate()->findOrFail($case->staff_id);
-            $staff->company_id = $staff->company_id ?: $companyId;
-            abort_unless(\App\Services\CompanyIdScope::sameCompanyId((string) ($staff->company_id), (string) ($case->company_id)),409,'The rehire case and employee legal entity do not match.');
             abort_if(HrEmploymentSpell::query()->where('staff_id',$staff->id)->where('status','active')->exists(),409,'Employee already has an active employment spell.');
-            $this->assertEmploymentType($assignment['employment_type_id']??null,$case->company_id);
-            $staff->restore(); $staff->forceFill(['company_id'=>$companyId,'employment_ended_at'=>null,'termination_reason'=>null,'terminated_by'=>null,'updated_user_id'=>$actorUserId])->save();
+            $this->assertEmploymentType($assignment['employment_type_id']??null);
+            $staff->restore(); $staff->forceFill(['employment_ended_at'=>null,'termination_reason'=>null,'terminated_by'=>null,'updated_user_id'=>$actorUserId])->save();
             $rehireDate=$case->proposed_rehire_date->toDateString();
-            $spell=HrEmploymentSpell::create(['staff_id'=>$staff->id,'company_id'=>$case->company_id,'employment_type_id'=>$assignment['employment_type_id']??null,'spell_number'=>(int)HrEmploymentSpell::query()->where('staff_id',$staff->id)->max('spell_number')+1,'joined_at'=>$rehireDate,'service_date'=>$rehireDate,'rehire_date'=>$rehireDate,'status'=>'active','gratuity_service_start'=>$rehireDate,'gratuity_service_decision'=>$case->prior_service_decisions['gratuity']??'New gratuity-service clock required.','prior_service_decisions'=>$case->prior_service_decisions,'created_user_id'=>$actorUserId]);
+            $spell=HrEmploymentSpell::create(['staff_id'=>$staff->id,'employment_type_id'=>$assignment['employment_type_id']??null,'spell_number'=>(int)HrEmploymentSpell::query()->where('staff_id',$staff->id)->max('spell_number')+1,'joined_at'=>$rehireDate,'service_date'=>$rehireDate,'rehire_date'=>$rehireDate,'status'=>'active','gratuity_service_start'=>$rehireDate,'gratuity_service_decision'=>$case->prior_service_decisions['gratuity']??'New gratuity-service clock required.','prior_service_decisions'=>$case->prior_service_decisions,'created_user_id'=>$actorUserId]);
             if (!empty($assignment['position_id'])||!empty($assignment['organization_unit_id'])) $this->createAssignment($staff,$spell,$assignment,$actorUserId,'rehire');
             $context=$staff->user->contexts()->where('context_type','staff')->first();
             if ($context) {
@@ -158,11 +141,9 @@ class PeopleCoreService
     {
         
         return DB::transaction(function()use($staff,$data,$actorUserId){
-            $companyId = (string) $staff->company_id;
-            abort_unless(DB::table('companies')->where('id',$companyId)->where('is_active',true)->whereNull('deleted_at')->lockForUpdate()->first(),409,'Employee records require an active legal entity.');
-            $staff=Staff::withTrashed()->whereKey($staff->id)->where(fn ($_companyIdScope) => \App\Services\CompanyIdScope::constrain($_companyIdScope, 'company_id', $companyId))->lockForUpdate()->firstOrFail();
-            if(!empty($data['employment_spell_id']))abort_unless(HrEmploymentSpell::query()->whereKey($data['employment_spell_id'])->where('staff_id',$staff->id)->where(fn ($_companyIdScope) => \App\Services\CompanyIdScope::constrain($_companyIdScope, 'company_id', $staff->company_id))->exists(),422,'The employment spell does not belong to this employee.');
-            if(!empty($data['evidence_file_id']))abort_unless(DB::table('domain_evidence_files')->where('id',$data['evidence_file_id'])->where(fn ($_companyIdScope) => \App\Services\CompanyIdScope::constrain($_companyIdScope, 'company_id', $staff->company_id))->where('domain','hr')->whereNull('deleted_at')->lockForUpdate()->first(),422,'Employee-record evidence must be an active HR file from the same legal entity.');
+            $staff=Staff::withTrashed()->whereKey($staff->id)->lockForUpdate()->firstOrFail();
+            if(!empty($data['employment_spell_id']))abort_unless(HrEmploymentSpell::query()->whereKey($data['employment_spell_id'])->where('staff_id',$staff->id)->exists(),422,'The employment spell does not belong to this employee.');
+            if(!empty($data['evidence_file_id']))abort_unless(DB::table('domain_evidence_files')->where('id',$data['evidence_file_id'])->where('domain','hr')->whereNull('deleted_at')->lockForUpdate()->first(),422,'Employee-record evidence must be an active HR file.');
             $row=HrEmployeeRecord::create($data+['staff_id'=>$staff->id]);
             $spell=$data['employment_spell_id']??HrEmploymentSpell::query()->where('staff_id',$staff->id)->latest('spell_number')->value('id');
             if($spell){$spellModel=HrEmploymentSpell::query()->find($spell);if($spellModel)$this->timeline($staff,$spellModel,'people','employee_record_added',$row->title,['record_type'=>$row->record_type,'verification_status'=>$row->verification_status],"employee-record:{$row->id}",$row->effective_date??now());}
@@ -173,14 +154,14 @@ class PeopleCoreService
     public function applyApprovedAssignmentChange(Staff $staff,array $data,string $actorUserId,string $changeRequestId):HrEmploymentAssignment
     {
         
-        return DB::transaction(function()use($staff,$data,$actorUserId,$changeRequestId){abort_unless(DB::table('companies')->where('id',$staff->company_id)->lockForUpdate()->first(),404,'Staff legal entity was not found.');$staff=Staff::query()->lockForUpdate()->findOrFail($staff->id);$spell=HrEmploymentSpell::query()->where('staff_id',$staff->id)->where('status','active')->lockForUpdate()->firstOrFail();abort_if(HrEmploymentAssignment::query()->where('staff_id',$staff->id)->where('effective_from','>',$data['effective_from'])->exists(),409,'A later assignment already exists; review the effective-date sequence.');$assignment=$this->createAssignment($staff,$spell,$data,$actorUserId,'approved_'.$data['change_type']);$this->timeline($staff,$spell,'lifecycle','assignment_changed',ucwords(str_replace('_',' ',$data['change_type'])),['assignment_id'=>$assignment->id,'effective_from'=>$assignment->effective_from->toDateString(),'change_request_id'=>$changeRequestId],"assignment-change:{$changeRequestId}",$assignment->effective_from);return$assignment;});
+        return DB::transaction(function()use($staff,$data,$actorUserId,$changeRequestId){$staff=Staff::query()->lockForUpdate()->findOrFail($staff->id);$spell=HrEmploymentSpell::query()->where('staff_id',$staff->id)->where('status','active')->lockForUpdate()->firstOrFail();abort_if(HrEmploymentAssignment::query()->where('staff_id',$staff->id)->where('effective_from','>',$data['effective_from'])->exists(),409,'A later assignment already exists; review the effective-date sequence.');$assignment=$this->createAssignment($staff,$spell,$data,$actorUserId,'approved_'.$data['change_type']);$this->timeline($staff,$spell,'lifecycle','assignment_changed',ucwords(str_replace('_',' ',$data['change_type'])),['assignment_id'=>$assignment->id,'effective_from'=>$assignment->effective_from->toDateString(),'change_request_id'=>$changeRequestId],"assignment-change:{$changeRequestId}",$assignment->effective_from);return$assignment;});
     }
 
     public function addImportedInitialAssignment(Staff $staff,HrEmploymentSpell $spell,array $data,string $actorUserId):HrEmploymentAssignment
     {
         return DB::transaction(function()use($staff,$spell,$data,$actorUserId){
-            $staff=Staff::query()->whereKey($staff->id)->where(fn ($_companyIdScope) => \App\Services\CompanyIdScope::constrain($_companyIdScope, 'company_id', $staff->company_id))->lockForUpdate()->firstOrFail();
-            $spell=HrEmploymentSpell::query()->whereKey($spell->id)->where('staff_id',$staff->id)->where(fn ($_companyIdScope) => \App\Services\CompanyIdScope::constrain($_companyIdScope, 'company_id', $staff->company_id))->lockForUpdate()->firstOrFail();
+            $staff=Staff::query()->whereKey($staff->id)->lockForUpdate()->firstOrFail();
+            $spell=HrEmploymentSpell::query()->whereKey($spell->id)->where('staff_id',$staff->id)->lockForUpdate()->firstOrFail();
             abort_if(HrEmploymentAssignment::query()->where('staff_id',$staff->id)->lockForUpdate()->exists(),409,'An employment assignment already exists; create a new reviewed import preview.');
             return $this->createAssignment($staff,$spell,$data,$actorUserId,'legacy_import');
         });
@@ -189,38 +170,38 @@ class PeopleCoreService
     private function createAssignment(Staff $staff,HrEmploymentSpell $spell,array $data,string $actor,string $reason): HrEmploymentAssignment
     {
         $start=$data['effective_from']??$spell->joined_at->toDateString();
-        abort_unless($spell->staff_id===$staff->id&&\App\Services\CompanyIdScope::sameCompanyId((string) ($spell->company_id), (string) ($staff->company_id)),409,'Employment spell and Staff legal entity do not match.');
+        abort_unless($spell->staff_id===$staff->id,409,'Employment spell and Staff identity do not match.');
         $this->assertAssignmentReferences($staff,$data,$start);
-        if(!empty($data['payroll_group_code']))$this->assertPayrollGroupCode($staff->company_id,$data['payroll_group_code'],$start);
+        if(!empty($data['payroll_group_code']))$this->assertPayrollGroupCode($data['payroll_group_code'],$start);
         HrEmploymentAssignment::query()->where('staff_id',$staff->id)->whereNull('effective_until')->update(['effective_until'=>$start]);
-        $assignment=HrEmploymentAssignment::create(['employment_spell_id'=>$spell->id,'staff_id'=>$staff->id,'company_id'=>$staff->company_id,'position_id'=>$data['position_id']??null,'organization_unit_id'=>$data['organization_unit_id']??null,'manager_staff_id'=>$data['manager_staff_id']??null,'dotted_line_manager_staff_id'=>$data['dotted_line_manager_staff_id']??null,'hr_partner_staff_id'=>$data['hr_partner_staff_id']??null,'cost_centre_code'=>$data['cost_centre_code']??null,'location_code'=>$data['location_code']??null,'payroll_group_code'=>$data['payroll_group_code']??null,'default_shift_code'=>$data['default_shift_code']??null,'work_pattern_code'=>$data['work_pattern_code']??null,'assignment_type'=>'primary','effective_from'=>$start,'change_reason'=>$reason,'snapshot'=>$data,'approved_by'=>$actor]);
+        $assignment=HrEmploymentAssignment::create(['employment_spell_id'=>$spell->id,'staff_id'=>$staff->id,'position_id'=>$data['position_id']??null,'organization_unit_id'=>$data['organization_unit_id']??null,'manager_staff_id'=>$data['manager_staff_id']??null,'dotted_line_manager_staff_id'=>$data['dotted_line_manager_staff_id']??null,'hr_partner_staff_id'=>$data['hr_partner_staff_id']??null,'cost_centre_code'=>$data['cost_centre_code']??null,'location_code'=>$data['location_code']??null,'payroll_group_code'=>$data['payroll_group_code']??null,'default_shift_code'=>$data['default_shift_code']??null,'work_pattern_code'=>$data['work_pattern_code']??null,'assignment_type'=>'primary','effective_from'=>$start,'change_reason'=>$reason,'snapshot'=>$data,'approved_by'=>$actor]);
         $this->reportingLines->projectAssignmentManagers($assignment,$actor);
         return$assignment;
     }
 
-    private function assertEmploymentType(?string $employmentTypeId,string $companyId):void
+    private function assertEmploymentType(?string $employmentTypeId):void
     {
         if(!$employmentTypeId)return;
-        abort_unless(DB::table('hr_employment_types')->where('id',$employmentTypeId)->where(fn ($_companyIdScope) => \App\Services\CompanyIdScope::constrain($_companyIdScope, 'company_id', $companyId))
-            ->where('status','active')->lockForUpdate()->first(),422,'Employment type must be active in the employee legal entity.');
+        abort_unless(DB::table('hr_employment_types')->where('id',$employmentTypeId)
+            ->where('status','active')->lockForUpdate()->first(),422,'Employment type must be active.');
     }
 
     private function assertAssignmentReferences(Staff $staff,array $data,string $effectiveAt):void
     {
         $position=null;
         if(!empty($data['position_id'])){
-            $position=DB::table('hr_positions')->where('id',$data['position_id'])->where(fn ($_companyIdScope) => \App\Services\CompanyIdScope::constrain($_companyIdScope, 'company_id', $staff->company_id))
+            $position=DB::table('hr_positions')->where('id',$data['position_id'])
                 ->where('status','active')->where('effective_from','<=',$effectiveAt)
                 ->where(fn($range)=>$range->whereNull('effective_until')->orWhere('effective_until','>=',$effectiveAt))
                 ->lockForUpdate()->first(['id','organization_unit_id']);
-            abort_unless($position,422,'Position must be active and effective in the employee legal entity.');
+            abort_unless($position,422,'Position must be active and effective.');
         }
 
         if(!empty($data['organization_unit_id'])){
-            abort_unless(DB::table('hr_organization_units')->where('id',$data['organization_unit_id'])->where(fn ($_companyIdScope) => \App\Services\CompanyIdScope::constrain($_companyIdScope, 'company_id', $staff->company_id))
+            abort_unless(DB::table('hr_organization_units')->where('id',$data['organization_unit_id'])
                 ->where('status','active')->where('effective_from','<=',$effectiveAt)
                 ->where(fn($range)=>$range->whereNull('effective_until')->orWhere('effective_until','>=',$effectiveAt))
-                ->lockForUpdate()->first(),422,'Organization unit must be active and effective in the employee legal entity.');
+                ->lockForUpdate()->first(),422,'Organization unit must be active and effective.');
             abort_if($position&&$position->organization_unit_id!==$data['organization_unit_id'],422,'Position and organization unit must describe the same assignment.');
         }
 
@@ -232,9 +213,9 @@ class PeopleCoreService
         abort_if(in_array($staff->id,$managerIds,true),422,'An employee cannot manage or partner their own assignment.');
         if(!$managerIds)return;
 
-        $activeManagers=DB::table('staff')->whereIn('id',$managerIds)->where(fn ($_companyIdScope) => \App\Services\CompanyIdScope::constrain($_companyIdScope, 'company_id', $staff->company_id))
+        $activeManagers=DB::table('staff')->whereIn('id',$managerIds)
             ->whereNull('employment_ended_at')->whereNull('deleted_at')->orderBy('id')->lockForUpdate()->get(['id']);
-        abort_unless($activeManagers->count()===count($managerIds),422,'Assignment managers and HR partner must be active Staff in the same legal entity.');
+        abort_unless($activeManagers->count()===count($managerIds),422,'Assignment managers and HR partner must be active Staff members.');
     }
 
     /**
@@ -245,9 +226,9 @@ class PeopleCoreService
      * decision for any non-matching legacy code, which is explicitly out of
      * scope for this slice (see §24.16).
      */
-    private function assertPayrollGroupCode(string $companyId,string $code,string $effectiveAt): void
+    private function assertPayrollGroupCode(string $code,string $effectiveAt): void
     {
-        $exists=DB::table('hr_payroll_groups')->where(fn ($_companyIdScope) => \App\Services\CompanyIdScope::constrain($_companyIdScope, 'company_id', $companyId))->where('code',$code)->where('status','active')
+        $exists=DB::table('hr_payroll_groups')->where('code',$code)->where('status','active')
             ->where('effective_from','<=',$effectiveAt)
             ->where(fn($range)=>$range->whereNull('effective_until')->orWhere('effective_until','>=',$effectiveAt))
             ->exists();

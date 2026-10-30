@@ -106,16 +106,12 @@ class PermissionEvaluator
 
     public function rolesForInternalContext(User $user): Collection
     {
-        $adminRoles = $user->roles()
+        $userRoles = $user->roles()
             ->with('permissions')
-            ->whereIn('name', ['admin', 'super-admin'])
             ->get();
+        $adminRoles = $userRoles->whereIn('name', ['admin', 'super-admin']);
 
-        if ($adminRoles->isNotEmpty()) {
-            return $adminRoles;
-        }
-
-        if (! $this->hasActiveStaffIdentity($user)) {
+        if ($adminRoles->isEmpty() && ! $this->hasActiveStaffIdentity($user)) {
             return collect();
         }
 
@@ -144,10 +140,10 @@ class PermissionEvaluator
             ->flatMap(fn (UserContext $context) => $context->roles->pluck('id'))
             ->unique();
 
-        return $user->roles()
-            ->with('permissions')
-            ->get()
-            ->filter(fn ($role) => $staffRoleIds->contains($role->id) || ! $externalRoleIds->contains($role->id))
+        return $adminRoles
+            ->merge(
+                $userRoles->filter(fn ($role) => $staffRoleIds->contains($role->id) || ! $externalRoleIds->contains($role->id))
+            )
             ->merge($staffContexts->flatMap(fn (UserContext $context) => $context->roles))
             ->unique('id')
             ->values();

@@ -723,24 +723,18 @@ class DynamicServiceConfigurationService
             ];
         });
 
-        $config['fields'] = self::hydrateDefaultCompanyLocation($config['fields'] ?? []);
+        $config['fields'] = self::hydrateCompanyLocations($config['fields'] ?? []);
         return $config;
     }
 
-    public static function hydrateDefaultCompanyLocation(array $fields): array
+    public static function hydrateCompanyLocations(array $fields): array
     {
-        $company = \App\Models\Company::getDefaultCompany();
-        if ($company && ($company->latitude === null || $company->longitude === null)) {
-            $company = null;
-        }
-
         $companies = [];
         foreach ($fields as &$field) {
             if (($field['type'] ?? null) !== 'location') {
                 continue;
             }
 
-            $usesDefaultCompany = false;
             $options = $field['options'] ?? [];
             foreach ($options as &$option) {
                 $source = $option['location_source'] ?? null;
@@ -750,8 +744,11 @@ class DynamicServiceConfigurationService
                     $locationCompany = $companies[$companyId] ??= \App\Models\Company::query()
                         ->where('is_active', true)
                         ->find($companyId);
-                } elseif ($source === 'default_company') {
-                    $locationCompany = $company;
+                }
+
+                if ($source === 'default_company') {
+                    $option['location_source'] = 'configured';
+                    unset($option['company_id']);
                 }
 
                 if (!$locationCompany || $locationCompany->latitude === null || $locationCompany->longitude === null) {
@@ -761,7 +758,6 @@ class DynamicServiceConfigurationService
                 $option['latitude'] = (float) $locationCompany->latitude;
                 $option['longitude'] = (float) $locationCompany->longitude;
                 $option['address'] = $locationCompany->address ?? $option['address'] ?? $option['label'] ?? '';
-                $usesDefaultCompany = $usesDefaultCompany || $source === 'default_company';
             }
             unset($option);
             $field['options'] = $options;
@@ -771,10 +767,6 @@ class DynamicServiceConfigurationService
                 $field['default'] = $defaultOption['address'] ?? $field['default'] ?? '';
                 $field['default_lat'] = (string) ($defaultOption['latitude'] ?? '');
                 $field['default_lng'] = (string) ($defaultOption['longitude'] ?? '');
-            } elseif ($usesDefaultCompany) {
-                $field['default'] = $company->address ?? $field['default'] ?? '';
-                $field['default_lat'] = (string) $company->latitude;
-                $field['default_lng'] = (string) $company->longitude;
             }
         }
         unset($field);

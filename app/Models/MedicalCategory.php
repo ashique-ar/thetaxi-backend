@@ -9,7 +9,6 @@ class MedicalCategory extends BaseModel
     protected $table = 'medical_categories';
 
     protected $fillable = [
-        'company_id',
         'code',
         'name',
         'description',

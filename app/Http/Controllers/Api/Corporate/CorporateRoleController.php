@@ -4,6 +4,7 @@ namespace App\Http\Controllers\Api\Corporate;
 
 use App\Http\Controllers\Controller;
 use App\Models\Corporate\CorporateEmployee;
+use App\Services\PermissionRegistry;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Str;
@@ -224,9 +225,13 @@ class CorporateRoleController extends Controller
             return false;
         }
 
+        $registry = app(PermissionRegistry::class);
+        $manageRolesPermission = $registry->resolveKey('manage-roles');
+
         return $context->roles
             ->flatMap(fn (Role $role) => $role->permissions->pluck('name'))
-            ->contains('manage-roles');
+            ->map(fn (string $permission) => $registry->resolveKey($permission))
+            ->contains($manageRolesPermission);
     }
 
     private function forbiddenResponse(): JsonResponse

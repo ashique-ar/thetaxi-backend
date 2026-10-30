@@ -1,0 +1,43 @@
+<?php
+
+use Illuminate\Database\Migrations\Migration;
+use Illuminate\Database\Schema\Blueprint;
+use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Schema;
+
+return new class extends Migration
+{
+    public function up(): void
+    {
+        if (Schema::hasTable('activity_log') && Schema::hasColumn('activity_log', 'properties')) {
+            foreach (DB::table('activity_log')->whereIn('log_name', ['hr-lifecycle', 'HrEmployeeChangeRequest', 'HrExitCase'])->get(['id', 'properties']) as $activity) {
+                $properties = is_array($activity->properties) ? $activity->properties : json_decode((string) ($activity->properties ?: '{}'), true, 512, JSON_THROW_ON_ERROR);
+                unset($properties['company_id'], $properties['attributes']['company_id'], $properties['old']['company_id']);
+                DB::table('activity_log')->where('id', $activity->id)->update(['properties' => json_encode($properties, JSON_THROW_ON_ERROR)]);
+            }
+        }
+        foreach (['hr_employee_change_requests', 'hr_exit_cases', 'hr_request_index'] as $tableName) {
+            if (! Schema::hasTable($tableName) || ! Schema::hasColumn($tableName, 'company_id')) {
+                continue;
+            }
+            foreach (Schema::getForeignKeys($tableName) as $foreignKey) {
+                if (in_array('company_id', $foreignKey['columns'], true)) {
+                    Schema::table($tableName, fn (Blueprint $table) => $table->dropForeign($foreignKey['name']));
+                }
+            }
+            foreach (Schema::getIndexes($tableName) as $index) {
+                if ($index['type'] === 'primary' || ! in_array('company_id', $index['columns'], true)) {
+                    continue;
+                }
+                $dropMethod = $index['type'] === 'unique' ? 'dropUnique' : 'dropIndex';
+                Schema::table($tableName, fn (Blueprint $table) => $table->{$dropMethod}($index['name']));
+            }
+            Schema::table($tableName, fn (Blueprint $table) => $table->dropColumn('company_id'));
+        }
+    }
+
+    public function down(): void
+    {
+        throw new RuntimeException('HR request records cannot regain tenant company scope.');
+    }
+};

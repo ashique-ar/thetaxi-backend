@@ -3,7 +3,6 @@
 namespace App\Http\Controllers\Api\Hr;
 
 use App\Http\Controllers\Controller;
-use App\Services\Hr\PeopleAccessService;
 use App\Services\Hr\ReportingLineAdministrationService;
 use Illuminate\Database\Query\Builder;
 use Illuminate\Http\JsonResponse;
@@ -14,14 +13,12 @@ use Illuminate\Validation\Rule;
 class ReportingLineController extends Controller
 {
     public function __construct(
-        private readonly PeopleAccessService $access,
         private readonly ReportingLineAdministrationService $reporting,
     ) {}
 
     public function index(Request $request): JsonResponse
     {
         
-        $companyId = $this->access->actorCompanyId($request->user());
         $data = $request->validate([
             'manager_staff_id' => ['nullable', 'uuid'], 'member_staff_id' => ['nullable', 'uuid'],
             'line_type' => ['nullable', Rule::in(['primary', 'dotted_line', 'hr_partner', 'approval'])],
@@ -30,7 +27,7 @@ class ReportingLineController extends Controller
         ]);
         foreach (['manager_staff_id', 'member_staff_id'] as $field) {
             if (! empty($data[$field])) {
-                abort_unless(DB::table('staff')->where('id', $data[$field])->where(fn ($_companyIdScope) => \App\Services\CompanyIdScope::constrain($_companyIdScope, 'company_id', $companyId))->exists(), 422, 'Reporting-line Staff filter is outside your legal entity.');
+                abort_unless(DB::table('staff')->where('id', $data[$field])->exists(), 422, 'Reporting-line Staff member was not found.');
             }
         }
         $query = DB::table('hr_reporting_lines as line')
@@ -38,7 +35,6 @@ class ReportingLineController extends Controller
             ->leftJoin('users as manager_user', 'manager_user.id', '=', 'manager_staff.user_id')
             ->join('staff as member_staff', 'member_staff.id', '=', 'line.member_staff_id')
             ->leftJoin('users as member_user', 'member_user.id', '=', 'member_staff.user_id')
-            ->where(fn ($_companyIdScope) => \App\Services\CompanyIdScope::constrain($_companyIdScope, 'line.company_id', $companyId))
             ->when($data['manager_staff_id'] ?? null, fn ($q, $id) => $q->where('line.manager_staff_id', $id))
             ->when($data['member_staff_id'] ?? null, fn ($q, $id) => $q->where('line.member_staff_id', $id))
             ->when($data['line_type'] ?? null, fn ($q, $type) => $q->where('line.line_type', $type))
@@ -60,10 +56,9 @@ class ReportingLineController extends Controller
     public function staffOptions(Request $request): JsonResponse
     {
         
-        $companyId = $this->access->actorCompanyId($request->user());
         $data = $request->validate(['search' => ['nullable', 'string', 'max:120'], 'page' => ['nullable', 'integer', 'min:1'], 'per_page' => ['nullable', 'integer', 'min:1', 'max:100']]);
         $search = trim((string) ($data['search'] ?? ''));
-        $query = $this->staffOptionsQuery($companyId, $search);
+        $query = $this->staffOptionsQuery($search);
 
         return response()->json(['status' => 'success', 'data' => $query->paginate((int) ($data['per_page'] ?? 50))]);
     }
@@ -71,9 +66,8 @@ class ReportingLineController extends Controller
     public function staffSelectorOptions(Request $request): JsonResponse
     {
         
-        $companyId = $this->access->actorCompanyId($request->user());
         $data = $request->validate(['search' => ['nullable', 'string', 'max:120'], 'selected_id' => ['nullable', 'uuid'], 'page' => ['nullable', 'integer', 'min:1'], 'per_page' => ['nullable', 'integer', 'min:1', 'max:50']]);
-        $query = $this->staffOptionsQuery($companyId, trim((string) ($data['search'] ?? '')), $data['selected_id'] ?? null);
+        $query = $this->staffOptionsQuery(trim((string) ($data['search'] ?? '')), $data['selected_id'] ?? null);
         $options = $query->paginate((int) ($data['per_page'] ?? 25));
         $options->setCollection($options->getCollection()->map(fn ($staff) => [
             'value' => (string) $staff->id,
@@ -84,10 +78,10 @@ class ReportingLineController extends Controller
         return response()->json(['status' => 'success', 'data' => $options]);
     }
 
-    private function staffOptionsQuery(string $companyId, string $search, ?string $selectedId = null): Builder
+    private function staffOptionsQuery(string $search, ?string $selectedId = null): Builder
     {
         return DB::table('staff')->leftJoin('users', 'users.id', '=', 'staff.user_id')
-            ->where(fn ($_companyIdScope) => \App\Services\CompanyIdScope::constrain($_companyIdScope, 'staff.company_id', $companyId))->whereNull('staff.deleted_at')->whereNull('staff.employment_ended_at')
+            ->whereNull('staff.deleted_at')->whereNull('staff.employment_ended_at')
             ->whereExists(fn ($employment) => $employment->selectRaw('1')->from('hr_employment_spells')
                 ->whereColumn('hr_employment_spells.staff_id', 'staff.id')->where('hr_employment_spells.status', 'active')->whereNull('hr_employment_spells.terminated_at'))
             ->when($selectedId, fn ($q, $id) => $q->where('staff.id', $id))
@@ -103,9 +97,7 @@ class ReportingLineController extends Controller
     {
         
         $data = $request->validate($this->commandRules());
-        $companyId = $this->access->actorCompanyId($request->user());
-
-        $line = $this->reporting->create($data, $companyId, (string) $request->user()->id);
+        $line = $this->reporting->create($data, (string) $request->user()->id);
 
         return response()->json(['status' => 'success', 'data' => $this->commandResponse($line)], 201);
     }
@@ -117,9 +109,7 @@ class ReportingLineController extends Controller
             'effective_until' => ['required', 'date'], 'reason' => ['required', 'string', 'max:2000'],
             'expected_version' => ['required', 'integer', 'min:1'], 'idempotency_key' => ['required', 'string', 'max:160'],
         ]);
-        $companyId = $this->access->actorCompanyId($request->user());
-
-        $line = $this->reporting->end($lineId, $data, $companyId, (string) $request->user()->id);
+        $line = $this->reporting->end($lineId, $data, (string) $request->user()->id);
 
         return response()->json(['status' => 'success', 'data' => $this->commandResponse($line)]);
     }

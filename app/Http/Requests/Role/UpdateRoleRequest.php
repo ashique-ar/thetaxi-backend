@@ -18,6 +18,10 @@ class UpdateRoleRequest extends FormRequest
     {
         $role = $this->currentRole();
         $guardName = $this->input('guard_name', $role?->guard_name ?? config('auth.defaults.guard', 'web'));
+        $guards = array_values(array_unique(array_merge(
+            [config('permissions.canonical_guard', 'api')],
+            config('permissions.legacy_guards', ['web'])
+        )));
         
         return [
             'name' => [
@@ -30,7 +34,7 @@ class UpdateRoleRequest extends FormRequest
             ],
             'display_name' => ['sometimes', 'string', 'max:255'],
             'description' => ['nullable', 'string', 'max:1000'],
-            'guard_name' => ['nullable', 'string', 'max:255'],
+            'guard_name' => ['sometimes', 'string', Rule::in($guards)],
             'context_types' => ['nullable', 'array'],
             'context_types.*' => ['string', 'in:customer,vehicle_owner,staff,agent,driver,corporate,internal'],
             'auto_assign_contexts' => ['nullable', 'boolean'],
@@ -78,6 +82,10 @@ class UpdateRoleRequest extends FormRequest
 
             if (! $role) {
                 return;
+            }
+
+            if ($this->filled('guard_name') && $this->input('guard_name') !== $role->guard_name) {
+                $validator->errors()->add('guard_name', 'A role guard cannot be changed after the role is created.');
             }
             
             // Prevent renaming system roles

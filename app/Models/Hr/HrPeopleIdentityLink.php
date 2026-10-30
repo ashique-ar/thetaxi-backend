@@ -9,13 +9,13 @@ use Spatie\Activitylog\Support\LogOptions;
 class HrPeopleIdentityLink extends BaseModel
 {
     protected $hidden = ['duplicate_review_id', 'alias_staff_id', 'canonical_staff_id', 'reason', 'evidence_checksum', 'approved_by', 'created_user_id', 'updated_user_id'];
-    protected $fillable = ['company_id', 'duplicate_review_id', 'alias_staff_id', 'canonical_staff_id', 'status', 'reason', 'evidence_checksum', 'approved_by', 'approved_at'];
+    protected $fillable = ['duplicate_review_id', 'alias_staff_id', 'canonical_staff_id', 'status', 'reason', 'evidence_checksum', 'approved_by', 'approved_at'];
     protected $casts = ['approved_at' => 'datetime'];
 
     public function getActivitylogOptions(): LogOptions
     {
         return LogOptions::defaults()
-            ->logOnly(['company_id', 'status'])
+            ->logOnly(['status'])
             ->logOnlyDirty()
             ->dontLogEmptyChanges()
             ->dontLogIfAttributesChangedOnly(['updated_at', 'created_at'])

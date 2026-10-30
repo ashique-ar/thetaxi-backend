@@ -119,17 +119,15 @@ class WebsiteSettingsService
     /**
      * Get a setting value with caching
      */
-    public function get(string $type, $default = null, ?string $companyId = null)
+    public function get(string $type, $default = null)
     {
         if ($type === 'feature_hr_attendance_ingestion_enabled') {
             // Legacy business_settings values predate the separate activation permission.
-            return WebsiteSetting::getValue($type, false, null);
+            return WebsiteSetting::getValue($type, false);
         }
 
-        $companyId = null;
-
         if (in_array($type, BusinessSetting::INSTALLATION_WIDE_WEBSITE_KEYS, true)) {
-            $websiteValue = WebsiteSetting::getValue($type, null, null);
+            $websiteValue = WebsiteSetting::getValue($type);
             if ($websiteValue !== null) return $websiteValue;
         }
 
@@ -140,7 +138,7 @@ class WebsiteSettingsService
             }
         }
 
-        $cacheKey = self::CACHE_PREFIX . ($companyId ?: 'global') . '_' . $type;
+        $cacheKey = self::CACHE_PREFIX . 'global_' . $type;
 
         return Cache::remember($cacheKey, self::CACHE_DURATION, function () use ($type, $default) {
             return WebsiteSetting::getValue($type, $default);
@@ -150,7 +148,7 @@ class WebsiteSettingsService
     /**
      * Set a setting value and clear cache
      */
-    public function set(string $type, $value, ?string $companyId = null): void
+    public function set(string $type, $value): void
     {
         WebsiteSetting::setValue($type, $value);
         $this->clearCache($type);
@@ -162,29 +160,28 @@ class WebsiteSettingsService
      */
     public function setGlobal(string $type, $value): void
     {
-        WebsiteSetting::setValue($type, $value, null);
+        WebsiteSetting::setValue($type, $value);
         $this->clearCache($type);
     }
 
     /**
      * Get multiple settings with caching
      */
-    public function getMultiple(array $types, ?string $companyId = null): array
+    public function getMultiple(array $types): array
     {
-        $companyId = null;
         $result = [];
         $uncachedTypes = [];
         $cacheKeysByType = [];
 
         foreach ($types as $type) {
-            $cacheKeysByType[$type] = self::CACHE_PREFIX . ($companyId ?: 'global') . '_' . $type;
+            $cacheKeysByType[$type] = self::CACHE_PREFIX . 'global_' . $type;
         }
 
         $cachedValues = Cache::many(array_values($cacheKeysByType));
 
         foreach ($cacheKeysByType as $type => $cacheKey) {
             if ($type === 'feature_hr_attendance_ingestion_enabled') {
-                $result[$type] = WebsiteSetting::getValue($type, false, null);
+                $result[$type] = WebsiteSetting::getValue($type, false);
                 continue;
             }
             $cachedValue = $cachedValues[$cacheKey] ?? null;
@@ -752,21 +749,15 @@ class WebsiteSettingsService
     /**
      * Clear cache for a specific type
      */
-    public function clearCache(string $type, ?string $companyId = null): void
+    public function clearCache(string $type): void
     {
         Cache::forget(self::CACHE_PREFIX . 'global_' . $type);
-        if ($companyId) {
-            Cache::forget(self::CACHE_PREFIX . $companyId . '_' . $type);
-        }
         Cache::forget('global_settings_flattened');
         Cache::forget('global_settings_flattened_global');
         Cache::forget('active_theme_setting');
         if ($type === 'default_currency') {
             Cache::forget('display_currencies_for_views');
             Cache::forget('global_currency_data');
-        }
-        if ($companyId) {
-            Cache::forget('global_settings_flattened_' . $companyId);
         }
     }
 
@@ -1083,7 +1074,7 @@ class WebsiteSettingsService
             'sms_esms_delivery_callback_url',
         ];
 
-        return $this->getMultiple($types, null);
+        return $this->getMultiple($types);
     }
 
     /**

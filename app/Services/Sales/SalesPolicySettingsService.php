@@ -166,9 +166,9 @@ class SalesPolicySettingsService
     }
 
     /** @return array<int, string> */
-    public function approvedStaffCategories(string $companyId): array
+    public function approvedStaffCategories(?string $companyId = null): array
     {
-        return SalesStaffCategoryDefinition::query()->where(fn ($_companyIdScope) => \App\Services\CompanyIdScope::constrain($_companyIdScope, 'company_id', $companyId))->where('status', 'approved')
+        return SalesStaffCategoryDefinition::query()->where('status', 'approved')
             ->orderBy('category_name')->pluck('category_name')->all();
     }
 

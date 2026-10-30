@@ -222,7 +222,7 @@ class DefaultFormConfigService
                         'value' => 'CASONS_HQ',
                         'label' => 'Casons Head Office',
                         'action' => 'fixed_location',
-                        'location_source' => 'default_company',
+                        'location_source' => 'configured',
                         'address' => 'Casons Head Office, 181, Gothami Gardens, Gothami Road, Rajagiriya, Sri Lanka.',
                         'latitude' => 6.9271,
                         'longitude' => 79.8612,

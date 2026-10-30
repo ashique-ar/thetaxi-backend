@@ -46,21 +46,20 @@ class PeopleCoreController extends Controller
     public function reconciliation(Request $request): JsonResponse
     {
         
-        return response()->json(['status'=>'success','data'=>$this->migration->reconciliation($this->access->actorCompanyId($request->user()))]);
+        return response()->json(['status'=>'success','data'=>$this->migration->reconciliation()]);
     }
 
     public function previewImport(Request $request): JsonResponse
     {
         
         $data=$request->validate(['file'=>['required','file','mimes:csv,txt','max:5120'],'idempotency_key'=>['required','string','max:160']]);
-        $job=$this->migration->preview($data['file'],$this->access->actorCompanyId($request->user()),(string)$request->user()->id,$data['idempotency_key']);
+        $job=$this->migration->preview($data['file'],(string)$request->user()->id,$data['idempotency_key']);
         return response()->json(['status'=>'success','data'=>$this->importPayload($job)],201);
     }
 
     public function importJob(Request $request, HrPeopleImportJob $job): JsonResponse
     {
         
-        abort_unless(\App\Services\CompanyIdScope::sameCompanyId((string) ($job->company_id), (string) ($this->access->actorCompanyId($request->user()))),404);
         return response()->json(['status'=>'success','data'=>$this->importPayload($job)]);
     }
 
@@ -68,33 +67,31 @@ class PeopleCoreController extends Controller
     {
         
         $data=$request->validate(['expected_file_checksum'=>['required','string','size:64']]);
-        abort_unless(\App\Services\CompanyIdScope::sameCompanyId((string) ($job->company_id), (string) ($this->access->actorCompanyId($request->user()))),404);
         abort_unless(hash_equals($job->file_checksum,$data['expected_file_checksum']),409,'The retained import file differs from the reviewed preview.');
-        return response()->json(['status'=>'success','data'=>$this->importPayload($this->migration->commit($job,$job->company_id,(string)$request->user()->id))]);
+        return response()->json(['status'=>'success','data'=>$this->importPayload($this->migration->commit($job,(string)$request->user()->id))]);
     }
 
     public function export(Request $request): JsonResponse
     {
         $data=$request->validate(['idempotency_key'=>['required','string','max:160']]);
-        return response()->json(['status'=>'success','data'=>$this->migration->export($this->access->actorCompanyId($request->user()),(string)$request->user()->id,$data['idempotency_key'])],201);
+        return response()->json(['status'=>'success','data'=>$this->migration->export((string)$request->user()->id,$data['idempotency_key'])],201);
     }
 
     public function downloadExport(Request $request, HrPeopleExport $export): StreamedResponse
     {
-        return $this->migration->download($export,$this->access->actorCompanyId($request->user()),(string)$request->user()->id);
+        return $this->migration->download($export,(string)$request->user()->id);
     }
 
-    public function detectDuplicates(Request $request):JsonResponse{return response()->json(['status'=>'success','data'=>$this->migration->detectDuplicates($this->access->actorCompanyId($request->user()),(string)$request->user()->id)]);}
-    public function duplicateReviews(Request $request):JsonResponse{$data=$request->validate(['per_page'=>['nullable','integer','min:1','max:100']]);return response()->json(['status'=>'success','data'=>$this->migration->duplicateReviews($this->access->actorCompanyId($request->user()),(int)($data['per_page']??25))]);}
+    public function detectDuplicates(Request $request):JsonResponse{return response()->json(['status'=>'success','data'=>$this->migration->detectDuplicates((string)$request->user()->id)]);}
+    public function duplicateReviews(Request $request):JsonResponse{$data=$request->validate(['per_page'=>['nullable','integer','min:1','max:100']]);return response()->json(['status'=>'success','data'=>$this->migration->duplicateReviews((int)($data['per_page']??25))]);}
     public function duplicateReviewCandidateOptions(Request $request,string $reviewId):JsonResponse
     {
         
         $data=$request->validate(['search'=>['nullable','string','max:120'],'selected_id'=>['nullable','uuid'],'page'=>['nullable','integer','min:1'],'per_page'=>['nullable','integer','min:1','max:50']]);
-        $companyId=$this->access->actorCompanyId($request->user());
-        $review=HrPeopleDuplicateReview::query()->whereKey($reviewId)->where(fn ($_companyIdScope) => \App\Services\CompanyIdScope::constrain($_companyIdScope, 'company_id', $companyId))->where('status','pending_review')->firstOrFail();
+        $review=HrPeopleDuplicateReview::query()->whereKey($reviewId)->where('status','pending_review')->firstOrFail();
         $search=trim((string)($data['search']??''));
         $options=Staff::withTrashed()->leftJoin('users','users.id','=','staff.user_id')
-            ->where(fn ($_companyIdScope) => \App\Services\CompanyIdScope::constrain($_companyIdScope, 'staff.company_id', $companyId))->whereIn('staff.id',$review->candidate_staff_ids??[])
+            ->whereIn('staff.id',$review->candidate_staff_ids??[])
             ->when($data['selected_id']??null,fn($query,$id)=>$query->where('staff.id',$id))
             ->when($search!=='',fn($query)=>$query->where(fn($match)=>$match->whereLikeInsensitive('staff.code',$search)->orWhereLikeInsensitive('users.first_name',$search)->orWhereLikeInsensitive('users.last_name',$search)))
             ->select('staff.id','staff.code','staff.employment_ended_at','staff.deleted_at','users.first_name','users.last_name')
@@ -103,8 +100,8 @@ class PeopleCoreController extends Controller
 
         return response()->json(['status'=>'success','data'=>$options]);
     }
-    public function decideDuplicate(Request $request,HrPeopleDuplicateReview $review):JsonResponse{$data=$request->validate(['expected_version'=>['required','integer','min:1'],'disposition'=>['required',Rule::in(['keep_separate','canonical_selected','false_positive'])],'canonical_staff_id'=>['nullable','uuid'],'reason'=>['required','string','min:10','max:2000']]);return response()->json(['status'=>'success','data'=>$this->migration->decideDuplicate($review,$this->access->actorCompanyId($request->user()),$data,(string)$request->user()->id)]);}
-    public function consolidateDuplicate(Request $request,HrPeopleDuplicateReview $review):JsonResponse{$data=$request->validate(['expected_version'=>['required','integer','min:1']]);return response()->json(['status'=>'success','data'=>$this->migration->consolidateDuplicate($review,$this->access->actorCompanyId($request->user()),(int)$data['expected_version'],(string)$request->user()->id)]);}
+    public function decideDuplicate(Request $request,HrPeopleDuplicateReview $review):JsonResponse{$data=$request->validate(['expected_version'=>['required','integer','min:1'],'disposition'=>['required',Rule::in(['keep_separate','canonical_selected','false_positive'])],'canonical_staff_id'=>['nullable','uuid'],'reason'=>['required','string','min:10','max:2000']]);return response()->json(['status'=>'success','data'=>$this->migration->decideDuplicate($review,$data,(string)$request->user()->id)]);}
+    public function consolidateDuplicate(Request $request,HrPeopleDuplicateReview $review):JsonResponse{$data=$request->validate(['expected_version'=>['required','integer','min:1']]);return response()->json(['status'=>'success','data'=>$this->migration->consolidateDuplicate($review,(int)$data['expected_version'],(string)$request->user()->id)]);}
 
     private function importPayload(HrPeopleImportJob $job): array
     {
@@ -131,7 +128,6 @@ class PeopleCoreController extends Controller
         $at = now();
         $query = $this->access->scope(Staff::withTrashed()->with([
             'user:id,first_name,last_name,email,phone,is_active',
-            'company:id,name',
             'employmentSpells' => fn($spells) => $spells->orderByDesc('spell_number'),
             'employmentAssignments' => fn($assignments) => $assignments
                 ->where('effective_from', '<=', $at)
@@ -164,16 +160,15 @@ class PeopleCoreController extends Controller
         activity('hr-sensitive-data')
             ->causedBy($request->user())
             ->performedOn($staff)
-            ->withProperties(['company_id' => $staff->company_id, 'ip' => $request->ip()])
+            ->withProperties(['ip' => $request->ip()])
             ->log('employee_360_viewed');
         $staff->load([
             'user:id,first_name,last_name,email,phone,is_active',
-            'company:id,name',
             'employmentSpells' => fn($spells) => $spells->orderByDesc('spell_number'),
             'employmentAssignments' => fn($assignments) => $assignments->orderByDesc('effective_from'),
         ]);
         $employee = $this->employeeSummary($staff);
-        unset($employee['id'], $employee['company_id'], $employee['current_spell_id']);
+        unset($employee['id'], $employee['current_spell_id']);
         if ($employee['current_assignment']) {
             $employee['current_assignment'] = array_diff_key($employee['current_assignment'], array_flip([
                 'id', 'position_id', 'organization_unit_id', 'manager_staff_id', 'dotted_line_manager_staff_id',
@@ -182,10 +177,10 @@ class PeopleCoreController extends Controller
         $employmentHistory = $this->employmentHistorySummary($staff->employmentSpells);
         $at = now()->toDateString();
         $reportingLines = DB::table('hr_reporting_lines as line')->join('staff as manager_staff', 'manager_staff.id', '=', 'line.manager_staff_id')->leftJoin('users as manager_user', 'manager_user.id', '=', 'manager_staff.user_id')
-            ->where(fn ($_companyIdScope) => \App\Services\CompanyIdScope::constrain($_companyIdScope, 'line.company_id', $staff->company_id))->where('line.member_staff_id', $staff->id)->where('line.effective_from', '<=', $at)->where(fn($query) => $query->whereNull('line.effective_until')->orWhere('line.effective_until', '>', $at))
+            ->where('line.member_staff_id', $staff->id)->where('line.effective_from', '<=', $at)->where(fn($query) => $query->whereNull('line.effective_until')->orWhere('line.effective_until', '>', $at))
             ->select(['line.id', 'line.line_type', 'line.effective_from', 'line.effective_until', 'line.version', 'manager_staff.code as manager_employee_number', 'manager_user.first_name as manager_first_name', 'manager_user.last_name as manager_last_name'])->orderBy('line.line_type')->get();
         $actingAppointments = DB::table('hr_acting_appointments as appointment')->join('hr_positions as position', 'position.id', '=', 'appointment.acting_position_id')
-            ->where(fn ($_companyIdScope) => \App\Services\CompanyIdScope::constrain($_companyIdScope, 'appointment.company_id', $staff->company_id))->where('appointment.staff_id', $staff->id)
+            ->where('appointment.staff_id', $staff->id)
             ->select(['appointment.id', 'appointment.effective_from', 'appointment.effective_until', 'appointment.status', 'appointment.version', 'position.position_number', 'position.title as position_title'])
             ->selectRaw('CASE WHEN appointment.restoration_assignment_id IS NULL THEN 0 ELSE 1 END as has_restoration')
             ->orderByDesc('appointment.effective_from')->get();
@@ -234,11 +229,9 @@ class PeopleCoreController extends Controller
     public function organization(Request $request): JsonResponse
     {
         
-        $data = $request->validate(['company_id' => ['nullable', 'uuid'], 'unit_type' => ['nullable', 'string', 'max:40'], 'status' => ['nullable', Rule::in(['active', 'inactive'])], 'search' => ['nullable', 'string', 'max:120'], 'page' => ['nullable', 'integer', 'min:1'], 'per_page' => ['nullable', 'integer', 'min:1', 'max:100']]);
-        $companyId = $this->access->actorCompanyId($request->user());
-        abort_if(isset($data['company_id']) && !\App\Services\CompanyIdScope::sameCompanyId((string) ($data['company_id']), (string) ($companyId)), 403, 'The requested organization is outside your legal entity.');
+        $data = $request->validate(['unit_type' => ['nullable', 'string', 'max:40'], 'status' => ['nullable', Rule::in(['active', 'inactive'])], 'search' => ['nullable', 'string', 'max:120'], 'page' => ['nullable', 'integer', 'min:1'], 'per_page' => ['nullable', 'integer', 'min:1', 'max:100']]);
         $search = trim((string) ($data['search'] ?? ''));
-        $rows = DB::table('hr_organization_units')->where(fn ($_companyIdScope) => \App\Services\CompanyIdScope::constrain($_companyIdScope, 'company_id', $companyId))->when($data['unit_type'] ?? null, fn($q, $type) => $q->where('unit_type', $type))->when($data['status'] ?? null, fn($q, $status) => $q->where('status', $status))->when($search !== '', fn($q) => $q->where(fn($match) => $match->whereRaw('LOWER(code) LIKE ?', ['%' . mb_strtolower($search) . '%'])->orWhereRaw('LOWER(name) LIKE ?', ['%' . mb_strtolower($search) . '%'])))->orderBy('name')->orderBy('id')->paginate((int) ($data['per_page'] ?? 50));
+        $rows = DB::table('hr_organization_units')->when($data['unit_type'] ?? null, fn($q, $type) => $q->where('unit_type', $type))->when($data['status'] ?? null, fn($q, $status) => $q->where('status', $status))->when($search !== '', fn($q) => $q->where(fn($match) => $match->whereRaw('LOWER(code) LIKE ?', ['%' . mb_strtolower($search) . '%'])->orWhereRaw('LOWER(name) LIKE ?', ['%' . mb_strtolower($search) . '%'])))->orderBy('name')->orderBy('id')->paginate((int) ($data['per_page'] ?? 50));
         $rows->getCollection()->transform(fn($row) => $this->decodeJsonColumns($row, ['custom_fields']));
         return response()->json(['status' => 'success', 'data' => $rows]);
     }
@@ -246,7 +239,6 @@ class PeopleCoreController extends Controller
     public function organizationReferenceOptions(Request $request): JsonResponse
     {
         
-        $companyId = $this->access->actorCompanyId($request->user());
         $data = $request->validate([
             'record_type' => ['required', Rule::in(['organization_unit', 'job_family', 'job_grade', 'designation'])],
             'search' => ['nullable', 'string', 'max:120'],
@@ -266,7 +258,7 @@ class PeopleCoreController extends Controller
             'job_grade' => 'hr_job_grades',
             'designation' => 'hr_designations',
         };
-        $query = DB::table($table)->where(fn ($_companyIdScope) => \App\Services\CompanyIdScope::constrain($_companyIdScope, 'company_id', $companyId));
+        $query = DB::table($table);
         if (! empty($data['exclude_id'])) {
             $query->where('id', '<>', $data['exclude_id']);
         }
@@ -334,16 +326,15 @@ class PeopleCoreController extends Controller
     {
         
         $data = $request->validate(['as_of' => ['nullable', 'date']]);
-        $companyId = $this->access->actorCompanyId($request->user());
         $asOf = $data['as_of'] ?? now()->toDateString();
         $units = DB::table('hr_organization_units as unit')
             ->leftJoin('staff as manager_staff', 'manager_staff.id', '=', 'unit.manager_staff_id')
             ->leftJoin('users as manager_user', 'manager_user.id', '=', 'manager_staff.user_id')
-            ->where(fn ($_companyIdScope) => \App\Services\CompanyIdScope::constrain($_companyIdScope, 'unit.company_id', $companyId))->where('unit.effective_from', '<=', $asOf)
+            ->where('unit.effective_from', '<=', $asOf)
             ->where(fn($q) => $q->whereNull('unit.effective_until')->orWhere('unit.effective_until', '>', $asOf))
             ->select(['unit.id', 'unit.parent_id', 'unit.unit_type', 'unit.code', 'unit.name', 'unit.status', 'unit.manager_staff_id', 'manager_staff.code as manager_employee_number', 'manager_user.first_name as manager_first_name', 'manager_user.last_name as manager_last_name'])
             ->orderBy('unit.name')->get();
-        $positionCounts = DB::table('hr_positions')->where(fn ($_companyIdScope) => \App\Services\CompanyIdScope::constrain($_companyIdScope, 'company_id', $companyId))->where('status', '!=', 'inactive')
+        $positionCounts = DB::table('hr_positions')->where('status', '!=', 'inactive')
             ->where('effective_from', '<=', $asOf)->where(fn($q) => $q->whereNull('effective_until')->orWhere('effective_until', '>', $asOf))
             ->groupBy('organization_unit_id')->selectRaw('organization_unit_id, count(*) as count')->pluck('count', 'organization_unit_id');
         $rows = $units->map(fn($unit) => (array) $unit + ['position_count' => (int) ($positionCounts[$unit->id] ?? 0)])->values();
@@ -353,29 +344,25 @@ class PeopleCoreController extends Controller
     public function storeOrganizationUnit(Request $request): JsonResponse
     {
         
-        $data = $request->validate($this->organizationUnitRules() + ['company_id' => ['nullable', 'uuid', 'exists:companies,id']]);
-        $companyId = $this->access->actorCompanyId($request->user());
-        abort_if(isset($data['company_id']) && !\App\Services\CompanyIdScope::sameCompanyId((string) ($data['company_id']), (string) ($companyId)), 403, 'The organization unit must belong to your legal entity.');
-        $this->assertOrganizationStaffReferences($data, $companyId);
-        return response()->json(['status' => 'success', 'data' => $this->organizationAdmin->createUnit($data, $companyId, (string) $request->user()->id)], 201);
+        $data = $request->validate($this->organizationUnitRules());
+        $this->assertOrganizationStaffReferences($data);
+        return response()->json(['status' => 'success', 'data' => $this->organizationAdmin->createUnit($data, (string) $request->user()->id)], 201);
     }
 
     public function updateOrganizationUnit(Request $request, string $unitId): JsonResponse
     {
         
-        $companyId = $this->access->actorCompanyId($request->user());
         $data = $request->validate($this->organizationUnitRules(true));
-        $this->assertOrganizationStaffReferences($data, $companyId);
-        return response()->json(['status' => 'success', 'data' => $this->organizationAdmin->updateUnit($unitId, $data, $companyId, (string) $request->user()->id)]);
+        $this->assertOrganizationStaffReferences($data);
+        return response()->json(['status' => 'success', 'data' => $this->organizationAdmin->updateUnit($unitId, $data, (string) $request->user()->id)]);
     }
 
     public function payrollGroups(Request $request): JsonResponse
     {
         
         $data = $request->validate(['status' => ['nullable', Rule::in(['active', 'inactive'])], 'search' => ['nullable', 'string', 'max:120'], 'page' => ['nullable', 'integer', 'min:1'], 'per_page' => ['nullable', 'integer', 'min:1', 'max:100']]);
-        $companyId = $this->access->actorCompanyId($request->user());
         $search = trim((string) ($data['search'] ?? ''));
-        $rows = DB::table('hr_payroll_groups')->where(fn ($_companyIdScope) => \App\Services\CompanyIdScope::constrain($_companyIdScope, 'company_id', $companyId))->when($data['status'] ?? null, fn($q, $status) => $q->where('status', $status))->when($search !== '', fn($q) => $q->where(fn($match) => $match->whereRaw('LOWER(code) LIKE ?', ['%' . mb_strtolower($search) . '%'])->orWhereRaw('LOWER(name) LIKE ?', ['%' . mb_strtolower($search) . '%'])))->orderBy('name')->orderBy('id')->paginate((int) ($data['per_page'] ?? 50));
+        $rows = DB::table('hr_payroll_groups')->when($data['status'] ?? null, fn($q, $status) => $q->where('status', $status))->when($search !== '', fn($q) => $q->where(fn($match) => $match->whereRaw('LOWER(code) LIKE ?', ['%' . mb_strtolower($search) . '%'])->orWhereRaw('LOWER(name) LIKE ?', ['%' . mb_strtolower($search) . '%'])))->orderBy('name')->orderBy('id')->paginate((int) ($data['per_page'] ?? 50));
         return response()->json(['status' => 'success', 'data' => $rows]);
     }
 
@@ -383,16 +370,14 @@ class PeopleCoreController extends Controller
     {
         
         $data = $request->validate($this->payrollGroupRules());
-        $companyId = $this->access->actorCompanyId($request->user());
-        return response()->json(['status' => 'success', 'data' => $this->organizationAdmin->createPayrollGroup($data, $companyId, (string) $request->user()->id)], 201);
+        return response()->json(['status' => 'success', 'data' => $this->organizationAdmin->createPayrollGroup($data, (string) $request->user()->id)], 201);
     }
 
     public function updatePayrollGroup(Request $request, string $groupId): JsonResponse
     {
         
         $data = $request->validate($this->payrollGroupRules(true));
-        $companyId = $this->access->actorCompanyId($request->user());
-        return response()->json(['status' => 'success', 'data' => $this->organizationAdmin->updatePayrollGroup($groupId, $data, $companyId, (string) $request->user()->id)]);
+        return response()->json(['status' => 'success', 'data' => $this->organizationAdmin->updatePayrollGroup($groupId, $data, (string) $request->user()->id)]);
     }
 
     private function payrollGroupRules(bool $update = false): array
@@ -415,9 +400,8 @@ class PeopleCoreController extends Controller
     {
         
         $data = $request->validate(['category' => ['nullable', 'string', 'max:40'], 'status' => ['nullable', Rule::in(['active', 'inactive'])], 'search' => ['nullable', 'string', 'max:120'], 'page' => ['nullable', 'integer', 'min:1'], 'per_page' => ['nullable', 'integer', 'min:1', 'max:100']]);
-        $companyId = $this->access->actorCompanyId($request->user());
         $search = trim((string) ($data['search'] ?? ''));
-        $rows = DB::table('hr_document_types')->where(fn ($_companyIdScope) => \App\Services\CompanyIdScope::constrain($_companyIdScope, 'company_id', $companyId))->when($data['category'] ?? null, fn($q, $category) => $q->where('category', $category))->when($data['status'] ?? null, fn($q, $status) => $q->where('status', $status))->when($search !== '', fn($q) => $q->where(fn($match) => $match->whereRaw('LOWER(code) LIKE ?', ['%' . mb_strtolower($search) . '%'])->orWhereRaw('LOWER(name) LIKE ?', ['%' . mb_strtolower($search) . '%'])))->orderBy('category')->orderBy('name')->orderBy('id')->paginate((int) ($data['per_page'] ?? 50));
+        $rows = DB::table('hr_document_types')->when($data['category'] ?? null, fn($q, $category) => $q->where('category', $category))->when($data['status'] ?? null, fn($q, $status) => $q->where('status', $status))->when($search !== '', fn($q) => $q->where(fn($match) => $match->whereRaw('LOWER(code) LIKE ?', ['%' . mb_strtolower($search) . '%'])->orWhereRaw('LOWER(name) LIKE ?', ['%' . mb_strtolower($search) . '%'])))->orderBy('category')->orderBy('name')->orderBy('id')->paginate((int) ($data['per_page'] ?? 50));
         $rows->getCollection()->transform(fn($row) => $this->decodeJsonColumns($row, ['required_for_staff_types', 'required_for_employment_types']));
         return response()->json(['status' => 'success', 'data' => $rows]);
     }
@@ -426,16 +410,14 @@ class PeopleCoreController extends Controller
     {
         
         $data = $request->validate($this->documentTypeRules());
-        $companyId = $this->access->actorCompanyId($request->user());
-        return response()->json(['status' => 'success', 'data' => $this->organizationAdmin->createDocumentType($data, $companyId, (string) $request->user()->id)], 201);
+        return response()->json(['status' => 'success', 'data' => $this->organizationAdmin->createDocumentType($data, (string) $request->user()->id)], 201);
     }
 
     public function updateDocumentType(Request $request, string $typeId): JsonResponse
     {
         
         $data = $request->validate($this->documentTypeRules(true));
-        $companyId = $this->access->actorCompanyId($request->user());
-        return response()->json(['status' => 'success', 'data' => $this->organizationAdmin->updateDocumentType($typeId, $data, $companyId, (string) $request->user()->id)]);
+        return response()->json(['status' => 'success', 'data' => $this->organizationAdmin->updateDocumentType($typeId, $data, (string) $request->user()->id)]);
     }
 
     private function documentTypeRules(bool $update = false): array
@@ -549,14 +531,13 @@ class PeopleCoreController extends Controller
     public function designations(Request $request): JsonResponse
     {
         
-        $companyId = $this->access->actorCompanyId($request->user());
         $data = $request->validate($this->catalogListRules() + [
             'job_family_id' => ['nullable', 'uuid'],
             'job_grade_id' => ['nullable', 'uuid'],
         ]);
-        $this->assertOptionalCompanyReference($data['job_family_id'] ?? null, 'hr_job_families', $companyId, 'Job family');
-        $this->assertOptionalCompanyReference($data['job_grade_id'] ?? null, 'hr_job_grades', $companyId, 'Job grade');
-        $rows = $this->catalogQuery('hr_designations', $companyId, $data)
+        $this->assertOptionalCompanyReference($data['job_family_id'] ?? null, 'hr_job_families', 'Job family');
+        $this->assertOptionalCompanyReference($data['job_grade_id'] ?? null, 'hr_job_grades', 'Job grade');
+        $rows = $this->catalogQuery('hr_designations', $data)
             ->when($data['job_family_id'] ?? null, fn($query, $id) => $query->where('job_family_id', $id))
             ->when($data['job_grade_id'] ?? null, fn($query, $id) => $query->where('job_grade_id', $id))
             ->paginate((int) ($data['per_page'] ?? 50));
@@ -577,14 +558,13 @@ class PeopleCoreController extends Controller
     public function positions(Request $request): JsonResponse
     {
         
-        $companyId = $this->access->actorCompanyId($request->user());
         $data = $request->validate($this->catalogListRules() + [
             'organization_unit_id' => ['nullable', 'uuid'],
             'designation_id' => ['nullable', 'uuid'],
             'availability' => ['nullable', Rule::in(['vacant', 'partially_filled', 'filled', 'inactive'])],
         ]);
-        $this->assertOptionalCompanyReference($data['organization_unit_id'] ?? null, 'hr_organization_units', $companyId, 'Organization unit');
-        $this->assertOptionalCompanyReference($data['designation_id'] ?? null, 'hr_designations', $companyId, 'Designation');
+        $this->assertOptionalCompanyReference($data['organization_unit_id'] ?? null, 'hr_organization_units', 'Organization unit');
+        $this->assertOptionalCompanyReference($data['designation_id'] ?? null, 'hr_designations', 'Designation');
         $asOf = $data['effective_at'] ?? now()->toDateString();
         $occupancy = DB::table('hr_employment_assignments')
             ->where('effective_from', '<=', $asOf)
@@ -594,7 +574,6 @@ class PeopleCoreController extends Controller
         $search = trim((string) ($data['search'] ?? ''));
         $rows = DB::table('hr_positions')
             ->leftJoinSub($occupancy, 'occupancy', fn($join) => $join->on('occupancy.position_id', '=', 'hr_positions.id'))
-            ->where(fn ($_companyIdScope) => \App\Services\CompanyIdScope::constrain($_companyIdScope, 'hr_positions.company_id', $companyId))
             ->when($data['status'] ?? null, fn($query, $status) => $query->where('hr_positions.status', $status))
             ->when($search !== '', fn($query) => $query->where(fn($match) => $match
                 ->whereRaw('LOWER(hr_positions.position_number) LIKE ?', ['%' . mb_strtolower($search) . '%'])
@@ -619,19 +598,17 @@ class PeopleCoreController extends Controller
     public function storePosition(Request $request): JsonResponse
     {
         
-        $companyId = $this->access->actorCompanyId($request->user());
         $data = $request->validate($this->positionRules());
 
-        return response()->json(['status' => 'success', 'data' => $this->jobPositionAdmin->createPosition($data, $companyId, (string) $request->user()->id)], 201);
+        return response()->json(['status' => 'success', 'data' => $this->jobPositionAdmin->createPosition($data, (string) $request->user()->id)], 201);
     }
 
     public function updatePosition(Request $request, string $positionId): JsonResponse
     {
         
-        $companyId = $this->access->actorCompanyId($request->user());
         $data = $request->validate($this->positionRules(true));
 
-        return response()->json(['status' => 'success', 'data' => $this->jobPositionAdmin->updatePosition($positionId, $data, $companyId, (string) $request->user()->id)]);
+        return response()->json(['status' => 'success', 'data' => $this->jobPositionAdmin->updatePosition($positionId, $data, (string) $request->user()->id)]);
     }
 
     public function employmentHistory(Request $request, string $staffId): JsonResponse
@@ -658,7 +635,7 @@ class PeopleCoreController extends Controller
         $staff = Staff::withTrashed()->findOrFail($staffId);
         $this->access->authorize($request->user(), $staff);
         $search = trim((string) ($data['search'] ?? ''));
-        $options = HrEmploymentSpell::query()->where('staff_id', $staff->id)->where(fn ($_companyIdScope) => \App\Services\CompanyIdScope::constrain($_companyIdScope, 'company_id', $staff->company_id))
+        $options = HrEmploymentSpell::query()->where('staff_id', $staff->id)
             ->when($data['selected_id'] ?? null, fn($query, $id) => $query->whereKey($id))
             ->when($search !== '', fn($query) => $query->where(fn($match) => $match->where('spell_number', 'like', '%' . $search . '%')->orWhere('status', 'like', '%' . $search . '%')))
             ->orderByDesc('spell_number')->paginate((int) ($data['per_page'] ?? 25));
@@ -674,7 +651,7 @@ class PeopleCoreController extends Controller
         $staff = Staff::withTrashed()->findOrFail($staffId);
         $this->access->authorize($request->user(), $staff);
         if (!empty($data['employment_spell_id']))
-            abort_unless(HrEmploymentSpell::query()->whereKey($data['employment_spell_id'])->where('staff_id', $staff->id)->where(fn ($_companyIdScope) => \App\Services\CompanyIdScope::constrain($_companyIdScope, 'company_id', $staff->company_id))->exists(), 422, 'The timeline employment spell does not belong to this employee.');
+            abort_unless(HrEmploymentSpell::query()->whereKey($data['employment_spell_id'])->where('staff_id', $staff->id)->exists(), 422, 'The timeline employment spell does not belong to this employee.');
         $query = HrEmployeeTimelineEvent::query()->where('staff_id', $staff->id);
         if (!$request->user()->can('hr.people.timeline-confidential'))
             $query->whereIn('confidentiality', ['employee', 'manager', 'internal']);
@@ -696,15 +673,14 @@ class PeopleCoreController extends Controller
         
         $staff = Staff::withTrashed()->findOrFail($case->staff_id);
         $this->access->authorize($request->user(), $staff);
-        abort_unless(\App\Services\CompanyIdScope::sameCompanyId((string) ($staff->company_id), (string) ($case->company_id)), 409, 'The rehire case and employee legal entity do not match.');
         $assignment = $request->validate(['employment_type_id' => ['nullable', 'uuid', 'exists:hr_employment_types,id'], 'position_id' => ['nullable', 'uuid', 'exists:hr_positions,id'], 'organization_unit_id' => ['nullable', 'uuid', 'exists:hr_organization_units,id'], 'manager_staff_id' => ['nullable', 'uuid', 'exists:staff,id'], 'cost_centre_code' => ['nullable', 'string', 'max:80'], 'location_code' => ['nullable', 'string', 'max:80'], 'payroll_group_code' => ['nullable', 'string', 'max:80'], 'default_shift_code' => ['nullable', 'string', 'max:80'], 'work_pattern_code' => ['nullable', 'string', 'max:80']]);
         foreach (['employment_type_id' => 'hr_employment_types', 'position_id' => 'hr_positions', 'organization_unit_id' => 'hr_organization_units'] as $field => $table) {
             if (!empty($assignment[$field]))
-                abort_unless(DB::table($table)->where('id', $assignment[$field])->where(fn ($_companyIdScope) => \App\Services\CompanyIdScope::constrain($_companyIdScope, 'company_id', $case->company_id))->exists(), 422, "{$field} must belong to the employee legal entity.");
+                abort_unless(DB::table($table)->where('id', $assignment[$field])->exists(), 422, "{$field} must reference an existing HR record.");
         }
         if (!empty($assignment['manager_staff_id'])) {
             abort_if($assignment['manager_staff_id'] === $staff->id, 422, 'A rehired employee cannot manage their own assignment.');
-            abort_unless(Staff::query()->whereKey($assignment['manager_staff_id'])->where(fn ($_companyIdScope) => \App\Services\CompanyIdScope::constrain($_companyIdScope, 'company_id', $case->company_id))->whereNull('employment_ended_at')->exists(), 422, 'An active manager must belong to the employee legal entity.');
+            abort_unless(Staff::query()->whereKey($assignment['manager_staff_id'])->whereNull('employment_ended_at')->exists(), 422, 'An active manager must be an active Staff member.');
         }
         return response()->json(['status' => 'success', 'data' => $this->people->approveRehire($case, $assignment, (string) $request->user()->id)]);
     }
@@ -752,9 +728,9 @@ class PeopleCoreController extends Controller
         $this->access->authorize($request->user(), $staff);
         $data = $request->validate(['employment_spell_id' => ['nullable', 'uuid', 'exists:hr_employment_spells,id'], 'record_type' => ['required', Rule::in(['emergency_contact', 'dependent', 'beneficiary', 'qualification', 'skill', 'language', 'membership', 'licence', 'certification', 'career', 'achievement', 'award', 'note'])], 'title' => ['required', 'string', 'max:255'], 'data' => ['required', 'array'], 'effective_date' => ['nullable', 'date'], 'expiry_date' => ['nullable', 'date', 'after_or_equal:effective_date'], 'confidentiality' => ['required', Rule::in(['employee', 'manager', 'internal', 'hr_private', 'legal'])], 'source' => ['required', 'string', 'max:60'], 'employee_submitted' => ['nullable', 'boolean'], 'evidence_file_id' => ['nullable', 'uuid', 'exists:domain_evidence_files,id']]);
         if (!empty($data['employment_spell_id']))
-            abort_unless(HrEmploymentSpell::query()->whereKey($data['employment_spell_id'])->where('staff_id', $staff->id)->where(fn ($_companyIdScope) => \App\Services\CompanyIdScope::constrain($_companyIdScope, 'company_id', $staff->company_id))->exists(), 422, 'The employment spell does not belong to this employee.');
+            abort_unless(HrEmploymentSpell::query()->whereKey($data['employment_spell_id'])->where('staff_id', $staff->id)->exists(), 422, 'The employment spell does not belong to this employee.');
         if (!empty($data['evidence_file_id']))
-            abort_unless(DB::table('domain_evidence_files')->where('id', $data['evidence_file_id'])->where(fn ($_companyIdScope) => \App\Services\CompanyIdScope::constrain($_companyIdScope, 'company_id', $staff->company_id))->where('domain', 'hr')->whereNull('deleted_at')->exists(), 422, 'Employee-record evidence must be an active HR file from the same legal entity.');
+            abort_unless(DB::table('domain_evidence_files')->where('id', $data['evidence_file_id'])->where('domain', 'hr')->whereNull('deleted_at')->exists(), 422, 'Employee-record evidence must be an active HR file.');
         $payload = $data;
         $payload['encrypted_data'] = $payload['data'];
         unset($payload['data']);
@@ -769,9 +745,8 @@ class PeopleCoreController extends Controller
     private function jobCatalog(Request $request, string $table): JsonResponse
     {
         
-        $companyId = $this->access->actorCompanyId($request->user());
         $data = $request->validate($this->catalogListRules());
-        $rows = $this->catalogQuery($table, $companyId, $data)->paginate((int) ($data['per_page'] ?? 50));
+        $rows = $this->catalogQuery($table, $data)->paginate((int) ($data['per_page'] ?? 50));
 
         return response()->json(['status' => 'success', 'data' => $rows]);
     }
@@ -784,9 +759,7 @@ class PeopleCoreController extends Controller
     private function storeJobCatalogData(Request $request, string $type, array $data): JsonResponse
     {
         
-        $companyId = $this->access->actorCompanyId($request->user());
-
-        return response()->json(['status' => 'success', 'data' => $this->jobPositionAdmin->createCatalog($type, $data, $companyId, (string) $request->user()->id)], 201);
+        return response()->json(['status' => 'success', 'data' => $this->jobPositionAdmin->createCatalog($type, $data, (string) $request->user()->id)], 201);
     }
 
     private function updateJobCatalog(Request $request, string $type, string $table, string $id, array $rules): JsonResponse
@@ -797,17 +770,16 @@ class PeopleCoreController extends Controller
     private function updateJobCatalogData(Request $request, string $type, string $table, string $id, array $data): JsonResponse
     {
         
-        $companyId = $this->access->actorCompanyId($request->user());
-        abort_unless(DB::table($table)->where('id', $id)->where(fn ($_companyIdScope) => \App\Services\CompanyIdScope::constrain($_companyIdScope, 'company_id', $companyId))->exists(), 404, 'The requested job catalogue record was not found in your legal entity.');
+        abort_unless(DB::table($table)->where('id', $id)->exists(), 404, 'The requested job catalogue record was not found.');
 
-        return response()->json(['status' => 'success', 'data' => $this->jobPositionAdmin->updateCatalog($type, $id, $data, $companyId, (string) $request->user()->id)]);
+        return response()->json(['status' => 'success', 'data' => $this->jobPositionAdmin->updateCatalog($type, $id, $data, (string) $request->user()->id)]);
     }
 
-    private function catalogQuery(string $table, string $companyId, array $data): \Illuminate\Database\Query\Builder
+    private function catalogQuery(string $table, array $data): \Illuminate\Database\Query\Builder
     {
         $search = trim((string) ($data['search'] ?? ''));
 
-        return DB::table($table)->where(fn ($_companyIdScope) => \App\Services\CompanyIdScope::constrain($_companyIdScope, 'company_id', $companyId))
+        return DB::table($table)
             ->when($data['status'] ?? null, fn($query, $status) => $query->where('status', $status))
             ->when($search !== '', fn($query) => $query->where(fn($match) => $match
                 ->whereRaw('LOWER(code) LIKE ?', ['%' . mb_strtolower($search) . '%'])
@@ -902,10 +874,10 @@ class PeopleCoreController extends Controller
         return ltrim($whole, '0') . str_pad($fraction, 4, '0');
     }
 
-    private function assertOptionalCompanyReference(?string $id, string $table, string $companyId, string $label): void
+    private function assertOptionalCompanyReference(?string $id, string $table, string $label): void
     {
         if ($id) {
-            abort_unless(DB::table($table)->where('id', $id)->where(fn ($_companyIdScope) => \App\Services\CompanyIdScope::constrain($_companyIdScope, 'company_id', $companyId))->exists(), 422, "{$label} must belong to your legal entity.");
+            abort_unless(DB::table($table)->where('id', $id)->exists(), 422, "{$label} must exist.");
         }
     }
 
@@ -952,11 +924,11 @@ class PeopleCoreController extends Controller
         ];
     }
 
-    private function assertOrganizationStaffReferences(array $data, string $companyId): void
+    private function assertOrganizationStaffReferences(array $data): void
     {
         foreach (['manager_staff_id', 'hr_partner_staff_id'] as $field)
             if (!empty($data[$field]))
-                abort_unless(Staff::query()->whereKey($data[$field])->where(fn ($_companyIdScope) => \App\Services\CompanyIdScope::constrain($_companyIdScope, 'company_id', $companyId))->exists(), 422, "{$field} must belong to the organization legal entity.");
+                abort_unless(Staff::query()->whereKey($data[$field])->exists(), 422, "{$field} must reference an existing Staff member.");
     }
 
     private function assertCustomFieldRules(array $data): void
@@ -1027,7 +999,7 @@ class PeopleCoreController extends Controller
             ? DB::table('hr_employment_types')->where('id', $currentSpell->employment_type_id)->value('code')
             : null;
         $today = now()->toDateString();
-        $types = DB::table('hr_document_types')->where(fn ($_companyIdScope) => \App\Services\CompanyIdScope::constrain($_companyIdScope, 'company_id', $staff->company_id))->where('status', 'active')
+        $types = DB::table('hr_document_types')->where('status', 'active')
             ->where('effective_from', '<=', $today)
             ->where(fn($range) => $range->whereNull('effective_until')->orWhere('effective_until', '>=', $today))
             ->orderBy('category')->orderBy('name')->get();
@@ -1067,7 +1039,7 @@ class PeopleCoreController extends Controller
     {
         $currentAssignment = $staff->employmentAssignments->first(fn($assignment) => $assignment->effective_from->lte(now()) && (!$assignment->effective_until || $assignment->effective_until->gt(now())));
         $currentSpell = $staff->employmentSpells->first(fn($spell) => $spell->status === 'active');
-        $categories = collect($this->policySettings->approvedStaffCategories((string) $staff->company_id))->map(fn($category) => mb_strtolower(trim((string) $category)))->filter();
+        $categories = collect($this->policySettings->approvedStaffCategories())->map(fn($category) => mb_strtolower(trim((string) $category)))->filter();
         $issues = collect([
             'employee_number' => $staff->code ? null : 'Employee number is missing.',
             'user_identity' => $staff->user_id ? null : 'Staff-to-User identity is missing.',
@@ -1081,8 +1053,6 @@ class PeopleCoreController extends Controller
             'name' => trim(($staff->user?->first_name ?? '') . ' ' . ($staff->user?->last_name ?? '')),
             'email' => $staff->user?->email,
             'phone' => $staff->user?->phone,
-            'company_id' => $staff->company_id,
-            'company_name' => $staff->company?->name,
             'staff_category' => $staff->staff_type,
             'employment_status' => $currentSpell?->status ?? ($staff->employment_ended_at || $staff->trashed() ? 'former' : 'incomplete'),
             'employment_ended_at' => $staff->employment_ended_at,

@@ -15,6 +15,10 @@ class CreatePermissionRequest extends FormRequest
     public function rules(): array
     {
         $guard = $this->input('guard_name', config('permissions.canonical_guard', 'api'));
+        $guards = array_values(array_unique(array_merge(
+            [config('permissions.canonical_guard', 'api')],
+            config('permissions.legacy_guards', ['web'])
+        )));
 
         return [
             'name' => [
@@ -25,7 +29,7 @@ class CreatePermissionRequest extends FormRequest
             ],
             'display_name' => ['nullable', 'string', 'max:255'],
             'description' => ['nullable', 'string', 'max:1000'],
-            'guard_name' => ['nullable', 'string', 'max:255'],
+            'guard_name' => ['required', 'string', Rule::in($guards)],
         ];
     }
 

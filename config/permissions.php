@@ -19,6 +19,21 @@ return [
         'manage-permissions' => 'permissions.manage',
     ],
 
+    'legacy_modules' => [
+        'approve_bookings' => 'bookings',
+        'create_bookings' => 'bookings',
+        'create_bookings_for_others' => 'bookings',
+        'view_all_bookings' => 'bookings',
+        'manage_departments' => 'corporate',
+        'manage_divisions' => 'corporate',
+        'manage_employees' => 'corporate',
+        'manage_rate_charts' => 'vehicle-pricing',
+        'schedule_reports' => 'reports',
+        'view_audit_log' => 'system',
+        'view_payments' => 'payments',
+        'view_reports' => 'reports',
+    ],
+
     'templates' => [
         'admin' => [
             'label' => 'Admin',

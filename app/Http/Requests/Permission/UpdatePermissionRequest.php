@@ -16,17 +16,24 @@ class UpdatePermissionRequest extends FormRequest
     public function rules(): array
     {
         $permission = $this->route('permission');
+        $guardName = $this->input('guard_name', $permission->guard_name);
+        $guards = array_values(array_unique(array_merge(
+            [config('permissions.canonical_guard', 'api')],
+            config('permissions.legacy_guards', ['web'])
+        )));
         
         return [
             'name' => [
                 'sometimes',
                 'string',
                 'max:255',
-                Rule::unique('permissions', 'name')->ignore($permission->id)
+                Rule::unique('permissions', 'name')
+                    ->where(fn ($query) => $query->where('guard_name', $guardName))
+                    ->ignore($permission->id),
             ],
             'display_name' => ['sometimes', 'string', 'max:255'],
             'description' => ['sometimes', 'string', 'max:1000'],
-            'guard_name' => ['sometimes', 'string', 'max:255'],
+            'guard_name' => ['sometimes', 'string', Rule::in($guards)],
         ];
     }
 
@@ -54,5 +61,26 @@ class UpdatePermissionRequest extends FormRequest
                 'name' => strtolower($this->input('name')),
             ]);
         }
+    }
+
+    public function withValidator($validator): void
+    {
+        $validator->after(function ($validator): void {
+            $permission = $this->route('permission');
+            $nameChanged = $this->filled('name') && $this->input('name') !== $permission->name;
+            $guardChanged = $this->filled('guard_name') && $this->input('guard_name') !== $permission->guard_name;
+
+            if ((! $nameChanged && ! $guardChanged)
+                || (! $permission->roles()->exists() && ! $permission->users()->exists())) {
+                return;
+            }
+
+            if ($nameChanged) {
+                $validator->errors()->add('name', 'A permission key cannot be changed while it is assigned to a role or user.');
+            }
+            if ($guardChanged) {
+                $validator->errors()->add('guard_name', 'A permission guard cannot be changed while it is assigned to a role or user.');
+            }
+        });
     }
 }

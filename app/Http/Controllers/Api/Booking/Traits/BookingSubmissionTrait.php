@@ -9,7 +9,6 @@ use App\Models\Booking\Booking;
 use App\Models\Booking\BookingActivity;
 use App\Models\User;
 use App\Services\Sms\SmsAutomationService;
-use App\Services\SingleCompanyScope;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Auth;

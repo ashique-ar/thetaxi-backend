@@ -13,16 +13,16 @@ class JobPositionAdministrationService
         'designation' => ['table' => 'hr_designations', 'fields' => ['job_family_id', 'job_grade_id', 'code', 'name', 'description', 'status', 'effective_from', 'effective_until']],
     ];
 
-    public function createCatalog(string $type, array $data, string $companyId, string $actorUserId): array
+    public function createCatalog(string $type, array $data, string $actorUserId): array
     {
-        return DB::transaction(function () use ($type, $data, $companyId, $actorUserId) {
+        return DB::transaction(function () use ($type, $data, $actorUserId) {
             $definition = $this->catalog($type);
-            $this->lockCompany($companyId);
-            $payload = ['company_id' => $companyId] + array_intersect_key($data, array_flip($definition['fields']));
+            $payload = array_intersect_key($data, array_flip($definition['fields']));
             $payload['status'] = 'active';
-            $this->assertCatalogReferences($type, $payload, $companyId);
+            abort_if(DB::table($definition['table'])->where('code', $payload['code'])->exists(), 409, 'A job catalogue entry with this code already exists.');
+            $this->assertCatalogReferences($type, $payload);
             $checksum = $this->checksum(['command' => 'create_'.$type, 'payload' => $payload, 'reason' => $data['reason']]);
-            if ($replay = $this->replay($data['idempotency_key'], $checksum, $companyId, $type)) {
+            if ($replay = $this->replay($data['idempotency_key'], $checksum, $type)) {
                 return $replay;
             }
 
@@ -35,27 +35,26 @@ class JobPositionAdministrationService
                 'updated_at' => now(),
             ]);
             $after = $this->snapshot($definition['table'], $id);
-            $this->event($companyId, $type, $id, 'created', 1, null, $after, $data, $actorUserId, $checksum);
+            $this->event($type, $id, 'created', 1, null, $after, $data, $actorUserId, $checksum);
 
             return $after;
         });
     }
 
-    public function updateCatalog(string $type, string $id, array $data, string $companyId, string $actorUserId): array
+    public function updateCatalog(string $type, string $id, array $data, string $actorUserId): array
     {
-        return DB::transaction(function () use ($type, $id, $data, $companyId, $actorUserId) {
+        return DB::transaction(function () use ($type, $id, $data, $actorUserId) {
             $definition = $this->catalog($type);
-            $this->lockCompany($companyId);
-            $row = DB::table($definition['table'])->where('id', $id)->where(fn ($_companyIdScope) => \App\Services\CompanyIdScope::constrain($_companyIdScope, 'company_id', $companyId))->lockForUpdate()->first();
-            abort_unless($row, 404, 'The requested job catalogue record was not found in your legal entity.');
+            $row = DB::table($definition['table'])->where('id', $id)->lockForUpdate()->first();
+            abort_unless($row, 404, 'The requested job catalogue record was not found.');
             $payload = array_intersect_key($data, array_flip($definition['fields']));
             $checksum = $this->checksum(['aggregate_id' => $id, 'expected_version' => $data['expected_version'], 'payload' => $payload, 'reason' => $data['reason']]);
-            if ($replay = $this->replay($data['idempotency_key'], $checksum, $companyId, $type)) {
+            if ($replay = $this->replay($data['idempotency_key'], $checksum, $type)) {
                 return $replay;
             }
             abort_unless((int) $row->version === (int) $data['expected_version'], 409, 'The job catalogue version is stale.');
             abort_unless($payload['code'] === $row->code, 422, 'Job catalogue codes are immutable; create a new record instead.');
-            $this->assertCatalogReferences($type, $payload, $companyId);
+            $this->assertCatalogReferences($type, $payload);
             $this->assertCatalogCoversDependents($type, $id, $payload);
 
             $before = (array) $row;
@@ -66,20 +65,20 @@ class JobPositionAdministrationService
                 'updated_at' => now(),
             ]);
             $after = $this->snapshot($definition['table'], $id);
-            $this->event($companyId, $type, $id, 'updated', $version, $before, $after, $data, $actorUserId, $checksum);
+            $this->event($type, $id, 'updated', $version, $before, $after, $data, $actorUserId, $checksum);
 
             return $after;
         });
     }
 
-    public function createPosition(array $data, string $companyId, string $actorUserId): array
+    public function createPosition(array $data, string $actorUserId): array
     {
-        return DB::transaction(function () use ($data, $companyId, $actorUserId) {
-            $this->lockCompany($companyId);
-            $payload = $this->positionPayload($data, $companyId);
-            $this->assertPositionReferences($payload, $companyId);
+        return DB::transaction(function () use ($data, $actorUserId) {
+            $payload = $this->positionPayload($data);
+            $this->assertPositionReferences($payload);
+            abort_if(DB::table('hr_positions')->where('position_number', $payload['position_number'])->exists(), 409, 'A position with this number already exists.');
             $checksum = $this->checksum(['command' => 'create_position', 'payload' => $payload, 'reason' => $data['reason']]);
-            if ($replay = $this->replay($data['idempotency_key'], $checksum, $companyId, 'position')) {
+            if ($replay = $this->replay($data['idempotency_key'], $checksum, 'position')) {
                 return $this->withOccupancy($replay);
             }
 
@@ -92,26 +91,25 @@ class JobPositionAdministrationService
                 'updated_at' => now(),
             ]);
             $after = $this->snapshot('hr_positions', $id);
-            $this->event($companyId, 'position', $id, 'created', 1, null, $after, $data, $actorUserId, $checksum);
+            $this->event('position', $id, 'created', 1, null, $after, $data, $actorUserId, $checksum);
 
             return $this->withOccupancy($after);
         });
     }
 
-    public function updatePosition(string $id, array $data, string $companyId, string $actorUserId): array
+    public function updatePosition(string $id, array $data, string $actorUserId): array
     {
-        return DB::transaction(function () use ($id, $data, $companyId, $actorUserId) {
-            $this->lockCompany($companyId);
-            $row = DB::table('hr_positions')->where('id', $id)->where(fn ($_companyIdScope) => \App\Services\CompanyIdScope::constrain($_companyIdScope, 'company_id', $companyId))->lockForUpdate()->first();
-            abort_unless($row, 404, 'Position was not found in your legal entity.');
-            $payload = $this->positionPayload($data, $companyId, true);
+        return DB::transaction(function () use ($id, $data, $actorUserId) {
+            $row = DB::table('hr_positions')->where('id', $id)->lockForUpdate()->first();
+            abort_unless($row, 404, 'Position was not found.');
+            $payload = $this->positionPayload($data, true);
             $checksum = $this->checksum(['position_id' => $id, 'expected_version' => $data['expected_version'], 'payload' => $payload, 'reason' => $data['reason']]);
-            if ($replay = $this->replay($data['idempotency_key'], $checksum, $companyId, 'position')) {
+            if ($replay = $this->replay($data['idempotency_key'], $checksum, 'position')) {
                 return $this->withOccupancy($replay);
             }
             abort_unless((int) $row->version === (int) $data['expected_version'], 409, 'Position version is stale.');
             abort_unless($payload['position_number'] === $row->position_number, 422, 'Position numbers are immutable; create a new position instead.');
-            $this->assertPositionReferences($payload, $companyId);
+            $this->assertPositionReferences($payload);
             $occupied = $this->occupiedCount($id);
             abort_if((int) $payload['headcount_limit'] < $occupied, 422, 'Headcount cannot be reduced below current effective occupancy.');
             abort_if($payload['status'] === 'inactive' && $occupied > 0, 422, 'A position with current occupants cannot be made inactive.');
@@ -125,7 +123,7 @@ class JobPositionAdministrationService
                 'updated_at' => now(),
             ]);
             $after = $this->snapshot('hr_positions', $id);
-            $this->event($companyId, 'position', $id, 'updated', $version, $before, $after, $data, $actorUserId, $checksum);
+            $this->event('position', $id, 'updated', $version, $before, $after, $data, $actorUserId, $checksum);
 
             return $this->withOccupancy($after);
         });
@@ -144,47 +142,46 @@ class JobPositionAdministrationService
         return $position;
     }
 
-    private function positionPayload(array $data, string $companyId, bool $update = false): array
+    private function positionPayload(array $data, bool $update = false): array
     {
         $payload = array_intersect_key($data, array_flip([
             'organization_unit_id', 'designation_id', 'position_number', 'title', 'headcount_limit', 'status', 'effective_from', 'effective_until',
         ]));
         if (! $update) {
-            $payload = ['company_id' => $companyId] + $payload;
             $payload['status'] = 'active';
         }
 
         return $payload;
     }
 
-    private function assertCatalogReferences(string $type, array $payload, string $companyId): void
+    private function assertCatalogReferences(string $type, array $payload): void
     {
         if ($type !== 'designation') {
             return;
         }
         foreach (['job_family_id' => 'hr_job_families', 'job_grade_id' => 'hr_job_grades'] as $field => $table) {
             if (! empty($payload[$field])) {
-                abort_unless($this->referenceCovers($table, $payload[$field], $companyId, $payload['effective_from'], $payload['effective_until'] ?? null), 422, "{$field} must be an active effective record in the designation legal entity and cover its interval.");
+                abort_unless($this->referenceCovers($table, $payload[$field], $payload['effective_from'], $payload['effective_until'] ?? null), 422, "{$field} must be active and cover the designation interval.");
             }
         }
     }
 
-    private function assertPositionReferences(array $payload, string $companyId): void
+    private function assertPositionReferences(array $payload): void
     {
         foreach (['organization_unit_id' => 'hr_organization_units', 'designation_id' => 'hr_designations'] as $field => $table) {
-            abort_unless($this->referenceCovers($table, $payload[$field], $companyId, $payload['effective_from'], $payload['effective_until'] ?? null), 422, "{$field} must be an active effective record in the position legal entity and cover its interval.");
+            abort_unless($this->referenceCovers($table, $payload[$field], $payload['effective_from'], $payload['effective_until'] ?? null), 422, "{$field} must be active and cover the position interval.");
         }
-        $designation = DB::table('hr_designations')->where('id', $payload['designation_id'])->where(fn ($_companyIdScope) => \App\Services\CompanyIdScope::constrain($_companyIdScope, 'company_id', $companyId))->first(['job_family_id', 'job_grade_id']);
+        $designation = DB::table('hr_designations')->where('id', $payload['designation_id'])->first(['job_family_id', 'job_grade_id']);
         foreach (['job_family_id' => 'hr_job_families', 'job_grade_id' => 'hr_job_grades'] as $field => $table) {
             if (! empty($designation->{$field})) {
-                abort_unless($this->referenceCovers($table, $designation->{$field}, $companyId, $payload['effective_from'], $payload['effective_until'] ?? null), 422, "The designation {$field} must remain active and cover the position interval.");
+                abort_unless($this->referenceCovers($table, $designation->{$field}, $payload['effective_from'], $payload['effective_until'] ?? null), 422, "The designation {$field} must remain active and cover the position interval.");
             }
         }
     }
 
-    private function referenceCovers(string $table, string $id, string $companyId, string $from, ?string $until): bool
+    private function referenceCovers(string $table, string $id, string $from, ?string $until): bool
     {
-        return DB::table($table)->where('id', $id)->where(fn ($_companyIdScope) => \App\Services\CompanyIdScope::constrain($_companyIdScope, 'company_id', $companyId))->where('status', 'active')
+        return DB::table($table)->where('id', $id)->where('status', 'active')
             ->whereNotNull('effective_from')->where('effective_from', '<=', $from)
             ->where(function ($query) use ($until) {
                 if ($until === null) {
@@ -250,18 +247,12 @@ class JobPositionAdministrationService
         return self::CATALOGS[$type];
     }
 
-    private function lockCompany(string $companyId): void
-    {
-        abort_unless(DB::table('companies')->where('id', $companyId)->where('is_active', true)->whereNull('deleted_at')->lockForUpdate()->first(), 409, 'HR job and position writes require an active legal entity.');
-    }
-
-    private function replay(string $key, string $checksum, string $companyId, string $aggregateType): ?array
+    private function replay(string $key, string $checksum, string $aggregateType): ?array
     {
         $event = DB::table('hr_organization_change_events')->where('idempotency_key', $key)->first();
         if (! $event) {
             return null;
         }
-        abort_unless(\App\Services\CompanyIdScope::sameCompanyId((string) ($event->company_id), (string) ($companyId)), 403, 'Job or position command replay is outside your legal entity.');
         abort_unless($event->aggregate_type === $aggregateType, 409, 'Idempotency key was reused for another job or position command.');
         abort_unless(hash_equals($event->request_checksum, $checksum), 409, 'Idempotency key was reused with different job or position facts.');
 
@@ -270,10 +261,10 @@ class JobPositionAdministrationService
             : json_decode((string) $event->after_snapshot, true, 512, JSON_THROW_ON_ERROR);
     }
 
-    private function event(string $companyId, string $type, string $id, string $eventType, int $version, ?array $before, array $after, array $data, string $actor, string $checksum): void
+    private function event(string $type, string $id, string $eventType, int $version, ?array $before, array $after, array $data, string $actor, string $checksum): void
     {
         DB::table('hr_organization_change_events')->insert([
-            'id' => (string) Str::uuid(), 'company_id' => $companyId, 'aggregate_type' => $type, 'aggregate_id' => $id,
+            'id' => (string) Str::uuid(), 'aggregate_type' => $type, 'aggregate_id' => $id,
             'event_type' => $eventType, 'aggregate_version' => $version,
             'before_snapshot' => $before ? json_encode($before, JSON_THROW_ON_ERROR) : null,
             'after_snapshot' => json_encode($after, JSON_THROW_ON_ERROR), 'reason' => $data['reason'],

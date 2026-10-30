@@ -14,7 +14,6 @@ class MedicalRecord extends BaseModel
     protected $table = 'medical_records';
 
     protected $fillable = [
-        'company_id',
         'subject_type',
         'subject_id',
         'medical_category_id',
@@ -58,7 +57,7 @@ class MedicalRecord extends BaseModel
     public function getActivitylogOptions(): LogOptions
     {
         return LogOptions::defaults()
-            ->logOnly(['company_id', 'medical_category_id', 'status'])
+            ->logOnly(['medical_category_id', 'status'])
             ->logOnlyDirty()
             ->dontLogEmptyChanges()
             ->useLogName('hr-medical-records');
