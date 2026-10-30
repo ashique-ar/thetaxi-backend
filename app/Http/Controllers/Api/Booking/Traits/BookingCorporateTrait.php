@@ -316,6 +316,7 @@ trait BookingCorporateTrait
     )
     {
         $user = $request->user();
+        $activeContext = null;
         if ($enforceActiveCorporateContext) {
             $activeContext = $user
                 ? app(\App\Services\UserContextService::class)->resolveActiveContextFromRequest($user, $request)
@@ -357,6 +358,7 @@ trait BookingCorporateTrait
             $ownCorporateEmployee
             && !$canCreateForOtherEmployees
             && !$user?->can('corporates.manage')
+            && (!$enforceActiveCorporateContext || ($activeContext['portal_profile'] ?? null) === 'corporate')
         ) {
             $query->where('id', $ownCorporateEmployee->id);
         }
