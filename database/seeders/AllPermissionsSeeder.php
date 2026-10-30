@@ -8,12 +8,12 @@ use Spatie\Permission\Models\Role;
 use Spatie\Permission\PermissionRegistrar;
 
 /**
- * Canonical permission seeder. Baseline role grants are additive, except that
- * elevated permissions are removed from the day-to-day admin role.
+ * Canonical permission seeder. The day-to-day admin role receives every
+ * permission except system and website settings administration.
  *
  * This is the single source of truth for application permissions. Existing
- * user-role assignments remain intact; elevated grants are removed only from
- * the day-to-day admin role.
+ * user-role assignments remain intact; system and website settings grants are
+ * removed only from the day-to-day admin role.
  */
 class AllPermissionsSeeder extends Seeder
 {
@@ -229,6 +229,7 @@ class AllPermissionsSeeder extends Seeder
         'payments.transactions',
         'reports.generate',
         'schedule_reports',
+        'uploads.delete-any',
         'staff-transport.generate',
         'staff-transport.override',
         'staff-sensitive-documents.view',
@@ -595,6 +596,11 @@ class AllPermissionsSeeder extends Seeder
         sort($permissions);
 
         return $permissions;
+    }
+
+    public static function baselineDeniedPermissionNames(): array
+    {
+        return self::denyByDefaultPermissions();
     }
 
     /**
@@ -1288,6 +1294,7 @@ class AllPermissionsSeeder extends Seeder
     private static function denyByDefaultPermissions(): array
     {
         return [
+            'uploads.delete-any',
             'hr.medical-records.view',
             'hr.medical-records.manage',
             'staff-sensitive-documents.view',
@@ -1581,8 +1588,8 @@ class AllPermissionsSeeder extends Seeder
     private function adminOnlyRestrictions(array $permissions): array
     {
         return array_values(array_filter($permissions, fn (string $permission) =>
-            preg_match('/^(roles|permissions|system|admin)\./', $permission) === 1
-            || in_array($permission, self::denyByDefaultPermissions(), true)
+            preg_match('/^(system|website-settings)\./', $permission) === 1
+            || $permission === 'view_audit_log'
         ));
     }
 
@@ -1592,10 +1599,10 @@ class AllPermissionsSeeder extends Seeder
         $patterns = $template['patterns'] ?? [];
         $exclusions = $template['exclude'] ?? [];
 
-        return array_values(array_filter($permissions, function (string $permission) use ($patterns, $exclusions) {
+        return array_values(array_filter($permissions, function (string $permission) use ($templateName, $patterns, $exclusions) {
             $matches = fn (array $set) => collect($set)->contains(fn ($pattern) => $pattern === '*' || \Illuminate\Support\Str::is($pattern, $permission));
             return $matches($patterns) && ! $matches($exclusions)
-                && ! in_array($permission, self::denyByDefaultPermissions(), true);
+                && ($templateName === 'admin' || ! in_array($permission, self::denyByDefaultPermissions(), true));
         }));
     }
 

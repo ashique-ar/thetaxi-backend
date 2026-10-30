@@ -101,7 +101,8 @@ it('can run repeatedly without duplicates or removing client assignments', funct
 
         expect($masterAdmin->permissions()->count())->toBe(count(AllPermissionsSeeder::allPermissionNames()))
             ->and($admin->permissions()->count())->toBeLessThan(count(AllPermissionsSeeder::allPermissionNames()))
-            ->and($admin->permissions()->whereIn('name', ['roles.manage', 'permissions.manage', 'system.manage'])->exists())->toBeFalse()
+            ->and($admin->permissions()->whereIn('name', ['roles.manage', 'permissions.manage', 'documents.view', 'hr.medical-records.view', 'uploads.delete-any'])->count())->toBe(5)
+            ->and($admin->permissions()->whereIn('name', ['system.manage', 'website-settings.manage', 'view_audit_log'])->exists())->toBeFalse()
             ->and(Role::where(['name' => 'dispatcher', 'guard_name' => $guard])->exists())->toBeTrue()
             ->and(Role::where(['name' => 'customer-support', 'guard_name' => $guard])->exists())->toBeTrue();
     }

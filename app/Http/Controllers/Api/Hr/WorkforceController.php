@@ -344,6 +344,7 @@ class WorkforceController extends Controller
         
         $d = $r->validate(['code' => ['required', 'string', 'max:80'], 'name' => ['required', 'string', 'max:255'], 'category' => ['required', Rule::in(['annual', 'sick', 'maternity', 'paternity', 'parental', 'no_pay', 'compassionate', 'study', 'lieu', 'duty', 'custom'])], 'unit' => ['required', Rule::in(['day', 'half_day', 'hour'])], 'paid' => ['required', 'boolean'], 'medical_confidential' => ['required', 'boolean'], 'effective_from' => ['required', 'date'], 'effective_until' => ['nullable', 'date', 'after:effective_from']]);
         return DB::transaction(function () use ($r, $d) {
+            abort_if(DB::table('hr_leave_types')->where('code', $d['code'])->whereDate('effective_from', $d['effective_from'])->exists(), 409, 'A leave type with this code and effective date already exists.');
             $id = (string) Str::uuid();
             DB::table('hr_leave_types')->insert($d + ['id' => $id, 'status' => 'active', 'created_by' => $r->user()->id, 'created_at' => now(), 'updated_at' => now()]);
             return response()->json(['status' => 'success', 'data' => DB::table('hr_leave_types')->find($id)], 201);
@@ -355,6 +356,7 @@ class WorkforceController extends Controller
         $d = $r->validate(['leave_type_id' => ['required', 'uuid'], 'code' => ['required', 'string', 'max:80'], 'version' => ['required', 'integer', 'min:1'], 'rules' => ['required', 'array'], 'rules.minutes_per_day' => ['required', 'integer', 'min:1', 'max:1440'], 'rules.minimum_notice_days' => ['nullable', 'integer', 'min:0', 'max:365'], 'rules.negative_balance_limit_minutes' => ['nullable', 'integer', 'min:0'], 'rules.weekend_days' => ['nullable', 'array'], 'rules.sandwich_rule_enabled' => ['nullable', 'boolean'], 'effective_from' => ['required', 'date'], 'effective_until' => ['nullable', 'date', 'after:effective_from']]);
         $d['rules'] = json_encode($d['rules'], JSON_THROW_ON_ERROR);
         return DB::transaction(function () use ($r, $d) {
+            abort_if(DB::table('hr_leave_policies')->where('code', $d['code'])->where('version', $d['version'])->exists(), 409, 'A leave policy with this code and version already exists.');
             abort_unless(DB::table('hr_leave_types')->where('id', $d['leave_type_id'])->exists(), 422, 'Select an existing leave type.');
             $id = (string) Str::uuid();
             DB::table('hr_leave_policies')->insert($d + ['id' => $id, 'status' => 'pending_approval', 'created_by' => $r->user()->id, 'created_at' => now(), 'updated_at' => now()]);
@@ -461,6 +463,7 @@ class WorkforceController extends Controller
             abort_unless(DB::table('hr_leave_types')->where('id', $d['rules']['time_off_leave_type_id'])->exists(), 422, 'Select an existing time-off leave type.');
         $d['rules'] = json_encode($d['rules'], JSON_THROW_ON_ERROR);
         return DB::transaction(function () use ($r, $d) {
+            abort_if(DB::table('hr_work_request_policies')->where('code', $d['code'])->where('version', $d['version'])->exists(), 409, 'A work-request policy with this code and version already exists.');
             $id = (string) Str::uuid();
             DB::table('hr_work_request_policies')->insert($d + ['id' => $id, 'status' => 'pending_approval', 'created_by' => $r->user()->id, 'created_at' => now(), 'updated_at' => now()]);
             return response()->json(['status' => 'success', 'data' => DB::table('hr_work_request_policies')->find($id)], 201);

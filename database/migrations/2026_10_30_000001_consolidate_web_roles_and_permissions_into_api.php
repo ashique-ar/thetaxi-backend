@@ -37,6 +37,18 @@ return new class extends Migration
                 }
             }
 
+            foreach (['user_context_permission_grants', 'user_direct_permission_grants'] as $table) {
+                if (! Schema::hasTable($table)) {
+                    continue;
+                }
+
+                foreach (DB::table($table)->whereIn('permission_id', array_keys($apiPermissionIds))->get() as $grant) {
+                    $attributes = (array) $grant;
+                    $attributes['permission_id'] = $apiPermissionIds[$grant->permission_id];
+                    DB::table($table)->insertOrIgnore($attributes);
+                }
+            }
+
             foreach (DB::table('roles')->where('guard_name', 'web')->get() as $webRole) {
                 $apiRoleId = DB::table('roles')
                     ->where('name', $webRole->name)

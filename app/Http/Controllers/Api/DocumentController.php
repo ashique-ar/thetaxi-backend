@@ -7,6 +7,7 @@ use App\Models\Agreement;
 use App\Models\Customer;
 use App\Models\Document;
 use App\Models\Driver\Driver;
+use App\Models\MedicalRecord;
 use App\Models\Staff;
 use App\Models\Vehicle\Vehicle;
 use App\Models\Vehicle\VehicleLease;
@@ -40,7 +41,7 @@ class DocumentController extends Controller
 
     public function __construct(private readonly StaffAccessService $staffAccess)
     {
-        $this->middleware('permission:documents.view|system.view|agreements.view|customers.view|drivers.view|staff-sensitive-documents.view|vehicles.view|vehicle-owners.view|vehicle-leases.view')->only(['index', 'show', 'download', 'stats']);
+        $this->middleware('permission:documents.view|system.view|agreements.view|customers.view|drivers.view|staff-sensitive-documents.view|hr.medical-records.view|vehicles.view|vehicle-owners.view|vehicle-leases.view')->only(['index', 'show', 'download', 'stats']);
         $this->middleware('permission:documents.create|uploads.manage|customers.edit|drivers.edit|staff-sensitive-documents.create|vehicles.edit|vehicle-owners.edit|vehicle-leases.edit')->only(['store']);
         $this->middleware('permission:documents.create|uploads.manage|customers.edit|drivers.edit|staff-sensitive-documents.create|vehicles.edit|vehicle-owners.edit|vehicle-leases.edit')->only(['ownerOptions']);
         $this->middleware('permission:documents.edit|uploads.manage|customers.edit|drivers.edit|staff-sensitive-documents.verify|vehicles.edit|vehicle-owners.edit|vehicle-leases.manage')->only(['verify', 'reject', 'setLegalHold']);
@@ -154,6 +155,10 @@ class DocumentController extends Controller
             });
         }
 
+        if (! $request->user()->can('hr.medical-records.view')) {
+            $query->whereNotIn('documentable_type', ['medical_record', MedicalRecord::class]);
+        }
+
         if (!empty($data['owner_id'])) {
             $query->where('documentable_id', $data['owner_id']);
         }
@@ -228,6 +233,10 @@ class DocumentController extends Controller
                             ->whereIn('documentable_id', $staffIds);
                     });
             });
+        }
+
+        if (! $request->user()->can('hr.medical-records.view')) {
+            $query->whereNotIn('documentable_type', ['medical_record', MedicalRecord::class]);
         }
 
         if (!empty($data['owner_id'])) {
@@ -391,6 +400,12 @@ class DocumentController extends Controller
 
     public function download(Request $request, Document $document): mixed
     {
+        if (in_array($document->documentable_type, ['medical_record', MedicalRecord::class], true)) {
+            abort_unless($request->user()?->can('hr.medical-records.view'), Response::HTTP_FORBIDDEN);
+
+            return redirect(url("/api/medical-records/{$document->documentable_id}/document/{$document->id}"));
+        }
+
         $this->assertDocumentAccess($request, $document, 'view');
         abort_unless(Storage::disk($document->disk)->exists($document->path), Response::HTTP_NOT_FOUND);
         $this->audit($request, $document, 'document_downloaded');
@@ -568,6 +583,12 @@ class DocumentController extends Controller
 
     private function assertDocumentAccess(Request $request, Document $document, string $action): void
     {
+        if (in_array($document->documentable_type, ['medical_record', MedicalRecord::class], true)) {
+            abort_unless($action === 'view' && $request->user()?->can('hr.medical-records.view'), Response::HTTP_FORBIDDEN);
+
+            return;
+        }
+
         $ownerType = array_search($document->documentable_type, self::OWNER_TYPES, true) ?: $document->documentable_type;
         $this->assertOwnerAccess($request, (string) $ownerType, $action, $document->documentable_id);
     }

@@ -17,12 +17,11 @@ class LeaveWorkflowService
         $checksum = hash('sha256', json_encode($data, JSON_UNESCAPED_SLASHES | JSON_THROW_ON_ERROR));
         try {
             return DB::transaction(function () use ($data, $actorUserId, $checksum) {
-                $this->assertActiveCompany($data['company_id']);
                 if ($existing = DB::table('hr_leave_requests')->where('idempotency_key', $data['idempotency_key'])->lockForUpdate()->first()) {
                     return $this->matchingSubmission($existing, $checksum, $actorUserId);
                 }
                 $staff = DB::table('staff')->where('id', $data['staff_id'])->lockForUpdate()->first();
-                abort_unless($staff && \App\Services\CompanyIdScope::sameCompanyId((string) ($staff->company_id), (string) ($data['company_id'])) && $staff->employment_ended_at === null && $staff->deleted_at === null, 422, 'Staff is no longer active in this legal entity.');
+                abort_unless($staff && $staff->employment_ended_at === null && $staff->deleted_at === null, 422, 'Staff is no longer active.');
                 $policy = DB::table('hr_leave_policies')->where('id', $data['policy_id'])->where('status', 'approved')->whereDate('effective_from', '<=', $data['start_date'])->where(fn($q) => $q->whereNull('effective_until')->orWhereDate('effective_until', '>', $data['end_date']))->first();
                 abort_unless($policy, 422, 'No approved leave policy covers the requested interval.');
                 abort_unless(DB::table('hr_leave_policy_assignments')->where('staff_id', $data['staff_id'])->where('policy_id', $policy->id)->whereNotNull('approved_at')->whereDate('effective_from', '<=', $data['start_date'])->where(fn($q) => $q->whereNull('effective_until')->orWhereDate('effective_until', '>', $data['end_date']))->exists(), 422, 'The leave policy is not assigned for the full interval.');
@@ -43,15 +42,15 @@ class LeaveWorkflowService
                     $spell = DB::table('hr_employment_spells')->where('staff_id', $data['staff_id'])->where('status', 'active')->latest('joined_at')->first();
                     abort_if($spell && $spell->confirmation_date && CarbonImmutable::parse($data['start_date'])->lt(CarbonImmutable::parse($spell->confirmation_date)), 422, 'This leave type is not available before confirmation.');
                 }
-                $account = $this->account($data['company_id'], $data['staff_id'], $policy->leave_type_id, $data['unit']);
+                $account = $this->account($data['staff_id'], $policy->leave_type_id, $data['unit']);
                 $balance = $this->balance($account->id, $data['start_date']);
                 $negative = (int) ($rules['negative_balance_limit_minutes'] ?? 0);
                 abort_if($balance - $minutes < -$negative, 409, 'Insufficient available leave balance.');
-                $overlap = DB::table('hr_leave_requests')->where(fn ($_companyIdScope) => \App\Services\CompanyIdScope::constrain($_companyIdScope, 'company_id', $data['company_id']))->where('staff_id', $data['staff_id'])->whereIn('status', ['pending_approval', 'approved'])->whereDate('start_date', '<=', $data['end_date'])->whereDate('end_date', '>=', $data['start_date'])->exists();
+                $overlap = DB::table('hr_leave_requests')->where('staff_id', $data['staff_id'])->whereIn('status', ['pending_approval', 'approved'])->whereDate('start_date', '<=', $data['end_date'])->whereDate('end_date', '>=', $data['start_date'])->exists();
                 abort_if($overlap, 409, 'An active leave request overlaps this interval.');
                 $id = (string) Str::uuid();
                 $snapshot = ['policy_id' => $policy->id, 'policy_version' => $policy->version, 'rules' => $rules, 'balance_before_minutes' => $balance, 'calculated_days' => $days];
-                DB::table('hr_leave_requests')->insert(['id' => $id, 'company_id' => $data['company_id'], 'staff_id' => $data['staff_id'], 'leave_type_id' => $policy->leave_type_id, 'policy_id' => $policy->id, 'start_date' => $data['start_date'], 'end_date' => $data['end_date'], 'unit' => $data['unit'], 'requested_minutes' => $minutes, 'reserved_minutes' => $minutes, 'status' => 'pending_approval', 'reason' => $data['reason'], 'calculation_snapshot' => json_encode($snapshot, JSON_THROW_ON_ERROR), 'coverage_snapshot' => json_encode($data['coverage_snapshot'] ?? null, JSON_THROW_ON_ERROR), 'private_evidence' => isset($data['private_evidence']) ? encrypt($data['private_evidence']) : null, 'request_checksum' => $checksum, 'idempotency_key' => $data['idempotency_key'], 'requested_by' => $actorUserId, 'current_approver_staff_id' => $data['approver_staff_id'] ?? null, 'approval_level' => 1, 'created_at' => now(), 'updated_at' => now()]);
+                DB::table('hr_leave_requests')->insert(['id' => $id, 'staff_id' => $data['staff_id'], 'leave_type_id' => $policy->leave_type_id, 'policy_id' => $policy->id, 'start_date' => $data['start_date'], 'end_date' => $data['end_date'], 'unit' => $data['unit'], 'requested_minutes' => $minutes, 'reserved_minutes' => $minutes, 'status' => 'pending_approval', 'reason' => $data['reason'], 'calculation_snapshot' => json_encode($snapshot, JSON_THROW_ON_ERROR), 'coverage_snapshot' => json_encode($data['coverage_snapshot'] ?? null, JSON_THROW_ON_ERROR), 'private_evidence' => isset($data['private_evidence']) ? encrypt($data['private_evidence']) : null, 'request_checksum' => $checksum, 'idempotency_key' => $data['idempotency_key'], 'requested_by' => $actorUserId, 'current_approver_staff_id' => $data['approver_staff_id'] ?? null, 'approval_level' => 1, 'created_at' => now(), 'updated_at' => now()]);
                 foreach ($days as $day)
                     DB::table('hr_leave_request_days')->insert(['id' => (string) Str::uuid(), 'leave_request_id' => $id, 'leave_date' => $day['date'], 'minutes' => $day['minutes'], 'day_kind' => $day['kind'], 'rule_evidence' => json_encode($day, JSON_THROW_ON_ERROR), 'created_at' => now(), 'updated_at' => now()]);
                 $this->entry($account->id, $id, 'reservation', -$minutes, $data['start_date'], 'leave_request', $id, 'Leave request reservation', $snapshot, $actorUserId);
@@ -60,7 +59,7 @@ class LeaveWorkflowService
             });
         } catch (QueryException $e) {
             if (! in_array($e->errorInfo[0] ?? null, ['23000', '23505'], true)) throw $e;
-            $existing = $this->existingSubmission($data['company_id'], $data['idempotency_key'], $checksum, $actorUserId);
+            $existing = $this->existingSubmission($data['idempotency_key'], $checksum, $actorUserId);
             if ($existing) return $existing;
             throw $e;
         }
@@ -80,8 +79,8 @@ class LeaveWorkflowService
         return DB::transaction(function () use ($requestId, $action, $reason, $actorUserId, $actorStaffId, $overrideAuthorized) {
             $candidate = DB::table('hr_leave_requests')->where('id', $requestId)->first();
             abort_unless($candidate, 404);
-            $this->assertActiveCompany($candidate->company_id);
-            $row = DB::table('hr_leave_requests')->where('id', $requestId)->where(fn ($_companyIdScope) => \App\Services\CompanyIdScope::constrain($_companyIdScope, 'company_id', $candidate->company_id))->lockForUpdate()->first();
+            
+            $row = DB::table('hr_leave_requests')->where('id', $requestId)->lockForUpdate()->first();
             abort_unless($row, 404);
             $this->assertRequestCompany($row);
             abort_if($row->requested_by === $actorUserId, 409, 'The leave requester cannot decide the same request.');
@@ -122,14 +121,14 @@ class LeaveWorkflowService
                 return DB::table('hr_leave_requests')->find($row->id);
             }$locked = DB::table('hr_attendance_periods')->where('status', 'locked')->whereDate('period_start', '<=', $row->end_date)->whereDate('period_end', '>=', $row->start_date)->exists();
             abort_if($locked && $action === 'approve', 409, 'Reopen the overlapping locked attendance period before approving leave.');
-            $account = $this->account($row->company_id, $row->staff_id, $row->leave_type_id, $row->unit);
+            $account = $this->account($row->staff_id, $row->leave_type_id, $row->unit);
             $this->entry($account->id, $row->id, 'reservation_release', $row->reserved_minutes, $row->start_date, 'leave_request', $row->id, 'Release pending reservation', $snapshot, $actorUserId);
             $next = $action === 'approve' ? 'approved' : 'rejected';
             if ($next === 'approved') {
                 $this->entry($account->id, $row->id, 'consumption', -$row->requested_minutes, $row->start_date, 'leave_approval', $row->id, 'Approved leave consumption', $snapshot, $actorUserId);
                 $type = DB::table('hr_leave_types')->find($row->leave_type_id);
                 if (!$type->paid)
-                    $this->payrollFact($row->company_id, $row->staff_id, 'unpaid_leave', $row->start_date, $row->requested_minutes, 'leave_request', $row->id, ['request' => $row, 'leave_type' => $type], $actorUserId);
+                    $this->payrollFact($row->staff_id, 'unpaid_leave', $row->start_date, $row->requested_minutes, 'leave_request', $row->id, ['request' => $row, 'leave_type' => $type], $actorUserId);
             }$this->event($row->id, $action, $row->status, $next, $reason, $snapshot, $actorUserId);
             DB::table('hr_leave_requests')->where('id', $row->id)->update(['status' => $next, 'decided_at' => now(), 'decided_by' => $actorUserId, 'updated_at' => now()]);
             return DB::table('hr_leave_requests')->find($row->id);
@@ -147,7 +146,7 @@ class LeaveWorkflowService
             abort_if($row->recalled_at !== null, 409, 'This leave request was already recalled; the recalled portion cannot also be cancelled.');
             $locked = DB::table('hr_attendance_periods')->where('status', 'locked')->whereDate('period_start', '<=', $row->end_date)->whereDate('period_end', '>=', $row->start_date)->exists();
             abort_if($locked && $row->status === 'approved', 409, 'Reopen the overlapping locked attendance period before cancelling approved leave.');
-            $account = $this->account($row->company_id, $row->staff_id, $row->leave_type_id, $row->unit);
+            $account = $this->account($row->staff_id, $row->leave_type_id, $row->unit);
             $snapshot = json_decode($row->calculation_snapshot, true, 512, JSON_THROW_ON_ERROR);
             if ($row->status === 'pending_approval')
                 $this->entry($account->id, $row->id, 'reservation_release', $row->reserved_minutes, $row->start_date, 'leave_cancel', $row->id, 'Cancelled reservation', $snapshot, $actorUserId);
@@ -155,7 +154,7 @@ class LeaveWorkflowService
                 $this->entry($account->id, $row->id, 'consumption_reversal', $row->requested_minutes, $row->start_date, 'leave_cancel', $row->id, 'Cancelled approved leave', $snapshot, $actorUserId);
                 $fact = DB::table('hr_payroll_input_facts')->where('source_type', 'leave_request')->where('source_id', $row->id)->where('status', 'staged')->first();
                 if ($fact)
-                    $this->payrollFact($row->company_id, $row->staff_id, 'unpaid_leave_reversal', $row->start_date, -$row->requested_minutes, 'leave_cancel', $row->id, ['reverses_fact_id' => $fact->id, 'reason' => $reason], $actorUserId);
+                    $this->payrollFact($row->staff_id, 'unpaid_leave_reversal', $row->start_date, -$row->requested_minutes, 'leave_cancel', $row->id, ['reverses_fact_id' => $fact->id, 'reason' => $reason], $actorUserId);
             }$this->event($row->id, 'cancel', $row->status, 'cancelled', $reason, $snapshot, $actorUserId);
             DB::table('hr_leave_requests')->where('id', $row->id)->update(['status' => 'cancelled', 'updated_at' => now()]);
             return DB::table('hr_leave_requests')->find($row->id);
@@ -187,14 +186,14 @@ class LeaveWorkflowService
             $snapshot = json_decode($row->calculation_snapshot, true, 512, JSON_THROW_ON_ERROR);
             $unusedDays = DB::table('hr_leave_request_days')->where('leave_request_id', $row->id)->whereDate('leave_date', '>', $actualReturnDate)->get();
             $reversedMinutes = (int) $unusedDays->sum('minutes');
-            $account = $this->account($row->company_id, $row->staff_id, $row->leave_type_id, $row->unit);
+            $account = $this->account($row->staff_id, $row->leave_type_id, $row->unit);
             if ($reversedMinutes > 0) {
                 $this->entry($account->id, $row->id, 'return_release', $reversedMinutes, $actualReturnDate, 'leave_return', $row->id, 'Unused reserved leave released on early return', $snapshot + ['actual_return_date' => $actualReturnDate, 'unused_days' => $unusedDays->pluck('leave_date')], $actorUserId);
                 $type = DB::table('hr_leave_types')->find($row->leave_type_id);
                 if (!$type->paid) {
                     $fact = DB::table('hr_payroll_input_facts')->where('source_type', 'leave_request')->where('source_id', $row->id)->where('status', 'staged')->first();
                     if ($fact)
-                        $this->payrollFact($row->company_id, $row->staff_id, 'unpaid_leave_reversal', $actualReturnDate, -$reversedMinutes, 'leave_return', $row->id, ['reverses_fact_id' => $fact->id, 'actual_return_date' => $actualReturnDate], $actorUserId);
+                        $this->payrollFact($row->staff_id, 'unpaid_leave_reversal', $actualReturnDate, -$reversedMinutes, 'leave_return', $row->id, ['reverses_fact_id' => $fact->id, 'actual_return_date' => $actualReturnDate], $actorUserId);
                 }
             }
             $this->event($row->id, 'return_confirmed', $row->status, $row->status, $notes ?? 'Return to work confirmed', $snapshot + ['actual_return_date' => $actualReturnDate, 'reversed_minutes' => $reversedMinutes], $actorUserId);
@@ -245,9 +244,9 @@ class LeaveWorkflowService
             abort_if($existingDayCount + count($newDays) > (int) ($rules['maximum_consecutive_days'] ?? 366), 422, 'The extension exceeds the policy consecutive-day limit.');
             $blackouts = $rules['blackout_dates'] ?? [];
             abort_if(collect($newDays)->contains(fn($day) => in_array($day['date'], $blackouts, true)), 422, 'The extension includes a policy blackout date.');
-            $overlap = DB::table('hr_leave_requests')->where(fn ($_companyIdScope) => \App\Services\CompanyIdScope::constrain($_companyIdScope, 'company_id', $row->company_id))->where('staff_id', $row->staff_id)->where('id', '!=', $row->id)->whereIn('status', ['pending_approval', 'approved'])->whereDate('start_date', '<=', $newEndDate)->whereDate('end_date', '>=', $extensionStart)->exists();
+            $overlap = DB::table('hr_leave_requests')->where('staff_id', $row->staff_id)->where('id', '!=', $row->id)->whereIn('status', ['pending_approval', 'approved'])->whereDate('start_date', '<=', $newEndDate)->whereDate('end_date', '>=', $extensionStart)->exists();
             abort_if($overlap, 409, 'Another active leave request overlaps the extension interval.');
-            $account = $this->account($row->company_id, $row->staff_id, $row->leave_type_id, $row->unit);
+            $account = $this->account($row->staff_id, $row->leave_type_id, $row->unit);
             $balance = $this->balance($account->id, $row->start_date);
             $negative = (int) ($rules['negative_balance_limit_minutes'] ?? 0);
             abort_if($balance - $addedMinutes < -$negative, 409, 'Insufficient available leave balance for the extension.');
@@ -260,7 +259,7 @@ class LeaveWorkflowService
             $extensionSnapshot = ['previous_end_date' => $row->end_date, 'extended_to' => $newEndDate, 'added_minutes' => $addedMinutes];
             $this->event($row->id, 'extended', 'approved', 'approved', $reason, $snapshot + $extensionSnapshot, $actorUserId, $extensionEventId);
             if (!$type->paid)
-                $this->payrollFact($row->company_id, $row->staff_id, 'unpaid_leave', $extensionStart, $addedMinutes, 'leave_extension', $extensionEventId, ['request' => $row, 'leave_type' => $type, 'extension' => $extensionSnapshot], $actorUserId, $row->id);
+                $this->payrollFact($row->staff_id, 'unpaid_leave', $extensionStart, $addedMinutes, 'leave_extension', $extensionEventId, ['request' => $row, 'leave_type' => $type, 'extension' => $extensionSnapshot], $actorUserId, $row->id);
             DB::table('hr_leave_requests')->where('id', $row->id)->update(['end_date' => $newEndDate, 'requested_minutes' => $row->requested_minutes + $addedMinutes, 'reserved_minutes' => $row->reserved_minutes + $addedMinutes, 'updated_at' => now()]);
             return DB::table('hr_leave_requests')->find($row->id);
         });
@@ -291,13 +290,13 @@ class LeaveWorkflowService
             $unusedDays = DB::table('hr_leave_request_days')->where('leave_request_id', $row->id)->whereDate('leave_date', '>', $recallDate)->get();
             $reversedMinutes = (int) $unusedDays->sum('minutes');
             abort_if($reversedMinutes <= 0, 422, 'The recall date leaves no unused reserved leave to release.');
-            $account = $this->account($row->company_id, $row->staff_id, $row->leave_type_id, $row->unit);
+            $account = $this->account($row->staff_id, $row->leave_type_id, $row->unit);
             $this->entry($account->id, $row->id, 'return_release', $reversedMinutes, $recallDate, 'leave_recall', $row->id, 'Unused reserved leave released on recall', $snapshot + ['recall_date' => $recallDate, 'unused_days' => $unusedDays->pluck('leave_date')], $actorUserId);
             $type = DB::table('hr_leave_types')->find($row->leave_type_id);
             if (!$type->paid) {
                 $fact = DB::table('hr_payroll_input_facts')->where('source_type', 'leave_request')->where('source_id', $row->id)->where('status', 'staged')->first();
                 if ($fact)
-                    $this->payrollFact($row->company_id, $row->staff_id, 'unpaid_leave_reversal', $recallDate, -$reversedMinutes, 'leave_recall', $row->id, ['reverses_fact_id' => $fact->id, 'recall_date' => $recallDate], $actorUserId);
+                    $this->payrollFact($row->staff_id, 'unpaid_leave_reversal', $recallDate, -$reversedMinutes, 'leave_recall', $row->id, ['reverses_fact_id' => $fact->id, 'recall_date' => $recallDate], $actorUserId);
             }
             $this->event($row->id, 'recalled', $row->status, $row->status, $reason, $snapshot + ['recall_date' => $recallDate, 'reversed_minutes' => $reversedMinutes], $actorUserId);
             DB::table('hr_leave_requests')->where('id', $row->id)->update(['recall_date' => $recallDate, 'recalled_by' => $actorUserId, 'recalled_at' => now(), 'updated_at' => now()]);
@@ -335,27 +334,22 @@ class LeaveWorkflowService
             }return $this->entry($accountId, null, $entryType, $minutes, $effectiveDate, $sourceType, $sourceId, $reason, $snapshot, $actorUserId, $expiresOn);
         });
     }
-    private function account(string $company, string $staff, string $type, string $unit): object
+    private function account(string $staff, string $type, string $unit): object
     {
-        abort_unless(DB::table('staff')->where('id', $staff)->where(fn ($_companyIdScope) => \App\Services\CompanyIdScope::constrain($_companyIdScope, 'company_id', $company))->exists(), 422, 'Staff does not belong to this legal entity.');
         abort_unless(DB::table('hr_leave_types')->where('id', $type)->exists(), 422, 'Leave type does not exist.');
         $row = DB::table('hr_leave_balance_accounts')->where('staff_id', $staff)->where('leave_type_id', $type)->lockForUpdate()->first();
         if ($row) {
-            abort_unless(\App\Services\CompanyIdScope::sameCompanyId((string) ($row->company_id), (string) ($company)) && $row->unit === $unit, 409, 'Leave balance account does not match the request legal entity or unit.');
+            abort_unless($row->unit === $unit, 409, 'Leave balance account does not match the request unit.');
             return $row;
         }
         $id = (string) Str::uuid();
-        DB::table('hr_leave_balance_accounts')->insert(['id' => $id, 'company_id' => $company, 'staff_id' => $staff, 'leave_type_id' => $type, 'unit' => $unit, 'opened_at' => now()->toDateString(), 'created_at' => now(), 'updated_at' => now()]);
+        DB::table('hr_leave_balance_accounts')->insert(['id' => $id, 'staff_id' => $staff, 'leave_type_id' => $type, 'unit' => $unit, 'opened_at' => now()->toDateString(), 'created_at' => now(), 'updated_at' => now()]);
         return DB::table('hr_leave_balance_accounts')->find($id);
     }
     private function validBalanceAccount(string $id): object
     {
-        $account = DB::table('hr_leave_balance_accounts')->where('id', $id)->first();
-        abort_unless($account, 404);
-        $companyId = (string) $account->company_id;
-        $this->assertActiveCompany($companyId);
         $account = DB::table('hr_leave_balance_accounts')->where('id', $id)->lockForUpdate()->first();
-        abort_unless($account && \App\Services\CompanyIdScope::sameCompanyId((string) ((string) $account->company_id), (string) ($companyId)), 409, 'Leave balance account changed legal entities.');
+        abort_unless($account, 404);
         abort_unless(DB::table('staff')->where('id', $account->staff_id)->exists()
             && DB::table('hr_leave_types')->where('id', $account->leave_type_id)->exists(), 409,
             'Leave balance account links are inconsistent.');
@@ -388,10 +382,9 @@ class LeaveWorkflowService
         $payload = compact('account', 'request', 'type', 'minutes', 'date', 'sourceType', 'sourceId', 'reason', 'snapshot', 'expiresOn');
         return LeaveBalanceEntry::create(['account_id' => $account, 'leave_request_id' => $request, 'entry_type' => $type, 'minutes' => $minutes, 'effective_date' => $date, 'expires_on' => $expiresOn, 'source_type' => $sourceType, 'source_id' => $sourceId, 'reason' => $reason, 'rule_snapshot' => $snapshot, 'entry_checksum' => hash('sha256', json_encode($payload, JSON_UNESCAPED_SLASHES | JSON_THROW_ON_ERROR)), 'posted_by' => $actor, 'posted_at' => now()]);
     }
-    private function existingSubmission(string $companyId, string $key, string $checksum, string $actorUserId): ?object
+    private function existingSubmission(string $key, string $checksum, string $actorUserId): ?object
     {
-        return DB::transaction(function () use ($companyId, $key, $checksum, $actorUserId): ?object {
-            $this->assertActiveCompany($companyId);
+        return DB::transaction(function () use ($key, $checksum, $actorUserId): ?object {
             $existing = DB::table('hr_leave_requests')->where('idempotency_key', $key)->lockForUpdate()->first();
             return $existing ? $this->matchingSubmission($existing, $checksum, $actorUserId) : null;
         });
@@ -419,25 +412,19 @@ class LeaveWorkflowService
     {
         DB::table('hr_leave_request_events')->insert(['id' => $eventId ?? (string) Str::uuid(), 'leave_request_id' => $id, 'event_type' => $type, 'from_status' => $from, 'to_status' => $to, 'reason' => $reason, 'snapshot' => json_encode($snapshot, JSON_THROW_ON_ERROR), 'actor_user_id' => $actor, 'occurred_at' => now(), 'created_at' => now(), 'updated_at' => now()]);
     }
-    private function payrollFact(string $company, string $staff, string $kind, string $date, int $minutes, string $sourceType, string $sourceId, array $snapshot, string $actor, ?string $sourceRequestId = null): PayrollInputFact
+    private function payrollFact(string $staff, string $kind, string $date, int $minutes, string $sourceType, string $sourceId, array $snapshot, string $actor, ?string $sourceRequestId = null): PayrollInputFact
     {
-        abort_unless(DB::table('staff')->where('id', $staff)->where(fn ($_companyIdScope) => \App\Services\CompanyIdScope::constrain($_companyIdScope, 'company_id', $company))->exists(), 422, 'Payroll fact Staff does not belong to this legal entity.');
-        abort_unless(DB::table('hr_leave_requests')->where('id', $sourceRequestId ?? $sourceId)->where(fn ($_companyIdScope) => \App\Services\CompanyIdScope::constrain($_companyIdScope, 'company_id', $company))->where('staff_id', $staff)->exists(), 422, 'Payroll fact source does not match the request legal entity and Staff.');
+        abort_unless(DB::table('staff')->where('id', $staff)->exists(), 422, 'Payroll fact Staff does not exist.');
+        abort_unless(DB::table('hr_leave_requests')->where('id', $sourceRequestId ?? $sourceId)->where('staff_id', $staff)->exists(), 422, 'Payroll fact source does not match the request and Staff.');
         if ($sourceRequestId !== null)
             abort_unless(DB::table('hr_leave_request_events')->where('id', $sourceId)->where('leave_request_id', $sourceRequestId)->where('event_type', 'extended')->exists(), 422, 'Payroll fact source event does not match the leave request.');
-        $payload = compact('company', 'staff', 'kind', 'date', 'minutes', 'sourceType', 'sourceId', 'sourceRequestId', 'snapshot');
-        return PayrollInputFact::create(['company_id' => $company, 'staff_id' => $staff, 'fact_kind' => $kind, 'effective_date' => $date, 'quantity_minutes' => $minutes, 'source_type' => $sourceType, 'source_id' => $sourceId, 'status' => 'staged', 'source_snapshot' => $snapshot, 'fact_checksum' => hash('sha256', json_encode($payload, JSON_UNESCAPED_SLASHES | JSON_THROW_ON_ERROR)), 'created_by' => $actor]);
+        $payload = compact('staff', 'kind', 'date', 'minutes', 'sourceType', 'sourceId', 'sourceRequestId', 'snapshot');
+        return PayrollInputFact::create(['staff_id' => $staff, 'fact_kind' => $kind, 'effective_date' => $date, 'quantity_minutes' => $minutes, 'source_type' => $sourceType, 'source_id' => $sourceId, 'status' => 'staged', 'source_snapshot' => $snapshot, 'fact_checksum' => hash('sha256', json_encode($payload, JSON_UNESCAPED_SLASHES | JSON_THROW_ON_ERROR)), 'created_by' => $actor]);
     }
     private function assertRequestCompany(object $row): void
     {
-        $this->assertActiveCompany($row->company_id);
-        abort_unless(DB::table('staff')->where('id', $row->staff_id)->where(fn ($_companyIdScope) => \App\Services\CompanyIdScope::constrain($_companyIdScope, 'company_id', $row->company_id))->exists(), 422, 'Leave request Staff does not belong to its legal entity.');
+        abort_unless(DB::table('staff')->where('id', $row->staff_id)->exists(), 422, 'Leave request Staff does not exist.');
         abort_unless(DB::table('hr_leave_types')->where('id', $row->leave_type_id)->exists(), 422, 'Leave request type does not exist.');
         abort_unless(DB::table('hr_leave_policies')->where('id', $row->policy_id)->where('leave_type_id', $row->leave_type_id)->exists(), 422, 'Leave request policy does not match its type.');
     }
-    private function assertActiveCompany(string $companyId): void
-    {
-        abort_unless(DB::table('companies')->where('id', $companyId)->where('is_active', true)->whereNull('deleted_at')->lockForUpdate()->first(), 409, 'Leave writes require an active legal entity.');
-    }
-    
 }

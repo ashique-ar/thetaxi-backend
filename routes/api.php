@@ -2959,7 +2959,7 @@ Route::middleware(['auth:api'])->group(function () {
         Route::post('employees/{id}/activate', [\App\Http\Controllers\Api\Corporate\CorporateEmployeeController::class, 'activate']);
         Route::post('employees/{id}/deactivate', [\App\Http\Controllers\Api\Corporate\CorporateEmployeeController::class, 'deactivate']);
         Route::post('employees/{id}/role', [\App\Http\Controllers\Api\Corporate\CorporateEmployeeController::class, 'assignRole']);
-        Route::post('employees/{id}/access-link', [\App\Http\Controllers\Api\Corporate\CorporateEmployeeController::class, 'sendAccessLink'])->middleware('permission:manage_employees|throttle:5,1');
+        Route::post('employees/{id}/access-link', [\App\Http\Controllers\Api\Corporate\CorporateEmployeeController::class, 'sendAccessLink'])->middleware(['permission:manage_employees', 'throttle:5,1']);
 
         // Role Management
         Route::get('roles', [CorporateRoleController::class, 'index']);

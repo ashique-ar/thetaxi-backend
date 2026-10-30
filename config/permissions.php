@@ -37,9 +37,9 @@ return [
     'templates' => [
         'admin' => [
             'label' => 'Admin',
-            'description' => 'Broad day-to-day access without role, permission, or system administration.',
+            'description' => 'All portal permissions except system and website settings administration.',
             'patterns' => ['*'],
-            'exclude' => ['roles.*', 'permissions.*', 'system.*', 'admin.*'],
+            'exclude' => ['system.*', 'website-settings.*', 'view_audit_log'],
         ],
         'master-admin' => [
             'label' => 'Master Admin',

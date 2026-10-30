@@ -6,6 +6,7 @@ use App\Models\User;
 use InvalidArgumentException;
 use Illuminate\Support\Collection;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Validation\ValidationException;
 use Spatie\Permission\Models\Permission;
 use Spatie\Permission\Models\Role;
 use Spatie\Permission\PermissionRegistrar;
@@ -44,13 +45,14 @@ class PermissionAssignmentService
             ->all();
     }
 
-    public function syncRolePermissions(Role $role, array $permissionIdentifiers): Collection
+    public function syncRolePermissions(Role $role, array $permissionIdentifiers, bool $allowExistingAdminRestrictions = false): Collection
     {
         if (! $role->exists || $role->getKey() === null) {
             throw new InvalidArgumentException('Cannot sync permissions for an unsaved role.');
         }
 
         $permissionNames = $this->normalizePermissionNames($permissionIdentifiers);
+        $this->assertRolePermissionPolicy($role->name, $role->guard_name, $permissionNames, $allowExistingAdminRestrictions);
         $permissions = $this->permissionsForGuard($permissionNames, $role->guard_name);
         $added = $removed = [];
 
@@ -100,6 +102,21 @@ class PermissionAssignmentService
             ->get();
     }
 
+    public function assertRolePermissionPolicy(string $roleName, string $guardName, array $permissionNames, bool $allowExistingRestrictions = false): void
+    {
+        if ($roleName !== 'admin' || $guardName !== $this->registry->canonicalGuard()) {
+            return;
+        }
+
+        $adminTemplate = collect($this->registry->templates())->firstWhere('key', 'admin');
+        $restricted = array_values(array_diff($permissionNames, $adminTemplate['permissions'] ?? []));
+        if ($restricted !== [] && ! $allowExistingRestrictions) {
+            throw ValidationException::withMessages([
+                'permissions' => 'The Admin role cannot receive system or website settings permissions.',
+            ]);
+        }
+    }
+
     public function grantRolePermissions(Role $role, array $permissionIdentifiers): Collection
     {
         $names = $this->normalizePermissionNames($permissionIdentifiers);
@@ -121,7 +138,7 @@ class PermissionAssignmentService
             $current = $lockedRole->permissions()->pluck('name');
             $remaining = $current->reject(fn ($name) => in_array($name, $names, true))->values();
 
-            return $this->syncRolePermissions($lockedRole, $remaining->all());
+            return $this->syncRolePermissions($lockedRole, $remaining->all(), true);
         });
     }
 

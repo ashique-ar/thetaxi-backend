@@ -2,6 +2,7 @@
 
 namespace App\Services;
 
+use Database\Seeders\AllPermissionsSeeder;
 use Illuminate\Support\Collection;
 use Illuminate\Support\Str;
 use Spatie\Permission\Models\Permission;
@@ -77,6 +78,9 @@ class PermissionRegistry
                     $template['patterns'] ?? ['*'],
                     $template['exclude'] ?? []
                 );
+                if (! in_array($key, ['admin', 'master-admin'], true)) {
+                    $permissionNames = array_values(array_diff($permissionNames, AllPermissionsSeeder::baselineDeniedPermissionNames()));
+                }
 
                 return [
                     'key' => $key,
