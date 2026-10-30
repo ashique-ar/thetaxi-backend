@@ -8,7 +8,9 @@ return new class extends Migration
 {
     public function up(): void
     {
-        // These fields represented tenant ownership; companies are retained only as booking location choices.
+        // vehicle.company_id and vehicle_companies stored tenant ownership. The user confirmed
+        // companies are only booking location choices, so these values are intentionally discarded
+        // rather than copied to handover_location or treated as operational vehicle locations.
         if (Schema::hasTable('vehicles') && Schema::hasColumn('vehicles', 'company_id')) {
             foreach (Schema::getForeignKeys('vehicles') as $foreignKey) {
                 if (in_array('company_id', $foreignKey['columns'], true)) {

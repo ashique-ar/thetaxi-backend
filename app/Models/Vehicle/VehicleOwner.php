@@ -18,7 +18,6 @@ use App\Traits\UUID;
  * @property string|null $state_id Foreign key to states table (optional)
  * @property string|null $city Foreign key to cities table (optional)
  * @property array|null $contact_info Contact information (JSON, optional)
- * @property string|null $company_id Foreign key to companies table (optional)
  * @property string|null $created_user_id ID of user who created this record
  * @property string|null $updated_user_id ID of user who last updated this record
  * @property \Illuminate\Support\Carbon|null $created_at
@@ -26,7 +25,6 @@ use App\Traits\UUID;
  * @property \Illuminate\Support\Carbon|null $deleted_at
  *
  * @property-read \App\Models\Vehicle\VehicleOwnerType $type Owner type
- * @property-read \App\Models\Company|null $company Owner's company
  * @property-read \App\Models\Country|null $country Owner's country
  * @property-read \App\Models\State|null $state Owner's state
  * @property-read \App\Models\User|null $createdBy User who created this record
@@ -79,16 +77,6 @@ class VehicleOwner extends BaseModel
     public function type()
     {
         return $this->belongsTo(VehicleOwnerType::class, 'owner_type_id');
-    }
-
-    /**
-     * Get the owner's company.
-     *
-     * @return \Illuminate\Database\Eloquent\Relations\BelongsTo
-     */
-    public function company()
-    {
-        return $this->belongsTo(\App\Models\Company\Company::class, 'company_id');
     }
 
     /**

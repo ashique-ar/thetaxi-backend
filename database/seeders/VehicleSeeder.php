@@ -41,8 +41,7 @@ class VehicleSeeder extends Seeder
                 'vin' => 'JTMA12345678901234',
                 'group' => 'Toyota Camry Standard',
                 'year' => 2024,
-                'color' => 'Pearl White',
-                'company' => 'Company - Head Office'
+                'color' => 'Pearl White'
             ],
             [
                 'name' => 'Toyota Corolla 2023',
@@ -51,8 +50,7 @@ class VehicleSeeder extends Seeder
                 'vin' => 'JTMA12345678901235',
                 'group' => 'Toyota Axio Economy',
                 'year' => 2023,
-                'color' => 'Silver Metallic',
-                'company' => 'Company - Head Office'
+                'color' => 'Silver Metallic'
             ],
             // Honda Vehicles
             [
@@ -62,8 +60,7 @@ class VehicleSeeder extends Seeder
                 'vin' => 'JHMA12345678901236',
                 'group' => 'Honda Accord Executive',
                 'year' => 2024,
-                'color' => 'Obsidian Blue',
-                'company' => 'Company - Head Office'
+                'color' => 'Obsidian Blue'
             ],
             [
                 'name' => 'Honda CR-V 2023',
@@ -72,8 +69,7 @@ class VehicleSeeder extends Seeder
                 'vin' => 'JHMA12345678901237',
                 'group' => 'Honda CR-V Premium',
                 'year' => 2023,
-                'color' => 'Radiant Red',
-                'company' => 'Company - Head Office'
+                'color' => 'Radiant Red'
             ],
             [
                 'name' => 'Honda Fit 2023',
@@ -82,8 +78,7 @@ class VehicleSeeder extends Seeder
                 'vin' => 'JHMA12345678901238',
                 'group' => 'Honda Fit Hybrid',
                 'year' => 2023,
-                'color' => 'Crystal Blue',
-                'company' => 'Company - Head Office'
+                'color' => 'Crystal Blue'
             ],
             // Toyota Commercial Vehicles
             [
@@ -93,8 +88,7 @@ class VehicleSeeder extends Seeder
                 'vin' => 'JTMA12345678901239',
                 'group' => 'Toyota Hiace Standard',
                 'year' => 2022,
-                'color' => 'Super White',
-                'company' => 'Company - Head Office'
+                'color' => 'Super White'
             ],
             [
                 'name' => 'Toyota Land Cruiser 2024',
@@ -103,8 +97,7 @@ class VehicleSeeder extends Seeder
                 'vin' => 'JTMA12345678901240',
                 'group' => 'Toyota Land Cruiser VX',
                 'year' => 2024,
-                'color' => 'Attitude Black',
-                'company' => 'Company - Head Office'
+                'color' => 'Attitude Black'
             ],
             // Nissan Vehicle
             [
@@ -114,8 +107,7 @@ class VehicleSeeder extends Seeder
                 'vin' => 'JNMA12345678901241',
                 'group' => 'Nissan Caravan Executive',
                 'year' => 2023,
-                'color' => 'Brilliant Silver',
-                'company' => 'Company - BIA Branch'
+                'color' => 'Brilliant Silver'
             ]
         ];
 
@@ -129,7 +121,6 @@ class VehicleSeeder extends Seeder
                     'license_plate' => $vehicleData['license_plate'],
                     'year' => $vehicleData['year'],
                     'vehicle_group_id' => $groups[$vehicleData['group']]->id ?? null,
-                    'company_id' => $companies[$vehicleData['company']]->id ?? null,
                     'color' => $vehicleData['color'],
                     'model_year' => $vehicleData['year'],
                     'status' => 'active',
@@ -139,7 +130,7 @@ class VehicleSeeder extends Seeder
                 ]
             );
 
-            $this->command->info("Created vehicle: {$vehicle->title} ({$vehicle->registration_no}) - Company: {$vehicleData['company']}");
+            $this->command->info("Created vehicle: {$vehicle->title} ({$vehicle->registration_no})");
         }
         $this->command->info('Vehicles seeding completed!');
     }

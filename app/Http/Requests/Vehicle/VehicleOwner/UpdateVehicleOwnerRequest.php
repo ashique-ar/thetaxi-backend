@@ -48,7 +48,6 @@ class UpdateVehicleOwnerRequest extends FormRequest
             'license_expiry' => ['sometimes', 'nullable', 'date'],
             'notes' => ['sometimes', 'nullable', 'string'],
             'contact_info' => ['sometimes', 'nullable', 'array'],
-            'company_id' => ['sometimes', 'nullable', 'exists:companies,id'],
             'create_driver_profile' => ['sometimes', 'boolean'],
             'driver_code' => ['sometimes', 'nullable', 'string', 'max:50', "unique:drivers,code,{$existingDriverId}"],
             'driver_nic' => ['sometimes', 'nullable', 'string', 'max:20'],

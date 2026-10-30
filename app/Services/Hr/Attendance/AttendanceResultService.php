@@ -100,18 +100,16 @@ class AttendanceResultService
         return DB::transaction(function () use ($requestId, $actorUserId, $decisionNote) {
             $candidate = DB::table('hr_attendance_correction_requests')->where('id', $requestId)->first();
             abort_unless($candidate, 404);
-            $company = DB::table('companies')->where('id', $candidate->company_id)->where('is_active', true)->whereNull('deleted_at')->lockForUpdate()->first();
-            abort_unless($company, 409, 'Attendance correction decisions require an active legal entity.');
-            $correction = DB::table('hr_attendance_correction_requests')->where('id', $requestId)->where(fn ($_companyIdScope) => \App\Services\CompanyIdScope::constrain($_companyIdScope, 'company_id', $candidate->company_id))->lockForUpdate()->first();
+            $correction = DB::table('hr_attendance_correction_requests')->where('id', $requestId)->lockForUpdate()->first();
             abort_unless($correction, 404);
             abort_if((string) $correction->requested_by === $actorUserId, 409, 'The correction requester cannot decide the same correction.');
             if ($correction->status === 'approved' && (string) $correction->decided_by === $actorUserId && hash_equals((string) $correction->decision_note, $decisionNote)) {
-                return AttendanceDailyResult::query()->whereKey($correction->result_id)->where(fn ($_companyIdScope) => \App\Services\CompanyIdScope::constrain($_companyIdScope, 'company_id', $correction->company_id))->firstOrFail();
+                return AttendanceDailyResult::query()->whereKey($correction->result_id)->firstOrFail();
             }
             abort_unless($correction->status === 'pending_approval', 409, 'Only pending corrections may be approved.');
             abort_unless($correction->mapping_policy_id && $correction->mapping_snapshot, 409, 'This legacy correction has no approved mapping evidence and cannot be applied.');
             $mappingSnapshot = json_decode($correction->mapping_snapshot, true, 512, JSON_THROW_ON_ERROR);
-            $policy = DB::table('hr_attendance_policies')->where('id', $correction->mapping_policy_id)->where(fn ($_companyIdScope) => \App\Services\CompanyIdScope::constrain($_companyIdScope, 'company_id', $correction->company_id))->where('status', 'approved')->lockForUpdate()->first();
+            $policy = DB::table('hr_attendance_policies')->where('id', $correction->mapping_policy_id)->where('status', 'approved')->lockForUpdate()->first();
             abort_unless($policy && (string) $policy->approved_at === (string) ($mappingSnapshot['policy_approved_at'] ?? ''), 409, 'The approved mapping policy evidence is no longer valid.');
             $policyRules = is_array($policy->rules) ? $policy->rules : json_decode($policy->rules, true, 512, JSON_THROW_ON_ERROR);
             $policyRulesChecksum = hash('sha256', json_encode($policyRules, JSON_UNESCAPED_SLASHES | JSON_THROW_ON_ERROR));
@@ -121,9 +119,9 @@ class AttendanceResultService
             abort_unless(in_array($mapping['field'], ['day_status', 'first_in_at', 'last_out_at', 'worked_minutes', 'late_minutes', 'early_leave_minutes', 'payable_minutes'], true), 409, 'The approved correction mapping contains an unsupported result field.');
             $period = DB::table('hr_attendance_periods')->whereDate('period_start', '<=', $correction->work_date)->whereDate('period_end', '>=', $correction->work_date)->lockForUpdate()->first();
             abort_if($period?->status === 'locked', 409, 'The attendance period is locked.');
-            $current = AttendanceDailyResult::query()->where('id', $correction->current_result_id)->where(fn ($_companyIdScope) => \App\Services\CompanyIdScope::constrain($_companyIdScope, 'company_id', $correction->company_id))->where('staff_id', $correction->staff_id)->whereDate('work_date', $correction->work_date)->lockForUpdate()->first();
+            $current = AttendanceDailyResult::query()->where('id', $correction->current_result_id)->where('staff_id', $correction->staff_id)->whereDate('work_date', $correction->work_date)->lockForUpdate()->first();
             abort_unless($current, 409, 'The attendance result changed or is no longer available.');
-            $latest = AttendanceDailyResult::query()->where(fn ($_companyIdScope) => \App\Services\CompanyIdScope::constrain($_companyIdScope, 'company_id', $correction->company_id))->where('staff_id', $correction->staff_id)->whereDate('work_date', $correction->work_date)->orderByDesc('result_version')->lockForUpdate()->first();
+            $latest = AttendanceDailyResult::query()->where('staff_id', $correction->staff_id)->whereDate('work_date', $correction->work_date)->orderByDesc('result_version')->lockForUpdate()->first();
             abort_unless($latest && (string) $latest->id === (string) $current->id, 409, 'A newer attendance result exists; submit a new correction against the current result.');
             $values = json_decode($correction->requested_values, true, 512, JSON_THROW_ON_ERROR);
             abort_unless(array_keys($values) === [$mapping['field']], 409, 'Stored correction values do not match the approved mapping.');
@@ -166,20 +164,16 @@ class AttendanceResultService
                 DB::table('hr_attendance_exceptions')->insert(['id' => (string) Str::uuid(), 'company_id' => $result->company_id, 'staff_id' => $result->staff_id, 'daily_result_id' => $result->id] + $exception + ['status' => 'open', 'evidence' => json_encode($resultData, JSON_THROW_ON_ERROR), 'created_at' => now(), 'updated_at' => now()]);
             }
             DB::table('hr_attendance_correction_requests')->where('id', $correction->id)->update(['status' => 'approved', 'decided_by' => $actorUserId, 'decided_at' => now(), 'decision_note' => $decisionNote, 'result_id' => $result->id, 'updated_at' => now()]);
-            activity('hr-attendance')->causedBy(User::query()->findOrFail($actorUserId))->withProperties(['correction_id' => $correction->id, 'company_id' => $correction->company_id, 'staff_id' => $correction->staff_id, 'result_id' => $result->id, 'supersedes_id' => $current->id, 'field' => $field, 'mapping_policy_id' => $policy->id])->log('attendance_correction_approved');
+            activity('hr-attendance')->causedBy(User::query()->findOrFail($actorUserId))->withProperties(['correction_id' => $correction->id, 'staff_id' => $correction->staff_id, 'result_id' => $result->id, 'supersedes_id' => $current->id, 'field' => $field, 'mapping_policy_id' => $policy->id])->log('attendance_correction_approved');
             return $result;
         });
     }
 
     /** Reject a pending request without changing attendance or payable facts. */
-    public function rejectCorrection(string $requestId, string $companyId, string $actorUserId, string $decisionNote): object
+    public function rejectCorrection(string $requestId, string $actorUserId, string $decisionNote): object
     {
-        
-        return DB::transaction(function () use ($requestId, $companyId, $actorUserId, $decisionNote) {
-            $company = DB::table('companies')->where('id', $companyId)->where('is_active', true)->whereNull('deleted_at')->lockForUpdate()->first();
-            abort_unless($company, 409, 'Attendance correction decisions require an active legal entity.');
-            $correction = DB::table('hr_attendance_correction_requests')->where('id', $requestId)
-                ->where(fn ($_companyIdScope) => \App\Services\CompanyIdScope::constrain($_companyIdScope, 'company_id', $companyId))->lockForUpdate()->first();
+        return DB::transaction(function () use ($requestId, $actorUserId, $decisionNote) {
+            $correction = DB::table('hr_attendance_correction_requests')->where('id', $requestId)->lockForUpdate()->first();
             abort_unless($correction, 404);
             abort_if($correction->requested_by === $actorUserId, 409, 'The correction requester cannot decide the same correction.');
             if ($correction->status === 'rejected'
@@ -196,7 +190,7 @@ class AttendanceResultService
                 'updated_at' => now(),
             ]);
             activity('hr-attendance')->causedBy(User::query()->findOrFail($actorUserId))
-                ->withProperties(['correction_id' => $correction->id, 'company_id' => $correction->company_id, 'status' => 'rejected'])
+                ->withProperties(['correction_id' => $correction->id, 'status' => 'rejected'])
                 ->log('attendance_correction_rejected');
             return DB::table('hr_attendance_correction_requests')->find($correction->id);
         });
