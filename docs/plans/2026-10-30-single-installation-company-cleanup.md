@@ -4,15 +4,16 @@
 
 Each customer buys and hosts an independent installation with its own database. The installation is the software customer's boundary; it is not represented by a row in `companies`.
 
-`companies` remains the list of the operator's selectable locations and service areas. Use a company/location reference only where it describes an operational location. Corporate customers remain separate records in `corporates` and are not locations or software tenants.
+`companies` remains a location directory used by booking search and booking dynamic-form location search. It is not a tenant, legal entity, operating-location selector, or ownership record. Do not add `company_id` fields to downstream tables. Corporate customers remain separate records in `corporates` and are not locations or software tenants.
 
 Staff, HR, bookings, customers, reports, settings, and integrations are shared across locations within one installation. Roles and permissions still control actions. Location references must not be used to hide records or restrict staff access. Website content and service selection may still use location-specific configuration where that is an actual product feature.
 
 ## Cleanup rules
 
-- Remove company equality and company query filters that only partition one installation's data.
+- Remove company equality and company query filters that partition one installation's data.
+- Remove tenant-only `company_id` fields from all non-location tables and API contracts. Keep company records only for booking location search.
 - Remove staff and HR legal-entity assignment and access rules; retain organization, team, role, and permission rules that are not based on `companies`.
-- Store fleet and provider integration settings once per installation. Keep location references only when they describe actual operating locations. Never synthesize or require a default company/location ID.
+- Store fleet and provider integration settings once per installation. Never synthesize or require a default company ID.
 - Preserve the `corporates` customer model and its booking/payment relationships.
 - Preserve historical values during rollout. Add forward migrations; do not edit already-released migrations or delete ambiguous configuration/data without a deterministic migration path.
 - Rename UI labels from legal entity/business tenant to location where the control is actually selecting a `companies` record.
@@ -33,14 +34,14 @@ This is a semantic inventory, not an instruction to drop every matching column:
 
 | Area | Current meaning of `company_id` | Disposition |
 |---|---|---|
-| `bookings` and location selectors | The selected/associated operating location used by booking and service selection | Keep as location data; remove its use as an access boundary. |
+| `bookings` | Tenant key added by the company-scoping pass | Remove. Booking addresses and coordinates remain in booking item/location fields. |
 | `vehicles` and `vehicle_companies` | Fleet operating location assignment | Keep where the fleet workflows use it as the vehicle's real location; integration credentials must be stored separately. |
 | `corporates` | Tenant/access ownership added by the single-company pass | Removed from the model and schema; corporate booking relationships remain. |
 | `booking_generated_reports` | Report visibility/ownership only | Removed from model and schema; a report's saved location filter remains in its JSON filters. |
 | `staff`, HR employment, organization, payroll, attendance and HR audit tables | Legal-entity partition inherited from the tenant design. HR already has separate `location_code`, organization-unit, site-code, and work-location fields for actual placement. | Remove the company assignment, scope checks, default-company requirement, and tenant-only columns. Preserve employment history, audit facts, and actual HR location fields. |
 | Wialon settings | Per-company integration ownership | Moved to one installation settings row. Vehicle location remains independent. |
 | Hikvision/attendance connector, device, event and result tables | Per-company configuration and event partition | Convert connector/device configuration to installation-wide; retain device site/timezone and staff/organization mapping as operational facts. Remove company fields from event data only after all consumers are converted. |
-| Sales, inquiry, customer and phone-call tables | Mixed: company checks partition access; some rows may record originating or serviced location | Remove access/equality checks. Keep a location reference only where a producer assigns a real operating location; do not use it to limit staff, customer, or sales visibility. Review each field's write path before dropping it. |
+| Sales, inquiry, customer and phone-call tables | Tenant key added by company-scoping pass | Remove from tables and payloads; keep source/channel and actual address/location details. |
 | Company `is_default` and default-company resolver | Implicit tenant selection | Remove after all callers stop requiring a default. Never backfill a replacement default ID. |
 
 The broad code scan currently finds company-ID use in 312 application files. The remaining HR fields are confirmed tenant/legal-entity fields; the distinct HR `location_code`, `site_code`, and organization-unit data must be kept. CRM and Sales rows remain a write-path review item because their stored value may be a useful location attribution even though its access checks are invalid.
