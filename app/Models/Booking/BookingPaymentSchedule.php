@@ -13,7 +13,7 @@ class BookingPaymentSchedule extends BaseModel
         'booking_id', 'sequence', 'label', 'period_start', 'period_end',
         'due_date', 'amount', 'status', 'notes', 'reminder_sent_at',
         'overdue_notified_at', 'created_user_id',
-        'company_id', 'schedule_kind', 'reconciliation_role', 'source_amount', 'source_currency', 'lkr_amount',
+        'schedule_kind', 'reconciliation_role', 'source_amount', 'source_currency', 'lkr_amount',
         'is_collection_target_eligible', 'collection_sales_profile_id', 'revision_number',
         'superseded_at', 'superseded_by_revision_id',
         'booking_payment_schedule_rule_id', 'rule_occurrence_number',

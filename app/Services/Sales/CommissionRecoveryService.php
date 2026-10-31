@@ -88,7 +88,7 @@ class CommissionRecoveryService
         $proposed = round($entitlement['amount_lkr'] * $ratio, 4);
 
         return SalesCommissionRecoveryCase::firstOrCreate(['payment_adjustment_id' => $adjustment->id], [
-            'company_id' => $earning->company_id, 'commission_decision_id' => $earning->id,
+            'commission_decision_id' => $earning->id,
             'entitlement_source_type' => $entitlement['source_type'], 'entitlement_source_id' => $entitlement['source_id'],
             'entitlement_amount_lkr' => $entitlement['amount_lkr'], 'entitlement_effective_at' => $entitlement['effective_at'],
             'beneficiary_staff_id' => $entitlement['beneficiary_staff_id'],
@@ -141,7 +141,7 @@ class CommissionRecoveryService
         $proposed = $calculation['proposed_commission_adjustment_lkr'];
         $explanation = $calculation['calculation_explanation'];
         return SalesCommissionRecoveryCase::firstOrCreate(['payment_adjustment_id' => $adjustment->id], [
-            'company_id' => $earning->company_id, 'commission_decision_id' => $earning->id,
+            'commission_decision_id' => $earning->id,
             'entitlement_source_type' => 'commission_decision', 'entitlement_source_id' => $earning->id,
             'entitlement_amount_lkr' => $earning->commission_amount_lkr,
             'entitlement_effective_at' => $earning->earned_at ?? $earning->decision_at,
@@ -296,7 +296,7 @@ class CommissionRecoveryService
         if (! $query || ! $case->entitlement_source_id) return null;
         if ($lock) $query->lockForUpdate();
         $source = $query->find($case->entitlement_source_id);
-        if (! $source || !\App\Services\CompanyIdScope::sameCompanyId((string) ($source->company_id), (string) ($case->company_id))) return null;
+        if (! $source) return null;
 
         $sourceDecisionId = $case->entitlement_source_type === 'commission_decision'
             ? $source->id : $source->commission_decision_id;
@@ -363,13 +363,13 @@ class CommissionRecoveryService
             default => 'unstatemented_liability_adjustment',
         };
         $adjustment = BookingPaymentAdjustment::query()->find($case->payment_adjustment_id);
-        if (! $adjustment || !\App\Services\CompanyIdScope::sameCompanyId((string) ($adjustment->company_id), (string) ($case->company_id))) {
-            return $this->blockedDecisionPreview($case, 'The immutable source adjustment is unavailable in the recovery legal entity.');
+        if (! $adjustment) {
+            return $this->blockedDecisionPreview($case, 'The immutable source adjustment is unavailable.');
         }
         $snapshot = [
             'recovery_case_id' => $case->id, 'case_version' => $case->event_version,
             'decision' => $decision, 'resolution_disposition' => $disposition,
-            'company_id' => $case->company_id, 'commission_decision_id' => $case->commission_decision_id,
+            'commission_decision_id' => $case->commission_decision_id,
             'entitlement_source_type' => $case->entitlement_source_type,
             'entitlement_source_id' => $case->entitlement_source_id,
             'entitlement_amount_lkr' => (string) $case->entitlement_amount_lkr,
@@ -416,8 +416,6 @@ class CommissionRecoveryService
         string $actorUserId,
     ): SalesCommissionRecoveryDecision {
         return DB::transaction(function () use ($case, $decision, $reason, $expectedVersion, $previewChecksum, $key, $actorUserId) {
-            abort_unless(DB::table('companies')->where('id', $case->company_id)->where('is_active', true)
-                ->whereNull('deleted_at')->lockForUpdate()->first(['id']), 422, 'Select an active legal entity.');
             $case = SalesCommissionRecoveryCase::query()->lockForUpdate()->findOrFail($case->id);
             $checksum = hash('sha256', CanonicalJson::encode([
                 'recovery_case_id' => $case->id, 'decision' => $decision, 'reason' => trim($reason),
@@ -477,7 +475,7 @@ class CommissionRecoveryService
             };
             $fromVersion = $case->event_version;
             $case->update(['status' => $resolvedStatus, 'event_version' => $fromVersion + 1, 'resolved_at' => now()]);
-            $this->events->record('sales', $case->company_id, 'commission_recovery', $case->id,
+            $this->events->record('sales', 'commission_recovery', $case->id,
                 'sales.commission.recovery_decided', $fromVersion, $fromVersion + 1, [
                     'commission_decision_id' => $case->commission_decision_id, 'payment_adjustment_id' => $case->payment_adjustment_id,
                     'decision' => $decision, 'commission_adjustment_lkr' => (string) $record->commission_adjustment_lkr,

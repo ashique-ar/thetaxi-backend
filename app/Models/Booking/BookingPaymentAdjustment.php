@@ -7,7 +7,7 @@ use App\Models\BaseModel;
 class BookingPaymentAdjustment extends BaseModel
 {
     protected $fillable = [
-        'company_id', 'booking_id', 'receipt_id', 'receipt_component_id', 'impact_dimension',
+        'booking_id', 'receipt_id', 'receipt_component_id', 'impact_dimension',
         'adjustment_type', 'direction', 'source_amount', 'source_currency', 'lkr_amount', 'fx_rate_to_lkr',
         'fx_rate_at', 'fx_source', 'fx_quote_base', 'fx_calculation_mode', 'original_lkr_amount', 'original_fx_rate_to_lkr',
         'original_fx_rate_at', 'original_fx_source', 'lkr_delta', 'cumulative_lkr_delta', 'commission_decision_id',

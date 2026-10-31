@@ -10,7 +10,7 @@ use Illuminate\Support\Str;
 uses(RefreshDatabase::class);
 
 it('keeps leave balance posting details out of generic activity logs', function () {
-    [$actor, $company] = hr_seed_admin_actor();
+    [$actor] = hr_seed_admin_actor();
     $staff = Staff::query()->where('user_id', $actor->id)->firstOrFail();
     config(['hr.features.leave_overtime' => true]);
     $now = now();
@@ -18,7 +18,6 @@ it('keeps leave balance posting details out of generic activity logs', function 
     $accountId = (string) Str::uuid();
     DB::table('hr_leave_types')->insert([
         'id' => $typeId,
-        'company_id' => $company->id,
         'code' => 'AUDIT-PRIVACY',
         'name' => 'Privacy test leave',
         'category' => 'annual',
@@ -32,7 +31,6 @@ it('keeps leave balance posting details out of generic activity logs', function 
     ]);
     DB::table('hr_leave_balance_accounts')->insert([
         'id' => $accountId,
-        'company_id' => $company->id,
         'staff_id' => $staff->id,
         'leave_type_id' => $typeId,
         'unit' => 'minute',
@@ -67,29 +65,28 @@ it('keeps leave balance posting details out of generic activity logs', function 
         ->and($audit)->not->toContain(hash('sha256', $reason));
 });
 
-it('requires a locked active company for manual and automated leave balance postings', function () {
-    [$actor, $company] = hr_seed_admin_actor();
+it('posts manual and automated leave balances without a company boundary', function () {
+    [$actor] = hr_seed_admin_actor();
     $staff = Staff::query()->where('user_id', $actor->id)->firstOrFail();
     $typeId = (string) Str::uuid();
     $accountId = (string) Str::uuid();
     $now = now();
     DB::table('hr_leave_types')->insert([
-        'id' => $typeId, 'company_id' => $company->id, 'code' => 'INACTIVE-POST', 'name' => 'Inactive company leave',
+        'id' => $typeId, 'code' => 'INSTALLATION-POST', 'name' => 'Installation leave',
         'category' => 'annual', 'unit' => 'minute', 'paid' => true, 'effective_from' => $now->toDateString(),
         'status' => 'active', 'created_by' => $actor->id, 'created_at' => $now, 'updated_at' => $now,
     ]);
     DB::table('hr_leave_balance_accounts')->insert([
-        'id' => $accountId, 'company_id' => $company->id, 'staff_id' => $staff->id,
+        'id' => $accountId, 'staff_id' => $staff->id,
         'leave_type_id' => $typeId, 'unit' => 'minute', 'opened_at' => $now->toDateString(),
         'created_at' => $now, 'updated_at' => $now,
     ]);
     config(['hr.features.leave_overtime' => true]);
-    DB::table('companies')->where('id', $company->id)->update(['is_active' => false]);
     $service = app(LeaveWorkflowService::class);
 
-    expect(fn () => $service->postBalance($accountId, 'adjustment', 30, $now->toDateString(), 'Manual correction', $actor->id, 'inactive-manual-post'))
-        ->toThrow(\Symfony\Component\HttpKernel\Exception\HttpException::class)
-        ->and(fn () => $service->postAutomatedBalance($accountId, 'accrual', 30, $now->toDateString(), null, 'policy_accrual', 'inactive-automated-post', 'Accrual', [], $actor->id))
-        ->toThrow(\Symfony\Component\HttpKernel\Exception\HttpException::class);
-    expect(DB::table('hr_leave_balance_entries')->where('account_id', $accountId)->exists())->toBeFalse();
+    $manual = $service->postBalance($accountId, 'adjustment', 30, $now->toDateString(), 'Manual correction', $actor->id, 'installation-manual-post');
+    $automated = $service->postAutomatedBalance($accountId, 'accrual', 30, $now->toDateString(), null, 'policy_accrual', 'installation-automated-post', 'Accrual', [], $actor->id);
+    expect(DB::table('hr_leave_balance_entries')->where('account_id', $accountId)->count())->toBe(2)
+        ->and($manual->minutes)->toBe(30)
+        ->and($automated->minutes)->toBe(30);
 });

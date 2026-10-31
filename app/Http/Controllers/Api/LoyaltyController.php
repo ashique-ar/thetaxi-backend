@@ -51,7 +51,6 @@ class LoyaltyController extends Controller
      */
     public function getCustomerLoyaltyPoints(Customer $customer): JsonResponse
     {
-        $customer = $this->requireCompanyCustomer($customer);
         $account = CustomerLoyaltyPoint::query()->where('customer_id', $customer->id)->first();
         $points = (int) ($account?->available_points ?? 0);
         $tier = collect($this->getLoyaltyTierStructure())->first(fn (array $tier): bool =>
@@ -80,7 +79,6 @@ class LoyaltyController extends Controller
      */
     public function getCustomerLoyaltyTier(Customer $customer): JsonResponse
     {
-        $customer = $this->requireCompanyCustomer($customer);
         $account = CustomerLoyaltyPoint::query()->where('customer_id', $customer->id)->first();
         $points = (int) ($account?->available_points ?? 0);
         $tier = collect($this->getLoyaltyTierStructure())->first(fn (array $tier): bool =>
@@ -103,7 +101,6 @@ class LoyaltyController extends Controller
      */
     public function getCustomerLoyaltyHistory(Customer $customer): JsonResponse
     {
-        $customer = $this->requireCompanyCustomer($customer);
         $history = LoyaltyPointTransaction::query()
             ->where('customer_id', $customer->id)
             ->completed()
@@ -123,19 +120,6 @@ class LoyaltyController extends Controller
                 ]
             ]
         ]);
-    }
-
-    private function requireCompanyCustomer(Customer $customer): Customer
-    {
-        $companyIds = DB::table('companies')->whereNull('deleted_at')->where('is_active', true)
-            ->where('is_default', true)->orderBy('id')->limit(2)->pluck('id');
-        abort_unless($companyIds->count() === 1, 409, 'Configure exactly one active default business before viewing customer loyalty.');
-        $companyId = (string) $companyIds->first();
-
-        $query = Customer::query()->whereKey($customer->id);
-        \App\Services\CompanyCustomerScope::constrain($query, 'customers', $companyId);
-
-        return $query->firstOrFail();
     }
 
     public function addPoints(Request $request, Customer $customer): JsonResponse

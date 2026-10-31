@@ -9,15 +9,15 @@ it('adds the missing leave type, policy, and policy-assignment list endpoints, c
         ->toContain('public function leavePolicyAssignments(Request $r, StaffAccessService $access): JsonResponse');
 });
 
-it('scopes policy assignments through the same self/team/all StaffAccessService as other Staff-named resources, not company-only', function () {
+it('scopes policy assignments through the self/team/all StaffAccessService', function () {
     $controller = file_get_contents(app_path('Http/Controllers/Api/Hr/WorkforceController.php'));
     $method = substr($controller, strpos($controller, 'function leavePolicyAssignments('));
     $method = substr($method, 0, strpos($method, 'public function storeLeaveType'));
 
     expect($method)
-        ->toContain("\$companyId = \$this->company(\$r, \$r->input('company_id'));")
-        ->toContain("->where('company_id', \$companyId)->select('id')")
-        ->toContain("->where('assignment.company_id', \$companyId)");
+        ->toContain("\$access->scope(Staff::query(), \$r->user())->select('id')")
+        ->toContain("->whereIn('assignment.staff_id', \$staffIds)")
+        ->not->toContain('company_id', 'companyId', 'company(');
 });
 
 it('gates type/policy lists to either the manage or approve permission so an approve-only checker can still see pending policies', function () {

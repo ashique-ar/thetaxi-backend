@@ -7,11 +7,10 @@ use function Pest\Laravel\actingAs;
 uses(RefreshDatabase::class);
 
 it('shows a connector key only in the one-time provisioning response', function () {
-    [$admin, $company] = hr_seed_admin_actor();
+    [$admin] = hr_seed_admin_actor();
     config(['hr.features.attendance_ingestion' => true]);
 
     $response = actingAs($admin, 'api')->postJson('/api/hr/attendance/connectors', [
-        'company_id' => $company->id,
         'name' => 'Attendance gateway',
         'topology' => 'local_connector',
     ])->assertCreated()

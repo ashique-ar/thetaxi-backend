@@ -88,7 +88,7 @@ class CommissionHoldRemediationService
                 'attribution_identity', 'sales_attribution', 'linked_adjustment_required',
                 $actor, 'sales.attributions.view', '/sales/attribution-operations',
                 'Review collection-handler attribution evidence',
-                'A beneficiary mismatch remains blocked for its own correction workflow. A beneficiary-side legal-entity mismatch becomes adjustment-previewable only after one governed, actor-owned collection-handler correction resolves this receipt timestamp to a same-entity, collection- and commission-eligible Profile.',
+                'A historical beneficiary mismatch becomes adjustment-previewable after one governed, actor-owned collection-handler correction resolves this receipt timestamp to a collection- and commission-eligible Profile.',
                 false,
                 true,
             );
@@ -98,8 +98,8 @@ class CommissionHoldRemediationService
             return $this->contract(
                 'attribution_identity', 'sales_attribution', 'linked_adjustment_required',
                 $actor, 'sales.attributions.view', '/sales/attribution-operations',
-                'Review legal-entity attribution evidence',
-                'An acquisition-owner mismatch becomes adjustment-previewable only after one governed same-entity owner correction.',
+                'Review legacy attribution mismatch',
+                'A historical acquisition-owner mismatch becomes adjustment-previewable after one governed owner correction selects a Profile eligible at the secured time.',
                 false,
                 true,
             );
@@ -114,7 +114,7 @@ class CommissionHoldRemediationService
                 'sales_attribution', 'linked_adjustment_required',
                 $actor, 'sales.attributions.view', '/sales/attribution-operations',
                 'Review collection-handler attribution evidence',
-                'A missing or ineligible collection beneficiary becomes adjustment-previewable only after one governed, actor-owned collection-handler correction now resolves this receipt timestamp to a same-entity, collection- and commission-eligible Profile.',
+                'A missing or ineligible collection beneficiary becomes adjustment-previewable after one governed, actor-owned correction resolves this receipt timestamp to a collection- and commission-eligible Profile.',
                 false,
                 true,
             );
@@ -123,9 +123,9 @@ class CommissionHoldRemediationService
         if ($code === 'legal_entity_missing') {
             return $this->contract(
                 'attribution_identity', 'sales_attribution', 'linked_adjustment_required',
-                $actor, 'sales.attributions.correct', '/sales/attribution-operations',
-                'Establish missing legal entity',
-                'Choose the correct acquisition-owner Sales Profile; its own legal entity becomes the frozen attribution entity. This governed command is backdated to the original secured time and requires a subsequent plan-family resolution before the linked commission adjustment becomes previewable.',
+                $actor, 'sales.attributions.view', '/sales/attribution-operations',
+                'Review historical attribution hold',
+                'This hold comes from a retired attribution rule. The linked adjustment preview checks canonical attribution, eligible Profiles, receipt finality, and approved plan evidence across the installation.',
                 false,
                 true,
             );

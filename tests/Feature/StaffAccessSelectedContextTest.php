@@ -1,6 +1,5 @@
 <?php
 
-use App\Models\Company;
 use App\Models\Staff;
 use App\Models\User;
 use App\Models\UserContext;
@@ -11,10 +10,8 @@ uses(RefreshDatabase::class);
 
 it('scopes shared Staff access to the selected identity and fails closed when it is ambiguous', function () {
     $user = User::factory()->create();
-    $firstCompany = Company::create(['name' => 'First Staff Access Company']);
-    $secondCompany = Company::create(['name' => 'Second Staff Access Company']);
-    $firstStaff = Staff::factory()->create(['user_id' => $user->id, 'company_id' => $firstCompany->id]);
-    $secondStaff = Staff::factory()->create(['user_id' => $user->id, 'company_id' => $secondCompany->id]);
+    $firstStaff = Staff::factory()->create(['user_id' => $user->id]);
+    $secondStaff = Staff::factory()->create(['user_id' => $user->id]);
     $firstContext = UserContext::create([
         'user_id' => $user->id, 'context_type' => 'staff', 'context_id' => $firstStaff->id,
         'is_active' => true, 'created_user_id' => $user->id,

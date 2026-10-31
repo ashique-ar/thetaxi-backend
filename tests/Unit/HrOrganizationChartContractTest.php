@@ -14,7 +14,8 @@ it('adds a dated, whole-graph organization chart endpoint reusing the reporting-
 it('counts only active positions effective on the same as-of date, not every position ever created', function () {
     $controller = file_get_contents(app_path('Http/Controllers/Api/Hr/PeopleCoreController.php'));
 
-    expect($controller)->toContain("\$positionCounts = DB::table('hr_positions')->where('company_id', \$companyId)->where('status', '!=', 'inactive')");
+    expect($controller)->toContain("\$positionCounts = DB::table('hr_positions')->where('status', '!=', 'inactive')")
+        ->not->toContain('company_id', 'companyId');
 });
 
 it('registers the chart route under the existing hr.organization.view permission with no new permission minted', function () {

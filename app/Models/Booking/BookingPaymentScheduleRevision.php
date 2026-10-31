@@ -8,7 +8,7 @@ class BookingPaymentScheduleRevision extends BaseModel
 {
 
     protected $fillable = [
-        'company_id', 'booking_id', 'revision_number', 'effective_at', 'contract_basis',
+        'booking_id', 'revision_number', 'effective_at', 'contract_basis',
         'reconciliation_rule', 'contractual_source_amount', 'source_currency', 'retained_source_amount',
         'replacement_source_amount', 'reconciliation_amount', 'preview_checksum', 'before_snapshot',
         'contractual_lkr_amount', 'retained_lkr_amount', 'replacement_lkr_amount',

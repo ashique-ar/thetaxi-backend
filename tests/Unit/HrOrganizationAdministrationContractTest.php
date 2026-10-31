@@ -11,7 +11,7 @@ it('governs organization changes with locks versions history and replay checks',
     expect($service)->toContain('lockForUpdate()')->toContain('expected_version')->toContain('Organization hierarchy cannot contain a cycle.')
         ->toContain('The organization-unit interval or status must continue to cover its active child units and positions.')
         ->toContain('Idempotency key was reused with different organization facts.')->toContain("'before_snapshot'")->toContain("'after_snapshot'")
-        ->toContain('Organization command replay is outside your legal entity.')
+        ->not->toContain('company_id', 'companyId', 'legal entity')
         ->and($migration)->toContain("Schema::create('hr_organization_change_events'")->toContain("'aggregate_type', 'aggregate_id', 'aggregate_version'")->toContain('Refusing to remove retained HR organization history.')->toContain("Schema::dropIfExists('hr_organization_change_events')");
 });
 

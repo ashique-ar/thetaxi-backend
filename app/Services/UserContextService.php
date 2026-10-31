@@ -821,8 +821,6 @@ class UserContextService
                     409,
                     'Former Staff access can only be restored through an approved rehire.'
                 );
-                unset($contextData['company_id']);
-
                 return Staff::firstOrCreate(
                     ['user_id' => $user->id],
                     array_merge([
@@ -853,9 +851,6 @@ class UserContextService
         UserContext $userContext,
         array $contextData = []
     ): void {
-        if ($userContext->context_type === 'staff') {
-            unset($contextData['company_id']);
-        }
         $modelClass = match ($userContext->context_type) {
             'customer' => Customer::class,
             'vehicle_owner' => VehicleOwner::class,
@@ -1223,7 +1218,7 @@ class UserContextService
      */
     private function canAccessInternalPortal(User $user): bool
     {
-        if ($user->hasRole(['admin', 'staff'])) {
+        if ($user->hasRole(['admin', 'super-admin', 'staff'])) {
             return true;
         }
 

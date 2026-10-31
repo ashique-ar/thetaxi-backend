@@ -1,6 +1,5 @@
 <?php
 
-use App\Models\Company;
 use App\Models\Staff;
 use App\Models\User;
 use App\Models\UserContext;
@@ -22,13 +21,12 @@ it('exposes and closes an expired final safety notification lease with an audit 
     $role->givePermissionTo('hr.safety.external.acknowledge');
     $actor->assignRole($role);
     $approver = User::factory()->create();
-    $company = Company::create(['name' => 'Safety notification company', 'is_active' => true, 'is_default' => true]);
-    $actorStaff = Staff::factory()->create(['user_id' => $actor->id, 'company_id' => $company->id]);
+    $actorStaff = Staff::factory()->create(['user_id' => $actor->id]);
     UserContext::create(['user_id' => $actor->id, 'context_type' => 'staff', 'context_id' => $actorStaff->id, 'is_active' => true, 'created_user_id' => $actor->id]);
 
     $incidentId = (string) Str::uuid();
     DB::table('hr_safety_incidents')->insert([
-        'id' => $incidentId, 'company_id' => $company->id, 'incident_number' => 'SAFE-LEASE-001',
+        'id' => $incidentId, 'incident_number' => 'SAFE-LEASE-001',
         'incident_type' => 'injury', 'severity' => 'low', 'location_code' => 'SITE-1',
         'occurred_at' => now(), 'source_timezone' => 'Asia/Colombo', 'encrypted_narrative' => encrypt('Restricted incident'),
         'report_checksum' => str_repeat('a', 64), 'reported_by' => $actor->id,
@@ -165,7 +163,7 @@ it('exposes and closes an expired final safety notification lease with an audit 
         'id' => $failureId, 'last_error' => $safeFailureMessage,
     ]);
     $this->assertDatabaseHas('hr_safety_register_events', [
-        'company_id' => $company->id, 'register_type' => 'external_notification',
+        'register_type' => 'external_notification',
         'register_id' => $notificationId, 'event_type' => 'delivery_failed', 'to_status' => 'failed',
     ]);
     $this->assertDatabaseHas('hr_safety_external_notifications', [

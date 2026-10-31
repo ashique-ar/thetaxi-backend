@@ -1,6 +1,5 @@
 <?php
 
-use App\Models\Company;
 use App\Models\Hr\Attendance\AttendanceDevice;
 use App\Services\Hr\Attendance\DirectAttendanceSyncService;
 use Carbon\CarbonImmutable;
@@ -11,9 +10,7 @@ uses(RefreshDatabase::class);
 
 it('catches up incremental polling from the last successful sync with the configured overlap', function () {
     \App\Models\Website\WebsiteSetting::setValue('feature_hr_attendance_ingestion_enabled', 'true');
-    $company = Company::create(['name' => 'Hikvision recovery company', 'is_active' => true]);
     $device = AttendanceDevice::factory()->create([
-        'company_id' => $company->id,
         'status' => 'active',
         'integration_mode' => 'direct_isapi',
         'last_sync_at' => '2026-10-01 12:00:00',
@@ -34,9 +31,7 @@ it('catches up incremental polling from the last successful sync with the config
 
 it('keeps explicit multi-day reconciliation windows independent of the incremental watermark', function () {
     \App\Models\Website\WebsiteSetting::setValue('feature_hr_attendance_ingestion_enabled', 'true');
-    $company = Company::create(['name' => 'Hikvision reconciliation company', 'is_active' => true]);
     $device = AttendanceDevice::factory()->create([
-        'company_id' => $company->id,
         'status' => 'active',
         'integration_mode' => 'direct_isapi',
         'last_sync_at' => '2026-10-01 12:00:00',

@@ -36,45 +36,38 @@ class CommissionStatementService
 
     public function generate(SalesProfile $profile, array $data, string $actorUserId): SalesCommissionStatement
     {
-        $companyId = DB::table('sales_profiles')->where('id', $profile->id)->value('company_id')
-            ?: \App\Services\CompanyIdScope::defaultCompanyId();
-        abort_unless($companyId, 404, 'Sales Profile not found.');
         $scope = null;
         $facts = null;
         try {
-            return DB::transaction(function () use ($profile, $data, $actorUserId, $companyId, &$scope, &$facts) {
-            $this->lockActiveCompany((string) $companyId);
+            return DB::transaction(function () use ($profile, $data, $actorUserId, &$scope, &$facts) {
             abort_unless($this->policySettings->featureEnabled('statements'), 409,
-                'Commission statement generation is not activated for this legal entity.');
+                'Commission statement generation is not activated for this installation.');
             $profile = SalesProfile::query()->with('staff')->lockForUpdate()->findOrFail($profile->id);
-            abort_unless(\App\Services\CompanyIdScope::sameCompanyId((string) ((string) $profile->company_id), (string) ((string) $companyId)), 409,
-                'The Sales Profile legal entity changed before statement generation.');
-            $scope = ['company_id' => $companyId, 'staff_id' => $profile->staff_id];
+            $scope = ['staff_id' => $profile->staff_id];
             $checksum = $this->checksum(['sales_profile_id' => $profile->id, ...$data]);
             $duplicate = SalesCommissionStatement::query()->where('generation_idempotency_key', $data['idempotency_key'])->first();
             if ($duplicate) {
                 abort_unless(hash_equals($duplicate->generation_payload_checksum, $checksum)
                     && (string) $duplicate->sales_profile_id === (string) $profile->id
-                    && \App\Services\CompanyIdScope::sameCompanyId((string) ((string) $duplicate->company_id), (string) ((string) $profile->company_id))
                     && (string) $duplicate->staff_id === (string) $profile->staff_id, 422,
                     'This statement generation key was already used with different facts.');
                 return $duplicate->load('lines');
             }
             $staff = $profile->staff()->lockForUpdate()->first();
             abort_unless($this->commissionStatementEligible($profile, $staff), 422,
-                'The Sales Profile must belong to active Staff in the same legal entity.');
+                'The Sales Profile must belong to active Staff.');
             $facts = $this->facts($profile, $data, true);
             $existing = SalesCommissionStatement::query()
-                ->where(fn ($_companyIdScope) => \App\Services\CompanyIdScope::constrain($_companyIdScope, 'company_id', $profile->company_id))->where('staff_id', $profile->staff_id)
+                ->where('staff_id', $profile->staff_id)
                 ->where('cycle_version_id', $facts['cycle']->id)->whereDate('period_start', $facts['period_start'])
                 ->whereDate('period_end', $facts['period_end'])->where('status', '!=', 'void')->lockForUpdate()->first();
             abort_if($existing, 422, 'A non-void statement already exists for this Staff/cycle period.');
             $version = (int) SalesCommissionStatement::query()
-                ->where(fn ($_companyIdScope) => \App\Services\CompanyIdScope::constrain($_companyIdScope, 'company_id', $profile->company_id))->where('staff_id', $profile->staff_id)
+                ->where('staff_id', $profile->staff_id)
                 ->where('cycle_version_id', $facts['cycle']->id)->whereDate('period_start', $facts['period_start'])
                 ->whereDate('period_end', $facts['period_end'])->max('version') + 1;
             $statement = SalesCommissionStatement::create([
-                'company_id' => $companyId, 'staff_id' => $profile->staff_id, 'sales_profile_id' => $profile->id,
+                'staff_id' => $profile->staff_id, 'sales_profile_id' => $profile->id,
                 'cycle_version_id' => $facts['cycle']->id, 'cycle_assignment_id' => $facts['assignment']->id,
                 'business_calendar_id' => $facts['calendar']->id,
                 'statement_number' => 'SCS-'.$facts['period_end']->format('Ym').'-'.strtoupper(substr((string) Str::uuid(), 0, 8)),
@@ -106,7 +99,7 @@ class CommissionStatementService
                 ]);
             }
             $this->recordInitialEvent($statement, $actorUserId, $data['idempotency_key']);
-            $this->events->record('sales', $statement->company_id, 'commission_statement', $statement->id,
+            $this->events->record('sales', 'commission_statement', $statement->id,
                 'sales.commission.statement_generated', 1, 1, [
                     'staff_id' => $statement->staff_id, 'period_start' => $facts['period_start']->toDateString(),
                     'period_end' => $facts['period_end']->toDateString(), 'net_payable_lkr' => (string) $statement->net_payable_lkr,
@@ -115,13 +108,12 @@ class CommissionStatementService
             return $statement->load('lines');
             });
         } catch (QueryException $exception) {
-            return DB::transaction(function () use ($exception, $profile, $data, $companyId, $scope, $facts) {
-                $this->lockActiveCompany((string) $companyId);
+            return DB::transaction(function () use ($exception, $profile, $data, $scope, $facts) {
                 $duplicate = SalesCommissionStatement::query()
                     ->where('generation_idempotency_key', $data['idempotency_key'])->first();
                 if (! $duplicate && $scope && $facts) {
                     $periodConflict = SalesCommissionStatement::query()
-                        ->where(fn ($_companyIdScope) => \App\Services\CompanyIdScope::constrain($_companyIdScope, 'company_id', $scope['company_id']))->where('staff_id', $scope['staff_id'])
+                        ->where('staff_id', $scope['staff_id'])
                         ->where('cycle_version_id', $facts['cycle']->id)
                         ->whereDate('period_start', $facts['period_start'])->whereDate('period_end', $facts['period_end'])
                         ->where('status', '!=', 'void')->exists();
@@ -133,7 +125,7 @@ class CommissionStatementService
                 $checksum = $this->checksum(['sales_profile_id' => $profile->id, ...$data]);
                 abort_unless(hash_equals($duplicate->generation_payload_checksum, $checksum)
                     && (string) $duplicate->sales_profile_id === (string) $profile->id
-                    && \App\Services\CompanyIdScope::sameCompanyId((string) ((string) $duplicate->company_id), (string) ((string) $companyId)), 422,
+                    && (string) $duplicate->staff_id === (string) $profile->staff_id, 422,
                     'This statement generation key was already used with different facts.');
 
                 return $duplicate->load('lines');
@@ -143,15 +135,8 @@ class CommissionStatementService
 
     public function transition(SalesCommissionStatement $statement, string $toStatus, int $expectedVersion, string $reason, string $key, string $actorUserId): SalesCommissionStatement
     {
-        $companyId = DB::table('sales_commission_statements')->where('id', $statement->id)->value('company_id')
-            ?: \App\Services\CompanyIdScope::defaultCompanyId();
-        abort_unless($companyId, 404, 'Commission statement not found.');
-
-        return DB::transaction(function () use ($statement, $toStatus, $expectedVersion, $reason, $key, $actorUserId, $companyId) {
-            $this->lockActiveCompany((string) $companyId);
+        return DB::transaction(function () use ($statement, $toStatus, $expectedVersion, $reason, $key, $actorUserId) {
             $statement = SalesCommissionStatement::query()->lockForUpdate()->findOrFail($statement->id);
-            abort_unless(\App\Services\CompanyIdScope::sameCompanyId((string) ((string) $statement->company_id), (string) ((string) $companyId)), 409,
-                'The statement legal entity changed before its status could be updated.');
             $duplicate = SalesCommissionStatementEvent::query()->where('statement_id', $statement->id)->where('idempotency_key', $key)->first();
             if ($duplicate) {
                 abort_unless($duplicate->from_version === $expectedVersion && $duplicate->to_status === $toStatus
@@ -185,24 +170,17 @@ class CommissionStatementService
                 'from_status' => $from, 'to_status' => $toStatus, 'reason' => $reason,
                 'idempotency_key' => $key, 'actor_user_id' => $actorUserId, 'occurred_at' => now(),
             ]);
-            $this->events->record('sales', $companyId, 'commission_statement', $statement->id,
+            $this->events->record('sales', 'commission_statement', $statement->id,
                 'sales.commission.statement_'.$toStatus, $toVersion, 1, ['from_status' => $from, 'to_status' => $toStatus], now(), $key);
             return $statement->fresh();
         });
-    }
-
-    private function lockActiveCompany(string $companyId): void
-    {
-        $company = DB::table('companies')->where('id', $companyId)->where('is_active', true)
-            ->whereNull('deleted_at')->lockForUpdate()->first(['id']);
-        abort_unless($company, 422, 'Select an active legal entity.');
     }
 
     private function facts(SalesProfile $profile, array $data, bool $lockSources): array
     {
         $profile->loadMissing('staff');
         abort_unless(SalesProfile::query()->commissionStatementEligible()->whereKey($profile->id)->exists(), 422,
-            'The Sales Profile must belong to active Staff in the same legal entity.');
+            'The Sales Profile must belong to active Staff.');
         $periodStart = CarbonImmutable::parse($data['period_start'])->startOfDay();
         $periodEnd = CarbonImmutable::parse($data['period_end'])->endOfDay();
         abort_if($periodEnd->lt($periodStart), 422, 'Statement period is invalid.');
@@ -229,11 +207,9 @@ class CommissionStatementService
             'settlement_at' => $schedule['settlement_at']->toIso8601String(),
         ];
         $scheduleChecksum = hash('sha256', json_encode($scheduleSnapshot, JSON_THROW_ON_ERROR | JSON_UNESCAPED_SLASHES));
-        $opening = (float) (SalesCommissionStatement::query()->where(fn ($_companyIdScope) => \App\Services\CompanyIdScope::constrain($_companyIdScope, 'company_id', $profile->company_id))
-            ->where('staff_id', $profile->staff_id)->whereIn('status', ['approved', 'partially_paid', 'paid'])
+        $opening = (float) (SalesCommissionStatement::query()->where('staff_id', $profile->staff_id)->whereIn('status', ['approved', 'partially_paid', 'paid'])
             ->whereDate('period_end', '<', $periodStart)->latest('period_end')->value('closing_carry_forward_lkr') ?? 0);
-        $decisionQuery = SalesCommissionDecision::query()->where(fn ($_companyIdScope) => \App\Services\CompanyIdScope::constrain($_companyIdScope, 'company_id', $profile->company_id))
-            ->where('beneficiary_staff_id', $profile->staff_id)
+        $decisionQuery = SalesCommissionDecision::query()->where('beneficiary_staff_id', $profile->staff_id)
             ->where('decision_at', '>=', $cycle->effective_from)->where('decision_at', '<=', $cutoffAt)
             ->whereNotExists(function ($q) {
                 $q->selectRaw('1')->from('sales_commission_statement_lines as line')
@@ -245,7 +221,7 @@ class CommissionStatementService
         $decisions = $decisionQuery->get();
         $recoveryQuery = SalesCommissionRecoveryDecision::query()
             ->join('sales_commission_recovery_cases as recovery_case', 'recovery_case.id', '=', 'sales_commission_recovery_decisions.recovery_case_id')
-            ->where(fn ($_companyIdScope) => \App\Services\CompanyIdScope::constrain($_companyIdScope, 'recovery_case.company_id', $profile->company_id))->where('recovery_case.beneficiary_staff_id', $profile->staff_id)
+            ->where('recovery_case.beneficiary_staff_id', $profile->staff_id)
             ->whereIn('sales_commission_recovery_decisions.decision', ['deduct', 'credit'])
             ->where('sales_commission_recovery_decisions.approved_at', '<=', $cutoffAt)
             ->whereNotExists(function ($q) {
@@ -257,7 +233,7 @@ class CommissionStatementService
         if ($lockSources) $recoveryQuery->lockForUpdate();
         $recoveries = $recoveryQuery->get();
         $releaseQuery = SalesCommissionHoldRelease::query()
-            ->where(fn ($_companyIdScope) => \App\Services\CompanyIdScope::constrain($_companyIdScope, 'company_id', $profile->company_id))->where('beneficiary_staff_id', $profile->staff_id)
+            ->where('beneficiary_staff_id', $profile->staff_id)
             ->where('released_at', '>=', $cycle->effective_from)
             ->where('released_at', '<=', $cutoffAt)
             ->whereNotExists(function ($q) {
@@ -269,7 +245,7 @@ class CommissionStatementService
         if ($lockSources) $releaseQuery->lockForUpdate();
         $holdReleases = $releaseQuery->get();
         $holdAdjustmentQuery = SalesCommissionHoldAdjustment::query()
-            ->where(fn ($_companyIdScope) => \App\Services\CompanyIdScope::constrain($_companyIdScope, 'company_id', $profile->company_id))->where('beneficiary_staff_id', $profile->staff_id)
+            ->where('beneficiary_staff_id', $profile->staff_id)
             ->where('adjustment_effective_at', '>=', $cycle->effective_from)
             ->where('adjustment_effective_at', '<=', $cutoffAt)
             ->whereNotExists(function ($query) {
@@ -281,7 +257,7 @@ class CommissionStatementService
         if ($lockSources) $holdAdjustmentQuery->lockForUpdate();
         $holdAdjustments = $holdAdjustmentQuery->get();
         $adjustmentQuery = SalesCommissionStatementAdjustment::query()
-            ->where(fn ($_companyIdScope) => \App\Services\CompanyIdScope::constrain($_companyIdScope, 'company_id', $profile->company_id))->where('staff_id', $profile->staff_id)
+            ->where('staff_id', $profile->staff_id)
             ->where('approved_at', '<=', $cutoffAt)
             ->whereNotExists(function ($q) {
                 $q->selectRaw('1')->from('sales_commission_statement_lines as line')
@@ -295,9 +271,10 @@ class CommissionStatementService
         if ($opening != 0) $lines[] = $this->line('carry_forward', 'prior_statement_balance', null, 'Opening carry-forward', max(0, $opening), max(0, -$opening), $opening, 'included', null, ['opening_carry_forward_lkr' => $opening]);
         foreach ($decisions as $decision) {
             $included = $decision->status === 'earned'; $amount = $included ? (float) $decision->commission_amount_lkr : 0;
+            $decisionSnapshot = $decision->toArray();
             $lines[] = $this->line($included ? 'earning' : 'hold', 'commission_decision', $decision->id,
                 $included ? 'Collection commission earning' : 'Excluded commission hold: '.$decision->hold_code,
-                $amount, 0, $amount, $included ? 'included' : 'excluded', $decision->hold_code, $decision->toArray());
+                $amount, 0, $amount, $included ? 'included' : 'excluded', $decision->hold_code, $decisionSnapshot);
         }
         foreach ($recoveries as $recovery) {
             $signed = (float) $recovery->commission_adjustment_lkr;
@@ -364,7 +341,6 @@ class CommissionStatementService
             && $profile->reporting_currency !== null
             && $profile->staff_category_snapshot !== null
             && $staff !== null
-            && \App\Services\CompanyIdScope::sameCompanyId((string) ((string) $staff->company_id), (string) ((string) $profile->company_id))
             && $staff->deleted_at === null
             && ($staff->employment_ended_at === null || CarbonImmutable::parse($staff->employment_ended_at)->gt(now()));
     }

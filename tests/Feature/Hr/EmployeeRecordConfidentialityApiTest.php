@@ -9,10 +9,10 @@ use function Pest\Laravel\actingAs;
 uses(RefreshDatabase::class);
 
 it('withholds encrypted employee-record and profile data without confidential permission', function () {
-    [$admin, $company] = hr_seed_admin_actor();
+    [$admin] = hr_seed_admin_actor();
     Role::findByName('admin', 'api')->revokePermissionTo('hr.people.timeline-confidential');
     config(['hr.features.people_core' => true]);
-    $staff = Staff::factory()->create(['company_id' => $company->id]);
+    $staff = Staff::factory()->create();
     $privateMarker = 'confidential-record-payload-marker';
 
     $created = actingAs($admin, 'api')->postJson('/api/hr/people/staff/'.$staff->id.'/records', [

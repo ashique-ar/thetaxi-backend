@@ -40,7 +40,6 @@ class SalesProfileExportService
                         DB::table('domain_audit_events')->insert([
                             'id' => (string) Str::uuid(),
                             'domain' => 'sales',
-                            'company_id' => null,
                             'subject_type' => 'sales_profile_export',
                             'subject_id' => $locked->id,
                             'event_type' => 'sales.profile_export.purged',
@@ -175,7 +174,6 @@ class SalesProfileExportService
                 DB::table('domain_audit_events')->insert([
                     'id' => (string) Str::uuid(),
                     'domain' => 'sales',
-                    'company_id' => null,
                     'subject_type' => 'sales_profile_export',
                     'subject_id' => $export->id,
                     'event_type' => 'sales.profile_export.generated',

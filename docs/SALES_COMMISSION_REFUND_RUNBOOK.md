@@ -8,7 +8,7 @@ The original internal employee remains a canonical `Staff`. Recovery follows the
 
 ## Triage
 
-1. Record the legal entity, recovery case ID, payment adjustment ID, original commission decision ID, correlation ID, and incident time. Do not copy customer, bank, evidence-file, or employee-sensitive content into incident channels.
+1. Record the recovery case ID, payment adjustment ID, original commission decision ID, correlation ID, and incident time. Do not copy customer, bank, evidence-file, or employee-sensitive content into incident channels.
 2. Confirm the case is pending and inspect the no-write decision preview. A blocked preview is a reconciliation condition, not permission to edit history.
 3. Confirm exactly zero or one non-void source statement line exists. Multiple lines require Finance reconciliation before any decision.
 4. Classify the previewed disposition:

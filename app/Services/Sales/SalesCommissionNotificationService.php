@@ -40,14 +40,12 @@ class SalesCommissionNotificationService
             }
 
             $decision = DB::table('sales_commission_decisions')->where('id', $notificationEvent['decision_id'])->first();
-            $companyId = $decision?->company_id ?: \App\Services\CompanyIdScope::defaultCompanyId();
-            if (! $decision || ! $companyId || !\App\Services\CompanyIdScope::sameCompanyId((string) ($companyId), (string) ($event->companyId))) {
+            if (! $decision) {
                 return;
             }
 
             $id = $existing?->id ?? (string) Str::uuid();
             $base = [
-                'company_id' => $companyId,
                 'source_outbox_event_id' => $event->id,
                 'commission_decision_id' => $decision->id,
                 'commission_hold_release_id' => $notificationEvent['release_id'],
@@ -64,7 +62,6 @@ class SalesCommissionNotificationService
             }
 
             $policies = DB::table('sales_commission_notification_policy_versions')
-                ->where(fn ($_companyIdScope) => \App\Services\CompanyIdScope::constrain($_companyIdScope, 'company_id', $companyId))
                 ->where('event_type', $notificationEvent['event_type'])
                 ->where('channel', 'in_app')
                 ->where('recipient_scope', 'beneficiary')
@@ -287,8 +284,6 @@ class SalesCommissionNotificationService
             ->join('users as user', 'user.id', '=', 'staff.user_id')
             ->where('profile.id', $decision->beneficiary_sales_profile_id)
             ->where('profile.staff_id', $decision->beneficiary_staff_id)
-            ->where(fn ($_companyIdScope) => \App\Services\CompanyIdScope::constrain($_companyIdScope, 'profile.company_id', $decision->company_id))
-            ->where(fn ($_companyIdScope) => \App\Services\CompanyIdScope::constrain($_companyIdScope, 'staff.company_id', $decision->company_id))
             ->where('profile.status', 'active')->where('profile.commission_eligible', true)
             ->where('profile.effective_from', '<=', now())
             ->where(fn ($query) => $query->whereNull('profile.effective_until')->orWhere('profile.effective_until', '>', now()))
@@ -300,13 +295,14 @@ class SalesCommissionNotificationService
     private function validPolicyChecksum(object $policy): bool
     {
         try {
-            $facts = ['company_id' => $policy->company_id, 'event_type' => $policy->event_type, 'channel' => $policy->channel,
+            $facts = ['event_type' => $policy->event_type, 'channel' => $policy->channel,
                 'recipient_scope' => $policy->recipient_scope, 'version' => (int) $policy->version,
                 'title_template' => $policy->title_template, 'body_template' => $policy->body_template,
                 'allowed_placeholders' => json_decode($policy->allowed_placeholders, true, 512, JSON_THROW_ON_ERROR),
                 'mandatory' => (bool) $policy->mandatory, 'escalation_after_minutes' => $policy->escalation_after_minutes,
                 'effective_from' => $policy->effective_from, 'effective_until' => $policy->effective_until];
-            return hash_equals($policy->policy_checksum, hash('sha256', CanonicalJson::encode($facts)));
+            $checksum = hash('sha256', CanonicalJson::encode($facts));
+            return hash_equals($policy->policy_checksum, $checksum);
         } catch (Throwable) {
             return false;
         }
@@ -378,7 +374,7 @@ class SalesCommissionNotificationService
 
     private function eventObject(object $row): object
     {
-        return (object) ['id' => $row->id, 'domain' => $row->domain, 'companyId' => $row->company_id,
+        return (object) ['id' => $row->id, 'domain' => $row->domain,
             'aggregateType' => $row->aggregate_type, 'aggregateId' => $row->aggregate_id,
             'eventType' => $row->event_type, 'eventVersion' => $row->event_version,
             'schemaVersion' => $row->schema_version, 'payload' => json_decode($row->payload, true, 512, JSON_THROW_ON_ERROR),

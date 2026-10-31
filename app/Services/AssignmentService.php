@@ -170,7 +170,11 @@ class AssignmentService
             if (! empty($params['requires_approval'])) $params['status'] = 'pending_approval';
 
             $bookingItem = ! empty($params['booking_item_id'])
-                ? BookingItem::with('serviceType')->find($params['booking_item_id'])
+                ? BookingItem::query()
+                    ->where('booking_id', $params['booking_id'])
+                    ->whereKey($params['booking_item_id'])
+                    ->with('serviceType')
+                    ->firstOrFail()
                 : null;
             if (ServiceType::isSelfDriveType($bookingItem?->serviceType?->type)) {
                 throw ValidationException::withMessages([

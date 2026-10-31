@@ -114,7 +114,7 @@ class SalesBookingAttributionController extends Controller
         $rows = $bookings
             ->map(fn (Booking $booking) => $this->attributions->preview($booking))
             ->filter(function (array $row) use ($profileIds, $includeUnownedOwnerReviews): bool {
-                if (in_array('historical_company_owner_review_required', $row['holds'], true)) {
+                if (in_array('historical_owner_review_required', $row['holds'], true)) {
                     return $includeUnownedOwnerReviews;
                 }
                 if ($profileIds === null) {
@@ -150,10 +150,10 @@ class SalesBookingAttributionController extends Controller
             $includeUnownedOwnerReviews=$this->scope->hasPermission($request->user(),'sales.attributions.view-all');
             $bookings=Booking::query()->whereIn('id',$data['booking_ids'])->where(fn($q)=>$q->where('confirmed',true)->orWhere('status','confirmed')->orWhereNotNull('confirmed_at'))->whereDoesntHave('salesAttribution')->orderBy('id')->lockForUpdate()->get();
             abort_unless($bookings->count()===count($data['booking_ids']),409,'The historical booking set changed; create a new preview.');
-            $rows=$bookings->map(fn(Booking $booking)=>$this->attributions->preview($booking))->filter(fn(array$row)=>in_array('historical_company_owner_review_required',$row['holds'],true)?$includeUnownedOwnerReviews:($profileIds===null||in_array($row['acquisition_sales_profile_id'],$profileIds,true)||in_array($row['collection_sales_profile_id'],$profileIds,true)))->values();
+            $rows=$bookings->map(fn(Booking $booking)=>$this->attributions->preview($booking))->filter(fn(array$row)=>in_array('historical_owner_review_required',$row['holds'],true)?$includeUnownedOwnerReviews:($profileIds===null||in_array($row['acquisition_sales_profile_id'],$profileIds,true)||in_array($row['collection_sales_profile_id'],$profileIds,true)))->values();
             abort_unless($rows->count()===$bookings->count(),404,'A historical booking is outside the authorized Sales profile scope.');
             $checksum=hash('sha256',CanonicalJson::encode(['rows'=>$rows->all()]));abort_unless(hash_equals($checksum,$data['preview_checksum']),409,'Historical attribution facts changed; create a new preview.');
-            $ownerReviewIds=$rows->filter(fn(array$row)=>in_array('historical_company_owner_review_required',$row['holds'],true))->pluck('booking_id')->flip();
+            $ownerReviewIds=$rows->filter(fn(array$row)=>in_array('historical_owner_review_required',$row['holds'],true))->pluck('booking_id')->flip();
             $created=0;foreach($bookings as$booking){if(!$booking->salesAttribution()->exists()){$this->attributions->captureConfirmation($booking,$ownerReviewIds->has($booking->id));$created++;}}
             $result=['requested'=>count($data['booking_ids']),'created'=>$created,'preview_checksum'=>$checksum,'reconciliation'=>['remaining_confirmed_without_attribution'=>Booking::query()->where(fn($q)=>$q->where('confirmed',true)->orWhere('status','confirmed')->orWhereNotNull('confirmed_at'))->whereDoesntHave('salesAttribution')->count()]];
             DB::table('sales_attribution_migration_batches')->insert(['id'=>(string)\Illuminate\Support\Str::uuid(),'idempotency_key'=>$data['idempotency_key'],'preview_checksum'=>$checksum,'booking_scope_checksum'=>$scopeChecksum,'requested_count'=>count($data['booking_ids']),'created_count'=>$created,'result_snapshot'=>json_encode($result,JSON_THROW_ON_ERROR),'applied_by'=>$request->user()->id,'applied_at'=>now(),'created_at'=>now(),'updated_at'=>now()]);

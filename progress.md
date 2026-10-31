@@ -1,3 +1,7 @@
+# Historical implementation log
+
+> Entries below record earlier implementation stages. Company-scoped behavior described in them is superseded by [the current single-installation cleanup plan](docs/plans/2026-10-30-single-installation-company-cleanup.md).
+
 Task 212: Hardened vehicle/driver swap and breakdown endpoints with active-company booking/resource checks and booking-item membership validation. PHP lint and backend diff check pass. Database authorization and operational behavior remain unverified; no tests were run.
 Task 214: Added lifecycle replacement request API and staff workspace action. Request is scoped to active company and booking item, persists in lifecycle_data, creates audit/history activity, queues customer notification, and appears in the Replacement queue. Canonical swap closes the request after successful resource/cost handling. PHP lint, route/backend diff checks and Angular production build pass (one unrelated unused-component warning). Runtime database/queue/concurrency/notification behavior and recovery if a request is no longer needed remain unverified. No tests were run.
 Task 215: Staff can close an open replacement request without a swap by entering a reason; the item returns to active status, closure is retained in history, the customer is notified, and normal trip completion resumes. PHP lint and production Angular build pass with one pre-existing warning. Live permissions, database behavior, notification delivery and frontline usability remain unverified. No tests were run.

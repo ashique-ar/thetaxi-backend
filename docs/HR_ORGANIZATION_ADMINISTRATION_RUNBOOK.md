@@ -8,20 +8,20 @@ This runbook covers canonical internal-Staff organization units, job families, g
 
 1. HR People Core is available by default. Rehearse schema and data checks against a production-like copy before applying migrations.
 2. Confirm `2026_08_12_147000_create_hr_people_core.php` precedes `2026_08_14_107000_govern_hr_organization_administration.php`, followed by `2026_08_14_108000_govern_hr_job_and_position_administration.php`, `2026_08_14_109000_govern_hr_reporting_lines.php`, `2026_08_14_110000_govern_hr_acting_appointments.php`, and `2026_08_14_111000_govern_hr_staff_custom_field_values.php`.
-3. Inventory organization units by legal entity, code, parent, type, effective interval and status. Reject duplicate company/code values, missing/cross-company parents, self-parenting, cycles and cross-company manager/HR-partner references.
-4. Inventory custom-field definitions by company, owner type and key. Reject duplicate keys, unsupported types/classifications, select fields without options and non-select fields with options.
-5. Inventory job families, grades, designations and positions by legal entity. Reject cross-entity references, duplicate company-qualified codes/numbers, invalid date intervals, grade ranges where maximum is below minimum, and headcount below current effective assignment occupancy. Do not invent effective dates for legacy rows; route incomplete rows through the approved mapping/rejection process.
+3. Inventory organization units by code, parent, type, effective interval and status. Reject duplicate installation-wide codes, missing parents, self-parenting, cycles and missing manager/HR-partner Staff references.
+4. Inventory custom-field definitions by owner type and key. Reject duplicate installation-wide keys, unsupported types/classifications, select fields without options and non-select fields with options.
+5. Inventory job families, grades, designations and positions installation-wide. Reject missing references, duplicate installation-wide codes/numbers, invalid date intervals, grade ranges where maximum is below minimum, and headcount below current effective assignment occupancy. Do not invent effective dates for legacy rows; route incomplete rows through the approved mapping/rejection process.
 6. Record counts and hashes for organization units, job catalogues, positions and definitions without exporting personal or encrypted custom-field values.
-7. Inventory reporting lines and assignment manager snapshots by legal entity, type and interval. Reject self/cross-entity links, overlaps, effective cycles, employment gaps, future lines for leavers, and unexplained disagreement between assignment snapshots and the canonical reporting-line history. Do not derive or copy Sales Profile hierarchy.
+7. Inventory reporting lines and assignment manager snapshots by Staff, type and interval. Reject self-links, overlaps, effective cycles, employment gaps, future lines for leavers, and unexplained disagreement between assignment snapshots and the canonical reporting-line history. Do not derive or copy Sales Profile hierarchy.
 8. Confirm the explicit `hr.organization.*`, `hr.reporting-lines.*`, and `hr.custom-fields.*` role bundle with HR/Security. Navigation is not authorization evidence.
-9. Inventory proposed and historical acting appointments by Staff, employment spell, source assignment, target position, start/end, requester and approver. Reject open-ended dates, overlaps, missing restorations, cross-entity references, unapproved capacity exceptions, inferred pay/allowance changes, and entries that silently changed Sales Profile reporting.
+9. Inventory proposed and historical acting appointments by Staff, employment spell, source assignment, target position, start/end, requester and approver. Reject open-ended dates, overlaps, missing restorations, missing references, unapproved capacity exceptions, inferred pay/allowance changes, and entries that silently changed Sales Profile reporting.
 10. Inventory existing Staff custom-field values without decrypting or exporting them. Values without a governed checksum, definition version, effective date, reviewed classification, and authoritative source remain `legacy_unverified` and must not be revealed. Produce reviewed rewrite/rejection counts instead of inventing plaintext or dates.
 
 ## Migration and activation
 
 1. Rehearse the two People migrations in order against a production-like copy and capture apply/rollback timings.
-2. Confirm existing rows receive version `1`, the change-event table is empty, global position-number uniqueness becomes legal-entity-qualified, and legacy job catalogue effective dates remain null pending approved mapping rather than receiving guessed history.
-3. Run the focused API, permission, idempotency, stale-version, hierarchy-cycle, cross-entity, privacy and Angular accessibility matrices required by the canonical plan.
+2. Confirm existing rows receive version `1`, the change-event table is empty, position-number uniqueness is installation-wide, and legacy job catalogue effective dates remain null pending approved mapping rather than receiving guessed history.
+3. Run the focused API, permission, idempotency, stale-version, hierarchy-cycle, relationship-integrity, privacy and Angular accessibility matrices required by the canonical plan.
 4. Apply People Core after the historical organization import/backfill has a reviewed mapping, rejection report and reconciliation totals.
 5. Create or edit one isolated non-production unit, job record, position and definition; prove one event per accepted version and exact before/after reconstruction.
 6. Reconcile each position's current effective Staff assignments against `occupied_count`, `vacancy_count`, and availability. Prove capacity cannot be reduced below occupancy and occupied positions cannot be deactivated.
@@ -33,11 +33,11 @@ This runbook covers canonical internal-Staff organization units, job families, g
 
 ## Reconciliation
 
-- Every command event matches one company, aggregate and version.
+- Every command event matches one aggregate and version.
 - Aggregate versions are monotonic with no duplicate `(type, id, version)`.
-- A replay with the same key and payload returns the original snapshot; changed facts, command type or legal entity are rejected.
-- Every active unit has an effective legal-entity parent chain with no cycle.
-- Every designation references only its legal entity's family/grade, every position references only its legal entity's unit/designation, and position numbers are unique within that entity.
+- A replay with the same key and payload returns the original snapshot; changed facts or command type are rejected.
+- Every active unit has a valid effective parent chain with no cycle.
+- Every designation references an existing family/grade, every position references an existing unit/designation, and position numbers are unique across the installation.
 - Position availability is derived from current effective `hr_employment_assignments`; it is not a separately editable fact.
 - Every member has at most one overlapping line of each People relationship type. Primary/dotted lines alone drive manager People scope; HR-partner/approval relationships remain workflow metadata.
 - Assignment manager columns are frozen assignment snapshots. New approved assignment changes project idempotently into canonical reporting-line history; existing discrepancies require reviewed reconciliation, not silent overwrite.
@@ -47,9 +47,9 @@ This runbook covers canonical internal-Staff organization units, job families, g
 
 ## Rollback and incident response
 
-- Before any organization command has written an event, schema rollback may remove the unused follow-on tables/columns after rehearsal. The job/position rollback additionally refuses while cross-company duplicate position numbers cannot fit the former global constraint.
+- Before any organization command has written an event, schema rollback may remove the unused follow-on tables/columns after rehearsal. The job/position rollback additionally refuses while duplicate position numbers cannot fit the installation-wide constraint.
 - Once retained events exist, the migration deliberately refuses destructive rollback. Preserve the schema/history, correct through a new version, and reconcile before resuming affected writes.
 - Once any custom-field value or access event exists, its follow-on migration refuses rollback. Pause affected writes through the normal operational process, preserve ciphertext and access history, and correct through a new authorized value version.
 - Never delete or rewrite an event to repair a hierarchy. Create a reasoned corrective version.
-- If a cycle, cross-company reference or version gap is detected, pause affected People Core writes through the normal operational process, retain reads where privacy-safe, capture affected IDs/counts, reconcile from events, and require HR/Security approval before resuming writes.
+- If a cycle, missing reference or version gap is detected, pause affected People Core writes through the normal operational process, retain reads where privacy-safe, capture affected IDs/counts, reconcile from events, and require HR/Security approval before resuming writes.
 - If manager termination leaves members without a primary line, retain the closed line and expose the resulting unassigned hierarchy for HR correction; never guess a replacement manager.

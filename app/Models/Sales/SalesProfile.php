@@ -10,7 +10,7 @@ use Illuminate\Database\Eloquent\Builder;
 class SalesProfile extends BaseModel
 {
     protected $fillable = [
-        'company_id', 'staff_id', 'staff_category_snapshot', 'sales_code', 'status',
+        'staff_id', 'staff_category_snapshot', 'sales_code', 'status',
         'acquisition_eligible', 'collection_eligible', 'commission_eligible', 'reporting_currency',
         'version', 'effective_from', 'effective_until', 'created_user_id', 'updated_user_id',
     ];

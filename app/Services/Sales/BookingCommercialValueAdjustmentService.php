@@ -42,17 +42,9 @@ class BookingCommercialValueAdjustmentService
 
     public function apply(Booking $booking, array $data, string $actorUserId): BookingCommercialValueAdjustment
     {
-        $tenant = SalesBookingAttribution::query()->where('booking_id', $booking->id)->first(['company_id']);
-        abort_unless($tenant?->company_id, 409, 'This booking needs a reviewed legal-entity attribution before commercial adjustment.');
-
-        return DB::transaction(function () use ($booking, $data, $actorUserId, $tenant) {
-            $company = DB::table('companies')->where('id', $tenant->company_id)->where('is_active', true)
-                ->whereNull('deleted_at')->lockForUpdate()->first(['id']);
-            abort_unless($company, 422, 'Select an active legal entity.');
+        return DB::transaction(function () use ($booking, $data, $actorUserId) {
             $booking = Booking::query()->lockForUpdate()->findOrFail($booking->id);
             $attribution = SalesBookingAttribution::query()->where('booking_id', $booking->id)->lockForUpdate()->firstOrFail();
-            abort_unless(\App\Services\CompanyIdScope::sameCompanyId((string) ((string) $attribution->company_id), (string) ((string) $company->id)), 409,
-                'The booking legal entity changed before its commercial value adjustment.');
             $checksum = $this->payloadChecksum($booking->id, $data);
             $duplicate = BookingCommercialValueAdjustment::query()
                 ->where('booking_id', $booking->id)
@@ -90,7 +82,6 @@ class BookingCommercialValueAdjustmentService
                 'A governed LKR value is required before a commercial adjustment can affect New Sales.');
 
             $adjustment = BookingCommercialValueAdjustment::create([
-                'company_id' => $attribution->company_id,
                 'booking_id' => $booking->id,
                 'attribution_id' => $attribution->id,
                 'acquisition_sales_profile_id' => $attribution->acquisition_sales_profile_id,
@@ -118,7 +109,6 @@ class BookingCommercialValueAdjustmentService
 
             $this->events->record(
                 'sales',
-                $attribution->company_id,
                 'booking_commercial_value_adjustment',
                 $adjustment->id,
                 "sales.attribution.commercial_value.{$data['adjustment_type']}",

@@ -4,7 +4,6 @@ namespace App\Services;
 
 use App\Models\Website\WebsiteSetting;
 use App\Models\BusinessSetting;
-use App\Models\Company;
 use Illuminate\Database\QueryException;
 use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\DB;
@@ -32,6 +31,7 @@ class WebsiteSettingsService
         'content_generation_url',
         'site_timezone',
         'default_currency',
+        'default_country_code',
         'portal_title',
         'portal_logo',
         'brand_color_primary',
@@ -155,8 +155,7 @@ class WebsiteSettingsService
     }
 
     /**
-     * Persist a setting in deployment-global scope for CLI/queue consumers that
-     * do not have an HTTP request from which to resolve a company.
+     * Persist an installation-wide setting for CLI/queue consumers.
      */
     public function setGlobal(string $type, $value): void
     {
@@ -543,6 +542,7 @@ class WebsiteSettingsService
     public function getContactPageSettings(): array
     {
         $types = [
+            'default_country_code',
             // Contact Page Content
             'contact_page_title',
             'contact_page_subtitle',
@@ -851,7 +851,8 @@ class WebsiteSettingsService
             'company_website',
             'content_generation_url',
             'site_timezone',
-            'default_currency'
+            'default_currency',
+            'default_country_code'
         ];
 
         return $this->withCanonicalBranding($this->getMultiple($types));
@@ -904,7 +905,7 @@ class WebsiteSettingsService
     }
 
     /**
-     * Supply safe search defaults without replacing company/user overrides.
+     * Supply safe search defaults without replacing installation/user overrides.
      * These values are also returned to the Angular settings form, so an
      * administrator can customize every default used by the public site.
      */
@@ -1435,68 +1436,6 @@ class WebsiteSettingsService
         }
     }
 
-    public function resolveCurrentCompanyId(): ?string
-    {
-        if (!app()->bound('request')) {
-            return null;
-        }
-
-        $request = request();
-        if ($request->header('X-Active-Context-Type') === 'staff') {
-            $contextId = $request->header('X-Active-Context-Id');
-            $staffContext = $contextId ? DB::table('user_contexts as context')
-                ->join('staff', 'staff.id', '=', 'context.context_id')
-                ->where('context.id', $contextId)
-                ->where('context.user_id', $request->user()?->id)
-                ->where('context.context_type', 'staff')
-                ->where('context.is_active', true)
-                ->whereNull('context.deleted_at')
-                ->where('staff.user_id', $request->user()?->id)
-                ->whereNull('staff.deleted_at')
-                ->where(fn ($employment) => $employment->whereNull('staff.employment_ended_at')->orWhere('staff.employment_ended_at', '>', now()))
-                ->first(['staff.id']) : null;
-            abort_unless($staffContext, 403, 'Select a valid active Staff business context.');
-            return null;
-        }
-
-        $host = strtolower((string) $request->getHost());
-        $portalOrigin = parse_url((string) ($request->header('Origin') ?: $request->header('Referer')), PHP_URL_HOST);
-        $portalOrigin = strtolower((string) $portalOrigin);
-        $apiDomain = str_starts_with($host, 'api.') ? substr($host, 4) : $host;
-        $portalDomain = str_starts_with($portalOrigin, 'portal.') ? substr($portalOrigin, 7) : null;
-        if ($request->header('X-Active-Context-Type') === 'internal'
-            || str_starts_with($host, 'portal.')
-            || ($portalDomain !== null && $portalDomain === $apiDomain)) {
-            return null;
-        }
-
-        $companyId = $request->header('X-Company-Id') ?: $request->query('company_id');
-        if ($companyId) {
-            $activeCompanyId = Company::query()->whereKey($companyId)->where('is_active', true)->value('id');
-            if ($activeCompanyId) return (string) $activeCompanyId;
-        }
-
-        if ($host === '') return null;
-        $company = Company::query()->where('is_active', true)->where(function ($query) use ($host) {
-            $query->whereRaw('LOWER(domain) = ?', [$host])
-                ->orWhereRaw('LOWER(website) = ?', [$host])
-                ->orWhereRaw('LOWER(website) = ?', ['https://' . $host])
-                ->orWhereRaw('LOWER(website) = ?', ['http://' . $host]);
-        })->first(['id']);
-
-        if (!$company) {
-            $company = Company::query()->where('is_active', true)->orderByRaw('LENGTH(domain) DESC')
-                ->get(['id', 'domain', 'website'])->first(function (Company $candidate) use ($host): bool {
-                    $websiteHost = parse_url((string) $candidate->website, PHP_URL_HOST)
-                        ?: parse_url('//' . (string) $candidate->website, PHP_URL_HOST);
-                    $domain = strtolower(trim((string) ($candidate->domain ?: $websiteHost), '. '));
-                    return $domain !== '' && ($host === $domain || str_ends_with($host, '.' . $domain));
-                });
-        }
-
-        return $company?->id;
-    }
-
     /**
      * Get all branding settings (public - no auth required)
      */
@@ -1631,11 +1570,6 @@ class WebsiteSettingsService
     private function filled($value): bool
     {
         return $value !== null && trim((string) $value) !== '';
-    }
-
-    public function resolveCompanyId(): ?string
-    {
-        return $this->resolveCurrentCompanyId();
     }
 
     /**

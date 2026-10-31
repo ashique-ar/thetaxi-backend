@@ -8,7 +8,7 @@ class SalesCommissionHoldAdjustment extends BaseModel
 {
 
     protected $fillable = [
-        'company_id', 'commission_decision_id', 'source_attribution_id', 'source_attribution_event_id',
+        'commission_decision_id', 'source_attribution_id', 'source_attribution_event_id',
         'beneficiary_attribution_event_id',
         'finality_policy_id', 'receipt_finality_event_id',
         'adjustment_kind', 'original_hold_code', 'beneficiary_sales_profile_id', 'beneficiary_staff_id',

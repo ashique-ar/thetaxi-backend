@@ -25,15 +25,15 @@ it('keeps direct Staff authorization fail closed for unknown actions', function 
         ->toContain("abort_unless(\$ability !== null, 403, 'The requested Staff action is not authorized.')");
 });
 
-it('retains own team legal-entity and all scope checks behind the policy', function () {
+it('retains own, team, and installation-wide checks behind the policy', function () {
     $service = file_get_contents(app_path('Services/StaffAccessService.php'));
 
     expect($service)
         ->toContain('public function allows(User $actor, Staff $staff, string $action): bool')
         ->toContain('staff.{$action}-all')
-        ->toContain('staff.{$action}-legal-entity')
         ->toContain('staff.{$action}-team')
-        ->toContain('$staff->user_id === $actor->id');
+        ->toContain('$staff->user_id === $actor->id')
+        ->not->toContain('legal-entity', 'company_id');
 });
 
 it('pairs direct Staff routes with their operation permission before row policy evaluation', function () {

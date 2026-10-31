@@ -6,7 +6,7 @@ This operation copies explicitly selected, approved monthly Sales Profile target
 
 ## Prepare and preview
 
-1. Confirm the legal entity, approved source month, destination month, and authorised Sales Profiles.
+1. Confirm the approved source month, destination month, and authorised Sales Profiles for this installation.
 2. Run the preview. It is write-free and returns a checksum over the exact approved source and latest destination evidence.
 3. Review every row. `source_not_configured`, `source_approved_ambiguous`, and `profile_not_effective` rows are blocked and are not silently defaulted.
 4. Confirm that `null` is displayed as not configured and that an explicit zero is displayed and copied as zero.

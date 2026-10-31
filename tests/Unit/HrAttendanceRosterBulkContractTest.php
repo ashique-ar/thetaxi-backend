@@ -1,12 +1,13 @@
 <?php
 
-it('adds a bulk roster-assignment endpoint that reuses storeRoster\'s exact per-staff legal-entity and overlap checks', function () {
+it('adds a bulk roster-assignment endpoint that reuses active Staff and overlap checks', function () {
     $controller = file_get_contents(app_path('Http/Controllers/Api/Hr/AttendanceResultController.php'));
 
     expect($controller)
         ->toContain('public function storeRosterBulk(Request $request): JsonResponse')
         ->toContain("'staff_ids'=>['required','array','min:1','max:200'],'staff_ids.*'=>['required','uuid','distinct']")
-        ->toContain("if(!DB::table('staff')->where('id',\$staffId)->where('company_id',\$data['company_id'])->exists()){\$skipped[]=['staff_id'=>\$staffId,'reason'=>'Staff does not belong to this legal entity.'];continue;}")
+        ->toContain("if(!DB::table('staff')->where('id',\$staffId)->exists())")
+        ->not->toContain('company_id', 'companyId', 'legal entity')
         ->toContain("if(\$overlap){\$skipped[]=['staff_id'=>\$staffId,'reason'=>'An overlapping roster already exists.'];continue;}")
         ->toContain("return response()->json(['status'=>'success','data'=>['created'=>\$created,'skipped'=>\$skipped]],201);");
 });
@@ -37,7 +38,7 @@ it('serializes roster edits with create and bulk overlap checks', function () {
     $update = substr($update, 0, strpos($update, 'public function storeRosterBulk('));
 
     expect($update)
-        ->toContain("DB::table('companies')->where('id', \$row->company_id)->lockForUpdate()->first();")
+        ->not->toContain('company_id', 'companyId', "DB::table('companies')")
         ->toContain("->where('id', '!=', \$rosterId)")
         ->toContain("abort_if(\$overlap, 409, 'An overlapping roster already exists.')");
     expect(strpos($update, 'lockForUpdate'))->toBeLessThan(strpos($update, '$overlap ='));

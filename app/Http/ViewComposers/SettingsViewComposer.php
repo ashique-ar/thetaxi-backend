@@ -18,8 +18,7 @@ class SettingsViewComposer
     public function compose(View $view): void
     {
         // ULTRA-OPTIMIZED: Use aggressive caching to avoid repeated database hits
-        $companyId = $this->settingsService->resolveCompanyId() ?: 'global';
-        $cacheKey = 'global_settings_flattened_' . $companyId;
+        $cacheKey = 'global_settings_flattened_global';
         $cached = Cache::get($cacheKey);
         if (is_array($cached) && !array_key_exists('hero_slides', $cached)) {
             // Replace cached payloads from before the shared banner fields were included.

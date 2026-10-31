@@ -7,7 +7,7 @@ use App\Models\NonSoftDeletableModel;
 class SalesCommissionCycleAssignment extends NonSoftDeletableModel
 {
     protected $fillable = [
-        'company_id', 'cycle_version_id', 'scope_type', 'sales_profile_id', 'staff_id',
+        'cycle_version_id', 'scope_type', 'sales_profile_id', 'staff_id',
         'staff_category', 'precedence', 'effective_from', 'effective_until', 'status', 'created_by', 'approved_by', 'approved_at',
     ];
     protected $casts = [

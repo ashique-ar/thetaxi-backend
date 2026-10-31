@@ -23,15 +23,6 @@ beforeEach(function () {
     Schema::dropIfExists('corporate_employee_locations');
     Schema::dropIfExists('service_packages');
     Schema::dropIfExists('business_settings');
-    Schema::dropIfExists('companies');
-    Schema::create('companies', function (Blueprint $table) {
-        $table->uuid('id')->primary();
-        $table->boolean('is_active')->default(true);
-        $table->string('domain')->nullable();
-        $table->string('website')->nullable();
-        $table->timestamps();
-        $table->softDeletes();
-    });
     Schema::create('business_settings', function (Blueprint $table) {
         $table->uuid('id')->primary();
         $table->string('type');
@@ -42,7 +33,6 @@ beforeEach(function () {
     Schema::dropIfExists('website_settings');
     Schema::create('website_settings', function (Blueprint $table) {
         $table->uuid('id')->primary();
-        $table->uuid('company_id')->nullable();
         $table->string('type');
         $table->text('value')->nullable();
         $table->timestamps();

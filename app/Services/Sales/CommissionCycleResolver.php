@@ -15,11 +15,11 @@ class CommissionCycleResolver
     {
         $profile->loadMissing('staff');
         $matches = SalesCommissionCycleAssignment::query()
-            ->where(fn ($_companyIdScope) => \App\Services\CompanyIdScope::constrain($_companyIdScope, 'company_id', $profile->company_id))->where('status', 'approved')
+            ->where('status', 'approved')
             ->where('effective_from', '<=', $at)
             ->where(fn ($q) => $q->whereNull('effective_until')->orWhere('effective_until', '>', $at))
             ->where(function ($q) use ($profile) {
-                $q->where('scope_type', 'company')
+                $q->where('scope_type', 'installation')
                     ->orWhere(fn ($scope) => $scope->where('scope_type', 'sales_profile')->where('sales_profile_id', $profile->id))
                     ->orWhere(fn ($scope) => $scope->where('scope_type', 'employee')->where('staff_id', $profile->staff_id))
                     ->orWhere(fn ($scope) => $scope->where('scope_type', 'staff_category')->where('staff_category', $profile->staff?->staff_type));
@@ -34,7 +34,7 @@ class CommissionCycleResolver
         }
         $assignment = $winners->first();
         $cycle = SalesCommissionCycleVersion::query()->whereKey($assignment->cycle_version_id)
-            ->where(fn ($_companyIdScope) => \App\Services\CompanyIdScope::constrain($_companyIdScope, 'company_id', $profile->company_id))->where('status', 'approved')
+            ->where('status', 'approved')
             ->where('effective_from', '<=', $at)
             ->where(fn ($q) => $q->whereNull('effective_until')->orWhere('effective_until', '>', $at))->first();
         if (! $cycle) {

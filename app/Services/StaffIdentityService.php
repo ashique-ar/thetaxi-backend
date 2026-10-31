@@ -158,8 +158,8 @@ class StaffIdentityService
         $profileIds = $salesProfiles->pluck('id')->map(fn ($id): string => (string) $id)->all();
         if ($profileIds === []) return ['reassigned' => 0, 'needs_manager_review' => 0];
 
-        $opportunities = SalesOpportunity::query()->where(fn ($_companyIdScope) => \App\Services\CompanyIdScope::constrain($_companyIdScope, 'company_id', $staff->company_id))
-            ->whereIn('owner_sales_profile_id', $profileIds)->whereNotIn('stage', ['won', 'lost'])->orderBy('id')->get();
+        $opportunities = SalesOpportunity::query()->whereIn('owner_sales_profile_id', $profileIds)
+            ->whereNotIn('stage', ['won', 'lost'])->orderBy('id')->get();
         $managerCache = [];
         $reassigned = 0;
         $needsManagerReview = 0;
@@ -210,8 +210,7 @@ class StaffIdentityService
         $profileIds = $salesProfiles->pluck('id')->map(fn ($id): string => (string) $id)->all();
         if ($profileIds === []) return ['reassigned' => 0, 'needs_manager_review' => 0];
 
-        $tasks = SalesTask::query()->where(fn ($_companyIdScope) => \App\Services\CompanyIdScope::constrain($_companyIdScope, 'company_id', $staff->company_id))
-            ->whereIn('owner_sales_profile_id', $profileIds)->whereIn('status', ['open', 'in_progress'])
+        $tasks = SalesTask::query()->whereIn('owner_sales_profile_id', $profileIds)->whereIn('status', ['open', 'in_progress'])
             ->orderBy('id')->get();
         $managerCache = [];
         $counts = [];
@@ -220,8 +219,7 @@ class StaffIdentityService
             $oldOwnerId = (string) $task->owner_sales_profile_id;
             $manager = $managerCache[$oldOwnerId] ??= $this->activeReportingManager($oldOwnerId, $profileIds);
             $locked = SalesTask::query()->whereKey($task->id)->lockForUpdate()->first();
-            if (! $locked || !\App\Services\CompanyIdScope::sameCompanyId((string) ((string) $locked->company_id), (string) ((string) $staff->company_id))
-                || (string) $locked->owner_sales_profile_id !== $oldOwnerId
+            if (! $locked || (string) $locked->owner_sales_profile_id !== $oldOwnerId
                 || ! in_array($locked->status, ['open', 'in_progress'], true)) continue;
 
             if (! $manager) {
@@ -337,7 +335,6 @@ class StaffIdentityService
         }
 
         $customerIds = DB::table('customer_relationship_owner_assignments')
-            ->where(fn ($_companyIdScope) => \App\Services\CompanyIdScope::constrain($_companyIdScope, 'company_id', $salesProfiles->first()->company_id))
             ->whereIn('owner_sales_profile_id', $profileIds)
             ->whereNull('ended_at')
             ->distinct()->pluck('customer_id');
@@ -346,24 +343,26 @@ class StaffIdentityService
         foreach ($customerIds as $customerId) {
             DB::table('customers')->where('id', $customerId)->lockForUpdate()->first();
             $current = DB::table('customer_relationship_owner_assignments')
-                ->where(fn ($_companyIdScope) => \App\Services\CompanyIdScope::constrain($_companyIdScope, 'company_id', $salesProfiles->first()->company_id))
                 ->where('customer_id', $customerId)
                 ->whereIn('owner_sales_profile_id', $profileIds)
-                ->whereNull('ended_at')->lockForUpdate()->first();
-            if (! $current) {
+                ->whereNull('ended_at')->lockForUpdate()->get();
+            if ($current->isEmpty()) {
                 continue;
             }
 
             $now = now();
-            DB::table('customer_relationship_owner_assignments')->where('id', $current->id)->update([
+            DB::table('customer_relationship_owner_assignments')->whereIn('id', $current->pluck('id'))->update([
                 'ended_at' => $now,
                 'ended_by_user_id' => $actor->id,
                 'updated_at' => $now,
             ]);
+            if (DB::table('customer_relationship_owner_assignments')->where('customer_id', $customerId)->whereNull('ended_at')->exists()) {
+                $released++;
+                continue;
+            }
             DB::table('customer_relationship_owner_assignments')->insert([
                 'id' => (string) Str::uuid(),
                 'customer_id' => $customerId,
-                'company_id' => $current->company_id,
                 'owner_sales_profile_id' => null,
                 'assigned_by_user_id' => $actor->id,
                 'reason' => 'Returned to the customer assignment queue after staff termination.',
@@ -419,13 +418,11 @@ class StaffIdentityService
         $released = 0;
         $query = Booking::query()->where('responsible_user_id', $departingUser->id)
             ->whereNotIn('status', ['cancelled', 'completed']);
-        CompanyBookingScope::constrain($query, 'bookings', $staff->company_id);
         $query->orderBy('id')->chunkById(100, function ($bookings) use ($staff, $departingUser, $actor, &$released): void {
             foreach ($bookings as $booking) {
                 $lockedQuery = Booking::query()->whereKey($booking->id)
                     ->where('responsible_user_id', $departingUser->id)
                     ->whereNotIn('status', ['cancelled', 'completed']);
-                CompanyBookingScope::constrain($lockedQuery, 'bookings', $staff->company_id);
                 $locked = $lockedQuery->lockForUpdate()->first();
                 if (! $locked) {
                     continue;

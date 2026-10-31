@@ -10,7 +10,7 @@ use Illuminate\Database\Eloquent\Relations\HasOne;
 class SalesCommissionDecision extends NonSoftDeletableModel
 {
     protected $fillable = [
-        'company_id', 'booking_id', 'root_attribution_id', 'booking_attribution_id', 'receipt_id',
+        'booking_id', 'root_attribution_id', 'booking_attribution_id', 'receipt_id',
         'receipt_component_id', 'beneficiary_sales_profile_id', 'beneficiary_staff_id',
         'acquisition_sales_profile_id', 'collection_sales_profile_id', 'commission_category', 'collection_cohort',
         'eligible_source_amount', 'source_currency', 'fx_rate_to_lkr', 'fx_rate_at', 'fx_source', 'eligible_lkr_amount',

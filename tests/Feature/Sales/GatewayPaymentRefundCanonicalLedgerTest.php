@@ -8,10 +8,7 @@ use App\Models\Booking\BookingPaymentAdjustment;
 use App\Models\Customer;
 use App\Models\Currency;
 use App\Models\Finance\FinancialAuditEvent;
-use App\Models\Company;
-use App\Models\Staff;
 use App\Models\User;
-use App\Models\UserContext;
 use App\Services\BookingPaymentLedgerService;
 use App\Services\Payment\PaymentGatewayManager;
 use App\Services\Sms\SmsAutomationService;
@@ -28,7 +25,7 @@ uses(RefreshDatabase::class);
 
 function seedGatewayRefundFixture(): array
 {
-    [$actor, $company] = hr_seed_admin_actor();
+    [$actor] = hr_seed_admin_actor();
     Currency::query()->create(['code' => 'LKR', 'name' => 'Sri Lankan Rupee', 'symbol' => 'Rs', 'exrate' => '1']);
     $customer = Customer::create(['user_id' => $actor->id]);
     $bookingId = (string) Str::uuid();
@@ -64,12 +61,10 @@ function seedGatewayRefundFixture(): array
 
     $transactionId = (string) Str::uuid();
     $providerTransactionId = 'gateway-refund-fixture';
-    $companyId = DB::table('sales_booking_attributions')->where('booking_id', $bookingId)->value('company_id');
     DB::table('payment_transactions')->insert([
         'id' => (string) Str::uuid(),
         'attempt_id' => (string) Str::uuid(),
         'booking_id' => $bookingId,
-        'company_id' => $companyId,
         'amount' => 1000,
         'currency' => 'LKR',
         'requested_amount' => 1000,
@@ -127,6 +122,7 @@ it('persists the legacy payment schema fields needed by online settlement', func
             'transaction_id', 'amount', 'status', 'gateway_refund_id', 'idempotency_key',
             'request_payload_checksum', 'created_by',
         ]))->toBeTrue()
+        ->and(Schema::hasColumn('payment_transactions', 'company_id'))->toBeFalse()
         ->and(Schema::hasColumns('payment_transactions', ['requested_amount', 'requested_currency']))->toBeTrue();
 });
 
@@ -197,18 +193,9 @@ it('keeps an uncertain provider initiation visible as a reserved pending attempt
         ->and((float) $attempt->requested_amount)->toBe(500.0);
 });
 
-it('rejects payment initiation outside the booking company scope', function () {
+it('denies payment initiation without the payment initiate permission', function () {
     [, $booking] = seedGatewayRefundFixture();
-    $otherCompany = Company::query()->create(['name' => 'Other payment initiation company', 'is_default' => false]);
     $otherUser = User::factory()->create();
-    $otherStaff = Staff::factory()->create(['user_id' => $otherUser->id, 'company_id' => $otherCompany->id]);
-    UserContext::query()->create([
-        'user_id' => $otherUser->id,
-        'context_type' => 'staff',
-        'context_id' => $otherStaff->id,
-        'is_active' => true,
-        'created_user_id' => $otherUser->id,
-    ]);
     $manager = Mockery::mock(PaymentGatewayManager::class);
     $manager->shouldNotReceive('resolve');
     $this->app->instance(PaymentGatewayManager::class, $manager);
@@ -380,7 +367,7 @@ it('keeps a payment pending when provider source facts contradict the reservatio
         ->and(BookingPaymentReceipt::query()->where('provider_event_id', 'mismatched-source')->exists())->toBeFalse();
 });
 
-it('lists pending payment initiations by reservation evidence within authorized companies', function () {
+it('lists pending payment initiations by reservation evidence installation-wide', function () {
     [$actor, $booking] = seedGatewayRefundFixture();
     $reservedId = (string) Str::uuid();
     $unverifiedId = (string) Str::uuid();
@@ -419,19 +406,11 @@ it('lists pending payment initiations by reservation evidence within authorized 
         ->and($reserved['data'][0]['id'])->toBe($reservedId)
         ->and($reserved['data'][0]['reservation_state'])->toBe('reserved');
 
-    $otherCompany = Company::query()->create(['name' => 'Other pending payment company', 'is_default' => false]);
     $otherUser = User::factory()->create();
-    $otherStaff = Staff::factory()->create(['user_id' => $otherUser->id, 'company_id' => $otherCompany->id]);
-    UserContext::query()->create([
-        'user_id' => $otherUser->id,
-        'context_type' => 'staff',
-        'context_id' => $otherStaff->id,
-        'is_active' => true,
-        'created_user_id' => $otherUser->id,
-    ]);
+    $otherUser->givePermissionTo('payments.transactions');
     $foreignRequest = Request::create('/api/payment-transactions/initiations/reconciliation', 'GET');
     $foreignRequest->setUserResolver(fn () => $otherUser);
-    expect($controller->getPaymentInitiationReconciliationQueue($foreignRequest)->getData(true)['data']['data'])->toBeEmpty();
+    expect($controller->getPaymentInitiationReconciliationQueue($foreignRequest)->getData(true)['data']['total'])->toBe(2);
 });
 
 it('reserves manual refunds, replays idempotently, and rejects key reuse with changed facts', function () {
@@ -531,18 +510,9 @@ it('requires matching transaction and canonical receipt currencies before refund
     expect(DB::table('payment_refunds')->count())->toBe(0);
 });
 
-it('denies refund attempts from a different active Staff legal entity before contacting the gateway', function () {
+it('denies refund attempts without payment refund permission', function () {
     [, , $transactionId] = seedGatewayRefundFixture();
-    $otherCompany = Company::query()->create(['name' => 'Other refund company', 'is_default' => false]);
     $otherUser = User::factory()->create();
-    $otherStaff = Staff::factory()->create(['user_id' => $otherUser->id, 'company_id' => $otherCompany->id]);
-    UserContext::query()->create([
-        'user_id' => $otherUser->id,
-        'context_type' => 'staff',
-        'context_id' => $otherStaff->id,
-        'is_active' => true,
-        'created_user_id' => $otherUser->id,
-    ]);
 
     $manager = Mockery::mock(PaymentGatewayManager::class);
     $manager->shouldNotReceive('resolve');
@@ -557,7 +527,32 @@ it('denies refund attempts from a different active Staff legal entity before con
     expect(DB::table('payment_refunds')->count())->toBe(0);
 });
 
-it('scopes payment transaction reads to the active Sales legal entity and exposes refund state in detail', function () {
+it('allows a permissioned refund across locations without a Sales legal-entity scope', function () {
+    [, , $transactionId] = seedGatewayRefundFixture();
+    $authorizedUser = User::factory()->create();
+    $authorizedUser->givePermissionTo('payments.refund');
+    $gateway = Mockery::mock(PaymentGatewayInterface::class);
+    $gateway->shouldReceive('refund')->once()->andReturn([
+        'success' => false,
+        'manual' => true,
+        'message' => 'Manual reconciliation required',
+    ]);
+    $manager = Mockery::mock(PaymentGatewayManager::class);
+    $manager->shouldReceive('resolve')->once()->andReturn($gateway);
+    $this->app->instance(PaymentGatewayManager::class, $manager);
+
+    $response = app(PaymentController::class)->refundPayment(paymentRefundRequest($authorizedUser, [
+        'amount' => 100,
+        'reason' => 'Authorized cross-location refund',
+        'idempotency_key' => 'refund-authorized-cross-location',
+    ]), $transactionId);
+
+    expect($response->getStatusCode())->toBe(201)
+        ->and($response->getData(true)['data']['status'])->toBe('manual_required')
+        ->and(DB::table('payment_refunds')->count())->toBe(1);
+});
+
+it('shares payment transaction reads across the installation and exposes refund state in detail', function () {
     [$actor, $booking, $transactionId] = seedGatewayRefundFixture();
     $transaction = DB::table('payment_transactions')->where('transaction_id', $transactionId)->first();
 
@@ -590,16 +585,8 @@ it('scopes payment transaction reads to the active Sales legal entity and expose
         ->and($queue['data'][0]['status'])->toBe('manual_required')
         ->and($queue['data'][0]['booking_number'])->toBe($booking->booking_number);
 
-    $otherCompany = Company::query()->create(['name' => 'Payment read other company', 'is_default' => false]);
     $otherUser = User::factory()->create();
-    $otherStaff = Staff::factory()->create(['user_id' => $otherUser->id, 'company_id' => $otherCompany->id]);
-    UserContext::query()->create([
-        'user_id' => $otherUser->id,
-        'context_type' => 'staff',
-        'context_id' => $otherStaff->id,
-        'is_active' => true,
-        'created_user_id' => $otherUser->id,
-    ]);
+    $otherUser->givePermissionTo('payments.transactions', 'payments.view');
 
     $otherRequest = Request::create('/api/payment-transactions/'.$transaction->id, 'GET');
     $otherRequest->setUserResolver(fn () => $otherUser);
@@ -607,12 +594,15 @@ it('scopes payment transaction reads to the active Sales legal entity and expose
     $list->setUserResolver(fn () => $otherUser);
     $otherQueue = Request::create('/api/payment-transactions/refunds/reconciliation', 'GET');
     $otherQueue->setUserResolver(fn () => $otherUser);
-    expect(app(PaymentController::class)->getPaymentTransactions($list)->getData(true)['data']['transactions'])->toBeEmpty()
-        ->and(app(PaymentController::class)->getRefundReconciliationQueue($otherQueue)->getData(true)['data']['data'])->toBeEmpty()
-        ->and(fn () => app(PaymentController::class)->getTransactionDetails($otherRequest, $transaction->id))
-        ->toThrow(HttpResponseException::class)
-        ->and(fn () => app(PaymentController::class)->getPaymentStatus($otherRequest, $transactionId))
-        ->toThrow(HttpResponseException::class);
+    $sharedTransactions = app(PaymentController::class)->getPaymentTransactions($list)->getData(true)['data']['transactions'];
+    $sharedDetail = app(PaymentController::class)->getTransactionDetails($otherRequest, $transaction->id)->getData(true)['data']['transaction'];
+    $sharedRefunds = app(PaymentController::class)->getRefundReconciliationQueue($otherQueue)->getData(true)['data']['data'];
+
+    expect($sharedTransactions)->toHaveCount(1);
+    expect($sharedTransactions[0])->not->toHaveKey('company_id');
+    expect($sharedRefunds)->toHaveCount(1);
+    expect($sharedDetail)->not->toHaveKey('company_id');
+    expect(app(PaymentController::class)->getPaymentStatus($otherRequest, $transactionId)->getStatusCode())->toBe(200);
 });
 
 it('fails closed when the payment callback verifier is missing or the signature is invalid', function () {

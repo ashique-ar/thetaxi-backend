@@ -6,7 +6,7 @@ use App\Models\NonSoftDeletableModel;
 
 class SalesCommissionStatementAdjustment extends NonSoftDeletableModel
 {
-    protected $fillable = ['company_id', 'staff_id', 'dispute_id', 'amount_lkr', 'reason', 'approved_by', 'approved_at', 'idempotency_key'];
+    protected $fillable = ['staff_id', 'dispute_id', 'amount_lkr', 'reason', 'approved_by', 'approved_at', 'idempotency_key'];
     protected $casts = ['amount_lkr' => 'decimal:4', 'approved_at' => 'datetime'];
     protected static function booted(): void
     {

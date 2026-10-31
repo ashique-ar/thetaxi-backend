@@ -7,7 +7,7 @@ use App\Models\NonSoftDeletableModel;
 class SalesCommissionDispute extends NonSoftDeletableModel
 {
     protected $fillable = [
-        'company_id', 'statement_id', 'statement_line_id', 'raised_by_staff_id', 'category', 'reason',
+        'statement_id', 'statement_line_id', 'raised_by_staff_id', 'category', 'reason',
         'evidence_file_id', 'contested_amount_lkr', 'status', 'raised_at', 'response_due_at', 'reviewed_by',
         'resolved_at', 'resolution', 'resolution_reason', 'acknowledged_at', 'idempotency_key',
         'request_payload_checksum', 'resolution_idempotency_key', 'resolution_payload_checksum',

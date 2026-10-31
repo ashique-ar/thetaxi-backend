@@ -125,6 +125,9 @@ class PermissionRegistry
         $parts = explode('.', $name);
         $module = $this->moduleFor($name, $parts[0] ?? 'other');
         $action = $this->actionFor($name);
+        $displayName = $module === 'companies' && $action !== 'other'
+            ? Str::headline($action.' locations')
+            : ($permission->display_name ?? Str::headline(str_replace(['.', '-', '_'], ' ', $name)));
 
         return [
             'id' => $permission->id,
@@ -133,7 +136,7 @@ class PermissionRegistry
             'module' => $module,
             'module_label' => config("permissions.modules.{$module}.label", Str::headline(str_replace(['.', '-', '_'], ' ', $module))),
             'action' => $action,
-            'display_name' => $permission->display_name ?? Str::headline(str_replace(['.', '-', '_'], ' ', $name)),
+            'display_name' => $displayName,
             'description' => $permission->description,
         ];
     }

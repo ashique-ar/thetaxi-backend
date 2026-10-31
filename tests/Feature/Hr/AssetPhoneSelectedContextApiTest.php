@@ -1,6 +1,5 @@
 <?php
 
-use App\Models\Company;
 use App\Models\Staff;
 use App\Models\UserContext;
 use Illuminate\Foundation\Testing\RefreshDatabase;
@@ -10,10 +9,9 @@ use function Pest\Laravel\actingAs;
 uses(RefreshDatabase::class);
 
 it('derives phone references and subscription ownership from the selected Staff context', function () {
-    [$user, $firstCompany] = hr_seed_admin_actor();
+    [$user] = hr_seed_admin_actor();
     config(['hr.features.advanced_assets' => true]);
-    $secondCompany = Company::create(['name' => 'Second phone company']);
-    $actorStaff = Staff::query()->where('user_id', $user->id)->where('company_id', $firstCompany->id)->firstOrFail();
+    $actorStaff = Staff::query()->where('user_id', $user->id)->firstOrFail();
     $context = UserContext::query()->where('user_id', $user->id)->where('context_type', 'staff')
         ->where('context_id', $actorStaff->id)->where('is_active', true)->firstOrFail();
     $headers = ['X-Active-Context-Type' => 'staff', 'X-Active-Context-Id' => $context->id];
@@ -30,7 +28,6 @@ it('derives phone references and subscription ownership from the selected Staff 
 
     DB::table('hr_phone_usage_allocations')->insert([
         'id' => (string) \Illuminate\Support\Str::uuid(),
-        'company_id' => $firstCompany->id,
         'phone_subscription_id' => $subscriptionResponse->json('data.id'),
         'staff_id' => $actorStaff->id,
         'period_start' => '2026-10-01',
@@ -52,22 +49,20 @@ it('derives phone references and subscription ownership from the selected Staff 
         ->assertJsonMissingPath('data.data.0.reviewed_by')
         ->assertJsonPath('data.data.0.status', 'approved');
 
-    expect(DB::table('hr_phone_subscriptions')->where('subscription_code', 'CTX-PHONE-01')->value('company_id'))
-        ->toBe($firstCompany->id)->not->toBe($secondCompany->id);
+    expect(DB::table('hr_phone_subscriptions')->where('subscription_code', 'CTX-PHONE-01')->exists())->toBeTrue();
 });
 
-it('does not expose phone usage whose joined subscription belongs to another company', function () {
-    [$user, $company] = hr_seed_admin_actor();
-    $foreignCompany = Company::create(['name' => 'Foreign phone subscription tenant']);
-    $staff = Staff::query()->where('user_id', $user->id)->where('company_id', $company->id)->firstOrFail();
+it('exposes phone usage for a linked installation-wide subscription', function () {
+    [$user] = hr_seed_admin_actor();
+    $staff = Staff::query()->where('user_id', $user->id)->firstOrFail();
     $subscriptionId = (string) \Illuminate\Support\Str::uuid();
     DB::table('hr_phone_subscriptions')->insert([
-        'id' => $subscriptionId, 'company_id' => $foreignCompany->id, 'subscription_code' => 'FOREIGN-PHONE-01',
+        'id' => $subscriptionId, 'subscription_code' => 'PHONE-01',
         'carrier' => 'Carrier', 'masked_msisdn' => 'PRIVATE-NUMBER', 'encrypted_identifiers' => encrypt(['imei' => 'x']),
         'roaming_allowed' => false, 'data_allowed' => true, 'status' => 'available', 'created_at' => now(), 'updated_at' => now(),
     ]);
     DB::table('hr_phone_usage_allocations')->insert([
-        'id' => (string) \Illuminate\Support\Str::uuid(), 'company_id' => $company->id,
+        'id' => (string) \Illuminate\Support\Str::uuid(),
         'phone_subscription_id' => $subscriptionId, 'staff_id' => $staff->id,
         'period_start' => '2026-10-01', 'period_end' => '2026-10-31', 'company_amount' => 100,
         'employee_excess_amount' => 0, 'currency' => 'LKR', 'policy_snapshot' => '{}',
@@ -75,7 +70,7 @@ it('does not expose phone usage whose joined subscription belongs to another com
     ]);
 
     actingAs($user, 'api')->getJson('/api/hr/assets/phone-usage')->assertOk()
-        ->assertJsonPath('data.total', 0)
-        ->assertJsonMissing(['subscription_code' => 'FOREIGN-PHONE-01'])
-        ->assertJsonMissing(['masked_msisdn' => 'PRIVATE-NUMBER']);
+        ->assertJsonPath('data.total', 1)
+        ->assertJsonPath('data.data.0.subscription_code', 'PHONE-01')
+        ->assertJsonPath('data.data.0.masked_msisdn', 'PRIVATE-NUMBER');
 });

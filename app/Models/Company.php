@@ -1,20 +1,19 @@
 <?php
-// app/Models/Company/Company.php
+// app/Models/Company.php
 
 namespace App\Models;
 
 use App\Models\BaseModel;
-use App\Traits\UUID;
 
 /**
- * App\Models\Company\Company
+ * App\Models\Company
  *
  * @property string $id Primary key (UUID)
- * @property string $name Company name
+ * @property string $name Saved location name
  * @property string|null $address Company address (optional)
- * @property string|null $region_id Foreign key to company_regions table (optional)
+ * @property string|null $region_id Foreign key to regions table (optional)
  * @property string|null $country_id Foreign key to countries table (optional)
- * @property string|null $state_id Foreign key to company_districts table (optional)
+ * @property string|null $state_id Foreign key to states table (optional)
  * @property string|null $city Foreign key to company_cities table (optional)
  * @property string|null $created_user_id ID of user who created this record
  * @property string|null $updated_user_id ID of user who last updated this record
@@ -22,18 +21,14 @@ use App\Traits\UUID;
  * @property \Illuminate\Support\Carbon|null $updated_at
  * @property \Illuminate\Support\Carbon|null $deleted_at
  *
- * @property-read \App\Models\Region|null $region Company's region
- * @property-read \App\Models\Country|null $country Company's country
- * @property-read \App\Models\State|null $state Company's district
+ * @property-read \App\Models\Region|null $region Location's region
+ * @property-read \App\Models\Country|null $country Location's country
+ * @property-read \App\Models\State|null $state Location's district
  * @property-read \App\Models\User|null $createdBy User who created this record
  * @property-read \App\Models\User|null $updatedBy User who last updated this record
- * @property-read \Illuminate\Database\Eloquent\Collection|\App\Models\Vehicle\Vehicle[] $vehicles Company's vehicles
- * @property-read \Illuminate\Database\Eloquent\Collection|\App\Models\User[] $users Company's users
  */
 class Company extends BaseModel
 {
-    protected $hidden = ['active_default_guard'];
-
     /**
      * The attributes that are mass assignable.
      *
@@ -45,7 +40,6 @@ class Company extends BaseModel
         'email',
         'phone',
         'website',
-        'domain',
         'description',
         'latitude',
         'longitude',
@@ -119,31 +113,6 @@ class Company extends BaseModel
     public function updatedBy()
     {
         return $this->belongsTo(\App\Models\User::class, 'updated_user_id');
-    }
-
-    public static function getDefaultCompany(): ?self
-    {
-        return null;
-    }
-
-    /**
-     * Get all vehicles belonging to this company.
-     *
-     * @return \Illuminate\Database\Eloquent\Relations\HasMany
-     */
-    public function vehicles()
-    {
-        return $this->hasMany(\App\Models\Vehicle\Vehicle::class);
-    }
-
-    /**
-     * Get all users belonging to this company.
-     *
-     * @return \Illuminate\Database\Eloquent\Relations\HasMany
-     */
-    public function users()
-    {
-        return $this->hasMany(\App\Models\User::class);
     }
 
     /**

@@ -9,8 +9,6 @@ use App\Models\Sales\SalesProfile;
 use App\Models\Sales\SalesTask;
 use App\Models\Booking\Booking;
 use App\Services\Sales\SalesAccessScope;
-use App\Services\CompanySettingsAccessService;
-use App\Services\WebsiteSettingsService;
 use App\Services\Sales\SalesCrmService;
 use App\Services\Sales\SalesPolicySettingsService;
 use Illuminate\Http\JsonResponse;
@@ -29,18 +27,12 @@ class SalesCrmController extends Controller
 
     public function opportunities(Request $request): JsonResponse
     {
-        $data = $request->validate(['stage' => ['nullable', Rule::in(['new', 'contacted', 'qualified', 'quotation', 'negotiation', 'won', 'lost'])], 'company_id' => ['nullable', 'uuid', 'exists:companies,id'], 'search' => ['nullable', 'string', 'max:100'], 'needs_follow_up' => ['nullable', 'boolean'], 'needs_owner_review' => ['nullable', 'boolean'], 'from' => ['nullable', 'date'], 'to' => ['nullable', 'date', 'after_or_equal:from'], 'page' => ['nullable', 'integer', 'min:1'], 'per_page' => ['nullable', 'integer', 'min:1', 'max:100']]);
-        $data['company_id'] = $this->resolveCompanyId($data['company_id'] ?? null);
-        $ids = $this->scope->profileIds($request->user(), 'sales.crm.view-all', 'sales.crm.view-team', $data['company_id']);
+        $data = $request->validate(['stage' => ['nullable', Rule::in(['new', 'contacted', 'qualified', 'quotation', 'negotiation', 'won', 'lost'])], 'search' => ['nullable', 'string', 'max:100'], 'needs_follow_up' => ['nullable', 'boolean'], 'needs_owner_review' => ['nullable', 'boolean'], 'from' => ['nullable', 'date'], 'to' => ['nullable', 'date', 'after_or_equal:from'], 'page' => ['nullable', 'integer', 'min:1'], 'per_page' => ['nullable', 'integer', 'min:1', 'max:100']]);
+        $ids = $this->scope->profileIds($request->user(), 'sales.crm.view-all', 'sales.crm.view-team');
         abort_unless(! ($data['needs_owner_review'] ?? false) || $ids === null, 403,
-            'Company-wide Sales access is required to review opportunities with an inactive owner.');
-        abort_unless(DB::table('companies')->where('id', $data['company_id'])->where('is_active', true)
-            ->whereNull('deleted_at')->exists(), 422, 'Select an active legal entity.');
-        abort_unless($ids === null || SalesProfile::query()->whereIn('id', $ids)
-            ->where(fn ($_companyIdScope) => \App\Services\CompanyIdScope::constrain($_companyIdScope, 'company_id', $data['company_id']))->exists(), 403,
-            'The selected legal entity is outside your Sales scope.');
-        $activeOwner = fn () => $this->activeSalesOwnerExists('sales_opportunities.owner_sales_profile_id', 'sales_opportunities.company_id');
-        $query = SalesOpportunity::query()->with(['owner.staff:id,code,user_id,company_id,employment_ended_at,deleted_at', 'owner.staff.user:id,first_name,last_name,is_active,deleted_at'])
+            'Sales-wide access is required to review opportunities with an inactive owner.');
+        $activeOwner = fn () => $this->activeSalesOwnerExists('sales_opportunities.owner_sales_profile_id');
+        $query = SalesOpportunity::query()->with(['owner.staff:id,code,user_id,employment_ended_at,deleted_at', 'owner.staff.user:id,first_name,last_name,is_active,deleted_at'])
             ->where(fn ($owners) => $owners->whereExists($activeOwner())->when($ids === null, fn ($all) => $all->orWhereNotExists($activeOwner())))
             ->where(fn ($booking) => $booking->whereNull('sales_opportunities.won_booking_id')
                 ->orWhereExists(function ($linked) {
@@ -50,7 +42,6 @@ class SalesCrmController extends Controller
                 }));
         if ($ids !== null) $query->whereIn('owner_sales_profile_id', $ids);
         $rows = $query
-            ->where(fn ($_companyIdScope) => \App\Services\CompanyIdScope::constrain($_companyIdScope, 'company_id', $data['company_id']))
             ->when($data['stage'] ?? null, fn ($q, $stage) => $q->where('stage', $stage))
             ->when($data['needs_owner_review'] ?? false, fn ($q) => $q->whereNotExists($activeOwner()))
             ->when($data['search'] ?? null, fn ($q, $search) => $q->where(function ($match) use ($search) {
@@ -61,7 +52,6 @@ class SalesCrmController extends Controller
             ->when($request->boolean('needs_follow_up'), fn ($q) => $q->whereNotIn('sales_opportunities.stage', ['won', 'lost'])
                 ->whereNotExists(fn ($tasks) => $tasks->selectRaw('1')->from('sales_tasks as task')
                     ->whereColumn('task.opportunity_id', 'sales_opportunities.id')
-                    ->where(fn ($sameCompany) => \App\Services\CompanyIdScope::sameCompany($sameCompany, 'task.company_id', 'sales_opportunities.company_id'))
                     ->whereIn('task.status', ['open', 'in_progress'])))
             ->when($data['from'] ?? null, fn ($q, $from) => $q->whereDate('expected_close_date', '>=', $from))
             ->when($data['to'] ?? null, fn ($q, $to) => $q->whereDate('expected_close_date', '<=', $to))
@@ -71,43 +61,10 @@ class SalesCrmController extends Controller
         return response()->json(['status' => 'success', 'stage_labels' => $this->policySettings->stageLabels(), 'data' => $rows]);
     }
 
-    public function opportunityCompanyOptions(Request $request): JsonResponse
-    {
-        $data = $request->validate([
-            'search' => ['nullable', 'string', 'max:120'], 'selected_id' => ['nullable', 'uuid'],
-            'page' => ['nullable', 'integer', 'min:1'], 'per_page' => ['nullable', 'integer', 'min:1', 'max:50'],
-        ]);
-        $profileIds = $this->scope->profileIds($request->user(), 'sales.crm.view-all', 'sales.crm.view-team', $this->currentCompanyId());
-        if ($this->scope->hasPermission($request->user(), 'sales.crm.manage-all')) $profileIds = null;
-        $companyIds = $profileIds === null ? null : DB::table('sales_profiles')->whereNull('deleted_at')
-            ->whereIn('id', $profileIds)->pluck('company_id')->filter()->unique()->values();
-        $defaultCompanyId = $this->currentCompanyId();
-        if (request()->header('X-Active-Context-Type') === 'staff') {
-            $companyIds = collect([$defaultCompanyId]);
-        } elseif ($defaultCompanyId && $companyIds !== null && ! $companyIds->contains($defaultCompanyId)) {
-            $defaultCompanyId = null;
-        }
-        $query = DB::table('companies')->where('is_active', true)->whereNull('deleted_at')
-            ->when($companyIds !== null, fn ($companies) => $companies->whereIn('id', $companyIds));
-        if (! empty($data['selected_id'])) $query->where('id', $data['selected_id']);
-        elseif (! empty($data['search'])) {
-            $term = '%'.addcslashes($data['search'], '%_\\').'%';
-            $query->where(fn ($companies) => $companies->where('name', 'like', $term)->orWhere('city', 'like', $term));
-        }
-        $rows = $query->select(['id', 'name', 'city', 'is_default'])->orderByDesc('is_default')
-            ->orderBy('name')->orderBy('id')->paginate($data['per_page'] ?? 25);
-        $rows->getCollection()->transform(fn ($company) => [
-            'value' => (string) $company->id, 'label' => $company->name,
-            'metadata' => array_filter(['city' => $company->city]) + ['is_default' => (bool) $company->is_default],
-            'status' => 'active',
-        ]);
-        return response()->json(['status' => 'success', 'data' => $rows, 'default_company_id' => $defaultCompanyId]);
-    }
-
     public function showOpportunity(Request $request, SalesOpportunity $opportunity): JsonResponse
     {
         $this->assertOpportunityScope($request, $opportunity);
-        $opportunity->load(['owner.staff:id,code,user_id,company_id,employment_ended_at,deleted_at',
+        $opportunity->load(['owner.staff:id,code,user_id,employment_ended_at,deleted_at',
             'owner.staff.user:id,first_name,last_name,is_active,deleted_at', 'stageEvents']);
         $labels = $this->opportunityStageLabels(collect([$opportunity]));
         return response()->json(['status' => 'success', 'data' => $this->opportunityPayload($opportunity, true, $labels[(string) $opportunity->id] ?? SalesPolicySettingsService::STAGE_LABEL_DEFAULTS)]);
@@ -116,18 +73,15 @@ class SalesCrmController extends Controller
     public function opportunityOwnerOptions(Request $request): JsonResponse
     {
         $data = $request->validate([
-            'company_id' => ['nullable', 'uuid', 'exists:companies,id'],
             'search' => ['nullable', 'string', 'max:120'], 'selected_id' => ['nullable', 'uuid'],
             'exclude_id' => ['nullable', 'uuid'],
             'page' => ['nullable', 'integer', 'min:1'], 'per_page' => ['nullable', 'integer', 'min:1', 'max:50'],
         ]);
-        $companyId = $this->resolveCompanyId($data['company_id'] ?? null);
-        $ids = $this->scope->profileIds($request->user(), 'sales.crm.manage-all', 'sales.crm.manage-team', $companyId);
+        $ids = $this->scope->profileIds($request->user(), 'sales.crm.manage-all', 'sales.crm.manage-team');
         $query = DB::table('sales_profiles as profile')
             ->join('staff', 'staff.id', '=', 'profile.staff_id')
             ->join('users', 'users.id', '=', 'staff.user_id')
-            ->join('companies', 'companies.id', '=', 'profile.company_id')
-            ->whereNull('staff.deleted_at')->whereNull('users.deleted_at')->where('users.is_active', true)->whereNull('companies.deleted_at')
+            ->whereNull('staff.deleted_at')->whereNull('users.deleted_at')->where('users.is_active', true)
             ->whereExists(fn ($context) => $context->selectRaw('1')->from('user_contexts as staff_context')
                 ->whereColumn('staff_context.user_id', 'users.id')->whereColumn('staff_context.context_id', 'staff.id')
                 ->where('staff_context.context_type', 'staff')->where('staff_context.is_active', true)->whereNull('staff_context.deleted_at'))
@@ -137,26 +91,23 @@ class SalesCrmController extends Controller
             ->whereNotNull('profile.reporting_currency')->whereNotNull('profile.staff_category_snapshot')
             ->where(fn ($eligible) => $eligible->where('profile.acquisition_eligible', true)
                 ->orWhere('profile.collection_eligible', true)->orWhere('profile.commission_eligible', true))
-            ->when($ids !== null, fn ($profiles) => $profiles->whereIn('profile.id', $ids))
-            ->where(fn ($_companyIdScope) => \App\Services\CompanyIdScope::constrain($_companyIdScope, 'profile.company_id', $companyId));
+            ->when($ids !== null, fn ($profiles) => $profiles->whereIn('profile.id', $ids));
         if (! $this->policySettings->featureEnabled('crm')) $query->whereRaw('1 = 0');
         if (! empty($data['selected_id'])) $query->where('profile.id', $data['selected_id']);
         else {
             $query->when($data['search'] ?? null, function ($profiles, $search) {
                 $term = '%'.str_replace(['%', '_'], ['\\%', '\\_'], trim($search)).'%';
                 $profiles->where(fn ($match) => $match->where('profile.sales_code', 'like', $term)
-                    ->orWhere('staff.code', 'like', $term)->orWhere('companies.name', 'like', $term));
+                    ->orWhere('staff.code', 'like', $term));
             });
         }
         $query->when($data['exclude_id'] ?? null, fn ($profiles, $id) => $profiles->where('profile.id', '!=', $id));
         $rows = $query->orderBy('profile.sales_code')->orderBy('profile.id')->select([
-            'profile.id', 'profile.sales_code', 'profile.company_id', 'companies.name as company_name', 'staff.code as staff_code',
+            'profile.id', 'profile.sales_code', 'staff.code as staff_code',
         ])->paginate($data['per_page'] ?? 25);
         $rows->getCollection()->transform(fn ($row) => [
             'value' => (string) $row->id,
             'label' => $row->sales_code.' - '.$row->staff_code,
-            'metadata' => ['company' => $row->company_name],
-            'record' => ['company_id' => (string) $row->company_id],
             'status' => 'active',
         ]);
         return response()->json(['status' => 'success', 'data' => $rows]);
@@ -190,17 +141,13 @@ class SalesCrmController extends Controller
     public function opportunitySourceOptions(Request $request): JsonResponse
     {
         $data = $request->validate([
-            'company_id' => ['nullable', 'uuid', 'exists:companies,id'],
             'source_type' => ['required', Rule::in(['inquiry', 'phone_call'])],
             'search' => ['nullable', 'string', 'max:120'], 'selected_id' => ['nullable', 'uuid'],
             'page' => ['nullable', 'integer', 'min:1'], 'per_page' => ['nullable', 'integer', 'min:1', 'max:50'],
         ]);
-        $companyId = $this->resolveCompanyId($data['company_id'] ?? null);
-        abort_unless(DB::table('companies')->where('id', $companyId)->where('is_active', true)
-            ->whereNull('deleted_at')->exists(), 422, 'Select an active legal entity.');
         abort_unless($this->policySettings->featureEnabled('crm'), 422,
-            'CRM source selection is not enabled for this legal entity.');
-        $userIds = $this->sourceUserIds($request, $companyId);
+            'CRM source selection is not enabled.');
+        $userIds = $this->sourceUserIds($request);
         $selected = ! empty($data['selected_id']);
 
         if ($data['source_type'] === 'inquiry') {
@@ -229,10 +176,9 @@ class SalesCrmController extends Controller
         } else {
             $query = DB::table('phone_calls as source')->leftJoin('sales_opportunities as opportunity', function ($join): void {
                     $join->on('opportunity.source_phone_call_id', '=', 'source.id')
-                        ->where(fn ($sameCompany) => \App\Services\CompanyIdScope::sameCompany($sameCompany, 'opportunity.company_id', 'source.company_id'))
                         ->whereNull('opportunity.deleted_at');
                 })
-                ->where(fn ($_companyIdScope) => \App\Services\CompanyIdScope::constrain($_companyIdScope, 'source.company_id', $companyId))->whereNull('source.deleted_at')->whereNull('opportunity.id')
+                ->whereNull('source.deleted_at')->whereNull('opportunity.id')
                 ->whereIn('source.created_user_id', $userIds);
             if ($selected) $query->where('source.id', $data['selected_id']);
             else $query->when($data['search'] ?? null, function ($rows, $search) {
@@ -258,7 +204,7 @@ class SalesCrmController extends Controller
     public function createOpportunity(Request $request, SalesCrmService $crm): JsonResponse
     {
         $data = $request->validate([
-            'company_id' => ['nullable', 'uuid', 'exists:companies,id'], 'owner_sales_profile_id' => ['required', 'uuid', 'exists:sales_profiles,id'],
+            'owner_sales_profile_id' => ['required', 'uuid', 'exists:sales_profiles,id'],
             'customer_id' => ['nullable', 'uuid', 'exists:customers,id'], 'inquiry_id' => ['nullable', 'uuid', 'exists:inquiries,id'],
             'source_phone_call_id' => ['nullable', 'uuid', 'exists:phone_calls,id'], 'name' => ['required', 'string', 'max:255'],
             'prospect_name' => ['nullable', 'string', 'max:255'], 'prospect_company' => ['nullable', 'string', 'max:255'],
@@ -277,15 +223,12 @@ class SalesCrmController extends Controller
             'follow_up_task.due_at' => ['required', 'date', 'after:now'],
             'follow_up_task.remind_at' => ['nullable', 'date', 'before_or_equal:follow_up_task.due_at'],
         ]);
-        $data['company_id'] = $this->resolveCompanyId($data['company_id'] ?? null);
         $profile = SalesProfile::query()->findOrFail($data['owner_sales_profile_id']);
         abort_unless(SalesProfile::query()->whereKey($profile->id)->activeAt(now())->exists(), 422, 'Opportunity owner must have an active Sales Profile.');
         $this->scope->assertProfile($request->user(), $profile, 'sales.crm.manage-all', 'sales.crm.manage-team');
-        $authorizedProfileIds = $this->scope->profileIds(
-            $request->user(), 'sales.crm.manage-all', 'sales.crm.manage-team', (string) $profile->company_id,
-        );
+        $authorizedProfileIds = $this->scope->profileIds($request->user(), 'sales.crm.manage-all', 'sales.crm.manage-team');
         return response()->json(['status' => 'success', 'data' => $this->writeConfirmation($crm->createOpportunity(
-            $data, (string) $request->user()->id, $this->sourceUserIds($request, (string) $profile->company_id), $authorizedProfileIds,
+            $data, (string) $request->user()->id, $this->sourceUserIds($request), $authorizedProfileIds,
         ))], 201);
     }
 
@@ -303,12 +246,11 @@ class SalesCrmController extends Controller
             'follow_up_task.due_at' => ['required_with:follow_up_task', 'required_unless:to_stage,lost', 'date', 'after:now'],
             'follow_up_task.remind_at' => ['nullable', 'date', 'before_or_equal:follow_up_task.due_at'],
         ]);
-        $companyId = (string) $opportunity->company_id;
-        $authorizedProfileIds = $this->scope->profileIds($request->user(), 'sales.crm.manage-all', 'sales.crm.manage-team', $companyId);
+        $authorizedProfileIds = $this->scope->profileIds($request->user(), 'sales.crm.manage-all', 'sales.crm.manage-team');
         return response()->json(['status' => 'success', 'data' => $this->writeConfirmation($crm->transition(
             $opportunity, $data['to_stage'], $data['expected_version'], $data['reason_code'] ?? null, $data['reason'] ?? null,
             $data['idempotency_key'], (string) $request->user()->id, $data['follow_up_task'] ?? null,
-            $authorizedProfileIds, $this->sourceUserIds($request, $companyId),
+            $authorizedProfileIds, $this->sourceUserIds($request),
         ))]);
     }
 
@@ -331,7 +273,7 @@ class SalesCrmController extends Controller
 
     private function linkableBookingQuery(SalesOpportunity $opportunity)
     {
-        $ownerStaffId = SalesProfile::query()->whereKey($opportunity->owner_sales_profile_id)->where(fn ($_companyIdScope) => \App\Services\CompanyIdScope::constrain($_companyIdScope, 'company_id', $opportunity->company_id))
+        $ownerStaffId = SalesProfile::query()->whereKey($opportunity->owner_sales_profile_id)
             ->activeAt(now())->configured()->whereHas('staff', fn ($staff) => $staff->whereNull('deleted_at')
                 ->where(fn ($employment) => $employment->whereNull('employment_ended_at')->orWhere('employment_ended_at', '>', now()))
                 ->whereHas('user', fn ($user) => $user->where('is_active', true)->whereNull('deleted_at')
@@ -345,9 +287,6 @@ class SalesCrmController extends Controller
             ->whereNull('booking.deleted_at')->whereNull('booking.sales_opportunity_id')
             ->where(fn ($query) => $query->whereNull('booking.confirmed')->orWhere('booking.confirmed', false))
             ->whereNull('booking.confirmed_at')->where(fn ($query) => $query->whereNull('booking.status')->orWhere('booking.status', '!=', 'confirmed'))
-            ->where(fn ($company) => \App\Services\CompanyIdScope::constrain($company, 'owner_staff.company_id', $opportunity->company_id)
-                ->orWhere(fn ($creatorCompany) => $creatorCompany->whereNull('owner_staff.company_id')
-                    ->where(fn ($scope) => \App\Services\CompanyIdScope::constrain($scope, 'creator_staff.company_id', $opportunity->company_id))))
             ->whereRaw('COALESCE(owner_staff.id, creator_staff.id) = ?', [$ownerStaffId])
             ->when($opportunity->customer_id, fn ($query, $customerId) => $query->where(fn ($customer) => $customer->whereNull('booking.customer_id')->orWhere('booking.customer_id', $customerId)))
             ->select(['booking.id', 'booking.booking_number', 'booking.log_code', 'booking.created_at']);
@@ -355,19 +294,14 @@ class SalesCrmController extends Controller
 
     public function activities(Request $request): JsonResponse
     {
-        $data = $request->validate(['company_id' => ['nullable', 'uuid', 'exists:companies,id'], 'sales_profile_id' => ['nullable', 'uuid'], 'opportunity_id' => ['nullable', 'uuid'], 'activity_type' => ['nullable', Rule::in(['call', 'email', 'sms', 'whatsapp', 'meeting', 'site_visit', 'note', 'quotation', 'follow_up', 'collection_follow_up'])], 'from' => ['nullable', 'date'], 'to' => ['nullable', 'date', 'after_or_equal:from'], 'page' => ['nullable', 'integer', 'min:1'], 'per_page' => ['nullable', 'integer', 'min:1', 'max:100']]);
-        $data['company_id'] = $this->resolveCompanyId($data['company_id'] ?? null);
-        $ids = $this->scope->profileIds($request->user(), 'sales.crm.view-all', 'sales.crm.view-team', $data['company_id']);
-        $this->assertActiveListCompany($data['company_id'], $ids);
+        $data = $request->validate(['sales_profile_id' => ['nullable', 'uuid'], 'opportunity_id' => ['nullable', 'uuid'], 'activity_type' => ['nullable', Rule::in(['call', 'email', 'sms', 'whatsapp', 'meeting', 'site_visit', 'note', 'quotation', 'follow_up', 'collection_follow_up'])], 'from' => ['nullable', 'date'], 'to' => ['nullable', 'date', 'after_or_equal:from'], 'page' => ['nullable', 'integer', 'min:1'], 'per_page' => ['nullable', 'integer', 'min:1', 'max:100']]);
+        $ids = $this->scope->profileIds($request->user(), 'sales.crm.view-all', 'sales.crm.view-team');
         $query = SalesActivity::query()
-            ->where(fn ($_companyIdScope) => \App\Services\CompanyIdScope::constrain($_companyIdScope, 'sales_activities.company_id', $data['company_id']))
             ->whereExists(fn ($profile) => $profile->selectRaw('1')->from('sales_profiles as profile')
                 ->whereColumn('profile.id', 'sales_activities.sales_profile_id')
-                ->where(fn ($sameCompany) => \App\Services\CompanyIdScope::sameCompany($sameCompany, 'profile.company_id', 'sales_activities.company_id'))
                 ->whereNull('profile.deleted_at')
                 ->whereExists(fn ($staff) => $staff->selectRaw('1')->from('staff as activity_staff')
                     ->whereColumn('activity_staff.id', 'profile.staff_id')
-                    ->where(fn ($sameCompany) => \App\Services\CompanyIdScope::sameCompany($sameCompany, 'activity_staff.company_id', 'sales_activities.company_id'))
                     ->whereNull('activity_staff.deleted_at')))
             ->where(fn ($opportunity) => $opportunity->whereNull('sales_activities.opportunity_id')
                 ->whereNull('sales_activities.customer_id')->whereNull('sales_activities.inquiry_id')
@@ -375,7 +309,6 @@ class SalesCrmController extends Controller
                 ->whereNull('sales_activities.booking_activity_id')
                 ->orWhereExists(fn ($linked) => $linked->selectRaw('1')->from('sales_opportunities as opportunity')
                     ->whereColumn('opportunity.id', 'sales_activities.opportunity_id')
-                    ->where(fn ($sameCompany) => \App\Services\CompanyIdScope::sameCompany($sameCompany, 'opportunity.company_id', 'sales_activities.company_id'))
                     ->where(fn ($reference) => $reference->whereNull('sales_activities.customer_id')
                         ->orWhereColumn('sales_activities.customer_id', 'opportunity.customer_id'))
                     ->where(fn ($reference) => $reference->whereNull('sales_activities.inquiry_id')
@@ -384,11 +317,9 @@ class SalesCrmController extends Controller
                         ->orWhereColumn('sales_activities.phone_call_id', 'opportunity.source_phone_call_id'))
                     ->whereExists(fn ($owner) => $owner->selectRaw('1')->from('sales_profiles as opportunity_owner')
                         ->whereColumn('opportunity_owner.id', 'opportunity.owner_sales_profile_id')
-                        ->where(fn ($sameCompany) => \App\Services\CompanyIdScope::sameCompany($sameCompany, 'opportunity_owner.company_id', 'opportunity.company_id'))
                         ->whereNull('opportunity_owner.deleted_at')
                         ->whereExists(fn ($staff) => $staff->selectRaw('1')->from('staff as opportunity_staff')
                             ->whereColumn('opportunity_staff.id', 'opportunity_owner.staff_id')
-                            ->where(fn ($sameCompany) => \App\Services\CompanyIdScope::sameCompany($sameCompany, 'opportunity_staff.company_id', 'opportunity.company_id'))
                             ->whereNull('opportunity_staff.deleted_at'))
                     ->where(fn ($booking) => $booking->whereNull('sales_activities.booking_id')
                         ->orWhereExists(function ($linkedBooking) {
@@ -396,17 +327,12 @@ class SalesCrmController extends Controller
                                 ->whereColumn('activity_booking.id', 'sales_activities.booking_id')->whereNull('activity_booking.deleted_at')
                                 ->where(fn ($bookingLink) => $bookingLink
                                     ->whereColumn('activity_booking.sales_opportunity_id', 'opportunity.id')
-                                    ->orWhereColumn('opportunity.won_booking_id', 'activity_booking.id'))
-                                ->whereNotExists(fn ($foreignAttribution) => $foreignAttribution->selectRaw('1')
-                                    ->from('sales_booking_attributions as activity_attribution')
-                                    ->whereColumn('activity_attribution.booking_id', 'activity_booking.id')
-                                    ->whereNot(fn ($company) => \App\Services\CompanyIdScope::sameCompany($company, 'activity_attribution.company_id', 'sales_activities.company_id')));
+                                    ->orWhereColumn('opportunity.won_booking_id', 'activity_booking.id'));
                             $this->constrainBookingOwnerToOpportunity($linkedBooking, 'activity_booking', 'opportunity');
                         }))
                     ->where(fn ($event) => $event->whereNull('sales_activities.booking_activity_id')
                         ->orWhereExists(fn ($bookingEvent) => $bookingEvent->selectRaw('1')->from('booking_activities as activity_event')
                             ->whereColumn('activity_event.id', 'sales_activities.booking_activity_id')
-                            ->where(fn ($sameCompany) => \App\Services\CompanyIdScope::sameCompany($sameCompany, 'activity_event.company_id', 'sales_activities.company_id'))
                             ->whereNotNull('activity_event.booking_id')->whereNull('activity_event.deleted_at')
                             ->where(fn ($sameBooking) => $sameBooking->whereNull('sales_activities.booking_id')
                                 ->orWhereColumn('sales_activities.booking_id', 'activity_event.booking_id'))
@@ -415,11 +341,7 @@ class SalesCrmController extends Controller
                                     ->whereColumn('event_booking.id', 'activity_event.booking_id')->whereNull('event_booking.deleted_at')
                                     ->where(fn ($bookingLink) => $bookingLink
                                         ->whereColumn('event_booking.sales_opportunity_id', 'opportunity.id')
-                                        ->orWhereColumn('opportunity.won_booking_id', 'event_booking.id'))
-                                    ->whereNotExists(fn ($foreignAttribution) => $foreignAttribution->selectRaw('1')
-                                        ->from('sales_booking_attributions as event_attribution')
-                                        ->whereColumn('event_attribution.booking_id', 'event_booking.id')
-                                        ->whereNot(fn ($company) => \App\Services\CompanyIdScope::sameCompany($company, 'event_attribution.company_id', 'sales_activities.company_id')));
+                                        ->orWhereColumn('opportunity.won_booking_id', 'event_booking.id'));
                                 $this->constrainBookingOwnerToOpportunity($linkedBooking, 'event_booking', 'opportunity');
                             })))))
                 ->orWhereExists(fn ($directInquiry) => $directInquiry->selectRaw('1')->from('inquiries as activity_inquiry')
@@ -431,15 +353,14 @@ class SalesCrmController extends Controller
                     ->whereColumn('activity_booking.id', 'sales_activities.booking_id')->whereNull('activity_booking.deleted_at')
                     ->where(fn ($company) => $company->whereExists(fn ($attribution) => $attribution->selectRaw('1')
                         ->from('sales_booking_attributions as direct_attribution')->whereColumn('direct_attribution.booking_id', 'activity_booking.id')
-                        ->where(fn ($sameCompany) => \App\Services\CompanyIdScope::sameCompany($sameCompany, 'direct_attribution.company_id', 'sales_activities.company_id')))
+                        )
                         ->orWhereExists(fn ($owner) => $owner->selectRaw('1')->from('staff as booking_owner')
                             ->whereColumn('booking_owner.user_id', 'activity_booking.responsible_user_id')
-                            ->where(fn ($sameCompany) => \App\Services\CompanyIdScope::sameCompany($sameCompany, 'booking_owner.company_id', 'sales_activities.company_id'))->whereNull('booking_owner.deleted_at')))
+                            ->whereNull('booking_owner.deleted_at')))
                     ->where(fn ($customer) => $customer->whereNull('sales_activities.customer_id')
                         ->orWhereColumn('sales_activities.customer_id', 'activity_booking.customer_id')))
                 ->orWhereExists(fn ($directCustomer) => $directCustomer->selectRaw('1')->from('customer_relationship_owner_assignments as activity_customer_owner')
-                    ->whereColumn('activity_customer_owner.customer_id', 'sales_activities.customer_id')
-                    ->where(fn ($sameCompany) => \App\Services\CompanyIdScope::sameCompany($sameCompany, 'activity_customer_owner.company_id', 'sales_activities.company_id'))));
+                    ->whereColumn('activity_customer_owner.customer_id', 'sales_activities.customer_id')));
         if ($ids !== null) $query->whereIn('sales_profile_id', $ids);
         $rows = $query->when($data['sales_profile_id'] ?? null, fn ($q, $id) => $q->where('sales_profile_id', $id))
             ->when($data['opportunity_id'] ?? null, fn ($q, $id) => $q->where('opportunity_id', $id))
@@ -469,7 +390,7 @@ class SalesCrmController extends Controller
     public function recordActivity(Request $request, SalesCrmService $crm): JsonResponse
     {
         $data = $request->validate([
-            'company_id' => ['nullable', 'uuid', 'exists:companies,id'], 'sales_profile_id' => ['required', 'uuid', 'exists:sales_profiles,id'],
+            'sales_profile_id' => ['required', 'uuid', 'exists:sales_profiles,id'],
             'opportunity_id' => ['nullable', 'required_without_all:booking_id,inquiry_id,customer_id', 'uuid', 'exists:sales_opportunities,id'], 'customer_id' => ['nullable', 'required_without_all:opportunity_id,booking_id,inquiry_id', 'uuid', 'exists:customers,id'],
             'inquiry_id' => ['nullable', 'required_without_all:opportunity_id,booking_id,customer_id', 'uuid', 'exists:inquiries,id'], 'booking_id' => ['nullable', 'required_without_all:opportunity_id,inquiry_id,customer_id', 'uuid', 'exists:bookings,id'],
             'phone_call_id' => ['nullable', 'uuid', 'exists:phone_calls,id'], 'booking_activity_id' => ['nullable', 'uuid', 'exists:booking_activities,id'],
@@ -485,21 +406,17 @@ class SalesCrmController extends Controller
             'source_system' => ['required', 'string', 'max:60'], 'source_reference' => ['required', 'string', 'max:160'],
             'evidence_file_id' => ['nullable', 'uuid', 'exists:domain_evidence_files,id'], 'occurred_at' => ['required', 'date', 'before_or_equal:now'],
         ]);
-        $data['company_id'] = $this->resolveCompanyId($data['company_id'] ?? null);
         $profile = SalesProfile::query()->findOrFail($data['sales_profile_id']);
         $this->scope->assertProfile($request->user(), $profile, 'sales.crm.manage-all', 'sales.crm.manage-team');
-        $authorizedProfileIds = $this->scope->profileIds(
-            $request->user(), 'sales.crm.manage-all', 'sales.crm.manage-team', $data['company_id'],
-        );
+        $authorizedProfileIds = $this->scope->profileIds($request->user(), 'sales.crm.manage-all', 'sales.crm.manage-team');
         return response()->json(['status' => 'success', 'data' => $this->writeConfirmation($crm->recordActivity(
-            $data, (string) $request->user()->id, $authorizedProfileIds, $this->sourceUserIds($request, $data['company_id']),
+            $data, (string) $request->user()->id, $authorizedProfileIds, $this->sourceUserIds($request),
         ))], 201);
     }
 
     public function tasks(Request $request): JsonResponse
     {
         $data = $request->validate([
-            'company_id' => ['nullable', 'uuid', 'exists:companies,id'],
             'sales_profile_id' => ['nullable', 'uuid'], 'opportunity_id' => ['nullable', 'uuid'], 'task_id' => ['nullable', 'uuid'],
             'status' => ['nullable', Rule::in(['open', 'in_progress', 'completed', 'cancelled'])],
             'priority' => ['nullable', Rule::in(['low', 'normal', 'high', 'urgent'])],
@@ -510,40 +427,34 @@ class SalesCrmController extends Controller
             'page' => ['nullable', 'integer', 'min:1'],
             'per_page' => ['nullable', 'integer', 'min:1', 'max:100'],
         ]);
-        $data['company_id'] = $this->resolveCompanyId($data['company_id'] ?? null);
-        $ids = $this->scope->profileIds($request->user(), 'sales.crm.view-all', 'sales.crm.view-team', $data['company_id']);
+        $ids = $this->scope->profileIds($request->user(), 'sales.crm.view-all', 'sales.crm.view-team');
         if ($request->boolean('needs_owner_review')) {
             abort_unless($ids === null || $this->scope->hasPermission($request->user(), 'sales.crm.manage-all'), 403,
-                'Company-wide Sales access is required to review follow-ups with an inactive owner.');
+                'Sales-wide access is required to review follow-ups with an inactive owner.');
             $ids = null;
         }
-        $this->assertActiveListCompany($data['company_id'], $ids);
         $nowUtc = now('UTC');
         $workdayEndUtc = now(config('app.timezone'))->endOfDay()->utc();
-        $activeTaskOwner = fn () => $this->activeSalesOwnerExists('sales_tasks.owner_sales_profile_id', 'sales_tasks.company_id');
+        $activeTaskOwner = fn () => $this->activeSalesOwnerExists('sales_tasks.owner_sales_profile_id');
         $query = SalesTask::query()
             ->with([
                 'owner',
-                'opportunity:id,company_id,opportunity_number,name,prospect_name',
+                'opportunity:id,opportunity_number,name,prospect_name',
                 'booking:id,booking_number,log_code',
                 'inquiry:id,inquiry_number,subject,name',
                 'customer:id,code,user_id',
                 'customer.user:id,first_name,last_name',
             ])
-            ->where(fn ($_companyIdScope) => \App\Services\CompanyIdScope::constrain($_companyIdScope, 'sales_tasks.company_id', $data['company_id']))
             ->addSelect(['owner_active' => $activeTaskOwner()])
             ->whereExists(fn ($profile) => $profile->selectRaw('1')->from('sales_profiles as profile')
                 ->whereColumn('profile.id', 'sales_tasks.owner_sales_profile_id')
-                ->where(fn ($sameCompany) => \App\Services\CompanyIdScope::sameCompany($sameCompany, 'profile.company_id', 'sales_tasks.company_id'))
                 ->whereNull('profile.deleted_at')
                 ->whereExists(fn ($staff) => $staff->selectRaw('1')->from('staff as owner_staff')
                     ->whereColumn('owner_staff.id', 'profile.staff_id')
-                    ->where(fn ($sameCompany) => \App\Services\CompanyIdScope::sameCompany($sameCompany, 'owner_staff.company_id', 'sales_tasks.company_id'))
                     ))
             ->where(fn ($linkScope) => $linkScope
                 ->whereExists(fn ($linked) => $linked->selectRaw('1')->from('sales_opportunities as opportunity')
                     ->whereColumn('opportunity.id', 'sales_tasks.opportunity_id')
-                    ->where(fn ($sameCompany) => \App\Services\CompanyIdScope::sameCompany($sameCompany, 'opportunity.company_id', 'sales_tasks.company_id'))
                     ->where(fn ($references) => $references->whereNull('sales_tasks.customer_id')
                         ->orWhereColumn('sales_tasks.customer_id', 'opportunity.customer_id'))
                     ->where(fn ($references) => $references->whereNull('sales_tasks.inquiry_id')
@@ -554,11 +465,7 @@ class SalesCrmController extends Controller
                                 ->whereColumn('task_booking.id', 'sales_tasks.booking_id')->whereNull('task_booking.deleted_at')
                                 ->where(fn ($bookingLink) => $bookingLink
                                     ->whereColumn('task_booking.sales_opportunity_id', 'opportunity.id')
-                                    ->orWhereColumn('opportunity.won_booking_id', 'task_booking.id'))
-                                ->whereNotExists(fn ($foreignAttribution) => $foreignAttribution->selectRaw('1')
-                                    ->from('sales_booking_attributions as attribution')
-                                    ->whereColumn('attribution.booking_id', 'task_booking.id')
-                                    ->whereNot(fn ($company) => \App\Services\CompanyIdScope::sameCompany($company, 'attribution.company_id', 'sales_tasks.company_id')));
+                                    ->orWhereColumn('opportunity.won_booking_id', 'task_booking.id'));
                             $this->constrainBookingOwnerToOpportunity($linkedBooking, 'task_booking', 'opportunity');
                         })))
                 ->orWhereExists(fn ($direct) => $direct->selectRaw('1')->from('bookings as task_booking')
@@ -568,11 +475,9 @@ class SalesCrmController extends Controller
                     ->whereNull('sales_tasks.inquiry_id')
                     ->where(fn ($company) => $company
                         ->whereExists(fn ($attribution) => $attribution->selectRaw('1')->from('sales_booking_attributions as attribution')
-                            ->whereColumn('attribution.booking_id', 'task_booking.id')
-                            ->where(fn ($sameCompany) => \App\Services\CompanyIdScope::sameCompany($sameCompany, 'attribution.company_id', 'sales_tasks.company_id')))
+                            ->whereColumn('attribution.booking_id', 'task_booking.id'))
                         ->orWhereExists(fn ($staff) => $staff->selectRaw('1')->from('staff as booking_owner')
-                            ->whereColumn('booking_owner.user_id', 'task_booking.responsible_user_id')
-                            ->where(fn ($sameCompany) => \App\Services\CompanyIdScope::sameCompany($sameCompany, 'booking_owner.company_id', 'sales_tasks.company_id'))))
+                            ->whereColumn('booking_owner.user_id', 'task_booking.responsible_user_id')))
                     ->where(fn ($customer) => $customer->whereNull('sales_tasks.customer_id')
                         ->orWhereColumn('sales_tasks.customer_id', 'task_booking.customer_id')))
                 ->orWhereExists(fn ($inquiry) => $inquiry->selectRaw('1')->from('inquiries as task_inquiry')
@@ -590,7 +495,6 @@ class SalesCrmController extends Controller
                         ->orWhereColumn('sales_tasks.customer_id', 'task_inquiry.customer_id')))
                 ->orWhereExists(fn ($customer) => $customer->selectRaw('1')->from('customer_relationship_owner_assignments as customer_owner')
                     ->whereColumn('customer_owner.customer_id', 'sales_tasks.customer_id')
-                    ->where(fn ($sameCompany) => \App\Services\CompanyIdScope::sameCompany($sameCompany, 'customer_owner.company_id', 'sales_tasks.company_id'))
                     ->whereNull('sales_tasks.opportunity_id')->whereNull('sales_tasks.booking_id')->whereNull('sales_tasks.inquiry_id')));
         if ($ids !== null) $query->whereIn('owner_sales_profile_id', $ids);
         $rows = $query
@@ -634,7 +538,6 @@ class SalesCrmController extends Controller
                 'title' => $task->title,
                 'priority' => $task->priority,
                 'status' => $task->status,
-                'company_id' => (string) $task->company_id,
                 'owner_sales_profile_id' => (string) $task->owner_sales_profile_id,
                 'owner_label' => $task->owner?->staff?->user?->full_name ?: ($task->owner?->sales_code ?: 'Former employee'),
                 'owner_active' => (bool) $task->owner_active,
@@ -654,27 +557,28 @@ class SalesCrmController extends Controller
     public function taskBookingOptions(Request $request): JsonResponse
     {
         $data = $request->validate([
-            'company_id' => ['required', 'uuid', 'exists:companies,id'],
             'search' => ['nullable', 'string', 'max:100'], 'selected_id' => ['nullable', 'uuid'],
             'page' => ['nullable', 'integer', 'min:1'], 'per_page' => ['nullable', 'integer', 'min:1', 'max:50'],
         ]);
-        $companyId = $this->resolveCompanyId($data['company_id']);
-        $profileIds = $this->scope->profileIds($request->user(), 'sales.crm.manage-all', 'sales.crm.manage-team', $companyId);
-        $this->assertActiveListCompany($companyId, $profileIds);
         $userId = (string) $request->user()->id;
+        $profileIds = $this->scope->profileIds($request->user(), 'sales.crm.manage-all', 'sales.crm.manage-team');
+        $sourceUsers = $this->sourceUserIds($request);
 
         $query = DB::table('bookings as booking')->whereNull('booking.deleted_at')
-            ->where(function ($scope) use ($companyId, $userId) {
+            ->where(function ($scope) use ($userId, $profileIds, $sourceUsers) {
                 $scope->whereExists(fn ($attribution) => $attribution->selectRaw('1')->from('sales_booking_attributions as attribution')
-                    ->whereColumn('attribution.booking_id', 'booking.id')->where(fn ($_companyIdScope) => \App\Services\CompanyIdScope::constrain($_companyIdScope, 'attribution.company_id', $companyId)))
+                    ->whereColumn('attribution.booking_id', 'booking.id')
+                    ->when($profileIds !== null, fn ($owners) => $owners->where(fn ($eligible) => $eligible
+                        ->whereIn('acquisition_sales_profile_id', $profileIds)
+                        ->orWhereIn('collection_sales_profile_id', $profileIds))))
                     ->orWhereExists(fn ($staff) => $staff->selectRaw('1')->from('staff as booking_owner')
                         ->whereColumn('booking_owner.user_id', 'booking.responsible_user_id')
-                        ->where(fn ($_companyIdScope) => \App\Services\CompanyIdScope::constrain($_companyIdScope, 'booking_owner.company_id', $companyId))->whereNull('booking_owner.deleted_at'))
+                        ->whereNull('booking_owner.deleted_at')->whereIn('booking_owner.user_id', $sourceUsers))
                     ->orWhere(fn ($quote) => $quote->where('booking.status', 'quotation_requested')
                         ->whereNull('booking.responsible_user_id')
                         ->whereRaw("booking.workflow_data->>'quotation_requested_by' = ?", [$userId])
                         ->whereExists(fn ($sent) => $sent->selectRaw('1')->from('booking_activities as sent_quote')
-                            ->whereColumn('sent_quote.booking_id', 'booking.id')->where(fn ($_companyIdScope) => \App\Services\CompanyIdScope::constrain($_companyIdScope, 'sent_quote.company_id', $companyId))
+                            ->whereColumn('sent_quote.booking_id', 'booking.id')
                             ->whereNull('sent_quote.deleted_at')->where('sent_quote.event_key', 'quotation_email_sent')
                             ->where('sent_quote.result_status', 'sent')));
             })
@@ -701,14 +605,10 @@ class SalesCrmController extends Controller
     public function taskInquiryOptions(Request $request): JsonResponse
     {
         $data = $request->validate([
-            'company_id' => ['required', 'uuid', 'exists:companies,id'],
             'search' => ['nullable', 'string', 'max:100'], 'selected_id' => ['nullable', 'uuid'],
             'page' => ['nullable', 'integer', 'min:1'], 'per_page' => ['nullable', 'integer', 'min:1', 'max:50'],
         ]);
-        $companyId = $this->resolveCompanyId($data['company_id']);
-        $profileIds = $this->scope->profileIds($request->user(), 'sales.crm.manage-all', 'sales.crm.manage-team', $companyId);
-        $this->assertActiveListCompany($companyId, $profileIds);
-        $sourceUsers = $this->sourceUserIds($request, $companyId);
+        $sourceUsers = $this->sourceUserIds($request);
         $query = DB::table('inquiries as inquiry')->whereNull('inquiry.deleted_at')
             ->where(function ($scope) use ($sourceUsers) {
                 $scope->whereIn('inquiry.assigned_to', $sourceUsers)
@@ -739,30 +639,26 @@ class SalesCrmController extends Controller
     public function taskCustomerOptions(Request $request): JsonResponse
     {
         $data = $request->validate([
-            'company_id' => ['required', 'uuid', 'exists:companies,id'],
             'search' => ['nullable', 'string', 'max:100'], 'selected_id' => ['nullable', 'uuid'],
             'page' => ['nullable', 'integer', 'min:1'], 'per_page' => ['nullable', 'integer', 'min:1', 'max:50'],
         ]);
-        $companyId = $this->resolveCompanyId($data['company_id']);
-        $profileIds = $this->scope->profileIds($request->user(), 'sales.crm.manage-all', 'sales.crm.manage-team', $companyId);
-        $this->assertActiveListCompany($companyId, $profileIds);
-
+        $profileIds = $this->scope->profileIds($request->user(), 'sales.crm.manage-all', 'sales.crm.manage-team');
         $query = DB::table('customers as customer')
             ->join('users as contact', 'contact.id', '=', 'customer.user_id')
-            ->join('customer_relationship_owner_assignments as assignment', function ($join) use ($companyId): void {
-                $join->on('assignment.customer_id', '=', 'customer.id')->where(fn ($_companyIdScope) => \App\Services\CompanyIdScope::constrain($_companyIdScope, 'assignment.company_id', $companyId))
+            ->join('customer_relationship_owner_assignments as assignment', function ($join): void {
+                $join->on('assignment.customer_id', '=', 'customer.id')
                     ->whereNull('assignment.ended_at')->whereNotNull('assignment.owner_sales_profile_id');
             })
-            ->join('sales_profiles as owner_profile', function ($join) use ($companyId): void {
-                $join->on('owner_profile.id', '=', 'assignment.owner_sales_profile_id')->where(fn ($_companyIdScope) => \App\Services\CompanyIdScope::constrain($_companyIdScope, 'owner_profile.company_id', $companyId))
+            ->join('sales_profiles as owner_profile', function ($join): void {
+                $join->on('owner_profile.id', '=', 'assignment.owner_sales_profile_id')
                     ->where('owner_profile.status', '=', 'active')->where('owner_profile.effective_from', '<=', now())
                     ->whereNotNull('owner_profile.reporting_currency')->whereNotNull('owner_profile.staff_category_snapshot')
                     ->where(fn ($eligible) => $eligible->where('owner_profile.acquisition_eligible', true)
                         ->orWhere('owner_profile.collection_eligible', true)->orWhere('owner_profile.commission_eligible', true))
                     ->where(fn ($effective) => $effective->whereNull('owner_profile.effective_until')->orWhere('owner_profile.effective_until', '>', now()));
             })
-            ->join('staff as owner_staff', function ($join) use ($companyId): void {
-                $join->on('owner_staff.id', '=', 'owner_profile.staff_id')->where(fn ($_companyIdScope) => \App\Services\CompanyIdScope::constrain($_companyIdScope, 'owner_staff.company_id', $companyId))
+            ->join('staff as owner_staff', function ($join): void {
+                $join->on('owner_staff.id', '=', 'owner_profile.staff_id')
                     ->whereNull('owner_staff.deleted_at')
                     ->where(fn ($employment) => $employment->whereNull('owner_staff.employment_ended_at')->orWhere('owner_staff.employment_ended_at', '>', now()));
             })
@@ -792,63 +688,22 @@ class SalesCrmController extends Controller
         return response()->json(['status' => 'success', 'data' => $rows]);
     }
 
-    private function assertActiveListCompany(string $companyId, ?array $profileIds): void
-    {
-        abort_unless(DB::table('companies')->where('id', $companyId)->where('is_active', true)
-            ->whereNull('deleted_at')->exists(), 422, 'Select an active legal entity.');
-        abort_unless($profileIds === null || SalesProfile::query()->whereIn('id', $profileIds)
-            ->where(fn ($_companyIdScope) => \App\Services\CompanyIdScope::constrain($_companyIdScope, 'company_id', $companyId))->exists(), 403,
-            'The selected legal entity is outside your Sales scope.');
-    }
-
-    private function resolveCompanyId(?string $companyId): string
-    {
-        $resolved = $companyId ?: $this->currentCompanyId();
-        abort_unless($resolved, 409, 'Select an active business for Sales work.');
-        $this->assertSelectedStaffCompany((string) $resolved);
-        abort_unless(DB::table('companies')->where('id', $resolved)->where('is_active', true)
-            ->whereNull('deleted_at')->exists(), 422, 'Select an active legal entity.');
-
-        return (string) $resolved;
-    }
-
-    private function currentCompanyId(): string
-    {
-        $companyId = app(WebsiteSettingsService::class)->resolveCurrentCompanyId();
-        abort_unless($companyId, 409, 'Select an active business for Sales work.');
-
-        return (string) $companyId;
-    }
-
-    private function assertSelectedStaffCompany(string $companyId): void
-    {
-        if (request()->header('X-Active-Context-Type') === 'staff') {
-            app(CompanySettingsAccessService::class)->assertCanAccess(request()->user(), $companyId);
-        }
-    }
-
     private function constrainBookingOwnerToOpportunity($query, string $bookingAlias, string $opportunityAlias): void
     {
         $query->whereExists(fn ($staff) => $staff->selectRaw('1')->from('staff as linked_booking_staff')
-            ->where(fn ($sameCompany) => \App\Services\CompanyIdScope::sameCompany($sameCompany, 'linked_booking_staff.company_id', "{$opportunityAlias}.company_id"))
             ->where(fn ($owner) => $owner->whereColumn('linked_booking_staff.id', "{$bookingAlias}.commission_owner_staff_id")
                 ->orWhere(fn ($creator) => $creator->whereNull("{$bookingAlias}.commission_owner_staff_id")
                     ->whereColumn('linked_booking_staff.user_id', "{$bookingAlias}.created_user_id")))
             ->whereExists(fn ($profile) => $profile->selectRaw('1')->from('sales_profiles as linked_booking_profile')
                 ->whereColumn('linked_booking_profile.id', "{$opportunityAlias}.owner_sales_profile_id")
                 ->whereColumn('linked_booking_profile.staff_id', 'linked_booking_staff.id')
-                ->where(fn ($sameCompany) => \App\Services\CompanyIdScope::sameCompany($sameCompany, 'linked_booking_profile.company_id', "{$opportunityAlias}.company_id"))
-                ->whereNull('linked_booking_profile.deleted_at')))
-            ->whereNotExists(fn ($attribution) => $attribution->selectRaw('1')->from('sales_booking_attributions as linked_booking_attribution')
-                ->whereColumn('linked_booking_attribution.booking_id', "{$bookingAlias}.id")
-                ->whereNot(fn ($company) => \App\Services\CompanyIdScope::sameCompany($company, 'linked_booking_attribution.company_id', "{$opportunityAlias}.company_id")));
+                ->whereNull('linked_booking_profile.deleted_at')));
     }
 
     public function createTask(Request $request, SalesCrmService $crm): JsonResponse
     {
         $explicitInstant = 'regex:/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}(:\d{2}(\.\d{1,6})?)?(Z|[+-]\d{2}:\d{2})$/';
         $data = $request->validate([
-            'company_id' => ['nullable', 'uuid', 'exists:companies,id'],
             'owner_sales_profile_id' => ['required', 'uuid', 'exists:sales_profiles,id'],
             'opportunity_id' => ['nullable', 'uuid', 'exists:sales_opportunities,id'],
             'customer_id' => ['nullable', 'uuid', 'exists:customers,id'],
@@ -861,22 +716,18 @@ class SalesCrmController extends Controller
             'remind_at' => ['nullable', 'date', $explicitInstant, 'before_or_equal:due_at'],
             'escalate_at' => ['nullable', 'date', $explicitInstant, 'after_or_equal:due_at'],
         ]);
-        $data['company_id'] = $this->resolveCompanyId($data['company_id'] ?? null);
         $profile = SalesProfile::query()->findOrFail($data['owner_sales_profile_id']); $this->scope->assertProfile($request->user(), $profile, 'sales.crm.manage-all', 'sales.crm.manage-team');
-        $authorizedProfileIds = $this->scope->profileIds(
-            $request->user(), 'sales.crm.manage-all', 'sales.crm.manage-team', $data['company_id'],
-        );
+        $authorizedProfileIds = $this->scope->profileIds($request->user(), 'sales.crm.manage-all', 'sales.crm.manage-team');
         $linkedSourceCount = count(array_filter([$data['opportunity_id'] ?? null, $data['booking_id'] ?? null, $data['inquiry_id'] ?? null]));
         abort_unless($linkedSourceCount === 1 || ($linkedSourceCount === 0 && ! empty($data['customer_id'])),
             422, 'Choose one opportunity, booking, inquiry, or owned customer for this follow-up.');
         return response()->json(['status' => 'success', 'data' => $this->writeConfirmation($crm->createTask(
-            $data, (string) $request->user()->id, $authorizedProfileIds, $this->sourceUserIds($request, $data['company_id']),
+            $data, (string) $request->user()->id, $authorizedProfileIds, $this->sourceUserIds($request),
         ))], 201);
     }
 
     public function transitionTask(Request $request, SalesTask $task, SalesCrmService $crm): JsonResponse
     {
-        $this->assertSelectedStaffCompany((string) $task->company_id);
         $profile = SalesProfile::query()->findOrFail($task->owner_sales_profile_id); $this->scope->assertProfile($request->user(), $profile, 'sales.crm.manage-all', 'sales.crm.manage-team');
         $data = $request->validate(['to_status' => ['required', Rule::in(['open', 'in_progress', 'completed', 'cancelled'])], 'expected_version' => ['required', 'integer', 'min:1'], 'reason' => ['nullable', 'string', 'max:2000'], 'idempotency_key' => ['required', 'string', 'max:160']]);
         return response()->json(['status' => 'success', 'data' => $this->writeConfirmation($crm->transitionTask($task, $data, (string) $request->user()->id))]);
@@ -884,7 +735,6 @@ class SalesCrmController extends Controller
 
     public function transferTask(Request $request, SalesTask $task, SalesCrmService $crm): JsonResponse
     {
-        $this->assertSelectedStaffCompany((string) $task->company_id);
         $current = SalesProfile::query()->findOrFail($task->owner_sales_profile_id);
         $this->scope->assertProfile($request->user(), $current, 'sales.crm.manage-all', 'sales.crm.manage-team');
         $data = $request->validate(['owner_sales_profile_id' => ['required', 'uuid', 'exists:sales_profiles,id'], 'expected_version' => ['required', 'integer', 'min:1'], 'reason' => ['required', 'string', 'max:2000'], 'idempotency_key' => ['required', 'string', 'max:160']]);
@@ -895,31 +745,24 @@ class SalesCrmController extends Controller
 
     private function assertOpportunityScope(Request $request, SalesOpportunity $opportunity, bool $manage = false): void
     {
-        $this->assertSelectedStaffCompany((string) $opportunity->company_id);
         $profile = SalesProfile::query()->findOrFail($opportunity->owner_sales_profile_id);
-        abort_unless(DB::table('sales_profiles as profile')->where('profile.id', $profile->id)
-            ->where(fn ($_companyIdScope) => \App\Services\CompanyIdScope::constrain($_companyIdScope, 'profile.company_id', $opportunity->company_id))->exists()
-            && DB::table('staff')->where('id', $profile->staff_id)->where(fn ($_companyIdScope) => \App\Services\CompanyIdScope::constrain($_companyIdScope, 'company_id', $opportunity->company_id))
-                ->whereNull('deleted_at')->exists()
-            && (! $opportunity->won_booking_id || DB::table('bookings')->where('id', $opportunity->won_booking_id)
-                ->where(fn ($_companyIdScope) => \App\Services\CompanyIdScope::constrain($_companyIdScope, 'company_id', $opportunity->company_id))->exists()),
-            409, 'Opportunity owner links do not match its legal entity. Reconcile ownership before continuing.');
+        abort_unless(DB::table('staff')->where('id', $profile->staff_id)->whereNull('deleted_at')->exists(),
+            409, 'Opportunity owner is no longer linked to an active staff record.');
         $this->scope->assertProfile($request->user(), $profile, $manage ? 'sales.crm.manage-all' : 'sales.crm.view-all', $manage ? 'sales.crm.manage-team' : 'sales.crm.view-team');
     }
 
-    private function activeSalesOwnerExists(string $profileIdColumn, string $companyIdColumn): \Illuminate\Database\Query\Builder
+    private function activeSalesOwnerExists(string $profileIdColumn): \Illuminate\Database\Query\Builder
     {
         return DB::table('sales_profiles as profile')->selectRaw('1')
             ->join('staff as owner_staff', 'owner_staff.id', '=', 'profile.staff_id')
             ->join('users as owner_user', 'owner_user.id', '=', 'owner_staff.user_id')
             ->whereColumn('profile.id', $profileIdColumn)
-            ->where(fn ($sameCompany) => \App\Services\CompanyIdScope::sameCompany($sameCompany, 'profile.company_id', $companyIdColumn))
             ->where('profile.status', 'active')->whereNull('profile.deleted_at')->where('profile.effective_from', '<=', now())
             ->where(fn ($effective) => $effective->whereNull('profile.effective_until')->orWhere('profile.effective_until', '>', now()))
             ->whereNotNull('profile.reporting_currency')->whereNotNull('profile.staff_category_snapshot')
             ->where(fn ($eligible) => $eligible->where('profile.acquisition_eligible', true)
                 ->orWhere('profile.collection_eligible', true)->orWhere('profile.commission_eligible', true))
-            ->where(fn ($sameCompany) => \App\Services\CompanyIdScope::sameCompany($sameCompany, 'owner_staff.company_id', $companyIdColumn))->whereNull('owner_staff.deleted_at')
+            ->whereNull('owner_staff.deleted_at')
             ->where(fn ($employment) => $employment->whereNull('owner_staff.employment_ended_at')->orWhere('owner_staff.employment_ended_at', '>', now()))
             ->where('owner_user.is_active', true)->whereNull('owner_user.deleted_at')
             ->whereExists(fn ($context) => $context->selectRaw('1')->from('user_contexts')
@@ -938,7 +781,6 @@ class SalesCrmController extends Controller
 
     private function opportunityPayload(SalesOpportunity $row, bool $detail = false, ?array $stageLabels = null): array
     {
-        $companyId = $row->company_id ?: \App\Services\CompanyIdScope::defaultCompanyId();
         $owner = $row->owner;
         $ownerStaff = $owner?->staff;
         $ownerUser = $ownerStaff?->user;
@@ -977,10 +819,9 @@ class SalesCrmController extends Controller
             $wonBookingCancelled = in_array(strtolower((string) ($wonBooking?->status ?? '')), ['cancelled', 'canceled', 'booking_cancelled'], true);
         }
         return $payload + [
-            'company_id' => $companyId,
             'owner_sales_profile_id' => (string) $row->owner_sales_profile_id,
             'state_version' => $row->state_version,
-            'crm_enabled' => $companyId ? $this->policySettings->featureEnabled('crm') : false,
+            'crm_enabled' => $this->policySettings->featureEnabled('crm'),
             'prospect_name' => $row->prospect_name,
             'prospect_email' => $row->prospect_email,
             'prospect_phone' => $row->prospect_phone,
@@ -1025,22 +866,16 @@ class SalesCrmController extends Controller
         })->all();
     }
 
-    private function sourceUserIds(Request $request, string $companyId): array
+    private function sourceUserIds(Request $request): array
     {
-        $profileIds = $this->scope->profileIds($request->user(), 'sales.crm.manage-all', 'sales.crm.manage-team', $companyId);
+        $profileIds = $this->scope->profileIds($request->user(), 'sales.crm.manage-all', 'sales.crm.manage-team');
 
-        $userIds = SalesProfile::query()->where(fn ($_companyIdScope) => \App\Services\CompanyIdScope::constrain($_companyIdScope, 'company_id', $companyId))->activeAt(now())
+        $userIds = SalesProfile::query()->activeAt(now())
             ->when($profileIds !== null, fn ($profiles) => $profiles->whereIn('id', $profileIds))
-            ->whereHas('staff', fn ($staff) => $staff->where(fn ($_companyIdScope) => \App\Services\CompanyIdScope::constrain($_companyIdScope, 'company_id', $companyId))->whereNull('deleted_at')
+            ->whereHas('staff', fn ($staff) => $staff->whereNull('deleted_at')
                 ->where(fn ($employment) => $employment->whereNull('employment_ended_at')->orWhere('employment_ended_at', '>', now())))
             ->with('staff:id,user_id')->get()->pluck('staff.user_id')->filter()->unique()->values()->all();
 
-        if ($userIds === []) return [];
-
-        $ambiguousUserIds = DB::table('staff')->whereIn('user_id', $userIds)
-            ->whereNot(fn ($staff) => \App\Services\CompanyIdScope::constrain($staff, 'company_id', $companyId))
-            ->distinct()->pluck('user_id')->all();
-
-        return array_values(array_diff($userIds, $ambiguousUserIds));
+        return $userIds;
     }
 }

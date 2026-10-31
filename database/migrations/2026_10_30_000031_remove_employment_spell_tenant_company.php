@@ -11,6 +11,14 @@ return new class extends Migration
 {
     public function up(): void
     {
+        if (Schema::hasTable('hr_employment_types')) {
+            $duplicateCodes = DB::table('hr_employment_types')->select('code')->groupBy('code')
+                ->havingRaw('COUNT(*) > 1')->limit(20)->pluck('code');
+            if ($duplicateCodes->isNotEmpty()) {
+                throw new RuntimeException('Cannot make HR employment type codes installation-wide; reconcile duplicates first: '.implode(', ', $duplicateCodes->all()));
+            }
+        }
+
         if (Schema::hasTable('activity_log') && Schema::hasColumn('activity_log', 'properties')) {
             foreach (DB::table('activity_log')->whereIn('log_name', ['HrEmploymentSpell', 'HrRehireCase'])->get(['id', 'properties']) as $activity) {
                 $properties = is_array($activity->properties)
@@ -41,6 +49,14 @@ return new class extends Migration
             }
 
             Schema::table($tableName, fn (Blueprint $table) => $table->dropColumn('company_id'));
+        }
+
+        if (Schema::hasTable('hr_employment_types')) {
+            $hasGlobalUnique = collect(Schema::getIndexes('hr_employment_types'))->contains(fn (array $index) =>
+                $index['columns'] === ['code'] && (($index['unique'] ?? false) || ($index['type'] ?? null) === 'unique'));
+            if (! $hasGlobalUnique) {
+                Schema::table('hr_employment_types', fn (Blueprint $table) => $table->unique('code', 'hr_employment_types_code_unique'));
+            }
         }
     }
 

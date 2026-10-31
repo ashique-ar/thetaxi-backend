@@ -31,6 +31,8 @@ it('exposes only scoped frozen aging evidence and reconciles before pagination',
 
     expect($controller)
         ->toContain('public function trendAging(Request $request, string $snapshot): JsonResponse')
+        ->toContain("\$frozenRows->groupBy('snapshot_cutoff_at')")
+        ->toContain("\$rows->pluck('sales_profile_id')->all(), \$frozen->period_end, \$cutoffAt")
         ->toContain("Rule::in(SalesFrozenCollectionAgingService::BUCKETS)")
         ->toContain("\$this->dashboardProfileIds(")
         ->toContain("'reconciliation_status' => \$reconciliation")

@@ -140,11 +140,10 @@ class PhoneCallController extends Controller
                 ->orderByDesc('effective_from')->lockForUpdate()->first();
             abort_unless($assignment, 422, 'Assign a Sales owner to this customer before creating a follow-up.');
             $profile = SalesProfile::query()->findOrFail($assignment->owner_sales_profile_id);
-            $profileIds = $scope->profileIds($request->user(), 'sales.crm.manage-all', 'sales.crm.manage-team', (string) $assignment->company_id);
+            $profileIds = $scope->profileIds($request->user(), 'sales.crm.manage-all', 'sales.crm.manage-team');
             abort_unless($profileIds === null || in_array((string) $profile->id, $profileIds, true), 403,
                 'The customer owner is outside your Sales team. Ask a manager to assign the follow-up.');
             $task = $crm->createTask([
-                'company_id' => (string) $assignment->company_id,
                 'owner_sales_profile_id' => (string) $profile->id,
                 'customer_id' => (string) $call->customer_id,
                 'booking_id' => $call->booking_id,
@@ -210,7 +209,7 @@ class PhoneCallController extends Controller
             }
 
             $profile = SalesProfile::query()->findOrFail($assignment->owner_sales_profile_id);
-            $profileIds = $scope->profileIds($request->user(), 'sales.crm.manage-all', 'sales.crm.manage-team', (string) $assignment->company_id);
+            $profileIds = $scope->profileIds($request->user(), 'sales.crm.manage-all', 'sales.crm.manage-team');
             abort_unless($profileIds === null || in_array((string) $profile->id, $profileIds, true), 403,
                 'The customer owner is outside your Sales team. Ask a manager to assign the follow-up.');
 
@@ -221,7 +220,6 @@ class PhoneCallController extends Controller
                 if (! $bookingExists) $bookingId = null;
             }
             $task = $crm->createTask([
-                'company_id' => (string) $assignment->company_id,
                 'owner_sales_profile_id' => (string) $profile->id,
                 'customer_id' => (string) $call->customer_id,
                 'booking_id' => $bookingId,

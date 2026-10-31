@@ -14,14 +14,14 @@ class SalesAccessScope
 {
     public function __construct(private readonly PermissionEvaluator $permissions) {}
 
-    public function activeProfile(User $user, ?string $companyId = null): ?SalesProfile
+    public function activeProfile(User $user): ?SalesProfile
     {
-        $profiles = $this->actorProfiles($user, $companyId)->take(2);
+        $profiles = $this->actorProfiles($user)->take(2);
 
         return $profiles->count() === 1 ? $profiles->first() : null;
     }
 
-    public function actorProfiles(User $user, ?string $companyId = null)
+    public function actorProfiles(User $user)
     {
         $contextType = request()->header('X-Active-Context-Type');
         $contextId = request()->header('X-Active-Context-Id');
@@ -58,14 +58,13 @@ class SalesAccessScope
         User $user,
         string $allPermission,
         string $teamPermission,
-        ?string $companyId = null,
     ): ?array
     {
         if ($this->hasPermission($user, $allPermission)) {
             return null;
         }
 
-        $profiles = $this->actorProfiles($user, $companyId);
+        $profiles = $this->actorProfiles($user);
         if ($profiles->isEmpty()) {
             return [];
         }
@@ -117,7 +116,6 @@ class SalesAccessScope
         string $basePermission,
         string $allPermission,
         string $teamPermission,
-        ?string $companyId = null,
     ): ?array {
         if (! $this->hasPermission($user, $basePermission)) {
             return [];
@@ -125,11 +123,11 @@ class SalesAccessScope
         if ($this->hasPermission($user, $allPermission)) {
             return null;
         }
-        if ($this->actorProfiles($user, $companyId)->count() !== 1) {
+        if ($this->actorProfiles($user)->count() !== 1) {
             return [];
         }
 
-        return $this->profileIds($user, $allPermission, $teamPermission, $companyId);
+        return $this->profileIds($user, $allPermission, $teamPermission);
     }
 
     public function scopeProfiles(
@@ -137,9 +135,8 @@ class SalesAccessScope
         User $user,
         string $allPermission,
         string $teamPermission,
-        ?string $companyId = null,
     ): Builder {
-        $ids = $this->profileIds($user, $allPermission, $teamPermission, $companyId);
+        $ids = $this->profileIds($user, $allPermission, $teamPermission);
 
         return $ids === null ? $query : $query->whereIn($query->getModel()->qualifyColumn('id'), $ids);
     }
@@ -151,13 +148,13 @@ class SalesAccessScope
         string $teamPermission,
     ): void
     {
-        $ids = $this->profileIds($user, $allPermission, $teamPermission, $profile->company_id);
+        $ids = $this->profileIds($user, $allPermission, $teamPermission);
         if ($ids !== null && ! in_array($profile->id, $ids, true)) {
             $this->deny('SUBJECT_SCOPE_DENIED', 'The Sales Profile is outside your permitted scope.');
         }
     }
 
-    public function assertCompany(User $user, string $companyId, string $allPermission): void
+    public function assertAccess(User $user, string $allPermission): void
     {
         if ($this->hasPermission($user, $allPermission)) {
             return;
@@ -166,17 +163,6 @@ class SalesAccessScope
         if (! $this->actorProfiles($user)->isNotEmpty()) {
             $this->deny('SUBJECT_SCOPE_DENIED', 'You do not have access to Sales records.');
         }
-    }
-
-    public function companyIds(User $user, string $allPermission): ?array
-    {
-        if ($this->hasPermission($user, $allPermission)) return null;
-
-        $companyIds = $this->actorProfiles($user)->pluck('company_id')->filter()->unique()->values()->all();
-        if ($companyIds === []) return [];
-
-        return DB::table('companies')->whereIn('id', $companyIds)
-            ->where('is_active', true)->whereNull('deleted_at')->orderBy('id')->pluck('id')->all();
     }
 
     public function scopeType(User $user, string $allPermission, string $teamPermission): string

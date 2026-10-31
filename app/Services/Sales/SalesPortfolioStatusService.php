@@ -23,17 +23,15 @@ class SalesPortfolioStatusService
         $statuses = collect($data['active_booking_statuses'])
             ->map(fn (string $status) => trim($status))->filter()->unique()->sort()->values()->all();
         $payload = [
-            'company_id' => $data['company_id'], 'active_booking_statuses' => $statuses,
+            'active_booking_statuses' => $statuses,
             'effective_from' => $data['effective_from'], 'effective_until' => $data['effective_until'] ?? null,
             'reason' => trim($data['reason']),
         ];
         $checksum = hash('sha256', CanonicalJson::encode($payload));
 
         return DB::transaction(function () use ($data, $payload, $checksum, $actorUserId) {
-            DB::table('companies')->where('id', $payload['company_id'])->where('is_active', true)
-                ->whereNull('deleted_at')->lockForUpdate()->firstOrFail();
             $existing = SalesPortfolioStatusPolicyVersion::query()
-                ->where(fn ($_companyIdScope) => \App\Services\CompanyIdScope::constrain($_companyIdScope, 'company_id', $payload['company_id']))->where('idempotency_key', $data['idempotency_key'])
+                ->where('idempotency_key', $data['idempotency_key'])
                 ->lockForUpdate()->first();
             if ($existing) {
                 abort_unless(hash_equals($existing->request_checksum, $checksum), 409,
@@ -42,12 +40,12 @@ class SalesPortfolioStatusService
             }
 
             $version = (int) SalesPortfolioStatusPolicyVersion::query()
-                ->where(fn ($_companyIdScope) => \App\Services\CompanyIdScope::constrain($_companyIdScope, 'company_id', $payload['company_id']))->lockForUpdate()->max('version') + 1;
+                ->lockForUpdate()->max('version') + 1;
             $policy = SalesPortfolioStatusPolicyVersion::create($payload + [
                 'version' => $version, 'status' => 'draft', 'idempotency_key' => $data['idempotency_key'],
                 'request_checksum' => $checksum, 'prepared_by' => $actorUserId,
             ]);
-            $this->events->record('sales', $policy->company_id, 'sales_portfolio_status_policy', $policy->id,
+            $this->events->record('sales', 'sales_portfolio_status_policy', $policy->id,
                 'sales.portfolio_status_policy.drafted', 1, 1,
                 ['version' => $policy->version, 'request_checksum' => $checksum], now(), $data['idempotency_key']);
 
@@ -61,8 +59,6 @@ class SalesPortfolioStatusService
         string $idempotencyKey,
     ): SalesPortfolioStatusPolicyVersion {
         return DB::transaction(function () use ($policy, $actorUserId, $idempotencyKey) {
-            DB::table('companies')->where('id', $policy->company_id)->where('is_active', true)
-                ->whereNull('deleted_at')->lockForUpdate()->firstOrFail();
             $locked = SalesPortfolioStatusPolicyVersion::query()->lockForUpdate()->findOrFail($policy->id);
             if ($locked->status === 'approved') {
                 abort_unless($locked->approval_idempotency_key === $idempotencyKey, 409,
@@ -73,7 +69,7 @@ class SalesPortfolioStatusService
                 'Portfolio status policy maker and approver must be different users.');
             abort_unless($locked->status === 'draft', 422, 'Only a draft portfolio status policy can be approved.');
 
-            SalesPortfolioStatusPolicyVersion::query()->where(fn ($_companyIdScope) => \App\Services\CompanyIdScope::constrain($_companyIdScope, 'company_id', $locked->company_id))
+            SalesPortfolioStatusPolicyVersion::query()
                 ->where('status', 'approved')->whereDate('effective_from', '<=', $locked->effective_until ?? '9999-12-31')
                 ->where(fn ($query) => $query->whereNull('effective_until')
                     ->orWhereDate('effective_until', '>=', $locked->effective_from))
@@ -82,7 +78,7 @@ class SalesPortfolioStatusService
                 'status' => 'approved', 'approved_by' => $actorUserId, 'approved_at' => now(),
                 'approval_idempotency_key' => $idempotencyKey,
             ]);
-            $this->events->record('sales', $locked->company_id, 'sales_portfolio_status_policy', $locked->id,
+            $this->events->record('sales', 'sales_portfolio_status_policy', $locked->id,
                 'sales.portfolio_status_policy.approved', 2, 1,
                 ['version' => $locked->version, 'request_checksum' => $locked->request_checksum], now(), $idempotencyKey);
 
@@ -90,9 +86,9 @@ class SalesPortfolioStatusService
         });
     }
 
-    public function policyFor(string $companyId, CarbonImmutable $asOf): SalesPortfolioStatusPolicyVersion
+    public function policyFor(CarbonImmutable $asOf): SalesPortfolioStatusPolicyVersion
     {
-        $policies = SalesPortfolioStatusPolicyVersion::query()->where(fn ($_companyIdScope) => \App\Services\CompanyIdScope::constrain($_companyIdScope, 'company_id', $companyId))
+        $policies = SalesPortfolioStatusPolicyVersion::query()
             ->where('status', 'approved')->whereDate('effective_from', '<=', $asOf->toDateString())
             ->where(fn ($query) => $query->whereNull('effective_until')
                 ->orWhereDate('effective_until', '>=', $asOf->toDateString()))
@@ -106,7 +102,6 @@ class SalesPortfolioStatusService
     }
 
     public function source(
-        string $companyId,
         array $profileIds,
         string $selectedTo,
         int $requestedPage,
@@ -130,7 +125,7 @@ class SalesPortfolioStatusService
             ];
         }
 
-        $policy = $this->policyFor($companyId, $asOf);
+        $policy = $this->policyFor($asOf);
         $statuses = $policy->active_booking_statuses;
         $scheduleTotals = $this->scheduleTotals();
         $base = DB::table('sales_booking_attributions as attribution')
@@ -141,7 +136,7 @@ class SalesPortfolioStatusService
             })
             ->leftJoinSub($scheduleTotals, 'schedule_totals',
                 fn ($join) => $join->on('schedule_totals.booking_id', '=', 'booking.id'))
-            ->where(fn ($_companyIdScope) => \App\Services\CompanyIdScope::constrain($_companyIdScope, 'attribution.company_id', $companyId))->whereNull('attribution.root_attribution_id')
+            ->whereNull('attribution.root_attribution_id')
             ->where('attribution.status', 'active')->whereNull('attribution.deleted_at')->whereNull('booking.deleted_at')
             ->whereIn('booking.status', $statuses)->where('attribution.secured_at', '<=', $asOf->utc())
             ->where(function ($query) use ($profileIds) {

@@ -1,7 +1,6 @@
 <?php
 
 use App\Models\Staff;
-use App\Models\Company;
 use App\Models\User;
 use App\Models\UserContext;
 use Illuminate\Foundation\Testing\RefreshDatabase;
@@ -12,10 +11,10 @@ use function Pest\Laravel\actingAs;
 
 uses(RefreshDatabase::class);
 
-it('stores encrypted, company-scoped records and serves uploaded documents privately', function (): void {
-    [$admin, $company] = hr_seed_admin_actor();
+it('stores encrypted installation-wide records and serves uploaded documents privately', function (): void {
+    [$admin] = hr_seed_admin_actor();
     Storage::fake('local');
-    $staff = Staff::factory()->create(['company_id' => $company->id]);
+    $staff = Staff::factory()->create();
     $category = DB::table('medical_categories')->where('code', 'medical_certificate')->first();
 
     $response = actingAs($admin, 'api')->postJson('/api/medical-records', [
@@ -24,7 +23,7 @@ it('stores encrypted, company-scoped records and serves uploaded documents priva
         'title' => 'Annual fitness certificate', 'description' => 'Private examination notes',
         'record_number' => 'MED-PRIVATE-001', 'issued_date' => '2026-10-01',
         'valid_until' => '2027-10-01', 'issuing_authority' => 'Clinic',
-    ])->assertCreated()->assertJsonPath('data.company_id', $company->id)
+    ])->assertCreated()->assertJsonMissingPath('data.company_id')
         ->assertJsonPath('data.description', 'Private examination notes');
     $id = $response->json('data.id');
     expect(DB::table('medical_records')->where('id', $id)->value('description'))
@@ -44,35 +43,32 @@ it('stores encrypted, company-scoped records and serves uploaded documents priva
         ->assertJsonPath('data.data.0.id', $id);
 });
 
-it('rejects cross-company records, subjects, and actors outside the default company context', function (): void {
-    [$admin, $company] = hr_seed_admin_actor();
-    $otherCompany = Company::create(['name' => 'Other medical tenant']);
-    $foreignStaff = Staff::factory()->create(['company_id' => $otherCompany->id]);
+it('allows authorized medical access across Staff records without company context', function (): void {
+    [$admin] = hr_seed_admin_actor();
+    $otherStaff = Staff::factory()->create();
     $category = DB::table('medical_categories')->where('code', 'medical_certificate')->first();
 
     actingAs($admin, 'api')->postJson('/api/medical-records', [
-        'subject_type' => 'staff', 'subject_id' => $foreignStaff->id,
+        'subject_type' => 'staff', 'subject_id' => $otherStaff->id,
         'medical_category_id' => $category->id,
-        'title' => 'Foreign subject', 'issued_date' => '2026-10-01',
-    ])->assertNotFound();
+        'title' => 'Installation-wide subject', 'issued_date' => '2026-10-01',
+    ])->assertCreated();
 
-    $homeStaff = Staff::factory()->create(['company_id' => $company->id]);
+    $homeStaff = Staff::factory()->create();
     $created = actingAs($admin, 'api')->postJson('/api/medical-records', [
         'subject_type' => 'staff', 'subject_id' => $homeStaff->id,
         'medical_category_id' => $category->id,
-        'title' => 'Default company record', 'issued_date' => '2026-10-01',
+        'title' => 'Staff medical record', 'issued_date' => '2026-10-01',
     ])->assertCreated();
     $recordId = $created->json('data.id');
     actingAs($admin, 'api')->getJson('/api/medical-records/'.$recordId)->assertOk();
 
     $foreignActor = User::factory()->create();
     $foreignActor->assignRole('admin');
-    $foreignIdentity = Staff::factory()->create([
-        'user_id' => $foreignActor->id, 'company_id' => $otherCompany->id,
-    ]);
+    $foreignIdentity = Staff::factory()->create(['user_id' => $foreignActor->id]);
     UserContext::create([
         'user_id' => $foreignActor->id, 'context_type' => 'staff', 'context_id' => $foreignIdentity->id,
         'is_active' => true, 'created_user_id' => $foreignActor->id,
     ]);
-    actingAs($foreignActor, 'api')->getJson('/api/medical-records/'.$recordId)->assertForbidden();
+    actingAs($foreignActor, 'api')->getJson('/api/medical-records/'.$recordId)->assertOk();
 });

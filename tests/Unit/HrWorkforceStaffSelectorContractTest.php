@@ -1,6 +1,6 @@
 <?php
 
-it('keeps Workforce Staff pickers bounded, tenant-scoped, and mutation-revalidated', function () {
+it('keeps Workforce Staff pickers bounded, installation-wide, and mutation-revalidated', function () {
     $controller = file_get_contents(app_path('Http/Controllers/Api/Hr/WorkforceController.php'));
     $routes = file_get_contents(base_path('routes/api.php'));
     $leave = file_get_contents(app_path('Services/Hr/Leave/LeaveWorkflowService.php'));
@@ -12,17 +12,17 @@ it('keeps Workforce Staff pickers bounded, tenant-scoped, and mutation-revalidat
     $selector = file_get_contents(base_path('../portal-thetaxi/src/app/shared/components/ui/managed-record-select/managed-record-select.component.ts'));
 
     expect($routes)->toContain("Route::get('staff-options', [WorkforceController::class, 'staffOptions'])")
-        ->and($controller)->toContain('public function staffOptions(Request $r, StaffAccessService $access)', "'company_id' => ['nullable', 'uuid']", "'per_page' => ['nullable', 'integer', 'min:1', 'max:50']", 'company($r, $data[\'company_id\'] ?? null)', "whereNull('employment_ended_at')", 'scope(Staff::query()')
-        ->toContain("'company_id' => \$companyId")
+        ->and($controller)->toContain('public function staffOptions(Request $r, StaffAccessService $access)', "'per_page' => ['nullable', 'integer', 'min:1', 'max:50']", "whereNull('employment_ended_at')", 'scope(Staff::query()')
+        ->not->toContain('company_id', 'companyId', 'company($r')
         ->not->toContain("'staff' => \$staff")
-        ->and($leave)->toContain('lockForUpdate()->first()', "\$staff->company_id === \$data['company_id']", "\$staff->employment_ended_at === null")
-        ->and($work)->toContain('lockForUpdate()->first()', "\$staff->company_id===\$data['company_id']", "\$staff->employment_ended_at===null")
-        ->and($template)->toContain('endpoint="/hr/workforce/staff-options"', '[companyId]="leaveForm.controls.company_id.value ||', '[companyId]="workForm.controls.company_id.value ||')
+        ->and($leave)->toContain('lockForUpdate()->first()', "\$staff->employment_ended_at === null")->not->toContain('company_id')
+        ->and($work)->toContain('lockForUpdate()->first()', "\$staff->employment_ended_at===null")->not->toContain('company_id')
+        ->and($template)->toContain('endpoint="/hr/workforce/staff-options"')->not->toContain('[companyId]')
         ->not->toContain('staffOptions()', 'dataSource="static" [options]="staffOptions()"')
         ->and($component)->not->toContain('staff: [],')
         ->and($leaveConfig)->not->toContain('staffOptions()', 'this.staff.set(')
         ->toContain("row?.staff_name", "'Unavailable Staff'")
-        ->and($assignmentDialog)->toContain('endpoint="/hr/workforce/staff-options"', 'form.controls.company_id.value')
+        ->and($assignmentDialog)->toContain('endpoint="/hr/workforce/staff-options"')->not->toContain('company_id', 'companyId')
         ->not->toContain('data.staffOptions', 'dataSource="static"')
         ->and($controller)->toContain('staff.code as staff_code', 'users.first_name as staff_first_name')
         ->and($selector)->toContain('if (this.value) this.clearStaleSelection();');

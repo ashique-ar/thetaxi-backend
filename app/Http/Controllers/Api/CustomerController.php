@@ -28,8 +28,6 @@ use Illuminate\Support\Str;
 use App\Services\PaymentMethodSyncService;
 use App\Services\Sales\SalesAccessScope;
 use App\Services\CustomerMergeService;
-use App\Services\CompanySettingsAccessService;
-use App\Services\WebsiteSettingsService;
 use Symfony\Component\HttpFoundation\StreamedResponse;
 
 class CustomerController extends Controller
@@ -61,12 +59,10 @@ class CustomerController extends Controller
         $q = Customer::query()->select('customers.*')
             ->leftJoin('users as customer_phone', 'customer_phone.id', '=', 'customers.user_id')
             ->with(['user', 'state', 'paymentMethods']);
-        $companyId = $this->currentCompanyId();
-        $phoneCallingCode = $companyId ? \App\Services\CompanyCustomerScope::phoneCallingCode($companyId) : null;
+        $phoneCallingCode = null;
         $completedBookingCount = DB::table('bookings as completed_booking')->selectRaw('COUNT(*)')
             ->whereColumn('completed_booking.customer_id', 'customers.id')->whereNotNull('completed_booking.completed_at')
             ->whereNull('completed_booking.deleted_at');
-        if ($companyId) $this->constrainBookingsToCompany($completedBookingCount, 'completed_booking', $companyId);
         $q->addSelect(['completed_booking_count' => $completedBookingCount]);
         // Ignore common display punctuation; shared numbers still require human review, never an automatic merge.
         $normalizedPhoneSql = fn (string $column): string => PhoneNumberMatch::sqlExpression($column, $phoneCallingCode);
@@ -77,12 +73,9 @@ class CustomerController extends Controller
             ->whereNull('other_customer.deleted_at')->whereNull('other_user.deleted_at')
             ->whereNotNull('customer_phone.phone')->whereRaw($normalizedPhoneSql('customer_phone.phone')." <> ''")
             ->whereNotExists(fn ($decision) => $decision->selectRaw('1')->from('customer_duplicate_decisions as decision')
-                ->where(fn ($_companyIdScope) => \App\Services\CompanyIdScope::constrain($_companyIdScope, 'decision.company_id', $companyId))->where('decision.decision', 'different_people')
+                ->where('decision.decision', 'different_people')
                 ->whereColumn('decision.customer_id', 'customers.id')->whereColumn('decision.other_customer_id', 'other_customer.id'))
             ->limit(1);
-        if ($companyId) {
-            \App\Services\CompanyCustomerScope::constrain($phoneMatches, 'other_customer', $companyId);
-        }
         $normalizedEmailSql = static fn (string $column): string => "LOWER(TRIM({$column}))";
         $emailMatches = DB::table('customers as other_customer')
             ->join('users as other_user', 'other_user.id', '=', 'other_customer.user_id')
@@ -91,12 +84,9 @@ class CustomerController extends Controller
             ->whereNull('other_customer.deleted_at')->whereNull('other_user.deleted_at')
             ->whereNotNull('customer_phone.email')->whereRaw($normalizedEmailSql('customer_phone.email')." <> ''")
             ->whereNotExists(fn ($decision) => $decision->selectRaw('1')->from('customer_duplicate_decisions as decision')
-                ->where(fn ($_companyIdScope) => \App\Services\CompanyIdScope::constrain($_companyIdScope, 'decision.company_id', $companyId))->where('decision.decision', 'different_people')
+                ->where('decision.decision', 'different_people')
                 ->whereColumn('decision.customer_id', 'customers.id')->whereColumn('decision.other_customer_id', 'other_customer.id'))
             ->limit(1);
-        if ($companyId) {
-            \App\Services\CompanyCustomerScope::constrain($emailMatches, 'other_customer', $companyId);
-        }
         $possibleDuplicates = DB::query()->selectRaw('1')
             ->where(fn ($matches) => $matches->whereExists(clone $phoneMatches)->orWhereExists(clone $emailMatches))
             ->limit(1);
@@ -104,35 +94,30 @@ class CustomerController extends Controller
         if ($request->boolean('possible_phone_match')) $q->whereExists($phoneMatches);
         $q->addSelect(['possible_duplicate' => clone $possibleDuplicates]);
         if ($request->boolean('possible_duplicate')) $q->whereExists($possibleDuplicates);
-        if ($companyId) {
-            $q->addSelect(['relationship_owner_name' => DB::table('customer_relationship_owner_assignments as assignment')
+        $q->addSelect(['relationship_owner_name' => DB::table('customer_relationship_owner_assignments as assignment')
                 ->join('sales_profiles as profile', 'profile.id', '=', 'assignment.owner_sales_profile_id')
                 ->join('staff as owner_staff', 'owner_staff.id', '=', 'profile.staff_id')
                 ->join('users as owner', 'owner.id', '=', 'owner_staff.user_id')
                 ->selectRaw("CONCAT_WS(' ', owner.first_name, owner.last_name)")
-                ->whereColumn('assignment.customer_id', 'customers.id')->where(fn ($_companyIdScope) => \App\Services\CompanyIdScope::constrain($_companyIdScope, 'assignment.company_id', $companyId))
+                ->whereColumn('assignment.customer_id', 'customers.id')
                 ->whereNull('assignment.ended_at')->where('assignment.effective_from', '<=', now())->whereNotNull('assignment.owner_sales_profile_id')
-                ->where(fn ($_companyIdScope) => \App\Services\CompanyIdScope::constrain($_companyIdScope, 'profile.company_id', $companyId))->where('profile.status', 'active')->whereNull('profile.deleted_at')
+                ->where('profile.status', 'active')->whereNull('profile.deleted_at')
                 ->where('profile.effective_from', '<=', now())->where(fn ($query) => $query->whereNull('profile.effective_until')->orWhere('profile.effective_until', '>', now()))
-                ->where(fn ($_companyIdScope) => \App\Services\CompanyIdScope::constrain($_companyIdScope, 'owner_staff.company_id', $companyId))->whereNull('owner_staff.deleted_at')
+                ->whereNull('owner_staff.deleted_at')
                 ->where(fn ($query) => $query->whereNull('owner_staff.employment_ended_at')->orWhere('owner_staff.employment_ended_at', '>', now()))
                 ->where('owner.is_active', true)->whereNull('owner.deleted_at')
                 ->orderByDesc('assignment.effective_from')->limit(1)]);
-        }
 
         if ($request->filled('owner_status')) {
-            $companyId = $this->currentCompanyId();
-            abort_unless($companyId, 409, 'No active default company is configured.');
-            \App\Services\CompanyCustomerScope::constrain($q, 'customers', $companyId);
             $ownership = DB::table('customer_relationship_owner_assignments as assignment')
                 ->join('sales_profiles as profile', 'profile.id', '=', 'assignment.owner_sales_profile_id')
                 ->join('staff as owner_staff', 'owner_staff.id', '=', 'profile.staff_id')
                 ->join('users as owner_user', 'owner_user.id', '=', 'owner_staff.user_id')
                 ->selectRaw('1')->whereColumn('assignment.customer_id', 'customers.id')
-                ->where(fn ($_companyIdScope) => \App\Services\CompanyIdScope::constrain($_companyIdScope, 'assignment.company_id', $companyId))->whereNull('assignment.ended_at')->where('assignment.effective_from', '<=', now())
-                ->where(fn ($_companyIdScope) => \App\Services\CompanyIdScope::constrain($_companyIdScope, 'profile.company_id', $companyId))->where('profile.status', 'active')->whereNull('profile.deleted_at')
+                ->whereNull('assignment.ended_at')->where('assignment.effective_from', '<=', now())
+                ->where('profile.status', 'active')->whereNull('profile.deleted_at')
                 ->where('profile.effective_from', '<=', now())->where(fn ($query) => $query->whereNull('profile.effective_until')->orWhere('profile.effective_until', '>', now()))
-                ->where(fn ($_companyIdScope) => \App\Services\CompanyIdScope::constrain($_companyIdScope, 'owner_staff.company_id', $companyId))->whereNull('owner_staff.deleted_at')
+                ->whereNull('owner_staff.deleted_at')
                 ->where(fn ($query) => $query->whereNull('owner_staff.employment_ended_at')->orWhere('owner_staff.employment_ended_at', '>', now()))
                 ->where('owner_user.is_active', true)->whereNull('owner_user.deleted_at');
             $request->get('owner_status') === 'assigned'
@@ -145,10 +130,10 @@ class CustomerController extends Controller
                 ->join('sales_profiles as profile', 'profile.id', '=', 'assignment.owner_sales_profile_id')
                 ->join('staff as owner_staff', 'owner_staff.id', '=', 'profile.staff_id')
                 ->selectRaw('1')->whereColumn('assignment.customer_id', 'customers.id')
-                ->where(fn ($_companyIdScope) => \App\Services\CompanyIdScope::constrain($_companyIdScope, 'assignment.company_id', $companyId))->whereNull('assignment.ended_at')
+                ->whereNull('assignment.ended_at')
                 ->whereNotNull('assignment.owner_sales_profile_id')->where('owner_staff.id', $request->input('owner_staff_id'))
-                ->where(fn ($_companyIdScope) => \App\Services\CompanyIdScope::constrain($_companyIdScope, 'profile.company_id', $companyId))->whereNull('profile.deleted_at')
-                ->where(fn ($_companyIdScope) => \App\Services\CompanyIdScope::constrain($_companyIdScope, 'owner_staff.company_id', $companyId))->whereNull('owner_staff.deleted_at')
+                ->whereNull('profile.deleted_at')
+                ->whereNull('owner_staff.deleted_at')
                 ->where(fn ($query) => $query->whereNull('owner_staff.employment_ended_at')->orWhere('owner_staff.employment_ended_at', '>', now()));
             $q->whereExists($owner);
         }
@@ -301,13 +286,13 @@ class CustomerController extends Controller
                 $existingUser = !empty($data['user_id'])
                     ? User::lockForUpdate()->findOrFail($data['user_id'])
                     : (!empty($data['email']) ? User::whereRaw('LOWER(email) = ?', [strtolower(trim($data['email']))])->lockForUpdate()->first() : null);
-            
+
                 if ($existingUser) {
                     $existingContext = \App\Models\UserContext::where('user_id', $existingUser->id)
                         ->where('context_type', 'customer')
                         ->where('is_active', true)
                         ->first();
-                
+
                 if ($existingContext) {
                     return response()->json([
                         'status' => 'error',
@@ -412,11 +397,9 @@ class CustomerController extends Controller
 
     public function show(Customer $customer): JsonResponse
     {
-        $customer = $this->requireCompanyCustomer($customer);
-        $companyId = $this->requireActiveCompanyId();
+        $customer = $this->findCustomer($customer);
         $completedBookings = DB::table('bookings as booking')->where('booking.customer_id', $customer->id)
             ->whereNotNull('booking.completed_at')->whereNull('booking.deleted_at');
-        $this->constrainBookingsToCompany($completedBookings, 'booking', $companyId);
         $completedBookingCount = $completedBookings->count();
         $customer->load(['user', 'state', 'paymentMethods']);
         $customer->setAttribute('completed_booking_count', $completedBookingCount);
@@ -431,15 +414,14 @@ class CustomerController extends Controller
 
     public function possibleMatches(Customer $customer): JsonResponse
     {
-        $customer = $this->requireCompanyCustomer($customer);
-        $companyId = $this->requireActiveCompanyId();
-        $phoneCallingCode = \App\Services\CompanyCustomerScope::phoneCallingCode($companyId);
+        $customer = $this->findCustomer($customer);
+        $phoneCallingCode = null;
         $currentIdentities = $this->customerIdentityDetails($customer);
         $emails = $currentIdentities->pluck('email')->map(fn ($value) => strtolower(trim((string) $value)))->filter()->unique()->values()->all();
         $phones = $currentIdentities->pluck('phone')->map(fn ($value) => PhoneNumberMatch::normalized((string) $value, $phoneCallingCode))->filter()->unique()->values()->all();
         if (! $emails && ! $phones) return response()->json(['status' => 'success', 'data' => []]);
 
-        $matches = $this->companyCustomers($companyId)->with('user')
+        $matches = Customer::query()->with('user')
             ->where('customers.id', '!=', $customer->id)
             ->where(function ($identities) use ($emails, $phones, $phoneCallingCode): void {
                 $identities->whereHas('user', fn ($user) => $this->matchCustomerIdentityQuery($user, $emails, $phones, $phoneCallingCode))
@@ -451,7 +433,7 @@ class CustomerController extends Controller
                 });
             })
             ->whereNotExists(fn ($decision) => $decision->selectRaw('1')->from('customer_duplicate_decisions as decision')
-                ->where(fn ($_companyIdScope) => \App\Services\CompanyIdScope::constrain($_companyIdScope, 'decision.company_id', $companyId))->where('decision.decision', 'different_people')
+                ->where('decision.decision', 'different_people')
                 ->where('decision.customer_id', $customer->id)->whereColumn('decision.other_customer_id', 'customers.id'))
             ->limit(20)->get(); // shortcut: show up to 20 matches, expand to paginated review if this queue grows.
 
@@ -480,22 +462,25 @@ class CustomerController extends Controller
         $data = $request->validate(['reason' => ['required', 'string', 'min:3', 'max:500']]);
         $data['reason'] = trim($data['reason']);
         abort_if(mb_strlen($data['reason']) < 3, 422, 'Enter a short reason for keeping these customer records separate.');
-        $customer = $this->requireCompanyCustomer($customer);
-        $companyId = $this->requireActiveCompanyId();
-        $matchedCustomer = $this->companyCustomers($companyId)->whereKey($matchedCustomerId)->firstOrFail();
+        $customer = $this->findCustomer($customer);
+        $matchedCustomer = Customer::query()->whereKey($matchedCustomerId)->firstOrFail();
         abort_unless($customer->id !== $matchedCustomer->id, 422, 'Choose a different customer record.');
 
-        DB::transaction(function () use ($customer, $matchedCustomer, $companyId, $request, $data): void {
+        DB::transaction(function () use ($customer, $matchedCustomer, $request, $data): void {
+            Customer::query()->whereIn('id', [$customer->id, $matchedCustomer->id])->orderBy('id')->lockForUpdate()->get();
             $now = now();
-            $rows = collect([[$customer->id, $matchedCustomer->id], [$matchedCustomer->id, $customer->id]])
-                ->map(fn (array $pair): array => [
-                    'id' => (string) Str::uuid(), 'company_id' => $companyId,
-                    'customer_id' => (string) $pair[0], 'other_customer_id' => (string) $pair[1],
+            foreach ([[$customer->id, $matchedCustomer->id], [$matchedCustomer->id, $customer->id]] as [$customerId, $otherCustomerId]) {
+                $exists = DB::table('customer_duplicate_decisions')->where('customer_id', $customerId)
+                    ->where('other_customer_id', $otherCustomerId)->exists();
+                if ($exists) continue;
+                DB::table('customer_duplicate_decisions')->insert([
+                    'id' => (string) Str::uuid(), 'customer_id' => (string) $customerId,
+                    'other_customer_id' => (string) $otherCustomerId,
                     'reviewed_by_user_id' => (string) $request->user()->id,
                     'decision' => 'different_people', 'reason' => trim($data['reason']),
                     'decided_at' => $now, 'created_at' => $now, 'updated_at' => $now,
-                ])->all();
-            DB::table('customer_duplicate_decisions')->insertOrIgnore($rows);
+                ]);
+            }
         });
 
         return response()->json(['status' => 'success', 'message' => 'These customer records will stay separate and will no longer be flagged as a possible match.']);
@@ -509,17 +494,16 @@ class CustomerController extends Controller
         ]);
         $data['reason'] = trim($data['reason']);
         abort_if(mb_strlen($data['reason']) < 3, 422, 'Enter a short reason for merging these customer records.');
-        $primary = $this->requireCompanyCustomer($customer);
-        $duplicate = $this->companyCustomers($this->requireActiveCompanyId())->whereKey($matchedCustomerId)->firstOrFail();
+        $primary = $this->findCustomer($customer);
+        $duplicate = Customer::query()->whereKey($matchedCustomerId)->firstOrFail();
         abort_unless($primary->id !== $duplicate->id, 422, 'Choose a different customer record.');
 
-        $companyId = $this->requireActiveCompanyId();
         try {
-            $merged = $merger->merge($primary, $duplicate, $companyId, (string) $request->user()->id, $data['reason']);
+            $merged = $merger->merge($primary, $duplicate, (string) $request->user()->id, $data['reason']);
         } catch (QueryException $exception) {
             \Illuminate\Support\Facades\Log::warning('Customer merge rolled back because linked records conflict', [
                 'primary_customer_id' => $primary->id, 'duplicate_customer_id' => $duplicate->id,
-                'company_id' => $companyId, 'sql_state' => $exception->getCode(),
+                'sql_state' => $exception->getCode(),
             ]);
             return response()->json(['status' => 'error', 'message' => 'Some linked records conflict. Nothing was merged; ask a manager to review loyalty, device or promotion history.'], 409);
         }
@@ -530,13 +514,9 @@ class CustomerController extends Controller
 
     public function relationshipOwnerOptions(): JsonResponse
     {
-        $companyId = $this->currentCompanyId();
-        abort_unless($companyId, 409, 'No active default company is configured.');
-
         $options = DB::table('sales_profiles as profile')
             ->join('staff', 'staff.id', '=', 'profile.staff_id')
             ->join('users', 'users.id', '=', 'staff.user_id')
-            ->where(fn ($_companyIdScope) => \App\Services\CompanyIdScope::constrain($_companyIdScope, 'profile.company_id', $companyId))
             ->where('profile.status', 'active')
             ->where('profile.effective_from', '<=', now())
             ->where(fn ($query) => $query->whereNull('profile.effective_until')->orWhere('profile.effective_until', '>', now()))
@@ -544,7 +524,7 @@ class CustomerController extends Controller
             ->whereNotNull('profile.staff_category_snapshot')
             ->where(fn ($query) => $query->where('profile.acquisition_eligible', true)->orWhere('profile.collection_eligible', true)->orWhere('profile.commission_eligible', true))
             ->whereNull('staff.deleted_at')->where(fn ($query) => $query->whereNull('staff.employment_ended_at')->orWhere('staff.employment_ended_at', '>', now()))
-            ->where(fn ($_companyIdScope) => \App\Services\CompanyIdScope::constrain($_companyIdScope, 'staff.company_id', $companyId))->where('users.is_active', true)->whereNull('users.deleted_at')
+            ->where('users.is_active', true)->whereNull('users.deleted_at')
             ->orderBy('users.first_name')->orderBy('users.last_name')
             ->get(['profile.id', 'profile.sales_code', 'users.first_name', 'users.last_name']);
 
@@ -557,40 +537,34 @@ class CustomerController extends Controller
             'owner_sales_profile_id' => ['nullable', 'uuid'],
             'reason' => ['required', 'string', 'max:500'],
         ]);
-        $companyId = $this->currentCompanyId();
-        abort_unless($companyId, 409, 'No active default company is configured.');
         $ownerId = $data['owner_sales_profile_id'] ?? null;
 
-        $owner = DB::transaction(function () use ($customer, $companyId, $ownerId, $data, $request) {
+        $owner = DB::transaction(function () use ($customer, $ownerId, $data, $request) {
             Customer::query()->whereKey($customer->id)->lockForUpdate()->firstOrFail();
-            $companyCustomer = Customer::query()->whereKey($customer->id);
-            \App\Services\CompanyCustomerScope::constrain($companyCustomer, 'customers', $companyId);
-            abort_unless($companyCustomer->exists(), 404);
             if ($ownerId) {
                 $validOwner = DB::table('sales_profiles as profile')
                     ->join('staff', 'staff.id', '=', 'profile.staff_id')
                     ->join('users', 'users.id', '=', 'staff.user_id')
-                    ->where('profile.id', $ownerId)->where(fn ($_companyIdScope) => \App\Services\CompanyIdScope::constrain($_companyIdScope, 'profile.company_id', $companyId))
+                    ->where('profile.id', $ownerId)
                     ->where('profile.status', 'active')->where('profile.effective_from', '<=', now())
                     ->where(fn ($query) => $query->whereNull('profile.effective_until')->orWhere('profile.effective_until', '>', now()))
                     ->whereNotNull('profile.reporting_currency')->whereNotNull('profile.staff_category_snapshot')
                     ->where(fn ($query) => $query->where('profile.acquisition_eligible', true)->orWhere('profile.collection_eligible', true)->orWhere('profile.commission_eligible', true))
                     ->whereNull('staff.deleted_at')->where(fn ($query) => $query->whereNull('staff.employment_ended_at')->orWhere('staff.employment_ended_at', '>', now()))
-                    ->where(fn ($_companyIdScope) => \App\Services\CompanyIdScope::constrain($_companyIdScope, 'staff.company_id', $companyId))
                     ->where('users.is_active', true)->whereNull('users.deleted_at')->lockForUpdate()->exists();
-                abort_unless($validOwner, 422, 'Choose an active customer owner from this company.');
+                abort_unless($validOwner, 422, 'Choose an active customer owner.');
             }
 
             $current = DB::table('customer_relationship_owner_assignments')->where('customer_id', $customer->id)
-                ->where(fn ($_companyIdScope) => \App\Services\CompanyIdScope::constrain($_companyIdScope, 'company_id', $companyId))->whereNull('ended_at')->lockForUpdate()->first();
-            if ($current && $current->owner_sales_profile_id === $ownerId) return $this->currentRelationshipOwner($customer);
+                ->whereNull('ended_at')->lockForUpdate()->get();
+            if ($current->count() === 1 && $current->first()->owner_sales_profile_id === $ownerId) return $this->currentRelationshipOwner($customer);
 
             $now = now();
-            if ($current) DB::table('customer_relationship_owner_assignments')->where('id', $current->id)->update([
+            if ($current->isNotEmpty()) DB::table('customer_relationship_owner_assignments')->whereIn('id', $current->pluck('id'))->update([
                 'ended_at' => $now, 'ended_by_user_id' => $request->user()->id, 'updated_at' => $now,
             ]);
             DB::table('customer_relationship_owner_assignments')->insert([
-                'id' => (string) Str::uuid(), 'customer_id' => $customer->id, 'company_id' => $companyId,
+                'id' => (string) Str::uuid(), 'customer_id' => $customer->id,
                 'owner_sales_profile_id' => $ownerId, 'assigned_by_user_id' => $request->user()->id,
                 'reason' => trim($data['reason']), 'effective_from' => $now, 'created_at' => $now, 'updated_at' => $now,
             ]);
@@ -598,8 +572,7 @@ class CustomerController extends Controller
         });
 
         if ($ownerId) {
-            $latestCompletedBooking = Booking::query()->where(fn ($_companyIdScope) => \App\Services\CompanyIdScope::constrain($_companyIdScope, 'company_id', $companyId))
-                ->where('customer_id', $customer->id)->where('status', 'completed')->whereNotNull('completed_at')
+            $latestCompletedBooking = Booking::query()->where('customer_id', $customer->id)->where('status', 'completed')->whereNotNull('completed_at')
                 ->orderByDesc('completed_at')->first();
             if ($latestCompletedBooking) {
                 try {
@@ -625,18 +598,16 @@ class CustomerController extends Controller
     {
         abort_unless($request->user()->can('users.manage'), 403);
         $request->validate(['confirm_verified_contact' => ['required', 'accepted']]);
-        $companyId = $this->currentCompanyId();
-        abort_unless($companyId, 409, 'No active business is configured.');
-        $customer = $this->requireCompanyCustomer($customer);
+        $customer = $this->findCustomer($customer);
 
-        $customer = DB::transaction(function () use ($customer, $companyId, $request): Customer {
-            $locked = $this->requireCompanyCustomer($customer, true);
+        $customer = DB::transaction(function () use ($customer, $request): Customer {
+            $locked = $this->findCustomer($customer, true);
             $user = User::query()->whereKey($locked->user_id)->lockForUpdate()->firstOrFail();
             abort_unless($user->email_verified_at || $user->phone_verified_at, 422, 'Verify the customer email or phone before activating portal access.');
             if (! $user->is_active) {
                 $user->update(['is_active' => true, 'updated_user_id' => $request->user()->id]);
                 activity('customer-access')->causedBy($request->user())->performedOn($user)
-                    ->withProperties(['customer_id' => $locked->id, 'company_id' => $companyId, 'verified_email' => (bool) $user->email_verified_at, 'verified_phone' => (bool) $user->phone_verified_at])
+                    ->withProperties(['customer_id' => $locked->id, 'verified_email' => (bool) $user->email_verified_at, 'verified_phone' => (bool) $user->phone_verified_at])
                     ->log('customer_portal_activated');
             }
             return $locked->load(['user', 'state', 'paymentMethods']);
@@ -648,9 +619,7 @@ class CustomerController extends Controller
     public function sendPortalVerification(Request $request, Customer $customer, AuthService $auth): JsonResponse
     {
         abort_unless($request->user()->can('users.manage'), 403);
-        $companyId = $this->currentCompanyId();
-        abort_unless($companyId, 409, 'No active business is configured.');
-        $customer = $this->requireCompanyCustomer($customer);
+        $customer = $this->findCustomer($customer);
         $user = User::query()->whereKey($customer->user_id)->firstOrFail();
         abort_unless($user->email, 422, 'Add an email address before sending a verification link.');
         abort_unless(! $user->email_verified_at, 409, 'This email address is already verified.');
@@ -661,30 +630,27 @@ class CustomerController extends Controller
 
     private function currentRelationshipOwner(Customer $customer): ?array
     {
-        $companyId = $this->currentCompanyId();
-        if (! $companyId) return null;
-        $owner = DB::table('customer_relationship_owner_assignments as assignment')
+        $owners = DB::table('customer_relationship_owner_assignments as assignment')
             ->leftJoin('sales_profiles as profile', 'profile.id', '=', 'assignment.owner_sales_profile_id')
             ->leftJoin('staff', 'staff.id', '=', 'profile.staff_id')
             ->leftJoin('users', 'users.id', '=', 'staff.user_id')
-            ->where('assignment.customer_id', $customer->id)->where(fn ($_companyIdScope) => \App\Services\CompanyIdScope::constrain($_companyIdScope, 'assignment.company_id', $companyId))
-            ->whereNull('assignment.ended_at')->first([
+            ->where('assignment.customer_id', $customer->id)
+            ->whereNull('assignment.ended_at')->orderByDesc('assignment.effective_from')->get([
                 'assignment.owner_sales_profile_id', 'assignment.reason', 'assignment.effective_from',
                 'profile.sales_code', 'users.first_name', 'users.last_name',
             ]);
-        return $owner ? (array) $owner : null;
+        if ($owners->pluck('owner_sales_profile_id')->filter()->unique()->count() > 1) return null;
+        return $owners->first() ? (array) $owners->first() : null;
     }
 
     private function relationshipOwnerHistory(Customer $customer): array
     {
-        $companyId = $this->currentCompanyId();
-        if (! $companyId) return [];
         return DB::table('customer_relationship_owner_assignments as assignment')
             ->leftJoin('sales_profiles as profile', 'profile.id', '=', 'assignment.owner_sales_profile_id')
             ->leftJoin('staff', 'staff.id', '=', 'profile.staff_id')
             ->leftJoin('users as owner', 'owner.id', '=', 'staff.user_id')
             ->leftJoin('users as assigned_by', 'assigned_by.id', '=', 'assignment.assigned_by_user_id')
-            ->where('assignment.customer_id', $customer->id)->where(fn ($_companyIdScope) => \App\Services\CompanyIdScope::constrain($_companyIdScope, 'assignment.company_id', $companyId))
+            ->where('assignment.customer_id', $customer->id)
             ->orderByDesc('assignment.effective_from')->limit(20)->get([
                 'assignment.id', 'assignment.reason', 'assignment.effective_from', 'assignment.ended_at',
                 'profile.sales_code', 'owner.first_name as owner_first_name', 'owner.last_name as owner_last_name',
@@ -694,7 +660,7 @@ class CustomerController extends Controller
 
     public function update(UpdateCustomerRequest $request, Customer $customer): JsonResponse
     {
-        $customer = $this->requireCompanyCustomer($customer);
+        $customer = $this->findCustomer($customer);
         try {
             $data = $request->validated();
             abort_unless(! array_key_exists('payment_methods', $data) || $request->user()->can('payment-methods.manage'), 403,
@@ -738,7 +704,7 @@ class CustomerController extends Controller
     public function destroy(Customer $customer): JsonResponse
     {
         DB::transaction(function () use ($customer) {
-            $customer = $this->requireCompanyCustomer($customer, true);
+            $customer = $this->findCustomer($customer, true);
             \App\Models\Activity::create([
                 'log_name' => 'Customer', 'description' => 'deleted', 'event' => 'deleted',
                 'subject_type' => Customer::class, 'subject_id' => $customer->id,
@@ -830,20 +796,17 @@ class CustomerController extends Controller
     public function getCustomerTimeline(Request $request, Customer $customer): JsonResponse
     {
         $request->validate(['page' => ['nullable', 'integer', 'min:1'], 'per_page' => ['nullable', 'integer', 'min:1', 'max:50']]);
-        $companyId = null;
 
         $bookings = DB::table('bookings as booking')->where('booking.customer_id', $customer->id)->whereNull('booking.deleted_at');
-        $this->constrainBookingsToCompany($bookings, 'booking', $companyId);
         if (! $request->user()->can('bookings.view')) $bookings->whereRaw('1 = 0');
         $events = $bookings->selectRaw("CONCAT('booking:', booking.id) as id, 'booking' as event_type, 'Booking' as title, booking.status as status, booking.created_at as occurred_at, booking.booking_number as reference, booking.id as booking_id, NULL as detail");
 
         if ($request->user()->can('bookings.view')) {
             $bookingStatusEvents = DB::table('booking_statuses as status')->whereNull('status.deleted_at')
-                ->whereExists(function ($booking) use ($customer, $companyId): void {
+                ->whereExists(function ($booking) use ($customer): void {
                     $booking->selectRaw('1')->from('bookings as linked_booking')
                         ->whereColumn('linked_booking.id', 'status.booking_id')
                         ->where('linked_booking.customer_id', $customer->id)->whereNull('linked_booking.deleted_at');
-                    $this->constrainBookingsToCompany($booking, 'linked_booking', $companyId);
                 })
                 ->selectRaw("CONCAT('booking-status:', status.id) as id, 'booking_status' as event_type, 'Booking status changed' as title, status.new_status as status, status.created_at as occurred_at, NULL as reference, status.booking_id as booking_id, CONCAT(COALESCE(status.old_status, 'New'), ' → ', COALESCE(status.new_status, 'Unknown')) as detail");
             $events->unionAll($bookingStatusEvents);
@@ -852,8 +815,7 @@ class CustomerController extends Controller
                 ->join('bookings as linked_booking', 'linked_booking.id', '=', 'activity.booking_id')
                 ->where('activity.event_key', 'booking_responsible_user_changed')->whereNull('activity.deleted_at')
                 ->where('linked_booking.customer_id', $customer->id)->whereNull('linked_booking.deleted_at')
-                ->where(fn ($_companyIdScope) => \App\Services\CompanyIdScope::constrain($_companyIdScope, 'activity.company_id', $companyId))
-                ->where(function ($companyScope) use ($companyId) { $this->constrainBookingsToCompany($companyScope, 'linked_booking', $companyId); })
+
                 ->selectRaw("CONCAT('booking-owner:', activity.id) as id, 'booking_assignment' as event_type, CASE WHEN activity.meta->>'to_user_id' IS NULL THEN 'Booking owner cleared' ELSE 'Booking owner assigned' END as title, CASE WHEN activity.meta->>'to_user_id' IS NULL THEN 'unassigned' ELSE 'assigned' END as status, activity.event_at as occurred_at, NULL as reference, activity.booking_id as booking_id, CONCAT(COALESCE((SELECT NULLIF(CONCAT_WS(' ', owner_from.first_name, owner_from.last_name), '') FROM users as owner_from WHERE owner_from.id::text = activity.meta->>'from_user_id'), 'Unassigned'), ' → ', COALESCE((SELECT NULLIF(CONCAT_WS(' ', owner_to.first_name, owner_to.last_name), '') FROM users as owner_to WHERE owner_to.id::text = activity.meta->>'to_user_id'), 'Unassigned'), ' · by ', COALESCE((SELECT NULLIF(CONCAT_WS(' ', event_actor.first_name, event_actor.last_name), '') FROM users as event_actor WHERE event_actor.id::text = activity.meta->>'actor_user_id'), 'System')) as detail");
             $events->unionAll($bookingOwnerEvents);
 
@@ -861,8 +823,7 @@ class CustomerController extends Controller
                 ->join('bookings as linked_booking', 'linked_booking.id', '=', 'activity.booking_id')
                 ->where('activity.event_key', 'booking_updated')->whereNull('activity.deleted_at')
                 ->where('linked_booking.customer_id', $customer->id)->whereNull('linked_booking.deleted_at')
-                ->where(fn ($_companyIdScope) => \App\Services\CompanyIdScope::constrain($_companyIdScope, 'activity.company_id', $companyId))
-                ->where(function ($companyScope) use ($companyId) { $this->constrainBookingsToCompany($companyScope, 'linked_booking', $companyId); })
+
                 ->selectRaw("CONCAT('booking-edit:', activity.id) as id, 'booking_update' as event_type, activity.title as title, activity.result_status as status, activity.event_at as occurred_at, linked_booking.booking_number as reference, activity.booking_id as booking_id, activity.detail as detail");
             $events->unionAll($bookingEditEvents);
 
@@ -870,8 +831,7 @@ class CustomerController extends Controller
                 ->join('bookings as linked_booking', 'linked_booking.id', '=', 'activity.booking_id')
                 ->where('activity.event_key', 'booking_vehicle_changed')->whereNull('activity.deleted_at')
                 ->where('linked_booking.customer_id', $customer->id)->whereNull('linked_booking.deleted_at')
-                ->where(fn ($_companyIdScope) => \App\Services\CompanyIdScope::constrain($_companyIdScope, 'activity.company_id', $companyId))
-                ->where(function ($companyScope) use ($companyId) { $this->constrainBookingsToCompany($companyScope, 'linked_booking', $companyId); })
+
                 ->selectRaw("CONCAT('booking-vehicle-change:', activity.id) as id, 'booking_update' as event_type, activity.title as title, activity.result_status as status, activity.event_at as occurred_at, linked_booking.booking_number as reference, activity.booking_id as booking_id, activity.detail as detail");
             $events->unionAll($bookingVehicleChangeEvents);
 
@@ -881,7 +841,7 @@ class CustomerController extends Controller
                 ->leftJoin('users as actor', 'actor.id', '=', 'assignment.assigned_by')
                 ->whereNull('assignment.deleted_at')
                 ->where('linked_booking.customer_id', $customer->id)->whereNull('linked_booking.deleted_at')
-                ->where(function ($companyScope) use ($companyId) { $this->constrainBookingsToCompany($companyScope, 'linked_booking', $companyId); })
+
                 ->selectRaw("CONCAT('vehicle-assignment:', assignment.id) as id, 'vehicle_assignment' as event_type, CASE assignment.status WHEN 'pending_approval' THEN 'Vehicle assignment waiting for approval' WHEN 'cancelled' THEN 'Vehicle assignment cancelled' ELSE 'Vehicle assigned' END as title, assignment.status as status, assignment.created_at as occurred_at, NULL as reference, assignment.booking_id as booking_id, CONCAT(COALESCE(NULLIF(vehicle.title, ''), 'Vehicle'), CASE WHEN COALESCE(vehicle.license_plate, '') = '' THEN '' ELSE CONCAT(' · ', vehicle.license_plate) END, ' · by ', COALESCE(NULLIF(CONCAT_WS(' ', actor.first_name, actor.last_name), ''), 'System')) as detail");
             $events->unionAll($vehicleAssignmentEvents);
 
@@ -892,7 +852,7 @@ class CustomerController extends Controller
                 ->leftJoin('users as actor', 'actor.id', '=', 'assignment.assigned_by')
                 ->whereNull('assignment.deleted_at')
                 ->where('linked_booking.customer_id', $customer->id)->whereNull('linked_booking.deleted_at')
-                ->where(function ($companyScope) use ($companyId) { $this->constrainBookingsToCompany($companyScope, 'linked_booking', $companyId); })
+
                 ->selectRaw("CONCAT('driver-assignment:', assignment.id) as id, 'driver_assignment' as event_type, CASE assignment.status WHEN 'pending_approval' THEN 'Driver assignment waiting for approval' WHEN 'cancelled' THEN 'Driver assignment cancelled' ELSE 'Driver assigned' END as title, assignment.status as status, assignment.created_at as occurred_at, NULL as reference, assignment.booking_id as booking_id, CONCAT(COALESCE(NULLIF(assignment.driver_name_snapshot, ''), NULLIF(CONCAT_WS(' ', driver_user.first_name, driver_user.last_name), ''), 'Driver'), ' · by ', COALESCE(NULLIF(assignment.assigned_by_name_snapshot, ''), NULLIF(CONCAT_WS(' ', actor.first_name, actor.last_name), ''), 'System')) as detail");
             $events->unionAll($driverAssignmentEvents);
 
@@ -901,7 +861,7 @@ class CustomerController extends Controller
                 ->leftJoin('users as dispatcher', 'dispatcher.id', '=', 'dispatch.dispatched_by')
                 ->where('linked_booking.customer_id', $customer->id)->whereNull('linked_booking.deleted_at')->whereNull('dispatch.deleted_at')
                 ->whereNotNull('dispatch.dispatched_at')
-                ->where(function ($companyScope) use ($companyId) { $this->constrainBookingsToCompany($companyScope, 'linked_booking', $companyId); })
+
                 ->selectRaw("CONCAT('booking-dispatch:', dispatch.id) as id, 'booking_service' as event_type, 'Vehicle dispatched' as title, 'dispatched' as status, dispatch.dispatched_at as occurred_at, NULL as reference, dispatch.booking_id as booking_id, CONCAT('By ', COALESCE(NULLIF(CONCAT_WS(' ', dispatcher.first_name, dispatcher.last_name), ''), 'System')) as detail");
             $events->unionAll($dispatchEvents);
 
@@ -910,7 +870,7 @@ class CustomerController extends Controller
                 ->leftJoin('users as returner', 'returner.id', '=', 'dispatch.returned_by')
                 ->where('linked_booking.customer_id', $customer->id)->whereNull('linked_booking.deleted_at')->whereNull('dispatch.deleted_at')
                 ->whereNotNull('dispatch.actual_return_at')
-                ->where(function ($companyScope) use ($companyId) { $this->constrainBookingsToCompany($companyScope, 'linked_booking', $companyId); })
+
                 ->selectRaw("CONCAT('booking-return:', dispatch.id) as id, 'booking_service' as event_type, 'Vehicle returned' as title, 'returned' as status, dispatch.actual_return_at as occurred_at, NULL as reference, dispatch.booking_id as booking_id, CONCAT('By ', COALESCE(NULLIF(CONCAT_WS(' ', returner.first_name, returner.last_name), ''), 'System')) as detail");
             $events->unionAll($returnEvents);
 
@@ -919,36 +879,34 @@ class CustomerController extends Controller
                 ->leftJoin('users as inspector', 'inspector.id', '=', 'inspection.inspector_id')
                 ->where('linked_booking.customer_id', $customer->id)->whereNull('linked_booking.deleted_at')->whereNull('inspection.deleted_at')
                 ->whereNotNull('inspection.inspection_completed_at')
-                ->where(function ($companyScope) use ($companyId) { $this->constrainBookingsToCompany($companyScope, 'linked_booking', $companyId); })
+
                 ->selectRaw("CONCAT('booking-inspection:', inspection.id) as id, 'booking_service' as event_type, 'Return inspection completed' as title, inspection.qc_status as status, inspection.inspection_completed_at as occurred_at, NULL as reference, inspection.booking_id as booking_id, CONCAT('By ', COALESCE(NULLIF(CONCAT_WS(' ', inspector.first_name, inspector.last_name), ''), 'System')) as detail");
             $events->unionAll($inspectionEvents);
 
             $quotationEmails = DB::table('booking_activities as activity')
                 ->join('bookings as linked_booking', 'linked_booking.id', '=', 'activity.booking_id')
-                ->where(fn ($_companyIdScope) => \App\Services\CompanyIdScope::constrain($_companyIdScope, 'activity.company_id', $companyId))->where('activity.event_key', 'quotation_email_sent')
+                ->where('activity.event_key', 'quotation_email_sent')
                 ->whereNull('activity.deleted_at')->where('linked_booking.customer_id', $customer->id)->whereNull('linked_booking.deleted_at')
-                ->where(function ($companyScope) use ($companyId) { $this->constrainBookingsToCompany($companyScope, 'linked_booking', $companyId); })
+
                 ->selectRaw("CONCAT('quotation-email:', activity.id) as id, 'quotation_email_sent' as event_type, activity.title as title, activity.result_status as status, activity.event_at as occurred_at, linked_booking.booking_number as reference, activity.booking_id as booking_id, NULL as detail");
             $events->unionAll($quotationEmails);
 
             $quoteAcceptances = DB::table('pending_payment_links as quote_link')->where('quote_link.type', 'quotation_conversion')
                 ->whereNotNull('quote_link.accepted_at')->whereNull('quote_link.deleted_at')
-                ->whereExists(function ($booking) use ($customer, $companyId): void {
+                ->whereExists(function ($booking) use ($customer): void {
                     $booking->selectRaw('1')->from('bookings as linked_booking')
                         ->whereColumn('linked_booking.id', 'quote_link.booking_id')
                         ->where('linked_booking.customer_id', $customer->id)->whereNull('linked_booking.deleted_at');
-                    $this->constrainBookingsToCompany($booking, 'linked_booking', $companyId);
                 })
                 ->selectRaw("CONCAT('quote-accepted:', quote_link.id) as id, 'quote_acceptance' as event_type, 'Quotation accepted' as title, 'accepted' as status, quote_link.accepted_at as occurred_at, NULL as reference, quote_link.booking_id as booking_id, NULL as detail");
             $events->unionAll($quoteAcceptances);
 
             $quotesSent = DB::table('pending_payment_links as quote_link')->where('quote_link.type', 'quotation_conversion')
                 ->whereNull('quote_link.deleted_at')
-                ->whereExists(function ($booking) use ($customer, $companyId): void {
+                ->whereExists(function ($booking) use ($customer): void {
                     $booking->selectRaw('1')->from('bookings as linked_booking')
                         ->whereColumn('linked_booking.id', 'quote_link.booking_id')
                         ->where('linked_booking.customer_id', $customer->id)->whereNull('linked_booking.deleted_at');
-                    $this->constrainBookingsToCompany($booking, 'linked_booking', $companyId);
                 })
                 ->selectRaw("CONCAT('quote-prepared:', quote_link.id) as id, 'quotation_prepared' as event_type, 'Quotation prepared' as title, CONCAT('Version ', quote_link.revision_number) as status, quote_link.created_at as occurred_at, NULL as reference, quote_link.booking_id as booking_id, NULL as detail");
             $events->unionAll($quotesSent);
@@ -956,22 +914,20 @@ class CustomerController extends Controller
             $quotesExpired = DB::table('pending_payment_links as quote_link')->where('quote_link.type', 'quotation_conversion')
                 ->whereNull('quote_link.accepted_at')->whereNull('quote_link.invalidated_at')->whereNull('quote_link.deleted_at')
                 ->where('quote_link.expires_at', '<=', now())
-                ->whereExists(function ($booking) use ($customer, $companyId): void {
+                ->whereExists(function ($booking) use ($customer): void {
                     $booking->selectRaw('1')->from('bookings as linked_booking')
                         ->whereColumn('linked_booking.id', 'quote_link.booking_id')
                         ->where('linked_booking.customer_id', $customer->id)->whereNull('linked_booking.deleted_at');
-                    $this->constrainBookingsToCompany($booking, 'linked_booking', $companyId);
                 })
                 ->selectRaw("CONCAT('quote-expired:', quote_link.id) as id, 'quotation_expired' as event_type, 'Quotation expired' as title, CONCAT('Version ', quote_link.revision_number) as status, quote_link.expires_at as occurred_at, NULL as reference, quote_link.booking_id as booking_id, NULL as detail");
             $events->unionAll($quotesExpired);
 
             $quotesReplaced = DB::table('pending_payment_links as quote_link')->where('quote_link.type', 'quotation_conversion')
                 ->whereNull('quote_link.accepted_at')->whereNotNull('quote_link.invalidated_at')->whereNull('quote_link.deleted_at')
-                ->whereExists(function ($booking) use ($customer, $companyId): void {
+                ->whereExists(function ($booking) use ($customer): void {
                     $booking->selectRaw('1')->from('bookings as linked_booking')
                         ->whereColumn('linked_booking.id', 'quote_link.booking_id')
                         ->where('linked_booking.customer_id', $customer->id)->whereNull('linked_booking.deleted_at');
-                    $this->constrainBookingsToCompany($booking, 'linked_booking', $companyId);
                 })
                 ->selectRaw("CONCAT('quote-replaced:', quote_link.id) as id, 'quotation_replaced' as event_type, 'Quotation replaced' as title, CONCAT('Version ', quote_link.revision_number) as status, quote_link.invalidated_at as occurred_at, NULL as reference, quote_link.booking_id as booking_id, NULL as detail");
             $events->unionAll($quotesReplaced);
@@ -979,27 +935,26 @@ class CustomerController extends Controller
             $feedback = DB::table('bookings as feedback_booking')->where('feedback_booking.customer_id', $customer->id)
                 ->where('feedback_booking.status', 'completed')->whereNotNull('feedback_booking.customer_rating')
                 ->whereNull('feedback_booking.deleted_at');
-            $this->constrainBookingsToCompany($feedback, 'feedback_booking', $companyId);
             $feedback->selectRaw("CONCAT('customer-feedback:', feedback_booking.id) as id, 'customer_feedback' as event_type, 'Customer feedback received' as title, CONCAT(feedback_booking.customer_rating, '/5') as status, COALESCE(feedback_booking.customer_feedback_submitted_at, feedback_booking.updated_at) as occurred_at, feedback_booking.booking_number as reference, feedback_booking.id as booking_id, CONCAT(CASE WHEN COALESCE(feedback_booking.customer_feedback, '') = '' THEN '' ELSE feedback_booking.customer_feedback END, CASE WHEN COALESCE(feedback_booking.customer_feedback_response, '') = '' THEN '' ELSE CONCAT(CASE WHEN COALESCE(feedback_booking.customer_feedback, '') = '' THEN '' ELSE ' · ' END, 'Our response: ', feedback_booking.customer_feedback_response) END) as detail");
             $events->unionAll($feedback);
         }
 
         if ($request->user()->can('customers.view')) {
             $customerOwnerEvents = DB::table('customer_relationship_owner_assignments as assignment')
-                ->leftJoin('sales_profiles as owner_profile', function ($join): void { $join->on('owner_profile.id', '=', 'assignment.owner_sales_profile_id')->where(fn ($sameCompany) => \App\Services\CompanyIdScope::sameCompany($sameCompany, 'owner_profile.company_id', 'assignment.company_id')); })
-                ->leftJoin('staff as owner_staff', function ($join): void { $join->on('owner_staff.id', '=', 'owner_profile.staff_id')->where(fn ($sameCompany) => \App\Services\CompanyIdScope::sameCompany($sameCompany, 'owner_staff.company_id', 'assignment.company_id')); })
+                ->leftJoin('sales_profiles as owner_profile', 'owner_profile.id', '=', 'assignment.owner_sales_profile_id')
+                ->leftJoin('staff as owner_staff', 'owner_staff.id', '=', 'owner_profile.staff_id')
                 ->leftJoin('users as owner_user', 'owner_user.id', '=', 'owner_staff.user_id')
                 ->leftJoin('users as assigned_by', 'assigned_by.id', '=', 'assignment.assigned_by_user_id')
-                ->where(fn ($_companyIdScope) => \App\Services\CompanyIdScope::constrain($_companyIdScope, 'assignment.company_id', $companyId))->where('assignment.customer_id', $customer->id)
+                ->where('assignment.customer_id', $customer->id)
                 ->selectRaw("CONCAT('customer-owner:', assignment.id, ':started') as id, 'customer_owner' as event_type, CASE WHEN assignment.owner_sales_profile_id IS NULL THEN 'Customer owner cleared' ELSE 'Customer owner assigned' END as title, CASE WHEN assignment.owner_sales_profile_id IS NULL THEN 'unassigned' ELSE 'assigned' END as status, assignment.effective_from as occurred_at, NULL as reference, NULL as booking_id, CONCAT(COALESCE(NULLIF(CONCAT_WS(' ', owner_user.first_name, owner_user.last_name), ''), 'Unassigned'), CASE WHEN COALESCE(assignment.reason, '') = '' THEN '' ELSE CONCAT(' · ', assignment.reason) END, CASE WHEN assigned_by.id IS NULL THEN '' ELSE CONCAT(' · by ', CONCAT_WS(' ', assigned_by.first_name, assigned_by.last_name)) END) as detail");
             $events->unionAll($customerOwnerEvents);
 
             $customerOwnerEndEvents = DB::table('customer_relationship_owner_assignments as assignment')
-                ->leftJoin('sales_profiles as owner_profile', function ($join): void { $join->on('owner_profile.id', '=', 'assignment.owner_sales_profile_id')->where(fn ($sameCompany) => \App\Services\CompanyIdScope::sameCompany($sameCompany, 'owner_profile.company_id', 'assignment.company_id')); })
-                ->leftJoin('staff as owner_staff', function ($join): void { $join->on('owner_staff.id', '=', 'owner_profile.staff_id')->where(fn ($sameCompany) => \App\Services\CompanyIdScope::sameCompany($sameCompany, 'owner_staff.company_id', 'assignment.company_id')); })
+                ->leftJoin('sales_profiles as owner_profile', 'owner_profile.id', '=', 'assignment.owner_sales_profile_id')
+                ->leftJoin('staff as owner_staff', 'owner_staff.id', '=', 'owner_profile.staff_id')
                 ->leftJoin('users as owner_user', 'owner_user.id', '=', 'owner_staff.user_id')
                 ->leftJoin('users as ended_by', 'ended_by.id', '=', 'assignment.ended_by_user_id')
-                ->where(fn ($_companyIdScope) => \App\Services\CompanyIdScope::constrain($_companyIdScope, 'assignment.company_id', $companyId))->where('assignment.customer_id', $customer->id)->whereNotNull('assignment.ended_at')
+                ->where('assignment.customer_id', $customer->id)->whereNotNull('assignment.ended_at')
                 ->selectRaw("CONCAT('customer-owner:', assignment.id, ':ended') as id, 'customer_owner' as event_type, 'Customer owner ended' as title, 'ended' as status, assignment.ended_at as occurred_at, NULL as reference, NULL as booking_id, CONCAT(COALESCE(NULLIF(CONCAT_WS(' ', owner_user.first_name, owner_user.last_name), ''), 'Unassigned'), CASE WHEN ended_by.id IS NULL THEN '' ELSE CONCAT(' · by ', CONCAT_WS(' ', ended_by.first_name, ended_by.last_name)) END) as detail");
             $events->unionAll($customerOwnerEndEvents);
         }
@@ -1053,7 +1008,7 @@ class CustomerController extends Controller
         if ($request->user()->can('communication.view')) {
             $syncedRespondIoMessages = DB::table('integration_contact_messages as synced_message')
                 ->where('synced_message.linked_customer_id', $customer->id)
-                ->whereNotExists(function ($existing) use ($customer, $companyId): void {
+                ->whereNotExists(function ($existing) use ($customer): void {
                     $existing->selectRaw('1')->from('integration_webhook_events as provider_event')
                         ->whereColumn('provider_event.external_message_id', 'synced_message.external_message_id')
                         ->where('provider_event.provider', 'respond_io')
@@ -1097,7 +1052,7 @@ class CustomerController extends Controller
         if ($canViewCommunication || $canViewBookings) {
             $bookingActivity = DB::table('booking_activities as activity')->whereNull('activity.deleted_at')
             ->whereNotIn('activity.event_key', ['booking_responsible_user_changed', 'booking_updated', 'booking_vehicle_changed'])
-            ->where(function ($scope) use ($customer, $companyId, $canViewBookings, $canViewCommunication) {
+            ->where(function ($scope) use ($customer, $canViewBookings, $canViewCommunication) {
                 if ($canViewCommunication) {
                     $scope->whereExists(fn ($inquiry) => $inquiry->selectRaw('1')->from('inquiries as linked_inquiry')
                         ->whereColumn('linked_inquiry.id', 'activity.inquiry_id')->where('linked_inquiry.customer_id', $customer->id)->whereNull('linked_inquiry.deleted_at'));
@@ -1105,9 +1060,7 @@ class CustomerController extends Controller
                 if ($canViewBookings) {
                     $bookingScope = fn ($booking) => $booking->selectRaw('1')->from('bookings as linked_booking')
                     ->whereColumn('linked_booking.id', 'activity.booking_id')->where('linked_booking.customer_id', $customer->id)->whereNull('linked_booking.deleted_at')
-                    ->where(function ($companyScope) use ($companyId) {
-                        $this->constrainBookingsToCompany($companyScope, 'linked_booking', $companyId);
-                    });
+                    ;
                     $canViewCommunication ? $scope->orWhereExists($bookingScope) : $scope->whereExists($bookingScope);
                 }
             })->selectRaw("CONCAT('event:', activity.id) as id, CASE WHEN activity.event_key = 'rental_return_no_show' THEN 'booking_activity' ELSE 'communication' END as event_type, activity.title as title, activity.result_status as status, activity.event_at as occurred_at, activity.event_key as reference, {$communicationBookingField} as booking_id, activity.channel as detail");
@@ -1116,64 +1069,53 @@ class CustomerController extends Controller
 
         if ($request->user()->can('payments.transactions')) {
             $finance = DB::table('financial_audit_events as event')
-                ->where(fn ($_companyIdScope) => \App\Services\CompanyIdScope::constrain($_companyIdScope, 'event.company_id', $companyId))
-                ->whereExists(function ($booking) use ($customer, $companyId): void {
+
+                ->whereExists(function ($booking) use ($customer): void {
                     $booking->selectRaw('1')->from('bookings as linked_booking')
                         ->whereColumn('linked_booking.id', 'event.booking_id')->where('linked_booking.customer_id', $customer->id)
                         ->whereNull('linked_booking.deleted_at');
-                    $this->constrainBookingsToCompany($booking, 'linked_booking', $companyId);
                 })
                 ->selectRaw("CONCAT('finance:', event.id) as id, 'payment' as event_type, event.event_type as title, COALESCE(event.to_status, event.from_status) as status, event.occurred_at as occurred_at, NULL as reference, {$financeBookingField} as booking_id, NULL as detail");
             $events->unionAll($finance);
         }
 
         if ($request->user()->can('sales.crm.view')) {
-            $companies = DB::table('sales_activities as activity')
-                ->leftJoin('sales_opportunities as opportunity', 'opportunity.id', '=', 'activity.opportunity_id')
-                ->where(fn ($_companyIdScope) => \App\Services\CompanyIdScope::constrain($_companyIdScope, 'activity.company_id', $companyId))
-                ->where(fn ($linked) => $linked->where('activity.customer_id', $customer->id)
-                    ->orWhere(fn ($source) => $source->where('opportunity.customer_id', $customer->id)->whereNull('opportunity.deleted_at')))
-                ->distinct()->pluck('activity.company_id');
             $activityQuery = DB::table('sales_activities as activity')
                 ->leftJoin('sales_opportunities as opportunity', 'opportunity.id', '=', 'activity.opportunity_id')
-                ->where(fn ($_companyIdScope) => \App\Services\CompanyIdScope::constrain($_companyIdScope, 'activity.company_id', $companyId))
                 ->where(fn ($linked) => $linked->where('activity.customer_id', $customer->id)
                     ->orWhere(fn ($source) => $source->where('opportunity.customer_id', $customer->id)->whereNull('opportunity.deleted_at')));
             if (! $request->user()->can('sales.crm.view-all')) {
-                $allowedProfiles = [];
-                foreach ($companies as $companyId) {
-                    $allowedProfiles = array_merge($allowedProfiles, $this->salesScope->profileIds(
-                        $request->user(), 'sales.crm.view-all', 'sales.crm.view-team', (string) $companyId,
-                    ) ?? []);
-                }
-                $activityQuery->whereIn('activity.sales_profile_id', array_values(array_unique($allowedProfiles)));
+                $allowedProfiles = $this->salesScope->profileIds(
+                    $request->user(), 'sales.crm.view-all', 'sales.crm.view-team',
+                ) ?? [];
+                $activityQuery->whereIn('activity.sales_profile_id', $allowedProfiles);
             }
             $activityBookingField = $canViewBookings ? 'activity.booking_id' : 'NULL';
             $activityQuery->selectRaw("CONCAT('sales:', activity.id) as id, CASE WHEN activity.activity_type = 'call' THEN 'call' ELSE 'sales_activity' END as event_type, activity.subject as title, activity.outcome as status, activity.occurred_at as occurred_at, activity.activity_type as reference, {$activityBookingField} as booking_id, activity.next_action as detail");
             $events->unionAll($activityQuery);
 
             $opportunityOwnerIds = $this->salesScope->profileIds(
-                $request->user(), 'sales.crm.view-all', 'sales.crm.view-team', $companyId,
+                $request->user(), 'sales.crm.view-all', 'sales.crm.view-team',
             );
             $opportunityBookingField = $canViewBookings ? 'opportunity.won_booking_id' : 'NULL';
             $stageEvents = DB::table('sales_opportunity_stage_events as stage_event')
                 ->join('sales_opportunities as opportunity', 'opportunity.id', '=', 'stage_event.opportunity_id')
-                ->leftJoin('sales_profiles as from_profile', function ($join) use ($companyId): void {
-                    $join->on('from_profile.id', '=', 'stage_event.from_owner_sales_profile_id')->where(fn ($_companyIdScope) => \App\Services\CompanyIdScope::constrain($_companyIdScope, 'from_profile.company_id', $companyId));
+                ->leftJoin('sales_profiles as from_profile', function ($join): void {
+                    $join->on('from_profile.id', '=', 'stage_event.from_owner_sales_profile_id');
                 })
-                ->leftJoin('staff as from_staff', function ($join) use ($companyId): void {
-                    $join->on('from_staff.id', '=', 'from_profile.staff_id')->where(fn ($_companyIdScope) => \App\Services\CompanyIdScope::constrain($_companyIdScope, 'from_staff.company_id', $companyId));
+                ->leftJoin('staff as from_staff', function ($join): void {
+                    $join->on('from_staff.id', '=', 'from_profile.staff_id');
                 })
                 ->leftJoin('users as from_user', 'from_user.id', '=', 'from_staff.user_id')
-                ->join('sales_profiles as to_profile', function ($join) use ($companyId): void {
-                    $join->on('to_profile.id', '=', 'stage_event.to_owner_sales_profile_id')->where(fn ($_companyIdScope) => \App\Services\CompanyIdScope::constrain($_companyIdScope, 'to_profile.company_id', $companyId));
+                ->join('sales_profiles as to_profile', function ($join): void {
+                    $join->on('to_profile.id', '=', 'stage_event.to_owner_sales_profile_id');
                 })
-                ->join('staff as to_staff', function ($join) use ($companyId): void {
-                    $join->on('to_staff.id', '=', 'to_profile.staff_id')->where(fn ($_companyIdScope) => \App\Services\CompanyIdScope::constrain($_companyIdScope, 'to_staff.company_id', $companyId));
+                ->join('staff as to_staff', function ($join): void {
+                    $join->on('to_staff.id', '=', 'to_profile.staff_id');
                 })
                 ->join('users as to_user', 'to_user.id', '=', 'to_staff.user_id')
                 ->leftJoin('users as actor', 'actor.id', '=', 'stage_event.actor_user_id')
-                ->where(fn ($_companyIdScope) => \App\Services\CompanyIdScope::constrain($_companyIdScope, 'opportunity.company_id', $companyId))->whereNull('opportunity.deleted_at')
+                ->whereNull('opportunity.deleted_at')
                 ->where(fn ($linked) => $linked->where('opportunity.customer_id', $customer->id)
                     ->orWhereExists(fn ($inquiry) => $inquiry->selectRaw('1')->from('inquiries as source_inquiry')
                         ->whereColumn('source_inquiry.id', 'opportunity.inquiry_id')
@@ -1185,25 +1127,24 @@ class CustomerController extends Controller
                 ->selectRaw("CONCAT('sales-stage:', stage_event.id, ':', opportunity.id) as id, 'sales_opportunity_stage' as event_type, 'Lead progress' as title, stage_event.to_stage as status, stage_event.occurred_at as occurred_at, NULL as reference, {$opportunityBookingField} as booking_id, CONCAT(CASE WHEN stage_event.reason_code = 'owner_transfer' THEN CONCAT(COALESCE(NULLIF(CONCAT_WS(' ', from_user.first_name, from_user.last_name), ''), 'Unassigned'), ' → ', CONCAT_WS(' ', to_user.first_name, to_user.last_name)) ELSE CONCAT(COALESCE(stage_event.from_stage, 'New'), ' → ', stage_event.to_stage) END, CASE WHEN COALESCE(stage_event.reason, '') = '' THEN '' ELSE CONCAT(' · ', stage_event.reason) END, CASE WHEN actor.id IS NULL THEN '' ELSE CONCAT(' · by ', CONCAT_WS(' ', actor.first_name, actor.last_name)) END) as detail");
             $events->unionAll($stageEvents);
 
-            $taskQuery = DB::table('sales_tasks as task')->where(fn ($_companyIdScope) => \App\Services\CompanyIdScope::constrain($_companyIdScope, 'task.company_id', $companyId))
-                ->where(function ($related) use ($customer, $companyId): void {
+            $taskQuery = DB::table('sales_tasks as task')
+                ->where(function ($related) use ($customer): void {
                     $related->where('task.customer_id', $customer->id)
                         ->orWhereExists(fn ($opportunity) => $opportunity->selectRaw('1')->from('sales_opportunities as linked_opportunity')
-                            ->whereColumn('linked_opportunity.id', 'task.opportunity_id')->where(fn ($_companyIdScope) => \App\Services\CompanyIdScope::constrain($_companyIdScope, 'linked_opportunity.company_id', $companyId))
+                            ->whereColumn('linked_opportunity.id', 'task.opportunity_id')
                             ->where('linked_opportunity.customer_id', $customer->id)->whereNull('linked_opportunity.deleted_at'))
                         ->orWhereExists(fn ($inquiry) => $inquiry->selectRaw('1')->from('inquiries as linked_inquiry')
                             ->whereColumn('linked_inquiry.id', 'task.inquiry_id')
                             ->where('linked_inquiry.customer_id', $customer->id)->whereNull('linked_inquiry.deleted_at'))
-                        ->orWhereExists(function ($booking) use ($customer, $companyId): void {
+                        ->orWhereExists(function ($booking) use ($customer): void {
                             $booking->selectRaw('1')->from('bookings as linked_booking')
                                 ->whereColumn('linked_booking.id', 'task.booking_id')->where('linked_booking.customer_id', $customer->id)
                                 ->whereNull('linked_booking.deleted_at');
-                            $this->constrainBookingsToCompany($booking, 'linked_booking', $companyId);
                         });
                 });
             if (! $request->user()->can('sales.crm.view-all')) {
                 $allowedProfiles = $this->salesScope->profileIds(
-                    $request->user(), 'sales.crm.view-all', 'sales.crm.view-team', $companyId,
+                    $request->user(), 'sales.crm.view-all', 'sales.crm.view-team',
                 ) ?? [];
                 $taskQuery->whereIn('task.owner_sales_profile_id', $allowedProfiles);
             }
@@ -1268,18 +1209,13 @@ class CustomerController extends Controller
         });
     }
 
-    private function constrainBookingsToCompany($query, string $bookingAlias, string $companyId): void
-    {
-        \App\Services\CompanyBookingScope::constrain($query, $bookingAlias, $companyId);
-    }
-
     /**
      * Get customer loyalty info
      * GET /api/customers/{customer}/loyalty
      */
     public function getCustomerLoyalty(Customer $customer): JsonResponse
     {
-        $customer = $this->requireCompanyCustomer($customer);
+        $customer = $this->findCustomer($customer);
         $user = $customer->user;
 
         return response()->json([
@@ -1330,23 +1266,17 @@ class CustomerController extends Controller
      */
     public function getCustomerAnalytics(): JsonResponse
     {
-        $companyId = $this->requireActiveCompanyId();
-        $customers = $this->companyCustomers($companyId);
+        $customers = Customer::query();
         $totalCustomers = (clone $customers)->count();
         $newThisMonth = (clone $customers)->whereMonth('created_at', now()->month)
             ->whereYear('created_at', now()->year)
             ->count();
-        $activeCustomers = (clone $customers)->whereHas('bookings', function ($q) use ($companyId) {
-            $q->where('created_at', '>=', now()->subDays(30));
-            \App\Services\CompanyBookingScope::constrain($q, 'bookings', $companyId);
-        })->count();
+        $activeCustomers = (clone $customers)->whereHas('bookings', fn ($q) => $q->where('created_at', '>=', now()->subDays(30)))->count();
         $inactiveCustomers = max($totalCustomers - $activeCustomers, 0);
         $customersWithLicense = (clone $customers)->whereNotNull('license_no')
             ->where('license_no', '!=', '')
             ->count();
-        $bookings = Booking::query();
-        \App\Services\CompanyBookingScope::constrain($bookings, 'bookings', $companyId);
-        $totalBookings = $bookings->count();
+        $totalBookings = Booking::query()->count();
 
         $analytics = [
             // Dashboard-compatible keys used by the portal customer dashboard.
@@ -1369,7 +1299,6 @@ class CustomerController extends Controller
             'inactiveCustomers' => $inactiveCustomers,
             'customersWithLicense' => $customersWithLicense,
             'averageLifetimeValue' => (float) (Booking::query()
-                ->where(function ($q) use ($companyId): void { \App\Services\CompanyBookingScope::constrain($q, 'bookings', $companyId); })
                 ->selectRaw('AVG(COALESCE(total_actual, total_estimated, 0)) as average_lifetime_value')
                 ->value('average_lifetime_value') ?? 0),
             'customer_growth' => (clone $customers)->selectRaw('DATE(created_at) as date, COUNT(*) as count')
@@ -1387,7 +1316,7 @@ class CustomerController extends Controller
 
     public function getCustomerGrowth(Request $request): JsonResponse
     {
-        $customers = $this->companyCustomers($this->requireActiveCompanyId());
+        $customers = Customer::query();
         $startDate = $request->date('start_date') ?? now()->subDays(30);
         $endDate = $request->date('end_date') ?? now();
 
@@ -1408,7 +1337,7 @@ class CustomerController extends Controller
 
     public function getCustomerSegments(): JsonResponse
     {
-        $segments = $this->companyCustomers($this->requireActiveCompanyId())->selectRaw("COALESCE(type, 'Unclassified') as name, COUNT(*) as value")
+        $segments = Customer::query()->selectRaw("COALESCE(type, 'Unclassified') as name, COUNT(*) as value")
             ->groupBy('type')
             ->orderByDesc('value')
             ->get();
@@ -1421,7 +1350,7 @@ class CustomerController extends Controller
 
     public function getCustomerCohort(): JsonResponse
     {
-        $customers = $this->companyCustomers($this->requireActiveCompanyId());
+        $customers = Customer::query();
         $cohortExpression = DB::connection()->getDriverName() === 'pgsql'
             ? "TO_CHAR(created_at, 'YYYY-MM')"
             : "DATE_FORMAT(created_at, '%Y-%m')";
@@ -1451,11 +1380,9 @@ class CustomerController extends Controller
     public function getTopCustomers(Request $request): JsonResponse
     {
         $limit = (int) $request->get('limit', 10);
-        $companyId = $this->requireActiveCompanyId();
-
-        $customers = $this->companyCustomers($companyId)->with('user')
-            ->withCount(['bookings' => fn ($query) => \App\Services\CompanyBookingScope::constrain($query, 'bookings', $companyId)])
-            ->withSum(['bookings as total_revenue' => fn ($query) => \App\Services\CompanyBookingScope::constrain($query, 'bookings', $companyId)], 'total_actual')
+        $customers = Customer::query()->with('user')
+            ->withCount('bookings')
+            ->withSum('bookings as total_revenue', 'total_actual')
             ->orderByDesc('bookings_count')
             ->limit(min(max($limit, 1), 50))
             ->get()
@@ -1468,9 +1395,7 @@ class CustomerController extends Controller
                 'averageOrderValue' => $customer->bookings_count > 0
                     ? (float) ($customer->total_revenue ?? 0) / $customer->bookings_count
                     : 0,
-                'lastBooking' => $customer->bookings()->where(function ($query) use ($companyId): void {
-                    \App\Services\CompanyBookingScope::constrain($query, 'bookings', $companyId);
-                })->latest('created_at')->value('created_at'),
+                'lastBooking' => $customer->bookings()->latest('created_at')->value('created_at'),
             ]);
 
         return response()->json([
@@ -1491,8 +1416,7 @@ class CustomerController extends Controller
             'is_verified' => ['nullable', 'boolean'],
         ]);
 
-        $companyId = $this->requireActiveCompanyId();
-        $query = $this->companyCustomers($companyId)->with('user');
+        $query = Customer::query()->with('user');
 
         if ($request->filled('search')) {
             $search = trim((string) $request->get('search'));
@@ -1728,9 +1652,7 @@ class CustomerController extends Controller
 
     public function getDocumentStats(): JsonResponse
     {
-        $companyId = $this->requireActiveCompanyId();
-        $documents = Document::query()->where('documentable_type', Customer::class)
-            ->whereHasMorph('documentable', [Customer::class], fn ($query) => \App\Services\CompanyCustomerScope::constrain($query, 'customers', $companyId));
+        $documents = Document::query()->where('documentable_type', Customer::class);
         return response()->json([
             'status' => 'success',
             'data' => [
@@ -1751,10 +1673,8 @@ class CustomerController extends Controller
             'per_page' => ['nullable', 'integer', 'min:1', 'max:100'],
         ]);
 
-        $companyId = $this->requireActiveCompanyId();
         $query = Document::with('documentable.user')
             ->where('documentable_type', Customer::class)
-            ->whereHasMorph('documentable', [Customer::class], fn ($customerQuery) => \App\Services\CompanyCustomerScope::constrain($customerQuery, 'customers', $companyId))
             ->when($request->filled('search'), function ($builder) use ($request) {
                 $search = trim((string) $request->get('search'));
 
@@ -1814,7 +1734,7 @@ class CustomerController extends Controller
             'expiry_date' => ['nullable', 'date'],
             'file' => ['required', 'file', 'max:10240'],
         ]);
-        $this->requireCompanyCustomer(Customer::query()->findOrFail($data['customer_id']));
+        $this->findCustomer(Customer::query()->findOrFail($data['customer_id']));
 
         $file = $request->file('file');
         $disk = 'public';
@@ -1907,7 +1827,7 @@ class CustomerController extends Controller
 
     public function getCustomerDocuments(Customer $customer, Request $request): JsonResponse
     {
-        $customer = $this->requireCompanyCustomer($customer);
+        $customer = $this->findCustomer($customer);
 
         $documents = $customer->documents()
             ->latest()
@@ -1983,39 +1903,12 @@ class CustomerController extends Controller
         abort_unless($document->documentable_type === Customer::class, 404);
         $customer = $document->documentable;
         abort_unless($customer instanceof Customer, 404);
-        $this->requireCompanyCustomer($customer);
+        $this->findCustomer($customer);
     }
 
-    private function requireActiveCompanyId(): string
-    {
-        $companyId = $this->currentCompanyId();
-        abort_unless($companyId, 409, 'Select an active company before viewing customer data.');
-
-        return (string) $companyId;
-    }
-
-    private function currentCompanyId(): ?string
-    {
-        $companyId = app(WebsiteSettingsService::class)->resolveCurrentCompanyId();
-        if (! $companyId) return null;
-
-        app(CompanySettingsAccessService::class)->assertCanAccess(request()->user(), (string) $companyId);
-
-        return (string) $companyId;
-    }
-
-    private function companyCustomers(string $companyId)
-    {
-        $query = Customer::query();
-        \App\Services\CompanyCustomerScope::constrain($query, 'customers', $companyId);
-
-        return $query;
-    }
-
-    private function requireCompanyCustomer(Customer $customer, bool $lock = false): Customer
+    private function findCustomer(Customer $customer, bool $lock = false): Customer
     {
         $query = Customer::query()->whereKey($customer->id);
-        \App\Services\CompanyCustomerScope::constrain($query, 'customers', $this->requireActiveCompanyId());
         if ($lock) $query->lockForUpdate();
 
         return $query->firstOrFail();

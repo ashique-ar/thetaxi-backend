@@ -14,7 +14,6 @@ class DomainOutboxService implements DomainEventPublisher
 {
     public function record(
         string $domain,
-        ?string $companyId,
         string $aggregateType,
         string $aggregateId,
         string $eventType,
@@ -31,7 +30,6 @@ class DomainOutboxService implements DomainEventPublisher
         DB::table('domain_outbox_events')->insert([
             'id' => $id,
             'domain' => $domain,
-            'company_id' => $companyId,
             'aggregate_type' => $aggregateType,
             'aggregate_id' => $aggregateId,
             'event_type' => $eventType,

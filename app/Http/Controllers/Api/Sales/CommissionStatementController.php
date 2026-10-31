@@ -9,9 +9,7 @@ use App\Models\Sales\SalesCommissionStatementLine;
 use App\Models\Sales\SalesCommissionPayout;
 use App\Models\Sales\SalesCommissionStatementExport;
 use App\Models\Sales\SalesProfile;
-use App\Services\CompanySettingsAccessService;
 use App\Services\StaffAccessService;
-use App\Services\WebsiteSettingsService;
 use App\Services\Sales\CommissionDisputeService;
 use App\Services\Sales\CommissionBusinessCalendarService;
 use App\Services\Sales\CommissionCycleResolver;
@@ -29,46 +27,16 @@ use Symfony\Component\HttpFoundation\StreamedResponse;
 
 class CommissionStatementController extends Controller
 {
-    public function companyOptions(Request $request): JsonResponse
-    {
-        $data = $request->validate([
-            'search' => ['nullable', 'string', 'max:120'], 'selected_id' => ['nullable', 'uuid'],
-            'page' => ['nullable', 'integer', 'min:1'], 'per_page' => ['nullable', 'integer', 'min:1', 'max:50'],
-        ]);
-        $companyIds = $this->actorCompanyIds($request);
-        $defaultCompanyId = app(WebsiteSettingsService::class)->resolveCurrentCompanyId();
-        if ($defaultCompanyId && ! in_array($defaultCompanyId, $companyIds, true)) $defaultCompanyId = null;
-        $query = DB::table('companies')->whereNull('deleted_at')->where('is_active', true)
-            ->whereIn('id', $companyIds)->select(['id', 'name', 'is_default']);
-        $options = (clone $query)
-            ->when($data['selected_id'] ?? null, fn ($q, $id) => $q->where('id', $id))
-            ->when(empty($data['selected_id']) && ! empty($data['search']), function ($q) use ($data) {
-                $term = '%'.addcslashes($data['search'], '%_\\').'%';
-                $q->where('name', 'like', $term);
-            })
-            ->orderByDesc('is_default')->orderBy('name')->paginate($data['per_page'] ?? 25);
-        $options->getCollection()->transform(static fn ($company) => [
-            'value' => (string) $company->id, 'label' => $company->name,
-            'is_default' => (bool) $company->is_default, 'is_active' => true, 'status' => 'active',
-        ]);
-
-        return response()->json(['status' => 'success', 'data' => $options, 'default_company_id' => $defaultCompanyId]);
-    }
-
     public function index(Request $request): JsonResponse
     {
         $data = $request->validate([
-            'company_id' => ['nullable', 'uuid', Rule::exists('companies', 'id')->whereNull('deleted_at')->where('is_active', true)],
             'status' => ['nullable', Rule::in(['draft', 'pending_approval', 'approved', 'partially_paid', 'paid', 'void'])],
             'from' => ['nullable', 'date'], 'to' => ['nullable', 'date', 'after_or_equal:from'],
             'per_page' => ['nullable', 'integer', 'min:1', 'max:100'],
         ]);
-        $data['company_id'] = $this->resolveCompanyId($data['company_id'] ?? null);
-        $this->assertManagementCompany($request, $data['company_id']);
         $query = SalesCommissionStatement::query();
         $this->applyScope($query, $request);
         $page = $query
-            ->when($data['company_id'] ?? null, fn ($q, $companyId) => $q->where(fn ($_companyIdScope) => \App\Services\CompanyIdScope::constrain($_companyIdScope, 'company_id', $companyId)))
             ->when($data['status'] ?? null, fn ($q, $status) => $q->where('status', $status))
             ->when($data['from'] ?? null, fn ($q, $from) => $q->whereDate('period_end', '>=', $from))
             ->when($data['to'] ?? null, fn ($q, $to) => $q->whereDate('period_start', '<=', $to))
@@ -100,40 +68,26 @@ class CommissionStatementController extends Controller
     public function profileOptions(Request $request): JsonResponse
     {
         $data = $request->validate([
-            'company_id' => ['nullable', 'uuid', Rule::exists('companies', 'id')->whereNull('deleted_at')->where('is_active', true)],
             'search' => ['nullable', 'string', 'max:120'], 'selected_id' => ['nullable', 'uuid'],
             'page' => ['nullable', 'integer', 'min:1'], 'per_page' => ['nullable', 'integer', 'min:1', 'max:50'],
         ]);
-        $data['company_id'] = $this->resolveCompanyId($data['company_id'] ?? null);
-        $companyIds = $this->actorCompanyIds($request);
-        if (! empty($data['company_id'])) {
-            abort_unless(DB::table('companies')->where('id', $data['company_id'])->whereNull('deleted_at')->exists(), 422,
-                'Select an available legal entity.');
-            $this->assertManagementCompany($request, $data['company_id']);
-        }
-
         $query = SalesProfile::query()
-            ->select('sales_profiles.*', 'company.name as company_name')
-            ->join('companies as company', 'company.id', '=', 'sales_profiles.company_id')
             ->with(['staff:id,user_id,code', 'staff.user:id,first_name,last_name'])
-            ->where(fn ($_companyIdScope) => \App\Services\CompanyIdScope::constrainIn($_companyIdScope, 'sales_profiles.company_id', $companyIds))
-            ->whereNull('company.deleted_at')
-            ->commissionStatementEligible()
-            ->when($data['company_id'] ?? null, fn ($profiles, $companyId) => $profiles->where(fn ($_companyIdScope) => \App\Services\CompanyIdScope::constrain($_companyIdScope, 'sales_profiles.company_id', $companyId)));
+            ->commissionStatementEligible();
+        $this->applyProfileOptionScope($query, $request);
         if (! empty($data['selected_id'])) $query->where('sales_profiles.id', $data['selected_id']);
         elseif (! empty($data['search'])) {
             $term = '%'.addcslashes($data['search'], '%_\\').'%';
             $query->where(fn ($profiles) => $profiles->where('sales_profiles.sales_code', 'like', $term)
                 ->orWhereHas('staff', fn ($staff) => $staff->where('code', 'like', $term)
                     ->orWhereHas('user', fn ($user) => $user->where('first_name', 'like', $term)->orWhere('last_name', 'like', $term)))
-                ->orWhere('company.name', 'like', $term));
+                );
         }
 
         $rows = $query->orderBy('sales_profiles.sales_code')->orderBy('sales_profiles.id')->paginate($data['per_page'] ?? 25);
         $rows->getCollection()->transform(fn (SalesProfile $profile) => [
             'value' => (string) $profile->id,
             'label' => trim($profile->sales_code.' — '.($profile->staff?->user?->first_name.' '.$profile->staff?->user?->last_name)),
-            'metadata' => ['company' => $profile->company_name],
             'status' => $profile->status,
         ]);
 
@@ -143,14 +97,10 @@ class CommissionStatementController extends Controller
     public function schedule(Request $request, CommissionCycleResolver $cycles, CommissionBusinessCalendarService $calendars): JsonResponse
     {
         $data = $request->validate([
-            'company_id' => ['nullable', 'uuid', Rule::exists('companies', 'id')->whereNull('deleted_at')->where('is_active', true)],
             'sales_profile_id' => ['required', 'uuid', 'exists:sales_profiles,id'],
             'reference_date' => ['required', 'date'],
         ]);
-        $data['company_id'] = $this->resolveCompanyId($data['company_id'] ?? null);
-        $profile = SalesProfile::query()->commissionStatementEligible()->with('staff')->findOrFail($data['sales_profile_id']);
-        abort_unless(\App\Services\CompanyIdScope::sameCompanyId((string) ((string) $profile->company_id), (string) ($data['company_id'])), 422, 'Select a Sales Profile in the chosen legal entity.');
-        $this->assertManagementCompany($request, $profile->company_id);
+        $profile = $this->statementProfile($request, $data['sales_profile_id']);
         $resolved = $cycles->resolve($profile, CarbonImmutable::parse($data['reference_date']));
         $cycle = $resolved['cycle'];
         $schedule = $calendars->schedule($cycle, CarbonImmutable::parse($data['reference_date'], $cycle->timezone));
@@ -170,15 +120,11 @@ class CommissionStatementController extends Controller
     public function disputes(Request $request): JsonResponse
     {
         $data = $request->validate([
-            'company_id' => ['nullable', 'uuid', Rule::exists('companies', 'id')->whereNull('deleted_at')->where('is_active', true)],
             'status' => ['nullable', Rule::in(['open', 'resolved'])], 'per_page' => ['nullable', 'integer', 'min:1', 'max:100'],
         ]);
-        $data['company_id'] = $this->resolveCompanyId($data['company_id'] ?? null);
-        $companyIds = $this->actorCompanyIds($request);
-        abort_unless(in_array($data['company_id'], $companyIds, true), 403,
-            'Commission operation is outside your legal entity.');
-        $query = SalesCommissionDispute::query()->where(fn ($_companyIdScope) => \App\Services\CompanyIdScope::constrainIn($_companyIdScope, 'company_id', $companyIds))
-            ->when($data['company_id'] ?? null, fn ($q, $companyId) => $q->where(fn ($_companyIdScope) => \App\Services\CompanyIdScope::constrain($_companyIdScope, 'company_id', $companyId)));
+        $statements = SalesCommissionStatement::query();
+        $this->applyScope($statements, $request);
+        $query = SalesCommissionDispute::query()->whereIn('statement_id', $statements->select('id'));
         $page = $query
             ->when($data['status'] ?? null, fn ($q, $status) => $q->where('status', $status))
             ->orderByRaw("CASE status WHEN 'open' THEN 1 ELSE 2 END")->latest('raised_at')->paginate($this->paginationSize($request, 25));
@@ -197,15 +143,11 @@ class CommissionStatementController extends Controller
     public function payouts(Request $request): JsonResponse
     {
         $data = $request->validate([
-            'company_id' => ['nullable', 'uuid', Rule::exists('companies', 'id')->whereNull('deleted_at')->where('is_active', true)],
             'status' => ['nullable', Rule::in(['confirmed', 'reversal', 'reversed'])], 'per_page' => ['nullable', 'integer', 'min:1', 'max:100'],
         ]);
-        $data['company_id'] = $this->resolveCompanyId($data['company_id'] ?? null);
-        $companyIds = $this->actorCompanyIds($request);
-        abort_unless(in_array($data['company_id'], $companyIds, true), 403,
-            'Commission operation is outside your legal entity.');
-        $query = SalesCommissionPayout::query()->where(fn ($_companyIdScope) => \App\Services\CompanyIdScope::constrainIn($_companyIdScope, 'company_id', $companyIds))
-            ->when($data['company_id'] ?? null, fn ($q, $companyId) => $q->where(fn ($_companyIdScope) => \App\Services\CompanyIdScope::constrain($_companyIdScope, 'company_id', $companyId)));
+        $visibleStatements = SalesCommissionStatement::query();
+        $this->applyScope($visibleStatements, $request);
+        $query = SalesCommissionPayout::query()->whereIn('staff_id', $visibleStatements->select('staff_id')->distinct());
         $page = $query
             ->when($data['status'] ?? null, fn ($q, $status) => $q->where('status', $status))
             ->latest('paid_at')->paginate($this->paginationSize($request, 25));
@@ -224,35 +166,26 @@ class CommissionStatementController extends Controller
     public function accountingReconciliation(Request $request, CommissionAccountingOutboxReconciliationService $reconciliation): JsonResponse
     {
         $data = $request->validate([
-            'company_id' => ['nullable', 'uuid', Rule::exists('companies', 'id')->whereNull('deleted_at')->where('is_active', true)],
             'per_page' => ['nullable', 'integer', 'min:1', 'max:100'],
         ]);
-        $companyId = $this->resolveCompanyId($data['company_id'] ?? null);
-        $this->assertManagementCompany($request, $companyId);
 
         return response()->json([
             'status' => 'success',
-            'data' => $reconciliation->preview($companyId, $data['per_page'] ?? 50),
+            'data' => $reconciliation->preview($data['per_page'] ?? 50),
         ]);
     }
 
     public function preview(Request $request, CommissionStatementService $statements): JsonResponse
     {
         $data = $this->statementInput($request);
-        $profile = SalesProfile::query()->commissionStatementEligible()->with('staff')->findOrFail($data['sales_profile_id']);
-        abort_unless(\App\Services\CompanyIdScope::sameCompanyId((string) ((string) $profile->company_id), (string) ($data['company_id'])), 422, 'Select a Sales Profile in the chosen legal entity.');
-        $this->assertManagementCompany($request, $profile->company_id);
-        unset($data['company_id']);
+        $profile = $this->statementProfile($request, $data['sales_profile_id']);
         return response()->json(['status' => 'success', 'data' => $this->previewProjection($statements->preview($profile, $data))]);
     }
 
     public function generate(Request $request, CommissionStatementService $statements): JsonResponse
     {
         $data = $this->statementInput($request, true);
-        $profile = SalesProfile::query()->commissionStatementEligible()->with('staff')->findOrFail($data['sales_profile_id']);
-        abort_unless(\App\Services\CompanyIdScope::sameCompanyId((string) ((string) $profile->company_id), (string) ($data['company_id'])), 422, 'Select a Sales Profile in the chosen legal entity.');
-        $this->assertManagementCompany($request, $profile->company_id);
-        unset($data['company_id']);
+        $profile = $this->statementProfile($request, $data['sales_profile_id']);
         $statement = $statements->generate($profile, $data, (string) $request->user()->id);
         return response()->json(['status' => 'success', 'data' => [
             'status' => $statement->status,
@@ -268,7 +201,7 @@ class CommissionStatementController extends Controller
             'expected_version' => ['required', 'integer', 'min:1'], 'reason' => ['required', 'string', 'max:2000'],
             'idempotency_key' => ['required', 'string', 'max:160'],
         ]);
-        $this->assertManagementCompany($request, $statement->company_id);
+        $this->assertStatementScope($request, (string) $statement->id);
         $updated = $statements->transition(
             $statement, $data['to_status'], $data['expected_version'], $data['reason'],
             $data['idempotency_key'], (string) $request->user()->id,
@@ -300,7 +233,7 @@ class CommissionStatementController extends Controller
             'adjustment_lkr' => ['nullable', 'required_if:resolution,uphold_adjustment', 'numeric', 'not_in:0'],
             'resolution_reason' => ['required', 'string', 'max:2000'], 'idempotency_key' => ['required', 'string', 'max:160'],
         ]);
-        $this->assertManagementCompany($request, $dispute->company_id);
+        $this->assertStatementScope($request, $dispute->statement_id);
         $resolved = $disputes->resolve($dispute, $data, (string) $request->user()->id);
         return response()->json(['status' => 'success', 'data' => [
             'status' => $resolved->status,
@@ -316,9 +249,10 @@ class CommissionStatementController extends Controller
             'paid_at' => ['required', 'date', 'before_or_equal:now'], 'evidence_file_id' => ['nullable', 'uuid', 'exists:domain_evidence_files,id'],
             'reason' => ['nullable', 'string', 'max:2000'], 'idempotency_key' => ['required', 'string', 'max:160'],
         ]);
-        $companyIds = SalesCommissionStatement::query()->whereIn('id', array_unique($data['statement_ids']))->pluck('company_id')->unique();
-        abort_unless($companyIds->count() === 1, 422, 'A payout must contain statements from one legal entity.');
-        $this->assertManagementCompany($request, (string) $companyIds->first());
+        $visibleStatements = SalesCommissionStatement::query()->whereIn('id', array_unique($data['statement_ids']));
+        $this->applyScope($visibleStatements, $request);
+        abort_unless($visibleStatements->count() === count(array_unique($data['statement_ids'])), 403,
+            'Payout statements are outside your authorized Staff scope.');
         $payout = $payouts->pay($data['statement_ids'], $data, (string) $request->user()->id);
         return response()->json(['status' => 'success', 'data' => [
             'status' => $payout->status,
@@ -328,7 +262,7 @@ class CommissionStatementController extends Controller
 
     public function reversePayout(Request $request, SalesCommissionPayout $payout, CommissionPayoutService $payouts): JsonResponse
     {
-        $this->assertManagementCompany($request, $payout->company_id);
+        $this->assertPayoutScope($request, (string) $payout->id);
         $data = $request->validate([
             'payment_method' => ['required', 'string', 'max:50'], 'payment_reference' => ['required', 'string', 'max:160'],
             'reversed_at' => ['required', 'date', 'before_or_equal:now'],
@@ -344,7 +278,7 @@ class CommissionStatementController extends Controller
 
     public function recordAccountingDelivery(Request $request, SalesCommissionPayout $payout, CommissionPayoutService $payouts): JsonResponse
     {
-        $this->assertManagementCompany($request, $payout->company_id);
+        $this->assertPayoutScope($request, (string) $payout->id);
         $data = $request->validate([
             'status' => ['required', Rule::in(['failed'])],
             'message' => ['required', 'string', 'max:2000'],
@@ -382,7 +316,7 @@ class CommissionStatementController extends Controller
         $statement = SalesCommissionStatement::query()->whereKey($export->statement_id);
         $this->applyScope($statement, $request);
         $statement = $statement->firstOrFail();
-        $expectedPath = '#^commission-statements/'.preg_quote((string) $statement->company_id, '#').'/'.preg_quote((string) $statement->staff_id, '#').'/[0-9a-f]{8}-(?:[0-9a-f]{4}-){3}[0-9a-f]{12}\\.'.preg_quote((string) $export->format, '#').'$#i';
+        $expectedPath = '#^commission-statements/(?:[0-9a-f]{8}-(?:[0-9a-f]{4}-){3}[0-9a-f]{12}/)?'.preg_quote((string) $statement->staff_id, '#').'/[0-9a-f]{8}-(?:[0-9a-f]{4}-){3}[0-9a-f]{12}\\.'.preg_quote((string) $export->format, '#').'$#i';
         abort_unless($export->disk === 'sales_private'
             && in_array($export->format, ['pdf', 'csv'], true)
             && preg_match($expectedPath, (string) $export->path) === 1, 404, 'Statement export file is unavailable.');
@@ -403,14 +337,11 @@ class CommissionStatementController extends Controller
     private function statementInput(Request $request, bool $requireKey = false): array
     {
         $data = $request->validate([
-            'company_id' => ['nullable', 'uuid', Rule::exists('companies', 'id')->whereNull('deleted_at')->where('is_active', true)],
             'sales_profile_id' => ['required', 'uuid', 'exists:sales_profiles,id'],
             'period_start' => ['required', 'date'], 'period_end' => ['required', 'date', 'after_or_equal:period_start'],
             'cutoff_at' => ['required', 'date', 'after_or_equal:period_end'],
             'idempotency_key' => [$requireKey ? 'required' : 'nullable', 'string', 'max:160'],
         ]);
-        $data['company_id'] = $this->resolveCompanyId($data['company_id'] ?? null);
-
         return $data;
     }
 
@@ -464,59 +395,66 @@ class CommissionStatementController extends Controller
 
     private function applyScope($query, Request $request): void
     {
-        $companyIds = $this->actorCompanyIds($request);
-        $query->where(fn ($_companyIdScope) => \App\Services\CompanyIdScope::constrainIn($_companyIdScope, 'company_id', $companyIds));
-        if ($request->user()->can('sales.commission-statements.view-all')) return;
+        $profileIds = $this->visibleProfileIds($request);
+        if ($profileIds !== null) $query->whereIn('sales_profile_id', $profileIds);
+    }
+
+    private function applyProfileOptionScope($query, Request $request): void
+    {
+        $profileIds = $this->visibleProfileIds($request);
+        if ($profileIds !== null) $query->whereIn('id', $profileIds);
+    }
+
+    private function visibleProfileIds(Request $request): ?array
+    {
+        if ($request->user()->can('sales.commission-statements.view-all')) return null;
         $staff = app(StaffAccessService::class)->currentActorStaff($request->user());
-        $profile = SalesProfile::query()->where('staff_id', $staff->id)->where(fn ($_companyIdScope) => \App\Services\CompanyIdScope::constrain($_companyIdScope, 'company_id', $staff->company_id))->activeAt(now())->firstOrFail();
-        $ids = [$profile->id];
+        $ids = SalesProfile::query()->where('staff_id', $staff->id)->activeAt(now())->pluck('id')->all();
+        abort_if($ids === [], 409, 'An active Sales Profile is required to load commission statements.');
         if ($request->user()->can('sales.commission-statements.view-team')) {
-            $ids = array_merge($ids, DB::table('sales_reporting_assignments as reporting')
+            $pending = $ids;
+            while ($pending !== []) {
+                $managerIds = array_splice($pending, 0);
+                $members = DB::table('sales_reporting_assignments as reporting')
                 ->join('sales_profiles as member', 'member.id', '=', 'reporting.member_sales_profile_id')
-                ->where('reporting.manager_sales_profile_id', $profile->id)
+                ->whereIn('reporting.manager_sales_profile_id', $managerIds)
                 ->whereNull('reporting.deleted_at')
                 ->where('reporting.effective_from', '<=', now())
                 ->where(fn ($q) => $q->whereNull('reporting.effective_until')->orWhere('reporting.effective_until', '>', now()))
-                ->where(fn ($_companyIdScope) => \App\Services\CompanyIdScope::constrain($_companyIdScope, 'member.company_id', $staff->company_id))
-                ->pluck('reporting.member_sales_profile_id')->all());
+                ->pluck('reporting.member_sales_profile_id')->all();
+                foreach ($members as $memberId) {
+                    if (! in_array($memberId, $ids, true)) {
+                        $ids[] = $memberId;
+                        $pending[] = $memberId;
+                    }
+                }
+            }
         }
-        $query->whereIn('sales_profile_id', array_values(array_unique($ids)));
+        return array_values(array_unique($ids));
     }
 
-    private function assertManagementCompany(Request $request, string $companyId): void
+    private function statementProfile(Request $request, string $profileId): SalesProfile
     {
-        abort_unless(in_array($companyId, $this->actorCompanyIds($request), true), 403,
-            'Commission operation is outside your active legal entity.');
+        $query = SalesProfile::query()->commissionStatementEligible()->with('staff')->whereKey($profileId);
+        $this->applyProfileOptionScope($query, $request);
+
+        return $query->firstOrFail();
     }
 
-    private function resolveCompanyId(?string $companyId): string
+    private function assertStatementScope(Request $request, string $statementId): void
     {
-        $resolved = $companyId ?: app(WebsiteSettingsService::class)->resolveCurrentCompanyId();
-        abort_unless($resolved, 409, 'Select an active business for Sales work.');
-        if (request()->header('X-Active-Context-Type') === 'staff') {
-            app(CompanySettingsAccessService::class)->assertCanAccess(request()->user(), (string) $resolved);
-        }
-
-        return (string) $resolved;
+        $query = SalesCommissionStatement::query()->whereKey($statementId);
+        $this->applyScope($query, $request);
+        $query->firstOrFail();
     }
 
-    private function actorCompanyIds(Request $request): array
+    private function assertPayoutScope(Request $request, string $payoutId): void
     {
-        if ($request->header('X-Active-Context-Type') === 'staff') {
-            $companyId = app(WebsiteSettingsService::class)->resolveCurrentCompanyId();
-            abort_unless($companyId, 409, 'Select an active business for Sales work.');
-            app(CompanySettingsAccessService::class)->assertCanAccess($request->user(), (string) $companyId);
-
-            return DB::table('companies')->where('id', $companyId)->where('is_active', true)
-                ->whereNull('deleted_at')->exists() ? [(string) $companyId] : [];
-        }
-        if ($request->user()->can('sales.commission-statements.view-all')) {
-            return DB::table('companies')->where('is_active', true)->whereNull('deleted_at')->pluck('id')->all();
-        }
-        $companyId = app(StaffAccessService::class)->currentActorStaff($request->user())->company_id;
-        if (! $companyId) return [];
-
-        return DB::table('companies')->where('id', $companyId)->where('is_active', true)
-            ->whereNull('deleted_at')->exists() ? [(string) $companyId] : [];
+        $statementIds = DB::table('sales_commission_payout_allocations')->where('payout_id', $payoutId)->pluck('statement_id');
+        abort_if($statementIds->isEmpty(), 404, 'Payout statements were not found.');
+        $query = SalesCommissionStatement::query()->whereIn('id', $statementIds);
+        $this->applyScope($query, $request);
+        abort_unless($query->count() === $statementIds->unique()->count(), 403,
+            'Payout statements are outside your authorized Staff scope.');
     }
 }

@@ -29,8 +29,7 @@ class CompanyController extends Controller
             $q->where(function ($query) use ($search) {
                 $query->whereLikeInsensitive('name', $search)
                     ->orWhereLikeInsensitive('email', $search)
-                    ->orWhereLikeInsensitive('phone', $search)
-                    ->orWhereLikeInsensitive('domain', $search);
+                    ->orWhereLikeInsensitive('phone', $search);
             });
         }
         if ($request->filled('region_id')) {
@@ -102,7 +101,7 @@ class CompanyController extends Controller
 
         return response()->json([
             'status' => 'success',
-            'message' => 'Company created',
+            'message' => 'Location created',
             'data' => new CompanyResource($company)
         ], 201);
     }
@@ -124,7 +123,7 @@ class CompanyController extends Controller
 
         return response()->json([
             'status' => 'success',
-            'message' => 'Company updated',
+            'message' => 'Location updated',
             'data' => new CompanyResource($company->load(['region', 'country', 'state']))
         ]);
     }
@@ -135,7 +134,7 @@ class CompanyController extends Controller
 
         return response()->json([
             'status' => 'success',
-            'message' => 'Company deleted'
+            'message' => 'Location deleted'
         ]);
     }
 }

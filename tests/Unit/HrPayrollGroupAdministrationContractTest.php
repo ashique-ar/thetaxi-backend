@@ -1,14 +1,15 @@
 <?php
 
-it('governs payroll groups as a versioned, legal-entity-scoped, idempotent register reusing the shared organization event ledger', function () {
+it('governs payroll groups as a versioned, installation-wide, idempotent register reusing the shared organization event ledger', function () {
     $service = file_get_contents(app_path('Services/Hr/OrganizationAdministrationService.php'));
 
     expect($service)
-        ->toContain('public function createPayrollGroup(array $data,string $companyId,string $actorUserId):array')
-        ->toContain('public function updatePayrollGroup(string $groupId,array $data,string $companyId,string $actorUserId):array')
-        ->toContain("if(\$replay=\$this->replay(\$data['idempotency_key'],\$checksum,\$companyId,'payroll_group'))return\$replay;")
+        ->toContain('public function createPayrollGroup(array $data,string $actorUserId):array')
+        ->toContain('public function updatePayrollGroup(string $groupId,array $data,string $actorUserId):array')
+        ->toContain("if(\$replay=\$this->replay(\$data['idempotency_key'],\$checksum,'payroll_group'))return\$replay;")
         ->toContain("abort_unless((int)\$row->version===(int)\$data['expected_version'],409,'Payroll group version is stale.');")
-        ->toContain("abort_if(DB::table('hr_payroll_groups')->where('company_id',\$companyId)->where('code',\$payload['code'])->exists(),409,");
+        ->toContain("abort_if(DB::table('hr_payroll_groups')->where('code',\$payload['code'])->exists(),409,")
+        ->not->toContain('company_id', 'companyId');
 });
 
 it('rejects payroll-group rollback once any governed change event exists', function () {

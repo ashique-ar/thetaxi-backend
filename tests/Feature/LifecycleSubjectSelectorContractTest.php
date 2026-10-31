@@ -1,10 +1,11 @@
 <?php
 
-it('replaces lifecycle subject UUID entry with tenant-scoped readable selectors', function () {
+it('replaces lifecycle subject UUID entry with installation-wide readable selectors', function () {
     $controller=file_get_contents(app_path('Http/Controllers/Api/Hr/LifecycleController.php'));
     $component=file_get_contents(base_path('../portal-thetaxi/src/app/modules/hr-lifecycle/components/lifecycle-cases/open-case-dialog.component.ts'));
 
-    expect($controller)->toContain('public function caseSubjectOptions(')->toContain("Rule::in(['staff','application'])")->toContain("where('app.company_id',\$d['company_id'])")
+    expect($controller)->toContain('public function caseSubjectOptions(')->toContain("Rule::in(['staff','application'])")
+        ->not->toContain('company_id', 'companyId', 'company(')
         ->and($component)->toContain('UiManagedRecordSelectComponent')->toContain('endpoint="/hr/lifecycle/case-subject-options"')->not->toContain('Staff ID (leave blank')->not->toContain('Application ID (pre-hire only)');
 });
 

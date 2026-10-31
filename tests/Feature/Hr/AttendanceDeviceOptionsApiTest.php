@@ -2,8 +2,6 @@
 
 use App\Models\Hr\Attendance\AttendanceDevice;
 use App\Models\Staff;
-use App\Models\User;
-use App\Models\UserContext;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Str;
@@ -12,197 +10,73 @@ use function Pest\Laravel\actingAs;
 
 uses(RefreshDatabase::class);
 
-it('returns searchable paginated terminal options only for the actor company', function () {
-    [$user, $company] = hr_seed_admin_actor([], true);
-    $first = AttendanceDevice::factory()->create(['company_id' => $company->id, 'site_code' => 'DEPOT-A', 'model' => 'DS-K1']);
-    AttendanceDevice::factory()->create(['company_id' => $company->id, 'site_code' => 'DEPOT-B', 'model' => 'DS-K2']);
-    $otherCompany = App\Models\Company::create(['name' => 'Other Attendance Co']);
-    AttendanceDevice::factory()->create([
-        'company_id' => $otherCompany->id,
-        'site_code' => 'DEPOT-SECRET',
-    ]);
+it('returns searchable paginated installation-wide device options without tenant metadata', function () {
+    [$user] = hr_seed_admin_actor([], true);
+    $first = AttendanceDevice::factory()->create(['site_code' => 'DEPOT-A', 'model' => 'DS-K1']);
+    AttendanceDevice::factory()->create(['site_code' => 'DEPOT-B', 'model' => 'DS-K2']);
+    AttendanceDevice::factory()->create(['site_code' => 'DEPOT-C', 'model' => 'DS-K3']);
 
-    $response = actingAs($user, 'api')->getJson('/api/hr/attendance/device-options?search=DEPOT&per_page=1');
-
-    $response->assertOk()
-        ->assertJsonPath('data.total', 2)
-        ->assertJsonPath('data.per_page', 1)
+    actingAs($user, 'api')->getJson('/api/hr/attendance/device-options?search=DEPOT&per_page=2')
+        ->assertOk()
+        ->assertJsonPath('data.total', 3)
+        ->assertJsonPath('data.per_page', 2)
         ->assertJsonPath('data.data.0.value', $first->id)
-        ->assertJsonPath('data.data.0.company_id', $company->id)
         ->assertJsonPath('data.data.0.label', 'DEPOT-A')
         ->assertJsonPath('data.data.0.metadata.model', 'DS-K1')
-        ->assertJsonMissing(['label' => 'DEPOT-SECRET']);
+        ->assertJsonMissingPath('data.data.0.company_id');
 
-    actingAs($user, 'api')->getJson('/api/hr/attendance/device-options?search=DEPOT&per_page=1&page=2')
-        ->assertOk()
-        ->assertJsonPath('data.current_page', 2)
-        ->assertJsonPath('data.data.0.label', 'DEPOT-B');
-
+    actingAs($user, 'api')->getJson('/api/hr/attendance/device-options?search=DEPOT&per_page=2&page=2')
+        ->assertOk()->assertJsonPath('data.current_page', 2);
     actingAs($user, 'api')->getJson('/api/hr/attendance/device-options?selected_id='.$first->id)
-        ->assertOk()
-        ->assertJsonPath('data.total', 1)
-        ->assertJsonPath('data.data.0.label', 'DEPOT-A');
+        ->assertOk()->assertJsonPath('data.total', 1)->assertJsonPath('data.data.0.label', 'DEPOT-A');
 });
 
-it('does not hydrate a terminal option from another company', function () {
+it('returns active Staff mapping candidates across the installation and excludes former Staff by default', function () {
     [$user] = hr_seed_admin_actor([], true);
-    $otherCompany = App\Models\Company::create(['name' => 'Other Attendance Co']);
-    $device = AttendanceDevice::factory()->create(['company_id' => $otherCompany->id]);
+    $active = Staff::factory()->create(['code' => 'ATT-ACTIVE-01']);
+    $former = Staff::factory()->former()->create(['code' => 'ATT-FORMER-01']);
 
-    $response = actingAs($user, 'api')->getJson('/api/hr/attendance/device-options?selected_id='.$device->id);
+    $response = actingAs($user, 'api')->getJson('/api/hr/attendance/mapping-candidates?search=ATT-&per_page=50')
+        ->assertOk();
+    $ids = collect($response->json('data.data'))->pluck('value');
 
-    $response->assertOk()
-        ->assertJsonPath('data.total', 0)
-        ->assertJsonPath('data.data', []);
+    expect($ids)->toContain($active->id)->not->toContain($former->id)
+        ->and($response->json('data.data.0'))->not->toHaveKey('company_id');
 });
 
-it('requires an active Staff identity before staff.view-all company selection', function () {
-    (new Database\Seeders\AllPermissionsSeeder())->run();
-    $user = User::factory()->create();
-    $user->givePermissionTo(['staff.view-all', 'hr.attendance.devices.view']);
-    App\Models\Company::create(['name' => 'Admin Attendance A']);
-    App\Models\Company::create(['name' => 'Admin Attendance B']);
-
-    actingAs($user, 'api')->getJson('/api/hr/attendance/company-options')->assertForbidden();
-});
-
-it('returns searchable attendance Staff options only for active employees in the actor company', function () {
-    [$user, $company] = hr_seed_admin_actor([], true);
-    $activeUser = App\Models\User::factory()->create(['first_name' => 'Active', 'last_name' => 'Employee']);
-    $active = Staff::factory()->create([
-        'company_id' => $company->id,
-        'code' => 'ATT-ACTIVE-01',
-        'user_id' => $activeUser->id,
+it('shows installation-wide health and lets an authorized user resolve any device alert', function () {
+    [$user] = hr_seed_admin_actor();
+    $device = AttendanceDevice::factory()->create();
+    $alertId = (string) Str::uuid();
+    DB::table('hr_attendance_device_alerts')->insert([
+        'id' => $alertId,
+        'device_id' => $device->id,
+        'alert_type' => 'device_offline',
+        'severity' => 'medium',
+        'status' => 'open',
+        'message' => 'Device heartbeat is overdue.',
+        'dedupe_key' => hash('sha256', $alertId),
+        'detected_at' => now(),
+        'created_at' => now(),
+        'updated_at' => now(),
     ]);
-    $scheduledUser = App\Models\User::factory()->create(['first_name' => 'Scheduled', 'last_name' => 'Employee']);
-    $scheduled = Staff::factory()->create([
-        'company_id' => $company->id,
-        'code' => 'ATT-SCHEDULED-01',
-        'user_id' => $scheduledUser->id,
-    ]);
-    $scheduled->forceFill(['employment_ended_at' => now()->addDay()])->save();
-    $former = Staff::factory()->former()->create([
-        'company_id' => $company->id,
-        'code' => 'ATT-FORMER-01',
-    ]);
-    $otherCompany = App\Models\Company::create(['name' => 'Other Attendance Co']);
-    $other = Staff::factory()->create([
-        'company_id' => $otherCompany->id,
-        'code' => 'ATT-OTHER-01',
-    ]);
-
-    $response = actingAs($user, 'api')->getJson('/api/hr/attendance/mapping-candidates?search=ATT-&per_page=50');
-
-    $response->assertOk()
-        ->assertJsonPath('data.data.0.value', $active->id)
-        ->assertJsonPath('data.data.0.metadata.code', 'ATT-ACTIVE-01')
-        ->assertJsonFragment(['value' => $scheduled->id])
-        ->assertJsonMissing(['value' => $former->id])
-        ->assertJsonMissing(['value' => $other->id]);
-    expect($response->json('data.data.0.label'))->toContain('ATT-ACTIVE-01', 'Active Employee');
-});
-
-it('denies attendance selector access after the actor Staff employment ends', function () {
-    [$user] = hr_seed_admin_actor([], true);
-    $staff = Staff::query()->where('user_id', $user->id)->firstOrFail();
-    $staff->forceFill(['employment_ended_at' => now()->subDay()])->save();
-
-    actingAs($user, 'api')->getJson('/api/hr/attendance/mapping-candidates')
-        ->assertForbidden()
-        ->assertJsonPath('message', 'The authenticated user has no active Staff legal-entity context.');
-});
-
-it('uses an explicitly selected company only when the actor has active Staff membership there', function () {
-    [$user] = hr_seed_admin_actor([], true);
-    $staff = Staff::query()->where('user_id', $user->id)->firstOrFail();
-    $context = UserContext::query()->where('context_type', 'staff')->where('context_id', $staff->id)->firstOrFail();
-    $otherCompany = App\Models\Company::create(['name' => 'Other Attendance Co']);
-    $candidate = Staff::factory()->create(['company_id' => $staff->company_id, 'code' => 'ATT-MEMBER-02']);
-
-    $headers = ['X-Active-Context-Type' => 'staff', 'X-Active-Context-Id' => $context->id];
-    actingAs($user, 'api')->withHeaders($headers)->getJson('/api/hr/attendance/mapping-candidates?company_id='.$staff->company_id)
-        ->assertOk()
-        ->assertJsonFragment(['value' => $candidate->id]);
-
-    actingAs($user, 'api')->withHeaders($headers)->getJson('/api/hr/attendance/mapping-candidates?company_id='.$otherCompany->id)
-        ->assertForbidden()->assertJsonPath('message', 'Attendance data is outside your legal entity.');
-
-    $unassignedCompany = App\Models\Company::create(['name' => 'Unassigned Attendance Co']);
-    actingAs($user, 'api')->withHeaders($headers)->getJson('/api/hr/attendance/mapping-candidates?company_id='.$unassignedCompany->id)
-        ->assertForbidden()
-        ->assertJsonPath('message', 'Attendance data is outside your legal entity.');
-    actingAs($user, 'api')->withHeaders($headers)->getJson('/api/hr/attendance/mapping-candidates?company_id='.Str::uuid())
-        ->assertForbidden()
-        ->assertJsonPath('message', 'Attendance data is outside your legal entity.');
-});
-
-it('allows device viewers to select only companies with active Staff membership', function () {
-    [, $company] = hr_seed_admin_actor();
-    $viewer = User::factory()->create();
-    $viewer->givePermissionTo('hr.attendance.devices.view');
-    $staff = Staff::factory()->create(['user_id' => $viewer->id, 'company_id' => $company->id]);
-    UserContext::create([
-        'user_id' => $viewer->id, 'context_type' => 'staff', 'context_id' => $staff->id,
-        'is_active' => true, 'created_user_id' => $viewer->id,
-    ]);
-
-    actingAs($viewer, 'api')->getJson('/api/hr/attendance/company-options')
-        ->assertOk()->assertJsonPath('data.0.value', $company->id);
-});
-
-it('scopes attendance health and device alerts to the selected company and authorizes alert resolution by owner', function () {
-    [$user, $company] = hr_seed_admin_actor();
-    $otherCompany = App\Models\Company::create(['name' => 'Second Attendance Co']);
-    $device = AttendanceDevice::factory()->create(['company_id' => $company->id]);
-    $otherDevice = AttendanceDevice::factory()->create(['company_id' => $otherCompany->id]);
     $headers = ['X-Active-Context-Type' => 'internal'];
-    $alertIds = [];
-
-    foreach ([[$company->id, $device->id], [$otherCompany->id, $otherDevice->id]] as [$companyId, $deviceId]) {
-        $alertId = (string) Str::uuid();
-        $alertIds[$companyId] = $alertId;
-        DB::table('hr_attendance_device_alerts')->insert([
-            'id' => $alertId,
-            'company_id' => $companyId,
-            'device_id' => $deviceId,
-            'alert_type' => 'device_offline',
-            'severity' => 'medium',
-            'status' => 'open',
-            'message' => 'Device heartbeat is overdue.',
-            'dedupe_key' => hash('sha256', $alertId),
-            'detected_at' => now(),
-            'created_at' => now(),
-            'updated_at' => now(),
-        ]);
-    }
 
     actingAs($user, 'api')->withHeaders($headers)->getJson('/api/hr/attendance/health')
         ->assertOk()->assertJsonPath('data.devices.0.id', $device->id);
-    actingAs($user, 'api')->withHeaders($headers)->getJson('/api/hr/attendance/health?company_id='.$otherCompany->id)
-        ->assertOk()->assertJsonPath('data.devices.0.id', $otherDevice->id);
-    actingAs($user, 'api')->withHeaders($headers)->getJson('/api/hr/attendance/device-alerts?company_id='.$otherCompany->id)
-        ->assertOk()->assertJsonPath('data.total', 1)->assertJsonPath('data.data.0.id', $alertIds[$otherCompany->id]);
     actingAs($user, 'api')->withHeaders($headers)->getJson('/api/hr/attendance/device-alerts')
-        ->assertOk()->assertJsonPath('data.total', 1)->assertJsonPath('data.data.0.id', $alertIds[$company->id]);
-    $resolutionNote = 'Verified on the selected terminal.';
-    actingAs($user, 'api')->withHeaders($headers)->postJson('/api/hr/attendance/device-alerts/'.$alertIds[$otherCompany->id].'/resolve', [
-        'note' => $resolutionNote,
+        ->assertOk()->assertJsonPath('data.total', 1)->assertJsonPath('data.data.0.id', $alertId);
+    actingAs($user, 'api')->withHeaders($headers)->postJson('/api/hr/attendance/device-alerts/'.$alertId.'/resolve', [
+        'note' => 'Verified on the terminal.',
     ])->assertOk();
-    actingAs($user, 'api')->withHeaders($headers)->postJson('/api/hr/attendance/device-alerts/'.$alertIds[$otherCompany->id].'/resolve', [
-        'note' => $resolutionNote,
-    ])->assertOk();
-    actingAs($user, 'api')->withHeaders($headers)->postJson('/api/hr/attendance/device-alerts/'.$alertIds[$otherCompany->id].'/resolve', [
-        'note' => 'Duplicate resolution.',
-    ])->assertStatus(409);
 
     $this->assertDatabaseHas('hr_attendance_device_alerts', [
-        'id' => $alertIds[$otherCompany->id], 'status' => 'resolved', 'resolved_by' => $user->id,
+        'id' => $alertId, 'status' => 'resolved', 'resolved_by' => $user->id,
     ]);
-    $alertAudits = DB::table('activity_log')->where('log_name', 'hr-attendance')->where('description', 'attendance_device_alert_resolved')->get();
-    expect($alertAudits)->toHaveCount(1)
-        ->and(json_decode($alertAudits->first()->properties, true))->toBe([
-            'company_id' => $otherCompany->id,
-            'status' => 'resolved',
-            'alert_type' => 'device_offline',
-        ]);
+    $audit = DB::table('activity_log')->where('log_name', 'hr-attendance')
+        ->where('description', 'attendance_device_alert_resolved')->first();
+    expect(json_decode($audit->properties, true))->toBe([
+        'status' => 'resolved',
+        'alert_type' => 'device_offline',
+    ]);
 });

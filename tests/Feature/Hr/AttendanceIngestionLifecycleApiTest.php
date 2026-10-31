@@ -1,6 +1,5 @@
 <?php
 
-use App\Models\Company;
 use App\Models\Hr\Attendance\AttendanceConnector;
 use App\Models\Hr\Attendance\AttendanceDevice;
 use App\Models\Staff;
@@ -30,22 +29,18 @@ function attendanceIngestionEvent(string $eventId, string $personId, ?string $de
 
 it('accepts signed attendance events, safely replays requests, and deduplicates provider events', function () {
     \App\Models\Website\WebsiteSetting::setValue('feature_hr_attendance_ingestion_enabled', 'true');
-    $company = Company::create(['name' => 'Ingestion lifecycle company', 'is_active' => true]);
     $admin = User::factory()->create();
     $connector = AttendanceConnector::factory()->create([
-        'company_id' => $company->id,
         'created_user_id' => $admin->id,
     ]);
     $device = AttendanceDevice::factory()->create([
-        'company_id' => $company->id,
         'connector_id' => $connector->id,
         'serial_number' => 'HK-INGEST-01',
         'created_user_id' => $admin->id,
     ]);
-    $staff = Staff::factory()->create(['company_id' => $company->id]);
+    $staff = Staff::factory()->create();
     DB::table('hr_attendance_person_mappings')->insert([
         'id' => (string) Str::uuid(),
-        'company_id' => $company->id,
         'staff_id' => $staff->id,
         'device_id' => $device->id,
         'provider_person_id' => 'HK-PERSON-17',
@@ -79,7 +74,7 @@ it('accepts signed attendance events, safely replays requests, and deduplicates 
     expect($first->status())->toBe(202, $first->getContent());
     $first->assertJsonPath('data.counts.created', 1)->assertJsonPath('data.counts.duplicate', 0);
     $rawEvent = DB::table('hr_attendance_raw_events')->where('provider_event_id', 'HK-EVENT-17')->first();
-    expect($rawEvent->company_id)->toBe($company->id)
+    expect(property_exists($rawEvent, 'company_id'))->toBeFalse()
         ->and($rawEvent->device_id)->toBe($device->id)
         ->and($rawEvent->staff_id)->toBe($staff->id)
         ->and($rawEvent->mapping_status)->toBe('mapped')
@@ -98,14 +93,11 @@ it('accepts signed attendance events, safely replays requests, and deduplicates 
 
 it('quarantines signed events whose provider identity has no approved mapping', function () {
     \App\Models\Website\WebsiteSetting::setValue('feature_hr_attendance_ingestion_enabled', 'true');
-    $company = Company::create(['name' => 'Attendance quarantine company', 'is_active' => true]);
     $admin = User::factory()->create();
     $connector = AttendanceConnector::factory()->create([
-        'company_id' => $company->id,
         'created_user_id' => $admin->id,
     ]);
     AttendanceDevice::factory()->create([
-        'company_id' => $company->id,
         'connector_id' => $connector->id,
         'serial_number' => 'HK-INGEST-01',
         'created_user_id' => $admin->id,

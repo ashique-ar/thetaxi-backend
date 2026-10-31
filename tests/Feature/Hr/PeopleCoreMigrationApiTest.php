@@ -4,7 +4,6 @@ use App\Models\Hr\HrEmploymentSpell;
 use App\Models\Staff;
 use App\Models\User;
 use App\Models\UserContext;
-use App\Models\Company;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Http\UploadedFile;
 use Illuminate\Support\Facades\Storage;
@@ -16,21 +15,21 @@ use function Pest\Laravel\actingAs;
 uses(RefreshDatabase::class);
 
 it('counts duplicate active employment spells with a PostgreSQL compatible grouped query', function () {
-    [$admin, $company] = hr_seed_admin_actor();
+    [$admin] = hr_seed_admin_actor();
     config(['hr.features.people_core' => true]);
 
-    $staff = Staff::factory()->create(['company_id' => $company->id, 'employment_ended_at' => null]);
-    HrEmploymentSpell::factory()->create(['staff_id' => $staff->id, 'company_id' => $company->id, 'spell_number' => 1]);
-    HrEmploymentSpell::factory()->create(['staff_id' => $staff->id, 'company_id' => $company->id, 'spell_number' => 2]);
+    $staff = Staff::factory()->create(['employment_ended_at' => null]);
+    HrEmploymentSpell::factory()->create(['staff_id' => $staff->id, 'spell_number' => 1]);
+    HrEmploymentSpell::factory()->create(['staff_id' => $staff->id, 'spell_number' => 2]);
 
     actingAs($admin, 'api')->getJson('/api/hr/people/reconciliation')
         ->assertOk()
         ->assertJsonPath('data.issues.activeMultipleSpells', 1);
 });
 
-it('previews and commits one clean tenant legacy employment row then reconciles it', function () {
-    [$admin,$company]=hr_seed_admin_actor();config(['hr.features.people_core'=>true]);Storage::fake('hr_private');
-    $staff=Staff::factory()->create(['company_id'=>$company->id,'code'=>'LEG-001','employment_ended_at'=>null]);
+it('previews and commits one installation-wide legacy employment row then reconciles it', function () {
+    [$admin]=hr_seed_admin_actor();config(['hr.features.people_core'=>true]);Storage::fake('hr_private');
+    $staff=Staff::factory()->create(['code'=>'LEG-001','employment_ended_at'=>null]);
     $csv="employee_number,joined_at,service_date,confirmation_date\nLEG-001,2020-01-02,2020-01-02,2020-07-02\n";
     $preview=actingAs($admin,'api')->post('/api/hr/people/imports/preview',['file'=>UploadedFile::fake()->createWithContent('people.csv',$csv),'idempotency_key'=>'preview-clean-1']);
     $preview->assertCreated()->assertJsonPath('data.job.accepted_count',1)->assertJsonPath('data.job.rejected_count',0)->assertJsonPath('data.rows.0.outcome','accepted');
@@ -50,48 +49,36 @@ it('previews and commits one clean tenant legacy employment row then reconciles 
     actingAs($admin,'api')->getJson('/api/hr/people/reconciliation')->assertOk()->assertJsonPath('data.issues.activeMissingSpell',$before-1);
 });
 
-it('requires the locked active company for People Core import and export writes', function () {
-    [$actor, $company] = hr_seed_admin_actor();
+it('runs People Core imports and exports without a location context', function () {
+    [$actor] = hr_seed_admin_actor();
     config(['hr.features.people_core' => true]);
     Storage::fake('hr_private');
-    $staff = Staff::factory()->create(['company_id' => $company->id, 'code' => 'LOCK-001']);
+    $staff = Staff::factory()->create(['code' => 'LOCK-001']);
     $csv = "employee_number,joined_at,service_date,confirmation_date\nLOCK-001,2020-01-02,2020-01-02,2020-07-02\n";
     $service = app(\App\Services\Hr\PeopleCoreMigrationService::class);
 
-    DB::table('companies')->where('id', $company->id)->update(['is_active' => false]);
-    expect(fn () => $service->preview(UploadedFile::fake()->createWithContent('people.csv', $csv), (string) $company->id, (string) $actor->id, 'inactive-preview'))
-        ->toThrow(\Symfony\Component\HttpKernel\Exception\HttpException::class)
-        ->and(fn () => $service->export((string) $company->id, (string) $actor->id, 'inactive-export'))
-        ->toThrow(\Symfony\Component\HttpKernel\Exception\HttpException::class)
-        ->and(fn () => $service->detectDuplicates((string) $company->id, (string) $actor->id))
-        ->toThrow(\Symfony\Component\HttpKernel\Exception\HttpException::class);
-    expect(DB::table('hr_people_import_jobs')->count())->toBe(0)
-        ->and(DB::table('hr_people_exports')->count())->toBe(0);
+    $job = $service->preview(UploadedFile::fake()->createWithContent('people.csv', $csv), (string) $actor->id, 'installation-preview');
+    $service->commit($job, (string) $actor->id);
+    $export = $service->export((string) $actor->id, 'installation-export');
 
-    DB::table('companies')->where('id', $company->id)->update(['is_active' => true]);
-    $job = $service->preview(UploadedFile::fake()->createWithContent('people.csv', $csv), (string) $company->id, (string) $actor->id, 'active-preview');
-    $export = $service->export((string) $company->id, (string) $actor->id, 'active-export');
-    DB::table('companies')->where('id', $company->id)->update(['is_active' => false]);
-
-    expect(fn () => $service->commit($job, (string) $company->id, (string) $actor->id))
-        ->toThrow(\Symfony\Component\HttpKernel\Exception\HttpException::class)
-        ->and(fn () => $service->download($export, (string) $company->id, (string) $actor->id))
-        ->toThrow(\Symfony\Component\HttpKernel\Exception\HttpException::class);
-    $this->assertDatabaseMissing('hr_employment_spells', ['staff_id' => $staff->id]);
+    expect(HrEmploymentSpell::query()->where('staff_id', $staff->id)->exists())->toBeTrue()
+        ->and($export->generated_by)->toBe($actor->id)
+        ->and(DB::table('hr_people_import_jobs')->count())->toBe(1)
+        ->and(DB::table('hr_people_exports')->count())->toBe(1);
 });
 
 it('retains ambiguous and invalid legacy rows as rejected evidence and refuses commit', function () {
-    [$admin,$company]=hr_seed_admin_actor();config(['hr.features.people_core'=>true]);Storage::fake('hr_private');
-    Staff::factory()->create(['company_id'=>$company->id,'code'=>'LEG-002']);
+    [$admin]=hr_seed_admin_actor();config(['hr.features.people_core'=>true]);Storage::fake('hr_private');
+    Staff::factory()->create(['code'=>'LEG-002']);
     $csv="employee_number,joined_at,service_date,confirmation_date\nLEG-002,not-a-date,2021-01-01,\n";
     $preview=actingAs($admin,'api')->post('/api/hr/people/imports/preview',['file'=>UploadedFile::fake()->createWithContent('invalid.csv',$csv),'idempotency_key'=>'preview-rejected-1']);
     $preview->assertCreated()->assertJsonPath('data.job.rejected_count',1)->assertJsonPath('data.rows.0.outcome','rejected')->assertJsonPath('data.rows.0.errors.0','joined_at must be YYYY-MM-DD.');
     actingAs($admin,'api')->postJson('/api/hr/people/imports/'.$preview->json('data.job.id').'/commit',['expected_file_checksum'=>$preview->json('data.job.file_checksum')])->assertStatus(409);
 });
 
-it('generates and downloads an integrity checked private tenant export', function () {
-    [$admin,$company]=hr_seed_admin_actor();config(['hr.features.people_core'=>true]);Storage::fake('hr_private');
-    Staff::factory()->create(['company_id'=>$company->id,'code'=>'EXP-001']);
+it('generates and downloads an integrity checked private installation export', function () {
+    [$admin]=hr_seed_admin_actor();config(['hr.features.people_core'=>true]);Storage::fake('hr_private');
+    Staff::factory()->create(['code'=>'EXP-001']);
     $created=actingAs($admin,'api')->postJson('/api/hr/people/exports',['idempotency_key'=>'export-1'])->assertCreated();
     $id=$created->json('data.id');
     foreach (['disk','path','file_checksum','scope_checksum','idempotency_key','generated_by','last_downloaded_by','created_user_id','updated_user_id'] as $hidden) {
@@ -104,14 +91,14 @@ it('generates and downloads an integrity checked private tenant export', functio
     actingAs($admin,'api')->get("/api/hr/people/exports/{$id}/download")->assertOk()->assertHeader('content-type','text/csv; charset=UTF-8');
 });
 
-it('resolves readable assignment references inside the tenant and creates the initial assignment', function () {
-    [$admin,$company]=hr_seed_admin_actor();config(['hr.features.people_core'=>true]);Storage::fake('hr_private');
-    $employee=Staff::factory()->create(['company_id'=>$company->id,'code'=>'LEG-ASSIGN','employment_ended_at'=>null,'deleted_at'=>null]);
+it('resolves readable installation-wide assignment references and creates the initial assignment', function () {
+    [$admin]=hr_seed_admin_actor();config(['hr.features.people_core'=>true]);Storage::fake('hr_private');
+    $employee=Staff::factory()->create(['code'=>'LEG-ASSIGN','employment_ended_at'=>null,'deleted_at'=>null]);
     $unit=(string)Str::uuid();$designation=(string)Str::uuid();$position=(string)Str::uuid();$type=(string)Str::uuid();
-    DB::table('hr_organization_units')->insert(['id'=>$unit,'company_id'=>$company->id,'unit_type'=>'department','code'=>'OPS','name'=>'Operations','timezone'=>'Asia/Colombo','status'=>'active','effective_from'=>'2019-01-01','created_user_id'=>$admin->id,'created_at'=>now(),'updated_at'=>now()]);
-    DB::table('hr_designations')->insert(['id'=>$designation,'company_id'=>$company->id,'code'=>'OFFICER','name'=>'Officer','status'=>'active','version'=>1,'effective_from'=>'2019-01-01','created_at'=>now(),'updated_at'=>now()]);
-    DB::table('hr_positions')->insert(['id'=>$position,'company_id'=>$company->id,'organization_unit_id'=>$unit,'designation_id'=>$designation,'position_number'=>'POS-001','title'=>'Operations Officer','headcount_limit'=>2,'status'=>'active','effective_from'=>'2019-01-01','version'=>1,'created_at'=>now(),'updated_at'=>now()]);
-    DB::table('hr_employment_types')->insert(['id'=>$type,'company_id'=>$company->id,'code'=>'PERM','name'=>'Permanent','status'=>'active','created_at'=>now(),'updated_at'=>now()]);
+    DB::table('hr_organization_units')->insert(['id'=>$unit,'unit_type'=>'department','code'=>'OPS','name'=>'Operations','timezone'=>'Asia/Colombo','status'=>'active','effective_from'=>'2019-01-01','created_user_id'=>$admin->id,'created_at'=>now(),'updated_at'=>now()]);
+    DB::table('hr_designations')->insert(['id'=>$designation,'code'=>'OFFICER','name'=>'Officer','status'=>'active','version'=>1,'effective_from'=>'2019-01-01','created_at'=>now(),'updated_at'=>now()]);
+    DB::table('hr_positions')->insert(['id'=>$position,'organization_unit_id'=>$unit,'designation_id'=>$designation,'position_number'=>'POS-001','title'=>'Operations Officer','headcount_limit'=>2,'status'=>'active','effective_from'=>'2019-01-01','version'=>1,'created_at'=>now(),'updated_at'=>now()]);
+    DB::table('hr_employment_types')->insert(['id'=>$type,'code'=>'PERM','name'=>'Permanent','status'=>'active','created_at'=>now(),'updated_at'=>now()]);
     $header='employee_number,joined_at,service_date,confirmation_date,employment_type_code,organization_unit_code,position_number,location_code';
     $csv=$header."\nLEG-ASSIGN,2020-01-02,2020-01-02,2020-07-02,PERM,OPS,POS-001,Colombo\n";
     $preview=actingAs($admin,'api')->post('/api/hr/people/imports/preview',['file'=>UploadedFile::fake()->createWithContent('assignment.csv',$csv),'idempotency_key'=>'assignment-preview']);
@@ -122,11 +109,11 @@ it('resolves readable assignment references inside the tenant and creates the in
     expect($spell->employment_type_id)->toBe($type)->and($assignment->organization_unit_id)->toBe($unit)->and($assignment->position_id)->toBe($position)->and($assignment->location_code)->toBe('Colombo');
 });
 
-it('detects duplicate identity evidence and requires a different authorized checker', function () {
-    [$maker,$company]=hr_seed_admin_actor();config(['hr.features.people_core'=>true]);
-    $first=Staff::factory()->create(['company_id'=>$company->id,'code'=>'DUP-001']);
-    $second=Staff::factory()->former()->create(['company_id'=>$company->id,'code'=>'DUP-002']);
-    $notCandidate=Staff::factory()->create(['company_id'=>$company->id,'code'=>'NOT-CANDIDATE']);
+it('detects duplicate identity evidence installation-wide and requires a different authorized checker', function () {
+    [$maker]=hr_seed_admin_actor();config(['hr.features.people_core'=>true]);
+    $first=Staff::factory()->create(['code'=>'DUP-001']);
+    $second=Staff::factory()->former()->create(['code'=>'DUP-002']);
+    $notCandidate=Staff::factory()->create(['code'=>'NOT-CANDIDATE']);
     $fingerprint=hash('sha256','same-reviewed-nic');
     DB::table('staff')->whereIn('id',[$first->id,$second->id])->update(['nic_fingerprint'=>$fingerprint]);
 
@@ -148,7 +135,7 @@ it('detects duplicate identity evidence and requires a different authorized chec
         'expected_version'=>$review['version'],'disposition'=>'canonical_selected','canonical_staff_id'=>$first->id,'reason'=>'Reviewed as one legacy identity.',
     ])->assertForbidden();
 
-    $checker=User::factory()->create();$checker->assignRole('admin');$checkerStaff=Staff::factory()->create(['user_id'=>$checker->id,'company_id'=>$company->id,'code'=>'CHECKER-001']);
+    $checker=User::factory()->create();$checker->assignRole('admin');$checkerStaff=Staff::factory()->create(['user_id'=>$checker->id,'code'=>'CHECKER-001']);
     UserContext::create(['user_id'=>$checker->id,'context_type'=>'staff','context_id'=>$checkerStaff->id,'is_active'=>true,'created_user_id'=>$checker->id]);
     $decision=actingAs($checker,'api')->postJson('/api/hr/people/duplicate-reviews/'.$review['id'].'/decide',[
         'expected_version'=>$review['version'],'disposition'=>'canonical_selected','canonical_staff_id'=>$first->id,'reason'=>'Reviewed as one legacy identity.',
@@ -159,18 +146,19 @@ it('detects duplicate identity evidence and requires a different authorized chec
     actingAs($checker,'api')->postJson('/api/hr/people/duplicate-reviews/'.$review['id'].'/consolidate',['expected_version'=>$version])
         ->assertOk()->assertJsonPath('data.consolidation_status','linked');
     expect(DB::table('hr_people_identity_links')->where('alias_staff_id',$second->id)->where('canonical_staff_id',$first->id)->count())->toBe(1)
-        ->and(app(\App\Services\Hr\CanonicalStaffResolver::class)->id($second->id,$company->id))->toBe($first->id)
-        ->and(app(\App\Services\Hr\CanonicalStaffResolver::class)->id($first->id,$company->id))->toBe($first->id);
+        ->and(app(\App\Services\Hr\CanonicalStaffResolver::class)->id($second->id))->toBe($first->id)
+        ->and(app(\App\Services\Hr\CanonicalStaffResolver::class)->id($first->id))->toBe($first->id);
     expect(Staff::withTrashed()->whereIn('id',[$first->id,$second->id])->count())->toBe(2);
 });
 
-it('does not expose or decide another legal entity duplicate review', function () {
+it('makes duplicate identity reviews available across the installation', function () {
     [$actor]=hr_seed_admin_actor();config(['hr.features.people_core'=>true]);
-    $other=Company::create(['name'=>'Other duplicate tenant']);$one=Staff::factory()->create(['company_id'=>$other->id,'code'=>'OTHER-DUP-1']);$two=Staff::factory()->create(['company_id'=>$other->id,'code'=>'OTHER-DUP-2']);
-    $fingerprint=hash('sha256','other-tenant-nic');DB::table('staff')->whereIn('id',[$one->id,$two->id])->update(['nic_fingerprint'=>$fingerprint]);
-    $service=app(\App\Services\Hr\PeopleCoreMigrationService::class);$service->detectDuplicates($other->id,$actor->id);
-    $review=\App\Models\Hr\HrPeopleDuplicateReview::where('company_id',$other->id)->sole();
-    $rows=actingAs($actor,'api')->getJson('/api/hr/people/duplicate-reviews')->assertOk()->json('data.data');expect($rows)->toBe([]);
-    actingAs($actor,'api')->getJson('/api/hr/people/duplicate-reviews/'.$review->id.'/candidate-options')->assertNotFound();
-    actingAs($actor,'api')->postJson('/api/hr/people/duplicate-reviews/'.$review->id.'/decide',['expected_version'=>1,'disposition'=>'keep_separate','reason'=>'Cross tenant denial proof.'])->assertNotFound();
+    $one=Staff::factory()->create(['code'=>'GLOBAL-DUP-1']);$two=Staff::factory()->create(['code'=>'GLOBAL-DUP-2']);
+    $fingerprint=hash('sha256','global-duplicate-nic');DB::table('staff')->whereIn('id',[$one->id,$two->id])->update(['nic_fingerprint'=>$fingerprint]);
+    app(\App\Services\Hr\PeopleCoreMigrationService::class)->detectDuplicates($actor->id);
+    $review=\App\Models\Hr\HrPeopleDuplicateReview::where('match_fingerprint',hash('sha256','nic_fingerprint|'.mb_strtolower($fingerprint)))->sole();
+    $rows=actingAs($actor,'api')->getJson('/api/hr/people/duplicate-reviews')->assertOk()->json('data.data');
+    expect(collect($rows)->pluck('id'))->toContain($review->id);
+    actingAs($actor,'api')->getJson('/api/hr/people/duplicate-reviews/'.$review->id.'/candidate-options?selected_id='.$two->id)
+        ->assertOk()->assertJsonPath('data.data.0.value',$two->id);
 });

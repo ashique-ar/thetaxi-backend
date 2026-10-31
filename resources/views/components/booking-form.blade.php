@@ -215,16 +215,6 @@
         ->values();
 
     try {
-        $resolvedCompanyId = app(\App\Services\WebsiteSettingsService::class)->resolveCompanyId();
-        $companyConfigs = $resolvedCompanyId
-            ? \App\Models\Service\ServiceType::query()
-                ->forContext('public', 'company', (string) $resolvedCompanyId)
-                ->whereIn('code', $serviceTypeCodesForConfig)
-                ->where('is_active', true)
-                ->orderBy('updated_at')
-                ->get()
-            : collect();
-
         $globalConfigs = \App\Models\Service\ServiceType::query()
             ->publicContext()
             ->whereIn('code', $serviceTypeCodesForConfig)
@@ -232,7 +222,7 @@
             ->orderBy('updated_at')
             ->get();
 
-        $serviceTypeConfigs = $globalConfigs->concat($companyConfigs)->keyBy('code');
+        $serviceTypeConfigs = $globalConfigs->keyBy('code');
     } catch (Exception $e) {
         $serviceTypeConfigs = collect();
     }

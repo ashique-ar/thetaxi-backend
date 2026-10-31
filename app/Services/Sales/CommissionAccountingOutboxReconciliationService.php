@@ -8,19 +8,18 @@ use Illuminate\Support\Facades\DB;
 
 class CommissionAccountingOutboxReconciliationService
 {
-    public function reconcilePayout(string $companyId, string $payoutId): ?array
+    public function reconcilePayout(string $payoutId): ?array
     {
         $payout = DB::table('sales_commission_payouts')
-            ->where(fn ($_companyIdScope) => \App\Services\CompanyIdScope::constrain($_companyIdScope, 'company_id', $companyId))->where('id', $payoutId)
+            ->where('id', $payoutId)
             ->whereIn('status', ['confirmed', 'reversal', 'reversed'])->first();
 
         return $payout ? $this->reconcile($payout) : null;
     }
 
-    public function preview(string $companyId, int $perPage = 50): array
+    public function preview(int $perPage = 50): array
     {
         $page = DB::table('sales_commission_payouts')
-            ->where(fn ($_companyIdScope) => \App\Services\CompanyIdScope::constrain($_companyIdScope, 'company_id', $companyId))
             ->whereIn('status', ['confirmed', 'reversal', 'reversed'])
             ->orderByDesc('paid_at')->orderByDesc('id')
             ->paginate($perPage);
@@ -58,9 +57,6 @@ class CommissionAccountingOutboxReconciliationService
         $sourceChecksumValid = $source && is_array($sourcePayload)
             && hash_equals($source->payload_checksum, hash('sha256', CanonicalJson::encode($sourcePayload)));
         if ($source && ! $sourceChecksumValid) $issues[] = 'source_event_checksum_invalid';
-        if ($source && !\App\Services\CompanyIdScope::sameCompanyId((string) ((string) $source->company_id), (string) ((string) $payout->company_id))) $issues[] = 'source_event_company_mismatch';
-        if ($accounting && !\App\Services\CompanyIdScope::sameCompanyId((string) ((string) $accounting->company_id), (string) ((string) $payout->company_id))) $issues[] = 'accounting_event_company_mismatch';
-
         $payload = $accounting ? json_decode($accounting->payload, true) : null;
         $checksumValid = $accounting && is_array($payload)
             && hash_equals($accounting->payload_checksum, hash('sha256', CanonicalJson::encode($payload)));
@@ -69,7 +65,6 @@ class CommissionAccountingOutboxReconciliationService
         $expectedAmount = ($isReversal ? '-' : '').number_format(abs((float) $payout->amount_lkr), 4, '.', '');
         $expectedAllocations = DB::table('sales_commission_payout_allocations as allocation')
             ->join('sales_commission_statements as statement', 'statement.id', '=', 'allocation.statement_id')
-            ->where(fn ($_companyIdScope) => \App\Services\CompanyIdScope::constrain($_companyIdScope, 'statement.company_id', $payout->company_id))
             ->where('allocation.payout_id', $payout->id)
             ->orderBy('statement.period_start')->orderBy('statement.id')
             ->get(['statement.statement_number', 'allocation.amount_lkr'])
@@ -115,11 +110,7 @@ class CommissionAccountingOutboxReconciliationService
 
         $deliveryRecords = DB::table('sales_commission_accounting_deliveries')
             ->where('payout_id', $payout->id)->where('event_type', $deliveryEventType)->where('status', 'accepted')->get();
-        if ($deliveryRecords->contains(static fn (object $delivery): bool => !\App\Services\CompanyIdScope::sameCompanyId((string) ((string) $delivery->company_id), (string) ((string) $payout->company_id)))) {
-            $issues[] = 'delivery_company_mismatch';
-        }
         $verified = $deliveryRecords->contains(static fn (object $delivery): bool => $delivery->verification_source === 'quickbooks'
-            && \App\Services\CompanyIdScope::sameCompanyId((string) ((string) $delivery->company_id), (string) ((string) $payout->company_id))
             && $delivery->source_outbox_event_id === $accounting?->id
             && trim((string) $delivery->provider_transaction_id) !== ''
             && preg_match('/^[a-f0-9]{64}$/i', (string) $delivery->provider_response_checksum) === 1);
@@ -141,7 +132,7 @@ class CommissionAccountingOutboxReconciliationService
             'payment_reference' => $payout->payment_reference,
             'accounting_status' => $payout->accounting_status,
             'integration_status' => $verified ? 'verified_delivered'
-                : (($payout->accounting_status === 'delivered' || in_array('delivery_company_mismatch', $issues, true))
+                : ($payout->accounting_status === 'delivered'
                     ? 'delivery_integrity_issue'
                     : (! $subscriberRegistered ? 'awaiting_subscriber' : ($accounting?->published_at ? 'relayed' : 'pending_relay'))),
             'delivery_verification' => $verified ? 'quickbooks_verified' : ($manualAcknowledgement ? 'manual_unverified' : 'not_delivered'),

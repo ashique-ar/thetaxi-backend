@@ -15,7 +15,6 @@ final class SalesFrozenCollectionAgingService
     public function __construct(private readonly SalesPolicySettingsService $policySettings) {}
 
     public function source(
-        string $companyId,
         array $authorizedProfileIds,
         string $asOfDate,
         string $cutoffAt,
@@ -32,7 +31,6 @@ final class SalesFrozenCollectionAgingService
         $schedules = DB::table('booking_payment_schedules as schedule')
             ->join('bookings as booking', 'booking.id', '=', 'schedule.booking_id')
             ->leftJoin('sales_booking_attributions as attribution', 'attribution.booking_id', '=', 'schedule.booking_id')
-            ->where(fn ($_companyIdScope) => \App\Services\CompanyIdScope::constrain($_companyIdScope, 'schedule.company_id', $companyId))
             ->where('schedule.created_at', '<=', $cutoff)
             ->orderBy('schedule.due_date')->orderBy('schedule.id')
             ->get([

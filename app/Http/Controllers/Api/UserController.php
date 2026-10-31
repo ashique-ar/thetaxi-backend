@@ -1003,10 +1003,6 @@ class UserController extends Controller
             }
             abort_if($this->containsCorporateRole($roleNames), 422, 'Corporate roles must be managed within Corporate Management.');
             $this->assertCanChangePrivilegedRoles($roleNames);
-            if ($contextType === 'staff') {
-                unset($contextData['company_id']);
-            }
-
             $userContext = DB::transaction(function () use ($user, $contextType, $contextData): \App\Models\UserContext {
                 $user = User::query()->whereKey($user->id)->lockForUpdate()->firstOrFail();
                 $context = $this->contextService->switchContext($user, $contextType, $contextData);

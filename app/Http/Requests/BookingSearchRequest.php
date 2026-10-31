@@ -977,13 +977,8 @@ class BookingSearchRequest extends FormRequest
 
     private function findPublicServiceType(string $code): ?ServiceType
     {
-        $query = ServiceType::query()->where('code', $code)->where('is_active', true);
-        $companyId = app(WebsiteSettingsService::class)->resolveCompanyId();
-        $serviceType = $companyId
-            ? (clone $query)->forContext('public', 'company', (string) $companyId)->first()
-            : null;
-
-        return $serviceType ?? $query->publicContext()->first();
+        return ServiceType::query()->where('code', $code)->where('is_active', true)
+            ->publicContext()->first();
     }
 
     /**

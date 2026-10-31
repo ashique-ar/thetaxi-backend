@@ -16,10 +16,10 @@ it('computes recruitment analytics read-only over the existing requisition/candi
         ->toContain("'offer_acceptance_rate_percent'=>");
 });
 
-it('scopes recruitment analytics to the actor legal entity via the existing company() helper', function () {
+it('keeps recruitment analytics installation-wide without company filters', function () {
     $controller = file_get_contents(app_path('Http/Controllers/Api/Hr/RecruitmentController.php'));
 
-    expect($controller)->toContain('$company=$this->company($r,$r->input(\'company_id\'));');
+    expect($controller)->not->toContain('company_id', 'companyId', 'company(');
 });
 
 it('reuses the existing hr.recruitment.view permission for analytics rather than minting a new one', function () {

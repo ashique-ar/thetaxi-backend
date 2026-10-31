@@ -23,7 +23,7 @@ class SalesPeriodCloseService
         private readonly SalesPolicySettingsService $policySettings,
     ) {}
 
-    public function preview(string $companyId, string $periodStart, string $cutoffAt): array
+    public function preview(string $periodStart, string $cutoffAt): array
     {
         $timezone = $this->policySettings->businessTimezone();
         abort_unless(is_string($timezone) && $timezone !== '' && in_array($timezone, DateTimeZone::listIdentifiers(), true),
@@ -35,9 +35,8 @@ class SalesPeriodCloseService
         $cutoff = CarbonImmutable::parse($cutoffAt)->utc();
         abort_if($cutoff->isFuture(), 422, 'The Sales close cutoff cannot be in the future.');
 
-        $lock = DB::table('domain_period_locks')->where('domain', 'sales')->where(fn ($_companyIdScope) => \App\Services\CompanyIdScope::constrain($_companyIdScope, 'company_id', $companyId))
-            ->where('period_type', 'month')->where('period_start', $start->utc())
-            ->where('period_end', $endExclusiveUtc)->first();
+        $periodKey = $this->installationPeriodKey('sales', 'month', $start->utc(), $endExclusiveUtc);
+        $lock = DB::table('domain_period_locks')->where('installation_period_key', $periodKey)->first();
         $blockers = [];
         if (! $this->policySettings->featureEnabled('performance_snapshots')) {
             $blockers[] = ['code' => 'performance_snapshots_not_activated', 'count' => 1];
@@ -47,23 +46,23 @@ class SalesPeriodCloseService
 
         $profileMismatchCount = DB::table('sales_metric_facts as fact')
             ->leftJoin('sales_profiles as profile', 'profile.id', '=', 'fact.sales_profile_id')
-            ->where(fn ($_companyIdScope) => \App\Services\CompanyIdScope::constrain($_companyIdScope, 'fact.company_id', $companyId))->whereBetween('fact.occurred_on', [$start->toDateString(), $end->toDateString()])
+            ->whereBetween('fact.occurred_on', [$start->toDateString(), $end->toDateString()])
             ->where('fact.occurred_at', '<=', $cutoff)->where(fn ($query) => $query
-                ->whereNull('profile.id')->orWhereNot(fn ($sameCompany) => \App\Services\CompanyIdScope::sameCompany($sameCompany, 'profile.company_id', 'fact.company_id')))->count();
+                ->whereNull('profile.id'))->count();
         if ($profileMismatchCount > 0) $blockers[] = ['code' => 'metric_profile_scope_mismatch', 'count' => $profileMismatchCount];
-        $missingStaffCount = SalesProfile::query()->withTrashed()->where(fn ($_companyIdScope) => \App\Services\CompanyIdScope::constrain($_companyIdScope, 'company_id', $companyId))
+        $missingStaffCount = SalesProfile::query()->withTrashed()
             ->where('effective_from', '<', $endExclusiveUtc)->where(fn ($query) => $query
                 ->whereNull('effective_until')->orWhere('effective_until', '>', $start->utc()))
             ->whereDoesntHave('staff')->count();
         if ($missingStaffCount > 0) $blockers[] = ['code' => 'profile_staff_missing', 'count' => $missingStaffCount];
         $duplicateTargetCount = DB::query()->fromSub(
             SalesTargetVersion::query()->selectRaw('sales_profile_id, count(*) duplicate_count')
-                ->where(fn ($_companyIdScope) => \App\Services\CompanyIdScope::constrain($_companyIdScope, 'company_id', $companyId))->where('status', 'approved')
+                ->where('status', 'approved')
                 ->whereDate('period_start', '<=', $end)->whereDate('period_end', '>=', $start)
                 ->groupBy('sales_profile_id')->havingRaw('count(*) > 1'), 'duplicates'
         )->count();
         if ($duplicateTargetCount > 0) $blockers[] = ['code' => 'approved_target_ambiguous', 'count' => $duplicateTargetCount];
-        $policies = DB::table('sales_alert_policy_versions')->where(fn ($_companyIdScope) => \App\Services\CompanyIdScope::constrain($_companyIdScope, 'company_id', $companyId))->where('status', 'approved')
+        $policies = DB::table('sales_alert_policy_versions')->where('status', 'approved')
             ->whereDate('effective_from', '<=', $start)->where(fn ($query) => $query
                 ->whereNull('effective_until')->orWhereDate('effective_until', '>=', $end))->get();
         if ($policies->count() !== 1) $blockers[] = [
@@ -80,7 +79,7 @@ class SalesPeriodCloseService
                 $rules = $this->alertPolicyContract->normalize($rules);
             }
         }
-        $unlinkedFrozenCount = SalesKpiSnapshot::query()->where(fn ($_companyIdScope) => \App\Services\CompanyIdScope::constrain($_companyIdScope, 'company_id', $companyId))
+        $unlinkedFrozenCount = SalesKpiSnapshot::query()
             ->whereDate('period_start', $start)->whereDate('period_end', $end)
             ->where('status', 'frozen')->whereNull('period_lock_id')->count();
         if ($unlinkedFrozenCount > 0) $blockers[] = [
@@ -88,7 +87,7 @@ class SalesPeriodCloseService
         ];
 
         $performancePreview = $this->performance->preview(
-            $companyId, $start->toDateString(), $end->toDateString(), $cutoff->toIso8601String(), $rules,
+            $start->toDateString(), $end->toDateString(), $cutoff->toIso8601String(), $rules,
         );
         $rows = $performancePreview['rows'];
         if ($performancePreview['aging_missing_lineage_count'] > 0) $blockers[] = [
@@ -108,7 +107,7 @@ class SalesPeriodCloseService
         ];
         $factTotals = DB::table('sales_metric_facts')->selectRaw(
             'metric_type, SUM(quantity) quantity, SUM(amount_lkr) amount_lkr, COUNT(*) fact_count'
-        )->where(fn ($_companyIdScope) => \App\Services\CompanyIdScope::constrain($_companyIdScope, 'company_id', $companyId))->whereBetween('occurred_on', [$start->toDateString(), $end->toDateString()])
+        )->whereBetween('occurred_on', [$start->toDateString(), $end->toDateString()])
             ->where('occurred_at', '<=', $cutoff)->groupBy('metric_type')->orderBy('metric_type')->get()
             ->map(fn ($row) => (array) $row)->values()->all();
         $rowTotals = [
@@ -141,10 +140,10 @@ class SalesPeriodCloseService
         if (collect($deltas)->contains(fn ($delta) => abs($delta) > 0.0001)) {
             $blockers[] = ['code' => 'metric_row_reconciliation_failed', 'count' => collect($deltas)->filter(fn ($delta) => abs($delta) > 0.0001)->count()];
         }
-        $factChecksums = SalesMetricFact::query()->where(fn ($_companyIdScope) => \App\Services\CompanyIdScope::constrain($_companyIdScope, 'company_id', $companyId))
+        $factChecksums = SalesMetricFact::query()
             ->whereBetween('occurred_on', [$start->toDateString(), $end->toDateString()])->where('occurred_at', '<=', $cutoff)
             ->orderBy('occurred_at')->orderBy('id')->pluck('fact_checksum')->all();
-        $targetChecksums = SalesTargetVersion::query()->where(fn ($_companyIdScope) => \App\Services\CompanyIdScope::constrain($_companyIdScope, 'company_id', $companyId))->where('status', 'approved')
+        $targetChecksums = SalesTargetVersion::query()->where('status', 'approved')
             ->whereDate('period_start', '<=', $end)->whereDate('period_end', '>=', $start)
             ->orderBy('sales_profile_id')->orderBy('period_start')->pluck('payload_checksum')->all();
         $reconciliation = [
@@ -164,7 +163,7 @@ class SalesPeriodCloseService
             'blockers' => $blockers,
         ];
         $snapshot = [
-            'company_id' => $companyId, 'period_start' => $start->toDateString(),
+            'period_start' => $start->toDateString(),
             'period_end' => $end->toDateString(), 'period_start_utc' => $start->utc()->toIso8601String(),
             'period_end_exclusive_utc' => $endExclusiveUtc->toIso8601String(), 'business_timezone' => $timezone,
             'cutoff_at' => $cutoff->toIso8601String(), 'period_lock_id' => $lock?->id,
@@ -178,73 +177,75 @@ class SalesPeriodCloseService
     }
 
     public function close(
-        string $companyId, string $periodStart, string $cutoffAt, int $expectedLockVersion,
+        string $periodStart, string $cutoffAt, int $expectedLockVersion,
         string $previewChecksum, string $reason, string $idempotencyKey, string $actorUserId,
     ): object {
-        $preview = $this->preview($companyId, $periodStart, $cutoffAt);
+        $preview = $this->preview($periodStart, $cutoffAt);
         $requestChecksum = hash('sha256', CanonicalJson::encode([
-            'company_id' => $companyId, 'period_start' => $preview['period_start'], 'cutoff_at' => $preview['cutoff_at'],
+            'period_start' => $preview['period_start'], 'cutoff_at' => $preview['cutoff_at'],
             'expected_lock_version' => $expectedLockVersion, 'preview_checksum' => $previewChecksum,
             'reason' => trim($reason), 'actor_user_id' => $actorUserId,
         ]));
         return DB::transaction(function () use (
-            $companyId, $periodStart, $cutoffAt, $expectedLockVersion, $previewChecksum,
+            $periodStart, $cutoffAt, $preview, $expectedLockVersion, $previewChecksum,
             $reason, $idempotencyKey, $actorUserId, $requestChecksum
         ): object {
-            DB::table('companies')->where('id', $companyId)->where('is_active', true)
-                ->whereNull('deleted_at')->lockForUpdate()->firstOrFail();
-            $existing = DB::table('sales_period_close_events')->where(fn ($_companyIdScope) => \App\Services\CompanyIdScope::constrain($_companyIdScope, 'company_id', $companyId))
-                ->where('idempotency_key', $idempotencyKey)->first();
+            $existing = DB::table('sales_period_close_events')->where('idempotency_key', $idempotencyKey)->first();
             if ($existing) {
                 abort_unless(hash_equals($existing->request_payload_checksum, $requestChecksum), 409,
                     'The period-close idempotency key was reused with different evidence.');
                 return $this->result($existing->id);
             }
-            $preview = $this->preview($companyId, $periodStart, $cutoffAt);
+            $preview = $this->preview($periodStart, $cutoffAt);
             abort_unless($preview['expected_lock_version'] === $expectedLockVersion, 409, 'The Sales period lock version is stale.');
             abort_unless(hash_equals($preview['preview_checksum'], $previewChecksum), 409,
                 'The Sales period facts, targets, policy, or lock changed; refresh the close preview.');
             abort_unless($preview['can_close'], 409, 'Sales period reconciliation has unresolved blockers.');
             $startUtc = CarbonImmutable::parse($preview['period_start_utc']);
             $endExclusiveUtc = CarbonImmutable::parse($preview['period_end_exclusive_utc']);
-            $lock = DB::table('domain_period_locks')->where('domain', 'sales')->where(fn ($_companyIdScope) => \App\Services\CompanyIdScope::constrain($_companyIdScope, 'company_id', $companyId))
-                ->where('period_type', 'month')->where('period_start', $startUtc)->where('period_end', $endExclusiveUtc)
+            $periodKey = $this->installationPeriodKey('sales', 'month', $startUtc, $endExclusiveUtc);
+            $lock = DB::table('domain_period_locks')->where('installation_period_key', $periodKey)
                 ->lockForUpdate()->first();
             if (! $lock) {
                 $lockId = (string) Str::uuid();
-                DB::table('domain_period_locks')->insert([
-                    'id' => $lockId, 'domain' => 'sales', 'company_id' => $companyId, 'period_type' => 'month',
-                    'period_start' => $startUtc, 'period_end' => $endExclusiveUtc, 'state' => 'open', 'lock_version' => 0,
+                DB::table('domain_period_locks')->insertOrIgnore([
+                    'id' => $lockId, 'domain' => 'sales', 'period_type' => 'month',
+                    'period_start' => $startUtc, 'period_end' => $endExclusiveUtc,
+                    'installation_period_key' => $periodKey, 'state' => 'open', 'lock_version' => 0,
                     'created_at' => now(), 'updated_at' => now(),
                 ]);
-                $lock = DB::table('domain_period_locks')->where('id', $lockId)->lockForUpdate()->first();
+                $lock = DB::table('domain_period_locks')->where('installation_period_key', $periodKey)
+                    ->lockForUpdate()->firstOrFail();
             }
             abort_unless((int) $lock->lock_version === $expectedLockVersion && in_array($lock->state, ['open', 'reopened'], true),
                 409, 'The Sales period is not open for this close operation.');
-            SalesMetricFact::query()->where(fn ($_companyIdScope) => \App\Services\CompanyIdScope::constrain($_companyIdScope, 'company_id', $companyId))
+            SalesMetricFact::query()
                 ->whereBetween('occurred_on', [$preview['period_start'], $preview['period_end']])
                 ->orderBy('occurred_at')->orderBy('id')->lockForUpdate()->get();
-            SalesTargetVersion::query()->where(fn ($_companyIdScope) => \App\Services\CompanyIdScope::constrain($_companyIdScope, 'company_id', $companyId))
+            SalesTargetVersion::query()
                 ->whereDate('period_start', '<=', $preview['period_end'])->whereDate('period_end', '>=', $preview['period_start'])
                 ->orderBy('sales_profile_id')->orderBy('version')->lockForUpdate()->get();
-            $lockedPreview = $this->preview($companyId, $periodStart, $cutoffAt);
+            $lockedPreview = $this->preview($periodStart, $cutoffAt);
             abort_unless(hash_equals($lockedPreview['preview_checksum'], $previewChecksum), 409,
                 'The Sales period evidence changed while closing; refresh the preview.');
 
-            $prior = SalesKpiSnapshot::query()->where('period_lock_id', $lock->id)->where('status', 'frozen')
-                ->lockForUpdate()->first();
+            $prior = SalesKpiSnapshot::query()->whereDate('period_start', $preview['period_start'])
+                ->whereDate('period_end', $preview['period_end'])->where('status', 'frozen')
+                ->orderByDesc('version')->orderByDesc('created_at')->lockForUpdate()->first();
             $kind = $lock->state === 'reopened' ? 'rebuild' : 'initial_close';
+            SalesKpiSnapshot::query()->whereDate('period_start', $preview['period_start'])
+                ->whereDate('period_end', $preview['period_end'])->where('status', 'frozen')
+                ->update(['status' => 'superseded']);
             $snapshot = $this->createSnapshot($lockedPreview, $lock->id, $prior?->id, $kind, $idempotencyKey, $requestChecksum, $actorUserId);
-            if ($prior) $prior->update(['status' => 'superseded']);
             $version = (int) $lock->lock_version + 1;
             DB::table('domain_period_locks')->where('id', $lock->id)->update([
                 'state' => 'locked', 'lock_version' => $version, 'reason' => trim($reason),
                 'locked_by' => $actorUserId, 'locked_at' => now(), 'updated_at' => now(),
             ]);
-            $eventId = $this->event($companyId, $lock->id, $snapshot->id, $kind === 'rebuild' ? 'rebuilt' : 'closed',
+            $eventId = $this->event($lock->id, $snapshot->id, $kind === 'rebuild' ? 'rebuilt' : 'closed',
                 $lock->state, 'locked', $version, $reason, $lockedPreview['reconciliation'],
                 $previewChecksum, $requestChecksum, $idempotencyKey, $actorUserId);
-            $this->events->record('sales', $companyId, 'sales_kpi_snapshot', $snapshot->id,
+            $this->events->record('sales', 'sales_kpi_snapshot', $snapshot->id,
                 $kind === 'rebuild' ? 'sales.performance.period_rebuilt' : 'sales.performance.period_closed',
                 1, 1, ['period_lock_id' => $lock->id, 'period_lock_version' => $version,
                     'period_start' => $lockedPreview['period_start'],
@@ -258,25 +259,24 @@ class SalesPeriodCloseService
         string $periodLockId, int $expectedVersion, string $reason, string $idempotencyKey, string $actorUserId,
     ): object {
         return DB::transaction(function () use ($periodLockId, $expectedVersion, $reason, $idempotencyKey, $actorUserId): object {
-            $lock = DB::table('domain_period_locks')->where('id', $periodLockId)->where('domain', 'sales')->first();
+            $lock = DB::table('domain_period_locks')->where('id', $periodLockId)->where('domain', 'sales')
+                ->whereNotNull('installation_period_key')->first();
             abort_unless($lock, 404);
-            DB::table('companies')->where('id', $lock->company_id)->where('is_active', true)
-                ->whereNull('deleted_at')->lockForUpdate()->firstOrFail();
-            $lock = DB::table('domain_period_locks')->where('id', $periodLockId)->where('domain', 'sales')->lockForUpdate()->first();
+            $lock = DB::table('domain_period_locks')->where('id', $periodLockId)->where('domain', 'sales')
+                ->whereNotNull('installation_period_key')->lockForUpdate()->first();
             abort_unless($lock, 404);
             $requestChecksum = hash('sha256', CanonicalJson::encode([
                 'period_lock_id' => $periodLockId, 'expected_version' => $expectedVersion,
                 'reason' => trim($reason), 'actor_user_id' => $actorUserId,
             ]));
-            $existing = DB::table('sales_period_close_events')->where(fn ($_companyIdScope) => \App\Services\CompanyIdScope::constrain($_companyIdScope, 'company_id', $lock->company_id))
-                ->where('idempotency_key', $idempotencyKey)->first();
+            $existing = DB::table('sales_period_close_events')->where('idempotency_key', $idempotencyKey)->first();
             if ($existing) {
                 abort_unless(hash_equals($existing->request_payload_checksum, $requestChecksum), 409,
                     'The period-reopen idempotency key was reused with different evidence.');
                 return $this->result($existing->id);
             }
             abort_unless($this->policySettings->featureEnabled('performance_snapshots'), 409,
-                'Sales performance snapshot writes are not activated for this legal entity.');
+                'Sales performance snapshots are not activated.');
             abort_unless($lock->state === 'locked', 409, 'Only a locked Sales period can be reopened.');
             abort_unless((int) $lock->lock_version === $expectedVersion, 409, 'The Sales period lock version is stale.');
             $version = $expectedVersion + 1;
@@ -284,9 +284,9 @@ class SalesPeriodCloseService
                 'state' => 'reopened', 'lock_version' => $version, 'reason' => trim($reason),
                 'reopened_by' => $actorUserId, 'reopened_at' => now(), 'updated_at' => now(),
             ]);
-            $eventId = $this->event($lock->company_id, $lock->id, null, 'reopened', 'locked', 'reopened',
+            $eventId = $this->event($lock->id, null, 'reopened', 'locked', 'reopened',
                 $version, $reason, null, null, $requestChecksum, $idempotencyKey, $actorUserId);
-            $this->events->record('sales', $lock->company_id, 'sales_period_lock', $lock->id,
+            $this->events->record('sales', 'sales_period_lock', $lock->id,
                 'sales.performance.period_reopened', $version, 1, ['reason' => trim($reason)], now(), $idempotencyKey);
             return $this->result($eventId);
         }, 3);
@@ -294,11 +294,11 @@ class SalesPeriodCloseService
 
     private function createSnapshot(array $preview, string $lockId, ?string $priorId, string $kind, string $key, string $requestChecksum, string $actor): SalesKpiSnapshot
     {
-        $version = (int) SalesKpiSnapshot::query()->where(fn ($_companyIdScope) => \App\Services\CompanyIdScope::constrain($_companyIdScope, 'company_id', $preview['company_id']))
+        $version = (int) SalesKpiSnapshot::query()
             ->whereDate('period_start', $preview['period_start'])->whereDate('period_end', $preview['period_end'])
             ->lockForUpdate()->max('version') + 1;
         $header = [
-            'company_id' => $preview['company_id'], 'period_lock_id' => $lockId, 'supersedes_snapshot_id' => $priorId,
+            'period_lock_id' => $lockId, 'supersedes_snapshot_id' => $priorId,
             'period_start' => $preview['period_start'], 'period_end' => $preview['period_end'], 'period_type' => 'month',
             'cutoff_at' => $preview['cutoff_at'], 'status' => 'frozen', 'generation_kind' => $kind, 'version' => $version,
             'ranking_policy_snapshot' => SalesPerformanceService::RANKING_POLICY,
@@ -317,13 +317,13 @@ class SalesPeriodCloseService
         return $snapshot->load('rows');
     }
 
-    private function event(string $companyId, string $lockId, ?string $snapshotId, string $action, string $from,
+    private function event(string $lockId, ?string $snapshotId, string $action, string $from,
         string $to, int $version, string $reason, ?array $reconciliation, ?string $previewChecksum,
         string $requestChecksum, string $key, string $actor): string
     {
         $id = (string) Str::uuid();
         DB::table('sales_period_close_events')->insert([
-            'id' => $id, 'company_id' => $companyId, 'period_lock_id' => $lockId, 'snapshot_id' => $snapshotId,
+            'id' => $id, 'period_lock_id' => $lockId, 'snapshot_id' => $snapshotId,
             'action' => $action, 'from_state' => $from, 'to_state' => $to, 'lock_version' => $version,
             'reason' => trim($reason), 'reconciliation_snapshot' => $reconciliation ? json_encode($reconciliation, JSON_THROW_ON_ERROR) : null,
             'reconciliation_checksum' => $reconciliation ? hash('sha256', CanonicalJson::encode($reconciliation)) : null,
@@ -341,6 +341,13 @@ class SalesPeriodCloseService
         $event->snapshot = $event->snapshot_id ? SalesKpiSnapshot::query()->with('rows')->find($event->snapshot_id) : null;
         unset($event->request_payload_checksum, $event->idempotency_key);
         return $event;
+    }
+
+    private function installationPeriodKey(string $domain, string $periodType, CarbonImmutable $periodStart, CarbonImmutable $periodEnd): string
+    {
+        return hash('sha256', implode('|', [
+            $domain, $periodType, $periodStart->utc()->format('Y-m-d H:i:s'), $periodEnd->utc()->format('Y-m-d H:i:s'),
+        ]));
     }
 
     private function sum(array $rows, string $key): float

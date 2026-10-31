@@ -18,7 +18,7 @@ class SalesMetricBreakdownService
      *
      * @return array<string, array{booking_id: ?string, collection_cohort: ?string, commission_category: ?string}>
      */
-    public function resolve(Collection $facts, string $companyId, string $from, string $to): array
+    public function resolve(Collection $facts, string $from, string $to): array
     {
         $timezone = $this->policySettings->businessTimezone();
         abort_unless(is_string($timezone) && in_array($timezone, DateTimeZone::listIdentifiers(), true),
@@ -36,10 +36,10 @@ class SalesMetricBreakdownService
                     ? data_get($dimensions, 'commission_category') : null,
             ]];
         });
-        $attributions = SalesBookingAttribution::withTrashed()->where(fn ($_companyIdScope) => \App\Services\CompanyIdScope::constrain($_companyIdScope, 'company_id', $companyId))
+        $attributions = SalesBookingAttribution::withTrashed()
             ->whereIn('booking_id', $records->pluck('booking_id')->filter()->unique()->values()->all())
             ->get(['id', 'booking_id', 'root_attribution_id', 'secured_at'])->keyBy('booking_id');
-        $roots = SalesBookingAttribution::withTrashed()->where(fn ($_companyIdScope) => \App\Services\CompanyIdScope::constrain($_companyIdScope, 'company_id', $companyId))
+        $roots = SalesBookingAttribution::withTrashed()
             ->whereIn('id', $attributions->pluck('root_attribution_id')->filter()->unique()->values()->all())
             ->get(['id', 'secured_at'])->keyBy('id');
 

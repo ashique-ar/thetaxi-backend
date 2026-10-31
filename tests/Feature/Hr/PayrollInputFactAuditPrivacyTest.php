@@ -1,6 +1,5 @@
 <?php
 
-use App\Models\Company;
 use App\Models\Hr\PayrollInputFact;
 use App\Models\Staff;
 use App\Models\User;
@@ -11,14 +10,12 @@ use Illuminate\Support\Str;
 uses(RefreshDatabase::class);
 
 it('audits payroll fact type and status without private source or Staff details', function () {
-    $company = Company::create(['name' => 'Payroll fact audit company', 'is_active' => true, 'is_default' => true]);
-    $staff = Staff::factory()->create(['company_id' => $company->id]);
+    $staff = Staff::factory()->create();
     $actor = User::factory()->create();
     $sourceId = (string) Str::uuid();
     $privateMarker = 'private-payroll-source-snapshot';
 
     $fact = PayrollInputFact::create([
-        'company_id' => $company->id,
         'staff_id' => $staff->id,
         'fact_kind' => 'approved_leave_minutes',
         'effective_date' => '2026-01-15',
@@ -40,7 +37,6 @@ it('audits payroll fact type and status without private source or Staff details'
     expect($properties)->not->toBeNull()
         ->and($properties)->toContain('approved_leave_minutes')
         ->and($properties)->toContain('staged')
-        ->and($properties)->not->toContain((string) $company->id)
         ->and($properties)->not->toContain((string) $staff->id)
         ->and($properties)->not->toContain((string) $actor->id)
         ->and($properties)->not->toContain($sourceId)
@@ -50,13 +46,11 @@ it('audits payroll fact type and status without private source or Staff details'
         ->and($properties)->not->toContain('480');
 });
 
-it('refuses to stage a payroll fact for an inactive legal entity', function () {
-    $company = Company::create(['name' => 'Inactive payroll fact company', 'is_active' => false, 'is_default' => false]);
-    $staff = Staff::factory()->create(['company_id' => $company->id]);
+it('stages payroll facts for active Staff without a company owner field', function () {
+    $staff = Staff::factory()->create();
     $actor = User::factory()->create();
 
-    expect(fn () => PayrollInputFact::create([
-        'company_id' => $company->id,
+    $fact = PayrollInputFact::create([
         'staff_id' => $staff->id,
         'fact_kind' => 'approved_leave_minutes',
         'effective_date' => '2026-01-15',
@@ -67,20 +61,18 @@ it('refuses to stage a payroll fact for an inactive legal entity', function () {
         'source_snapshot' => [],
         'fact_checksum' => str_repeat('a', 64),
         'created_by' => $actor->id,
-    ]))->toThrow(\Symfony\Component\HttpKernel\Exception\HttpException::class, 'Payroll input facts require an active legal entity.');
+    ]);
 
-    expect(DB::table('hr_payroll_input_facts')->where('company_id', $company->id)->exists())->toBeFalse();
+    expect(DB::table('hr_payroll_input_facts')->where('id', $fact->id)->exists())->toBeTrue()
+        ->and($fact->toArray())->not->toHaveKey('company_id');
 });
 
-it('refuses to stage a payroll fact for Staff owned by another legal entity', function () {
-    $company = Company::create(['name' => 'Payroll fact owner company', 'is_active' => true, 'is_default' => true]);
-    $otherCompany = Company::create(['name' => 'Other payroll fact company', 'is_active' => true, 'is_default' => false]);
-    $staff = Staff::factory()->create(['company_id' => $otherCompany->id]);
+it('keeps payroll facts attached to their Staff record without a tenant relationship', function () {
+    $staff = Staff::factory()->create();
     $actor = User::factory()->create();
     $sourceId = (string) Str::uuid();
 
-    expect(fn () => PayrollInputFact::create([
-        'company_id' => $company->id,
+    $fact = PayrollInputFact::create([
         'staff_id' => $staff->id,
         'fact_kind' => 'approved_leave_minutes',
         'effective_date' => '2026-01-15',
@@ -91,7 +83,9 @@ it('refuses to stage a payroll fact for Staff owned by another legal entity', fu
         'source_snapshot' => [],
         'fact_checksum' => str_repeat('b', 64),
         'created_by' => $actor->id,
-    ]))->toThrow(\Symfony\Component\HttpKernel\Exception\HttpException::class, 'Payroll fact Staff does not belong to its legal entity.');
+    ]);
 
-    $this->assertDatabaseMissing('hr_payroll_input_facts', ['source_id' => $sourceId]);
+    expect($fact->staff_id)->toBe($staff->id)
+        ->and($fact->toArray())->not->toHaveKey('company_id')
+        ->and(DB::table('hr_payroll_input_facts')->where('source_id', $sourceId)->exists())->toBeTrue();
 });

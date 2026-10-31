@@ -1,6 +1,6 @@
 <?php
 
-it('adds the missing calendar, shift, policy, roster, and period list endpoints, scoped to the actor legal entity', function () {
+it('adds installation-wide calendar, shift, policy, roster, and period list endpoints', function () {
     $controller = file_get_contents(app_path('Http/Controllers/Api/Hr/AttendanceResultController.php'));
 
     expect($controller)
@@ -10,7 +10,7 @@ it('adds the missing calendar, shift, policy, roster, and period list endpoints,
         ->toContain('public function policies(Request $request): JsonResponse')
         ->toContain('public function rosters(Request $request,StaffAccessService $access): JsonResponse')
         ->toContain('public function periods(Request $request): JsonResponse')
-        ->toContain('private function actorCompany(Request $request,?string $requestedCompanyId): string{');
+        ->not->toContain('actorCompany', 'company_id');
 });
 
 it('scopes rosters through the same self/team/all StaffAccessService as corrections and exceptions, not company-only', function () {

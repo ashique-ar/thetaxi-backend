@@ -314,19 +314,19 @@ class FinancialSettlementController extends Controller
         if ($request->user()->can('sales.collections.view-all')) {
             return;
         }
-        $companyIds = DB::table('staff')
-            ->where('user_id', $request->user()->id)
-            ->whereNull('deleted_at')
-            ->where(fn ($query) => $query->whereNull('employment_ended_at')->orWhere('employment_ended_at', '>', now()))
-            ->pluck('company_id')->filter()->unique()->values()->all();
+        $profileIds = app(\App\Services\Sales\SalesAccessScope::class)->profileIds(
+            $request->user(),
+            'sales.collections.view-all',
+            'sales.collections.view-team',
+        );
         $bookingIds = $settlement->items()->pluck('booking_id');
         $scopedCount = SalesBookingAttribution::query()
             ->whereIn('booking_id', $bookingIds)
-            ->where(fn ($_companyIdScope) => \App\Services\CompanyIdScope::constrainIn($_companyIdScope, 'company_id', $companyIds))
+            ->when($profileIds !== null, fn ($query) => $query->whereIn('collection_sales_profile_id', $profileIds))
             ->count();
 
         abort_unless($bookingIds->isNotEmpty() && $scopedCount === $bookingIds->count(), 404,
-            'Settlement was not found in the current legal-entity scope.');
+            'Settlement was not found in your current collection portfolio.');
     }
 
     public function driverCash(Request $request)

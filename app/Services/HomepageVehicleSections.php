@@ -53,7 +53,7 @@ class HomepageVehicleSections
                 'to_time' => '09:00',
                 'limit' => max(1, min(24, (int) ($section['limit'] ?? 8))),
             ];
-            $cacheKey = 'homepage_vehicles_' . sha1(($this->settings->resolveCurrentCompanyId() ?? 'global') . json_encode($params));
+            $cacheKey = 'homepage_vehicles_' . sha1(json_encode($params));
             $result = Cache::remember($cacheKey, now()->addMinutes(2), fn () => $this->vehicles->getFeaturedVehicles($params));
             $vehicles = array_values(array_filter($result['data'], fn ($vehicle) =>
                 $service->is_inquiry || (float) data_get($vehicle, 'pricing_info.total_amount', 0) > 0

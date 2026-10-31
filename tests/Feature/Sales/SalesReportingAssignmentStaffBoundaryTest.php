@@ -1,7 +1,6 @@
 <?php
 
 use App\Models\Sales\SalesProfile;
-use App\Models\Company;
 use App\Models\Staff;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Str;
@@ -11,28 +10,27 @@ use function Pest\Laravel\actingAs;
 uses(RefreshDatabase::class);
 
 it('creates and reads reporting assignments installation-wide', function () {
-    [$admin, $company] = hr_seed_admin_actor();
+    [$admin] = hr_seed_admin_actor();
     $admin->givePermissionTo([
         'sales.profiles.view', 'sales.profiles.view-all', 'sales.profiles.manage', 'sales.profiles.manage-all',
     ]);
-    $otherCompany = Company::create(['name' => 'Other reporting location']);
-    $makeProfile = function (string $code, string $companyId) {
-        $staff = Staff::factory()->create(['company_id' => $companyId, 'staff_type' => 'sales']);
+    $makeProfile = function (string $code) {
+        $staff = Staff::factory()->create(['staff_type' => 'sales']);
 
         return SalesProfile::query()->create([
-            'id' => (string) Str::uuid(), 'company_id' => $companyId, 'staff_id' => $staff->id,
+            'id' => (string) Str::uuid(), 'staff_id' => $staff->id,
             'sales_code' => $code, 'status' => 'active', 'effective_from' => now()->subMonth(),
             'staff_category_snapshot' => 'sales', 'reporting_currency' => 'LKR', 'acquisition_eligible' => true,
         ]);
     };
-    $manager = $makeProfile('TEAM-MANAGER', $company->id);
-    $member = $makeProfile('TEAM-MEMBER', $otherCompany->id);
+    $manager = $makeProfile('TEAM-MANAGER');
+    $member = $makeProfile('TEAM-MEMBER');
 
     $created = actingAs($admin, 'api')->postJson('/api/sales/reporting-assignments', [
         'manager_sales_profile_id' => $manager->id,
         'member_sales_profile_id' => $member->id,
         'effective_from' => now()->subDay()->toDateString(),
-        'reason' => 'Assign within the configured default legal entity',
+        'reason' => 'Assign across the installation',
     ])->assertCreated()->assertJsonMissingPath('data.company_id');
 
     actingAs($admin, 'api')->getJson('/api/sales/reporting-assignments')
@@ -44,21 +42,20 @@ it('creates and reads reporting assignments installation-wide', function () {
 });
 
 it('rejects reporting assignments that outlive a member Staff employment', function () {
-    [$admin, $company] = hr_seed_admin_actor();
+    [$admin] = hr_seed_admin_actor();
     $admin->givePermissionTo('sales.profiles.manage', 'sales.profiles.manage-all');
-    $managerStaff = Staff::factory()->create(['company_id' => $company->id, 'staff_type' => 'sales']);
+    $managerStaff = Staff::factory()->create(['staff_type' => 'sales']);
     $formerStaff = Staff::factory()->create([
-        'company_id' => $company->id,
         'staff_type' => 'sales',
         'employment_ended_at' => now()->subDay(),
     ]);
     $manager = SalesProfile::query()->create([
-        'id' => (string) Str::uuid(), 'company_id' => $company->id, 'staff_id' => $managerStaff->id,
+        'id' => (string) Str::uuid(), 'staff_id' => $managerStaff->id,
         'sales_code' => 'TEAM-MANAGER-01', 'status' => 'active', 'effective_from' => now()->subMonth(),
         'staff_category_snapshot' => 'sales', 'reporting_currency' => 'LKR', 'acquisition_eligible' => true,
     ]);
     $member = SalesProfile::query()->create([
-        'id' => (string) Str::uuid(), 'company_id' => $company->id, 'staff_id' => $formerStaff->id,
+        'id' => (string) Str::uuid(), 'staff_id' => $formerStaff->id,
         'sales_code' => 'FORMER-MEMBER-01', 'status' => 'active', 'effective_from' => now()->subMonth(),
         'staff_category_snapshot' => 'sales', 'reporting_currency' => 'LKR', 'acquisition_eligible' => true,
     ]);

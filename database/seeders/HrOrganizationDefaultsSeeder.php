@@ -8,9 +8,8 @@ use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Str;
 
 /**
- * Seeds a minimal Organization & Fields / Jobs & Positions structure for the
- * default Company so the "Organization Units" and "Jobs & Positions" HR
- * screens show real data on a fresh install instead of empty tables.
+ * Seeds a minimal installation-wide Organization & Jobs / Positions structure
+ * so HR catalog screens have starter data on a fresh install.
  *
  * Schema reference: database/migrations/2026_08_12_147000_create_hr_people_core.php
  * (hr_organization_units, hr_job_families, hr_job_grades, hr_designations,
@@ -18,23 +17,16 @@ use Illuminate\Support\Str;
  * (adds version/effective_* columns; JobPositionAdministrationService creates
  * catalogue rows with status "active", which this seeder mirrors).
  *
- * Fully idempotent: every insert is guarded by a lookup on the same unique
- * key the table itself enforces (company_id + code, or company_id +
- * position_number), so re-running db:seed never duplicates rows.
+ * Re-running db:seed reuses existing catalog codes and position numbers.
  */
 class HrOrganizationDefaultsSeeder extends Seeder
 {
     public function run(): void
     {
-        $company = DB::table('companies')->where('is_default', true)->whereNull('deleted_at')->first();
-        if (!$company) {
-            $this->command?->warn('HR organization defaults skipped: no default company exists.');
-            return;
-        }
-
-        $actor = DB::table('staff')->where('company_id', $company->id)->whereNotNull('user_id')->whereNull('employment_ended_at')->whereNull('deleted_at')->orderBy('created_at')->value('user_id');
+        $actor = DB::table('staff')->whereNotNull('user_id')->whereNull('employment_ended_at')
+            ->whereNull('deleted_at')->orderBy('created_at')->value('user_id');
         if (!$actor) {
-            $this->command?->warn('HR organization defaults skipped: the default company has no active Staff user for audit ownership.');
+            $this->command?->warn('HR organization defaults skipped: no active Staff user exists for audit ownership.');
             return;
         }
 
@@ -50,7 +42,7 @@ class HrOrganizationDefaultsSeeder extends Seeder
         ];
         $unitsCreated = 0;
         foreach ($units as $unit) {
-            $existing = DB::table('hr_organization_units')->where('company_id', $company->id)->where('code', $unit['code'])->first();
+            $existing = DB::table('hr_organization_units')->where('code', $unit['code'])->first();
             if ($existing) {
                 $unitIds[$unit['code']] = $existing->id;
                 continue;
@@ -58,7 +50,6 @@ class HrOrganizationDefaultsSeeder extends Seeder
             $id = (string) Str::uuid();
             DB::table('hr_organization_units')->insert([
                 'id' => $id,
-                'company_id' => $company->id,
                 'parent_id' => $unit['parent'] ? ($unitIds[$unit['parent']] ?? null) : null,
                 'unit_type' => $unit['unit_type'],
                 'code' => $unit['code'],
@@ -82,7 +73,7 @@ class HrOrganizationDefaultsSeeder extends Seeder
         ];
         $familiesCreated = 0;
         foreach ($families as $family) {
-            $existing = DB::table('hr_job_families')->where('company_id', $company->id)->where('code', $family['code'])->first();
+            $existing = DB::table('hr_job_families')->where('code', $family['code'])->first();
             if ($existing) {
                 $familyIds[$family['code']] = $existing->id;
                 continue;
@@ -90,7 +81,6 @@ class HrOrganizationDefaultsSeeder extends Seeder
             $id = (string) Str::uuid();
             DB::table('hr_job_families')->insert([
                 'id' => $id,
-                'company_id' => $company->id,
                 'code' => $family['code'],
                 'name' => $family['name'],
                 'status' => 'active',
@@ -103,13 +93,12 @@ class HrOrganizationDefaultsSeeder extends Seeder
         }
 
         // --- Job grade (single default grade) --------------------------------------
-        $grade = DB::table('hr_job_grades')->where('company_id', $company->id)->where('code', 'G1')->first();
+        $grade = DB::table('hr_job_grades')->where('code', 'G1')->first();
         $gradesCreated = 0;
         if (!$grade) {
             $gradeId = (string) Str::uuid();
             DB::table('hr_job_grades')->insert([
                 'id' => $gradeId,
-                'company_id' => $company->id,
                 'code' => 'G1',
                 'name' => 'Standard Grade',
                 'rank' => 1,
@@ -138,16 +127,15 @@ class HrOrganizationDefaultsSeeder extends Seeder
 
         $designationsCreated = 0;
         $positionsCreated = 0;
-        $positionSequence = DB::table('hr_positions')->where('company_id', $company->id)->count();
+        $positionSequence = DB::table('hr_positions')->count();
         foreach ($designations as $designation) {
-            $existingDesignation = DB::table('hr_designations')->where('company_id', $company->id)->where('code', $designation['code'])->first();
+            $existingDesignation = DB::table('hr_designations')->where('code', $designation['code'])->first();
             if ($existingDesignation) {
                 $designationId = $existingDesignation->id;
             } else {
                 $designationId = (string) Str::uuid();
                 DB::table('hr_designations')->insert([
                     'id' => $designationId,
-                    'company_id' => $company->id,
                     'job_family_id' => $familyIds[$designation['family']],
                     'job_grade_id' => $gradeId,
                     'code' => $designation['code'],
@@ -160,12 +148,11 @@ class HrOrganizationDefaultsSeeder extends Seeder
                 $designationsCreated++;
             }
 
-            $existingPosition = DB::table('hr_positions')->where('company_id', $company->id)->where('designation_id', $designationId)->first();
+            $existingPosition = DB::table('hr_positions')->where('designation_id', $designationId)->first();
             if (!$existingPosition) {
                 $positionSequence++;
                 DB::table('hr_positions')->insert([
                     'id' => (string) Str::uuid(),
-                    'company_id' => $company->id,
                     'organization_unit_id' => $unitIds[$designation['unit']],
                     'designation_id' => $designationId,
                     'position_number' => sprintf('POS-%04d', $positionSequence),
@@ -180,6 +167,6 @@ class HrOrganizationDefaultsSeeder extends Seeder
             }
         }
 
-        $this->command?->info("HR organization defaults ready for {$company->name}: {$unitsCreated} organization units, {$familiesCreated} job families, {$gradesCreated} job grades, {$designationsCreated} designations, {$positionsCreated} positions created (existing rows retained).");
+        $this->command?->info("HR organization defaults ready for this installation: {$unitsCreated} organization units, {$familiesCreated} job families, {$gradesCreated} job grades, {$designationsCreated} designations, {$positionsCreated} positions created (existing rows retained).");
     }
 }

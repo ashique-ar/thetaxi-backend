@@ -34,7 +34,7 @@ use App\Http\Controllers\Controller;
  * - {@see ManagesAttendanceQuarantine} — raw event access and quarantine review/resolution.
  * - {@see ManagesPhysicalAccessCommands} — physical access-control command
  *   request/approval workflow.
- * - {@see AuthorizesAttendanceRequests} — shared legal-entity and feature-flag guards.
+ * - {@see AuthorizesAttendanceRequests} — shared device-state and feature-flag guards.
  */
 class AttendanceDeviceController extends Controller
 {

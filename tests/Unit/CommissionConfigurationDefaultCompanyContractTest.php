@@ -1,23 +1,10 @@
 <?php
 
-it('defaults omitted commission-configuration company selections before scope checks', function () {
+it('does not resolve or require a default company for commission configuration', function () {
     $controller = file_get_contents(app_path('Http/Controllers/Api/Sales/CommissionConfigurationController.php'));
+    $migration = file_get_contents(database_path('migrations/2026_10_30_000079_remove_commission_configuration_tenant_company.php'));
 
-    foreach ([
-        'referenceOptions', 'versionOptions', 'index', 'storeFamily', 'storeAssignment',
-        'storeOverride', 'storeCycle', 'storeBusinessCalendar', 'storeCycleAssignment',
-    ] as $method) {
-        $start = strpos($controller, "public function {$method}(");
-        $next = strpos($controller, 'public function ', $start + 1);
-        $body = substr($controller, $start, $next === false ? null : $next - $start);
-
-        expect($body)
-            ->toContain("'company_id' => ['nullable', 'uuid', 'exists:companies,id']")
-            ->toContain('resolveCompanyId(')
-            ->toContain('assertCompanyScope(');
-    }
-
-    expect($controller)
-        ->toContain('activeDefaultCompany()?->id')
-        ->toContain("abort_unless(\$resolved, 409");
+    expect($controller)->not->toContain('company_id', 'resolveCompanyId', 'assertCompanyScope', 'activeDefaultCompany')
+        ->and($migration)->toContain("dropColumn('company_id')", "where('scope_type', 'company')->update(['scope_type' => 'installation'])")
+        ->not->toContain('company_id_default');
 });

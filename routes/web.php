@@ -27,13 +27,11 @@ use App\Services\WebsiteSettingsService;
 Route::get('/', [HomeController::class, 'index'])->name('home');
 Route::post('/newsletter/subscribe', function (Request $request, WebsiteSettingsService $settingsService) {
     $email = $request->validateWithBag('newsletter', ['email' => 'required|email:rfc|max:255'])['email'];
-    $companyId = $settingsService->resolveCurrentCompanyId();
     if (!filter_var($settingsService->get('footer_newsletter_enabled', true), FILTER_VALIDATE_BOOLEAN)) {
         abort(404);
     }
     DB::table('newsletter_subscribers')->insertOrIgnore([
         'email' => mb_strtolower($email),
-        'company_id' => $companyId ?? '',
         'created_at' => now(),
         'updated_at' => now(),
     ]);

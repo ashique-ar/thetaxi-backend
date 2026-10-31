@@ -276,7 +276,6 @@ class OrganizationAdministrationService
         abort_unless($event->aggregate_type===$aggregateType,409,'Idempotency key was reused for another organization command.');
         abort_unless(hash_equals($event->request_checksum,$checksum),409,'Idempotency key was reused with different organization facts.');
         $snapshot = is_array($event->after_snapshot)?$event->after_snapshot:json_decode((string)$event->after_snapshot,true,512,JSON_THROW_ON_ERROR);
-        unset($snapshot['company_id']);
         return $snapshot;
     }
 

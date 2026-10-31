@@ -1,6 +1,5 @@
 <?php
 
-use App\Models\Company;
 use App\Models\Hr\Attendance\AttendanceDevice;
 use App\Models\Hr\Attendance\AttendanceRawEvent;
 use App\Services\Hr\Attendance\AttendanceEventEvidence;
@@ -16,9 +15,7 @@ uses(RefreshDatabase::class);
 
 it('counts matching direct events as duplicates and rejects changed evidence for the same event ID', function () {
     \App\Models\Website\WebsiteSetting::setValue('feature_hr_attendance_ingestion_enabled', 'true');
-    $company = Company::create(['name' => 'Direct attendance company', 'is_active' => true]);
     $device = AttendanceDevice::factory()->create([
-        'company_id' => $company->id,
         'provider' => 'hikvision',
         'integration_mode' => 'direct_isapi',
         'serial_number' => 'DIRECT-SYNC-1',
@@ -52,7 +49,6 @@ it('counts matching direct events as duplicates and rejects changed evidence for
         'updated_at' => $now,
     ]);
     AttendanceRawEvent::create([
-        'company_id' => $company->id,
         'device_id' => $device->id,
         'ingestion_request_id' => $requestId,
         'provider_event_id' => $event['provider_event_id'],
@@ -93,9 +89,7 @@ it('counts matching direct events as duplicates and rejects changed evidence for
 
 it('rejects direct provider events with contradictory timezone offset evidence', function () {
     \App\Models\Website\WebsiteSetting::setValue('feature_hr_attendance_ingestion_enabled', 'true');
-    $company = Company::create(['name' => 'Direct attendance timezone company', 'is_active' => true]);
     $device = AttendanceDevice::factory()->create([
-        'company_id' => $company->id,
         'provider' => 'hikvision',
         'integration_mode' => 'direct_isapi',
         'serial_number' => 'DIRECT-TIMEZONE-1',

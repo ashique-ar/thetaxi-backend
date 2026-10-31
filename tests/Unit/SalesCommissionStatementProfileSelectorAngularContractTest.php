@@ -8,7 +8,8 @@ it('uses the permission-scoped searchable profile selector to generate statement
 
     expect($routes)->toContain("Route::get('commission-statement-profile-options', [CommissionStatementController::class, 'profileOptions'])")
         ->not->toContain('commission-statements-context', 'managementContext')
-        ->and($controller)->toContain("'max:50'", 'configured()', "where('sales_profiles.commission_eligible', true)", 'assertManagementCompany')
+        ->and($controller)->toContain("'max:50'", 'commissionStatementEligible()', 'applyProfileOptionScope')
+        ->not->toContain('company_id', 'companyOptions', 'assertManagementCompany')
         ->and($component)->toContain('UiManagedRecordSelectComponent')
         ->not->toContain('statementContext()', 'profiles=signal<any[]>([])')
         ->and($template)->toContain('endpoint="/sales/commission-statement-profile-options"')

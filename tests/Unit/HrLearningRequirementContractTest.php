@@ -1,13 +1,12 @@
 <?php
 
-it('governs required-learning definitions scoped to Staff type and organization unit within the actor legal entity', function () {
+it('governs installation-wide required-learning definitions by Staff type and organization unit', function () {
     $controller = file_get_contents(app_path('Http/Controllers/Api/Hr/LearningController.php'));
 
     expect($controller)
         ->toContain('public function requirements(Request$request):JsonResponse{')
         ->toContain('public function storeRequirement(Request$request):JsonResponse{')
-        ->toContain("abort_unless(\$course,422,'The course must belong to your legal entity.');")
-        ->toContain("abort_unless(DB::table('hr_organization_units')->where('company_id',\$actor->company_id)->whereIn('id',\$d['applies_to_organization_unit_ids'])->count()===count(\$d['applies_to_organization_unit_ids']),422,");
+        ->not->toContain('company_id', 'companyId', 'legal entity');
 });
 
 it('reuses the existing hr.learning permissions rather than minting new ones', function () {

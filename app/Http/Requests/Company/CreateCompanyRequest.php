@@ -18,7 +18,6 @@ class CreateCompanyRequest extends FormRequest
             'email' => ['nullable', 'email', 'max:255'],
             'phone' => ['nullable', 'string', 'max:50'],
             'website' => ['nullable', 'url', 'max:255'],
-            'domain' => ['nullable', 'string', 'max:255'],
             'description' => ['nullable', 'string'],
             'region_id' => ['nullable', 'exists:regions,id'],
             'country_id' => ['nullable', 'exists:countries,id'],

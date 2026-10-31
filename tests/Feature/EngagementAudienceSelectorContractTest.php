@@ -10,13 +10,14 @@ it('uses bounded readable selectors for engagement Staff and organization audien
         ->and($survey)->toContain('recordType="organization_unit"')->toContain('recordType="staff"')->toContain('recordType="location"')->toContain('recordType="staff_type"')->toContain('crypto.randomUUID()')->not->toContain('Question ID')->not->toContain('Organization unit IDs')->not->toContain('Individual Staff IDs')->not->toContain('formControlName="audience_location_codes">');
 });
 
-it('rejects inactive or cross-company explicit audience references', function () {
+it('rejects inactive explicit audience references across the installation', function () {
     $controller=file_get_contents(app_path('Http/Controllers/Api/Hr/EngagementController.php'));
-    expect($controller)->toContain("assertAudience(\$data['audience'],(string)\$actor->company_id)")
-        ->toContain('Every audience Staff member must be active in your legal entity.')
-        ->toContain('Every audience organization unit must be active in your legal entity.')
-        ->toContain('Every audience Staff type must be active in your legal entity.')
-        ->toContain('Every audience location must be configured in your legal entity.');
+    expect($controller)->toContain("assertAudience(\$data['audience'])")
+        ->toContain('Every audience Staff member must be active.')
+        ->toContain('Every audience organization unit must be active.')
+        ->toContain('Every audience Staff type must be active.')
+        ->toContain('Every audience location must be configured.')
+        ->not->toContain('company_id', 'companyId', 'legal entity');
 });
 
 it('uses bounded exact-hydrated wellness programme choices in the referral form', function () {

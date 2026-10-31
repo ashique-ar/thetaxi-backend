@@ -1,6 +1,5 @@
 <?php
 
-use App\Models\Company;
 use App\Models\Hr\Attendance\AttendanceConnector;
 use App\Models\Hr\Attendance\AttendanceDailyResult;
 use App\Models\Hr\Attendance\AttendanceDevice;
@@ -16,16 +15,13 @@ uses(RefreshDatabase::class);
 
 it('keeps attendance credentials, raw punch data and employee identifiers out of activity logs', function () {
     $actor = User::factory()->create();
-    $company = Company::create(['name' => 'Attendance audit privacy company', 'is_active' => true, 'is_default' => true]);
-    $staff = Staff::factory()->create(['company_id' => $company->id]);
+    $staff = Staff::factory()->create();
     $connector = AttendanceConnector::factory()->create([
-        'company_id' => $company->id,
         'connector_key' => 'private-attendance-connector-key',
         'signing_secret' => 'private-attendance-signing-secret',
         'created_user_id' => $actor->id,
     ]);
     $device = AttendanceDevice::factory()->create([
-        'company_id' => $company->id,
         'connector_id' => $connector->id,
         'serial_number' => 'private-attendance-device-serial',
         'encrypted_configuration' => ['username' => 'private-device-user', 'password' => 'private-device-password'],
@@ -48,7 +44,6 @@ it('keeps attendance credentials, raw punch data and employee identifiers out of
         'updated_at' => $now,
     ]);
     $event = AttendanceRawEvent::create([
-        'company_id' => $company->id,
         'connector_id' => $connector->id,
         'device_id' => $device->id,
         'ingestion_request_id' => $requestId,
@@ -67,7 +62,6 @@ it('keeps attendance credentials, raw punch data and employee identifiers out of
         'received_at' => $now,
     ]);
     $result = AttendanceDailyResult::create([
-        'company_id' => $company->id,
         'staff_id' => $staff->id,
         'work_date' => $now->toDateString(),
         'result_version' => 1,
@@ -111,7 +105,6 @@ it('keeps attendance credentials, raw punch data and employee identifiers out of
 
     actingAs($actor, 'api');
     $trackedResult = AttendanceDailyResult::create([
-        'company_id' => $company->id,
         'staff_id' => $staff->id,
         'work_date' => $now->toDateString(),
         'result_version' => 2,

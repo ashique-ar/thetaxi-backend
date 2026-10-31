@@ -7,6 +7,7 @@ it('keeps medical record exports and reminder endpoints out of the mounted contr
 
     expect($api)->toContain("prefix('medical-records')", 'hr.medical-records.view', 'hr.medical-records.manage')
         ->and($portal)->toContain("path: 'medical-records'", 'medicalRecordsRoutes')
-        ->and($controller)->toContain('activeDefaultCompany()', 'Crypt::encryptString', "Storage::disk('local')")
+        ->and($controller)->not->toContain('activeDefaultCompany()', 'company_id')
+        ->toContain('Crypt::encryptString', "Storage::disk('local')")
         ->and($controller)->not->toContain('sendExpiryReminders', 'bulkExport', "Storage::disk('public')");
 });

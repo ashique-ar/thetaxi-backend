@@ -64,7 +64,6 @@ class RelayDomainOutboxEvent implements ShouldQueue
         app($subscriberClass)->handle((object) [
             'id' => $row->id,
             'domain' => $row->domain,
-            'companyId' => $row->company_id,
             'aggregateType' => $row->aggregate_type,
             'aggregateId' => $row->aggregate_id,
             'eventType' => $row->event_type,

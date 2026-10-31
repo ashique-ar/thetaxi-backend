@@ -17,7 +17,7 @@ it('requires a complete approved closed-month alert contract without inferred th
         ->toContain("'rules.evaluation.schedule.local_time' => ['required', 'date_format:H:i']")
         ->toContain("'rules.evaluation.owner_user_id' => ['required', 'uuid', 'exists:users,id']")
         ->and($performance)
-        ->toContain('active internal Staff user with an active Staff context in the selected legal entity')
+        ->toContain('active Staff user with an active Staff context')
         ->toContain('activeAlertOwnerIdentity(')
         ->toContain("where('is_active', true)")
         ->toContain("where('context_type', 'staff')");
@@ -62,4 +62,15 @@ it('keeps cohort and commission category distinct in frozen reliance evidence', 
         ->toContain("'long_term_commission_share_percent'")
         ->toContain("'commission_dimension_missing_count'")
         ->toContain('pre-governance alert requires reviewed disposition');
+});
+
+it('reconstructs decline baselines installation wide from each profile latest frozen month', function () {
+    $performance = file_get_contents(app_path('Services/Sales/SalesPerformanceService.php'));
+
+    expect($performance)
+        ->toContain("->where('row.sales_profile_id', \$row->sales_profile_id)")
+        ->toContain("->whereDate('snapshot.period_start', '>=', \$firstBaselinePeriod)")
+        ->toContain("->unique('period_start')->take(\$baselineMonths)->values()")
+        ->toContain("\$history->contains(fn (\$month) => \$month->new_sales_value_state !== 'complete'")
+        ->not->toContain('latest.company_id', 'sameCompany(');
 });

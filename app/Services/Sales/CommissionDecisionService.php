@@ -39,13 +39,11 @@ class CommissionDecisionService
             $receipt = BookingPaymentReceipt::query()->findOrFail($receipt->id);
             $finalityPolicy = $this->finalityPolicy($receipt);
             $attribution = SalesBookingAttribution::query()->where('booking_id', $receipt->booking_id)->first();
-            $companyId = $attribution?->company_id;
             $sourceBasis = max(0, round((float) $component->source_amount - (float) $component->adjusted_source_amount, 4));
             $lkrBasis = $component->lkr_amount !== null && (float) $component->source_amount > 0
                 ? round((float) $component->lkr_amount * ($sourceBasis / (float) $component->source_amount), 4)
                 : null;
             $base = [
-                'company_id' => $companyId,
                 'booking_id' => $receipt->booking_id,
                 'root_attribution_id' => $attribution?->root_attribution_id,
                 'booking_attribution_id' => $attribution?->id,
@@ -236,7 +234,7 @@ class CommissionDecisionService
     private function persist(array $facts): SalesCommissionDecision
     {
         $decision = SalesCommissionDecision::create($facts);
-        $this->events->record('sales', $decision->company_id, 'commission_decision', $decision->id,
+        $this->events->record('sales', 'commission_decision', $decision->id,
             'sales.commission.decided', 1, 1, [
                 'booking_id' => $decision->booking_id, 'receipt_id' => $decision->receipt_id,
                 'receipt_component_id' => $decision->receipt_component_id, 'status' => $decision->status,

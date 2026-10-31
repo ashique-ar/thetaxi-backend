@@ -1,6 +1,6 @@
 <?php
 
-it('preselects an authorized default company and scopes collection work and submissions to it', function () {
+it('lists collection work and submissions installation-wide with permission-scoped profiles', function (): void {
     $controller = file_get_contents(app_path('Http/Controllers/Api/Sales/CollectionScheduleWorkflowController.php'));
     $routes = file_get_contents(base_path('routes/api.php'));
     $portal = dirname(base_path()).'/portal-thetaxi/src/app/modules/sales/components/sales-collections';
@@ -12,40 +12,25 @@ it('preselects an authorized default company and scopes collection work and subm
     $submissionStart = strpos($controller, 'public function submissions(');
     $submissionEnd = strpos($controller, 'public function verify(', $submissionStart);
     $submissions = substr($controller, $submissionStart, $submissionEnd - $submissionStart);
-    $integrityStart = strpos($controller, 'private function assertCollectionPageCompanyIntegrity(');
-    $integrityEnd = strpos($controller, 'private function assertBookingManagementScope(', $integrityStart);
-    $pageIntegrity = substr($controller, $integrityStart, $integrityEnd - $integrityStart);
 
     expect($controller)
-        ->toContain('public function collectionCompanyOptions(')
-        ->toContain('activeDefaultCompany()?->id')
-        ->toContain("'default_company_id' => \$defaultCompanyId")
-        ->toContain("->whereNull('deleted_at')->where('is_active', true)")
-        ->toContain("->orderByDesc('is_default')")
-        ->toContain("'metadata' => array_filter(['city' => \$company->city]) + ['is_default' => (bool) \$company->is_default]")
+        ->not->toContain('collectionCompanyOptions', 'company_id', 'resolveCompanyId')
         ->and($work)
-        ->toContain("'company_id' => ['nullable', 'uuid', 'exists:companies,id']")
-        ->toContain('resolveCompanyId($data[\'company_id\'] ?? null)')
-        ->toContain("->where('company_id', \$companyId)")
-        ->toContain('assertSelectedCollectionCompany($request, $companyId)')
+        ->toContain('$this->scheduleProfileIds($request)')
+        ->toContain("whereIn('assigned_sales_profile_id', \$profileIds)")
+        ->not->toContain('company_id', 'assertSelectedCollectionCompany')
         ->and($submissions)
-        ->toContain("'company_id' => ['nullable', 'uuid', 'exists:companies,id']")
-        ->toContain('resolveCompanyId($data[\'company_id\'] ?? null)')
-        ->toContain("\$query->where('company_id', \$companyId)")
-        ->toContain('assertSelectedCollectionCompany($request, $companyId)')
-        ->and($pageIntegrity)
-        ->toContain("whereIn('id', \$scheduleIds)")
-        ->toContain("(string) \$schedule->booking_id === (string) \$row->booking_id")
-        ->toContain("(string) \$schedule->company_id === (string) \$row->company_id")
-        ->toContain('references a schedule outside its booking and legal entity.')
+        ->toContain('$this->scheduleProfileIds($request)')
+        ->toContain("whereIn('submitted_by_sales_profile_id', \$profileIds)")
+        ->not->toContain('company_id', 'assertSelectedCollectionCompany')
+        ->and($controller)
+        ->toContain('(string) $schedule->booking_id === (string) $row->booking_id')
         ->and($routes)
-        ->toContain("collection-work-company-options', [CollectionScheduleWorkflowController::class, 'collectionCompanyOptions']")
+        ->not->toContain('collection-work-company-options')
         ->and($template)
-        ->toContain('endpoint="/sales/collection-work-company-options"')
-        ->toContain('[(ngModel)]="companyId"')
+        ->not->toContain('collection-work-company-options', 'companyId', 'Select an authorized active company')
         ->and($component)
-        ->toContain('collectionWorkItems({ company_id: companyId,')
-        ->toContain('collectionSubmissions({ company_id: companyId,')
-        ->toContain('revision !== this.workRevision || companyId !== this.companyId')
-        ->toContain('revision !== this.submissionsRevision || companyId !== this.companyId');
+        ->toContain('this.api.collectionWorkItems({ status: this.workStatus')
+        ->toContain('this.api.collectionSubmissions({ status: this.submissionStatus')
+        ->not->toContain('company_id', 'companyId');
 });

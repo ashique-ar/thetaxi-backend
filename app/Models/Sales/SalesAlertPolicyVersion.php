@@ -9,6 +9,6 @@ class SalesAlertPolicyVersion extends Model
 {
     use HasUuids;
 
-    protected $fillable = ['company_id', 'version', 'status', 'rules', 'effective_from', 'effective_until', 'prepared_by', 'approved_by', 'approved_at', 'rules_checksum'];
+    protected $fillable = ['version', 'status', 'rules', 'effective_from', 'effective_until', 'prepared_by', 'approved_by', 'approved_at', 'rules_checksum'];
     protected $casts = ['rules' => 'array', 'effective_from' => 'date', 'effective_until' => 'date', 'approved_at' => 'datetime'];
 }

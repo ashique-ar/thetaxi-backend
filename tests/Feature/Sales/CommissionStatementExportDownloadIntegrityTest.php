@@ -11,7 +11,7 @@ use function Pest\Laravel\actingAs;
 
 uses(RefreshDatabase::class);
 
-it('downloads only the scoped export path after verifying its saved size and checksum', function () {
+it('downloads Staff-scoped exports and accepts legacy paths after verifying size and checksum', function () {
     [$actor, $company] = hr_seed_admin_actor(['name' => 'Export Integrity Company']);
     $actor->givePermissionTo(['sales.commission-statements.view-all', 'sales.commission-statements.export']);
     $staffId = DB::table('staff')->where('user_id', $actor->id)->value('id');
@@ -22,12 +22,12 @@ it('downloads only the scoped export path after verifying its saved size and che
     $now = now();
 
     DB::table('sales_profiles')->insert([
-        'id' => $profileId, 'company_id' => $company->id, 'staff_id' => $staffId,
+        'id' => $profileId, 'staff_id' => $staffId,
         'sales_code' => 'EXPORT-INTEGRITY', 'effective_from' => $now->copy()->subYear(),
         'created_at' => $now, 'updated_at' => $now,
     ]);
     DB::table('sales_commission_cycle_versions')->insert([
-        'id' => $cycleId, 'company_id' => $company->id, 'code' => 'EXPORT-CYCLE', 'version' => 1,
+        'id' => $cycleId, 'code' => 'EXPORT-CYCLE', 'version' => 1,
         'timezone' => 'Asia/Colombo', 'earning_period_rule' => 'monthly', 'cutoff_day' => 25,
         'finalization_day' => 26, 'approval_deadline_day' => 27, 'settlement_day' => 28,
         'holiday_rule' => 'next_business_day', 'effective_from' => $now->copy()->subYear(),
@@ -35,13 +35,13 @@ it('downloads only the scoped export path after verifying its saved size and che
         'approved_at' => $now, 'created_at' => $now, 'updated_at' => $now,
     ]);
     DB::table('sales_commission_cycle_assignments')->insert([
-        'id' => $assignmentId, 'company_id' => $company->id, 'cycle_version_id' => $cycleId,
-        'scope_type' => 'company', 'precedence' => 1, 'effective_from' => $now->copy()->subYear(),
+        'id' => $assignmentId, 'cycle_version_id' => $cycleId,
+        'scope_type' => 'installation', 'precedence' => 1, 'effective_from' => $now->copy()->subYear(),
         'status' => 'approved', 'created_by' => $actor->id, 'approved_by' => $actor->id,
         'approved_at' => $now, 'created_at' => $now, 'updated_at' => $now,
     ]);
     DB::table('sales_commission_statements')->insert([
-        'id' => $statementId, 'company_id' => $company->id, 'staff_id' => $staffId,
+        'id' => $statementId, 'staff_id' => $staffId,
         'sales_profile_id' => $profileId, 'cycle_version_id' => $cycleId, 'cycle_assignment_id' => $assignmentId,
         'statement_number' => 'SCS-EXPORT-INTEGRITY', 'period_start' => '2026-09-01', 'period_end' => '2026-09-30',
         'cutoff_at' => $now, 'timezone' => 'Asia/Colombo', 'status' => 'approved', 'prepared_by' => $actor->id,

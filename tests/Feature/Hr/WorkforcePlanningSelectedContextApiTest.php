@@ -1,7 +1,5 @@
 <?php
 
-use App\Models\Company;
-use App\Models\Staff;
 use App\Models\UserContext;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\DB;
@@ -10,19 +8,16 @@ use function Pest\Laravel\actingAs;
 
 uses(RefreshDatabase::class);
 
-it('shows workforce planning selector options across locations', function () {
-    [$admin, $firstCompany] = hr_seed_admin_actor();
+it('shows workforce planning selector options across the installation', function () {
+    [$admin] = hr_seed_admin_actor();
     $admin->givePermissionTo('hr.workforce-planning.manage');
-    $secondCompany = Company::create(['name' => 'Selected workforce planning company']);
-    $secondStaff = Staff::query()->where('user_id', $admin->id)->firstOrFail();
-    $secondStaff->update(['company_id' => $secondCompany->id]);
     $context = UserContext::query()->where('user_id', $admin->id)->where('context_type', 'staff')->firstOrFail();
 
     $firstUnit = (string) Str::uuid();
     $secondUnit = (string) Str::uuid();
-    foreach ([[$firstUnit, $firstCompany->id, 'FIRST-UNIT', 'First company unit'], [$secondUnit, $secondCompany->id, 'SELECTED-UNIT', 'Selected company unit']] as [$id, $companyId, $code, $name]) {
+    foreach ([[$firstUnit, 'FIRST-UNIT', 'First unit'], [$secondUnit, 'SELECTED-UNIT', 'Selected unit']] as [$id, $code, $name]) {
         DB::table('hr_organization_units')->insert([
-            'id' => $id, 'company_id' => $companyId, 'unit_type' => 'department', 'code' => $code, 'name' => $name,
+            'id' => $id, 'unit_type' => 'department', 'code' => $code, 'name' => $name,
             'timezone' => 'Asia/Colombo', 'status' => 'active', 'effective_from' => '2020-01-01',
             'created_user_id' => $admin->id, 'created_at' => now(), 'updated_at' => now(),
         ]);
@@ -32,7 +27,7 @@ it('shows workforce planning selector options across locations', function () {
     actingAs($admin, 'api')->getJson($url)->assertOk();
     actingAs($admin, 'api')->withHeaders([
         'X-Active-Context-Type' => 'staff', 'X-Active-Context-Id' => $context->id,
-    ])->getJson($url.'&search=company')->assertOk()->assertJsonCount(2, 'data.data');
+    ])->getJson($url.'&search=unit')->assertOk()->assertJsonCount(2, 'data.data');
     actingAs($admin, 'api')->withHeaders([
         'X-Active-Context-Type' => 'staff', 'X-Active-Context-Id' => $context->id,
     ])->getJson($url.'&selected_id='.$secondUnit)->assertOk()->assertJsonPath('data.data.0.value', $secondUnit);

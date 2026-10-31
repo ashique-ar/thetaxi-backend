@@ -10,7 +10,7 @@ class SalesPortfolioStatusPolicyVersion extends Model
     use HasUuids;
 
     protected $fillable = [
-        'company_id', 'version', 'active_booking_statuses', 'effective_from', 'effective_until',
+        'version', 'active_booking_statuses', 'effective_from', 'effective_until',
         'status', 'reason', 'idempotency_key', 'request_checksum', 'prepared_by',
         'approved_by', 'approved_at', 'approval_idempotency_key',
     ];

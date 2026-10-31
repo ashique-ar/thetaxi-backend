@@ -2,6 +2,7 @@
 
 it('governs active portfolio status without inventing booking statuses', function () {
     $migration = file_get_contents(database_path('migrations/2026_08_31_150000_create_sales_portfolio_status_policy_versions.php'));
+    $cleanupMigration = file_get_contents(database_path('migrations/2026_10_30_000074_remove_sales_portfolio_status_policy_tenant_company.php'));
     $service = file_get_contents(app_path('Services/Sales/SalesPortfolioStatusService.php'));
     $controller = file_get_contents(app_path('Http/Controllers/Api/Sales/SalesPerformanceController.php'));
     $routes = file_get_contents(base_path('routes/api.php'));
@@ -10,6 +11,8 @@ it('governs active portfolio status without inventing booking statuses', functio
         ->toContain("Schema::create('sales_portfolio_status_policy_versions'")
         ->toContain("unique(['company_id', 'idempotency_key']")
         ->toContain('Refusing to drop retained Sales portfolio status-policy evidence')
+        ->and($cleanupMigration)->toContain('company_id', 'Approved Sales portfolio status policies overlap across locations')
+        ->toContain('cannot regain tenant company scope')
         ->and($service)
         ->toContain('active_booking_statuses')
         ->toContain('CONFIGURATION_MISSING: no approved active-booking status policy')
@@ -46,7 +49,7 @@ it('keeps active portfolio current scoped paginated and open ended value safe', 
         ->toContain("'open_ended_collected_lkr'")
         ->toContain("'open_ended_generated_outstanding_lkr'")
         ->toContain('unset($row->rolling_rule_id, $row->acquisition_sales_profile_id, $row->collection_sales_profile_id)')
-        ->and($dashboard)->toContain('public function activePortfolio(')->toContain('dashboardProfileIds(')
+        ->and($dashboard)->toContain('public function activePortfolio(')->toContain("'sales.performance.view-all', 'sales.performance.view-team'")
         ->and($template)->toContain('Governed active portfolio')
         ->toContain('Open-ended monthly run rate')
         ->toContain('*hasPermission="\'bookings.view\'"', 'portfolio.policy?.version')
@@ -54,11 +57,13 @@ it('keeps active portfolio current scoped paginated and open ended value safe', 
         ->not->toContain('request_checksum: string;', 'id: string;');
 });
 
-it('requires an active undeleted company before active-portfolio policy writes', function () {
+it('creates and approves active-portfolio policies across the installation', function () {
     $service = file_get_contents(app_path('Services/Sales/SalesPortfolioStatusService.php'));
+    $controller = file_get_contents(app_path('Http/Controllers/Api/Sales/SalesPerformanceController.php'));
     $create = substr($service, strpos($service, 'public function createPolicy('), strpos($service, 'public function approvePolicy(') - strpos($service, 'public function createPolicy('));
     $approve = substr($service, strpos($service, 'public function approvePolicy('), strpos($service, 'public function policyFor(') - strpos($service, 'public function approvePolicy('));
 
-    expect($create)->toContain("where('is_active', true)", "whereNull('deleted_at')->lockForUpdate()")
-        ->and($approve)->toContain("where('is_active', true)", "whereNull('deleted_at')->lockForUpdate()");
+    expect($create)->not->toContain('company_id', 'CompanyIdScope', "DB::table('companies')")
+        ->and($approve)->not->toContain('company_id', 'CompanyIdScope', "DB::table('companies')")
+        ->and($controller)->toContain('assertInstallationWidePerformanceScope');
 });

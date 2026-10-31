@@ -9,7 +9,7 @@ it('gates interview scheduling on the application already being in the interview
         ->toContain("abort_unless(\$app->stage==='interview',409")
         ->toContain('$this->enabled()')
         ->toContain("count(\$panel)")
-        ->toContain("->where('company_id',\$app->company_id)->count()");
+        ->not->toContain('company_id', 'companyId', 'company(');
 });
 
 it('never lets a scheduled/cancelled/completed interview be edited outside the scheduled state', function () {
@@ -61,17 +61,18 @@ it('decrypts schedule details only for a privileged recruiter or an assigned pan
         ->toContain("(\$privileged||\$isPanelist)&&\$row->encrypted_schedule_details");
 });
 
-it('scopes myInterviews to panel membership via whereJsonContains without a company_id leak across tenants', function () {
+it('scopes myInterviews to panel membership via whereJsonContains', function () {
     $controller = file_get_contents(app_path('Http/Controllers/Api/Hr/RecruitmentController.php'));
     $method = substr($controller, strpos($controller, 'public function myInterviews('));
     $method = substr($method, 0, strpos($method, 'public function storeInterviewFeedback('));
 
     expect($method)
         ->toContain("\$staffId=\$this->actor(\$r)->id")
-        ->toContain("whereJsonContains('panel_staff_ids',\$staffId)");
+        ->toContain("whereJsonContains('panel_staff_ids',\$staffId)")
+        ->not->toContain('company_id', 'companyId');
 });
 
-it('uses the selected active Staff identity for Recruitment company and interview authorization', function () {
+it('uses the selected active Staff identity for interview authorization', function () {
     $controller = file_get_contents(app_path('Http/Controllers/Api/Hr/RecruitmentController.php'));
     $interviews = substr($controller, strpos($controller, 'public function interviews('));
     $interviews = substr($interviews, 0, strpos($interviews, 'public function interviewPanelOptions('));
@@ -82,7 +83,7 @@ it('uses the selected active Staff identity for Recruitment company and intervie
 
     expect($controller)
         ->toContain('private function actor(Request$r):Staff{return app(StaffAccessService::class)->currentActorStaff($r->user());}')
-        ->toContain('$actor=$this->actor($r)->company_id')
+        ->not->toContain('company_id', 'companyId', 'company(')
         ->and($interviews)->toContain('$staffId=$this->actor($r)->id')
         ->and($myInterviews)->toContain('$staffId=$this->actor($r)->id')
         ->and($feedback)->toContain('$staffId=$this->actor($r)->id');

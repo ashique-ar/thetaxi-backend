@@ -8,7 +8,6 @@ use App\Services\BookingFlowService;
 use App\Services\ContractualDistanceSnapshotProjector;
 use App\Services\BookingPaymentLedgerService;
 use App\Services\Sales\SalesAccessScope;
-use App\Services\Sales\SalesCollectionCompanyIntegrity;
 use App\Models\Booking\Booking;
 use App\Models\Booking\BookingActivity;
 use App\Models\Booking\BookingPaymentReceipt;
@@ -476,17 +475,14 @@ class AssignmentController extends Controller
         $summary = DB::transaction(function () use ($request, $bookingId, $data): array {
             $booking = Booking::query()->whereKey($bookingId)->lockForUpdate()->firstOrFail();
             $attribution = DB::table('sales_booking_attributions')->where('booking_id', $booking->id)
-                ->whereNull('deleted_at')->lockForUpdate()->first(['company_id']);
-            abort_unless($attribution?->company_id, 409,
-                'The booking needs a reviewed legal-entity attribution before payment collection.');
-            $company = DB::table('companies')->where('id', $attribution->company_id)->where('is_active', true)
-                ->whereNull('deleted_at')->lockForUpdate()->first(['id']);
-            abort_unless($company, 409, 'The booking legal entity is inactive.');
-            app(SalesAccessScope::class)->assertCompany(
-                $request->user(), (string) $company->id, 'sales.collections.view-all',
+                ->whereNull('deleted_at')->lockForUpdate()->first(['collection_sales_profile_id']);
+            abort_unless($attribution?->collection_sales_profile_id, 409,
+                'Assign a collection owner before collecting payment.');
+            $collectionProfile = \App\Models\Sales\SalesProfile::query()->find($attribution->collection_sales_profile_id);
+            abort_unless($collectionProfile, 409, 'The booking collection owner is unavailable.');
+            app(SalesAccessScope::class)->assertProfile(
+                $request->user(), $collectionProfile, 'sales.collections.view-all', 'sales.collections.view-team',
             );
-            app(SalesCollectionCompanyIntegrity::class)->assertConsistent($booking, (string) $company->id);
-
             return $this->paymentLedger->receive($booking, $data, Auth::id());
         }, 3);
 

@@ -1,6 +1,5 @@
 <?php
 
-use App\Models\Company;
 use App\Models\Staff;
 use App\Models\User;
 use App\Services\Hr\Ess\HrRequestIndexService;
@@ -14,15 +13,13 @@ uses(RefreshDatabase::class);
 
 it('finalizes an exit once and replays only for the recorded actor after complete clearances', function () {
     config(['hr.features.employee_self_service' => true]);
-    $company = Company::create(['name' => 'Exit finalization company', 'is_active' => true, 'is_default' => true]);
     $initiator = User::factory()->create();
     $approver = User::factory()->create();
     $otherApprover = User::factory()->create();
-    $staff = Staff::factory()->create(['company_id' => $company->id]);
+    $staff = Staff::factory()->create();
     $exitId = (string) Str::uuid();
     DB::table('hr_exit_cases')->insert([
         'id' => $exitId,
-        'company_id' => $company->id,
         'staff_id' => $staff->id,
         'exit_type' => 'resignation',
         'proposed_last_working_date' => today()->toDateString(),
@@ -37,7 +34,6 @@ it('finalizes an exit once and replays only for the recorded actor after complet
         'updated_at' => now(),
     ]);
     app(HrRequestIndexService::class)->register(
-        (string) $company->id,
         (string) $staff->id,
         'exit',
         'exit_case',
@@ -50,7 +46,7 @@ it('finalizes an exit once and replays only for the recorded actor after complet
     );
     $service = app(LifecycleService::class);
 
-    expect(fn () => $service->finalizeExit($exitId, $approver, (string) $company->id))->toThrow(HttpException::class);
+    expect(fn () => $service->finalizeExit($exitId, $approver))->toThrow(HttpException::class);
     foreach (['handover', 'attendance', 'payroll', 'access'] as $type) {
         DB::table('hr_exit_clearance_items')->insert([
             'id' => (string) Str::uuid(),
@@ -65,20 +61,17 @@ it('finalizes an exit once and replays only for the recorded actor after complet
         ]);
     }
 
-    $result = $service->finalizeExit($exitId, $approver, (string) $company->id);
+    $result = $service->finalizeExit($exitId, $approver);
     $terminationEventCount = DB::table('staff_context_termination_events')->count();
     $requestEventCount = DB::table('hr_request_events')->count();
-    $replay = $service->finalizeExit($exitId, $approver, (string) $company->id);
+    $replay = $service->finalizeExit($exitId, $approver);
 
     expect($replay)->toBe($result)
         ->and($terminationEventCount)->toBe(1)
         ->and(DB::table('staff_context_termination_events')->count())->toBe($terminationEventCount)
         ->and(DB::table('hr_request_index')->where('source_id', $exitId)->value('status'))->toBe('completed')
         ->and(DB::table('hr_request_events')->count())->toBe($requestEventCount)
-        ->and(fn () => $service->finalizeExit($exitId, $otherApprover, (string) $company->id))->toThrow(HttpException::class);
-
-    DB::table('companies')->where('id', $company->id)->update(['is_active' => false]);
-    expect(fn () => $service->finalizeExit($exitId, $approver, (string) $company->id))->toThrow(HttpException::class);
+        ->and(fn () => $service->finalizeExit($exitId, $otherApprover))->toThrow(HttpException::class);
     expect(fn () => app(\App\Services\StaffIdentityService::class)->terminate($staff, $approver, 'direct termination', (string) Str::uuid()))
         ->toThrow(HttpException::class);
 });

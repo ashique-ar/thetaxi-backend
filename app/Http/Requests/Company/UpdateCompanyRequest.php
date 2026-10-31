@@ -18,7 +18,6 @@ class UpdateCompanyRequest extends FormRequest
             'email' => ['sometimes', 'nullable', 'email', 'max:255'],
             'phone' => ['sometimes', 'nullable', 'string', 'max:50'],
             'website' => ['sometimes', 'nullable', 'url', 'max:255'],
-            'domain' => ['sometimes', 'nullable', 'string', 'max:255'],
             'description' => ['sometimes', 'nullable', 'string'],
             'region_id' => ['sometimes', 'nullable', 'exists:regions,id'],
             'country_id' => ['sometimes', 'nullable', 'exists:countries,id'],

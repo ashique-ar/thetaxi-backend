@@ -7,7 +7,7 @@ use App\Models\BaseModel;
 class BookingCommercialValueAdjustment extends BaseModel
 {
     protected $fillable = [
-        'company_id', 'booking_id', 'attribution_id', 'acquisition_sales_profile_id',
+        'booking_id', 'attribution_id', 'acquisition_sales_profile_id',
         'adjustment_type', 'delta_source_amount', 'source_currency', 'delta_lkr_amount',
         'fx_rate_to_lkr', 'fx_rate_at', 'previous_effective_source_amount', 'previous_effective_lkr_amount',
         'resulting_effective_source_amount', 'resulting_effective_lkr_amount', 'counts_as_new_sales_adjustment',

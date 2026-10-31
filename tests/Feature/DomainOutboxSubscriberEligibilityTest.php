@@ -1,6 +1,5 @@
 <?php
 
-use App\Models\Company;
 use App\Jobs\Foundation\RelayDomainOutboxEvent;
 use App\Services\Foundation\DomainOutboxService;
 use App\Services\Sales\SalesCommissionNotificationSubscriber;
@@ -11,14 +10,13 @@ use Illuminate\Support\Str;
 uses(RefreshDatabase::class);
 
 it('keeps unbound outbox events unpublished until their subscriber is registered', function () {
-    $company = Company::create(['name' => 'Outbox subscriber company']);
     $outbox = new DomainOutboxService();
     $unboundEventId = $outbox->record(
-        'sales', (string) $company->id, 'commission_payout', (string) Str::uuid(),
+        'sales', 'commission_payout', (string) Str::uuid(),
         'sales.commission.accounting_ready', 2, 1, ['currency' => 'LKR'], now(),
     );
     $boundEventId = $outbox->record(
-        'sales', (string) $company->id, 'commission_decision', (string) Str::uuid(),
+        'sales', 'commission_decision', (string) Str::uuid(),
         'sales.commission.decided', 1, 1, ['decision_id' => (string) Str::uuid()], now(),
     );
 

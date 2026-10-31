@@ -292,7 +292,7 @@ class DocumentController extends Controller
             // hr_document_types code so §5.1 compliance computation (which joins on this
             // same code) never silently misses a document filed under an unregistered type.
             abort_unless(
-                DB::table('hr_document_types')->where(fn ($_companyIdScope) => \App\Services\CompanyIdScope::constrain($_companyIdScope, 'company_id', $owner->company_id))->where('code', $data['document_type'])->where('status', 'active')->exists(),
+                DB::table('hr_document_types')->where('code', $data['document_type'])->where('status', 'active')->exists(),
                 422,
                 'This document type is not an approved code in the governed HR document-type register.'
             );

@@ -1,6 +1,5 @@
 <?php
 
-use App\Models\Company;
 use App\Models\Staff;
 use App\Models\User;
 use App\Models\UserContext;
@@ -14,9 +13,6 @@ uses(RefreshDatabase::class);
 
 it('searches authorized active approvers and submits, replays, lists and approves a leave delegation', function () {
     (new Database\Seeders\AllPermissionsSeeder())->run();
-    $company = Company::create(['name' => 'ESS Delegation Company', 'is_active' => true, 'is_default' => true]);
-    $foreignCompany = Company::create(['name' => 'Other ESS Delegation Company', 'is_active' => true, 'is_default' => false]);
-
     $context = function (User $user, Staff $staff): UserContext {
         return UserContext::create([
             'user_id' => $user->id, 'context_type' => 'staff', 'context_id' => $staff->id,
@@ -26,16 +22,16 @@ it('searches authorized active approvers and submits, replays, lists and approve
 
     $delegatorUser = User::factory()->create();
     $delegatorUser->givePermissionTo('hr.mss.delegate');
-    $delegator = Staff::factory()->create(['user_id' => $delegatorUser->id, 'company_id' => $company->id]);
+    $delegator = Staff::factory()->create(['user_id' => $delegatorUser->id]);
     $delegatorContext = $context($delegatorUser, $delegator);
 
     $delegateUser = User::factory()->create();
     $delegateUser->givePermissionTo(['hr.mss.approve', 'hr.leave.approve']);
-    $delegate = Staff::factory()->create(['user_id' => $delegateUser->id, 'company_id' => $company->id]);
+    $delegate = Staff::factory()->create(['user_id' => $delegateUser->id]);
     $delegateContext = $context($delegateUser, $delegate);
     $leaveRequestId = (string) Str::uuid();
     DB::table('hr_request_index')->insert([
-        'id' => $leaveRequestId, 'company_id' => $company->id, 'requester_staff_id' => $delegator->id,
+        'id' => $leaveRequestId, 'requester_staff_id' => $delegator->id,
         'request_type' => 'leave', 'source_type' => 'leave_request', 'source_id' => (string) Str::uuid(),
         'status' => 'pending_approval', 'summary' => 'Leave request',
         'current_owner_staff_id' => $delegator->id, 'capability_snapshot' => '{}',
@@ -43,16 +39,13 @@ it('searches authorized active approvers and submits, replays, lists and approve
     ]);
 
     $unqualifiedUser = User::factory()->create();
-    $unqualified = Staff::factory()->create(['user_id' => $unqualifiedUser->id, 'company_id' => $company->id]);
+    $unqualified = Staff::factory()->create(['user_id' => $unqualifiedUser->id]);
     $inboxOnlyUser = User::factory()->create();
     $inboxOnlyUser->givePermissionTo('hr.mss.approve');
-    $inboxOnlyStaff = Staff::factory()->create(['user_id' => $inboxOnlyUser->id, 'company_id' => $company->id]);
+    $inboxOnlyStaff = Staff::factory()->create(['user_id' => $inboxOnlyUser->id]);
     $formerUser = User::factory()->create();
     $formerUser->givePermissionTo('hr.mss.approve');
-    Staff::factory()->former()->create(['user_id' => $formerUser->id, 'company_id' => $company->id]);
-    $foreignUser = User::factory()->create();
-    $foreignUser->givePermissionTo('hr.mss.approve');
-    Staff::factory()->create(['user_id' => $foreignUser->id, 'company_id' => $foreignCompany->id]);
+    Staff::factory()->former()->create(['user_id' => $formerUser->id]);
 
     $options = actingAs($delegatorUser, 'api')->withHeaders([
         'X-Active-Context-Type' => 'staff', 'X-Active-Context-Id' => $delegatorContext->id,
@@ -99,16 +92,14 @@ it('searches authorized active approvers and submits, replays, lists and approve
 
     $approverUser = User::factory()->create();
     $approverUser->givePermissionTo(['hr.mss.approve', 'hr.mss.delegations.approve']);
-    $approver = Staff::factory()->create(['user_id' => $approverUser->id, 'company_id' => $company->id]);
+    $approver = Staff::factory()->create(['user_id' => $approverUser->id]);
     $approverContext = $context($approverUser, $approver);
     actingAs($approverUser, 'api')->withHeaders([
         'X-Active-Context-Type' => 'staff', 'X-Active-Context-Id' => $approverContext->id,
     ])->getJson('/api/hr/ess/delegations')->assertOk()->assertJsonPath('data.0.id', $delegation);
-    DB::table('staff')->where('id', $delegator->id)->update(['company_id' => $foreignCompany->id]);
     actingAs($approverUser, 'api')->withHeaders([
         'X-Active-Context-Type' => 'staff', 'X-Active-Context-Id' => $approverContext->id,
-    ])->getJson('/api/hr/ess/delegations')->assertOk()->assertJsonMissing(['id' => $delegation]);
-    DB::table('staff')->where('id', $delegator->id)->update(['company_id' => $company->id]);
+    ])->getJson('/api/hr/ess/delegations')->assertOk()->assertJsonPath('data.0.id', $delegation);
     DB::table('staff')->where('id', $delegate->id)->update(['employment_ended_at' => now()]);
     actingAs($approverUser, 'api')->withHeaders([
         'X-Active-Context-Type' => 'staff', 'X-Active-Context-Id' => $approverContext->id,
@@ -132,7 +123,7 @@ it('searches authorized active approvers and submits, replays, lists and approve
 
     $otherApproverUser = User::factory()->create();
     $otherApproverUser->givePermissionTo(['hr.mss.approve', 'hr.mss.delegations.approve']);
-    $otherApprover = Staff::factory()->create(['user_id' => $otherApproverUser->id, 'company_id' => $company->id]);
+    $otherApprover = Staff::factory()->create(['user_id' => $otherApproverUser->id]);
     $otherApproverContext = $context($otherApproverUser, $otherApprover);
     actingAs($otherApproverUser, 'api')->withHeaders([
         'X-Active-Context-Type' => 'staff', 'X-Active-Context-Id' => $otherApproverContext->id,
@@ -148,6 +139,6 @@ it('searches authorized active approvers and submits, replays, lists and approve
         ->assertJsonPath('data.data.0.id', $leaveRequestId);
     $this->assertDatabaseHas('hr_approval_delegations', [
         'id' => $delegation, 'status' => 'approved', 'approved_by' => $approverUser->id,
-        'approved_by_staff_id' => $approver->id, 'company_id' => $company->id,
+        'approved_by_staff_id' => $approver->id,
     ]);
 });

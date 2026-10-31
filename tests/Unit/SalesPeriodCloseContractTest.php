@@ -11,9 +11,9 @@ it('defines a governed monthly close preview and separately authorised reopen co
         ->toContain("performance/period-locks/{periodLock}/reopen")
         ->toContain("permission:sales.performance.snapshots.reopen")
         ->and($controller)
-        ->toContain('$this->assertCompanyWideScope($request, $data[\'company_id\'])')
         ->toContain("'expected_lock_version' => ['required', 'integer', 'min:1']")
         ->toContain("'preview_checksum' => [\$commit ? 'required' : 'nullable', 'string', 'size:64']")
+        ->toContain("whereNotNull('period_lock.installation_period_key')")
         ->and($permissions)
         ->toContain("'sales.performance.snapshots.reopen'")
         ->toContain('denyByDefaultPermissions');
@@ -43,13 +43,14 @@ it('freezes reconciled source evidence and preserves superseded snapshots', func
         ->toContain('Rollback refused: export and reconcile immutable Sales period-close evidence first.');
 });
 
-it('serialises metric writers with the company close lock and blocks locked-period inserts', function () {
+it('serialises metric writers with the installation period lock and blocks locked-period inserts', function () {
     $facts = file_get_contents(app_path('Services/Sales/SalesMetricFactService.php'));
     $dashboard = file_get_contents(app_path('Http/Controllers/Api/Sales/SalesDashboardController.php'));
     $controller = file_get_contents(app_path('Http/Controllers/Api/Sales/SalesPerformanceController.php'));
 
     expect($facts)
-        ->toContain("DB::table('companies')->whereKey(\$payload['company_id'])->lockForUpdate()")
+        ->not->toContain("DB::table('companies')->whereKey(\$payload['company_id'])", "'company_id' => \$fact['company_id']")
+        ->and($facts)
         ->toContain("->where('state', 'locked')")
         ->toContain('use the governed reopen and rebuild workflow')
         ->and($dashboard)->toContain("->where('alert_snapshot.status', 'frozen')")

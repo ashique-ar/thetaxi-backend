@@ -57,10 +57,6 @@ class UserContextController extends Controller
                 $contextData = [];
             }
 
-            if ($contextType === 'staff') {
-                unset($contextData['company_id']);
-            }
-
             if ($contextId) {
                 $contextData['context_id'] = $contextId;
             }

@@ -1,13 +1,13 @@
 <?php
 
-it('lists work-request policies scoped to the actor legal entity via the existing company() helper, closing a create-but-no-read gap', function () {
+it('lists installation-wide work-request policies, closing a create-but-no-read gap', function () {
     $controller = file_get_contents(app_path('Http/Controllers/Api/Hr/WorkforceController.php'));
     $method = substr($controller, strpos($controller, 'public function workRequestPolicies('));
     $method = substr($method, 0, strpos($method, 'public function storeWorkPolicy('));
 
     expect($method)
-        ->toContain("\$companyId = \$this->company(\$r, \$r->input('company_id'));")
-        ->toContain("DB::table('hr_work_request_policies')->where('company_id', \$companyId)")
+        ->toContain("DB::table('hr_work_request_policies')")
+        ->not->toContain('company_id', 'companyId', 'company(')
         ->not->toContain('->insert(')
         ->not->toContain('->update(');
 });

@@ -10,7 +10,7 @@ class SalesTargetVersion extends Model
     use HasUuids;
 
     protected $fillable = [
-        'company_id', 'sales_profile_id', 'source', 'copy_batch_id', 'copied_from_target_id',
+        'sales_profile_id', 'source', 'copy_batch_id', 'copied_from_target_id',
         'import_job_id', 'import_row_number',
         'period_start', 'period_end', 'new_sales_target_lkr',
         'eligible_collections_target_lkr', 'status', 'version', 'reason',

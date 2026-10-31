@@ -11,7 +11,7 @@ class SalesKpiSnapshot extends Model
     use HasUuids;
 
     protected $fillable = [
-        'company_id', 'period_lock_id', 'supersedes_snapshot_id', 'period_start', 'period_end', 'period_type',
+        'period_lock_id', 'supersedes_snapshot_id', 'period_start', 'period_end', 'period_type',
         'cutoff_at', 'status', 'generation_kind', 'version', 'ranking_policy_snapshot',
         'source_reconciliation_snapshot', 'source_reconciliation_checksum', 'generation_idempotency_key',
         'generation_payload_checksum', 'snapshot_checksum', 'generated_by', 'generated_at',

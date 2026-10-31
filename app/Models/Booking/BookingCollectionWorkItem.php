@@ -8,7 +8,7 @@ use Illuminate\Database\Eloquent\Relations\BelongsTo;
 class BookingCollectionWorkItem extends BaseModel
 {
     protected $fillable = [
-        'company_id', 'booking_id', 'booking_payment_schedule_id', 'assigned_sales_profile_id',
+        'booking_id', 'booking_payment_schedule_id', 'assigned_sales_profile_id',
         'work_type', 'status', 'due_at', 'reminder_offset_days', 'last_reminded_at',
         'completed_at', 'idempotency_key',
     ];

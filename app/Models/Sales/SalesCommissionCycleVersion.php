@@ -7,7 +7,7 @@ use App\Models\NonSoftDeletableModel;
 class SalesCommissionCycleVersion extends NonSoftDeletableModel
 {
     protected $fillable = [
-        'company_id', 'code', 'version', 'timezone', 'business_calendar_id', 'earning_period_rule', 'cutoff_day',
+        'code', 'version', 'timezone', 'business_calendar_id', 'earning_period_rule', 'cutoff_day',
         'finalization_day', 'approval_deadline_day', 'settlement_day', 'holiday_rule',
         'payout_currency', 'effective_from', 'effective_until', 'status', 'created_by', 'approved_by', 'approved_at',
     ];

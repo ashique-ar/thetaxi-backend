@@ -139,8 +139,7 @@ class AppServiceProvider extends ServiceProvider
         Gate::before(function ($user, $ability) {
             if (is_string($ability)
                 && \App\Services\PermissionRegistry::isAdminOnlyPermissionName($ability)
-                && ! $user->roles()->where('name', 'super-admin')
-                    ->where('guard_name', config('permissions.canonical_guard', 'api'))->exists()) {
+                && ! app(\App\Services\PermissionEvaluator::class)->hasInternalRole($user, 'super-admin')) {
                 return false;
             }
 

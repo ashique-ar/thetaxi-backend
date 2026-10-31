@@ -2,25 +2,25 @@
 
 This runbook governs the Sales KPI snapshot only. Every employee remains a canonical `Staff` record; `SalesProfile` is an effective-dated Sales category/capability for eligible Staff and does not create a second employee master.
 
-**Architecture update (30 October 2026):** The single-installation cleanup plan supersedes company-scoped Sales data and access assumptions. This runbook's legal-entity selection and company-scoped writer instructions must be revised before operational use.
+Sales performance snapshots and their source facts are installation-wide. Location records are not Sales ownership or access boundaries.
 
 ## Preconditions
 
 - Apply the schema and complete permission, denial, and rollback checks before the first close.
 - Set `SALES_BUSINESS_TIMEZONE` only to the Finance/operations-approved IANA business timezone. Missing or invalid configuration must block preview and close.
 - Approve exactly one alert-policy version covering the whole local calendar month. Do not substitute suggested thresholds or application defaults for approval.
-- Reconcile booking attribution, canonical receipt/finality facts, commission facts, Sales activities, approved target versions, and Profile-to-Staff/company ownership before close.
+- Reconcile booking attribution, canonical receipt/finality facts, commission facts, Sales activities, approved target versions, and Profile-to-Staff ownership before close.
 - Grant `sales.performance.snapshots.generate` only to the approved close operators. `sales.performance.snapshots.reopen` is separate, deny-by-default, and must not be bundled into Sales Manager automatically.
 
 ## Preview and close
 
-1. Select one authorised legal entity, local calendar month, and explicit evidence cutoff.
+1. Select the local calendar month and explicit evidence cutoff for this installation.
 2. Run the no-write preview. Confirm `write_performed=false`, the local timezone and UTC half-open interval, fact/target/row counts and checksums, every zero delta, the policy ID, and no blockers.
 3. Investigate blockers at their canonical owner. Do not edit snapshot rows or introduce balancing facts.
 4. Record a specific reason and commit the exact preview checksum and expected lock version with a fresh idempotency key.
 5. Retain the returned period-lock version, frozen snapshot checksum, reconciliation checksum, close event, and outbox evidence.
 
-The close serialises against company-scoped metric writers, rechecks source rows under locks, freezes immutable source reconciliation, and locks the shared Sales monthly period. A repeated idempotency key is safe only for the identical actor-bound request.
+The close serialises against installation-wide metric writers, rechecks source rows under locks, freezes immutable source reconciliation, and locks the shared Sales monthly period. A repeated idempotency key is safe only for the identical actor-bound request.
 
 ## Reopen and rebuild
 

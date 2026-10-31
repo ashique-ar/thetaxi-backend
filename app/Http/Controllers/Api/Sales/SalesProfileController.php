@@ -6,12 +6,10 @@ use App\Http\Controllers\Controller;
 use App\Models\Sales\SalesProfile;
 use App\Models\Sales\SalesProfileExport;
 use App\Models\Staff;
-use App\Services\CompanySettingsAccessService;
 use App\Services\Sales\SalesAccessScope;
 use App\Services\Sales\SalesPolicySettingsService;
 use App\Services\Sales\SalesProfileExportService;
 use App\Services\UserContextService;
-use App\Services\WebsiteSettingsService;
 use App\Support\Foundation\CanonicalJson;
 use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Http\Exceptions\HttpResponseException;
@@ -33,10 +31,7 @@ class SalesProfileController extends Controller
 
     public function me(Request $request): JsonResponse
     {
-        $data = $request->validate([
-            'company_id' => ['nullable', 'uuid', 'exists:companies,id'],
-        ]);
-        $profile = $this->scope->activeProfile($request->user(), $data['company_id'] ?? null);
+        $profile = $this->scope->activeProfile($request->user());
 
         if (! $profile) {
             return response()->json(['status' => 'success', 'data' => null]);
@@ -48,7 +43,6 @@ class SalesProfileController extends Controller
     public function index(Request $request): JsonResponse
     {
         $data = $request->validate([
-            'company_id' => ['nullable', 'uuid', 'exists:companies,id'],
             'status' => ['nullable', Rule::in(['active', 'suspended', 'ended'])],
             'search' => ['nullable', 'string', 'max:100'],
             'manageable' => ['nullable', 'boolean'],
@@ -60,11 +54,8 @@ class SalesProfileController extends Controller
         }
         $allPermission = $manageableOnly ? 'sales.profiles.manage-all' : 'sales.profiles.view-all';
         $teamPermission = $manageableOnly ? 'sales.profiles.manage-team' : 'sales.profiles.view-team';
-        $companyId = $this->resolveCompanyId($data['company_id'] ?? null);
-
         $profiles = SalesProfile::query()
             ->with('staff.user')
-            ->when($companyId, fn (Builder $query, string $id) => $query->where(fn ($_companyIdScope) => \App\Services\CompanyIdScope::constrain($_companyIdScope, 'company_id', $id)))
             ->when($data['status'] ?? null, fn (Builder $query, string $status) => $query->where('status', $status))
             ->when(trim((string) ($data['search'] ?? '')), function (Builder $query, string $search): void {
                 $term = '%'.trim($search).'%';
@@ -82,14 +73,12 @@ class SalesProfileController extends Controller
             $request->user(),
             $allPermission,
             $teamPermission,
-            $companyId,
         )->orderBy('sales_code')->orderBy('id')->paginate($this->paginationSize($request, 25));
         $manageableIds = $this->scope->authorizedProfileIds(
             $request->user(),
             'sales.profiles.manage',
             'sales.profiles.manage-all',
             'sales.profiles.manage-team',
-            $companyId,
         );
 
         return response()->json([
@@ -198,7 +187,6 @@ class SalesProfileController extends Controller
             DB::table('domain_audit_events')->insert([
                 'id' => (string) Str::uuid(),
                 'domain' => 'sales',
-                'company_id' => null,
                 'subject_type' => 'sales_profile_export',
                 'subject_id' => $locked->id,
                 'event_type' => 'sales.profile_export.downloaded',
@@ -230,7 +218,6 @@ class SalesProfileController extends Controller
             'reporting_currency' => strtoupper((string) $request->input('reporting_currency')),
         ]);
         $data = $request->validate([
-            'company_id' => ['nullable', 'uuid', 'exists:companies,id'],
             'staff_id' => ['required', 'uuid', 'exists:staff,id'],
             'sales_code' => ['required', 'string', 'max:80'],
             'acquisition_eligible' => ['required', 'boolean'],
@@ -240,24 +227,15 @@ class SalesProfileController extends Controller
             'effective_from' => ['required', 'date'],
             'effective_until' => ['nullable', 'date', 'after:effective_from'],
         ]);
-        $data['company_id'] = $this->resolveCompanyId($data['company_id'] ?? null);
         if (! $data['acquisition_eligible'] && ! $data['collection_eligible'] && ! $data['commission_eligible']) {
             $this->fail('VALIDATION_FAILED', 'A Sales Profile must have at least one explicit eligibility.', 422);
         }
-        $company = DB::table('companies')->where('id', $data['company_id'])->whereNull('deleted_at')->first();
-        abort_unless($company && $company->is_active, 422, 'Select an active legal entity.');
-        $salesStaffCategories = $this->salesStaffCategories($data['company_id']);
+        $salesStaffCategories = $this->salesStaffCategories();
         if ($salesStaffCategories === []) {
             $this->fail('CONFIGURATION_MISSING', 'Approved Sales Staff categories are not configured.', 503);
         }
-        abort_unless(DB::table('companies')->where('id', $data['company_id'])->whereNull('deleted_at')->exists(), 422, 'Select an available legal entity.');
-        $this->scope->assertCompany($request->user(), $data['company_id'], 'sales.profiles.manage-all');
-
         $profile = DB::transaction(function () use ($data, $request, $salesStaffCategories) {
-            $company = DB::table('companies')->where('id', $data['company_id'])->whereNull('deleted_at')->lockForUpdate()->firstOrFail();
-            abort_unless($company->is_active, 422, 'Select an active legal entity.');
             $staff = Staff::query()->lockForUpdate()->findOrFail($data['staff_id']);
-            abort_unless(\App\Services\CompanyIdScope::sameCompanyId((string) ($staff->company_id), (string) ($data['company_id'])), 422, 'Staff and Sales Profile must belong to the same legal entity.');
             abort_unless($staff->user_id, 422, 'Sales self-service enrollment requires a linked User identity.');
             $user = $staff->user()->lockForUpdate()->firstOrFail();
             abort_unless($user->is_active, 422, 'Sales Profile enrollment requires an active User account.');
@@ -273,7 +251,6 @@ class SalesProfileController extends Controller
                     $request->user(),
                     'sales.profiles.manage-all',
                     'sales.profiles.manage-team',
-                    $data['company_id'],
                 ) ?? [];
                 $permittedStaffIds = SalesProfile::query()
                     ->whereIn('id', $permittedProfileIds)
@@ -304,9 +281,14 @@ class SalesProfileController extends Controller
                 'Sales Profile activation requires one unambiguous active Staff identity.',
             );
 
+            abort_if(
+                SalesProfile::query()->where('sales_code', $data['sales_code'])->exists(),
+                422,
+                'The Sales code is already in use in this installation.',
+            );
+
             $overlap = SalesProfile::query()
                 ->where('staff_id', $data['staff_id'])
-                ->where(fn ($_companyIdScope) => \App\Services\CompanyIdScope::constrain($_companyIdScope, 'company_id', $data['company_id']))
                 ->where('effective_from', '<', $data['effective_until'] ?? '9999-12-31')
                 ->where(fn (Builder $query) => $query
                     ->whereNull('effective_until')
@@ -340,7 +322,6 @@ class SalesProfileController extends Controller
             DB::table('domain_audit_events')->insert([
                 'id' => (string) Str::uuid(),
                 'domain' => 'sales',
-                'company_id' => $profile->company_id ?: \App\Services\CompanyIdScope::defaultCompanyId(),
                 'subject_type' => 'sales_profile',
                 'subject_id' => $profile->id,
                 'event_type' => 'sales.profile.enrolled',
@@ -403,7 +384,7 @@ class SalesProfileController extends Controller
             }
 
             $staff = Staff::query()->lockForUpdate()->findOrFail($profile->staff_id);
-            $salesStaffCategories = $this->salesStaffCategories((string) ($profile->company_id ?: \App\Services\CompanyIdScope::defaultCompanyId()));
+            $salesStaffCategories = $this->salesStaffCategories();
             abort_unless($salesStaffCategories !== [] && $this->isSalesStaffCategory($staff->staff_type, $salesStaffCategories), 422,
                 'The linked Staff record must be in an approved Sales category before Profile configuration is approved.');
             $before = $this->configurationSnapshot($profile);
@@ -460,87 +441,30 @@ class SalesProfileController extends Controller
 
     public function administrationContext(Request $request): JsonResponse
     {
-        $data = $request->validate(['company_id' => ['nullable', 'uuid', 'exists:companies,id']]);
-        if (! empty($data['company_id'])) {
-            abort_unless(DB::table('companies')->where('id', $data['company_id'])->whereNull('deleted_at')->exists(), 422, 'Select an available legal entity.');
-            $this->scope->assertCompany($request->user(), $data['company_id'], 'sales.profiles.view-all');
-        }
-        $companyIds = $this->scope->companyIds($request->user(), 'sales.profiles.view-all');
-        if (empty($data['company_id'])) {
-            return response()->json(['status' => 'success', 'data' => [
-                'sales_staff_categories_by_company' => [],
-                'sales_staff_category_ready_by_company' => [], 'profile_export_ready_by_company' => [],
-                'can_manage_profiles' => $this->scope->hasPermission($request->user(), 'sales.profiles.manage'),
-                'can_export_profiles' => $this->scope->hasPermission($request->user(), 'sales.profiles.export'),
-            ]]);
-        }
-        $companies = DB::table('companies')
-            ->whereNull('deleted_at')
-            ->when($data['company_id'] ?? null, fn ($query, $companyId) => $query->where('id', $companyId))
-            ->when($companyIds !== null, fn ($query) => $query->whereIn('id', $companyIds))
-            ->orderBy('name')
-            ->get(['id', 'name']);
-        $categoriesByCompany = $companies->mapWithKeys(fn ($company) => [
-            $company->id => $this->salesStaffCategories((string) $company->id),
-        ]);
-        $exportReadyByCompany = $companies->mapWithKeys(fn ($company) => [
-            $company->id => ($this->policySettings->profileExportRetentionDays() ?? 0) > 0,
-        ]);
-
+        $categories = $this->salesStaffCategories();
         return response()->json(['status' => 'success', 'data' => [
-            'sales_staff_categories_by_company' => $categoriesByCompany,
-            'sales_staff_category_ready_by_company' => $categoriesByCompany->map(fn (array $rows) => $rows !== []),
-            'profile_export_ready_by_company' => $exportReadyByCompany,
+            'sales_staff_categories' => $categories,
+            'sales_staff_category_ready' => $categories !== [],
+            'profile_export_ready' => ($this->policySettings->profileExportRetentionDays() ?? 0) > 0,
             'can_manage_profiles' => $this->scope->hasPermission($request->user(), 'sales.profiles.manage'),
             'can_export_profiles' => $this->scope->hasPermission($request->user(), 'sales.profiles.export'),
         ]]);
     }
 
-    public function companyOptions(Request $request): JsonResponse
-    {
-        $data = $request->validate([
-            'search' => ['nullable', 'string', 'max:120'], 'selected_id' => ['nullable', 'uuid'],
-            'page' => ['nullable', 'integer', 'min:1'], 'per_page' => ['nullable', 'integer', 'min:1', 'max:50'],
-        ]);
-        $companyIds = $this->scope->companyIds($request->user(), 'sales.profiles.view-all');
-        $defaultCompanyId = app(WebsiteSettingsService::class)->resolveCurrentCompanyId();
-        if ($defaultCompanyId && request()->header('X-Active-Context-Type') === 'staff') {
-            app(CompanySettingsAccessService::class)->assertCanAccess($request->user(), (string) $defaultCompanyId);
-            $companyIds = [(string) $defaultCompanyId];
-        }
-        if ($defaultCompanyId && $companyIds !== null && ! in_array($defaultCompanyId, $companyIds, true)) $defaultCompanyId = null;
-        $query = DB::table('companies')->whereNull('deleted_at')
-            ->when($companyIds !== null, fn ($company) => $company->whereIn('id', $companyIds));
-        if (! empty($data['selected_id'])) $query->where('id', $data['selected_id']);
-        elseif (! empty($data['search'])) {
-            $term = '%' . addcslashes($data['search'], '%_\\') . '%';
-            $query->where(fn ($company) => $company->where('name', 'like', $term)->orWhere('city', 'like', $term));
-        }
-        $rows = $query->select(['id', 'name', 'city', 'is_active', 'is_default'])->orderByDesc('is_active')->orderByDesc('is_default')->orderBy('name')->orderBy('id')->paginate($data['per_page'] ?? 25);
-        $rows->getCollection()->transform(fn ($company) => ['value' => (string) $company->id, 'label' => $company->name,
-            'metadata' => array_filter(['city' => $company->city, 'availability' => $company->is_active ? null : 'Inactive']) + ['is_default' => (bool) $company->is_default],
-            'status' => $company->is_active ? 'active' : 'inactive']);
-        return response()->json(['status' => 'success', 'data' => $rows, 'default_company_id' => $defaultCompanyId]);
-    }
-
     public function staffOptions(Request $request): JsonResponse
     {
         $data = $request->validate([
-            'company_id' => ['nullable', 'uuid', 'exists:companies,id'],
             'search' => ['nullable', 'string', 'max:120'], 'selected_id' => ['nullable', 'uuid'],
             'page' => ['nullable', 'integer', 'min:1'], 'per_page' => ['nullable', 'integer', 'min:1', 'max:50'],
         ]);
-        $data['company_id'] = $this->resolveCompanyId($data['company_id'] ?? null);
-        abort_unless(DB::table('companies')->where('id', $data['company_id'])->where('is_active', true)->whereNull('deleted_at')->exists(), 422, 'Select an active legal entity.');
-        $this->scope->assertCompany($request->user(), $data['company_id'], 'sales.profiles.manage-all');
-        $categories = $this->salesStaffCategories($data['company_id']);
-        $query = Staff::query()->with('user:id,first_name,last_name')->where(fn ($_companyIdScope) => \App\Services\CompanyIdScope::constrain($_companyIdScope, 'company_id', $data['company_id']))
+        $categories = $this->salesStaffCategories();
+        $query = Staff::query()->with('user:id,first_name,last_name')
             ->whereNull('deleted_at')->whereNotNull('user_id')->whereIn('staff_type', $categories)
             ->whereHas('user', fn (Builder $user) => $user->where('is_active', true)->whereHas('contexts', fn (Builder $context) => $context
                 ->where('context_type', 'staff')->whereColumn('context_id', 'staff.id')->where('is_active', true)))
             ->where(fn (Builder $employment) => $employment->whereNull('employment_ended_at')->orWhere('employment_ended_at', '>', now()));
         if (! $this->scope->hasPermission($request->user(), 'sales.profiles.manage-all')) {
-            $profileIds = $this->scope->profileIds($request->user(), 'sales.profiles.manage-all', 'sales.profiles.manage-team', $data['company_id']) ?? [];
+            $profileIds = $this->scope->profileIds($request->user(), 'sales.profiles.manage-all', 'sales.profiles.manage-team') ?? [];
             $query->whereIn('id', SalesProfile::query()->whereIn('id', $profileIds)->select('staff_id'));
         }
         if (! empty($data['selected_id'])) $query->whereKey($data['selected_id']);
@@ -632,7 +556,7 @@ class SalesProfileController extends Controller
                     422,
                     'A Sales Profile can only be reactivated for a current Staff identity with an active User and Staff context.',
                 );
-                $salesStaffCategories = $this->salesStaffCategories((string) ($profile->company_id ?: \App\Services\CompanyIdScope::defaultCompanyId()));
+                $salesStaffCategories = $this->salesStaffCategories();
                 abort_if($profile->effective_until && $profile->effective_until->lte(now()), 422, 'An ended effective interval cannot be reactivated.');
                 abort_unless(
                     $profile->reporting_currency
@@ -707,10 +631,8 @@ class SalesProfileController extends Controller
 
     private function payload(SalesProfile $profile, ?bool $canManage = null): array
     {
-        $companyId = $profile->company_id ?: \App\Services\CompanyIdScope::defaultCompanyId();
         $payload = [
             'id' => $profile->id,
-            'company_id' => $companyId,
             'staff_id' => $profile->staff_id,
             'staff_category_snapshot' => $profile->staff_category_snapshot,
             'sales_code' => $profile->sales_code,
@@ -739,7 +661,6 @@ class SalesProfileController extends Controller
     private function configurationSnapshot(SalesProfile $profile): array
     {
         return $profile->only([
-            'company_id',
             'staff_id',
             'staff_category_snapshot',
             'sales_code',
@@ -754,20 +675,9 @@ class SalesProfileController extends Controller
         ]);
     }
 
-    private function salesStaffCategories(string $companyId): array
+    private function salesStaffCategories(): array
     {
         return $this->policySettings->approvedStaffCategories();
-    }
-
-    private function resolveCompanyId(?string $companyId): string
-    {
-        $companyId = $companyId ?: app(WebsiteSettingsService::class)->resolveCurrentCompanyId();
-        abort_unless($companyId, 409, 'Select an active business for Sales work.');
-        if (request()->header('X-Active-Context-Type') === 'staff') {
-            app(CompanySettingsAccessService::class)->assertCanAccess(request()->user(), (string) $companyId);
-        }
-
-        return (string) $companyId;
     }
 
     private function isSalesStaffCategory(?string $category, array $allowed): bool
@@ -785,11 +695,9 @@ class SalesProfileController extends Controller
         string $reason,
         Request $request,
     ): void {
-        $companyId = $profile->company_id ?: \App\Services\CompanyIdScope::defaultCompanyId();
         DB::table('domain_audit_events')->insert([
             'id' => (string) Str::uuid(),
             'domain' => 'sales',
-            'company_id' => $companyId,
             'subject_type' => 'sales_profile',
             'subject_id' => $profile->id,
             'event_type' => $eventType,

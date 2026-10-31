@@ -21,7 +21,7 @@ class WialonServiceTest extends TestCase
             $table->boolean('enabled')->default(true); $table->timestamps();
         });
         Schema::create('vehicles', function (Blueprint $table) {
-            $table->uuid('id')->primary(); $table->uuid('company_id')->nullable(); $table->unsignedBigInteger('wialon_unit_id')->nullable(); $table->softDeletes();
+            $table->uuid('id')->primary(); $table->unsignedBigInteger('wialon_unit_id')->nullable(); $table->softDeletes();
         });
         DB::table('wialon_installation_settings')->insert(['id' => 'installation',
             'token' => encrypt('test-token'), 'base_url' => 'https://hst-api.wialon.com', 'resource_ids' => '[70]', 'group_ids' => '[5]', 'unit_ids' => '[12]',

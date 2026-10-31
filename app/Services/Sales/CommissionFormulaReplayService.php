@@ -10,14 +10,12 @@ use Carbon\CarbonInterface;
 class CommissionFormulaReplayService
 {
     public function calculate(
-        string $companyId,
         string $staffId,
         string $planFamilyId,
         float $eligibleLkrAmount,
         CarbonInterface $effectiveAt,
     ): array {
-        $overrides = SalesCommissionStaffOverride::query()->where(fn ($_companyIdScope) => \App\Services\CompanyIdScope::constrain($_companyIdScope, 'company_id', $companyId))
-            ->where('staff_id', $staffId)->where('status', 'approved')
+        $overrides = SalesCommissionStaffOverride::query()->where('staff_id', $staffId)->where('status', 'approved')
             ->where('effective_from', '<=', $effectiveAt)
             ->where(fn ($query) => $query->whereNull('effective_until')->orWhere('effective_until', '>', $effectiveAt))->get();
         if ($overrides->count() > 1) return ['blocker' => 'Multiple approved Staff overrides overlap the original receipt timestamp.'];

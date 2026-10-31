@@ -12,7 +12,7 @@ use Illuminate\Database\Eloquent\Relations\HasMany;
 class SalesOpportunity extends BaseModel
 {
     protected $fillable = [
-        'company_id', 'owner_sales_profile_id', 'customer_id', 'inquiry_id', 'source_phone_call_id',
+        'owner_sales_profile_id', 'customer_id', 'inquiry_id', 'source_phone_call_id',
         'opportunity_number', 'name', 'prospect_name', 'prospect_company', 'prospect_email', 'prospect_phone',
         'source', 'campaign', 'referral', 'description', 'stage', 'expected_value_source', 'source_currency',
         'expected_value_lkr', 'probability_percent', 'expected_close_date', 'services', 'customer_needs',

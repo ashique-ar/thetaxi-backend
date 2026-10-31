@@ -31,7 +31,7 @@ class CommissionStatementExportService
                     : $this->csv($statement);
                 $fileName = $statement->statement_number.'.'.$format;
                 $exportId = (string) Str::uuid();
-                $path = 'commission-statements/'.$statement->company_id.'/'.$statement->staff_id.'/'.$exportId.'.'.$format;
+                $path = 'commission-statements/'.$statement->staff_id.'/'.$exportId.'.'.$format;
                 $exportPath = $path;
                 abort_unless(Storage::disk($disk)->put($path, $content), 500, 'Commission statement export could not be stored.');
                 return SalesCommissionStatementExport::create([

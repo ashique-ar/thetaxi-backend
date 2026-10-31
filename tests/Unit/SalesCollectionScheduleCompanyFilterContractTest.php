@@ -1,35 +1,21 @@
 <?php
 
-it('limits schedule company options and schedule rows to the selected authorized active entity', function () {
+it('lists collection schedules installation-wide without a company selector', function (): void {
     $controller = file_get_contents(app_path('Http/Controllers/Api/Sales/CollectionScheduleWorkflowController.php'));
     $routes = file_get_contents(base_path('routes/api.php'));
-    $optionsStart = strpos($controller, 'public function scheduleCompanyOptions');
-    $bookingsStart = strpos($controller, 'public function scheduleBookings', $optionsStart);
-    $scheduleStart = strpos($controller, 'public function schedule(', $bookingsStart);
-    $options = substr($controller, $optionsStart, $bookingsStart - $optionsStart);
-    $bookings = substr($controller, $bookingsStart, $scheduleStart - $bookingsStart);
+    $portal = dirname(base_path()).'/portal-thetaxi/src/app/modules/sales/components/sales-collection-schedules';
+    $template = file_get_contents($portal.'/sales-collection-schedules.component.html');
+    $component = file_get_contents($portal.'/sales-collection-schedules.component.ts');
 
-    expect($options)
-        ->toContain("where('is_active', true)")
-        ->toContain('->when($companyIds !== null')
-        ->toContain('activeDefaultCompany()?->id')
-        ->toContain("'default_company_id' => \$defaultCompanyId")
-        ->toContain('assertScheduleAttributionOwnerIntegrity(null, $profileIds)')
-        ->toContain("'is_default' => (bool) \$company->is_default")
-        ->and($bookings)
-        ->toContain("'company_id' => ['nullable', 'uuid', 'exists:companies,id']")
-        ->toContain('resolveCompanyId($data[\'company_id\'] ?? null)')
-        ->toContain("where('attribution.company_id', \$companyId)")
-        ->toContain('assertScheduleAttributionOwnerIntegrity($companyId, $profileIds)')
-        ->toContain('$this->companyIntegrity->assertMany(')
-        ->toContain('scheduleProfileIds($request, $companyId)')
-        ->and($controller)
-        ->toContain("->leftJoin('sales_profiles as profile'")
-        ->toContain("->leftJoin('staff as staff'")
-        ->toContain("orWhereColumn('profile.company_id', '!=', 'attribution.company_id')")
-        ->toContain("orWhereColumn('staff.company_id', '!=', 'attribution.company_id')")
-        ->toContain('assertScheduleAttributionOwnerIntegrity((string) $attribution->company_id, null, (string) $booking->id)')
+    expect($controller)
+        ->toContain('public function scheduleBookings(Request $request)')
+        ->toContain('$this->scheduleProfileIds($request)')
+        ->not->toContain('scheduleCompanyOptions', 'company_id', 'resolveCompanyId')
         ->and($routes)
-        ->toContain("'collection-schedule-company-options', [CollectionScheduleWorkflowController::class, 'scheduleCompanyOptions']")
-        ->toContain("->middleware('permission:sales.collection-schedules.revise')");
+        ->not->toContain('collection-schedule-company-options')
+        ->and($template)
+        ->not->toContain('collection-schedule-company-options', 'companyControl', 'Choose a company')
+        ->and($component)
+        ->toContain('this.api.scheduleBookings()')
+        ->not->toContain('company_id', 'companyControl', 'companyId');
 });

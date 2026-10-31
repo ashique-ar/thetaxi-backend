@@ -10,24 +10,24 @@ use function Pest\Laravel\actingAs;
 uses(RefreshDatabase::class);
 
 it('replays Workforce policy approval for the original approver without rewriting evidence', function () {
-    [$approver, $company] = hr_seed_admin_actor();
+    [$approver] = hr_seed_admin_actor();
     config(['hr.features.leave_overtime' => true]);
     $creator = User::factory()->create();
     $otherApprover = User::factory()->create();
     $otherApprover->assignRole('admin');
-    Staff::factory()->create(['user_id' => $otherApprover->id, 'company_id' => $company->id]);
+    Staff::factory()->create(['user_id' => $otherApprover->id]);
     $now = now();
     $leaveTypeId = (string) Str::uuid();
     $policyId = (string) Str::uuid();
 
     DB::table('hr_leave_types')->insert([
-        'id' => $leaveTypeId, 'company_id' => $company->id, 'code' => 'ANNUAL', 'name' => 'Annual leave',
+        'id' => $leaveTypeId, 'code' => 'ANNUAL', 'name' => 'Annual leave',
         'category' => 'annual', 'unit' => 'day', 'paid' => true, 'medical_confidential' => false,
         'effective_from' => today()->toDateString(), 'status' => 'active', 'created_by' => $creator->id,
         'created_at' => $now, 'updated_at' => $now,
     ]);
     DB::table('hr_leave_policies')->insert([
-        'id' => $policyId, 'company_id' => $company->id, 'leave_type_id' => $leaveTypeId,
+        'id' => $policyId, 'leave_type_id' => $leaveTypeId,
         'code' => 'ANNUAL-2026', 'version' => 1, 'rules' => json_encode(['minutes_per_day' => 480], JSON_THROW_ON_ERROR),
         'effective_from' => today()->toDateString(), 'status' => 'pending_approval', 'created_by' => $creator->id,
         'created_at' => $now, 'updated_at' => $now,

@@ -11,13 +11,9 @@ use App\Models\Sales\SalesBookingAttribution;
 use App\Models\Sales\SalesProfile;
 use App\Services\Sales\CollectionScheduleWorkflowService;
 use App\Services\Sales\CollectionWorkAgingService;
-use App\Services\Sales\SalesCollectionCompanyIntegrity;
 use App\Services\Sales\SalesAccessScope;
 use App\Services\Sales\SalesPolicySettingsService;
 use App\Services\BookingPaymentLedgerService;
-use App\Services\CompanySettingsAccessService;
-use App\Services\StaffAccessService;
-use App\Services\WebsiteSettingsService;
 use Closure;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
@@ -33,8 +29,6 @@ class CollectionScheduleWorkflowController extends Controller
         private readonly BookingPaymentLedgerService $ledger,
         private readonly SalesAccessScope $access,
         private readonly SalesPolicySettingsService $policySettings,
-        private readonly SalesCollectionCompanyIntegrity $companyIntegrity,
-        private readonly StaffAccessService $staffAccess,
     ) {}
 
     public function createRollingRule(Request $request, Booking $booking): JsonResponse
@@ -132,59 +126,10 @@ class CollectionScheduleWorkflowController extends Controller
         });
     }
 
-    public function scheduleCompanyOptions(Request $request): JsonResponse
-    {
-        $data = $request->validate([
-            'search' => ['nullable', 'string', 'max:120'],
-            'selected_id' => ['nullable', 'uuid'],
-            'page' => ['nullable', 'integer', 'min:1'],
-            'per_page' => ['nullable', 'integer', 'min:1', 'max:50'],
-        ]);
-        $profileIds = $this->scheduleProfileIds($request);
-        if ($profileIds !== null) {
-            $this->assertScheduleAttributionOwnerIntegrity(null, $profileIds);
-        }
-        $companyIds = $profileIds === null ? null : DB::table('sales_booking_attributions')->whereNull('deleted_at')
-            ->whereIn('collection_sales_profile_id', $profileIds)->distinct()->pluck('company_id')->all();
-        $defaultCompanyId = $this->currentCompanyId();
-        if ($request->header('X-Active-Context-Type') === 'staff') {
-            abort_unless($defaultCompanyId, 409, 'Select an active business for Sales work.');
-            $this->assertSelectedStaffCompany($request, $defaultCompanyId);
-            $companyIds = [$defaultCompanyId];
-        }
-        if ($defaultCompanyId && $companyIds !== null && ! in_array($defaultCompanyId, $companyIds, true)) $defaultCompanyId = null;
-        $query = DB::table('companies')->whereNull('deleted_at')->where('is_active', true)
-            ->when($companyIds !== null, fn ($companies) => $companies->whereIn('id', $companyIds));
-        if (! empty($data['selected_id'])) {
-            $query->where('id', $data['selected_id']);
-        } elseif (! empty($data['search'])) {
-            $term = '%'.addcslashes($data['search'], '%_\\').'%';
-            $query->where(fn ($companies) => $companies->where('name', 'like', $term)
-                ->orWhere('city', 'like', $term));
-        }
-
-        $page = $query->select(['id', 'name', 'city', 'is_default'])
-            ->orderByDesc('is_default')->orderBy('name')->orderBy('id')
-            ->paginate($data['per_page'] ?? 25);
-        $page->getCollection()->transform(static fn ($company): array => [
-            'value' => (string) $company->id,
-            'label' => $company->name,
-            'metadata' => array_filter(['city' => $company->city]) + ['is_default' => (bool) $company->is_default],
-            'status' => 'active',
-        ]);
-
-        return response()->json(['status' => 'success', 'data' => $page, 'default_company_id' => $defaultCompanyId]);
-    }
-
     public function scheduleBookings(Request $request): JsonResponse
     {
-        $data = $request->validate(['company_id' => ['nullable', 'uuid', 'exists:companies,id']]);
-        $companyId = $this->resolveCompanyId($data['company_id'] ?? null);
-        abort_unless(DB::table('companies')->where('id', $companyId)->where('is_active', true)
-            ->whereNull('deleted_at')->exists(), 422, 'Select an active legal entity.');
-        $profileIds = $this->scheduleProfileIds($request, $companyId);
-        $actorProfileIds = $this->access->actorProfiles($request->user(), $companyId)->pluck('id')->all();
-        $this->assertScheduleAttributionOwnerIntegrity($companyId, $profileIds);
+        $profileIds = $this->scheduleProfileIds($request);
+        $this->assertScheduleAttributionOwnerIntegrity($profileIds);
         $query = DB::table('sales_booking_attributions as attribution')
             ->join('bookings as booking', 'booking.id', '=', 'attribution.booking_id')
             ->leftJoin('booking_payment_schedules as schedule', function ($join): void {
@@ -193,7 +138,6 @@ class CollectionScheduleWorkflowController extends Controller
                     ->where('schedule.status', '!=', 'superseded');
             })
             ->whereNull('attribution.deleted_at')
-            ->where(fn ($_companyIdScope) => \App\Services\CompanyIdScope::constrain($_companyIdScope, 'attribution.company_id', $companyId))
             ->where(fn ($scope) => $scope->where('attribution.commission_category', 'long_term')->orWhereNotNull('schedule.id'));
         if ($profileIds !== null) {
             $query->whereIn('attribution.collection_sales_profile_id', $profileIds);
@@ -202,8 +146,6 @@ class CollectionScheduleWorkflowController extends Controller
             ->select(['booking.id', 'booking.booking_number'])
             ->selectRaw('COUNT(schedule.id) as installment_count')
             ->groupBy('booking.id', 'booking.booking_number')->orderByDesc('booking.booking_number')->get();
-        $this->companyIntegrity->assertMany($rows->mapWithKeys(fn ($row) => [(string) $row->id => $companyId])->all());
-
         return response()->json(['status' => 'success', 'data' => $rows]);
     }
 
@@ -211,7 +153,7 @@ class CollectionScheduleWorkflowController extends Controller
     {
         $this->assertBookingManagementScope($request, $booking);
         $attribution = SalesBookingAttribution::query()->where('booking_id', $booking->id)->firstOrFail();
-        $this->assertScheduleAttributionOwnerIntegrity((string) $attribution->company_id, null, (string) $booking->id);
+        $this->assertScheduleAttributionOwnerIntegrity(null, (string) $booking->id);
         $scheduleColumns = ['schedule.sequence', 'schedule.label', 'schedule.period_start', 'schedule.period_end', 'schedule.due_date', 'schedule.source_amount', 'schedule.source_currency', 'schedule.lkr_amount', 'schedule.schedule_kind', 'schedule.is_collection_target_eligible', 'schedule.notes', 'schedule.status', 'schedule.revision_number'];
         if (Schema::hasColumn('booking_payment_schedules', 'booking_payment_schedule_rule_id')) {
             $scheduleColumns[] = 'schedule.rule_occurrence_number';
@@ -228,13 +170,11 @@ class CollectionScheduleWorkflowController extends Controller
         $rule = Schema::hasTable('booking_payment_schedule_rules')
             ? BookingPaymentScheduleRule::query()->where('booking_id', $booking->id)->first()
             : null;
-        $rollingEnabled = $attribution?->company_id
-            && $this->policySettings->featureEnabled('rolling_payment_schedules')
+        $rollingEnabled = $this->policySettings->featureEnabled('rolling_payment_schedules')
             && Schema::hasTable('booking_payment_schedule_rules');
         $rollingHandlerEligible = $attribution?->collection_sales_profile_id
             ? SalesProfile::query()
                 ->whereKey($attribution->collection_sales_profile_id)
-                ->where(fn ($_companyIdScope) => \App\Services\CompanyIdScope::constrain($_companyIdScope, 'company_id', $attribution->company_id))
                 ->eligibleAt('collection', now())
                 ->exists()
             : false;
@@ -297,23 +237,20 @@ class CollectionScheduleWorkflowController extends Controller
     public function workItems(Request $request): JsonResponse
     {
         $data = $request->validate([
-            'company_id' => ['nullable', 'uuid', 'exists:companies,id'],
             'status' => ['nullable', Rule::in(['open', 'upcoming', 'due', 'overdue', 'completed', 'cancelled'])],
             'from' => ['nullable', 'date'],
             'to' => ['nullable', 'date', 'after_or_equal:from'],
             'per_page' => ['nullable', 'integer', 'min:1', 'max:100'],
         ]);
-        $companyId = $this->resolveCompanyId($data['company_id'] ?? null);
-        $this->assertSelectedCollectionCompany($request, $companyId);
-        $profileIds = $this->scheduleProfileIds($request, $companyId);
-        $this->assertScheduleAttributionOwnerIntegrity($companyId, $profileIds);
+        $profileIds = $this->scheduleProfileIds($request);
+        $this->assertScheduleAttributionOwnerIntegrity($profileIds);
+        $actorProfileIds = $this->access->actorProfiles($request->user())->pluck('id')->all();
         $query = BookingCollectionWorkItem::query()
-            ->where(fn ($_companyIdScope) => \App\Services\CompanyIdScope::constrain($_companyIdScope, 'company_id', $companyId))
             ->with([
                 'booking:id,booking_number,customer_id',
                 'booking.customer:id,user_id,code',
                 'booking.customer.user:id,first_name,last_name,email,phone',
-                'booking.salesAttribution:id,booking_id,company_id,collection_sales_profile_id',
+                'booking.salesAttribution:id,booking_id,collection_sales_profile_id',
                 'paymentSchedule' => fn ($schedule) => $schedule->withSum('allocations', 'amount'),
             ])
             ->addSelect([
@@ -333,7 +270,7 @@ class CollectionScheduleWorkflowController extends Controller
             ->when($data['to'] ?? null, fn ($q, $to) => $q->where('due_at', '<=', $to))
             ->orderBy('due_at')->paginate($this->paginationSize($request, 25));
 
-        $this->assertCollectionPageCompanyIntegrity($rows->getCollection());
+        $this->assertCollectionPageReferences($rows->getCollection());
 
         $rows->setCollection($rows->getCollection()->map(function ($row) use ($canViewCustomerContact, $actorProfileIds): array {
             $schedule = $row->paymentSchedule;
@@ -352,7 +289,7 @@ class CollectionScheduleWorkflowController extends Controller
                 ->filter()->map(fn ($value) => (string) $value)->max();
 
             return [
-                'id' => $row->id, 'company_id' => $row->company_id, 'booking_id' => $row->booking_id,
+                'id' => $row->id, 'booking_id' => $row->booking_id,
                 'booking_number' => $row->booking?->booking_number, 'booking_payment_schedule_id' => $row->booking_payment_schedule_id,
                 'can_submit' => in_array((string) $row->assigned_sales_profile_id, array_map('strval', $actorProfileIds), true)
                     && (string) $row->booking?->salesAttribution?->collection_sales_profile_id === (string) $row->assigned_sales_profile_id,
@@ -402,9 +339,9 @@ class CollectionScheduleWorkflowController extends Controller
             'idempotency_key' => ['required', 'string', 'max:160'],
         ]);
         abort_unless(SalesBookingAttribution::query()->where('booking_id', $booking->id)->exists(), 409,
-            'The booking needs a reviewed legal-entity attribution before collection submission.');
+            'The booking needs a reviewed Sales attribution before collection submission.');
         $profile = $this->actorProfile($request, $booking);
-        abort_unless($profile, 409, 'An active collection Sales Profile is not configured for this user in the default company.');
+        abort_unless($profile, 409, 'An active collection Sales Profile is not configured for this user.');
 
         $submission = $this->workflow->submit($booking, $profile, $data, (string) $request->user()->id);
         return response()->json(['status' => 'success', 'data' => [
@@ -416,24 +353,20 @@ class CollectionScheduleWorkflowController extends Controller
     public function submissions(Request $request): JsonResponse
     {
         $data = $request->validate([
-            'company_id' => ['nullable', 'uuid', 'exists:companies,id'],
             'status' => ['nullable', Rule::in(['submitted', 'verified', 'rejected'])],
             'per_page' => ['nullable', 'integer', 'min:1', 'max:100'],
         ]);
-        $companyId = $this->resolveCompanyId($data['company_id'] ?? null);
-        $this->assertSelectedCollectionCompany($request, $companyId);
         $profileIds = $request->user()->can('sales.collections.verify')
             ? null
-            : $this->scheduleProfileIds($request, $companyId);
-        $this->assertScheduleAttributionOwnerIntegrity($companyId, $profileIds);
+            : $this->scheduleProfileIds($request);
+        $this->assertScheduleAttributionOwnerIntegrity($profileIds);
         $query = BookingCollectionSubmission::query()->with(['booking:id,booking_number', 'paymentSchedule:id,label,due_date']);
-        $query->where(fn ($_companyIdScope) => \App\Services\CompanyIdScope::constrain($_companyIdScope, 'company_id', $companyId));
         if ($profileIds !== null) {
             $query->whereIn('submitted_by_sales_profile_id', $profileIds);
         }
         $rows = $query->when($data['status'] ?? null, fn ($q, $status) => $q->where('status', $status))
             ->latest('received_at')->paginate($this->paginationSize($request, 25));
-        $this->assertCollectionPageCompanyIntegrity($rows->getCollection());
+        $this->assertCollectionPageReferences($rows->getCollection());
         $rows->setCollection($rows->getCollection()->map(fn ($row) => [
             'id' => $row->id,
             'booking_number' => $row->booking?->booking_number,
@@ -448,9 +381,6 @@ class CollectionScheduleWorkflowController extends Controller
 
     public function verify(Request $request, BookingCollectionSubmission $submission): JsonResponse
     {
-        if (! $request->user()->can('sales.collections.view-all')) {
-            abort_unless(in_array($submission->company_id, $this->actorCompanyIds($request), true), 403, 'Collection submission is outside your legal entity.');
-        }
         $data = $request->validate([
             'decision' => ['required', Rule::in(['verify', 'reject'])],
             'verification_notes' => ['nullable', 'required_if:decision,reject', 'string', 'max:2000'],
@@ -471,7 +401,7 @@ class CollectionScheduleWorkflowController extends Controller
         if ($booking) {
             $attribution = SalesBookingAttribution::query()->where('booking_id', $booking->id)->first();
             if ($attribution?->collection_sales_profile_id) {
-                return $this->access->actorProfiles($request->user(), $attribution->company_id)
+                return $this->access->actorProfiles($request->user())
                     ->firstWhere('id', $attribution->collection_sales_profile_id);
             }
         }
@@ -479,46 +409,35 @@ class CollectionScheduleWorkflowController extends Controller
         return $this->access->activeProfile($request->user());
     }
 
-    private function assertCollectionPageCompanyIntegrity($rows): void
+    private function assertCollectionPageReferences($rows): void
     {
-        $bookingIds = $rows->pluck('booking_id')->unique()->values()->all();
-        if ($bookingIds === []) {
-            return;
-        }
-
-        $companyByBookingId = array_fill_keys($bookingIds, null);
-        $companies = SalesBookingAttribution::query()->whereIn('booking_id', $bookingIds)->pluck('company_id', 'booking_id')->all();
-        $this->companyIntegrity->assertMany(array_replace($companyByBookingId, $companies));
-
         $scheduleIds = $rows->pluck('booking_payment_schedule_id')->filter()->unique()->values();
         if ($scheduleIds->isEmpty()) {
             return;
         }
 
         $schedules = DB::table('booking_payment_schedules')->whereIn('id', $scheduleIds)
-            ->get(['id', 'booking_id', 'company_id'])->keyBy('id');
+            ->get(['id', 'booking_id'])->keyBy('id');
         foreach ($rows as $row) {
             if (! $row->booking_payment_schedule_id) {
                 continue;
             }
             $schedule = $schedules->get($row->booking_payment_schedule_id);
             abort_unless($schedule
-                && (string) $schedule->booking_id === (string) $row->booking_id
-                && \App\Services\CompanyIdScope::sameCompanyId((string) ((string) $schedule->company_id), (string) ((string) $row->company_id)),
-                409, 'Collection work or submission references a schedule outside its booking and legal entity.');
+                && (string) $schedule->booking_id === (string) $row->booking_id,
+                409, 'Collection work or submission references a schedule outside its booking.');
         }
     }
 
     private function assertBookingManagementScope(Request $request, Booking $booking): void
     {
         $attribution = SalesBookingAttribution::query()->where('booking_id', $booking->id)->firstOrFail();
-        $profileIds = $this->scheduleProfileIds($request, $attribution->company_id);
+        $profileIds = $this->scheduleProfileIds($request);
         abort_unless(
             $profileIds === null || in_array($attribution->collection_sales_profile_id, $profileIds, true),
             403,
             'Booking is outside your permitted collection scope.',
         );
-        $this->companyIntegrity->assertConsistent($booking, $attribution->company_id);
     }
 
     private function withinBookingManagementScope(Request $request, Booking $booking, Closure $operation): JsonResponse
@@ -526,145 +445,42 @@ class CollectionScheduleWorkflowController extends Controller
         return DB::transaction(function () use ($request, $booking, $operation): JsonResponse {
             $booking = Booking::query()->whereKey($booking->id)->lockForUpdate()->firstOrFail();
             $attribution = SalesBookingAttribution::query()->where('booking_id', $booking->id)->lockForUpdate()->firstOrFail();
-            $profileIds = $this->scheduleProfileIds($request, $attribution->company_id);
+            $profileIds = $this->scheduleProfileIds($request);
             abort_unless(
                 $profileIds === null || in_array($attribution->collection_sales_profile_id, $profileIds, true),
                 403,
                 'Booking is outside your permitted collection scope.',
             );
-            $this->companyIntegrity->assertConsistent($booking, $attribution->company_id);
 
             return $operation($booking);
         });
     }
 
-    private function scheduleProfileIds(Request $request, ?string $companyId = null): ?array
+    private function scheduleProfileIds(Request $request): ?array
     {
         return $this->access->profileIds(
             $request->user(),
             'sales.collections.view-all',
             'sales.collections.view-team',
-            $companyId,
         );
     }
 
-    public function collectionCompanyOptions(Request $request): JsonResponse
-    {
-        $data = $request->validate([
-            'search' => ['nullable', 'string', 'max:120'],
-            'selected_id' => ['nullable', 'uuid'],
-            'page' => ['nullable', 'integer', 'min:1'],
-            'per_page' => ['nullable', 'integer', 'min:1', 'max:50'],
-        ]);
-        $companyIds = $this->collectionCompanyIds($request);
-        $defaultCompanyId = $this->currentCompanyId();
-        if ($request->header('X-Active-Context-Type') === 'staff') {
-            abort_unless($defaultCompanyId, 409, 'Select an active business for Sales work.');
-            $this->assertSelectedStaffCompany($request, $defaultCompanyId);
-            $companyIds = [$defaultCompanyId];
-        }
-        if ($defaultCompanyId && $companyIds !== null && ! in_array($defaultCompanyId, $companyIds, true)) $defaultCompanyId = null;
-        $query = DB::table('companies')->whereNull('deleted_at')->where('is_active', true)
-            ->when($companyIds !== null, fn ($companies) => $companies->whereIn('id', $companyIds));
-        if (! empty($data['selected_id'])) {
-            $query->where('id', $data['selected_id']);
-        } elseif (! empty($data['search'])) {
-            $term = '%'.addcslashes($data['search'], '%_\\').'%';
-            $query->where(fn ($companies) => $companies->where('name', 'like', $term)
-                ->orWhere('city', 'like', $term));
-        }
-        $page = $query->select(['id', 'name', 'city', 'is_default'])
-            ->orderByDesc('is_default')->orderBy('name')->orderBy('id')
-            ->paginate($data['per_page'] ?? 25);
-        $page->getCollection()->transform(static fn ($company): array => [
-            'value' => (string) $company->id,
-            'label' => $company->name,
-            'metadata' => array_filter(['city' => $company->city]) + ['is_default' => (bool) $company->is_default],
-            'status' => 'active',
-        ]);
-
-        return response()->json(['status' => 'success', 'data' => $page, 'default_company_id' => $defaultCompanyId]);
-    }
-
-    private function collectionCompanyIds(Request $request): ?array
-    {
-        if ($request->header('X-Active-Context-Type') === 'staff') {
-            $companyId = $this->currentCompanyId();
-            abort_unless($companyId, 409, 'Select an active business for Sales work.');
-            $this->assertSelectedStaffCompany($request, $companyId);
-
-            return [$companyId];
-        }
-        if ($request->user()->can('sales.collections.view-all')) {
-            return null;
-        }
-        if ($request->user()->can('sales.collections.verify')) {
-            return $this->actorCompanyIds($request);
-        }
-
-        $profileIds = $this->scheduleProfileIds($request);
-        if ($profileIds !== null) {
-            $this->assertScheduleAttributionOwnerIntegrity(null, $profileIds);
-        }
-        return DB::table('sales_booking_attributions')->whereNull('deleted_at')
-            ->whereIn('collection_sales_profile_id', $profileIds ?? [])->distinct()->pluck('company_id')->all();
-    }
-
-    private function assertSelectedCollectionCompany(Request $request, string $companyId): void
-    {
-        abort_unless(DB::table('companies')->where('id', $companyId)->where('is_active', true)
-            ->whereNull('deleted_at')->exists(), 422, 'Select an active legal entity.');
-        $this->assertSelectedStaffCompany($request, $companyId);
-        if ($request->user()->can('sales.collections.view-all')) {
-            return;
-        }
-        $authorized = $request->user()->can('sales.collections.verify')
-            ? in_array($companyId, $this->actorCompanyIds($request), true)
-            : $this->scheduleProfileIds($request, $companyId) !== [];
-        abort_unless($authorized, 403, 'The selected legal entity is outside your collection scope.');
-    }
-
-    private function resolveCompanyId(?string $companyId): string
-    {
-        $companyId = $companyId ?: $this->currentCompanyId();
-        abort_unless($companyId, 409, 'Select an active business for Sales work.');
-        $this->assertSelectedStaffCompany(request(), (string) $companyId);
-
-        return (string) $companyId;
-    }
-
-    private function currentCompanyId(): ?string
-    {
-        $companyId = app(WebsiteSettingsService::class)->resolveCurrentCompanyId();
-
-        return $companyId ? (string) $companyId : null;
-    }
-
-    private function assertSelectedStaffCompany(Request $request, string $companyId): void
-    {
-        if ($request->header('X-Active-Context-Type') === 'staff') {
-            app(CompanySettingsAccessService::class)->assertCanAccess($request->user(), $companyId);
-        }
-    }
-
-    private function assertScheduleAttributionOwnerIntegrity(?string $companyId, ?array $profileIds, ?string $bookingId = null): void
+    private function assertScheduleAttributionOwnerIntegrity(?array $profileIds, ?string $bookingId = null): void
     {
         $mismatch = DB::table('sales_booking_attributions as attribution')
             ->leftJoin('sales_profiles as profile', 'profile.id', '=', 'attribution.collection_sales_profile_id')
             ->leftJoin('staff as staff', 'staff.id', '=', 'profile.staff_id')
             ->whereNull('attribution.deleted_at')
             ->whereNotNull('attribution.collection_sales_profile_id')
-            ->when($companyId, fn ($query, $id) => $query->where(fn ($_companyIdScope) => \App\Services\CompanyIdScope::constrain($_companyIdScope, 'attribution.company_id', $id)))
             ->when($bookingId, fn ($query, $id) => $query->where('attribution.booking_id', $id))
             ->when($profileIds !== null, fn ($query) => $query->whereIn('attribution.collection_sales_profile_id', $profileIds))
             ->where(fn ($query) => $query->whereNull('profile.id')
-                ->orWhereNot(fn ($sameCompany) => \App\Services\CompanyIdScope::sameCompany($sameCompany, 'profile.company_id', 'attribution.company_id'))
                 ->orWhereNull('staff.id')
-                ->orWhereNot(fn ($sameCompany) => \App\Services\CompanyIdScope::sameCompany($sameCompany, 'staff.company_id', 'attribution.company_id')))
+            )
             ->exists();
 
         abort_unless(! $mismatch, 409,
-            'Collection schedule ownership does not match its Sales Profile and Staff legal entity. Reconcile ownership before continuing.');
+            'Collection schedule ownership references a missing Sales Profile or Staff owner. Reconcile ownership before continuing.');
     }
 
     private function revisionPreviewProjection(array $preview): array
@@ -677,14 +493,4 @@ class CollectionScheduleWorkflowController extends Controller
         ]));
     }
 
-    private function actorCompanyIds(Request $request): array
-    {
-        $companyId = $this->staffAccess->currentActorStaff($request->user())->company_id;
-        if (! $companyId || ! DB::table('companies')->where('id', $companyId)
-            ->where('is_active', true)->whereNull('deleted_at')->exists()) {
-            return [];
-        }
-
-        return [(string) $companyId];
-    }
 }

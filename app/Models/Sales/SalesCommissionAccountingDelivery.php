@@ -8,7 +8,7 @@ class SalesCommissionAccountingDelivery extends NonSoftDeletableModel
 {
     protected $hidden = ['request_payload_checksum'];
     protected $fillable = [
-        'company_id', 'payout_id', 'event_type', 'status', 'external_reference', 'message', 'idempotency_key',
+        'payout_id', 'event_type', 'status', 'external_reference', 'message', 'idempotency_key',
         'request_payload_checksum', 'verification_source', 'source_outbox_event_id', 'provider_transaction_id',
         'provider_response_checksum', 'recorded_by', 'recorded_at',
     ];

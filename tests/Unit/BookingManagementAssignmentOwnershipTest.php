@@ -38,6 +38,17 @@ it('treats a selected booking item as the authoritative assignment owner', funct
         ->not->toContain('if ($filteredDriverAssignments->isNotEmpty())');
 });
 
+it('loads a driver assignment booking item only from its owning booking', function () {
+    $source = file_get_contents(dirname(__DIR__, 2) . '/app/Services/AssignmentService.php');
+    $method = Str::between($source, 'public function createDriverAssignment(', 'public function processAssignmentConfirmation(');
+
+    expect($method)
+        ->toContain("->where('booking_id', \$params['booking_id'])")
+        ->toContain("->whereKey(\$params['booking_item_id'])")
+        ->toContain('->firstOrFail()')
+        ->not->toContain("BookingItem::with('serviceType')->find(");
+});
+
 it('lets the new workspace defer account-wide finance totals without changing legacy defaults', function () {
     $source = file_get_contents(dirname(__DIR__, 2) . '/app/Http/Controllers/Api/AssignmentController.php');
     $detailsMethod = Str::between(

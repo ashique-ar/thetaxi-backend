@@ -36,7 +36,7 @@ it('requires source currency, persistent command identity, and approved non-LKR 
         ->toContain("'fx_rate_to_lkr'=>'nullable|required_unless:source_currency,LKR|numeric|gt:0'")
         ->toContain("'idempotency_key'=>'required|uuid'")
         ->toContain('assertSettlementCollectionScope')
-        ->toContain("'Settlement was not found in the current legal-entity scope.'")
+        ->toContain("'Settlement was not found in your current collection portfolio.'")
         ->and($ledger)
         ->toContain('A persistent payment source identity is required for canonical receipts.')
         ->toContain('Legacy paid-state evidence must be reconciled through the controlled repair workflow')
@@ -60,7 +60,7 @@ it('keeps every current successful booking collection writer behind the canonica
         ->and($settlements)->toContain('$this->ledger->receive(');
 });
 
-it('locks the active booking company before canonical receipt and callback booking writes', function () {
+it('locks the booking and payment transaction before canonical receipt writes', function () {
     $ledger = file_get_contents(app_path('Services/BookingPaymentLedgerService.php'));
     $receive = substr($ledger, strpos($ledger, 'public function receive('), strpos($ledger, 'public function repairLegacyPaidBooking(') - strpos($ledger, 'public function receive('));
     $repair = substr($ledger, strpos($ledger, 'public function repairLegacyPaidBooking('), strpos($ledger, 'public function ', strpos($ledger, 'public function repairLegacyPaidBooking(') + 1) - strpos($ledger, 'public function repairLegacyPaidBooking('));
@@ -70,16 +70,14 @@ it('locks the active booking company before canonical receipt and callback booki
     $callback = substr($checkout, strpos($checkout, 'public function webxpayCallback('), strpos($checkout, 'public function webxpayNotify(') - strpos($checkout, 'public function webxpayCallback('));
     $notify = substr($checkout, strpos($checkout, 'public function webxpayNotify('), strpos($checkout, 'public function mockGateway(') - strpos($checkout, 'public function webxpayNotify('));
 
-    expect(strpos($receive, "DB::table('companies')"))->toBeLessThan(strpos($receive, 'Booking::query()->lockForUpdate()'))
+    expect($receive)->not->toContain("DB::table('companies')", 'company_id', 'assertConsistent($booking,')
         ->and(strpos($receive, 'Booking::query()->lockForUpdate()'))->toBeLessThan(strpos($receive, "where('idempotency_key', \$data['idempotency_key'])"))
-        ->and($receive)->toContain("where('is_active', true)", "whereNull('deleted_at')->lockForUpdate()", 'assertConsistent($booking, (string) $company->id)')
-        ->and(strpos($repair, "DB::table('companies')"))->toBeLessThan(strpos($repair, 'Booking::query()->lockForUpdate()'))
+        ->and($repair)->not->toContain("DB::table('companies')", 'company_id')
+        ->and(strpos($repair, 'Booking::query()->lockForUpdate()'))->toBeLessThan(strpos($repair, "SalesBookingAttribution::query()->where('booking_id', \$booking->id)->lockForUpdate()"))
         ->and(strpos($paymentCallback, 'Booking::query()->whereKey($lockedTransaction->booking_id)->lockForUpdate()'))
-            ->toBeLessThan(strpos($paymentCallback, "DB::table('companies')"))
-        ->and(strpos($callback, "DB::table('companies')"))->toBeLessThan(strpos($callback, "Booking::where('id', \$booking->id)->lockForUpdate()"))
-        ->and(strpos($notify, "DB::table('companies')"))->toBeLessThan(strpos($notify, "Booking::where('booking_number', \$bookingNumber)\n                            ->lockForUpdate()"))
-        ->and($repair)->toContain("where('is_active', true)", "whereNull('deleted_at')->lockForUpdate()")
-        ->and($paymentCallback)->toContain("where('is_active', true)", "whereNull('deleted_at')->lockForUpdate()")
-        ->and($callback)->toContain("where('is_active', true)", "whereNull('deleted_at')->lockForUpdate()")
-        ->and($notify)->toContain("where('is_active', true)", "whereNull('deleted_at')->lockForUpdate()");
+            ->toBeLessThan(strpos($paymentCallback, "'status' => \$request->input('status')"))
+        ->and($callback)->not->toContain("DB::table('companies')", 'company_id')
+        ->and($notify)->not->toContain("DB::table('companies')", 'company_id')
+        ->and($callback)->toContain('Booking::where(')
+        ->and($notify)->toContain('Booking::where(');
 });

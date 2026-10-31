@@ -12,10 +12,9 @@ use function Pest\Laravel\actingAs;
 uses(RefreshDatabase::class);
 
 it('does not reactivate Sales access after Staff employment has ended', function () {
-    [$admin, $company] = hr_seed_admin_actor();
+    [$admin] = hr_seed_admin_actor();
     $admin->givePermissionTo('sales.profiles.manage', 'sales.profiles.manage-all');
     SalesStaffCategoryDefinition::query()->create([
-        'company_id' => $company->id,
         'category_name' => 'sales',
         'status' => 'approved',
         'reason' => 'Approved test category',
@@ -24,7 +23,6 @@ it('does not reactivate Sales access after Staff employment has ended', function
         'approved_at' => now(),
     ]);
     $staff = Staff::factory()->create([
-        'company_id' => $company->id,
         'staff_type' => 'sales',
         'employment_ended_at' => now()->subDay(),
     ]);
@@ -37,7 +35,6 @@ it('does not reactivate Sales access after Staff employment has ended', function
     ]);
     $profile = SalesProfile::query()->create([
         'id' => (string) Str::uuid(),
-        'company_id' => $company->id,
         'staff_id' => $staff->id,
         'sales_code' => 'FORMER-SALES-01',
         'status' => 'suspended',

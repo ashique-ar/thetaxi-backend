@@ -19,15 +19,15 @@ it('renders self service request owners without exposing Staff UUIDs',function()
         ->and($template)->toContain('current_owner_first_name')->not->toContain("{{row.current_owner_staff_id||");
 });
 
-it('uses a tenant scoped authorized selector and readable labels for confidential wellness owners', function () {
+it('uses an authorized selector and readable labels for confidential wellness owners', function () {
     $controller=file_get_contents(app_path('Http/Controllers/Api/Hr/EngagementController.php'));
     $routes=file_get_contents(base_path('routes/api.php'));
     $portal=base_path('../portal-thetaxi/src/app/modules/hr-engagement/components');
     $detail=file_get_contents($portal.'/wellness-detail/wellness-detail.component.html');
     $followups=file_get_contents($portal.'/wellness-followups/wellness-followups.component.html');
     expect($routes)->toContain("wellness/handler-options")->toContain("permission:hr.wellness.case.manage")
-        ->and($controller)->toContain("abort_unless(\$data['company_id']===\$actor->company_id")
-        ->toContain("can('hr.wellness.case.manage')")->toContain("'owner_label'")->toContain("'case_owner_label'")
+        ->and($controller)->toContain("can('hr.wellness.case.manage')")->toContain("'owner_label'")->toContain("'case_owner_label'")
+        ->not->toContain('company_id', 'companyId', 'company(')
         ->and($detail)->toContain('app-ui-managed-record-select')->toContain('case_owner_label')->not->toContain('Case owner Staff ID')
         ->and($followups)->toContain('app-ui-managed-record-select')->toContain('owner_label')->not->toContain('Owner Staff ID');
 });

@@ -29,18 +29,9 @@ class BookingPaymentAdjustmentService
 
     public function record(Booking $booking, array $data, string $actorUserId): BookingPaymentAdjustment
     {
-        $tenant = SalesBookingAttribution::query()->where('booking_id', $booking->id)->first(['company_id']);
-        $companyId = $tenant?->company_id ?: \App\Services\CompanyIdScope::defaultCompanyId();
-        abort_unless($tenant && $companyId, 422, 'This booking needs a reviewed legal-entity attribution before payment adjustment.');
-
-        return DB::transaction(function () use ($booking, $data, $actorUserId, $companyId) {
-            $company = DB::table('companies')->where('id', $companyId)->where('is_active', true)
-                ->whereNull('deleted_at')->lockForUpdate()->first(['id']);
-            abort_unless($company, 422, 'Select an active legal entity.');
+        return DB::transaction(function () use ($booking, $data, $actorUserId) {
             $booking = Booking::query()->lockForUpdate()->findOrFail($booking->id);
-            $attribution = SalesBookingAttribution::query()->where('booking_id', $booking->id)->lockForUpdate()->firstOrFail();
-            abort_unless(\App\Services\CompanyIdScope::sameCompanyId((string) ((string) $attribution->company_id), (string) ((string) $company->id)), 409,
-                'The booking legal entity changed before its payment adjustment could be recorded.');
+            SalesBookingAttribution::query()->where('booking_id', $booking->id)->lockForUpdate()->firstOrFail();
             $payloadChecksum = $this->payloadChecksum($booking->id, $data);
             $duplicate = BookingPaymentAdjustment::query()
                 ->where('booking_id', $booking->id)
@@ -64,11 +55,7 @@ class BookingPaymentAdjustmentService
                     ->lockForUpdate()->firstOrFail()
                 : null;
 
-            if ($component) {
-                $component->load('receipt');
-                abort_unless(\App\Services\CompanyIdScope::sameCompanyId((string) ((string) $component->receipt?->company_id), (string) ((string) $company->id)), 409,
-                    'The receipt legal entity does not match the booking.');
-            }
+            if ($component) $component->load('receipt');
 
             $earning = $this->validateDimensions($component, $data);
             if ($data['impact_dimension'] === 'reporting_fx') {
@@ -88,7 +75,6 @@ class BookingPaymentAdjustmentService
                 ...$data,
                 'booking_id' => $booking->id,
                 'receipt_id' => $component?->receipt_id,
-                'company_id' => $component?->receipt?->company_id ?: $company->id,
                 'approved_by' => $actorUserId,
                 'approved_at' => now(),
                 'created_user_id' => $actorUserId,
@@ -118,7 +104,6 @@ class BookingPaymentAdjustmentService
 
             $this->events->record(
                 'sales',
-                $adjustment->company_id,
                 'booking_payment_adjustment',
                 $adjustment->id,
                 'sales.payment.adjusted',
@@ -199,15 +184,10 @@ class BookingPaymentAdjustmentService
         $receipt = DB::table('booking_payment_receipt_components as component')
             ->join('booking_payment_receipts as receipt', 'receipt.id', '=', 'component.receipt_id')
             ->where('component.id', $data['receipt_component_id'])->where('receipt.booking_id', $booking->id)
-            ->first(['receipt.company_id']);
+            ->first(['receipt.id']);
         abort_unless($receipt, 404, 'Receipt component not found for this booking.');
-        $companyId = $receipt->company_id ?: \App\Services\CompanyIdScope::defaultCompanyId();
-        abort_unless($companyId, 422, 'No active default legal entity is configured.');
 
-        return DB::transaction(function () use ($booking, $data, $actorUserId, $companyId) {
-            $company = DB::table('companies')->where('id', $companyId)->where('is_active', true)
-                ->whereNull('deleted_at')->lockForUpdate()->first(['id']);
-            abort_unless($company, 422, 'Select an active legal entity.');
+        return DB::transaction(function () use ($booking, $data, $actorUserId) {
             $booking = Booking::query()->lockForUpdate()->findOrFail($booking->id);
             $payloadChecksum = $this->payloadChecksum($booking->id, $data);
             $duplicate = BookingPaymentAdjustment::query()
@@ -226,8 +206,6 @@ class BookingPaymentAdjustmentService
                 ->whereHas('receipt', fn($q) => $q->where('booking_id', $booking->id))
                 ->lockForUpdate()->firstOrFail();
             $component->load('receipt');
-            abort_unless(\App\Services\CompanyIdScope::sameCompanyId((string) ((string) $component->receipt?->company_id), (string) ((string) $company->id)), 409,
-                'The receipt company changed before its FX snapshot could be established.');
             $facts = $this->validateFxEstablishment($component, $data, $booking);
             $preview = $this->fxEstablishmentPreview($facts);
             if (!hash_equals($preview['preview_checksum'], (string) ($data['preview_checksum'] ?? ''))) {
@@ -244,7 +222,6 @@ class BookingPaymentAdjustmentService
                 'booking_id' => $booking->id,
                 'receipt_id' => $component->receipt_id,
                 'receipt_component_id' => $component->id,
-                'company_id' => $component->receipt->company_id ?: $company->id,
                 'impact_dimension' => 'fx_establishment',
                 'adjustment_type' => 'fx_establishment',
                 'direction' => 'establish',
@@ -269,7 +246,6 @@ class BookingPaymentAdjustmentService
 
             $this->events->record(
                 'sales',
-                $adjustment->company_id,
                 'booking_payment_adjustment',
                 $adjustment->id,
                 'sales.payment.fx_established',
@@ -299,10 +275,6 @@ class BookingPaymentAdjustmentService
         if (!$component->receipt || $component->receipt->booking_id !== $booking->id) {
             throw ValidationException::withMessages(['receipt_component_id' => ['The receipt component does not belong to this booking.']]);
         }
-        $companyId = $component->receipt->company_id ?: \App\Services\CompanyIdScope::defaultCompanyId();
-        if (!$companyId) {
-            throw ValidationException::withMessages(['receipt_component_id' => ['No active default legal entity is configured.']]);
-        }
         if (!$this->policySettings->featureEnabled('fx_corrections')) {
             throw ValidationException::withMessages(['impact_dimension' => ['FX establishment is disabled until Finance approves the operating policy.']]);
         }
@@ -325,11 +297,6 @@ class BookingPaymentAdjustmentService
         }
         if ($component->receipt->finality_status !== 'confirmed') {
             throw ValidationException::withMessages(['receipt_component_id' => ['Only a confirmed receipt component can establish a missing FX snapshot.']]);
-        }
-        $attributionCompanyId = SalesBookingAttribution::query()->where('booking_id', $component->receipt->booking_id)->value('company_id')
-            ?: \App\Services\CompanyIdScope::defaultCompanyId();
-        if (!$attributionCompanyId || !\App\Services\CompanyIdScope::sameCompanyId((string) $attributionCompanyId, (string) $companyId)) {
-            throw ValidationException::withMessages(['receipt_component_id' => ['Receipt and booking attribution legal entities do not match.']]);
         }
         $hasOpenFxHold = SalesCommissionDecision::query()->where('receipt_component_id', $component->id)
             ->whereIn('status', ['held', 'shadow_held'])->where('hold_code', 'fx_snapshot_missing')->exists();
@@ -419,10 +386,6 @@ class BookingPaymentAdjustmentService
             if ($data['adjustment_type'] !== 'fx_correction' || !$component) {
                 throw ValidationException::withMessages(['receipt_component_id' => ['Reporting-FX corrections must identify an original receipt component.']]);
             }
-            $companyId = $component->receipt?->company_id ?: \App\Services\CompanyIdScope::defaultCompanyId();
-            if (!$companyId) {
-                throw ValidationException::withMessages(['receipt_component_id' => ['No active default legal entity is configured.']]);
-            }
             if (!$this->policySettings->featureEnabled('fx_corrections')) {
                 throw ValidationException::withMessages(['impact_dimension' => ['Reporting-FX corrections are disabled until Finance approves the operating policy.']]);
             }
@@ -446,11 +409,6 @@ class BookingPaymentAdjustmentService
             if ($component->receipt->finality_status !== 'confirmed') {
                 throw ValidationException::withMessages(['receipt_component_id' => ['Only a confirmed receipt component can receive a reporting-FX correction.']]);
             }
-            $attributionCompanyId = SalesBookingAttribution::query()->where('booking_id', $component->receipt->booking_id)->value('company_id')
-                ?: \App\Services\CompanyIdScope::defaultCompanyId();
-            if (!$attributionCompanyId || !\App\Services\CompanyIdScope::sameCompanyId((string) $attributionCompanyId, (string) $companyId)) {
-                throw ValidationException::withMessages(['receipt_component_id' => ['Receipt and booking attribution legal entities do not match.']]);
-            }
             if (
                 $component->receipt->fx_rate_to_lkr === null || $component->receipt->fx_rate_at === null
                 || blank($component->receipt->fx_source) || $component->lkr_amount === null
@@ -467,7 +425,8 @@ class BookingPaymentAdjustmentService
             $rateAt = CarbonImmutable::parse($data['fx_rate_at']);
             $effectiveAt = CarbonImmutable::parse($data['adjustment_effective_at']);
             if (
-                DB::table('domain_period_locks')->where('domain', 'sales')->where(fn ($_companyIdScope) => \App\Services\CompanyIdScope::constrain($_companyIdScope, 'company_id', $companyId))
+                DB::table('domain_period_locks')->where('domain', 'sales')
+                    ->whereNotNull('installation_period_key')
                     ->where('state', 'locked')->where('period_start', '<=', $effectiveAt)->where('period_end', '>', $effectiveAt)->exists()
             ) {
                 throw ValidationException::withMessages(['adjustment_effective_at' => ['The Sales period is locked; use the governed period-reopen and new-snapshot workflow first.']]);

@@ -4,8 +4,9 @@ it('enforces that a newly written assignment payroll_group_code resolves to an a
     $service = file_get_contents(app_path('Services/Hr/PeopleCoreService.php'));
 
     expect($service)
-        ->toContain('if(!empty($data[\'payroll_group_code\']))$this->assertPayrollGroupCode($staff->company_id,$data[\'payroll_group_code\'],$start);')
-        ->toContain('private function assertPayrollGroupCode(string $companyId,string $code,string $effectiveAt): void')
+        ->toContain('if(!empty($data[\'payroll_group_code\']))$this->assertPayrollGroupCode($data[\'payroll_group_code\'],$start);')
+        ->toContain('private function assertPayrollGroupCode(string $code,string $effectiveAt): void')
+        ->not->toContain('company_id', 'companyId')
         ->toContain("abort_unless(\$exists,422,'Payroll group code must reference an active, effective governed payroll group.');");
 });
 

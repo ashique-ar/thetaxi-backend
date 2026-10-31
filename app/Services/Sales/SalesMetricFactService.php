@@ -24,12 +24,11 @@ class SalesMetricFactService
 
     public function record(array $fact): ?SalesMetricFact
     {
-        $fact['company_id'] = $fact['company_id'] ?? \App\Services\CompanyIdScope::defaultCompanyId();
-        if (empty($fact['company_id']) || empty($fact['sales_profile_id'])) {
+        if (empty($fact['sales_profile_id'])) {
             return null;
         }
         $payload = [
-            'company_id' => $fact['company_id'], 'sales_profile_id' => $fact['sales_profile_id'],
+            'sales_profile_id' => $fact['sales_profile_id'],
             'metric_type' => $fact['metric_type'], 'business_classification' => $fact['business_classification'] ?? null,
             'quantity' => $fact['quantity'] ?? 0, 'amount_lkr' => $fact['amount_lkr'] ?? 0,
             'occurred_on' => $fact['occurred_on'], 'occurred_at' => $fact['occurred_at'],
@@ -39,13 +38,11 @@ class SalesMetricFactService
         $payload['fact_checksum'] = hash('sha256', CanonicalJson::encode($payload));
 
         return DB::transaction(function () use ($payload) {
-            DB::table('companies')->where('id', $payload['company_id'])->where('is_active', true)
-                ->whereNull('deleted_at')->lockForUpdate()->firstOrFail();
             $existing = SalesMetricFact::query()->where([
                 'source_type' => $payload['source_type'], 'source_id' => $payload['source_id'],
                 'source_event' => $payload['source_event'], 'sales_profile_id' => $payload['sales_profile_id'],
             ])->first();
-            abort_if($existing && ! hash_equals($existing->fact_checksum, $payload['fact_checksum']), 409,
+            abort_if($existing && ! $this->sameFacts($existing, $payload), 409,
                 'The metric source was already projected with different facts.');
             if ($existing) return $existing;
 
@@ -53,13 +50,13 @@ class SalesMetricFactService
             $timezoneIsApproved = is_string($timezone) && $timezone !== ''
                 && in_array($timezone, DateTimeZone::listIdentifiers(), true);
             if (! $timezoneIsApproved) {
-                abort_if(DB::table('domain_period_locks')->where('domain', 'sales')
-                    ->where(fn ($_companyIdScope) => \App\Services\CompanyIdScope::constrain($_companyIdScope, 'company_id', $payload['company_id']))->where('state', 'locked')->exists(), 409,
+                abort_if(DB::table('domain_period_locks')->where('domain', 'sales')->whereNotNull('installation_period_key')
+                    ->where('state', 'locked')->exists(), 409,
                     'An approved Sales business timezone is required before writing facts after a period close.');
             } else {
                 $occurredAt = CarbonImmutable::parse($payload['occurred_on'], $timezone)->startOfDay()->addHours(12)->utc();
-                abort_if(DB::table('domain_period_locks')->where('domain', 'sales')
-                    ->where(fn ($_companyIdScope) => \App\Services\CompanyIdScope::constrain($_companyIdScope, 'company_id', $payload['company_id']))->where('state', 'locked')
+                abort_if(DB::table('domain_period_locks')->where('domain', 'sales')->whereNotNull('installation_period_key')
+                    ->where('state', 'locked')
                     ->where('period_start', '<=', $occurredAt)->where('period_end', '>', $occurredAt)->exists(), 409,
                     'The Sales performance period is locked; use the governed reopen and rebuild workflow.');
             }
@@ -71,7 +68,6 @@ class SalesMetricFactService
     {
         if ($attribution->status !== 'active' || $attribution->business_classification !== 'new_business') return;
         $this->record([
-            'company_id' => $attribution->company_id,
             'sales_profile_id' => $attribution->acquisition_sales_profile_id,
             'metric_type' => 'new_sales', 'business_classification' => 'new_business',
             'quantity' => 1, 'amount_lkr' => $attribution->contract_value_lkr ?? 0,
@@ -81,7 +77,7 @@ class SalesMetricFactService
         ]);
         if ($attribution->new_customer_status === 'new') {
             $this->record([
-                'company_id' => $attribution->company_id, 'sales_profile_id' => $attribution->acquisition_sales_profile_id,
+                'sales_profile_id' => $attribution->acquisition_sales_profile_id,
                 'metric_type' => 'new_customer', 'business_classification' => 'new_business', 'quantity' => 1,
                 'amount_lkr' => 0, 'occurred_on' => $attribution->secured_at->toDateString(), 'occurred_at' => $attribution->secured_at,
                 'source_type' => 'booking_attribution', 'source_id' => $attribution->id, 'source_event' => 'new_customer',
@@ -97,7 +93,7 @@ class SalesMetricFactService
         if (! $attribution || $component->lkr_amount === null) return;
         $classification = $attribution->business_classification === 'new_business' ? 'new_business' : 'recurring_business';
         $this->record([
-            'company_id' => $attribution->company_id, 'sales_profile_id' => $attribution->collection_sales_profile_id,
+            'sales_profile_id' => $attribution->collection_sales_profile_id,
             'metric_type' => 'eligible_collection', 'business_classification' => $classification,
             'quantity' => 1, 'amount_lkr' => $component->lkr_amount,
             'occurred_on' => $receipt->received_at->toDateString(), 'occurred_at' => $receipt->received_at,
@@ -125,7 +121,7 @@ class SalesMetricFactService
                 ->value('sales_profile_id')
             : null;
         $this->record([
-            'company_id' => $attribution->company_id, 'sales_profile_id' => $originalHandlerId ?? $attribution->collection_sales_profile_id,
+            'sales_profile_id' => $originalHandlerId ?? $attribution->collection_sales_profile_id,
             'metric_type' => 'eligible_collection', 'business_classification' => $classification,
             'quantity' => 0, 'amount_lkr' => $sign * (float) $adjustment->lkr_amount,
             'occurred_on' => $adjustment->adjustment_effective_at->toDateString(), 'occurred_at' => $adjustment->adjustment_effective_at,
@@ -140,7 +136,7 @@ class SalesMetricFactService
         $attribution = SalesBookingAttribution::query()->find($decision->booking_attribution_id);
         $classification = $attribution?->business_classification === 'new_business' ? 'new_business' : 'recurring_business';
         $this->record([
-            'company_id' => $decision->company_id, 'sales_profile_id' => $decision->beneficiary_sales_profile_id,
+            'sales_profile_id' => $decision->beneficiary_sales_profile_id,
             'metric_type' => 'commission_earned', 'business_classification' => $classification,
             'quantity' => 1, 'amount_lkr' => $decision->commission_amount_lkr,
             'occurred_on' => ($decision->earned_at ?? $decision->decision_at)->toDateString(), 'occurred_at' => $decision->earned_at ?? $decision->decision_at,
@@ -154,7 +150,7 @@ class SalesMetricFactService
     {
         $attribution = SalesBookingAttribution::query()->find($decision->booking_attribution_id);
         $this->record([
-            'company_id' => $release->company_id, 'sales_profile_id' => $release->beneficiary_sales_profile_id,
+            'sales_profile_id' => $release->beneficiary_sales_profile_id,
             'metric_type' => 'commission_earned',
             'business_classification' => $attribution?->business_classification === 'new_business' ? 'new_business' : 'recurring_business',
             'quantity' => 1, 'amount_lkr' => $release->commission_amount_lkr,
@@ -170,7 +166,6 @@ class SalesMetricFactService
     {
         $attribution = SalesBookingAttribution::query()->find($adjustment->source_attribution_id);
         $this->record([
-            'company_id' => $adjustment->company_id,
             'sales_profile_id' => $adjustment->beneficiary_sales_profile_id,
             'metric_type' => 'commission_earned',
             'business_classification' => $attribution?->business_classification === 'new_business' ? 'new_business' : 'recurring_business',
@@ -204,7 +199,7 @@ class SalesMetricFactService
         $attribution = SalesBookingAttribution::query()->find($attributionId);
         $adjustment = BookingPaymentAdjustment::query()->findOrFail($case->payment_adjustment_id);
         $this->record([
-            'company_id' => $case->company_id, 'sales_profile_id' => $case->beneficiary_sales_profile_id,
+            'sales_profile_id' => $case->beneficiary_sales_profile_id,
             'metric_type' => 'commission_earned', 'business_classification' => $attribution?->business_classification === 'new_business' ? 'new_business' : 'recurring_business',
             'quantity' => 0, 'amount_lkr' => $recovery->commission_adjustment_lkr,
             'occurred_on' => $adjustment->adjustment_effective_at->toDateString(), 'occurred_at' => $adjustment->adjustment_effective_at,
@@ -228,7 +223,7 @@ class SalesMetricFactService
         abort_if($adjustment->delta_lkr_amount === null, 409,
             'A governed LKR value is required before a commercial adjustment can affect New Sales.');
         $this->record([
-            'company_id' => $adjustment->company_id, 'sales_profile_id' => $adjustment->acquisition_sales_profile_id,
+            'sales_profile_id' => $adjustment->acquisition_sales_profile_id,
             'metric_type' => 'new_sales_adjustment', 'business_classification' => 'new_business',
             'quantity' => 0, 'amount_lkr' => (float) $adjustment->delta_lkr_amount,
             'occurred_on' => $adjustment->effective_at->toDateString(), 'occurred_at' => $adjustment->effective_at,
@@ -243,7 +238,7 @@ class SalesMetricFactService
     public function projectAcquisitionOwnerCorrection(SalesBookingAttribution $attribution, string $fromProfileId, string $toProfileId, int $version): void
     {
         if ($attribution->business_classification !== 'new_business') return;
-        $base = ['company_id' => $attribution->company_id, 'metric_type' => 'new_sales', 'business_classification' => 'new_business',
+        $base = ['metric_type' => 'new_sales', 'business_classification' => 'new_business',
             'occurred_on' => $attribution->secured_at->toDateString(), 'occurred_at' => now(), 'source_type' => 'attribution_correction',
             'source_id' => $attribution->id, 'dimensions' => ['booking_id' => $attribution->booking_id, 'attribution_version' => $version]];
         $this->record($base + ['sales_profile_id' => $fromProfileId, 'quantity' => -1, 'amount_lkr' => -(float) $attribution->contract_value_lkr, 'source_event' => "owner_debit_v{$version}"]);
@@ -253,5 +248,20 @@ class SalesMetricFactService
             $this->record($customerBase + ['sales_profile_id' => $fromProfileId, 'quantity' => -1, 'source_event' => "customer_debit_v{$version}"]);
             $this->record($customerBase + ['sales_profile_id' => $toProfileId, 'quantity' => 1, 'source_event' => "customer_credit_v{$version}"]);
         }
+    }
+
+    private function sameFacts(SalesMetricFact $existing, array $payload): bool
+    {
+        return (string) $existing->sales_profile_id === (string) $payload['sales_profile_id']
+            && (string) $existing->metric_type === (string) $payload['metric_type']
+            && $existing->business_classification === $payload['business_classification']
+            && number_format((float) $existing->quantity, 4, '.', '') === number_format((float) $payload['quantity'], 4, '.', '')
+            && number_format((float) $existing->amount_lkr, 4, '.', '') === number_format((float) $payload['amount_lkr'], 4, '.', '')
+            && $existing->occurred_on?->toDateString() === CarbonImmutable::parse($payload['occurred_on'])->toDateString()
+            && $existing->occurred_at?->utc()->format('Y-m-d\TH:i:s.uP') === CarbonImmutable::parse($payload['occurred_at'])->utc()->format('Y-m-d\TH:i:s.uP')
+            && (string) $existing->source_type === (string) $payload['source_type']
+            && (string) $existing->source_id === (string) $payload['source_id']
+            && (string) $existing->source_event === (string) $payload['source_event']
+            && CanonicalJson::encode($existing->dimensions ?? []) === CanonicalJson::encode($payload['dimensions'] ?? []);
     }
 }

@@ -8,14 +8,14 @@ use function Pest\Laravel\actingAs;
 
 uses(RefreshDatabase::class);
 
-it('searches and hydrates employment spells only for the authorized employee', function () {
-    [$admin, $company] = hr_seed_admin_actor();
+it('searches and hydrates employment spells only for the requested employee', function () {
+    [$admin] = hr_seed_admin_actor();
     config(['hr.features.people_core' => true]);
-    $staff = Staff::factory()->create(['company_id' => $company->id]);
-    $spell = HrEmploymentSpell::factory()->create(['staff_id' => $staff->id, 'company_id' => $company->id, 'spell_number' => 2]);
-    HrEmploymentSpell::factory()->create(['staff_id' => $staff->id, 'company_id' => $company->id, 'spell_number' => 1]);
-    $otherStaff = Staff::factory()->create(['company_id' => $company->id]);
-    $otherSpell = HrEmploymentSpell::factory()->create(['staff_id' => $otherStaff->id, 'company_id' => $company->id, 'spell_number' => 2]);
+    $staff = Staff::factory()->create();
+    $spell = HrEmploymentSpell::factory()->create(['staff_id' => $staff->id, 'spell_number' => 2]);
+    HrEmploymentSpell::factory()->create(['staff_id' => $staff->id, 'spell_number' => 1]);
+    $otherStaff = Staff::factory()->create();
+    $otherSpell = HrEmploymentSpell::factory()->create(['staff_id' => $otherStaff->id, 'spell_number' => 2]);
     $url = "/api/hr/employees/{$staff->id}/employment-spell-options";
 
     actingAs($admin, 'api')->getJson($url.'?search=2&per_page=1')->assertOk()

@@ -4,7 +4,6 @@ use App\Models\Sales\SalesFeatureSetting;
 use App\Models\Sales\SalesOpportunity;
 use App\Models\Sales\SalesProfile;
 use App\Models\Staff;
-use App\Models\Company;
 use App\Models\User;
 use App\Models\UserContext;
 use Illuminate\Foundation\Testing\RefreshDatabase;
@@ -15,8 +14,8 @@ use function Pest\Laravel\actingAs;
 
 uses(RefreshDatabase::class);
 
-it('searches and exactly hydrates only the actor scoped unlinked opportunity sources', function () {
-    [$admin, $company] = hr_seed_admin_actor();
+it('searches and exactly hydrates the actor-owned unlinked opportunity sources across locations', function () {
+    [$admin] = hr_seed_admin_actor();
     config()->set('sales.features.sales_profiles', true);
     config()->set('sales.features.crm', true);
     SalesFeatureSetting::query()->create([
@@ -26,21 +25,20 @@ it('searches and exactly hydrates only the actor scoped unlinked opportunity sou
     ]);
     $manager = User::factory()->create();
     $manager->givePermissionTo(Permission::findByName('sales.crm.manage', 'api'));
-    $staff = Staff::factory()->create(['user_id' => $manager->id, 'company_id' => $company->id]);
+    $staff = Staff::factory()->create(['user_id' => $manager->id]);
     UserContext::create(['user_id' => $manager->id, 'context_type' => 'staff', 'context_id' => $staff->id,
         'is_active' => true, 'created_user_id' => $manager->id]);
     $profile = SalesProfile::query()->create([
-        'company_id' => $company->id, 'staff_id' => $staff->id, 'sales_code' => 'SOURCE-OWNER',
+        'staff_id' => $staff->id, 'sales_code' => 'SOURCE-OWNER',
         'status' => 'active', 'effective_from' => now()->subDay(), 'staff_category_snapshot' => 'Sales',
         'reporting_currency' => 'LKR', 'acquisition_eligible' => true,
     ]);
-    $otherCompany = Company::create(['name' => 'Other CRM source company']);
     $otherUser = User::factory()->create();
-    $otherStaff = Staff::factory()->create(['user_id' => $otherUser->id, 'company_id' => $otherCompany->id]);
+    $otherStaff = Staff::factory()->create(['user_id' => $otherUser->id]);
     UserContext::create(['user_id' => $otherUser->id, 'context_type' => 'staff', 'context_id' => $otherStaff->id,
         'is_active' => true, 'created_user_id' => $admin->id]);
     SalesProfile::query()->create([
-        'company_id' => $otherCompany->id, 'staff_id' => $otherStaff->id, 'sales_code' => 'OTHER-SOURCE-OWNER',
+        'staff_id' => $otherStaff->id, 'sales_code' => 'OTHER-SOURCE-OWNER',
         'status' => 'active', 'effective_from' => now()->subDay(), 'staff_category_snapshot' => 'Sales',
         'reporting_currency' => 'LKR', 'acquisition_eligible' => true,
     ]);
@@ -74,7 +72,7 @@ it('searches and exactly hydrates only the actor scoped unlinked opportunity sou
     $foreignCall = $insertPhoneCall('Other caller', $otherUser->id);
     foreach ([['INQ-LINKED-OPP', $linkedInquiry, null], ['CALL-LINKED-OPP', null, $linkedCall]] as [$number, $inquiryId, $callId]) {
         SalesOpportunity::query()->create([
-            'company_id' => $company->id, 'owner_sales_profile_id' => $profile->id,
+            'owner_sales_profile_id' => $profile->id,
             'inquiry_id' => $inquiryId, 'source_phone_call_id' => $callId,
             'opportunity_number' => $number, 'name' => $number, 'source' => 'sales',
             'expected_value_source' => 0, 'source_currency' => 'LKR', 'expected_value_lkr' => 0,
@@ -83,7 +81,7 @@ it('searches and exactly hydrates only the actor scoped unlinked opportunity sou
     }
 
     $duplicatePayload = [
-        'company_id' => $company->id, 'owner_sales_profile_id' => $profile->id,
+        'owner_sales_profile_id' => $profile->id,
         'name' => 'Duplicate source test', 'expected_value_source' => 0, 'source_currency' => 'LKR',
         'expected_value_lkr' => 0, 'probability_percent' => 0,
     ];
@@ -100,7 +98,7 @@ it('searches and exactly hydrates only the actor scoped unlinked opportunity sou
     ])->assertUnprocessable();
     expect(SalesOpportunity::query()->count())->toBe(2);
 
-    $url = '/api/sales/opportunity-source-options?company_id='.$company->id;
+    $url = '/api/sales/opportunity-source-options?company_id=00000000-0000-0000-0000-000000000001';
     actingAs($manager, 'api')->getJson('/api/sales/opportunity-source-options?source_type=inquiry')
         ->assertOk()->assertJsonPath('data.data.0.value', $ownInquiry);
     $searched = actingAs($manager, 'api')->getJson($url.'&source_type=inquiry&search=INQ-OWN&per_page=1')->assertOk()
@@ -128,7 +126,6 @@ it('searches and exactly hydrates only the actor scoped unlinked opportunity sou
     actingAs($manager, 'api')->getJson($url.'&source_type=other')->assertUnprocessable();
     actingAs($manager, 'api')->getJson($url.'&source_type=phone_call&per_page=51')->assertUnprocessable();
 
-    $ambiguousCompany = Company::create(['name' => 'Ambiguous CRM source company']);
-    actingAs($manager, 'api')->getJson('/api/sales/opportunity-source-options?company_id='.$ambiguousCompany->id.'&source_type=inquiry')
-        ->assertUnprocessable();
+    actingAs($manager, 'api')->getJson('/api/sales/opportunity-source-options?company_id=00000000-0000-0000-0000-000000000002&source_type=inquiry')
+        ->assertOk()->assertJsonPath('data.data.0.value', $ownInquiry);
 });

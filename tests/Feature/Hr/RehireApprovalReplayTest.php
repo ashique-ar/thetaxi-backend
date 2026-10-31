@@ -1,6 +1,5 @@
 <?php
 
-use App\Models\Company;
 use App\Models\Hr\HrEmploymentSpell;
 use App\Models\Hr\HrRehireCase;
 use App\Models\Staff;
@@ -14,18 +13,15 @@ uses(RefreshDatabase::class);
 
 it('replays an approved rehire only for its original approver and assignment facts', function () {
     config(['hr.features.people_core' => true]);
-    $company = Company::create(['name' => 'Rehire replay company', 'is_active' => true, 'is_default' => true]);
     $preparedBy = User::factory()->create();
     $approver = User::factory()->create();
     $otherApprover = User::factory()->create();
     $staff = Staff::factory()->create([
-        'company_id' => $company->id,
         'employment_ended_at' => now()->subDay(),
         'termination_reason' => 'End of employment',
     ]);
     $priorSpell = HrEmploymentSpell::create([
         'staff_id' => $staff->id,
-        'company_id' => $company->id,
         'spell_number' => 1,
         'joined_at' => '2020-01-01',
         'service_date' => '2020-01-01',
@@ -38,7 +34,6 @@ it('replays an approved rehire only for its original approver and assignment fac
     ]);
     $case = HrRehireCase::create([
         'staff_id' => $staff->id,
-        'company_id' => $company->id,
         'prior_spell_id' => $priorSpell->id,
         'status' => 'pending_approval',
         'proposed_rehire_date' => now()->toDateString(),
@@ -61,9 +56,4 @@ it('replays an approved rehire only for its original approver and assignment fac
         ->and($replayedAuditCount)->toBe($auditCount)
         ->and(fn () => $service->approveRehire($approved, [], (string) $otherApprover->id))->toThrow(HttpException::class)
         ->and(fn () => $service->approveRehire($approved, ['location_code' => 'different'], (string) $approver->id))->toThrow(HttpException::class);
-
-    DB::table('companies')->where('id', $company->id)->update(['is_active' => false]);
-
-    expect(fn () => $service->approveRehire($approved, [], (string) $approver->id))->toThrow(HttpException::class)
-        ->and(fn () => $service->prepareRehire($staff, [], (string) $approver->id))->toThrow(HttpException::class);
 });

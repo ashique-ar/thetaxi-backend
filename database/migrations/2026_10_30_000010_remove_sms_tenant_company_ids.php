@@ -4,6 +4,8 @@ use Illuminate\Database\Migrations\Migration;
 use Illuminate\Database\Schema\Blueprint;
 use Illuminate\Support\Facades\Schema;
 
+require_once __DIR__.'/Support/TenantIndexDropper.php';
+
 return new class extends Migration
 {
     public function up(): void
@@ -15,26 +17,7 @@ return new class extends Migration
 
     public function down(): void
     {
-        if (Schema::hasTable('sms_campaigns') && ! Schema::hasColumn('sms_campaigns', 'company_id')) {
-            Schema::table('sms_campaigns', function (Blueprint $table): void {
-                $table->foreignUuid('company_id')->nullable()->after('id')->constrained('companies')->restrictOnDelete();
-                $table->index(['company_id', 'status']);
-            });
-        }
-
-        if (Schema::hasTable('sms_messages') && ! Schema::hasColumn('sms_messages', 'company_id')) {
-            Schema::table('sms_messages', function (Blueprint $table): void {
-                $table->foreignUuid('company_id')->nullable()->after('id')->constrained('companies')->restrictOnDelete();
-                $table->index(['company_id', 'created_at'], 'sms_messages_company_created_idx');
-            });
-        }
-
-        if (Schema::hasTable('booking_activities') && ! Schema::hasColumn('booking_activities', 'company_id')) {
-            Schema::table('booking_activities', function (Blueprint $table): void {
-                $table->foreignUuid('company_id')->nullable()->after('id')->constrained('companies')->restrictOnDelete();
-                $table->index(['company_id', 'event_at'], 'booking_activities_company_event_idx');
-            });
-        }
+        throw new RuntimeException('SMS and booking activity records cannot regain tenant company scope.');
     }
 
     private function dropTenantCompanyId(string $tableName, string $retainedIndexColumn): void
@@ -51,7 +34,7 @@ return new class extends Migration
 
         foreach (Schema::getIndexes($tableName) as $index) {
             if (in_array('company_id', $index['columns'], true)) {
-                Schema::table($tableName, fn (Blueprint $table) => $table->dropIndex($index['name']));
+                TenantIndexDropper::drop($tableName, $index);
             }
         }
 

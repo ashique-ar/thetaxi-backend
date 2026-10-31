@@ -108,29 +108,27 @@ function hr_attendance_device_method_slice(string $fromNeedle, ?string $toNeedle
 /**
  * Seeds real Spatie roles/permissions (via AllPermissionsSeeder, scoped to
  * the current test's RefreshDatabase connection — never the real database),
- * creates a Company plus a User with the 'admin' role and a matching Staff
+ * creates a saved location plus a User with the 'admin' role and a matching Staff
  * record, and returns [User, Company]. Used by tests/Feature/Hr/* tests that
  * exercise real HR API endpoints end-to-end instead of grepping source text.
  *
  * @return array{0: \App\Models\User, 1: \App\Models\Company}
  */
-function hr_seed_admin_actor(array $companyAttributes = [], bool $scopeToStaffCompanies = false): array
+function hr_seed_admin_actor(array $companyAttributes = [], bool $limitToOwnStaff = false): array
 {
     (new \Database\Seeders\AllPermissionsSeeder())->run();
-    if ($scopeToStaffCompanies) {
+    if ($limitToOwnStaff) {
         \Spatie\Permission\Models\Role::findByName('admin', 'api')->revokePermissionTo('staff.view-all');
     }
 
     $company = \App\Models\Company::create(array_merge([
         'name' => 'Hr Feature Test Co',
-        'is_default' => true,
     ], $companyAttributes));
 
     $admin = \App\Models\User::factory()->create();
     $admin->assignRole('admin');
     $staff = \App\Models\Staff::factory()->create([
         'user_id' => $admin->id,
-        'company_id' => $company->id,
         'staff_type' => 'admin',
     ]);
 

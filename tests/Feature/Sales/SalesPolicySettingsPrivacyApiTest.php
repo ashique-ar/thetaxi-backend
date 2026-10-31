@@ -12,8 +12,8 @@ use function Pest\Laravel\actingAs;
 uses(RefreshDatabase::class);
 
 it('returns screen fields to viewers and reveals policy rationale only to makers and approvers', function () {
-    [$maker, $company] = hr_seed_admin_actor(['name' => 'Sales Policy Privacy Company']);
-    $viewerStaff = Staff::factory()->create(['company_id' => $company->id]);
+    [$maker] = hr_seed_admin_actor(['name' => 'Sales Policy Privacy']);
+    $viewerStaff = Staff::factory()->create();
     $viewer = $viewerStaff->user;
     UserContext::query()->create([
         'user_id' => $viewer->id, 'context_type' => 'staff', 'context_id' => $viewerStaff->id,

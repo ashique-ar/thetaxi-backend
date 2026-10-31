@@ -4,8 +4,9 @@ it('cross-validates an employment-spell-linked document upload against the gover
     $controller = file_get_contents(app_path('Http/Controllers/Api/DocumentController.php'));
 
     expect($controller)
-        ->toContain("DB::table('hr_document_types')->where('company_id', \$owner->company_id)->where('code', \$data['document_type'])->where('status', 'active')->exists(),")
+        ->toContain("DB::table('hr_document_types')->where('code', \$data['document_type'])->where('status', 'active')->exists(),")
         ->toContain('This document type is not an approved code in the governed HR document-type register.');
+    expect($controller)->not->toContain("hr_document_types')->where('company_id'");
 });
 
 it('does not cross-validate document_type for uploads that are not linked to a governed employment spell', function () {

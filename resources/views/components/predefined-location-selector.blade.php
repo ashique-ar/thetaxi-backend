@@ -18,17 +18,15 @@ $prefix = isset($prefix) ? $prefix . '_' : '';
 $selectId = $prefix . $name . '_location_select';
 $customInputId = $prefix . $name . '_custom_input';
 $predefinedCodeId = $prefix . $name . '_predefined_code';
-$defaultCompany = \App\Models\Company::getDefaultCompany();
-$configuredOptions = collect($configuredOptions ?? [])->map(static function ($option) use ($defaultCompany) {
+$configuredOptions = collect($configuredOptions ?? [])->map(static function ($option) {
     $isCustom = ($option['action'] ?? 'fixed_location') === 'google_search';
-    $usesCompanyLocation = ($option['location_source'] ?? null) === 'default_company';
     return [
         'code' => $option['value'] ?? '',
         'name' => $option['label'] ?? '',
         'address' => $option['address'] ?? ($option['label'] ?? ''),
-        'latitude' => $usesCompanyLocation ? ($defaultCompany?->latitude ?? '') : ($option['latitude'] ?? ''),
-        'longitude' => $usesCompanyLocation ? ($defaultCompany?->longitude ?? '') : ($option['longitude'] ?? ''),
-        'company_id' => $usesCompanyLocation ? ($defaultCompany?->id ?? '') : ($option['company_id'] ?? ''),
+        'latitude' => $option['latitude'] ?? '',
+        'longitude' => $option['longitude'] ?? '',
+        'location_id' => $option['location_id'] ?? '',
         'action' => $isCustom ? 'custom' : 'configured',
     ];
 })->filter(static fn ($option) => $option['code'] !== '' && $option['name'] !== '')->values();
@@ -73,7 +71,7 @@ if ($isCustom && $currentValue && !$selectedLocationCode) {
     $selectedLocationAction = 'custom';
 }
 
-$selectedCompanyId = $locationOptions->firstWhere('code', $selectedLocationCode)['company_id'] ?? '';
+$selectedLocationId = $locationOptions->firstWhere('code', $selectedLocationCode)['location_id'] ?? '';
 @endphp
 
 <!-- Location Selector (styled like airport select) -->
@@ -104,7 +102,7 @@ $selectedCompanyId = $locationOptions->firstWhere('code', $selectedLocationCode)
                         <li class="pls-dropdown-option {{ $selectedLocationCode === $locCode ? 'pls-selected' : '' }}"
                             data-value="{{ $locCode }}" data-type="{{ $locType }}"
                             data-lat="{{ $locLat }}" data-lng="{{ $locLng }}" data-address="{{ $locAddr }}"
-                            data-company-id="{{ $location['company_id'] ?? '' }}"
+                            data-location-id="{{ $location['location_id'] ?? '' }}"
                             role="option">{{ $locName }}</li>
                 @endforeach
             </ul>
@@ -163,7 +161,7 @@ $selectedCompanyId = $locationOptions->firstWhere('code', $selectedLocationCode)
 
 <!-- Hidden fields for predefined location data -->
 <input type="hidden" name="{{ $name }}_predefined" id="{{ $predefinedCodeId }}" value="{{ $selectedLocationAction === 'predefined' ? $selectedLocationCode : '' }}">
-<input type="hidden" name="{{ $name }}_company_id" value="{{ $selectedCompanyId }}">
+<input type="hidden" name="{{ $name }}_location_id" value="{{ $selectedLocationId }}">
 
 <script>
 (function() {
@@ -181,7 +179,7 @@ $selectedCompanyId = $locationOptions->firstWhere('code', $selectedLocationCode)
         var customInput = document.getElementById('{{ $customInputId }}');
         var predefinedCodeInput = document.getElementById('{{ $predefinedCodeId }}');
         var parentForm = dropdown.closest('form');
-        var companyIdInput = parentForm?.querySelector('input[name="' + fieldName + '_company_id"]');
+        var locationIdInput = parentForm?.querySelector('input[name="' + fieldName + '_location_id"]');
 
         // INITIALIZATION: If a predefined location is already selected (e.g. redirect back),
         // create the hidden input[name="fieldName"] with address so the form submits correctly
@@ -279,7 +277,7 @@ $selectedCompanyId = $locationOptions->firstWhere('code', $selectedLocationCode)
                 var address = option.dataset.address;
                 var lat = option.dataset.lat;
                 var lng = option.dataset.lng;
-                var companyId = option.dataset.companyId || '';
+                var locationId = option.dataset.locationId || '';
 
                 if (customInput) {
                     var latInput = customInput.parentElement.querySelector('.location-lat');
@@ -289,7 +287,7 @@ $selectedCompanyId = $locationOptions->firstWhere('code', $selectedLocationCode)
                 }
 
                 if (predefinedCodeInput) predefinedCodeInput.value = type === 'predefined' ? value : '';
-                if (companyIdInput) companyIdInput.value = companyId;
+                if (locationIdInput) locationIdInput.value = locationId;
 
                 var searchScope = parentForm || document;
                 var hiddenField = searchScope.querySelector('input[name="' + fieldName + '"][type="hidden"]:not([id$="_hidden"])');
@@ -317,7 +315,7 @@ $selectedCompanyId = $locationOptions->firstWhere('code', $selectedLocationCode)
                     setTimeout(function() { customInput.focus(); }, 100);
                 }
                 if (predefinedCodeInput) predefinedCodeInput.value = '';
-                if (companyIdInput) companyIdInput.value = '';
+                if (locationIdInput) locationIdInput.value = '';
                 var hf = (parentForm || document).querySelector('input[name="' + fieldName + '"][type="hidden"]');
                 if (hf) hf.remove();
 
@@ -331,7 +329,7 @@ $selectedCompanyId = $locationOptions->firstWhere('code', $selectedLocationCode)
                 if (customWrapper) customWrapper.style.display = 'none';
                 if (customInput) { customInput.disabled = true; customInput.required = false; }
                 if (predefinedCodeInput) predefinedCodeInput.value = '';
-                if (companyIdInput) companyIdInput.value = '';
+                if (locationIdInput) locationIdInput.value = '';
                 var hf2 = (parentForm || document).querySelector('input[name="' + fieldName + '"][type="hidden"]');
                 if (hf2) hf2.remove();
 

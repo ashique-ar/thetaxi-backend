@@ -1,6 +1,5 @@
 <?php
 
-use App\Models\Company;
 use App\Models\Staff;
 use App\Models\User;
 use App\Services\Hr\Ess\HrRequestIndexService;
@@ -14,15 +13,13 @@ uses(RefreshDatabase::class);
 
 it('replays exit approval for its recorded approver without recreating clearance evidence', function () {
     config(['hr.features.employee_self_service' => true]);
-    $company = Company::create(['name' => 'Exit approval replay company', 'is_active' => true, 'is_default' => true]);
     $initiator = User::factory()->create();
     $approver = User::factory()->create();
     $otherApprover = User::factory()->create();
-    $staff = Staff::factory()->create(['company_id' => $company->id]);
+    $staff = Staff::factory()->create();
     $exitId = (string) Str::uuid();
     DB::table('hr_exit_cases')->insert([
         'id' => $exitId,
-        'company_id' => $company->id,
         'staff_id' => $staff->id,
         'exit_type' => 'resignation',
         'proposed_last_working_date' => today()->toDateString(),
@@ -34,7 +31,6 @@ it('replays exit approval for its recorded approver without recreating clearance
         'updated_at' => now(),
     ]);
     app(HrRequestIndexService::class)->register(
-        (string) $company->id,
         (string) $staff->id,
         'exit',
         'exit_case',
@@ -47,10 +43,10 @@ it('replays exit approval for its recorded approver without recreating clearance
     );
     $service = app(LifecycleService::class);
 
-    $approved = $service->approveExit($exitId, (string) $approver->id, (string) $company->id);
+    $approved = $service->approveExit($exitId, (string) $approver->id);
     $clearanceCount = DB::table('hr_exit_clearance_items')->where('exit_case_id', $exitId)->count();
     $requestEventCount = DB::table('hr_request_events')->count();
-    $replayed = $service->approveExit($exitId, (string) $approver->id, (string) $company->id);
+    $replayed = $service->approveExit($exitId, (string) $approver->id);
 
     expect($replayed->status)->toBe($approved->status)
         ->and(isset($approved->impact_snapshot))->toBeFalse()
@@ -58,10 +54,6 @@ it('replays exit approval for its recorded approver without recreating clearance
         ->and($clearanceCount)->toBe(4)
         ->and(DB::table('hr_exit_clearance_items')->where('exit_case_id', $exitId)->count())->toBe($clearanceCount)
         ->and(DB::table('hr_request_events')->count())->toBe($requestEventCount)
-        ->and(fn () => $service->approveExit($exitId, (string) $otherApprover->id, (string) $company->id))
-        ->toThrow(HttpException::class);
-
-    DB::table('companies')->where('id', $company->id)->update(['is_active' => false]);
-    expect(fn () => $service->approveExit($exitId, (string) $approver->id, (string) $company->id))
+        ->and(fn () => $service->approveExit($exitId, (string) $otherApprover->id))
         ->toThrow(HttpException::class);
 });

@@ -4,6 +4,8 @@ use Illuminate\Database\Migrations\Migration;
 use Illuminate\Database\Schema\Blueprint;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Schema;
+
+require_once __DIR__.'/Support/TenantIndexDropper.php';
 return new class extends Migration
 {
     public function up(): void
@@ -32,9 +34,7 @@ return new class extends Migration
 
         foreach (Schema::getIndexes('hr_attendance_periods') as $index) {
             if (in_array('company_id', $index['columns'], true)) {
-                Schema::table('hr_attendance_periods', fn (Blueprint $table) => $index['unique']
-                    ? $table->dropUnique($index['name'])
-                    : $table->dropIndex($index['name']));
+                TenantIndexDropper::drop('hr_attendance_periods', $index);
             }
         }
 

@@ -12,7 +12,7 @@ class SalesCollectionAgingStatusService
     public function __construct(private readonly SalesPolicySettingsService $policySettings) {}
 
     /** @return array<string, mixed> */
-    public function source(string $companyId, array $profileIds, string $from, string $to): array
+    public function source(array $profileIds, string $from, string $to): array
     {
         $timezoneName = $this->policySettings->businessTimezone();
         abort_unless(is_string($timezoneName) && $timezoneName !== '', 409,
@@ -50,7 +50,6 @@ class SalesCollectionAgingStatusService
             ->join('staff', 'staff.id', '=', 'profile.staff_id')
             ->leftJoinSub($allocations, 'allocated', fn ($join) => $join->on(
                 'allocated.booking_payment_schedule_id', '=', 'schedule.id'))
-            ->where(fn ($_companyIdScope) => \App\Services\CompanyIdScope::constrain($_companyIdScope, 'attribution.company_id', $companyId))
             ->whereIn('attribution.collection_sales_profile_id', $profileIds)
             ->whereNull('schedule.deleted_at')->whereNull('attribution.deleted_at')
             ->where('schedule.status', '!=', 'superseded')

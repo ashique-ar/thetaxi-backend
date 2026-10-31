@@ -2,9 +2,9 @@
 
 ## Ownership and scope
 
-Every employee remains canonical `Staff`. A target belongs to one effective Sales Profile in one legal entity and does not create Staff, change Sales eligibility, calculate commission, or write payroll.
+Every employee remains canonical `Staff`. A target belongs to one effective Sales Profile for this installation and does not create Staff, change Sales eligibility, calculate commission, or write payroll.
 
-Canonical target administration uses `/api/sales/targets/versions`; the former `/api/sales/performance/targets` paths remain compatibility aliases during caller convergence. Reads require an explicit legal entity and remain inside central self/team/all Profile scope.
+Canonical target administration uses `/api/sales/targets/versions`; the former `/api/sales/performance/targets` paths remain compatibility aliases during caller convergence. Reads cover the installation and remain inside central self/team/all Profile scope.
 
 ## Draft creation
 
@@ -16,15 +16,15 @@ Canonical target administration uses `/api/sales/targets/versions`; the former `
 
 ## Independent approval
 
-1. Refresh the legal-entity/Profile/month history and select the exact draft version.
+1. Refresh the installation-wide Profile/month history and select the exact draft version.
 2. A user other than the preparer records an approval reason and submits the displayed expected version plus a persistent idempotency key.
-3. Approval locks the legal entity, target, and prior approved rows. A stale version, reused key with different evidence, self-approval, invalid timezone, or non-draft state fails closed.
+3. Approval locks the target and prior approved rows. A stale version, reused key with different evidence, self-approval, invalid timezone, or non-draft state fails closed.
 4. If the matching monthly performance period is locked, approval is prohibited. Reopen through the governed period workflow, approve the replacement target, then reconcile and rebuild; never rewrite a frozen snapshot silently.
 5. Approval supersedes the prior approved row without deleting it and records the superseded IDs, approval checksum, approver, reason, timestamp, audit event/correlation IDs, and replay indicator.
 
 ## Verification and reconciliation
 
-The consolidated stage must prove identical and mismatched idempotent retries, concurrent draft version allocation, concurrent approval, self-approval denial, cross-company/Profile denial, current/former-manager scope, zero/missing values, period-start changes, locked/reopened/rebuilt months, stable filters/pagination, source history, outbox evidence, and Staff/commission/payroll non-mutation.
+The consolidated stage must prove identical and mismatched idempotent retries, concurrent draft version allocation, concurrent approval, self-approval denial, unauthorized Profile access, current/former-manager scope, zero/missing values, period-start changes, locked/reopened/rebuilt months, stable filters/pagination, source history, outbox evidence, and Staff/commission/payroll non-mutation.
 
 ## Rollback
 

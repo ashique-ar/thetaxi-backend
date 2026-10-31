@@ -1,6 +1,5 @@
 <?php
 
-use App\Models\Company;
 use App\Models\Staff;
 use App\Models\User;
 use App\Models\UserContext;
@@ -13,7 +12,7 @@ use function Pest\Laravel\actingAs;
 
 uses(RefreshDatabase::class);
 
-it('limits payroll input facts to the caller company and authorized Staff scope', function () {
+it('limits payroll input facts to the caller authorized Staff scope across the installation', function () {
     (new Database\Seeders\AllPermissionsSeeder())->run();
 
     $user = User::factory()->create();
@@ -21,17 +20,15 @@ it('limits payroll input facts to the caller company and authorized Staff scope'
     $role->givePermissionTo('hr.payroll-inputs.view');
     $user->assignRole($role);
 
-    $company = Company::create(['name' => 'Payroll Scope Company', 'is_active' => true, 'is_default' => true]);
-    $otherCompany = Company::create(['name' => 'Other Payroll Scope Company', 'is_active' => true, 'is_default' => false]);
-    $actorStaff = Staff::factory()->create(['user_id' => $user->id, 'company_id' => $company->id]);
+    $actorStaff = Staff::factory()->create(['user_id' => $user->id]);
     UserContext::create(['user_id' => $user->id, 'context_type' => 'staff', 'context_id' => $actorStaff->id, 'is_active' => true]);
-    $peer = Staff::factory()->create(['company_id' => $company->id]);
-    $foreignStaff = Staff::factory()->create(['company_id' => $otherCompany->id]);
+    $peer = Staff::factory()->create();
+    $otherStaff = Staff::factory()->create();
 
-    $createFact = function (string $staffId, string $companyId) use ($user): string {
+    $createFact = function (string $staffId) use ($user): string {
         $id = (string) Str::uuid();
         DB::table('hr_payroll_input_facts')->insert([
-            'id' => $id, 'company_id' => $companyId, 'staff_id' => $staffId, 'fact_kind' => 'unpaid_leave',
+            'id' => $id, 'staff_id' => $staffId, 'fact_kind' => 'unpaid_leave',
             'effective_date' => today()->toDateString(), 'source_type' => 'scope_test', 'source_id' => (string) Str::uuid(),
             'status' => 'staged', 'source_snapshot' => json_encode(['private_reason' => 'confidential leave detail']), 'fact_checksum' => str_repeat('a', 64),
             'created_by' => $user->id, 'created_at' => now(), 'updated_at' => now(),
@@ -40,10 +37,9 @@ it('limits payroll input facts to the caller company and authorized Staff scope'
         return $id;
     };
 
-    $actorFact = $createFact($actorStaff->id, $company->id);
-    $peerFact = $createFact($peer->id, $company->id);
-    $foreignFact = $createFact($foreignStaff->id, $company->id);
-    $otherCompanyFact = $createFact($foreignStaff->id, $otherCompany->id);
+    $actorFact = $createFact($actorStaff->id);
+    $peerFact = $createFact($peer->id);
+    $otherStaffFact = $createFact($otherStaff->id);
 
     $response = actingAs($user, 'api')->getJson('/api/hr/workforce/payroll-inputs')->assertOk();
     $facts = collect($response->json('data.data'));
@@ -55,11 +51,10 @@ it('limits payroll input facts to the caller company and authorized Staff scope'
     ]);
 
     $selectedPeerResponse = actingAs($user, 'api')->getJson('/api/hr/workforce/payroll-inputs?' . http_build_query([
-        'company_id' => $company->id,
+        'company_id' => 'legacy-company-filter',
         'staff_id' => $peer->id,
     ]))->assertOk();
     expect($selectedPeerResponse->json('data.data'))->toBe([]);
     $this->assertDatabaseHas('hr_payroll_input_facts', ['id' => $peerFact]);
-    $this->assertDatabaseHas('hr_payroll_input_facts', ['id' => $foreignFact]);
-    $this->assertDatabaseHas('hr_payroll_input_facts', ['id' => $otherCompanyFact]);
+    $this->assertDatabaseHas('hr_payroll_input_facts', ['id' => $otherStaffFact]);
 });

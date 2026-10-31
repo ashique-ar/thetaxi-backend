@@ -10,7 +10,6 @@ class DomainWorkflowService
 {
     public function start(
         string $domain,
-        ?string $companyId,
         string $workflowType,
         string $subjectType,
         string $subjectId,
@@ -18,7 +17,7 @@ class DomainWorkflowService
         ?string $actorUserId,
         string $idempotencyKey,
     ): object {
-        return DB::transaction(function () use ($domain, $companyId, $workflowType, $subjectType, $subjectId, $initialState, $actorUserId, $idempotencyKey) {
+        return DB::transaction(function () use ($domain, $workflowType, $subjectType, $subjectId, $initialState, $actorUserId, $idempotencyKey) {
             $existing = DB::table('domain_workflow_instances')
                 ->where(compact('domain', 'workflow_type', 'subject_type', 'subject_id'))
                 ->lockForUpdate()
@@ -32,7 +31,6 @@ class DomainWorkflowService
             DB::table('domain_workflow_instances')->insert([
                 'id' => $id,
                 'domain' => $domain,
-                'company_id' => $companyId,
                 'workflow_type' => $workflowType,
                 'subject_type' => $subjectType,
                 'subject_id' => $subjectId,

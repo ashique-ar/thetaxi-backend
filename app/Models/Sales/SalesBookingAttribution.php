@@ -9,7 +9,7 @@ use Illuminate\Database\Eloquent\Relations\BelongsTo;
 class SalesBookingAttribution extends BaseModel
 {
     protected $fillable = [
-        'booking_id', 'root_attribution_id', 'company_id', 'acquisition_sales_profile_id', 'collection_sales_profile_id',
+        'booking_id', 'root_attribution_id', 'acquisition_sales_profile_id', 'collection_sales_profile_id',
         'customer_id', 'commission_category', 'business_classification', 'classification_source',
         'secured_at', 'contract_value_source', 'source_currency', 'contract_value_lkr',
         'fx_rate_to_lkr', 'fx_rate_at', 'new_customer_status', 'status', 'version',

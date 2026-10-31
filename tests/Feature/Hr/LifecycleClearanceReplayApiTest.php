@@ -1,6 +1,5 @@
 <?php
 
-use App\Models\Company;
 use App\Models\Staff;
 use App\Models\User;
 use App\Models\UserContext;
@@ -13,26 +12,23 @@ use function Pest\Laravel\actingAs;
 
 uses(RefreshDatabase::class);
 
-it('lists only the actor company clearance queue and replays exact completion once', function () {
+it('lists the installation-wide clearance queue and replays exact completion once', function () {
     config(['hr.features.employee_self_service' => true]);
     Permission::findOrCreate('hr.lifecycle.clearance', 'api');
     $actor = User::factory()->create();
     $actor->givePermissionTo('hr.lifecycle.clearance');
-    $company = Company::create(['name' => 'Exit clearance company', 'is_active' => true, 'is_default' => true]);
-    $foreign = Company::create(['name' => 'Foreign exit clearance company', 'is_active' => true]);
-    $actorStaff = Staff::factory()->create(['user_id' => $actor->id, 'company_id' => $company->id]);
+    $actorStaff = Staff::factory()->create(['user_id' => $actor->id]);
     UserContext::create(['user_id' => $actor->id, 'context_type' => 'staff', 'context_id' => $actorStaff->id, 'is_active' => true, 'created_user_id' => $actor->id]);
-    $subject = Staff::factory()->create(['company_id' => $company->id]);
-    $foreignSubject = Staff::factory()->create(['company_id' => $foreign->id]);
+    $subject = Staff::factory()->create();
     $otherActor = User::factory()->create();
     $otherActor->givePermissionTo('hr.lifecycle.clearance');
-    $otherActorStaff = Staff::factory()->create(['user_id' => $otherActor->id, 'company_id' => $company->id]);
+    $otherActorStaff = Staff::factory()->create(['user_id' => $otherActor->id]);
     UserContext::create(['user_id' => $otherActor->id, 'context_type' => 'staff', 'context_id' => $otherActorStaff->id, 'is_active' => true, 'created_user_id' => $otherActor->id]);
 
-    $makeItem = function (string $companyId, string $staffId) use ($actor): string {
+    $makeItem = function (string $staffId) use ($actor): string {
         $exitId = (string) Str::uuid();
         DB::table('hr_exit_cases')->insert([
-            'id' => $exitId, 'company_id' => $companyId, 'staff_id' => $staffId, 'exit_type' => 'resignation',
+            'id' => $exitId, 'staff_id' => $staffId, 'exit_type' => 'resignation',
             'proposed_last_working_date' => today()->toDateString(), 'reason_code' => 'resignation',
             'status' => 'clearance', 'impact_snapshot' => '{}', 'opened_by' => $actor->id,
             'created_at' => now(), 'updated_at' => now(),
@@ -44,8 +40,7 @@ it('lists only the actor company clearance queue and replays exact completion on
         ]);
         return $id;
     };
-    $itemId = $makeItem($company->id, $subject->id);
-    $foreignItemId = $makeItem($foreign->id, $foreignSubject->id);
+    $itemId = $makeItem($subject->id);
     $url = "/api/hr/lifecycle/clearance/{$itemId}/complete";
 
     $first = actingAs($actor, 'api')->postJson($url, ['resolution' => 'Handed over files and access checklist.'])->assertOk();
@@ -53,7 +48,6 @@ it('lists only the actor company clearance queue and replays exact completion on
         ->assertOk()->assertJsonPath('idempotent_replay', true);
     actingAs($actor, 'api')->postJson($url, ['resolution' => 'Changed resolution.'])->assertConflict();
     actingAs($otherActor, 'api')->postJson($url, ['resolution' => 'Handed over files and access checklist.'])->assertConflict();
-    actingAs($actor, 'api')->postJson("/api/hr/lifecycle/clearance/{$foreignItemId}/complete", ['resolution' => 'Foreign item'])->assertNotFound();
 
     expect($replay->json('data.id'))->toBe($first->json('data.id'))
         ->and(DB::table('hr_exit_clearance_items')->where('id', $itemId)->value('status'))->toBe('completed')
@@ -62,14 +56,5 @@ it('lists only the actor company clearance queue and replays exact completion on
     actingAs($actor, 'api')->getJson('/api/hr/lifecycle/clearance')->assertOk()
         ->assertJsonFragment(['id' => $itemId, 'title' => 'Complete handover'])
         ->assertJsonMissingPath('data.data.0.resolution')
-        ->assertJsonMissingPath('data.data.0.completed_by')
-        ->assertJsonMissing(['id' => $foreignItemId]);
-
-    DB::table('companies')->where('id', $company->id)->update(['is_active' => false]);
-    expect(fn () => app(\App\Services\Hr\Lifecycle\LifecycleService::class)->completeClearance(
-        $itemId,
-        'Handed over files and access checklist.',
-        (string) $actor->id,
-        (string) $company->id,
-    ))->toThrow(\Symfony\Component\HttpKernel\Exception\HttpException::class);
+        ->assertJsonMissingPath('data.data.0.completed_by');
 });

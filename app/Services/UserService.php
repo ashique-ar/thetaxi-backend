@@ -121,6 +121,10 @@ class UserService
     {
         $roles = Role::query()
             ->where('guard_name', config('permissions.canonical_guard', 'api'))
+            ->whereRaw('LOWER(name) NOT LIKE ?', ['corporate%'])
+            ->whereRaw('LOWER(name) NOT IN (?, ?)', ['transport_coordinator', 'approval_manager'])
+            ->where(fn ($roles) => $roles->whereNull('context_types')
+                ->orWhereJsonDoesntContain('context_types', 'corporate'))
             ->select('id', 'name', 'guard_name')
             ->orderBy('name')
             ->get()

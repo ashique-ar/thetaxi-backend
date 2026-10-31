@@ -50,7 +50,7 @@ class CorporateRoleStarterService
     ];
 
     /**
-     * Create missing company roles and move legacy shared-role assignments.
+     * Create missing corporate-account roles and move legacy shared-role assignments.
      *
      * Existing company role permissions are never overwritten.
      *

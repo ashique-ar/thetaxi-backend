@@ -1,6 +1,5 @@
 <?php
 
-use App\Models\Company;
 use App\Models\Staff;
 use App\Models\UserContext;
 use Illuminate\Foundation\Testing\RefreshDatabase;
@@ -10,15 +9,11 @@ use function Pest\Laravel\actingAs;
 
 uses(RefreshDatabase::class);
 
-it('requires the selected Staff company before handling a meal variance', function () {
+it('rejects a meal variance while the vendor order is still a draft', function () {
     [$admin] = hr_seed_admin_actor();
     $admin->givePermissionTo('hr.meals.reconcile');
     config(['hr.features.meals' => true]);
 
-    $firstStaff = Staff::query()->where('user_id', $admin->id)->firstOrFail();
-    $company = Company::create(['name' => 'Selected meal variance company']);
-    $staff = Staff::query()->where('user_id', $admin->id)->firstOrFail();
-    $staff->update(['company_id' => $company->id]);
     $context = UserContext::query()->where('user_id', $admin->id)->where('context_type', 'staff')->firstOrFail();
 
     $program = (string) Str::uuid();
@@ -26,14 +21,14 @@ it('requires the selected Staff company before handling a meal variance', functi
     $menu = (string) Str::uuid();
     $order = (string) Str::uuid();
     DB::table('hr_meal_program_versions')->insert([
-        'id' => $program, 'company_id' => $company->id, 'location_code' => 'HQ', 'code' => 'LUNCH', 'version' => 1,
+        'id' => $program, 'location_code' => 'HQ', 'code' => 'LUNCH', 'version' => 1,
         'timezone' => 'Asia/Colombo', 'service_days' => '[]', 'meal_period' => 'lunch', 'order_cutoff_local' => '10:00',
         'eligibility_rules' => '{}', 'subsidy_rules' => '{}', 'cancellation_rules' => '{}', 'employee_recovery_mode' => 'payroll',
         'finance_treatment' => '{}', 'effective_from' => today()->toDateString(), 'status' => 'active',
         'created_by' => $admin->id, 'created_at' => now(), 'updated_at' => now(),
     ]);
     DB::table('hr_meal_vendors')->insert([
-        'id' => $vendor, 'company_id' => $company->id, 'code' => 'V1', 'name' => 'Vendor', 'location_coverage' => '[]',
+        'id' => $vendor, 'code' => 'V1', 'name' => 'Vendor', 'location_coverage' => '[]',
         'currency' => 'LKR', 'effective_from' => today()->toDateString(), 'created_by' => $admin->id,
         'created_at' => now(), 'updated_at' => now(),
     ]);
@@ -43,7 +38,7 @@ it('requires the selected Staff company before handling a meal variance', functi
         'created_at' => now(), 'updated_at' => now(),
     ]);
     DB::table('hr_meal_vendor_orders')->insert([
-        'id' => $order, 'company_id' => $company->id, 'program_version_id' => $program, 'vendor_id' => $vendor,
+        'id' => $order, 'program_version_id' => $program, 'vendor_id' => $vendor,
         'menu_id' => $menu, 'service_date' => today()->toDateString(), 'location_code' => 'HQ', 'delivery_due_at' => now(),
         'status' => 'draft', 'subtotal' => 0, 'tax_amount' => 0, 'delivery_fee' => 0, 'total_amount' => 0,
         'employer_amount' => 0, 'employee_amount' => 0, 'currency' => 'LKR', 'order_checksum' => str_repeat('a', 64),
@@ -60,5 +55,5 @@ it('requires the selected Staff company before handling a meal variance', functi
     ])->postJson("/api/hr/meals/vendor-orders/{$order}/variances", $payload)->assertStatus(409);
 
     expect(DB::table('hr_meal_variance_cases')->exists())->toBeFalse()
-        ->and($firstStaff->company_id)->not->toBe($company->id);
+        ->and(DB::table('hr_meal_vendor_orders')->where('id', $order)->value('status'))->toBe('draft');
 });

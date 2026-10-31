@@ -9,7 +9,6 @@ use App\Models\Booking\BookingPaymentScheduleRule;
 use App\Services\BookingPaymentLedgerService;
 use App\Services\Sales\CollectionWorkAgingService;
 use App\Services\Sales\SalesPolicySettingsService;
-use App\Services\Sales\SalesCollectionCompanyIntegrity;
 use Illuminate\Console\Command;
 use Illuminate\Notifications\DatabaseNotification;
 use Illuminate\Support\Facades\DB;
@@ -25,7 +24,6 @@ class ProcessBookingPaymentSchedules extends Command
         private readonly CollectionWorkAgingService $aging,
         private readonly BookingPaymentLedgerService $ledger,
         private readonly SalesPolicySettingsService $policySettings,
-        private readonly SalesCollectionCompanyIntegrity $companyIntegrity,
     ) {
         parent::__construct();
     }
@@ -58,12 +56,7 @@ class ProcessBookingPaymentSchedules extends Command
             ->chunkById(200, function ($schedules) use ($dryRun, $today, &$progressed, &$dispatched): void {
                 foreach ($schedules as $schedule) {
                     $state = DB::transaction(function () use ($schedule, $today, $dryRun): ?array {
-                        $booking = Booking::query()->lockForUpdate()->findOrFail($schedule->booking_id);
-                        $companyId = DB::table('sales_booking_attributions')->where('booking_id', $booking->id)
-                            ->lockForUpdate()->value('company_id') ?: \App\Services\CompanyIdScope::defaultCompanyId();
-                        if (! $companyId) return null;
-                        $this->companyIntegrity->assertConsistent($booking, (string) $companyId);
-
+                        Booking::query()->lockForUpdate()->findOrFail($schedule->booking_id);
                         $lockedSchedule = BookingPaymentSchedule::query()->withSum('allocations', 'amount')
                             ->lockForUpdate()->findOrFail($schedule->id);
                         $workItem = BookingCollectionWorkItem::query()
@@ -109,8 +102,6 @@ class ProcessBookingPaymentSchedules extends Command
                     $profileIsCurrentHandler = $profile
                         && $staff
                         && ! $staff->trashed()
-                        && $profile->company_id
-                        && \App\Services\CompanyIdScope::sameCompanyId((string) ((string) $profile->company_id), (string) ((string) $schedule->company_id))
                         && $profile->status === 'active'
                         && $profile->collection_eligible
                         && $profile->reporting_currency
@@ -139,11 +130,7 @@ class ProcessBookingPaymentSchedules extends Command
                     }
 
                     DB::transaction(function () use ($schedule, $workItem, $profile, $user, $outstanding, $reminderType, $idempotencyKey): void {
-                        $booking = Booking::query()->lockForUpdate()->findOrFail($schedule->booking_id);
-                        $companyId = DB::table('sales_booking_attributions')->where('booking_id', $booking->id)
-                            ->lockForUpdate()->value('company_id') ?: \App\Services\CompanyIdScope::defaultCompanyId();
-                        if (! $companyId) return;
-                        $this->companyIntegrity->assertConsistent($booking, (string) $companyId);
+                        Booking::query()->lockForUpdate()->findOrFail($schedule->booking_id);
                         $lockedSchedule = BookingPaymentSchedule::query()
                             ->withSum('allocations', 'amount')
                             ->lockForUpdate()
@@ -195,7 +182,6 @@ class ProcessBookingPaymentSchedules extends Command
                         ]);
                         DB::table('booking_collection_reminder_deliveries')->insert([
                             'id' => (string) Str::uuid(),
-                            'company_id' => $lockedSchedule->company_id,
                             'booking_id' => $lockedSchedule->booking_id,
                             'booking_payment_schedule_id' => $lockedSchedule->id,
                             'booking_collection_work_item_id' => $workItem->id,

@@ -8,7 +8,7 @@ class SalesCommissionPayout extends NonSoftDeletableModel
 {
     protected $hidden = ['payment_account_snapshot', 'request_payload_checksum'];
     protected $fillable = [
-        'company_id', 'staff_id', 'payout_number', 'amount_lkr', 'payment_method', 'payment_account_snapshot',
+        'staff_id', 'payout_number', 'amount_lkr', 'payment_method', 'payment_account_snapshot',
         'payment_reference', 'paid_at', 'evidence_file_id', 'status', 'accounting_status', 'paid_by',
         'idempotency_key', 'reverses_payout_id', 'reason',
         'request_payload_checksum',

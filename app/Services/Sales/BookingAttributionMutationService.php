@@ -160,7 +160,6 @@ class BookingAttributionMutationService
             DB::table('domain_audit_events')->insert([
                 'id' => (string) Str::uuid(),
                 'domain' => 'sales',
-                'company_id' => $profile->company_id,
                 'subject_type' => 'sales_profile',
                 'subject_id' => $profile->id,
                 'event_type' => 'sales.profile.portfolio_closed',
@@ -280,7 +279,6 @@ class BookingAttributionMutationService
 
             $this->events->record(
                 'sales',
-                $locked->company_id,
                 'booking_attribution',
                 $locked->id,
                 "sales.attribution.{$eventType}",
@@ -299,7 +297,7 @@ class BookingAttributionMutationService
                 $this->resolveExceptions(
                     $locked->booking_id,
                     $field === 'acquisition_sales_profile_id'
-                        ? ['acquisition_owner_missing', 'acquisition_owner_ineligible', 'historical_company_owner_review_required']
+                        ? ['acquisition_owner_missing', 'acquisition_owner_ineligible', 'historical_owner_review_required']
                         : ['collection_handler_missing', 'collection_handler_ineligible', 'collection_handler_unassigned'],
                     $reason,
                     $actorUserId,
@@ -363,7 +361,6 @@ class BookingAttributionMutationService
     private function profileConfigurationSnapshot(SalesProfile $profile): array
     {
         return $profile->only([
-            'company_id',
             'staff_id',
             'sales_code',
             'status',

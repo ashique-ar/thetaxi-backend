@@ -20,18 +20,12 @@ class CommissionDisputeService
 
     public function raise(SalesCommissionStatementLine $line, string $staffId, array $data): SalesCommissionDispute
     {
-        $companyId = DB::table('sales_commission_statements')->where('id', $line->statement_id)->value('company_id')
-            ?: \App\Services\CompanyIdScope::defaultCompanyId();
-        abort_unless($companyId, 404, 'Commission statement not found.');
         try {
-            return DB::transaction(function () use ($line, $staffId, $data, $companyId) {
-            $this->lockActiveCompany((string) $companyId);
+            return DB::transaction(function () use ($line, $staffId, $data) {
             $statement = SalesCommissionStatement::query()->lockForUpdate()->findOrFail($line->statement_id);
-            abort_unless(\App\Services\CompanyIdScope::sameCompanyId((string) ((string) $statement->company_id), (string) ((string) $companyId)), 409,
-                'The statement legal entity changed before the dispute could be raised.');
             abort_unless($statement->staff_id === $staffId, 403, 'Only the statement beneficiary may dispute this line.');
-            abort_unless(DB::table('staff')->where('id', $staffId)->where(fn ($_companyIdScope) => \App\Services\CompanyIdScope::constrain($_companyIdScope, 'company_id', $statement->company_id))->exists(), 409,
-                'The statement beneficiary Staff record does not match its legal entity.');
+            abort_unless(DB::table('staff')->where('id', $staffId)->exists(), 409,
+                'The statement beneficiary Staff record no longer exists.');
             $line = SalesCommissionStatementLine::query()->whereKey($line->id)
                 ->where('statement_id', $statement->id)->lockForUpdate()->first();
             abort_unless($line, 409, 'The disputed line does not belong to this statement.');
@@ -61,11 +55,11 @@ class CommissionDisputeService
             abort_if($amount > max(0, (float) $line->net_lkr), 422, 'Contested amount exceeds the positive statement-line amount.');
             if (! empty($data['evidence_file_id'])) {
                 app(SalesEvidenceIntegrityService::class)->assertAttachedFile(
-                    $data['evidence_file_id'], (string) $statement->company_id, 'commission_statement_line', [$line->id],
+                    $data['evidence_file_id'], 'commission_statement_line', [$line->id],
                 );
             }
             $dispute = SalesCommissionDispute::create([
-                'company_id' => $companyId, 'statement_id' => $statement->id,
+                'statement_id' => $statement->id,
                 'statement_line_id' => $line->id, 'raised_by_staff_id' => $staffId,
                 'category' => $data['category'], 'reason' => $data['reason'],
                 'evidence_file_id' => $data['evidence_file_id'] ?? null, 'contested_amount_lkr' => $amount,
@@ -80,13 +74,12 @@ class CommissionDisputeService
                 'reason' => 'Contested payout hold opened for dispute '.$dispute->id,
                 'idempotency_key' => 'dispute-open:'.$dispute->id, 'actor_user_id' => DB::table('staff')->where('id', $staffId)->value('user_id'), 'occurred_at' => now(),
             ]);
-            $this->events->record('sales', $companyId, 'commission_dispute', $dispute->id,
+            $this->events->record('sales', 'commission_dispute', $dispute->id,
                 'sales.commission.dispute_raised', 1, 1, ['statement_id' => $statement->id, 'line_id' => $line->id, 'contested_amount_lkr' => (string) $amount], now(), $data['idempotency_key']);
             return $dispute;
             });
         } catch (QueryException $exception) {
-            return DB::transaction(function () use ($exception, $line, $staffId, $data, $companyId) {
-                $this->lockActiveCompany((string) $companyId);
+            return DB::transaction(function () use ($exception, $line, $staffId, $data) {
                 $duplicate = SalesCommissionDispute::query()->where('idempotency_key', $data['idempotency_key'])->first();
                 if (! $duplicate) {
                     throw $exception;
@@ -112,22 +105,17 @@ class CommissionDisputeService
 
     public function resolve(SalesCommissionDispute $dispute, array $data, string $actorUserId): SalesCommissionDispute
     {
-        $companyId = DB::table('sales_commission_disputes')->where('id', $dispute->id)->value('company_id')
-            ?: \App\Services\CompanyIdScope::defaultCompanyId();
-        abort_unless($companyId, 404, 'Commission dispute not found.');
         try {
-            return DB::transaction(function () use ($dispute, $data, $actorUserId, $companyId) {
-            $this->lockActiveCompany((string) $companyId);
+            return DB::transaction(function () use ($dispute, $data, $actorUserId) {
             $statement = SalesCommissionStatement::query()->lockForUpdate()->findOrFail($dispute->statement_id);
             $dispute = SalesCommissionDispute::query()->lockForUpdate()->findOrFail($dispute->id);
-            abort_unless(\App\Services\CompanyIdScope::sameCompanyId((string) ((string) $companyId), (string) ((string) $statement->company_id))
-                && $dispute->statement_id === $statement->id && \App\Services\CompanyIdScope::sameCompanyId((string) ($dispute->company_id), (string) ($statement->company_id)), 409,
-                'The dispute statement does not match its legal entity.');
+            abort_unless($dispute->statement_id === $statement->id, 409,
+                'The dispute does not belong to its statement.');
             $line = SalesCommissionStatementLine::query()->whereKey($dispute->statement_line_id)
                 ->where('statement_id', $statement->id)->lockForUpdate()->first();
             abort_unless($line && $dispute->raised_by_staff_id === $statement->staff_id
-                && DB::table('staff')->where('id', $statement->staff_id)->where(fn ($_companyIdScope) => \App\Services\CompanyIdScope::constrain($_companyIdScope, 'company_id', $statement->company_id))->exists(), 409,
-                'The dispute line or claimant Staff record does not match its statement and legal entity.');
+                && DB::table('staff')->where('id', $statement->staff_id)->exists(), 409,
+                'The dispute line or claimant Staff record does not match its statement.');
             $checksum = hash('sha256', json_encode($data, JSON_THROW_ON_ERROR | JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE));
             if ($dispute->resolution_idempotency_key === $data['idempotency_key']) {
                 abort_unless(hash_equals((string) $dispute->resolution_payload_checksum, $checksum), 422,
@@ -146,7 +134,7 @@ class CommissionDisputeService
             ]);
             if ($data['resolution'] === 'uphold_adjustment') {
                 SalesCommissionStatementAdjustment::create([
-                    'company_id' => $companyId, 'staff_id' => $statement->staff_id,
+                    'staff_id' => $statement->staff_id,
                     'dispute_id' => $dispute->id, 'amount_lkr' => $data['adjustment_lkr'],
                     'reason' => $data['resolution_reason'], 'approved_by' => $actorUserId,
                     'approved_at' => now(), 'idempotency_key' => $data['idempotency_key'],
@@ -168,13 +156,12 @@ class CommissionDisputeService
                 'reason' => 'Contested payout hold resolved for dispute '.$dispute->id,
                 'idempotency_key' => 'dispute-resolve:'.$data['idempotency_key'], 'actor_user_id' => $actorUserId, 'occurred_at' => now(),
             ]);
-            $this->events->record('sales', $companyId, 'commission_dispute', $dispute->id,
+            $this->events->record('sales', 'commission_dispute', $dispute->id,
                 'sales.commission.dispute_resolved', 2, 1, ['resolution' => $data['resolution'], 'statement_id' => $statement->id], now(), $data['idempotency_key']);
             return $dispute;
             });
         } catch (QueryException $exception) {
-            return DB::transaction(function () use ($exception, $dispute, $data, $companyId) {
-                $this->lockActiveCompany((string) $companyId);
+            return DB::transaction(function () use ($exception, $dispute, $data) {
                 $duplicate = SalesCommissionDispute::query()
                     ->where('resolution_idempotency_key', $data['idempotency_key'])->first();
                 if (! $duplicate) {
@@ -190,10 +177,4 @@ class CommissionDisputeService
         }
     }
 
-    private function lockActiveCompany(string $companyId): void
-    {
-        $company = DB::table('companies')->where('id', $companyId)->where('is_active', true)
-            ->whereNull('deleted_at')->lockForUpdate()->first(['id']);
-        abort_unless($company, 422, 'Select an active legal entity.');
-    }
 }

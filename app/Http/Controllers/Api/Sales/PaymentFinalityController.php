@@ -157,7 +157,7 @@ class PaymentFinalityController extends Controller
         }
         if (! empty($data['evidence_file_id'])) {
             $evidence = app(SalesEvidenceIntegrityService::class)->assertAttachedFile(
-                $data['evidence_file_id'], null, 'booking_payment_receipt', [$receipt->id],
+                $data['evidence_file_id'], 'booking_payment_receipt', [$receipt->id],
             );
             abort_unless(! $policy?->required_evidence_type || $evidence->evidence_type === $policy->required_evidence_type,
                 422, 'The uploaded evidence type does not satisfy the approved finality policy.');

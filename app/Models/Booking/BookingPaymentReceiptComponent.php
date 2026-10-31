@@ -12,6 +12,7 @@ class BookingPaymentReceiptComponent extends BaseModel
         'receipt_id', 'component_type', 'source_amount', 'lkr_amount', 'is_allocatable',
         'is_collection_target_eligible', 'is_commission_eligible', 'allocated_source_amount', 'adjusted_source_amount',
         'repair_idempotency_key', 'repair_request_checksum', 'repair_before_checksum', 'repair_evidence_file_id', 'repair_reason',
+        'repair_checksum_version',
     ];
     protected $hidden = [
         'repair_idempotency_key', 'repair_request_checksum', 'repair_before_checksum', 'repair_evidence_file_id', 'repair_reason',
@@ -21,6 +22,7 @@ class BookingPaymentReceiptComponent extends BaseModel
         'source_amount' => 'decimal:4', 'lkr_amount' => 'decimal:4', 'allocated_source_amount' => 'decimal:4',
         'adjusted_source_amount' => 'decimal:4', 'is_allocatable' => 'boolean',
         'is_collection_target_eligible' => 'boolean', 'is_commission_eligible' => 'boolean',
+        'repair_checksum_version' => 'integer',
     ];
 
     public function receipt(): BelongsTo

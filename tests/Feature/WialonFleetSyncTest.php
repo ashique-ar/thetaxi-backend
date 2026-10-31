@@ -12,8 +12,6 @@ use Tests\TestCase;
 
 class WialonFleetSyncTest extends TestCase
 {
-    private const LOCATION = 'c5a60000-0000-4000-8000-000000000001';
-
     public function test_sync_imports_a_unit_once_and_preserves_later_portal_mileage(): void
     {
         Schema::create('wialon_installation_settings', function (Blueprint $table) {
@@ -39,7 +37,6 @@ class WialonFleetSyncTest extends TestCase
             $table->timestamp('wialon_last_message_at')->nullable();
             $table->timestamp('wialon_last_synced_at')->nullable();
             $table->string('title')->nullable();
-            $table->uuid('company_id')->nullable();
             $table->uuid('vehicle_group_id')->nullable();
             $table->string('license_plate')->nullable();
             $table->string('registration_no')->nullable();
@@ -53,7 +50,6 @@ class WialonFleetSyncTest extends TestCase
         DB::table('vehicles')->insert([
             'id' => (string) \Illuminate\Support\Str::uuid(),
             'wialon_unit_id' => 456,
-            'company_id' => self::LOCATION,
             'title' => 'Fleet 456',
             'license_plate' => 'ABC-456',
             'registration_no' => 'ABC-456',
@@ -85,7 +81,6 @@ class WialonFleetSyncTest extends TestCase
         $this->assertSame(1, app(WialonService::class)->syncVehicles());
         $this->assertSame(1, DB::table('vehicles')->count());
         $this->assertSame(456, (int) DB::table('vehicles')->value('wialon_unit_id'));
-        $this->assertSame(self::LOCATION, DB::table('vehicles')->value('company_id'));
         $vehicle = Vehicle::withInactive()->withTrashed()->where('wialon_unit_id', 456)->firstOrFail();
         $this->assertFalse($vehicle->is_active);
         $this->assertSame('unavailable_offline', $vehicle->availability_status);

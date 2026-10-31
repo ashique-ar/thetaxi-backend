@@ -9,19 +9,19 @@ All employees remain canonical `Staff`. A Sales Profile is an additional effecti
 ## Privacy boundary
 
 - Resolve the alert's Sales Profile and apply central self/team/all scope before loading or returning reconciliation evidence.
-- Self/team scope returns only the authorized alert, its frozen Profile row, policy/evaluation checks, and its action history. It withholds company totals, source reconciliation payloads, other Profile identifiers, actor user identifiers, and evaluation suppression rows.
-- Only `sales.performance.view-all` receives the frozen company reconciliation and current company source checksums.
-- Never accept `staff_id`, `sales_profile_id`, `company_id`, or a scope override from the reconciliation request.
+- Self/team scope returns only the authorized alert, its frozen Profile row, policy/evaluation checks, and its action history. It withholds installation-wide totals, source reconciliation payloads, other Profile identifiers, actor user identifiers, and evaluation suppression rows.
+- Only `sales.performance.view-all` receives the frozen installation reconciliation and current installation source checksums.
+- Never accept actor identity, Sales Profile identity, or a scope override from the reconciliation request.
 
 ## Source review and expected checks
 
-1. Confirm the snapshot is frozen and the alert, Profile row, policy, evaluation run, and legal entity agree.
+1. Confirm the snapshot is frozen and the alert, Profile row, policy, and evaluation run agree.
 2. Recompute the selected row from source facts as of the frozen cutoff using the frozen alert policy. Compare it to the immutable row checksum.
 3. Compare the persisted policy rules, alert policy snapshot, threshold, comparison, and metric evidence to the evaluation checksum.
 4. Verify the evaluation-run result checksum and its outbox payload link.
 5. Verify the period-close snapshot outbox carries the frozen reconciliation checksum.
 6. Verify action versions are continuous from version one and each action checksum is carried by the same-version alert outbox event.
-7. In view-all scope only, compare current fact, target, row, and task-intervention checksums to the frozen company reconciliation.
+7. In view-all scope only, compare current fact, target, row, and task-intervention checksums to the frozen installation reconciliation.
 
 Any missing or mismatched link is a failed reconciliation. Do not edit frozen evidence to make it match. Investigate source mutation, legacy lineage, migration order, or outbox corruption; retain the mismatch evidence and follow the governed reopen/rebuild process where authorized.
 

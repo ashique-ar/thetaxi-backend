@@ -1,6 +1,6 @@
 # GPS fleet scheduler
 
-Casons and TheTaxi run on separate servers. Install the same scheduler on each server, from that server's application directory. Each installation reads the enabled companies' encrypted GPS settings from its own database; no GPS token is stored in an environment file.
+Casons and TheTaxi run on separate servers. Install the same scheduler on each server, from that server's application directory. Each installation reads its installation-wide encrypted GPS integration settings from its own database; no GPS token is stored in an environment file.
 
 ## PHP runtime requirement
 
@@ -47,4 +47,4 @@ sudo systemctl status gps-fleet-scheduler.service --no-pager
 sudo journalctl -u gps-fleet-scheduler.service -n 50 --no-pager
 ```
 
-The scheduler runs every five minutes. Configure each company's token and selected GPS groups in portal settings; unit groups define fleet scope, while optional report resources only control available report templates.
+The scheduler runs every five minutes. Configure one integration token and selected GPS groups per installation in portal settings; unit groups define fleet scope, while optional report resources only control available report templates.

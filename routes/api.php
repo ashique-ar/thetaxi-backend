@@ -136,7 +136,6 @@ use App\Http\Controllers\Api\Sales\CommissionStatementController;
 use App\Http\Controllers\Api\Sales\PaymentFinalityController;
 use App\Http\Controllers\Api\Sales\PaymentLedgerReconciliationController;
 use App\Http\Controllers\Api\Sales\SalesBookingAttributionController;
-use App\Http\Controllers\Api\Sales\SalesCollectionCompanyRepairController;
 use App\Http\Controllers\Api\Sales\SalesCrmController;
 use App\Http\Controllers\Api\Sales\SalesDashboardController;
 use App\Http\Controllers\Api\Sales\SalesEvidenceController;
@@ -642,7 +641,6 @@ Route::middleware(['auth:api'])->group(function () {
         Route::get('profile-exports/{export}/download', [SalesProfileController::class, 'downloadExport'])
             ->whereUuid('export')->middleware('permission:sales.profiles.export');
         Route::get('profile-administration-context', [SalesProfileController::class, 'administrationContext'])->middleware('permission:sales.profiles.view');
-        Route::get('profile-company-options', [SalesProfileController::class, 'companyOptions'])->middleware('permission:sales.profiles.view');
         Route::get('profile-staff-options', [SalesProfileController::class, 'staffOptions'])->middleware('permission:sales.profiles.manage');
         Route::get('reporting-profile-options', [SalesProfileController::class, 'reportingProfileOptions'])->middleware('permission:sales.profiles.manage');
         Route::post('profiles', [SalesProfileController::class, 'store'])->middleware('permission:sales.profiles.manage');
@@ -660,13 +658,6 @@ Route::middleware(['auth:api'])->group(function () {
         Route::get('attribution-exceptions', [SalesBookingAttributionController::class, 'exceptions'])->middleware('permission:sales.attributions.view');
         Route::get('attribution-administration-context', [SalesBookingAttributionController::class, 'administrationContext'])->middleware('permission:sales.attributions.view');
         Route::get('attribution-profile-options', [SalesBookingAttributionController::class, 'profileOptions'])->middleware('permission:sales.attributions.correct');
-        Route::get('collection-company-mismatches', [SalesCollectionCompanyRepairController::class, 'index'])->middleware('permission:sales.payment-ledger.reconcile');
-        Route::get('collection-company-repair-company-options', [SalesCollectionCompanyRepairController::class, 'companyOptions'])->middleware('permission:sales.payment-ledger.reconcile');
-        Route::get('collection-company-repairs', [SalesCollectionCompanyRepairController::class, 'history'])->middleware('permission:sales.payment-ledger.reconcile');
-        Route::post('collection-company-repairs/preview', [SalesCollectionCompanyRepairController::class, 'preview'])->middleware('permission:sales.payment-ledger.reconcile');
-        Route::post('collection-company-repairs', [SalesCollectionCompanyRepairController::class, 'apply'])->middleware('permission:sales.payment-ledger.reconcile');
-        Route::post('collection-company-repairs/rollback-preview', [SalesCollectionCompanyRepairController::class, 'rollbackPreview'])->middleware('permission:sales.payment-ledger.reconcile');
-        Route::post('collection-company-repairs/rollback', [SalesCollectionCompanyRepairController::class, 'rollback'])->middleware('permission:sales.payment-ledger.reconcile');
         Route::post('attributions/dry-run', [SalesBookingAttributionController::class, 'dryRun'])->middleware('permission:sales.attributions.correct');
         Route::post('attributions/historical-batch', [SalesBookingAttributionController::class, 'applyHistoricalBatch'])->middleware('permission:sales.attributions.correct');
         Route::post('attributions/{attribution}/transfer-handler', [SalesBookingAttributionController::class, 'transferHandler'])
@@ -697,8 +688,6 @@ Route::middleware(['auth:api'])->group(function () {
             ->whereUuid('booking')->middleware('permission:sales.payment-adjustments.create');
         Route::get('payment-adjustment-context', [BookingPaymentAdjustmentController::class, 'context'])
             ->middleware('permission:sales.payment-adjustments.create');
-        Route::get('payment-adjustment-company-options', [BookingPaymentAdjustmentController::class, 'companyOptions'])
-            ->middleware('permission:sales.payment-adjustments.create');
         Route::post('bookings/{booking}/collection-schedule/revise', [CollectionScheduleWorkflowController::class, 'revise'])
             ->whereUuid('booking')->middleware('permission:sales.collection-schedules.revise');
         Route::post('bookings/{booking}/collection-schedule/revision-preview', [CollectionScheduleWorkflowController::class, 'previewRevision'])
@@ -707,15 +696,11 @@ Route::middleware(['auth:api'])->group(function () {
             ->whereUuid('booking')->middleware(['permission:sales.collection-schedules.revise']);
         Route::post('bookings/{booking}/collection-schedule/rolling-rule/transition', [CollectionScheduleWorkflowController::class, 'transitionRollingRule'])
             ->whereUuid('booking')->middleware(['permission:sales.collection-schedules.revise']);
-        Route::get('collection-schedule-company-options', [CollectionScheduleWorkflowController::class, 'scheduleCompanyOptions'])
-            ->middleware('permission:sales.collection-schedules.revise');
         Route::get('collection-schedule-bookings', [CollectionScheduleWorkflowController::class, 'scheduleBookings'])
             ->middleware('permission:sales.collection-schedules.revise');
         Route::get('bookings/{booking}/collection-schedule', [CollectionScheduleWorkflowController::class, 'schedule'])
             ->whereUuid('booking')->middleware('permission:sales.collection-schedules.revise');
         Route::get('collection-work-items', [CollectionScheduleWorkflowController::class, 'workItems'])
-            ->middleware('permission:sales.collections.view');
-        Route::get('collection-work-company-options', [CollectionScheduleWorkflowController::class, 'collectionCompanyOptions'])
             ->middleware('permission:sales.collections.view');
         Route::post('bookings/{booking}/collection-submissions', [CollectionScheduleWorkflowController::class, 'submit'])
             ->whereUuid('booking')->middleware('permission:sales.collections.submit');
@@ -769,8 +754,6 @@ Route::middleware(['auth:api'])->group(function () {
             ->whereUuid('category')->middleware('permission:sales.policy-settings.approve');
         Route::post('policy-settings/staff-categories/{category}/retire', [SalesPolicySettingsController::class, 'retireStaffCategory'])
             ->whereUuid('category')->middleware('permission:sales.policy-settings.manage');
-        Route::get('commission-configuration/company-options', [CommissionConfigurationController::class, 'companyOptions'])
-            ->middleware('permission:sales.commission-config.view');
         Route::get('commission-configuration/reference-options', [CommissionConfigurationController::class, 'referenceOptions'])
             ->middleware('permission:sales.commission-config.manage');
         Route::get('commission-configuration/version-options', [CommissionConfigurationController::class, 'versionOptions'])
@@ -819,8 +802,6 @@ Route::middleware(['auth:api'])->group(function () {
             ->middleware('permission:sales.commission-decisions.view');
         Route::get('commission-earnings/{decision}', [CommissionDecisionController::class, 'show'])
             ->whereUuid('decision')->middleware('permission:sales.commission-decisions.view');
-        Route::get('commission-holds/company-options', [CommissionHoldController::class, 'companyOptions'])
-            ->middleware('permission:sales.commission-decisions.view');
         Route::get('commission-holds', [CommissionHoldController::class, 'index'])
             ->middleware('permission:sales.commission-decisions.view');
         Route::post('commission-earnings/{earning}/release-preview', [CommissionHoldController::class, 'preview'])
@@ -831,8 +812,6 @@ Route::middleware(['auth:api'])->group(function () {
             ->whereUuid('earning')->middleware('permission:sales.commission-decisions.view');
         Route::post('commission-earnings/{earning}/adjustment', [CommissionHoldController::class, 'appendAdjustment'])
             ->whereUuid('earning')->middleware(['permission:sales.commission-decisions.view', 'permission:sales.commission-recoveries.decide']);
-        Route::get('commission-recoveries/company-options', [CommissionRecoveryController::class, 'companyOptions'])
-            ->middleware('permission:sales.commission-recoveries.view');
         Route::get('commission-recoveries', [CommissionRecoveryController::class, 'index'])
             ->middleware('permission:sales.commission-recoveries.view');
         Route::post('commission-refund-reviews/{case}/preview', [CommissionRecoveryController::class, 'previewDecision'])
@@ -843,8 +822,6 @@ Route::middleware(['auth:api'])->group(function () {
             ->whereUuid('case')->middleware('permission:sales.commission-recoveries.view');
         Route::get('commission-statements', [CommissionStatementController::class, 'index'])
             ->middleware('permission:sales.commission-statements.view');
-        Route::get('commission-operations/company-options', [CommissionStatementController::class, 'companyOptions'])
-            ->middleware('permission:sales.commission-statements.view|sales.commission-statements.generate|sales.commission-statements.approve|sales.commission-disputes.resolve|sales.commission-payouts.pay|sales.commission-payouts.reverse|sales.commission-accounting.acknowledge');
         Route::get('commission-statement-profile-options', [CommissionStatementController::class, 'profileOptions'])
             ->middleware('permission:sales.commission-statements.generate');
         Route::get('commission-statement-schedule', [CommissionStatementController::class, 'schedule'])
@@ -879,7 +856,6 @@ Route::middleware(['auth:api'])->group(function () {
             ->whereUuid('export')->middleware('permission:sales.commission-statements.export');
 
         Route::get('opportunities', [SalesCrmController::class, 'opportunities'])->middleware('permission:sales.crm.view');
-        Route::get('opportunity-company-options', [SalesCrmController::class, 'opportunityCompanyOptions'])->middleware('permission:sales.crm.view');
         Route::get('opportunity-owner-options', [SalesCrmController::class, 'opportunityOwnerOptions'])->middleware('permission:sales.crm.manage');
         Route::get('opportunity-source-options', [SalesCrmController::class, 'opportunitySourceOptions'])->middleware('permission:sales.crm.manage');
         Route::get('opportunity-booking-options', [SalesCrmController::class, 'linkableBookingOptions'])->middleware('permission:sales.crm.manage');
@@ -922,7 +898,6 @@ Route::middleware(['auth:api'])->group(function () {
         Route::get('performance/profile-options', [SalesPerformanceController::class, 'profileOptions'])->middleware('permission:sales.performance.view');
         Route::get('performance/alert-owner-options', [SalesPerformanceController::class, 'alertOwnerOptions'])
             ->middleware('permission:sales.performance.alert-policies.manage');
-        Route::get('performance/company-options', [SalesPerformanceController::class, 'companyOptions'])->middleware('permission:sales.performance.view');
         Route::post('performance/targets', [SalesPerformanceController::class, 'createTarget'])->middleware('permission:sales.performance.targets.manage');
         Route::post('performance/targets/copy-preview', [SalesPerformanceController::class, 'previewTargetCopy'])
             ->middleware('permission:sales.performance.targets.manage');
@@ -2227,7 +2202,7 @@ Route::middleware(['auth:api'])->group(function () {
     Route::put('inquiries/{inquiry}/mark-read', [InquiryController::class, 'markRead']);
     Route::apiResource('inquiries', InquiryController::class);
 
-    // Communication call records enforce their own granular permissions and company scope.
+    // Communication call records enforce their own granular permissions.
     Route::get('phone-calls/assignment-options', [PhoneCallController::class, 'assignmentOptions'])
         ->middleware('permission:phone-calls.edit');
     Route::apiResource('phone-calls', PhoneCallController::class);
@@ -3068,7 +3043,7 @@ Route::middleware(['auth:api'])->group(function () {
         Route::get('reports/management/export/{format}', [CorporateManagementReportController::class, 'export'])->whereIn('format', ['csv', 'xls', 'pdf']);
         Route::apiResource('report-schedules', CorporateReportScheduleController::class)->only(['index', 'store', 'update', 'destroy']);
 
-        // Corporate finance projection (company-scoped and finance-permission protected)
+        // Corporate finance projection (finance-permission protected)
         Route::get('finance/account', [CorporateFinanceController::class, 'account']);
         Route::get('finance/billing-periods', [CorporateFinanceController::class, 'billingPeriods']);
         Route::post('finance/settlements/{settlement}/webxpay', [CorporateFinanceController::class, 'payInvoice'])->whereUuid('settlement');

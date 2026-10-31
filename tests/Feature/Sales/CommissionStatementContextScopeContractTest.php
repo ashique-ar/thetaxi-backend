@@ -1,16 +1,13 @@
 <?php
 
-it('limits statement access and company actions to the selected Staff context', function () {
+it('limits statement access by Staff Profile permissions across the installation', function () {
     $controller = file_get_contents(app_path('Http/Controllers/Api/Sales/CommissionStatementController.php'));
+    $scope = substr($controller, strpos($controller, 'private function applyProfileScope('), strpos($controller, 'private function assertStatementScope(') - strpos($controller, 'private function applyProfileScope('));
 
-    expect($controller)
-        ->toContain('currentActorStaff($request->user())')
-        ->toContain("where('staff_id', \$staff->id)")
-        ->toContain("where('company_id', \$staff->company_id)")
-        ->toContain("where('member.company_id', \$staff->company_id)")
-        ->toContain("where('is_active', true)->whereNull('deleted_at')->pluck('id')")
-        ->toContain("\$query->whereIn('company_id', \$companyIds)")
-        ->not->toContain("Staff::query()->where('user_id', \$request->user()->id)", 'reporting.company_id');
+    expect($scope)
+        ->toContain('currentActorStaff($request->user())', "where('staff_id', \$staff->id)",
+            "whereIn('sales_profile_id', array_values(array_unique(\$ids)))", "whereIn('reporting.manager_sales_profile_id', \$managerIds)")
+        ->not->toContain('actorCompanyIds', 'company_id', 'CompanyIdScope');
 });
 
 it('binds dispute idempotency replays and reviewer separation to the account and original request', function () {

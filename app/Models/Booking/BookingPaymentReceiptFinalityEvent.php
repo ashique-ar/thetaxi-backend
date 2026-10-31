@@ -7,7 +7,7 @@ use App\Models\BaseModel;
 class BookingPaymentReceiptFinalityEvent extends BaseModel
 {
     protected $fillable = [
-        'company_id', 'booking_id', 'booking_payment_receipt_id', 'finality_policy_id', 'from_status', 'to_status',
+        'booking_id', 'booking_payment_receipt_id', 'finality_policy_id', 'from_status', 'to_status',
         'reason', 'evidence_reference', 'idempotency_key', 'performed_by', 'occurred_at',
     ];
 

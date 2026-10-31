@@ -1040,11 +1040,6 @@ class BookingFlowService
             'service_type_context' => ($isPublic || $this->shouldUsePublicServiceContext($params)) ? 'public' : null,
         ]);
         $pricingServiceTypeModel = $selectedServiceTypeModel;
-        if ($isPublic && $selectedServiceTypeModel?->owner_type === 'company') {
-            $pricingServiceTypeModel = ServiceType::publicContext()
-                ->where('code', $selectedServiceTypeModel->code)
-                ->first() ?? $selectedServiceTypeModel;
-        }
 
         $servicePricingSettings = $pricingServiceTypeModel
             ? VehicleGroupServicePricingSetting::query()
@@ -3740,11 +3735,11 @@ class BookingFlowService
                     }
 
                     // Calculate pricing for this item - USE THE SELECTED vehicle_group_id
-                    // Pass vehicle_id for company distance calculations, but pricing is based on vehicle_group_id
+                    // Pass vehicle_id for saved-location distance calculations; pricing still uses vehicle_group_id.
                     $itemPricingParams = [
                         'service_type' => $itemData['service_type_id'] ?? $itemData['service_type'],
                         'vehicle_group_id' => $vehicleGroupId, // Use the selected vehicle_group_id for pricing
-                        'vehicle_id' => $itemData['vehicle_id'] ?? null, // Pass for company distance calculation
+                        'vehicle_id' => $itemData['vehicle_id'] ?? null, // Used only for saved-location distance calculation.
                         'from_date' => $itemData['from_date'],
                         'to_date' => $itemData['to_date'],
                         'from_time' => $itemData['from_time'] ?? null,
@@ -4436,9 +4431,9 @@ class BookingFlowService
 
     private function isConfiguredCompanyLocation(array $location): bool
     {
-        $companyId = $location['company_id'] ?? null;
+        $locationId = $location['location_id'] ?? null;
         return Company::query()->where('is_active', true)
-            ->when($companyId, fn ($query) => $query->whereKey($companyId))
+            ->when($locationId, fn ($query) => $query->whereKey($locationId))
             ->get(['id', 'latitude', 'longitude'])
             ->contains(fn (Company $company): bool => $this->matchesCompanyLocation($location, $company));
     }
@@ -5323,7 +5318,7 @@ class BookingFlowService
 
     /**
      * Prepare inputs for calculation definition execution
-     * Enhanced to support company-specific distance calculations and airport pricing
+     * Supports saved-location distance calculations and airport pricing.
      */
     private function resolveCalculationServiceType(mixed $serviceTypeId, array $params): ?ServiceType
     {
@@ -7876,11 +7871,11 @@ class BookingFlowService
     }
 
     /**
-     * Get all company locations for dropdown selection
+     * Get saved locations for booking dropdowns
      */
     public function getCompanyLocations(): array
     {
-        // Get all company locations that have valid address and coordinates
+        // Only locations with valid address and coordinates can be selected.
         $companies = Company::where('is_active', true)
             ->whereNotNull('address')
             ->whereNotNull('latitude')
@@ -8429,7 +8424,7 @@ class BookingFlowService
     private function notifyApprovalRequested(Booking $booking, BookingApproval $approval): void
     {
         try {
-            // Find users in this company who can approve bookings
+            // Notify every installation user with booking approval permission.
             $approvers = User::permission('bookings.approve')
                 ->get();
 

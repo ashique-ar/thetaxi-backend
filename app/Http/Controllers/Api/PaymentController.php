@@ -8,8 +8,6 @@ use App\Models\Booking\Booking;
 use App\Models\Booking\BookingPaymentReceipt;
 use App\Models\Finance\FinancialAuditEvent;
 use App\Services\Sales\BookingPaymentAdjustmentService;
-use App\Services\Sales\SalesAccessScope;
-use App\Services\Sales\SalesCollectionCompanyIntegrity;
 use App\Services\Payment\PaymentGatewayManager;
 use App\Services\Sms\SmsAutomationService;
 use Illuminate\Http\Request;
@@ -62,6 +60,7 @@ class PaymentController extends Controller
                 'errors' => $validator->errors()
             ], 422);
         }
+        abort_unless($request->user()?->can('payments.initiate'), 403);
 
         try {
             $initialBooking = Booking::query()->findOrFail($request->booking_id);
@@ -72,19 +71,6 @@ class PaymentController extends Controller
                     'message' => 'Online payment can only be initiated for bookings with online payment method.',
                 ], 422);
             }
-            $attribution = DB::table('sales_booking_attributions')->where('booking_id', $initialBooking->id)
-                ->whereNull('deleted_at')->first(['company_id']);
-            $tenantCompanyId = $attribution?->company_id ?: \App\Services\CompanyIdScope::defaultCompanyId();
-            $tenantCompanyIsActive = $attribution && $tenantCompanyId && DB::table('companies')->where('id', $tenantCompanyId)
-                ->where('is_active', true)->whereNull('deleted_at')->exists();
-            if (! $tenantCompanyIsActive) {
-                abort(409, 'The booking needs a reviewed active legal-entity attribution before payment initiation.');
-            }
-            app(SalesAccessScope::class)->assertCompany(
-                $request->user(),
-                (string) $tenantCompanyId,
-                'sales.payment-adjustments.create-all',
-            );
             try {
                 $gateway = $this->gatewayManager->resolve((string) $request->payment_method);
             } catch (\InvalidArgumentException) {
@@ -99,26 +85,11 @@ class PaymentController extends Controller
                     'message' => 'No configured online gateway is available for this payment method.',
                 ], 503);
             }
-            $reservation = DB::transaction(function () use ($request, $tenantCompanyId): array {
+            $reservation = DB::transaction(function () use ($request): array {
                 $booking = Booking::query()->lockForUpdate()->findOrFail($request->booking_id);
                 $collectionMethod = strtolower((string) ($booking->payment_collection_method ?? $booking->payment_method ?? ''));
                 abort_unless($collectionMethod === 'online', 422,
                     'Online payment can only be initiated for bookings with online payment method.');
-
-                $attribution = DB::table('sales_booking_attributions')->where('booking_id', $booking->id)
-                    ->whereNull('deleted_at')->lockForUpdate()->first(['company_id']);
-                $currentCompanyId = $attribution?->company_id;
-                abort_unless((string) $currentCompanyId === (string) $tenantCompanyId, 409,
-                    'The booking legal entity changed before payment initiation.');
-                $company = DB::table('companies')->where('id', $tenantCompanyId)->where('is_active', true)
-                    ->whereNull('deleted_at')->lockForUpdate()->first(['id']);
-                abort_unless($company, 409, 'The booking legal entity is inactive; reconcile its attribution before payment initiation.');
-                app(SalesCollectionCompanyIntegrity::class)->assertConsistent($booking, (string) $company->id);
-                app(SalesAccessScope::class)->assertCompany(
-                    $request->user(),
-                    (string) $tenantCompanyId,
-                    'sales.payment-adjustments.create-all',
-                );
 
                 $workflowData = is_array($booking->workflow_data)
                     ? $booking->workflow_data
@@ -155,7 +126,6 @@ class PaymentController extends Controller
                     'id' => $recordId,
                     'attempt_id' => $recordId,
                     'booking_id' => $booking->id,
-                    'company_id' => $tenantCompanyId,
                     'amount' => $requestedAmount,
                     'currency' => $paymentCurrency,
                     'requested_amount' => $requestedAmount,
@@ -342,18 +312,6 @@ class PaymentController extends Controller
 
                 $booking = Booking::query()->whereKey($lockedTransaction->booking_id)->lockForUpdate()->first();
                 abort_unless($booking, 409, 'The payment booking no longer exists; reconcile this callback manually.');
-                $attribution = DB::table('sales_booking_attributions')->where('booking_id', $booking->id)
-                    ->whereNull('deleted_at')->lockForUpdate()->first(['company_id']);
-                abort_unless($attribution?->company_id, 409,
-                    'The booking has no reviewed legal-entity attribution; reconcile this callback manually.');
-                abort_unless($lockedTransaction->company_id
-                    && \App\Services\CompanyIdScope::sameCompanyId((string) ((string) $lockedTransaction->company_id), (string) ((string) $attribution->company_id)), 409,
-                    'The payment attempt has no matching company snapshot; reconcile this callback manually.');
-                $company = DB::table('companies')->where('id', $attribution->company_id)->where('is_active', true)
-                    ->whereNull('deleted_at')->lockForUpdate()->first(['id']);
-                abort_unless($company, 409, 'The booking legal entity is inactive; reconcile this callback manually.');
-                abort_unless(\App\Services\CompanyIdScope::sameCompanyId((string) ((string) $attribution->company_id), (string) ((string) $company->id)), 409,
-                    'The booking legal entity changed before payment could be recorded.');
                 DB::table('payment_transactions')
                     ->where('id', $lockedTransaction->id)
                     ->update([
@@ -469,18 +427,6 @@ class PaymentController extends Controller
                 ], 404);
             }
 
-            $attribution = DB::table('sales_booking_attributions')
-                ->where('booking_id', $transaction->booking_id)
-                ->whereNull('deleted_at')
-                ->first(['company_id']);
-            $companyId = $attribution?->company_id ?: \App\Services\CompanyIdScope::defaultCompanyId();
-            abort_unless($attribution && $companyId, 404, 'Transaction not found');
-            app(SalesAccessScope::class)->assertCompany(
-                $request->user(),
-                (string) $companyId,
-                'sales.payment-adjustments.create-all',
-            );
-
             return response()->json([
                 'status' => 'success',
                 'data' => [
@@ -518,6 +464,7 @@ class PaymentController extends Controller
             'reason' => ['required', 'string', 'max:500'],
             'idempotency_key' => ['required', 'string', 'max:160'],
         ]);
+        abort_unless($request->user()?->can('payments.refund'), 403);
 
         // Reserve the amount before calling a provider. Pending and uncertain
         // outcomes continue to reserve funds until explicitly reconciled.
@@ -528,18 +475,6 @@ class PaymentController extends Controller
                 ->first();
             abort_unless($transaction && $transaction->status === 'success', 404,
                 'Transaction not found or not eligible for refund.');
-
-            $attribution = DB::table('sales_booking_attributions')->where('booking_id', $transaction->booking_id)
-                ->whereNull('deleted_at')->first(['company_id']);
-            $companyId = $attribution?->company_id ?: \App\Services\CompanyIdScope::defaultCompanyId();
-            abort_unless($attribution && $companyId, 409, 'This payment has no canonical legal-entity attribution.');
-            abort_unless(DB::table('companies')->where('id', $companyId)->where('is_active', true)
-                ->whereNull('deleted_at')->exists(), 409, 'This payment legal entity is inactive.');
-            app(SalesAccessScope::class)->assertCompany(
-                $request->user(),
-                (string) $companyId,
-                'sales.payment-adjustments.create-all',
-            );
 
             $existing = DB::table('payment_refunds')
                 ->where('transaction_id', $transaction->id)
@@ -568,8 +503,6 @@ class PaymentController extends Controller
             $component = $receipt?->components->firstWhere('component_type', 'booking_payment');
             abort_unless($booking && $component, 409,
                 'Canonical payment receipt is missing. Reconcile this transaction before refunding it.');
-            abort_unless(\App\Services\CompanyIdScope::sameCompanyId((string) ((string) $receipt->company_id), (string) ((string) $companyId)), 409,
-                'The payment receipt legal entity does not match its booking attribution.');
             abort_unless(is_string($transaction->currency) && $transaction->currency !== ''
                 && strtoupper($transaction->currency) === strtoupper((string) $receipt->source_currency), 409,
                 'The payment transaction currency does not match its canonical receipt. Reconcile before refunding it.');
@@ -826,17 +759,19 @@ class PaymentController extends Controller
         $limit = (int) ($filters['limit'] ?? 20);
         $status = $filters['status'] ?? null;
         $bookingId = $filters['booking_id'] ?? null;
-        $companyIds = app(SalesAccessScope::class)->companyIds(
-            $request->user(),
-            'sales.payment-adjustments.create-all',
-        );
-
         $query = DB::table('payment_transactions')
             ->join('bookings', 'payment_transactions.booking_id', '=', 'bookings.id')
             ->leftJoin('customers', 'bookings.customer_id', '=', 'customers.id')
             ->leftJoin('users', 'customers.user_id', '=', 'users.id')
             ->select([
-                'payment_transactions.*',
+                'payment_transactions.id', 'payment_transactions.attempt_id', 'payment_transactions.booking_id',
+                'payment_transactions.amount', 'payment_transactions.currency_id', 'payment_transactions.currency',
+                'payment_transactions.payment_method', 'payment_transactions.gateway', 'payment_transactions.transaction_id',
+                'payment_transactions.gateway_transaction_id', 'payment_transactions.payment_id', 'payment_transactions.status',
+                'payment_transactions.requested_amount', 'payment_transactions.requested_currency',
+                'payment_transactions.gateway_payment_snapshot', 'payment_transactions.created_user_id',
+                'payment_transactions.updated_user_id', 'payment_transactions.created_at', 'payment_transactions.updated_at',
+                'payment_transactions.deleted_at',
                 'bookings.booking_number',
                 'users.first_name',
                 'users.last_name',
@@ -851,16 +786,8 @@ class PaymentController extends Controller
             $query->where('payment_transactions.booking_id', $bookingId);
         }
 
-        $query->whereExists(function ($attribution) use ($companyIds): void {
-            $attribution->selectRaw('1')->from('sales_booking_attributions')
-                ->whereColumn('sales_booking_attributions.booking_id', 'payment_transactions.booking_id')
-                ->whereNull('sales_booking_attributions.deleted_at')
-                ->when($companyIds !== null, fn ($scope) => $scope->where(fn ($_companyIdScope) => \App\Services\CompanyIdScope::constrainIn($_companyIdScope, 'sales_booking_attributions.company_id', $companyIds)));
-        });
-
         $transactions = $query->orderBy('payment_transactions.created_at', 'desc')
             ->paginate($limit);
-
         return response()->json([
             'status' => 'success',
             'data' => [
@@ -886,22 +813,10 @@ class PaymentController extends Controller
             'page' => ['nullable', 'integer', 'min:1'],
             'per_page' => ['nullable', 'integer', 'min:1', 'max:100'],
         ]);
-        $companyIds = app(SalesAccessScope::class)->companyIds(
-            $request->user(),
-            'sales.payment-adjustments.create-all',
-        );
-
         $refunds = DB::table('payment_refunds as refunds')
             ->join('payment_transactions as transactions', 'transactions.id', '=', 'refunds.transaction_id')
             ->join('bookings', 'bookings.id', '=', 'transactions.booking_id')
-            ->join('sales_booking_attributions as attribution', function ($join): void {
-                $join->on('attribution.booking_id', '=', 'bookings.id')->whereNull('attribution.deleted_at');
-            })
-            ->join('companies', 'companies.id', '=', 'attribution.company_id')
             ->whereIn('refunds.status', ($data['status'] ?? null) ? [$data['status']] : ['pending', 'manual_required'])
-            ->where('companies.is_active', true)
-            ->whereNull('companies.deleted_at')
-            ->when($companyIds !== null, fn ($query) => $query->where(fn ($_companyIdScope) => \App\Services\CompanyIdScope::constrainIn($_companyIdScope, 'attribution.company_id', $companyIds)))
             ->orderByRaw("CASE refunds.status WHEN 'manual_required' THEN 0 ELSE 1 END")
             ->orderBy('refunds.created_at')
             ->select([
@@ -909,7 +824,7 @@ class PaymentController extends Controller
                 'refunds.gateway_refund_id', 'refunds.notes', 'refunds.created_at', 'refunds.updated_at',
                 'transactions.id as payment_transaction_id', 'transactions.transaction_id',
                 'transactions.gateway_transaction_id', 'transactions.currency', 'bookings.id as booking_id',
-                'bookings.booking_number', 'companies.id as company_id', 'companies.name as company_name',
+                'bookings.booking_number',
             ])
             ->paginate($data['per_page'] ?? 25);
 
@@ -936,21 +851,9 @@ class PaymentController extends Controller
             'page' => ['nullable', 'integer', 'min:1'],
             'per_page' => ['nullable', 'integer', 'min:1', 'max:100'],
         ]);
-        $companyIds = app(SalesAccessScope::class)->companyIds(
-            $request->user(),
-            'sales.payment-adjustments.create-all',
-        );
-
         $attempts = DB::table('payment_transactions as transactions')
             ->join('bookings', 'bookings.id', '=', 'transactions.booking_id')
-            ->join('sales_booking_attributions as attribution', function ($join): void {
-                $join->on('attribution.booking_id', '=', 'bookings.id')->whereNull('attribution.deleted_at');
-            })
-            ->join('companies', 'companies.id', '=', 'attribution.company_id')
             ->where('transactions.status', 'pending')
-            ->where('companies.is_active', true)
-            ->whereNull('companies.deleted_at')
-            ->when($companyIds !== null, fn ($query) => $query->where(fn ($_companyIdScope) => \App\Services\CompanyIdScope::constrainIn($_companyIdScope, 'attribution.company_id', $companyIds)))
             ->when(($data['reservation_state'] ?? 'unverified') === 'unverified', fn ($query) => $query
                 ->where(function ($reservation): void {
                     $reservation->whereNull('transactions.requested_amount')
@@ -965,7 +868,6 @@ class PaymentController extends Controller
                 'transactions.payment_method', 'transactions.amount', 'transactions.currency',
                 'transactions.requested_amount', 'transactions.requested_currency', 'transactions.created_at',
                 'bookings.id as booking_id', 'bookings.booking_number',
-                'companies.id as company_id', 'companies.name as company_name',
             ])
             ->selectRaw("CASE WHEN transactions.requested_amount IS NULL OR transactions.requested_currency IS NULL THEN 'unverified' ELSE 'reserved' END as reservation_state")
             ->paginate($data['per_page'] ?? 25);
@@ -994,7 +896,14 @@ class PaymentController extends Controller
                 ->leftJoin('customers', 'bookings.customer_id', '=', 'customers.id')
                 ->leftJoin('users', 'customers.user_id', '=', 'users.id')
                 ->select([
-                    'payment_transactions.*',
+                    'payment_transactions.id', 'payment_transactions.attempt_id', 'payment_transactions.booking_id',
+                    'payment_transactions.amount', 'payment_transactions.currency_id', 'payment_transactions.currency',
+                    'payment_transactions.payment_method', 'payment_transactions.gateway', 'payment_transactions.transaction_id',
+                    'payment_transactions.gateway_transaction_id', 'payment_transactions.payment_id', 'payment_transactions.status',
+                    'payment_transactions.requested_amount', 'payment_transactions.requested_currency',
+                    'payment_transactions.gateway_payment_snapshot', 'payment_transactions.created_user_id',
+                    'payment_transactions.updated_user_id', 'payment_transactions.created_at', 'payment_transactions.updated_at',
+                    'payment_transactions.deleted_at',
                     'bookings.booking_number',
                     'users.first_name',
                     'users.last_name',
@@ -1010,18 +919,6 @@ class PaymentController extends Controller
                     'message' => 'Transaction not found'
                 ], 404);
             }
-
-            $attribution = DB::table('sales_booking_attributions')
-                ->where('booking_id', $transaction->booking_id)
-                ->whereNull('deleted_at')
-                ->first(['company_id']);
-            $companyId = $attribution?->company_id ?: \App\Services\CompanyIdScope::defaultCompanyId();
-            abort_unless($attribution && $companyId, 404, 'Transaction not found');
-            app(SalesAccessScope::class)->assertCompany(
-                $request->user(),
-                (string) $companyId,
-                'sales.payment-adjustments.create-all',
-            );
 
             $transaction->refunds = DB::table('payment_refunds')
                 ->where('transaction_id', $transaction->id)

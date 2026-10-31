@@ -31,14 +31,14 @@ it('renders register relationships from bounded response labels without a raw St
         ->toContain("if (\$canViewFitness)")
         ->toContain("'staff_labels' => \$staffLabels")
         ->toContain("Staff::withTrashed()")
-        ->toContain("where('staff.company_id', \$a->company_id)")
+        ->not->toContain('company_id', 'companyId', 'company(')
         ->and($component)->toContain("'Unavailable Staff record'")
         ->not->toContain("{ code: id }")
         ->not->toContain('safetyHandlerOptions()')
         ->and($routes)->not->toContain("Route::get('handler-options', [SafetyController::class, 'handlerOptions'])");
 });
 
-it('uses company-scoped managed location choices for every Safety creation form', function () {
+it('uses managed operational location choices for every Safety creation form without tenant scope', function () {
     $controller = file_get_contents(app_path('Http/Controllers/Api/Hr/SafetyController.php'));
     $routes = file_get_contents(base_path('routes/api.php'));
     $root = base_path('../portal-thetaxi/src/app/modules/hr-relations/components/');
@@ -47,8 +47,9 @@ it('uses company-scoped managed location choices for every Safety creation form'
     $inspection = file_get_contents($root.'safety-registers/dialogs/inspection-form-dialog.component.ts');
 
     expect($routes)->toContain("Route::get('location-options', [SafetyController::class, 'locationOptions'])")
-        ->and($controller)->toContain("where('company_id', \$actor->company_id)")
-        ->toContain("private function assertLocation(string \$company, string \$code)")
+        ->and($controller)->toContain("whereNotNull('location_code')")
+        ->toContain("private function assertLocation(string \$code)")
+        ->not->toContain('company_id', 'companyId', 'company(')
         ->and($report)->toContain('endpoint="/hr/safety/location-options"')
         ->and($hazard)->toContain('endpoint="/hr/safety/location-options"')
         ->and($inspection)->toContain('endpoint="/hr/safety/location-options"')

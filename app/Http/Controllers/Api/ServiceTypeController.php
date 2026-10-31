@@ -300,6 +300,11 @@ class ServiceTypeController extends Controller
             return [$context, '', ''];
         }
 
+        if ($ownerType === 'company') {
+            $ownerType = '';
+            $ownerId = '';
+        }
+
         if ($context !== 'all') {
             $context = $this->pricingContextPolicy->effectiveContext($context);
         }
@@ -318,7 +323,7 @@ class ServiceTypeController extends Controller
             'workflow_config' => $workflowConfig,
             'effective_settings' => $this->workflowSettingsResolver->resolve(
                 $workflowConfig,
-                $serviceType->owner_type === 'company' ? (string) $serviceType->owner_id : null,
+                null,
             ),
             'actor_user_id' => $actorUserId,
             'created_at' => now(),

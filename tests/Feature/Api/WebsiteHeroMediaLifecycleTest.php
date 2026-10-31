@@ -13,14 +13,12 @@ it('loads legacy uploads through the API and persists removals without reviving 
         ->and(config('database.connections.sqlite.database'))->toBe(':memory:');
     (require database_path('migrations/2025_07_07_110140_create_website_settings_table.php'))->up();
     (require database_path('migrations/2025_07_07_110341_create_business_settings_table.php'))->up();
-    Schema::table('website_settings', fn (Blueprint $table) => $table->uuid('company_id')->nullable());
     DB::table('website_settings')->insert([
         ['id' => 'legacy-slider', 'type' => 'theme_02_slider_images', 'value' => '[{"desktop":"first.jpg","mobile":"mobile.jpg"},{"desktop":"second.jpg"}]'],
         ['id' => 'legacy-banner', 'type' => 'banner_image', 'value' => 'older.jpg'],
     ]);
 
     $service = Mockery::mock(WebsiteSettingsService::class)->makePartial();
-    $service->shouldReceive('resolveCurrentCompanyId')->andReturn(null);
     $this->app->instance(WebsiteSettingsService::class, $service);
     $controller = $this->app->make(WebsiteSettingController::class);
     $loaded = $controller->getCategory('homepage')->getData(true)['data'];

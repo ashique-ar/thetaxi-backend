@@ -11,7 +11,6 @@ use Illuminate\Support\Facades\Schema;
 beforeEach(function (): void {
     Schema::create('sms_messages', function (Blueprint $table): void {
         $table->uuid('id')->primary();
-        $table->uuid('company_id')->nullable();
         $table->uuid('booking_id')->nullable();
         $table->string('source')->nullable();
         $table->string('event_key')->nullable();
@@ -25,14 +24,12 @@ beforeEach(function (): void {
     });
 });
 
-it('limits transactional compliance facts to an explicitly selected company', function (): void {
-    $companyId = (string) Illuminate\Support\Str::uuid();
-    $foreignCompanyId = (string) Illuminate\Support\Str::uuid();
+it('includes transactional compliance facts from the whole installation', function (): void {
     $now = now();
-    foreach ([$companyId, $foreignCompanyId] as $owner) {
+    foreach ([1, 2] as $index) {
         DB::table('sms_messages')->insert([
-            'id' => (string) Illuminate\Support\Str::uuid(), 'company_id' => $owner,
-            'source' => 'automation', 'event_key' => 'trip.completed', 'idempotency_key' => (string) $owner,
+            'id' => (string) Illuminate\Support\Str::uuid(),
+            'source' => 'automation', 'event_key' => 'trip.completed', 'idempotency_key' => "message-{$index}",
             'status' => 'dry_run', 'created_at' => $now, 'updated_at' => $now,
         ]);
     }
@@ -46,10 +43,10 @@ it('limits transactional compliance facts to an explicitly selected company', fu
         new SmsSegmentCalculator()
     );
 
-    $report = $service->getTransactionalComplianceReport(30, $companyId);
+    $report = $service->getTransactionalComplianceReport(30);
 
-    expect($report['optional_messages']['total'])->toBe(1)
-        ->and($report['status_counts'])->toBe(['dry_run' => 1]);
+    expect($report['optional_messages']['total'])->toBe(2)
+        ->and($report['status_counts'])->toBe(['dry_run' => 2]);
 });
 
 afterEach(function (): void {
@@ -57,13 +54,11 @@ afterEach(function (): void {
 });
 
 it('separates normal-three compliance, admin costs, optional messages, and unexpected extras', function (): void {
-    $companyId = (string) Illuminate\Support\Str::uuid();
     $now = now();
     $rows = [];
-    $add = function (string $booking, string $event, string $id, int $segments = 1, float $cost = 1.5) use (&$rows, $now, $companyId): void {
+    $add = function (string $booking, string $event, string $id, int $segments = 1, float $cost = 1.5) use (&$rows, $now): void {
         $rows[] = [
             'id' => $id,
-            'company_id' => $companyId,
             'booking_id' => $booking,
             'source' => 'automation',
             'event_key' => $event,
@@ -98,7 +93,7 @@ it('separates normal-three compliance, admin costs, optional messages, and unexp
         new SmsSegmentCalculator()
     );
 
-    $report = $service->getTransactionalComplianceReport(30, $companyId);
+    $report = $service->getTransactionalComplianceReport(30);
 
     expect($report['customer_normal_three']['bookings_with_extras'])->toBe(1)
         ->and($report['customer_normal_three']['duplicate_event_messages'])->toBe(1)

@@ -6,7 +6,7 @@ This process evaluates management-support alerts from one immutable, reconciled 
 
 - Apply and rehearse rollback for `2026_08_14_101000_govern_sales_performance_alert_evaluations.php` before running scheduled evaluations.
 - Configure the approved `SALES_BUSINESS_TIMEZONE` and an effective policy prepared and approved by different users.
-- The policy must explicitly declare severities, factual thresholds, completed-month grain, once-after-close local schedule, grace/minimum elapsed days, baseline completeness, missing-data behavior, comparison normalization, prior-period-booking commission basis, and one accountable active internal Staff owner in the same legal entity.
+- The policy must explicitly declare severities, factual thresholds, completed-month grain, once-after-close local schedule, grace/minimum elapsed days, baseline completeness, missing-data behavior, comparison normalization, prior-period-booking commission basis, and one accountable active internal Staff owner for this installation.
 - Do not copy recommended percentages into production without management approval. Old-format policies, legacy snapshots without frozen policy lineage, and pre-governance alerts fail closed for reviewed disposition.
 
 ## Preview and commit

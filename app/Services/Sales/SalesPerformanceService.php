@@ -11,6 +11,8 @@ use App\Models\Sales\SalesPerformanceAlert;
 use App\Models\Sales\SalesProfile;
 use App\Models\Sales\SalesTargetCopyBatch;
 use App\Models\Sales\SalesTargetVersion;
+use Brick\Math\BigDecimal;
+use Brick\Math\RoundingMode;
 use App\Models\Staff;
 use App\Support\Foundation\CanonicalJson;
 use Carbon\CarbonImmutable;
@@ -50,23 +52,19 @@ class SalesPerformanceService
     ): SalesTargetVersion
     {
         return DB::transaction(function () use ($data, $idempotencyKey, $actorUserId, $sourceIp) {
-            DB::table('companies')->where('id', $data['company_id'])->where('is_active', true)
-                ->whereNull('deleted_at')->lockForUpdate()->firstOrFail();
             $profile = SalesProfile::query()->lockForUpdate()->findOrFail($data['sales_profile_id']);
-            abort_unless(\App\Services\CompanyIdScope::sameCompanyId((string) ($profile->company_id), (string) ($data['company_id'])), 422, 'Target and Sales Profile legal entities must match.');
             abort_unless($profile->status === 'active' && $profile->effective_from?->lte(now())
                 && (! $profile->effective_until || $profile->effective_until->gt(now())), 422,
                 'A target can only be drafted for a currently active Sales Profile.');
-            $staff = Staff::query()->whereKey($profile->staff_id)->where(fn ($_companyIdScope) => \App\Services\CompanyIdScope::constrain($_companyIdScope, 'company_id', $profile->company_id))
+            $staff = Staff::query()->whereKey($profile->staff_id)
                 ->whereNull('deleted_at')->where(fn ($employment) => $employment->whereNull('employment_ended_at')
                     ->orWhere('employment_ended_at', '>', now()))->lockForUpdate()->first();
-            abort_unless($staff, 422, 'The Sales Profile must belong to current Staff in this legal entity.');
+            abort_unless($staff, 422, 'The Sales Profile must belong to current Staff.');
             $start = CarbonImmutable::parse($data['period_start']);
             $end = CarbonImmutable::parse($data['period_end']);
             abort_unless($start->isStartOfMonth() && $end->isSameDay($start->endOfMonth()), 422, 'Sales targets must be defined for a complete calendar month.');
             abort_if(($data['new_sales_target_lkr'] ?? null) === null && ($data['eligible_collections_target_lkr'] ?? null) === null, 422, 'At least one target must be configured; missing is distinct from zero.');
             $requestEvidence = [
-                'company_id' => $profile->company_id,
                 'sales_profile_id' => $profile->id,
                 'period_start' => $start->toDateString(),
                 'period_end' => $end->toDateString(),
@@ -76,11 +74,11 @@ class SalesPerformanceService
                 'actor_user_id' => $actorUserId,
             ];
             $requestChecksum = hash('sha256', CanonicalJson::encode($requestEvidence));
-            $existing = SalesTargetVersion::query()->where(fn ($_companyIdScope) => \App\Services\CompanyIdScope::constrain($_companyIdScope, 'company_id', $profile->company_id))
-                ->where('draft_idempotency_key', $idempotencyKey)->lockForUpdate()->first();
+            $existing = SalesTargetVersion::query()->where('draft_idempotency_key', $idempotencyKey)->lockForUpdate()->first();
             if ($existing) {
                 abort_unless(
-                    hash_equals((string) $existing->draft_request_checksum, $requestChecksum),
+                    hash_equals((string) $existing->draft_request_checksum, $requestChecksum)
+                    || $this->targetDraftRequestMatchesPersisted($existing, $requestEvidence),
                     409,
                     'The target-draft idempotency key was reused with different evidence.'
                 );
@@ -106,12 +104,11 @@ class SalesPerformanceService
                     true,
                 );
             }
-            // The legal-entity row lock above serializes target-version allocation;
+            // The locked Sales Profile serializes target-version allocation;
             // PostgreSQL does not permit FOR UPDATE on an aggregate MAX query.
             $version = (int) SalesTargetVersion::query()->where('sales_profile_id', $profile->id)
                 ->whereDate('period_start', $start)->whereDate('period_end', $end)->max('version') + 1;
             $payload = [
-                'company_id' => $profile->company_id,
                 'sales_profile_id' => $profile->id,
                 'source' => 'manual',
                 'period_start' => $start->toDateString(),
@@ -132,7 +129,6 @@ class SalesPerformanceService
             DB::table('domain_audit_events')->insert([
                 'id' => $auditEventId,
                 'domain' => 'sales',
-                'company_id' => $profile->company_id,
                 'subject_type' => 'sales_target_version',
                 'subject_id' => $target->id,
                 'event_type' => 'sales.performance.target_draft_created',
@@ -149,7 +145,6 @@ class SalesPerformanceService
             ]);
             $outboxEventId = $this->events->record(
                 'sales',
-                $profile->company_id,
                 'sales_target_version',
                 $target->id,
                 'sales.performance.target_draft_created',
@@ -177,6 +172,30 @@ class SalesPerformanceService
         }, 3);
     }
 
+    private function targetDraftRequestMatchesPersisted(SalesTargetVersion $target, array $request): bool
+    {
+        foreach (['new_sales_target_lkr', 'eligible_collections_target_lkr'] as $amount) {
+            $stored = $target->{$amount};
+            $requested = $request[$amount];
+            if ($stored === null || $requested === null) {
+                if ($stored !== $requested) {
+                    return false;
+                }
+                continue;
+            }
+            $requestedAmount = BigDecimal::of((string) $requested)->toScale(4, RoundingMode::HALF_UP);
+            if (BigDecimal::of((string) $stored)->compareTo($requestedAmount) !== 0) {
+                return false;
+            }
+        }
+
+        return (string) $target->sales_profile_id === $request['sales_profile_id']
+            && $target->period_start?->toDateString() === $request['period_start']
+            && $target->period_end?->toDateString() === $request['period_end']
+            && (string) $target->reason === $request['reason']
+            && (string) $target->prepared_by === $request['actor_user_id'];
+    }
+
     public function approveTarget(
         SalesTargetVersion $target,
         int $expectedVersion,
@@ -187,8 +206,6 @@ class SalesPerformanceService
     ): SalesTargetVersion
     {
         return DB::transaction(function () use ($target, $expectedVersion, $reason, $idempotencyKey, $actorUserId, $sourceIp, ) {
-            DB::table('companies')->where('id', $target->company_id)->where('is_active', true)
-                ->whereNull('deleted_at')->lockForUpdate()->firstOrFail();
             $locked = SalesTargetVersion::query()->lockForUpdate()->findOrFail($target->id);
             $requestChecksum = hash('sha256', CanonicalJson::encode([
                 'target_id' => $locked->id,
@@ -196,8 +213,7 @@ class SalesPerformanceService
                 'reason' => trim($reason),
                 'actor_user_id' => $actorUserId,
             ]));
-            $replay = SalesTargetVersion::query()->where(fn ($_companyIdScope) => \App\Services\CompanyIdScope::constrain($_companyIdScope, 'company_id', $locked->company_id))
-                ->where('approval_idempotency_key', $idempotencyKey)->lockForUpdate()->first();
+            $replay = SalesTargetVersion::query()->where('approval_idempotency_key', $idempotencyKey)->lockForUpdate()->first();
             if ($replay) {
                 abort_unless(
                     $replay->id === $locked->id
@@ -243,7 +259,8 @@ class SalesPerformanceService
             $startUtc = CarbonImmutable::parse($locked->period_start->toDateString(), $timezone)->startOfDay()->utc();
             $endExclusiveUtc = CarbonImmutable::parse($locked->period_end->toDateString(), $timezone)->addDay()->startOfDay()->utc();
             abort_if(
-                DB::table('domain_period_locks')->where('domain', 'sales')->where(fn ($_companyIdScope) => \App\Services\CompanyIdScope::constrain($_companyIdScope, 'company_id', $locked->company_id))
+                DB::table('domain_period_locks')->where('domain', 'sales')
+                    ->whereNotNull('installation_period_key')
                     ->where('period_type', 'month')->where('period_start', $startUtc)->where('period_end', $endExclusiveUtc)
                     ->where('state', 'locked')->exists(),
                 409,
@@ -283,7 +300,6 @@ class SalesPerformanceService
             DB::table('domain_audit_events')->insert([
                 'id' => $auditEventId,
                 'domain' => 'sales',
-                'company_id' => $locked->company_id,
                 'subject_type' => 'sales_target_version',
                 'subject_id' => $locked->id,
                 'event_type' => 'sales.performance.target_approved',
@@ -300,7 +316,6 @@ class SalesPerformanceService
             ]);
             $outboxEventId = $this->events->record(
                 'sales',
-                $locked->company_id,
                 'sales_target_version',
                 $locked->id,
                 'sales.performance.target_approved',
@@ -346,7 +361,6 @@ class SalesPerformanceService
     }
 
     public function previewTargetCopy(
-        string $companyId,
         string $sourcePeriodStart,
         string $targetPeriodStart,
         array $profileIds,
@@ -359,12 +373,11 @@ class SalesPerformanceService
         $profileIds = array_values(array_unique($profileIds));
         sort($profileIds, SORT_STRING);
         abort_if($profileIds === [], 422, 'Select at least one authorised Sales Profile.');
-        $profiles = SalesProfile::query()->withTrashed()->with('staff')->where(fn ($_companyIdScope) => \App\Services\CompanyIdScope::constrain($_companyIdScope, 'company_id', $companyId))
-            ->whereIn('id', $profileIds)->get()->keyBy('id');
+        $profiles = SalesProfile::query()->withTrashed()->with('staff')->whereIn('id', $profileIds)->get()->keyBy('id');
         abort_unless(
             $profiles->count() === count($profileIds),
             422,
-            'Every selected Sales Profile must belong to the selected legal entity.'
+            'Every selected Sales Profile must be available in the authorized scope.'
         );
 
         $rows = collect($profileIds)->map(function (string $profileId) use ($profiles, $sourceStart, $sourceEnd, $targetStart, $targetEnd) {
@@ -399,7 +412,6 @@ class SalesPerformanceService
             ];
         })->values()->all();
         $snapshot = [
-            'company_id' => $companyId,
             'source_period_start' => $sourceStart->toDateString(),
             'source_period_end' => $sourceEnd->toDateString(),
             'target_period_start' => $targetStart->toDateString(),
@@ -417,7 +429,6 @@ class SalesPerformanceService
     }
 
     public function copyTargets(
-        string $companyId,
         string $sourcePeriodStart,
         string $targetPeriodStart,
         array $profileIds,
@@ -430,7 +441,6 @@ class SalesPerformanceService
         $profileIds = array_values(array_unique($profileIds));
         sort($profileIds, SORT_STRING);
         $requestChecksum = hash('sha256', CanonicalJson::encode([
-            'company_id' => $companyId,
             'source_period_start' => $sourcePeriodStart,
             'target_period_start' => $targetPeriodStart,
             'profile_ids' => array_values($profileIds),
@@ -439,16 +449,11 @@ class SalesPerformanceService
             'actor_user_id' => $actorUserId,
         ]));
 
-        return DB::transaction(function () use ($companyId, $sourcePeriodStart, $targetPeriodStart, $profileIds, $previewChecksum, $reason, $idempotencyKey, $actorUserId, $requestChecksum) {
-            DB::table('companies')->where('id', $companyId)->where('is_active', true)
-                ->whereNull('deleted_at')->lockForUpdate()->firstOrFail();
+        return DB::transaction(function () use ($sourcePeriodStart, $targetPeriodStart, $profileIds, $previewChecksum, $reason, $idempotencyKey, $actorUserId, $requestChecksum) {
             $existing = SalesTargetCopyBatch::query()->where('idempotency_key', $idempotencyKey)->first();
             if ($existing) {
-                abort_unless(
-                    hash_equals($existing->request_payload_checksum, $requestChecksum),
-                    409,
-                    'The target-copy idempotency key was reused with different evidence.'
-                );
+                abort_unless(hash_equals($existing->request_payload_checksum, $requestChecksum), 409,
+                    'The target-copy idempotency key was reused with different evidence.');
                 return $existing->load('targets');
             }
 
@@ -462,7 +467,7 @@ class SalesPerformanceService
                     $periods->where(fn($source) => $source->whereDate('period_start', $sourceStart)->whereDate('period_end', $sourceEnd))
                         ->orWhere(fn($target) => $target->whereDate('period_start', $targetStart)->whereDate('period_end', $targetEnd));
                 })->orderBy('sales_profile_id')->orderBy('version')->lockForUpdate()->get();
-            $preview = $this->previewTargetCopy($companyId, $sourcePeriodStart, $targetPeriodStart, $profileIds);
+            $preview = $this->previewTargetCopy($sourcePeriodStart, $targetPeriodStart, $profileIds);
             abort_unless(
                 hash_equals($preview['preview_checksum'], $previewChecksum),
                 409,
@@ -471,7 +476,6 @@ class SalesPerformanceService
             abort_unless($preview['copyable_count'] > 0, 422, 'No selected Profile has one approved source target to copy.');
 
             $batch = SalesTargetCopyBatch::create([
-                'company_id' => $companyId,
                 'source_period_start' => $sourceStart->toDateString(),
                 'source_period_end' => $sourceEnd->toDateString(),
                 'target_period_start' => $targetStart->toDateString(),
@@ -490,7 +494,6 @@ class SalesPerformanceService
                 $version = (int) SalesTargetVersion::query()->where('sales_profile_id', $row['sales_profile_id'])
                     ->whereDate('period_start', $targetStart)->whereDate('period_end', $targetEnd)->max('version') + 1;
                 $payload = [
-                    'company_id' => $companyId,
                     'sales_profile_id' => $row['sales_profile_id'],
                     'source' => 'approved_month_copy',
                     'copy_batch_id' => $batch->id,
@@ -511,7 +514,6 @@ class SalesPerformanceService
 
             $this->events->record(
                 'sales',
-                $companyId,
                 'sales_target_copy_batch',
                 $batch->id,
                 'sales.performance.targets_copied_to_draft',
@@ -533,7 +535,6 @@ class SalesPerformanceService
     }
 
     public function previewTargetImport(
-        string $companyId,
         string $targetPeriodStart,
         UploadedFile $file,
         ?array $authorizedProfileIds,
@@ -551,8 +552,7 @@ class SalesPerformanceService
 
         $parsed = $this->parseTargetImportCsv($temporaryPath);
         $codes = collect($parsed)->pluck('sales_code')->filter()->unique()->values();
-        $profiles = SalesProfile::query()->withTrashed()->with('staff')->where(fn ($_companyIdScope) => \App\Services\CompanyIdScope::constrain($_companyIdScope, 'company_id', $companyId))
-            ->whereIn('sales_code', $codes)
+        $profiles = SalesProfile::query()->withTrashed()->with('staff')->whereIn('sales_code', $codes)
             ->when($authorizedProfileIds !== null, fn($query) => $query->whereIn('id', $authorizedProfileIds))
             ->get()->keyBy('sales_code');
         $duplicateCodes = collect($parsed)->pluck('sales_code')->filter()->countBy()->filter(fn($count) => $count > 1);
@@ -571,7 +571,7 @@ class SalesPerformanceService
                 $errors[] = [
                     'field_name' => 'sales_code',
                     'error_code' => 'profile_not_found_or_outside_scope',
-                    'message' => 'The Sales code is not available in the selected legal entity and authorised scope.'
+                    'message' => 'The Sales code is not available in the authorized scope.'
                 ];
             }
             $profileEffective = $profile && !$profile->trashed() && $profile->status === 'active'
@@ -609,7 +609,6 @@ class SalesPerformanceService
             ];
         })->values()->all();
         $snapshot = [
-            'company_id' => $companyId,
             'target_period_start' => $targetStart->toDateString(),
             'target_period_end' => $targetEnd->toDateString(),
             'file_checksum' => $fileChecksum,
@@ -628,7 +627,6 @@ class SalesPerformanceService
     }
 
     public function importTargets(
-        string $companyId,
         string $targetPeriodStart,
         UploadedFile $file,
         ?array $authorizedProfileIds,
@@ -638,9 +636,8 @@ class SalesPerformanceService
         string $actorUserId,
     ): object
     {
-        $preview = $this->previewTargetImport($companyId, $targetPeriodStart, $file, $authorizedProfileIds);
+        $preview = $this->previewTargetImport($targetPeriodStart, $file, $authorizedProfileIds);
         $requestChecksum = hash('sha256', CanonicalJson::encode([
-            'company_id' => $companyId,
             'target_period_start' => $preview['target_period_start'],
             'file_checksum' => $preview['file_checksum'],
             'preview_checksum' => $previewChecksum,
@@ -650,11 +647,9 @@ class SalesPerformanceService
         $storedPath = null;
 
         try {
-            return DB::transaction(function () use ($companyId, $targetPeriodStart, $file, $authorizedProfileIds, $preview, $previewChecksum, $reason, $idempotencyKey, $actorUserId, $requestChecksum, &$storedPath): object {
-                DB::table('companies')->where('id', $companyId)->where('is_active', true)
-                    ->whereNull('deleted_at')->lockForUpdate()->firstOrFail();
+            return DB::transaction(function () use ($targetPeriodStart, $file, $authorizedProfileIds, $preview, $previewChecksum, $reason, $idempotencyKey, $actorUserId, $requestChecksum, &$storedPath): object {
                 $existing = DB::table('domain_transfer_jobs')->where('domain', 'sales')
-                    ->where('job_type', 'sales_target_csv')->where(fn ($_companyIdScope) => \App\Services\CompanyIdScope::constrain($_companyIdScope, 'company_id', $companyId))
+                    ->where('job_type', 'sales_target_csv')
                     ->where('idempotency_key', $idempotencyKey)->lockForUpdate()->first();
                 if ($existing) {
                     abort_unless(
@@ -686,7 +681,6 @@ class SalesPerformanceService
                     ->whereDate('period_start', $targetStart)->whereDate('period_end', $targetEnd)
                     ->orderBy('sales_profile_id')->orderBy('version')->lockForUpdate()->get();
                 $preview = $this->previewTargetImport(
-                    $companyId,
                     $targetPeriodStart,
                     $file,
                     $authorizedProfileIds
@@ -694,18 +688,17 @@ class SalesPerformanceService
                 abort_unless(
                     hash_equals($preview['preview_checksum'], $previewChecksum),
                     409,
-                    'The target import scope, file or destination evidence changed; refresh the import preview.'
+                    'The target import file or destination evidence changed; refresh the import preview.'
                 );
 
                 $jobId = (string) Str::uuid();
                 $extension = strtolower((string) $file->getClientOriginalExtension());
-                $storedPath = $companyId . '/target-imports/' . now()->format('Y/m') . '/' . $jobId . '.' . ($extension ?: 'csv');
+                $storedPath = 'target-imports/' . now()->format('Y/m') . '/' . $jobId . '.' . ($extension ?: 'csv');
                 Storage::disk('sales_private')->putFileAs(dirname($storedPath), $file, basename($storedPath));
                 $now = now();
                 DB::table('domain_transfer_jobs')->insert([
                     'id' => $jobId,
                     'domain' => 'sales',
-                    'company_id' => $companyId,
                     'direction' => 'import',
                     'job_type' => 'sales_target_csv',
                     'format' => 'csv',
@@ -747,7 +740,6 @@ class SalesPerformanceService
                     $version = (int) SalesTargetVersion::query()->where('sales_profile_id', $row['sales_profile_id'])
                         ->whereDate('period_start', $targetStart)->whereDate('period_end', $targetEnd)->max('version') + 1;
                     $payload = [
-                        'company_id' => $companyId,
                         'sales_profile_id' => $row['sales_profile_id'],
                         'source' => 'csv_import',
                         'import_job_id' => $jobId,
@@ -767,7 +759,6 @@ class SalesPerformanceService
                 }
                 $this->events->record(
                     'sales',
-                    $companyId,
                     'domain_transfer_job',
                     $jobId,
                     'sales.performance.targets_imported_to_draft',
@@ -902,9 +893,9 @@ class SalesPerformanceService
         return [$start->startOfDay(), $start->endOfMonth()->startOfDay()];
     }
 
-    public function preview(string $companyId, string $from, string $to, $cutoff, ?array $alertRules = null): array
+    public function preview(string $from, string $to, $cutoff, ?array $alertRules = null): array
     {
-        $rows = $this->calculateRows($companyId, $from, $to, $cutoff, $alertRules)->values();
+        $rows = $this->calculateRows($from, $to, $cutoff, $alertRules)->values();
         return [
             'ranking_policy' => self::RANKING_POLICY,
             'aging_missing_lineage_count' => (int) ($rows->max('aging_profile_lineage_missing_count') ?? 0),
@@ -912,7 +903,7 @@ class SalesPerformanceService
         ];
     }
 
-    public function freeze(string $companyId, string $from, string $to, string $periodType, $cutoff, string $key, string $actorUserId): SalesKpiSnapshot
+    public function freeze(string $from, string $to, string $periodType, $cutoff, string $key, string $actorUserId): SalesKpiSnapshot
     {
         abort(409, 'Direct snapshot generation is disabled; use the governed period-close preview and commit workflow.');
     }
@@ -921,12 +912,10 @@ class SalesPerformanceService
     {
         $data['rules'] = $this->alertPolicyContract->normalize($data['rules']);
         return DB::transaction(function () use ($data, $actorUserId) {
-            DB::table('companies')->where('id', $data['company_id'])->where('is_active', true)
-                ->whereNull('deleted_at')->lockForUpdate()->firstOrFail();
             abort_unless($this->activeAlertOwnerIdentity(
-                $data['company_id'], $data['rules']['evaluation']['owner_user_id'], true,
-            ), 422, 'The alert owner must be an active internal Staff user with an active Staff context in the selected legal entity.');
-            $version = (int) SalesAlertPolicyVersion::query()->where(fn ($_companyIdScope) => \App\Services\CompanyIdScope::constrain($_companyIdScope, 'company_id', $data['company_id']))->lockForUpdate()->max('version') + 1;
+                $data['rules']['evaluation']['owner_user_id'], true,
+            ), 422, 'The alert owner must be an active Staff user with an active Staff context.');
+            $version = (int) SalesAlertPolicyVersion::query()->lockForUpdate()->max('version') + 1;
             return SalesAlertPolicyVersion::create($data + [
                 'version' => $version,
                 'status' => 'draft',
@@ -936,9 +925,9 @@ class SalesPerformanceService
         });
     }
 
-    private function activeAlertOwnerIdentity(string $companyId, string $userId, bool $lock = false): bool
+    private function activeAlertOwnerIdentity(string $userId, bool $lock = false): bool
     {
-        $staffQuery = DB::table('staff')->where(fn ($_companyIdScope) => \App\Services\CompanyIdScope::constrain($_companyIdScope, 'company_id', $companyId))->where('user_id', $userId)
+        $staffQuery = DB::table('staff')->where('user_id', $userId)
             ->whereNull('deleted_at')->where(fn ($query) => $query->whereNull('employment_ended_at')->orWhere('employment_ended_at', '>', now()));
         if ($lock) $staffQuery->lockForUpdate();
         $staff = $staffQuery->first(['id']);
@@ -957,14 +946,12 @@ class SalesPerformanceService
     public function approveAlertPolicy(SalesAlertPolicyVersion $policy, string $actorUserId): SalesAlertPolicyVersion
     {
         return DB::transaction(function () use ($policy, $actorUserId) {
-            DB::table('companies')->where('id', $policy->company_id)->where('is_active', true)
-                ->whereNull('deleted_at')->lockForUpdate()->firstOrFail();
             $locked = SalesAlertPolicyVersion::query()->lockForUpdate()->findOrFail($policy->id);
             if ($locked->status === 'approved')
                 return $locked;
             abort_if($locked->prepared_by === $actorUserId, 403, 'Alert policy maker and approver must be different users.');
             abort_unless($locked->status === 'draft', 422, 'Only draft alert policies can be approved.');
-            SalesAlertPolicyVersion::query()->where(fn ($_companyIdScope) => \App\Services\CompanyIdScope::constrain($_companyIdScope, 'company_id', $locked->company_id))->where('status', 'approved')
+            SalesAlertPolicyVersion::query()->where('status', 'approved')
                 ->whereDate('effective_from', '<=', $locked->effective_until ?? '9999-12-31')
                 ->where(fn($q) => $q->whereNull('effective_until')->orWhereDate('effective_until', '>=', $locked->effective_from))
                 ->update(['status' => 'superseded']);
@@ -984,8 +971,6 @@ class SalesPerformanceService
     ): SalesPerformanceAlert
     {
         return DB::transaction(function () use ($alert, $action, $expectedVersion, $reason, $key, $actorUserId, $snoozedUntil) {
-            abort_unless(DB::table('companies')->where('id', $alert->company_id)->where('is_active', true)
-                ->whereNull('deleted_at')->lockForUpdate()->first(['id']), 422, 'Select an active legal entity.');
             $locked = SalesPerformanceAlert::query()->lockForUpdate()->findOrFail($alert->id);
             $reason = trim($reason);
             $snoozeAt = $snoozedUntil === null ? null : CarbonImmutable::parse($snoozedUntil)->utc();
@@ -999,7 +984,7 @@ class SalesPerformanceService
             ];
             $checksum = hash('sha256', CanonicalJson::encode($payload));
             $replay = DB::table('sales_performance_alert_action_events')
-                ->where(fn ($_companyIdScope) => \App\Services\CompanyIdScope::constrain($_companyIdScope, 'company_id', $locked->company_id))->where('idempotency_key', $key)->first();
+                ->where('idempotency_key', $key)->first();
             if ($replay) {
                 abort_unless(
                     $replay->alert_id === $locked->id && hash_equals($replay->request_payload_checksum, $checksum),
@@ -1012,7 +997,7 @@ class SalesPerformanceService
             abort_unless(
                 $this->policySettings->featureEnabled('performance_alert_actions'),
                 409,
-                'Sales performance alert actions are not activated for this legal entity.'
+                'Sales performance alert actions are not activated.'
             );
             abort_unless($locked->event_version === $expectedVersion, 409, 'Alert changed after it was loaded. Refresh and try again.');
             abort_unless($reason !== '', 422, 'An alert action reason is required.');
@@ -1047,7 +1032,6 @@ class SalesPerformanceService
             $locked->update($changes + ['status' => $toStatus, 'event_version' => $toVersion, 'last_action_at' => $now]);
             DB::table('sales_performance_alert_action_events')->insert([
                 'id' => (string) Str::uuid(),
-                'company_id' => $locked->company_id,
                 'alert_id' => $locked->id,
                 'action' => $action,
                 'from_status' => $fromStatus,
@@ -1066,7 +1050,6 @@ class SalesPerformanceService
             ]);
             $this->events->record(
                 'sales',
-                $locked->company_id,
                 'sales_performance_alert',
                 $locked->id,
                 'sales.performance.alert_' . $action,
@@ -1088,13 +1071,12 @@ class SalesPerformanceService
         }, 3);
     }
 
-    private function calculateRows(string $companyId, string $from, string $to, $cutoff, ?array $alertRules = null): Collection
+    private function calculateRows(string $from, string $to, $cutoff, ?array $alertRules = null): Collection
     {
         $overdueAsOf = CarbonImmutable::parse($to)->min(CarbonImmutable::parse($cutoff))->toDateString();
-        $profiles = SalesProfile::query()->with('staff')->where(fn ($_companyIdScope) => \App\Services\CompanyIdScope::constrain($_companyIdScope, 'company_id', $companyId))
+        $profiles = SalesProfile::query()->with('staff')
             ->where('effective_from', '<=', $to)->where(fn($q) => $q->whereNull('effective_until')->orWhere('effective_until', '>=', $from))->get();
         $agingSource = $this->frozenAging->source(
-            $companyId,
             $profiles->pluck('id')->all(),
             $to,
             (string) $cutoff,
@@ -1102,7 +1084,6 @@ class SalesPerformanceService
         );
         $agingByProfile = $agingSource['rows']->groupBy('sales_profile_id');
         $taskFacts = $alertRules === null ? [] : $this->taskInterventionFacts->forClosedPeriod(
-            $companyId,
             $profiles->pluck('id')->all(),
             $from,
             $to,
@@ -1110,21 +1091,20 @@ class SalesPerformanceService
             $alertRules,
         );
         $facts = DB::table('sales_metric_facts')->selectRaw('sales_profile_id, metric_type, business_classification, SUM(quantity) quantity, SUM(amount_lkr) amount')
-            ->where(fn ($_companyIdScope) => \App\Services\CompanyIdScope::constrain($_companyIdScope, 'company_id', $companyId))->whereBetween('occurred_on', [$from, $to])->where('occurred_at', '<=', $cutoff)
+            ->whereBetween('occurred_on', [$from, $to])->where('occurred_at', '<=', $cutoff)
             ->groupBy('sales_profile_id', 'metric_type', 'business_classification')->get()->groupBy('sales_profile_id');
-        $collectionFacts = SalesMetricFact::query()->where(fn ($_companyIdScope) => \App\Services\CompanyIdScope::constrain($_companyIdScope, 'company_id', $companyId))->where('metric_type', 'eligible_collection')
+        $collectionFacts = SalesMetricFact::query()->where('metric_type', 'eligible_collection')
             ->whereBetween('occurred_on', [$from, $to])->where('occurred_at', '<=', $cutoff)
             ->orderBy('occurred_at')->orderBy('id')->get()->groupBy('sales_profile_id');
-        $commissionFacts = SalesMetricFact::query()->where(fn ($_companyIdScope) => \App\Services\CompanyIdScope::constrain($_companyIdScope, 'company_id', $companyId))->where('metric_type', 'commission_earned')
+        $commissionFacts = SalesMetricFact::query()->where('metric_type', 'commission_earned')
             ->whereBetween('occurred_on', [$from, $to])->where('occurred_at', '<=', $cutoff)
             ->orderBy('occurred_at')->orderBy('id')->get()->groupBy('sales_profile_id');
         $breakdowns = $this->metricBreakdowns->resolve(
             $collectionFacts->flatten(1)->concat($commissionFacts->flatten(1))->values(),
-            $companyId,
             $from,
             $to,
         );
-        $targets = SalesTargetVersion::query()->where(fn ($_companyIdScope) => \App\Services\CompanyIdScope::constrain($_companyIdScope, 'company_id', $companyId))->where('status', 'approved')
+        $targets = SalesTargetVersion::query()->where('status', 'approved')
             ->whereDate('period_start', '<=', $to)->whereDate('period_end', '>=', $from)->get()->groupBy('sales_profile_id');
         $adjustmentEvidenceIssues = DB::table('booking_commercial_value_adjustments as adjustment')
             ->leftJoin('sales_metric_facts as fact', function ($join) {
@@ -1132,11 +1112,10 @@ class SalesPerformanceService
                     ->where('fact.source_type', 'commercial_value_adjustment')
                     ->where('fact.metric_type', 'new_sales_adjustment');
             })->selectRaw('adjustment.acquisition_sales_profile_id, COUNT(*) issue_count')
-            ->where(fn ($_companyIdScope) => \App\Services\CompanyIdScope::constrain($_companyIdScope, 'adjustment.company_id', $companyId))->where('adjustment.counts_as_new_sales_adjustment', true)
+            ->where('adjustment.counts_as_new_sales_adjustment', true)
             ->whereDate('adjustment.effective_at', '>=', $from)->whereDate('adjustment.effective_at', '<=', $to)
             ->where('adjustment.effective_at', '<=', $cutoff)->where(function ($query) {
                 $query->whereNull('adjustment.delta_lkr_amount')->orWhereNull('fact.id')
-                    ->orWhereColumn('fact.company_id', '!=', 'adjustment.company_id')
                     ->orWhereColumn('fact.sales_profile_id', '!=', 'adjustment.acquisition_sales_profile_id')
                     ->orWhereColumn('fact.amount_lkr', '!=', 'adjustment.delta_lkr_amount');
             })->groupBy('adjustment.acquisition_sales_profile_id')
@@ -1149,14 +1128,14 @@ class SalesPerformanceService
             ->join('sales_booking_attributions as attribution', 'attribution.booking_id', '=', 'schedule.booking_id')
             ->leftJoinSub($allocationTotals, 'allocation', fn($join) => $join->on('allocation.booking_payment_schedule_id', '=', 'schedule.id'))
             ->selectRaw('attribution.collection_sales_profile_id sales_profile_id, COUNT(schedule.id) overdue_count, SUM(schedule.amount - COALESCE(allocation.allocated, 0)) overdue_lkr, MIN(schedule.due_date) oldest_due_date')
-            ->where(fn ($_companyIdScope) => \App\Services\CompanyIdScope::constrain($_companyIdScope, 'attribution.company_id', $companyId))->where(fn($q) => $q->whereNull('schedule.deleted_at')->orWhere('schedule.deleted_at', '>', $cutoff))
+            ->where(fn($q) => $q->whereNull('schedule.deleted_at')->orWhere('schedule.deleted_at', '>', $cutoff))
             ->where('schedule.created_at', '<=', $cutoff)->whereDate('schedule.due_date', '<', $overdueAsOf)
             ->whereRaw('schedule.amount > COALESCE(allocation.allocated, 0)')
             ->groupBy('attribution.collection_sales_profile_id')->get()->keyBy('sales_profile_id');
 
         $rows = $profiles->map(function (SalesProfile $profile) use ($facts, $collectionFacts, $commissionFacts, $breakdowns, $targets, $adjustmentEvidenceIssues, $overdue, $taskFacts, $from, $to, $overdueAsOf, $agingByProfile, $agingSource) {
             $metric = fn(string $type, ?string $classification = null, string $field = 'amount') => (float) ($facts->get($profile->id, collect())->first(fn($fact) => $fact->metric_type === $type && ($classification === null || $fact->business_classification === $classification))?->{$field} ?? 0);
-            $target = $this->proratedTargets($targets->get($profile->id, collect()), (string) $profile->company_id, $from, $to);
+            $target = $this->proratedTargets($targets->get($profile->id, collect()), $from, $to);
             $newTarget = $target['new_sales']['amount_lkr'];
             $collectionTarget = $target['eligible_collections']['amount_lkr'];
             $newSales = $metric('new_sales', 'new_business');
@@ -1270,7 +1249,7 @@ class SalesPerformanceService
         });
     }
 
-    private function proratedTargets(Collection $targets, string $companyId, string $from, string $to): array
+    private function proratedTargets(Collection $targets, string $from, string $to): array
     {
         $businessTimezone = $this->policySettings->businessTimezone();
         abort_unless(
@@ -1373,7 +1352,7 @@ class SalesPerformanceService
         abort_unless(
             $this->policySettings->featureEnabled('performance_alert_evaluations'),
             409,
-            'Sales performance alert evaluation is not activated for this legal entity.'
+            'Sales performance alert evaluation is not activated for this installation.'
         );
         abort_unless(
             $snapshot->status === 'frozen' && $snapshot->period_type === 'month',
@@ -1386,7 +1365,7 @@ class SalesPerformanceService
             409,
             'The frozen Sales snapshot has no reconciled alert-policy lineage.'
         );
-        $policy = SalesAlertPolicyVersion::query()->whereKey($policyId)->where(fn ($_companyIdScope) => \App\Services\CompanyIdScope::constrain($_companyIdScope, 'company_id', $snapshot->company_id))
+        $policy = SalesAlertPolicyVersion::query()->whereKey($policyId)
             ->whereIn('status', ['approved', 'superseded'])->whereDate('effective_from', '<=', $snapshot->period_start)
             ->where(fn($q) => $q->whereNull('effective_until')->orWhere('effective_until', '>=', $snapshot->period_end))->first();
         abort_unless(
@@ -1395,8 +1374,8 @@ class SalesPerformanceService
             'The frozen Sales snapshot alert-policy lineage is invalid.'
         );
         $rules = $this->alertPolicyContract->normalize($policy->rules);
-        abort_unless($this->activeAlertOwnerIdentity($snapshot->company_id, $rules['evaluation']['owner_user_id']), 409,
-            'The frozen alert policy owner is no longer an active internal Staff user with an active Staff context in this legal entity.');
+        abort_unless($this->activeAlertOwnerIdentity($rules['evaluation']['owner_user_id']), 409,
+            'The frozen alert policy owner is no longer an active Staff user with an active Staff context.');
         $timezone = $this->policySettings->businessTimezone();
         abort_unless(
             is_string($timezone) && in_array($timezone, \DateTimeZone::listIdentifiers(), true),
@@ -1421,12 +1400,10 @@ class SalesPerformanceService
     public function evaluateSnapshotAlerts(SalesKpiSnapshot $snapshot): object
     {
         return DB::transaction(function () use ($snapshot): object {
-            DB::table('companies')->where('id', $snapshot->company_id)->where('is_active', true)
-                ->whereNull('deleted_at')->lockForUpdate()->firstOrFail();
             $snapshot = SalesKpiSnapshot::query()->with('rows')->lockForUpdate()->findOrFail($snapshot->id);
             $context = $this->alertEvaluationContext($snapshot);
             abort_unless($this->activeAlertOwnerIdentity(
-                $snapshot->company_id, $context['rules']['evaluation']['owner_user_id'], true,
+                $context['rules']['evaluation']['owner_user_id'], true,
             ), 409, 'The alert owner became inactive before evaluation.');
             $policy = $context['policy'];
             $rules = $context['rules'];
@@ -1573,25 +1550,20 @@ class SalesPerformanceService
                 }
                 $declineRule = $rules['decline_against_completed_month_average'];
                 if ($declineRule['enabled']) {
-                    $latestFrozenMonthly = DB::table('sales_kpi_snapshots')
-                        ->selectRaw('company_id, period_start, period_end, MAX(version) latest_version')
-                        ->where(fn ($_companyIdScope) => \App\Services\CompanyIdScope::constrain($_companyIdScope, 'company_id', $snapshot->company_id))->where('status', 'frozen')
-                        ->where('period_type', 'month')->whereDate('period_end', '<', $snapshot->period_start)
-                        ->groupBy('company_id', 'period_start', 'period_end');
+                    $baselineMonths = (int) $declineRule['baseline_months'];
+                    $firstBaselinePeriod = CarbonImmutable::parse($snapshot->period_start)
+                        ->subMonthsNoOverflow($baselineMonths)->startOfMonth()->toDateString();
                     $history = DB::table('sales_kpi_snapshot_rows as row')
                         ->join('sales_kpi_snapshots as snapshot', 'snapshot.id', '=', 'row.snapshot_id')
-                        ->joinSub($latestFrozenMonthly, 'latest', function ($join) {
-                            $join->where(fn ($sameCompany) => \App\Services\CompanyIdScope::sameCompany($sameCompany, 'latest.company_id', 'snapshot.company_id'))
-                                ->on('latest.period_start', '=', 'snapshot.period_start')
-                                ->on('latest.period_end', '=', 'snapshot.period_end')
-                                ->on('latest.latest_version', '=', 'snapshot.version');
-                        })
                         ->where('row.sales_profile_id', $row->sales_profile_id)->where('snapshot.status', 'frozen')
                         ->where('snapshot.period_type', 'month')
-                        ->where('row.new_sales_value_state', 'complete')->whereNotNull('row.net_new_sales_lkr')
-                        ->whereDate('snapshot.period_end', '<', $snapshot->period_start)->orderByDesc('snapshot.period_end')
-                        ->limit($declineRule['baseline_months'])->get(['snapshot.period_start', 'snapshot.period_end', 'row.net_new_sales_lkr']);
-                    $expectedPeriods = collect(range(1, $declineRule['baseline_months']))
+                        ->whereDate('snapshot.period_start', '>=', $firstBaselinePeriod)
+                        ->whereDate('snapshot.period_end', '<', $snapshot->period_start)
+                        ->orderByDesc('snapshot.period_end')->orderByDesc('snapshot.generated_at')
+                        ->orderByDesc('snapshot.version')->orderByDesc('snapshot.id')
+                        ->get(['snapshot.period_start', 'snapshot.period_end', 'row.new_sales_value_state', 'row.net_new_sales_lkr'])
+                        ->unique('period_start')->take($baselineMonths)->values();
+                    $expectedPeriods = collect(range(1, $baselineMonths))
                         ->map(fn(int $monthsBack) => CarbonImmutable::parse($snapshot->period_start)
                             ->subMonthsNoOverflow($monthsBack)->startOfMonth()->toDateString());
                     $historyPeriodsComplete = $history->pluck('period_start')
@@ -1599,15 +1571,17 @@ class SalesPerformanceService
                         ->values()->all() === $expectedPeriods->all();
                     if (
                         ($metrics['new_sales_value_state'] ?? 'incomplete') !== 'complete'
-                        || $row->net_new_sales_lkr === null || $history->count() !== $declineRule['baseline_months']
+                        || $row->net_new_sales_lkr === null || $history->count() !== $baselineMonths
                         || !$historyPeriodsComplete
+                        || $history->contains(fn ($month) => $month->new_sales_value_state !== 'complete'
+                            || $month->net_new_sales_lkr === null)
                     ) {
                         $suppressed[] = [
                             'sales_profile_id' => $row->sales_profile_id,
                             'rule' => 'new_sales_decline',
                             'reason' => 'completed_month_baseline_incomplete',
                             'available_months' => $history->count(),
-                            'required_months' => $declineRule['baseline_months']
+                            'required_months' => $baselineMonths
                         ];
                     } else {
                         $average = (float) $history->avg('net_new_sales_lkr');
@@ -1641,7 +1615,6 @@ class SalesPerformanceService
                         ->whereNull('evaluation_checksum')->exists();
                     abort_if($legacy, 409, 'A pre-governance alert requires reviewed disposition before evaluation.');
                     $alert = SalesPerformanceAlert::firstOrCreate(['deduplication_key' => $deduplicationKey], [
-                        'company_id' => $snapshot->company_id,
                         'sales_profile_id' => $row->sales_profile_id,
                         'snapshot_id' => $snapshot->id,
                         'policy_version_id' => $policy->id,
@@ -1681,7 +1654,6 @@ class SalesPerformanceService
             $now = now();
             DB::table('sales_alert_evaluation_runs')->insert([
                 'id' => $runId,
-                'company_id' => $snapshot->company_id,
                 'snapshot_id' => $snapshot->id,
                 'policy_version_id' => $policy->id,
                 'scheduled_for' => $dueAt,
@@ -1698,7 +1670,6 @@ class SalesPerformanceService
             ]);
             $this->events->record(
                 'sales',
-                $snapshot->company_id,
                 'sales_alert_evaluation',
                 $runId,
                 'sales.performance.alerts_evaluated',

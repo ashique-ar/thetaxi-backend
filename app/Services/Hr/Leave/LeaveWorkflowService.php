@@ -82,7 +82,7 @@ class LeaveWorkflowService
             
             $row = DB::table('hr_leave_requests')->where('id', $requestId)->lockForUpdate()->first();
             abort_unless($row, 404);
-            $this->assertRequestCompany($row);
+            $this->assertRequestReferences($row);
             abort_if($row->requested_by === $actorUserId, 409, 'The leave requester cannot decide the same request.');
             abort_unless(in_array($action, ['approve', 'reject'], true), 422, 'Unsupported leave decision.');
             if ($this->isDecisionReplay($row, $action, $reason, $actorUserId, $actorStaffId)) return $row;
@@ -141,7 +141,7 @@ class LeaveWorkflowService
         return DB::transaction(function () use ($requestId, $reason, $actorUserId) {
             $row = DB::table('hr_leave_requests')->where('id', $requestId)->lockForUpdate()->first();
             abort_unless($row, 404);
-            $this->assertRequestCompany($row);
+            $this->assertRequestReferences($row);
             abort_unless(in_array($row->status, ['pending_approval', 'approved'], true), 409, 'This leave request cannot be cancelled.');
             abort_if($row->recalled_at !== null, 409, 'This leave request was already recalled; the recalled portion cannot also be cancelled.');
             $locked = DB::table('hr_attendance_periods')->where('status', 'locked')->whereDate('period_start', '<=', $row->end_date)->whereDate('period_end', '>=', $row->start_date)->exists();
@@ -177,7 +177,7 @@ class LeaveWorkflowService
         return DB::transaction(function () use ($requestId, $actualReturnDate, $notes, $actorUserId) {
             $row = DB::table('hr_leave_requests')->where('id', $requestId)->lockForUpdate()->first();
             abort_unless($row, 404);
-            $this->assertRequestCompany($row);
+            $this->assertRequestReferences($row);
             abort_unless($row->status === 'approved', 409, 'Only an approved leave request can confirm a return to work.');
             abort_if($row->actual_return_date !== null, 409, 'A return to work was already confirmed for this request.');
             abort_if($row->recalled_at !== null, 409, 'This leave request was already recalled; it cannot also confirm a self-reported return.');
@@ -217,7 +217,7 @@ class LeaveWorkflowService
         return DB::transaction(function () use ($requestId, $newEndDate, $reason, $actorUserId) {
             $row = DB::table('hr_leave_requests')->where('id', $requestId)->lockForUpdate()->first();
             abort_unless($row, 404);
-            $this->assertRequestCompany($row);
+            $this->assertRequestReferences($row);
             $priorExtension = DB::table('hr_leave_request_events')->where('leave_request_id', $row->id)
                 ->where('event_type', 'extended')->get(['actor_user_id', 'reason', 'snapshot'])
                 ->first(fn ($event) => (json_decode($event->snapshot, true)['extended_to'] ?? null) === $newEndDate);
@@ -279,7 +279,7 @@ class LeaveWorkflowService
         return DB::transaction(function () use ($requestId, $recallDate, $reason, $actorUserId) {
             $row = DB::table('hr_leave_requests')->where('id', $requestId)->lockForUpdate()->first();
             abort_unless($row, 404);
-            $this->assertRequestCompany($row);
+            $this->assertRequestReferences($row);
             abort_if($row->requested_by === $actorUserId, 403, 'The leave requester cannot recall their own request; recall is an employer-initiated action.');
             abort_unless($row->status === 'approved', 409, 'Only an approved leave request can be recalled.');
             abort_if($row->actual_return_date !== null, 409, 'A return to work was already confirmed for this request.');
@@ -421,7 +421,7 @@ class LeaveWorkflowService
         $payload = compact('staff', 'kind', 'date', 'minutes', 'sourceType', 'sourceId', 'sourceRequestId', 'snapshot');
         return PayrollInputFact::create(['staff_id' => $staff, 'fact_kind' => $kind, 'effective_date' => $date, 'quantity_minutes' => $minutes, 'source_type' => $sourceType, 'source_id' => $sourceId, 'status' => 'staged', 'source_snapshot' => $snapshot, 'fact_checksum' => hash('sha256', json_encode($payload, JSON_UNESCAPED_SLASHES | JSON_THROW_ON_ERROR)), 'created_by' => $actor]);
     }
-    private function assertRequestCompany(object $row): void
+    private function assertRequestReferences(object $row): void
     {
         abort_unless(DB::table('staff')->where('id', $row->staff_id)->exists(), 422, 'Leave request Staff does not exist.');
         abort_unless(DB::table('hr_leave_types')->where('id', $row->leave_type_id)->exists(), 422, 'Leave request type does not exist.');

@@ -10,7 +10,7 @@ class BookingPaymentScheduleRule extends BaseModel
 {
 
     protected $fillable = [
-        'company_id', 'booking_id', 'contract_basis', 'frequency', 'frequency_months',
+        'booking_id', 'contract_basis', 'frequency', 'frequency_months',
         'anchor_date', 'source_amount', 'source_currency', 'lkr_amount',
         'is_collection_target_eligible', 'reminder_offset_days', 'horizon_months',
         'status', 'version', 'last_generated_occurrence', 'last_generated_through',

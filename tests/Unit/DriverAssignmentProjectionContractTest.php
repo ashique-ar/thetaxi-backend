@@ -369,7 +369,7 @@ it('projects stable service execution capabilities and blocks self-drive driver 
         ->toBe(['fixed_route', 'open_package']);
 });
 
-it('keeps general corporate passengers distinct from employees and company-scoped', function () {
+it('keeps general corporate passengers distinct from employees and corporate-account-scoped', function () {
     $request = file_get_contents(app_path('Http/Requests/Corporate/StoreCorporateBookingRequest.php'));
     $controller = file_get_contents(app_path('Http/Controllers/Api/Corporate/CorporateBookingController.php'));
     $service = file_get_contents(app_path('Services/CorporateBookingService.php'));

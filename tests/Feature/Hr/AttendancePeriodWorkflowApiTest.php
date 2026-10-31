@@ -3,7 +3,6 @@
 use App\Models\Staff;
 use App\Models\User;
 use App\Models\UserContext;
-use App\Models\Company;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Str;
@@ -12,13 +11,13 @@ use function Pest\Laravel\actingAs;
 
 uses(RefreshDatabase::class);
 
-it('derives the period company, versions transitions, and separates manage from reopen permission', function () {
-    [$admin, $company] = hr_seed_admin_actor([], true);
+it('creates installation-wide periods, versions transitions, and separates manage from reopen permission', function () {
+    [$admin] = hr_seed_admin_actor([], true);
     config(['hr.features.attendance_results' => true]);
     $periodPayload = ['period_start' => '2026-06-01', 'period_end' => '2026-06-30', 'timezone' => 'Asia/Colombo'];
 
     $created = actingAs($admin, 'api')->postJson('/api/hr/attendance/periods', $periodPayload)
-        ->assertCreated()->assertJsonPath('data.company_id', $company->id)->json('data');
+        ->assertCreated()->assertJsonMissingPath('data.company_id')->json('data');
     $periodId = $created['id'];
     $this->assertDatabaseHas('activity_log', ['log_name' => 'hr-attendance', 'description' => 'attendance_period_created']);
     actingAs($admin, 'api')->postJson('/api/hr/attendance/periods', [
@@ -35,10 +34,10 @@ it('derives the period company, versions transitions, and separates manage from 
         'action' => 'lock', 'reason' => 'Reviewer cannot lock own review.', 'expected_version' => 2,
     ])->assertStatus(409);
 
-    $actorWith = function (string $permission) use ($company): User {
+    $actorWith = function (string $permission): User {
         $user = User::factory()->create();
         $user->givePermissionTo($permission);
-        $staff = Staff::factory()->create(['user_id' => $user->id, 'company_id' => $company->id]);
+        $staff = Staff::factory()->create(['user_id' => $user->id]);
         UserContext::create([
             'user_id' => $user->id, 'context_type' => 'staff', 'context_id' => $staff->id,
             'is_active' => true, 'created_user_id' => $user->id,
@@ -46,21 +45,20 @@ it('derives the period company, versions transitions, and separates manage from 
         return $user;
     };
     $manager = $actorWith('hr.attendance.periods.manage');
-    actingAs($manager, 'api')->getJson('/api/hr/attendance/company-options')
-        ->assertOk()->assertJsonPath('data.0.value', $company->id);
+    actingAs($manager, 'api')->getJson('/api/hr/attendance/company-options')->assertNotFound();
     $adminStaff = Staff::query()->where('user_id', $admin->id)->firstOrFail();
     $now = now();
     $resultId = (string) Str::uuid();
     $exceptionId = (string) Str::uuid();
     DB::table('hr_attendance_daily_results')->insert([
-        'id' => $resultId, 'company_id' => $company->id, 'staff_id' => $adminStaff->id, 'work_date' => '2026-06-15',
+        'id' => $resultId, 'staff_id' => $adminStaff->id, 'work_date' => '2026-06-15',
         'result_version' => 1, 'period_id' => $periodId, 'day_status' => 'absent', 'worked_minutes' => 0,
         'late_minutes' => 0, 'early_leave_minutes' => 0, 'payable_minutes' => 0, 'source_kind' => 'calculated',
         'calculated_at' => $now, 'input_checksum' => str_repeat('a', 64), 'result_checksum' => str_repeat('b', 64),
         'rule_snapshot' => json_encode([], JSON_THROW_ON_ERROR), 'created_at' => $now, 'updated_at' => $now,
     ]);
     DB::table('hr_attendance_exceptions')->insert([
-        'id' => $exceptionId, 'company_id' => $company->id, 'staff_id' => $adminStaff->id, 'daily_result_id' => $resultId,
+        'id' => $exceptionId, 'staff_id' => $adminStaff->id, 'daily_result_id' => $resultId,
         'exception_type' => 'absent', 'severity' => 'high', 'status' => 'open', 'evidence' => json_encode(['day_status' => 'absent'], JSON_THROW_ON_ERROR),
         'created_at' => $now, 'updated_at' => $now,
     ]);
@@ -71,27 +69,26 @@ it('derives the period company, versions transitions, and separates manage from 
         'resolution_note' => 'Reviewed source evidence.',
     ])->assertOk();
 
-    $otherCompany = Company::create(['name' => 'Foreign attendance result company']);
-    $otherStaff = Staff::factory()->create(['company_id' => $otherCompany->id]);
+    $otherStaff = Staff::factory()->create();
     $otherResultId = (string) Str::uuid();
     DB::table('hr_attendance_daily_results')->insert([
-        'id' => $otherResultId, 'company_id' => $otherCompany->id, 'staff_id' => $otherStaff->id, 'work_date' => '2026-06-15',
+        'id' => $otherResultId, 'staff_id' => $otherStaff->id, 'work_date' => '2026-06-15',
         'result_version' => 1, 'day_status' => 'absent', 'worked_minutes' => 0, 'late_minutes' => 0, 'early_leave_minutes' => 0,
         'payable_minutes' => 0, 'source_kind' => 'calculated', 'calculated_at' => $now, 'input_checksum' => str_repeat('c', 64),
         'result_checksum' => str_repeat('d', 64), 'rule_snapshot' => json_encode([], JSON_THROW_ON_ERROR), 'created_at' => $now, 'updated_at' => $now,
     ]);
     DB::table('hr_attendance_daily_results')->insert([
-        'id' => (string) Str::uuid(), 'company_id' => $otherCompany->id, 'staff_id' => $adminStaff->id, 'work_date' => '2026-06-15',
+        'id' => (string) Str::uuid(), 'staff_id' => $adminStaff->id, 'work_date' => '2026-06-15',
         'result_version' => 2, 'day_status' => 'present', 'worked_minutes' => 480, 'late_minutes' => 0, 'early_leave_minutes' => 0,
         'payable_minutes' => 480, 'source_kind' => 'calculated', 'calculated_at' => $now, 'input_checksum' => str_repeat('e', 64),
         'result_checksum' => str_repeat('f', 64), 'rule_snapshot' => json_encode([], JSON_THROW_ON_ERROR), 'created_at' => $now, 'updated_at' => $now,
     ]);
-    actingAs($admin, 'api')->getJson('/api/hr/attendance/results?company_id='.$company->id.'&from=2026-06-15&to=2026-06-15')
+    actingAs($admin, 'api')->getJson('/api/hr/attendance/results?staff_id='.$adminStaff->id.'&from=2026-06-15&to=2026-06-15')
         ->assertOk()->assertJsonPath('data.data.0.staff_code', $adminStaff->code)
-        ->assertJsonPath('data.data.0.day_status', 'absent');
+        ->assertJsonPath('data.data.0.day_status', 'present');
     $mismatchedExceptionId = (string) Str::uuid();
     DB::table('hr_attendance_exceptions')->insert([
-        'id' => $mismatchedExceptionId, 'company_id' => $company->id, 'staff_id' => $adminStaff->id, 'daily_result_id' => $otherResultId,
+        'id' => $mismatchedExceptionId, 'staff_id' => $adminStaff->id, 'daily_result_id' => $otherResultId,
         'exception_type' => 'absent', 'severity' => 'high', 'status' => 'open', 'evidence' => json_encode(['day_status' => 'absent'], JSON_THROW_ON_ERROR),
         'created_at' => $now, 'updated_at' => $now,
     ]);

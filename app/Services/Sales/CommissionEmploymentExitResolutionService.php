@@ -23,13 +23,12 @@ class CommissionEmploymentExitResolutionService
 
         return DB::transaction(function () use ($decision) {
             $decision = SalesCommissionDecision::query()->lockForUpdate()->findOrFail($decision->id);
-            $decision->company_id ??= \App\Services\CompanyIdScope::defaultCompanyId();
             $existing = SalesCommissionHoldResolution::query()
                 ->where('commission_decision_id', $decision->id)->first();
             if ($existing) return $existing;
             if ($decision->hold_code !== 'employment_inactive'
                 || ! in_array($decision->status, ['held', 'shadow_held'], true)
-                || ! $decision->company_id || ! $decision->beneficiary_staff_id) {
+                || ! $decision->beneficiary_staff_id) {
                 return null;
             }
             if ($decision->holdRelease()->exists() || $decision->holdAdjustment()->exists()) {
@@ -38,8 +37,8 @@ class CommissionEmploymentExitResolutionService
 
             $receipt = BookingPaymentReceipt::query()->lockForUpdate()->find($decision->receipt_id);
             $staff = Staff::query()->withTrashed()->lockForUpdate()->find($decision->beneficiary_staff_id);
-            if (! $receipt || ! $staff || !\App\Services\CompanyIdScope::sameCompanyId((string) ($receipt->company_id), (string) ($decision->company_id))
-                || !\App\Services\CompanyIdScope::sameCompanyId((string) ($staff->company_id), (string) ($decision->company_id)) || ! $staff->employment_ended_at
+            if (! $receipt || ! $staff
+                || ! $staff->employment_ended_at
                 || ! $staff->terminated_by || $staff->employment_ended_at->gt($receipt->received_at)) {
                 return null;
             }
@@ -48,7 +47,6 @@ class CommissionEmploymentExitResolutionService
                 'commission_decision_id' => $decision->id,
                 'commission_decision_version' => $decision->event_version,
                 'original_hold_code' => $decision->hold_code,
-                'company_id' => $decision->company_id,
                 'booking_id' => $decision->booking_id,
                 'receipt_id' => $receipt->id,
                 'receipt_component_id' => $decision->receipt_component_id,
@@ -73,7 +71,6 @@ class CommissionEmploymentExitResolutionService
             ]));
 
             $resolution = SalesCommissionHoldResolution::create([
-                'company_id' => $decision->company_id,
                 'commission_decision_id' => $decision->id,
                 'receipt_finality_event_id' => null,
                 'employment_staff_id' => $staff->id,
@@ -90,7 +87,7 @@ class CommissionEmploymentExitResolutionService
                 'request_payload_checksum' => $requestChecksum,
             ]);
 
-            $this->events->record('sales', $resolution->company_id, 'commission_hold_resolution', $resolution->id,
+            $this->events->record('sales', 'commission_hold_resolution', $resolution->id,
                 'sales.commission.hold_resolved_without_entitlement', 1, 1, [
                     'commission_decision_id' => $decision->id,
                     'employment_staff_id' => $staff->id,

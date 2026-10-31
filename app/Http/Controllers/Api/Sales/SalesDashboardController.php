@@ -13,8 +13,6 @@ use App\Services\Sales\SalesMetricBreakdownService;
 use App\Services\Sales\SalesPolicySettingsService;
 use App\Services\Sales\SalesPerformanceService;
 use App\Services\Sales\SalesPortfolioStatusService;
-use App\Services\CompanySettingsAccessService;
-use App\Services\WebsiteSettingsService;
 use App\Support\Foundation\CanonicalJson;
 use Carbon\CarbonImmutable;
 use Illuminate\Database\Query\Builder;
@@ -22,6 +20,7 @@ use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Collection;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Str;
 use Illuminate\Validation\Rule;
 
 class SalesDashboardController extends Controller
@@ -38,7 +37,7 @@ class SalesDashboardController extends Controller
     public function show(Request $request, SalesPerformanceService $performance): JsonResponse
     {
         $data = $request->validate([
-            'company_id' => ['nullable', 'uuid', 'exists:companies,id'], 'from' => ['required', 'date'],
+            'from' => ['required', 'date'],
             'to' => ['required', 'date', 'after_or_equal:from'], 'include_resolved_alerts' => ['nullable', 'boolean'],
             'ranking_page' => ['nullable', 'integer', 'min:1'],
             'ranking_per_page' => ['nullable', 'integer', 'min:1', 'max:100'],
@@ -51,24 +50,16 @@ class SalesDashboardController extends Controller
         ]);
         /** @var SalesProfile|null $selectedProfile */
         $selectedProfile = $request->attributes->get('sales_dashboard_profile');
-        $companyId = $selectedProfile?->company_id ?? $this->resolveCompanyId($data['company_id'] ?? null);
         $ids = $this->scope->profileIds(
-            $request->user(), 'sales.performance.view-all', 'sales.performance.view-team', $companyId,
+            $request->user(), 'sales.performance.view-all', 'sales.performance.view-team',
         );
-        $companyWide = $ids === null && $selectedProfile === null;
-        abort_unless(DB::table('companies')->where('id', $companyId)->whereNull('deleted_at')->exists(), 422, 'Select an available legal entity.');
-        abort_if($selectedProfile && isset($data['company_id']) && !\App\Services\CompanyIdScope::sameCompanyId((string) ($data['company_id']), (string) ($selectedProfile->company_id)),
-            422, 'The requested legal entity does not match the selected Staff Sales Profile.');
-        $data['company_id'] = (string) $companyId;
         if ($selectedProfile) $ids = [$selectedProfile->id];
-        elseif ($ids === null) $ids = SalesProfile::query()->where(fn ($_companyIdScope) => \App\Services\CompanyIdScope::constrain($_companyIdScope, 'company_id', $companyId))->pluck('id')->all();
-        else {
-            $ids = SalesProfile::query()->whereIn('id', $ids)->where(fn ($_companyIdScope) => \App\Services\CompanyIdScope::constrain($_companyIdScope, 'company_id', $companyId))->pluck('id')->all();
-            abort_if(empty($ids), 403, 'Dashboard legal entity is outside your Sales scope.');
-        }
+        elseif ($ids === null) $ids = SalesProfile::query()->pluck('id')->all();
+        else $ids = SalesProfile::query()->whereIn('id', $ids)->pluck('id')->all();
+        abort_if($ids === [], 403, 'Dashboard is outside your Sales scope.');
 
         $asOf = now();
-        $preview = $performance->preview($companyId, $data['from'], $data['to'], $asOf);
+        $preview = $performance->preview($data['from'], $data['to'], $asOf);
         $allRows = collect($preview['rows'])->whereIn('sales_profile_id', $ids)->values();
         $summaryFields = ['new_sales_lkr', 'gross_new_sales_lkr', 'new_sales_adjustment_lkr', 'net_new_sales_lkr',
             'new_booking_collections_lkr', 'existing_booking_collections_lkr',
@@ -87,11 +78,9 @@ class SalesDashboardController extends Controller
             $summary['new_sales_adjustment_lkr'] = null;
             $summary['net_new_sales_lkr'] = null;
         }
-        $commissionStatus = $this->commissionStatuses->source(
-            $companyId, $ids, $data['from'], $data['to'],
-        );
+        $commissionStatus = $this->commissionStatuses->source($ids, $data['from'], $data['to']);
         $summary = [...$summary, ...$commissionStatus['summary']];
-        $agingStatus = $this->collectionAging->source($companyId, $ids, $data['from'], $data['to']);
+        $agingStatus = $this->collectionAging->source($ids, $data['from'], $data['to']);
         $summary = [...$summary, ...$agingStatus['summary']];
         foreach ([
             'collection_cohort' => ['state' => 'collection_cohort_state', 'missing' => 'collection_cohort_missing_count',
@@ -141,7 +130,7 @@ class SalesDashboardController extends Controller
                 SUM(CASE WHEN expected_value_lkr IS NULL THEN 1 ELSE 0 END) missing_lkr_count,
                 CASE WHEN COUNT(expected_value_lkr) = COUNT(*) THEN COALESCE(SUM(expected_value_lkr),0) ELSE NULL END expected_lkr,
                 CASE WHEN COUNT(expected_value_lkr) = COUNT(*) THEN COALESCE(SUM(expected_value_lkr * probability_percent / 100),0) ELSE NULL END weighted_lkr")
-            ->where(fn ($_companyIdScope) => \App\Services\CompanyIdScope::constrain($_companyIdScope, 'company_id', $companyId))->whereIn('owner_sales_profile_id', $ids)
+            ->whereIn('owner_sales_profile_id', $ids)
             ->whereNotIn('stage', ['won', 'lost'])->groupBy('stage')
             ->orderByRaw("CASE stage WHEN 'new' THEN 1 WHEN 'contacted' THEN 2 WHEN 'qualified' THEN 3 WHEN 'quotation' THEN 4 WHEN 'negotiation' THEN 5 ELSE 6 END")
             ->orderBy('stage')->get();
@@ -150,32 +139,54 @@ class SalesDashboardController extends Controller
         $pipeline = $this->paginateCollection(
             $pipelineRows, (int) ($data['pipeline_page'] ?? 1), (int) ($data['pipeline_per_page'] ?? 10),
         );
-        $latestFrozenMonthly = DB::table('sales_kpi_snapshots')
-            ->selectRaw('company_id, period_start, period_end, MAX(version) latest_version')
+        $trendPeriodStarts = DB::table('sales_kpi_snapshots')
             ->where('status', 'frozen')->where('period_type', 'month')
-            ->groupBy('company_id', 'period_start', 'period_end');
-        $trends = DB::table('sales_kpi_snapshot_rows as row')
+            ->whereDate('period_end', '<=', $data['to'])
+            ->select('period_start')->distinct()->orderByDesc('period_start')->limit(24)->pluck('period_start');
+        $trendCandidates = DB::table('sales_kpi_snapshot_rows as row')
             ->join('sales_kpi_snapshots as snapshot', 'snapshot.id', '=', 'row.snapshot_id')
-            ->joinSub($latestFrozenMonthly, 'latest', function ($join) {
-                $join->where(fn ($sameCompany) => \App\Services\CompanyIdScope::sameCompany($sameCompany, 'latest.company_id', 'snapshot.company_id'))
-                    ->on('latest.period_start', '=', 'snapshot.period_start')
-                    ->on('latest.period_end', '=', 'snapshot.period_end')
-                    ->on('latest.latest_version', '=', 'snapshot.version');
-            })
-            ->selectRaw('snapshot.id snapshot_id, snapshot.version snapshot_version, snapshot.period_start, snapshot.period_end, snapshot.cutoff_at, snapshot.snapshot_checksum, SUM(row.gross_new_sales_lkr) gross_new_sales_lkr, SUM(row.new_sales_adjustment_lkr) new_sales_adjustment_lkr, SUM(row.net_new_sales_lkr) net_new_sales_lkr, COUNT(*) new_sales_row_count, COUNT(row.net_new_sales_lkr) net_new_sales_row_count, SUM(row.eligible_collections_lkr) eligible_collections_lkr, SUM(row.commission_new_business_lkr + row.commission_existing_business_lkr) commission_lkr')
-            ->where(fn ($_companyIdScope) => \App\Services\CompanyIdScope::constrain($_companyIdScope, 'snapshot.company_id', $companyId))->where('snapshot.status', 'frozen')->whereIn('row.sales_profile_id', $ids)
+            ->where('snapshot.status', 'frozen')->where('snapshot.period_type', 'month')->whereIn('row.sales_profile_id', $ids)
+            ->whereIn('snapshot.period_start', $trendPeriodStarts)
             ->whereDate('snapshot.period_end', '<=', $data['to'])
-            ->groupBy('snapshot.id', 'snapshot.version', 'snapshot.period_start', 'snapshot.period_end',
-                'snapshot.cutoff_at', 'snapshot.snapshot_checksum')
-            ->orderByDesc('snapshot.period_end')->orderByDesc('snapshot.version')->limit(24)->get()
-            ->sortBy([['period_end', 'asc'], ['snapshot_version', 'asc']])->values();
-        $trendRows = DB::table('sales_kpi_snapshot_rows')->whereIn('snapshot_id', $trends->pluck('snapshot_id'))
-            ->whereIn('sales_profile_id', $ids)->get(['snapshot_id', 'sales_profile_id', 'metric_snapshot'])->groupBy('snapshot_id');
-        $trends = $trends->map(function ($trend) use ($trendRows) {
-            $rows = $trendRows->get($trend->snapshot_id, collect());
-            $snapshots = $rows->map(fn ($row) => is_string($row->metric_snapshot)
+            ->orderByDesc('snapshot.period_end')->orderByDesc('snapshot.generated_at')
+            ->orderByDesc('snapshot.version')->orderByDesc('snapshot.id')
+            ->get([
+                'snapshot.id as snapshot_id', 'snapshot.version as snapshot_version',
+                'snapshot.period_start', 'snapshot.period_end', 'snapshot.cutoff_at', 'snapshot.snapshot_checksum',
+                'snapshot.generated_at', 'row.sales_profile_id', 'row.staff_code', 'row.gross_new_sales_lkr',
+                'row.new_sales_adjustment_lkr', 'row.net_new_sales_lkr', 'row.eligible_collections_lkr',
+                'row.commission_new_business_lkr', 'row.commission_existing_business_lkr', 'row.metric_snapshot',
+            ])
+            ->unique(fn ($row) => $row->period_start.'|'.$row->period_end.'|'.$row->sales_profile_id)
+            ->groupBy(fn ($row) => $row->period_start.'|'.$row->period_end)
+            ->map(function (Collection $rows) {
+                $snapshotIds = $rows->pluck('snapshot_id')->unique()->sort()->values();
+                $checksums = $rows->pluck('snapshot_checksum')->unique()->sort()->values();
+                $snapshots = $rows->map(fn ($row) => is_string($row->metric_snapshot)
                 ? (json_decode($row->metric_snapshot, true) ?: []) : ((array) $row->metric_snapshot));
-            $trend->scope_profile_ids = $rows->pluck('sales_profile_id')->sort()->values()->all();
+                $trend = (object) [
+                    'snapshot_id' => $snapshotIds->implode(','),
+                    'snapshot_version' => (int) $rows->max('snapshot_version'),
+                    'period_start' => $rows->first()->period_start,
+                    'period_end' => $rows->first()->period_end,
+                    'cutoff_at' => $rows->max('cutoff_at'),
+                    'snapshot_checksum' => hash('sha256', $checksums->implode('|')),
+                    'gross_new_sales_lkr' => (float) $rows->sum('gross_new_sales_lkr'),
+                    'new_sales_adjustment_lkr' => (float) $rows->sum('new_sales_adjustment_lkr'),
+                    'net_new_sales_lkr' => (float) $rows->sum('net_new_sales_lkr'),
+                    'new_sales_row_count' => $rows->count(),
+                    'net_new_sales_row_count' => $rows->whereNotNull('net_new_sales_lkr')->count(),
+                    'eligible_collections_lkr' => (float) $rows->sum('eligible_collections_lkr'),
+                    'commission_lkr' => (float) $rows->sum(fn ($row) =>
+                        (float) $row->commission_new_business_lkr + (float) $row->commission_existing_business_lkr),
+                    'metric_snapshots' => $snapshots,
+                    'scope_profile_ids' => $rows->pluck('sales_profile_id')->sort()->values()->all(),
+                ];
+                return $trend;
+            })
+            ->sortByDesc('period_end')->take(24)->sortBy('period_end')->values();
+        $trends = $trends->map(function ($trend) {
+            $snapshots = $trend->metric_snapshots;
             $trend->new_sales_value_state = (int) $trend->new_sales_row_count > 0
                 && (int) $trend->new_sales_row_count === (int) $trend->net_new_sales_row_count
                 ? 'complete' : 'incomplete';
@@ -272,6 +283,7 @@ class SalesDashboardController extends Controller
                 $trend->{$key.'_achievement_percent'} = $actualComplete && $target !== null && $target > 0
                     ? round(((float) $trend->{$definition['actual']}) / $target * 100, 4) : null;
             }
+            unset($trend->metric_snapshots);
 
             return $trend;
         });
@@ -324,12 +336,11 @@ class SalesDashboardController extends Controller
                 'attribution.collection_sales_profile_id'],
             (int) ($data['dues_page'] ?? 1), (int) ($data['dues_per_page'] ?? 10));
         $quality = [
-            'held_attributions' => SalesBookingAttribution::query()->where(fn ($_companyIdScope) => \App\Services\CompanyIdScope::constrain($_companyIdScope, 'company_id', $companyId))->where('status', 'held')->where(fn ($q) => $q->whereIn('acquisition_sales_profile_id', $ids)->orWhereIn('collection_sales_profile_id', $ids))->count(),
-            'held_commission_decisions' => DB::table('sales_commission_decisions')->where(fn ($_companyIdScope) => \App\Services\CompanyIdScope::constrain($_companyIdScope, 'company_id', $companyId))->whereIn('beneficiary_sales_profile_id', $ids)->whereIn('status', ['held', 'shadow_held'])->count(),
-            'metric_freshness_at' => DB::table('sales_metric_facts')->where(fn ($_companyIdScope) => \App\Services\CompanyIdScope::constrain($_companyIdScope, 'company_id', $companyId))->whereIn('sales_profile_id', $ids)->max('created_at'),
-            'latest_alert_suppressed_rule_count' => $companyWide
-                ? DB::table('sales_alert_evaluation_runs')->where(fn ($_companyIdScope) => \App\Services\CompanyIdScope::constrain($_companyIdScope, 'company_id', $companyId))->latest('evaluated_at')->value('suppressed_rule_count')
-                : null,
+            'held_attributions' => SalesBookingAttribution::query()->where('status', 'held')->where(fn ($q) => $q->whereIn('acquisition_sales_profile_id', $ids)->orWhereIn('collection_sales_profile_id', $ids))->count(),
+            'held_commission_decisions' => DB::table('sales_commission_decisions')->whereIn('beneficiary_sales_profile_id', $ids)->whereIn('status', ['held', 'shadow_held'])->count(),
+            'metric_freshness_at' => DB::table('sales_metric_facts')->whereIn('sales_profile_id', $ids)->max('created_at'),
+            'latest_alert_suppressed_rule_count' => DB::table('sales_alert_evaluation_runs')
+                ->latest('evaluated_at')->value('suppressed_rule_count'),
         ];
         $alertEvidenceEnabled = true;
         $alertEvaluationsEnabled = $this->policySettings->featureEnabled('performance_alert_evaluations');
@@ -348,9 +359,9 @@ class SalesDashboardController extends Controller
             ->join('staff', 'staff.id', '=', 'profile.staff_id')
             ->leftJoin('staff as owner_staff', function ($join) {
                 $join->on('owner_staff.user_id', '=', 'alert.assigned_to')
-                    ->where(fn ($sameCompany) => \App\Services\CompanyIdScope::sameCompany($sameCompany, 'owner_staff.company_id', 'alert.company_id'))->whereNull('owner_staff.deleted_at');
+                    ->whereNull('owner_staff.deleted_at');
             })
-            ->where(fn ($_companyIdScope) => \App\Services\CompanyIdScope::constrain($_companyIdScope, 'alert.company_id', $companyId))->whereIn('alert.sales_profile_id', $ids)
+            ->whereIn('alert.sales_profile_id', $ids)
             ->where('alert_snapshot.status', 'frozen')
             ->whereIn('alert.status', ($data['include_resolved_alerts'] ?? false) ? ['open', 'acknowledged', 'resolved'] : ['open', 'acknowledged'])
             ->orderByRaw("CASE alert.severity WHEN 'high' THEN 1 WHEN 'medium' THEN 2 ELSE 3 END")
@@ -369,8 +380,7 @@ class SalesDashboardController extends Controller
         return response()->json(['status' => 'success', 'data' => ['period' => $data,
             'as_of' => $asOf->toIso8601String(), 'summary' => $summary, 'ranking_policy' => $preview['ranking_policy'],
             'rows' => $ranking, 'pipeline' => $pipeline, 'trends' => $trends,
-            'drilldown_scope' => ['company_id' => $companyId,
-                'sales_profile_id' => $selectedProfile?->id, 'currency' => 'LKR'],
+            'drilldown_scope' => ['sales_profile_id' => $selectedProfile?->id, 'currency' => 'LKR'],
             'upcoming_collections' => $upcoming, 'alerts' => $alerts,
             'alert_evaluations_enabled' => $alertEvaluationsEnabled,
             'alert_actions_enabled' => $alertActionsEnabled, 'data_quality' => $quality,
@@ -381,19 +391,17 @@ class SalesDashboardController extends Controller
     public function collectionAging(Request $request): JsonResponse
     {
         $data = $request->validate([
-            'company_id' => ['nullable', 'uuid', 'exists:companies,id'],
             'from' => ['required', 'date'], 'to' => ['required', 'date', 'after_or_equal:from'],
             'bucket' => ['nullable', Rule::in(['not_due', 'due_today', '1_30', '31_60', '61_90', '91_plus'])],
             'sales_profile_id' => ['nullable', 'uuid'],
             'page' => ['nullable', 'integer', 'min:1'], 'per_page' => ['nullable', 'integer', 'min:1', 'max:100'],
         ]);
-        $data['company_id'] = $this->resolveCompanyId($data['company_id'] ?? null);
         $authorizedIds = $this->dashboardProfileIds(
-            $request, $data['company_id'], $data['sales_profile_id'] ?? null,
+            $request, $data['sales_profile_id'] ?? null,
             'Collection aging evidence is outside your current Sales scope.',
         );
         $source = $this->collectionAging->source(
-            $data['company_id'], $authorizedIds, $data['from'], $data['to'],
+            $authorizedIds, $data['from'], $data['to'],
         );
         abort_if($source['stock_state'] !== 'current', 409,
             'Historical collection aging reconstruction is unavailable; select a range containing the current business date.');
@@ -401,8 +409,7 @@ class SalesDashboardController extends Controller
             ? $source['rows']->where('aging_bucket', $data['bucket'])->values() : $source['rows'];
 
         return response()->json(['status' => 'success', 'data' => [
-            'scope' => ['company_id' => $data['company_id'],
-                'sales_profile_id' => $data['sales_profile_id'] ?? null],
+            'scope' => ['sales_profile_id' => $data['sales_profile_id'] ?? null],
             'period' => ['from' => $data['from'], 'to' => $data['to']],
             'as_of' => $source['as_of'], 'timezone' => $source['timezone'],
             'stock_state' => $source['stock_state'], 'definition' => $source['definition'],
@@ -417,21 +424,17 @@ class SalesDashboardController extends Controller
     public function commissionStatus(Request $request): JsonResponse
     {
         $data = $request->validate([
-            'company_id' => ['nullable', 'uuid', 'exists:companies,id'],
             'from' => ['required', 'date'], 'to' => ['required', 'date', 'after_or_equal:from'],
             'status' => ['required', Rule::in(['pending', 'held', 'approved', 'paid'])],
             'sales_profile_id' => ['nullable', 'uuid'],
             'page' => ['nullable', 'integer', 'min:1'],
             'per_page' => ['nullable', 'integer', 'min:1', 'max:100'],
         ]);
-        $data['company_id'] = $this->resolveCompanyId($data['company_id'] ?? null);
         $authorizedIds = $this->dashboardProfileIds(
-            $request, $data['company_id'], $data['sales_profile_id'] ?? null,
+            $request, $data['sales_profile_id'] ?? null,
             'Commission status evidence is outside your current Sales scope.',
         );
-        $source = $this->commissionStatuses->source(
-            $data['company_id'], $authorizedIds, $data['from'], $data['to'],
-        );
+        $source = $this->commissionStatuses->source($authorizedIds, $data['from'], $data['to']);
         abort_if($data['status'] !== 'paid' && $source['stock_state'] !== 'current', 409,
             'Historical commission stock reconstruction is unavailable; select a range containing the current business date.');
         $summaryFields = [
@@ -442,8 +445,7 @@ class SalesDashboardController extends Controller
         ][$data['status']];
 
         return response()->json(['status' => 'success', 'data' => [
-            'scope' => ['company_id' => $data['company_id'],
-                'sales_profile_id' => $data['sales_profile_id'] ?? null, 'currency' => 'LKR'],
+            'scope' => ['sales_profile_id' => $data['sales_profile_id'] ?? null, 'currency' => 'LKR'],
             'period' => ['from' => $data['from'], 'to' => $data['to']],
             'as_of' => $source['as_of'], 'stock_state' => $source['stock_state'],
             'definition' => $source['definitions'][$data['status']],
@@ -489,12 +491,15 @@ class SalesDashboardController extends Controller
             'Frozen trend snapshots expose cohort and category as independent marginal totals, not an invented cross-tab.');
         $classification = $data['metric'] === 'new_sales' ? 'new_business' : null;
 
-        $frozen = DB::table('sales_kpi_snapshots')->where('id', $snapshot)->where('status', 'frozen')->first();
-        abort_unless($frozen, 404, 'Frozen Sales trend snapshot not found.');
+        $frozenSnapshots = $this->trendSnapshotGroup($snapshot, 'Frozen Sales trend snapshot not found.');
+        $frozen = $frozenSnapshots->first();
         $authorizedIds = $this->dashboardProfileIds(
-            $request, $frozen->company_id, $data['sales_profile_id'] ?? null,
+            $request, $data['sales_profile_id'] ?? null,
             'Frozen Sales trend snapshot not found.',
         );
+        $frozenRows = $this->latestTrendSnapshotRows($frozenSnapshots, $authorizedIds);
+        $profileIdsByCutoff = $frozenRows->groupBy('snapshot_cutoff_at')
+            ->map(fn (Collection $rows) => $rows->pluck('sales_profile_id')->all());
 
         $metricTypes = match ($data['metric']) {
             'new_sales' => ['new_sales', 'new_sales_adjustment'],
@@ -504,10 +509,21 @@ class SalesDashboardController extends Controller
         $facts = DB::table('sales_metric_facts as fact')
             ->join('sales_profiles as profile', 'profile.id', '=', 'fact.sales_profile_id')
             ->join('staff', 'staff.id', '=', 'profile.staff_id')
-            ->where(fn ($_companyIdScope) => \App\Services\CompanyIdScope::constrain($_companyIdScope, 'fact.company_id', $frozen->company_id))->whereIn('fact.sales_profile_id', $authorizedIds)
+            ->whereIn('fact.sales_profile_id', $authorizedIds)
             ->whereIn('fact.metric_type', $metricTypes)
             ->whereBetween('fact.occurred_on', [$frozen->period_start, $frozen->period_end])
-            ->where('fact.occurred_at', '<=', $frozen->cutoff_at)
+            ->where(function ($query) use ($profileIdsByCutoff): void {
+                if ($profileIdsByCutoff->isEmpty()) {
+                    $query->whereRaw('1 = 0');
+
+                    return;
+                }
+                foreach ($profileIdsByCutoff as $cutoffAt => $profileIds) {
+                    $query->orWhere(fn ($profileQuery) => $profileQuery
+                        ->whereIn('fact.sales_profile_id', $profileIds)
+                        ->where('fact.occurred_at', '<=', $cutoffAt));
+                }
+            })
             ->when($classification,
                 fn ($query, string $classification) => $query->where('fact.business_classification', $classification))
              ->when($classification === null && in_array($data['metric'], ['eligible_collections', 'commission'], true),
@@ -519,7 +535,7 @@ class SalesDashboardController extends Controller
                  'fact.dimensions', 'fact.fact_checksum',
             ]);
         $breakdownByFact = $this->metricBreakdowns->resolve(
-            $facts, $frozen->company_id, $frozen->period_start, $frozen->period_end,
+            $facts, $frozen->period_start, $frozen->period_end,
         );
         $rows = $facts->map(function ($fact) use ($breakdownByFact) {
                  $dimensions = is_string($fact->dimensions)
@@ -546,8 +562,6 @@ class SalesDashboardController extends Controller
             ->values();
         $sourceAmount = (float) $rows->sum(fn ($fact) => (float) $fact->amount_lkr);
         $sourceQuantity = (float) $rows->sum(fn ($fact) => (float) $fact->quantity);
-        $frozenRows = DB::table('sales_kpi_snapshot_rows')->where('snapshot_id', $frozen->id)
-            ->whereIn('sales_profile_id', $authorizedIds)->get();
         $frozenTotals = $this->frozenTrendTotals(
             $frozenRows, $data['metric'],
             $data['collection_cohort'] ?? null, $data['commission_category'] ?? null,
@@ -561,11 +575,8 @@ class SalesDashboardController extends Controller
             || (isset($data['commission_category']) && $categoryMissing > 0)
             || $frozenTotals['state'] !== 'complete';
         return response()->json(['status' => 'success', 'data' => [
-            'snapshot' => ['id' => $frozen->id, 'version' => (int) $frozen->version,
-                'period_start' => $frozen->period_start, 'period_end' => $frozen->period_end,
-                'cutoff_at' => $frozen->cutoff_at, 'snapshot_checksum' => $frozen->snapshot_checksum],
-            'scope' => ['company_id' => $frozen->company_id,
-                'sales_profile_id' => $data['sales_profile_id'] ?? null, 'currency' => 'LKR'],
+            'snapshot' => $this->trendSnapshotPayload($frozenSnapshots),
+            'scope' => ['sales_profile_id' => $data['sales_profile_id'] ?? null, 'currency' => 'LKR'],
              'metric' => ['key' => $data['metric'],
                  'business_classification' => $classification,
                  'collection_cohort' => $data['collection_cohort'] ?? null,
@@ -595,17 +606,14 @@ class SalesDashboardController extends Controller
             'page' => ['nullable', 'integer', 'min:1'],
             'per_page' => ['nullable', 'integer', 'min:1', 'max:100'],
         ]);
-        $frozen = DB::table('sales_kpi_snapshots')->where('id', $snapshot)
-            ->where('status', 'frozen')->where('period_type', 'month')->first();
-        abort_unless($frozen, 404, 'Frozen monthly Sales target point not found.');
+        $frozenSnapshots = $this->trendSnapshotGroup($snapshot, 'Frozen monthly Sales target point not found.');
+        $frozen = $frozenSnapshots->first();
         $authorizedIds = $this->dashboardProfileIds(
-            $request, $frozen->company_id, $data['sales_profile_id'] ?? null,
+            $request, $data['sales_profile_id'] ?? null,
             'Frozen monthly Sales target point not found.',
         );
-        $rows = DB::table('sales_kpi_snapshot_rows as row')
-            ->where('row.snapshot_id', $frozen->id)->whereIn('row.sales_profile_id', $authorizedIds)
-            ->orderBy('row.staff_code')->orderBy('row.sales_profile_id')
-            ->get(['row.sales_profile_id', 'row.staff_code', 'row.metric_snapshot', 'row.row_checksum'])
+        $rows = $this->latestTrendSnapshotRows($frozenSnapshots, $authorizedIds)
+            ->sortBy([['staff_code', 'asc'], ['sales_profile_id', 'asc']])->values()
             ->map(function ($row) {
                 $metrics = is_string($row->metric_snapshot)
                     ? (json_decode($row->metric_snapshot, true) ?: []) : ((array) $row->metric_snapshot);
@@ -653,11 +661,8 @@ class SalesDashboardController extends Controller
         }
 
         return response()->json(['status' => 'success', 'data' => [
-            'snapshot' => ['id' => $frozen->id, 'version' => $frozen->version,
-                'period_start' => $frozen->period_start, 'period_end' => $frozen->period_end,
-                'cutoff_at' => $frozen->cutoff_at, 'snapshot_checksum' => $frozen->snapshot_checksum],
-            'scope' => ['company_id' => $frozen->company_id,
-                'sales_profile_id' => $data['sales_profile_id'] ?? null, 'currency' => 'LKR'],
+            'snapshot' => $this->trendSnapshotPayload($frozenSnapshots),
+            'scope' => ['sales_profile_id' => $data['sales_profile_id'] ?? null, 'currency' => 'LKR'],
             'targets' => $aggregate,
             'rows' => $this->paginateCollection(
                 $rows, (int) ($data['page'] ?? 1), (int) ($data['per_page'] ?? 25)),
@@ -672,19 +677,28 @@ class SalesDashboardController extends Controller
             'bucket' => ['nullable', Rule::in(SalesFrozenCollectionAgingService::BUCKETS)],
             'page' => ['nullable', 'integer', 'min:1'], 'per_page' => ['nullable', 'integer', 'min:1', 'max:100'],
         ]);
-        $frozen = DB::table('sales_kpi_snapshots')->where('id', $snapshot)
-            ->where('status', 'frozen')->where('period_type', 'month')->first();
-        abort_unless($frozen, 404, 'Frozen Sales aging snapshot not found.');
+        $frozenSnapshots = $this->trendSnapshotGroup($snapshot, 'Frozen Sales aging snapshot not found.');
+        $frozen = $frozenSnapshots->first();
         $authorizedIds = $this->dashboardProfileIds(
-            $request, $frozen->company_id, $data['sales_profile_id'] ?? null,
+            $request, $data['sales_profile_id'] ?? null,
             'Frozen Sales aging snapshot not found.',
         );
-        $source = $this->frozenAging->source(
-            $frozen->company_id, $authorizedIds, $frozen->period_end, $frozen->cutoff_at,
-        );
+        $frozenRows = $this->latestTrendSnapshotRows($frozenSnapshots, $authorizedIds);
+        $sourceRows = collect();
+        $missingLineageCount = 0;
+        foreach ($frozenRows->groupBy('snapshot_cutoff_at') as $cutoffAt => $rows) {
+            $profileSource = $this->frozenAging->source(
+                $rows->pluck('sales_profile_id')->all(), $frozen->period_end, $cutoffAt,
+            );
+            $sourceRows = $sourceRows->concat($profileSource['rows']);
+            $missingLineageCount += $profileSource['missing_lineage_count'];
+        }
+        if ($frozenRows->isEmpty()) {
+            $source = $this->frozenAging->source([], $frozen->period_end, $frozenSnapshots->max('cutoff_at'));
+            $sourceRows = $source['rows'];
+        }
+        $source = ['rows' => $sourceRows->values(), 'missing_lineage_count' => $missingLineageCount];
         $sourceTotals = $this->frozenAging->aggregate($source['rows']);
-        $frozenRows = DB::table('sales_kpi_snapshot_rows')->where('snapshot_id', $frozen->id)
-            ->whereIn('sales_profile_id', $authorizedIds)->get(['sales_profile_id', 'metric_snapshot']);
         $frozenTotals = $this->frozenAgingTotals($frozenRows);
         $sourceComparable = collect($sourceTotals)->except('aging_source_checksum')->all();
         $frozenComparable = $frozenTotals === null
@@ -699,11 +713,8 @@ class SalesDashboardController extends Controller
             ? $source['rows']->where('aging_bucket', $data['bucket'])->values() : $source['rows'];
 
         return response()->json(['status' => 'success', 'data' => [
-            'snapshot' => ['id' => $frozen->id, 'version' => (int) $frozen->version,
-                'period_start' => $frozen->period_start, 'period_end' => $frozen->period_end,
-                'cutoff_at' => $frozen->cutoff_at, 'snapshot_checksum' => $frozen->snapshot_checksum],
-            'scope' => ['company_id' => $frozen->company_id,
-                'sales_profile_id' => $data['sales_profile_id'] ?? null, 'currency' => 'LKR'],
+            'snapshot' => $this->trendSnapshotPayload($frozenSnapshots),
+            'scope' => ['sales_profile_id' => $data['sales_profile_id'] ?? null, 'currency' => 'LKR'],
             'selected_bucket' => $data['bucket'] ?? null,
             'reconciliation_status' => $reconciliation,
             'missing_lineage_count' => $source['missing_lineage_count'],
@@ -718,7 +729,6 @@ class SalesDashboardController extends Controller
     public function kpiFacts(Request $request): JsonResponse
     {
         $data = $request->validate([
-            'company_id' => ['nullable', 'uuid', 'exists:companies,id'],
             'from' => ['required', 'date'],
             'to' => ['required', 'date', 'after_or_equal:from'],
             'metric' => ['required', Rule::in([
@@ -730,13 +740,12 @@ class SalesDashboardController extends Controller
             'page' => ['nullable', 'integer', 'min:1'],
             'per_page' => ['nullable', 'integer', 'min:1', 'max:100'],
         ]);
-        $data['company_id'] = $this->resolveCompanyId($data['company_id'] ?? null);
         abort_if(isset($data['collection_cohort']) && ! in_array($data['metric'], ['eligible_collections', 'commission'], true),
             422, 'Collection cohort applies only to collection or commission facts.');
         abort_if(isset($data['commission_category']) && $data['metric'] !== 'commission',
             422, 'Commission category applies only to commission facts.');
         $authorizedIds = $this->dashboardProfileIds(
-            $request, $data['company_id'], $data['sales_profile_id'] ?? null,
+            $request, $data['sales_profile_id'] ?? null,
             'Sales KPI source is outside your current Sales scope.',
         );
         $metricTypes = match ($data['metric']) {
@@ -750,7 +759,6 @@ class SalesDashboardController extends Controller
         $facts = DB::table('sales_metric_facts as fact')
             ->join('sales_profiles as profile', 'profile.id', '=', 'fact.sales_profile_id')
             ->join('staff', 'staff.id', '=', 'profile.staff_id')
-            ->where(fn ($_companyIdScope) => \App\Services\CompanyIdScope::constrain($_companyIdScope, 'fact.company_id', $data['company_id']))
             ->whereIn('fact.sales_profile_id', $authorizedIds)
             ->whereIn('fact.metric_type', $metricTypes)
             ->when(in_array($data['metric'], ['new_sales', 'new_bookings', 'new_customers'], true),
@@ -766,7 +774,7 @@ class SalesDashboardController extends Controller
                 'fact.dimensions', 'fact.fact_checksum',
             ]);
         $breakdownByFact = $this->metricBreakdowns->resolve(
-            $rows, $data['company_id'], $data['from'], $data['to'],
+            $rows, $data['from'], $data['to'],
         );
         $rows = $rows->map(function ($fact) use ($breakdownByFact) {
                 $dimensions = is_string($fact->dimensions)
@@ -820,8 +828,7 @@ class SalesDashboardController extends Controller
         );
 
         return response()->json(['status' => 'success', 'data' => [
-            'scope' => ['company_id' => $data['company_id'],
-                'sales_profile_id' => $data['sales_profile_id'] ?? null, 'currency' => 'LKR'],
+            'scope' => ['sales_profile_id' => $data['sales_profile_id'] ?? null, 'currency' => 'LKR'],
             'period' => ['from' => $data['from'], 'to' => $data['to'],
                 'date_contract' => 'inclusive business dates; signed event occurred_at must be at or before as_of'],
             'as_of' => $asOf->toIso8601String(),
@@ -846,22 +853,19 @@ class SalesDashboardController extends Controller
     public function pipelineFacts(Request $request): JsonResponse
     {
         $data = $request->validate([
-            'company_id' => ['nullable', 'uuid', 'exists:companies,id'],
             'stage' => ['required', Rule::in(['new', 'contacted', 'qualified', 'quotation', 'negotiation'])],
             'sales_profile_id' => ['nullable', 'uuid'],
             'page' => ['nullable', 'integer', 'min:1'],
             'per_page' => ['nullable', 'integer', 'min:1', 'max:100'],
         ]);
-        $data['company_id'] = $this->resolveCompanyId($data['company_id'] ?? null);
         $authorizedIds = $this->dashboardProfileIds(
-            $request, $data['company_id'], $data['sales_profile_id'] ?? null,
+            $request, $data['sales_profile_id'] ?? null,
             'Pipeline stage is outside your current Sales scope.',
         );
         $asOf = now();
         $query = DB::table('sales_opportunities as opportunity')
             ->join('sales_profiles as profile', 'profile.id', '=', 'opportunity.owner_sales_profile_id')
             ->join('staff', 'staff.id', '=', 'profile.staff_id')
-            ->where(fn ($_companyIdScope) => \App\Services\CompanyIdScope::constrain($_companyIdScope, 'opportunity.company_id', $data['company_id']))
             ->whereIn('opportunity.owner_sales_profile_id', $authorizedIds)
             ->where('opportunity.stage', $data['stage']);
         $sourceCount = (clone $query)->count();
@@ -893,8 +897,7 @@ class SalesDashboardController extends Controller
             });
 
         return response()->json(['status' => 'success', 'data' => [
-            'scope' => ['company_id' => $data['company_id'],
-                'sales_profile_id' => $data['sales_profile_id'] ?? null, 'currency' => 'LKR'],
+            'scope' => ['sales_profile_id' => $data['sales_profile_id'] ?? null, 'currency' => 'LKR'],
             'as_of' => $asOf->toIso8601String(),
             'stock_definition' => 'Current open opportunities in the selected stage; never summed across periods.',
             'stage' => $data['stage'],
@@ -910,14 +913,12 @@ class SalesDashboardController extends Controller
     public function scheduleFacts(Request $request, string $schedule): JsonResponse
     {
         $data = $request->validate([
-            'company_id' => ['nullable', 'uuid', 'exists:companies,id'],
             'sales_profile_id' => ['nullable', 'uuid'],
             'page' => ['nullable', 'integer', 'min:1'],
             'per_page' => ['nullable', 'integer', 'min:1', 'max:100'],
         ]);
-        $data['company_id'] = $this->resolveCompanyId($data['company_id'] ?? null);
         $authorizedIds = $this->dashboardProfileIds(
-            $request, $data['company_id'], $data['sales_profile_id'] ?? null,
+            $request, $data['sales_profile_id'] ?? null,
             'Collection schedule is outside your current Sales scope.',
         );
         $paid = DB::table('booking_payment_schedule_allocations')
@@ -939,7 +940,6 @@ class SalesDashboardController extends Controller
             ->leftJoinSub($paid, 'paid', fn ($join) => $join->on('paid.booking_payment_schedule_id', '=', 'schedule.id'))
             ->where('schedule.id', $schedule)->whereNull('schedule.deleted_at')
             ->where('schedule.status', '!=', 'superseded')
-            ->where(fn ($_companyIdScope) => \App\Services\CompanyIdScope::constrain($_companyIdScope, 'attribution.company_id', $data['company_id']))
             ->whereIn('attribution.collection_sales_profile_id', $authorizedIds)
             ->first([
                 'schedule.id', 'schedule.booking_id', 'booking.booking_number', 'schedule.sequence',
@@ -968,8 +968,7 @@ class SalesDashboardController extends Controller
         ]);
 
         return response()->json(['status' => 'success', 'data' => [
-            'scope' => ['company_id' => $data['company_id'],
-                'sales_profile_id' => $data['sales_profile_id'] ?? null],
+            'scope' => ['sales_profile_id' => $data['sales_profile_id'] ?? null],
             'as_of' => now()->toIso8601String(),
             'balance_equation' => 'scheduled source amount - net source allocations = outstanding source amount',
             'schedule' => $row,
@@ -981,36 +980,37 @@ class SalesDashboardController extends Controller
     public function activePortfolio(Request $request, SalesPortfolioStatusService $portfolio): JsonResponse
     {
         $data = $request->validate([
-            'company_id' => ['nullable', 'uuid', 'exists:companies,id'],
             'to' => ['required', 'date_format:Y-m-d'], 'sales_profile_id' => ['nullable', 'uuid'],
             'page' => ['nullable', 'integer', 'min:1'], 'per_page' => ['nullable', 'integer', 'min:1', 'max:100'],
         ]);
-        $data['company_id'] = $this->resolveCompanyId($data['company_id'] ?? null);
-        $authorizedIds = $this->dashboardProfileIds(
-            $request, $data['company_id'], $data['sales_profile_id'] ?? null,
-            'Active portfolio is outside your current Sales scope.',
-        );
+        $authorizedIds = $this->scope->profileIds(
+            $request->user(), 'sales.performance.view-all', 'sales.performance.view-team',
+        ) ?? SalesProfile::query()->pluck('id')->all();
+        if (! empty($data['sales_profile_id'])) {
+            abort_unless(in_array($data['sales_profile_id'], $authorizedIds, true), 404,
+                'Active portfolio is outside your current Sales scope.');
+            $authorizedIds = [$data['sales_profile_id']];
+        }
+        abort_if($authorizedIds === [], 404, 'Active portfolio is outside your current Sales scope.');
 
         return response()->json(['status' => 'success', 'data' => $portfolio->source(
-            $data['company_id'], $authorizedIds, $data['to'],
+            $authorizedIds, $data['to'],
             (int) ($data['page'] ?? 1), (int) ($data['per_page'] ?? 25),
         )]);
     }
 
     public function staff(Request $request, string $staffId, SalesPerformanceService $performance): JsonResponse
     {
-        $scope = $request->validate(['company_id' => ['nullable', 'uuid', 'exists:companies,id']]);
-        $companyId = $this->resolveCompanyId($scope['company_id'] ?? null);
         $authorizedIds = $this->scope->profileIds(
-            $request->user(), 'sales.performance.view-all', 'sales.performance.view-team', $companyId,
+            $request->user(), 'sales.performance.view-all', 'sales.performance.view-team',
         );
         $profiles = SalesProfile::query()->where('staff_id', $staffId)
-            ->when($companyId, fn ($query, string $id) => $query->where(fn ($_companyIdScope) => \App\Services\CompanyIdScope::constrain($_companyIdScope, 'company_id', $id)))
+            ->activeAt(now())->configured()
             ->when($authorizedIds !== null, fn ($query) => $query->whereIn('id', $authorizedIds))
             ->orderByDesc('effective_from')->limit(2)->get();
         abort_if($profiles->isEmpty(), 404, 'Sales Staff dashboard not found.');
         abort_if($profiles->count() !== 1, 422,
-            'The Staff record resolves to more than one Sales Profile; select the legal entity explicitly.');
+            'The Staff record resolves to more than one active Sales Profile; reconcile the enrollment before viewing the dashboard.');
         $profile = $profiles->first();
         $this->scope->assertProfile(
             $request->user(), $profile, 'sales.performance.view-all', 'sales.performance.view-team',
@@ -1024,7 +1024,6 @@ class SalesDashboardController extends Controller
     {
         $ids = $this->scope->profileIds($request->user(), 'sales.performance.view-all', 'sales.performance.view-team');
         $query = SalesBookingAttribution::query()->with(['booking.customer.user'])
-            ->where(fn ($_companyIdScope) => \App\Services\CompanyIdScope::constrainIn($_companyIdScope, 'company_id', DB::table('companies')->select('id')->where('is_active', true)->whereNull('deleted_at')))
             ->where(fn ($q) => $ids === null ? $q : $q->whereIn('acquisition_sales_profile_id', $ids)->orWhereIn('collection_sales_profile_id', $ids));
         $page = $query->latest('secured_at')->paginate($this->paginationSize($request, 25));
         return response()->json(['status' => 'success', 'data' => $page->through(fn (SalesBookingAttribution $row) => [
@@ -1178,19 +1177,18 @@ class SalesDashboardController extends Controller
 
     private function dashboardProfileIds(
         Request $request,
-        string $companyId,
         ?string $selectedProfileId,
         string $notFoundMessage,
     ): array {
         $authorizedIds = $this->scope->profileIds(
-            $request->user(), 'sales.performance.view-all', 'sales.performance.view-team', $companyId,
+            $request->user(), 'sales.performance.view-all', 'sales.performance.view-team',
         );
         if ($authorizedIds === null) {
-            $authorizedIds = SalesProfile::query()->where(fn ($_companyIdScope) => \App\Services\CompanyIdScope::constrain($_companyIdScope, 'company_id', $companyId))->pluck('id')->all();
+            $authorizedIds = SalesProfile::query()->pluck('id')->all();
         }
         if ($selectedProfileId !== null) {
             abort_unless(in_array($selectedProfileId, $authorizedIds, true)
-                && SalesProfile::query()->whereKey($selectedProfileId)->where(fn ($_companyIdScope) => \App\Services\CompanyIdScope::constrain($_companyIdScope, 'company_id', $companyId))->exists(),
+                && SalesProfile::query()->whereKey($selectedProfileId)->exists(),
                 404, $notFoundMessage);
             $authorizedIds = [$selectedProfileId];
         }
@@ -1199,16 +1197,47 @@ class SalesDashboardController extends Controller
         return $authorizedIds;
     }
 
-    private function resolveCompanyId(?string $companyId): string
+    private function trendSnapshotGroup(string $snapshotIds, string $notFoundMessage): Collection
     {
-        $companyId = $companyId ?: app(WebsiteSettingsService::class)->resolveCurrentCompanyId();
-        abort_unless($companyId, 409, 'Select an active business for Sales work.');
-        if (request()->header('X-Active-Context-Type') === 'staff') {
-            app(CompanySettingsAccessService::class)->assertCanAccess(request()->user(), (string) $companyId);
-        }
-        abort_unless(DB::table('companies')->where('id', $companyId)->where('is_active', true)
-            ->whereNull('deleted_at')->exists(), 422, 'Select an active legal entity.');
+        $ids = array_values(array_unique(explode(',', $snapshotIds)));
+        abort_if($ids === [] || count($ids) > 100 || collect($ids)->contains(fn (string $id) => ! Str::isUuid($id)),
+            404, $notFoundMessage);
 
-        return (string) $companyId;
+        $snapshots = DB::table('sales_kpi_snapshots')->whereIn('id', $ids)
+            ->where('status', 'frozen')->where('period_type', 'month')
+            ->orderByDesc('generated_at')->orderByDesc('version')->orderByDesc('id')->get();
+        abort_unless($snapshots->count() === count($ids)
+            && $snapshots->pluck('period_start')->unique()->count() === 1
+            && $snapshots->pluck('period_end')->unique()->count() === 1, 404, $notFoundMessage);
+
+        return $snapshots;
     }
+
+    private function latestTrendSnapshotRows(Collection $snapshots, array $profileIds): Collection
+    {
+        if ($profileIds === []) return collect();
+
+        return DB::table('sales_kpi_snapshot_rows as row')
+            ->join('sales_kpi_snapshots as snapshot', 'snapshot.id', '=', 'row.snapshot_id')
+            ->whereIn('snapshot.id', $snapshots->pluck('id'))
+            ->whereIn('row.sales_profile_id', $profileIds)
+            ->orderByDesc('snapshot.generated_at')->orderByDesc('snapshot.version')->orderByDesc('snapshot.id')
+            ->get(['row.*', 'snapshot.cutoff_at as snapshot_cutoff_at'])->unique('sales_profile_id')->values();
+    }
+
+    private function trendSnapshotPayload(Collection $snapshots): array
+    {
+        $ids = $snapshots->pluck('id')->unique()->sort()->values();
+        $checksums = $snapshots->pluck('snapshot_checksum')->unique()->sort()->values();
+
+        return [
+            'id' => $ids->implode(','),
+            'version' => (int) $snapshots->max('version'),
+            'period_start' => $snapshots->first()->period_start,
+            'period_end' => $snapshots->first()->period_end,
+            'cutoff_at' => $snapshots->max('cutoff_at'),
+            'snapshot_checksum' => hash('sha256', $checksums->implode('|')),
+        ];
+    }
+
 }

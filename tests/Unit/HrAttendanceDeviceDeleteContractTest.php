@@ -10,7 +10,7 @@ it('soft deletes attendance terminals from the portal while retaining evidence',
     expect($routes)->toContain("Route::delete('devices/{deviceId}'")
         ->toContain("middleware('permission:hr.attendance.devices.manage')")
         ->and($controller)->toContain('public function destroyDevice')
-        ->toContain('$this->authorizedCompanyId($request, $device->company_id)')
+        ->not->toContain('company_id', 'companyId', 'authorizedCompanyId(')
         ->toContain('$device->delete()')
         ->not->toContain('$device->forceDelete()')
         ->and($service)->toContain('deleteDevice(deviceId: string)')
@@ -48,7 +48,8 @@ it('provides scope-aware database-grouped attendance management reports', functi
         ->and($controller)->toContain('public function report(Request $request, StaffAccessService $access)')
         ->toContain('$access->scope(Staff::query(), $request->user())')
         ->toContain("count(distinct result.staff_id) as staff_count")
-        ->toContain("Rule::in(['work_date', 'status', 'staff', 'company'])")
+        ->toContain("Rule::in(['work_date', 'status', 'staff'])")
+        ->not->toContain('company_id', 'companyId')
         ->and($service)->toContain("/hr/attendance/reports/summary")
-        ->and($component)->toContain("{ value: 'company', label: 'Company' }");
+        ->and($component)->not->toContain("{ value: 'company', label: 'Company' }");
 });

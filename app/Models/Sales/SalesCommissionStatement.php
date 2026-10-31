@@ -10,7 +10,7 @@ use Illuminate\Database\Eloquent\Relations\HasMany;
 class SalesCommissionStatement extends NonSoftDeletableModel
 {
     protected $fillable = [
-        'company_id', 'staff_id', 'sales_profile_id', 'cycle_version_id', 'cycle_assignment_id', 'business_calendar_id',
+        'staff_id', 'sales_profile_id', 'cycle_version_id', 'cycle_assignment_id', 'business_calendar_id',
         'statement_number', 'version', 'period_start', 'period_end', 'cutoff_at', 'finalization_at',
         'approval_deadline_at', 'settlement_at', 'cycle_schedule_snapshot', 'cycle_schedule_checksum', 'timezone', 'payout_currency',
         'opening_carry_forward_lkr', 'gross_earnings_lkr', 'adjustment_credits_lkr', 'recovery_deductions_lkr', 'other_deductions_lkr',

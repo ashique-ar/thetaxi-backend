@@ -12,7 +12,7 @@ class SalesActivity extends Model
     protected $hidden = ['source_reference'];
 
     protected $fillable = [
-        'company_id', 'sales_profile_id', 'opportunity_id', 'customer_id', 'inquiry_id', 'booking_id',
+        'sales_profile_id', 'opportunity_id', 'customer_id', 'inquiry_id', 'booking_id',
         'phone_call_id', 'booking_activity_id', 'activity_type', 'direction', 'subject', 'notes', 'outcome',
         'next_action', 'next_action_at', 'source_system', 'source_reference', 'evidence_file_id',
         'occurred_at', 'created_user_id',

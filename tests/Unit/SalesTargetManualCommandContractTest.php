@@ -16,8 +16,7 @@ it('governs manual target drafts and approvals as idempotent maker-checker comma
         ->toContain('The target version is stale; refresh the target history before approval.')
         ->toContain('The Sales performance period is locked; reopen it before approving a replacement target.')
         ->toContain('A target can only be drafted for a currently active Sales Profile.')
-        ->toContain('The Sales Profile must belong to current Staff in this legal entity.')
-        ->toContain("DB::table('companies')->whereKey(\$data['company_id'])->where('is_active', true)")
+        ->toContain('The Sales Profile must belong to current Staff.')
         ->toContain("whereNull('deleted_at')->lockForUpdate()")
         ->toContain("->whereDate('period_start', \$start)->whereDate('period_end', \$end)->max('version') + 1")
         ->toContain('sales.performance.target_draft_created')
@@ -37,18 +36,19 @@ it('governs manual target drafts and approvals as idempotent maker-checker comma
         ->toContain("Route::post('targets/versions/{target}/approve', [SalesPerformanceController::class, 'approveTarget'])");
 });
 
-it('keeps target history legal-entity scoped filtered bounded and stably ordered', function () {
+it('keeps target history installation-wide while applying authorized Profile filters', function () {
     $controller = file_get_contents(app_path('Http/Controllers/Api/Sales/SalesPerformanceController.php'));
 
     expect($controller)
-        ->toContain("'company_id' => ['required', 'uuid', 'exists:companies,id']")
         ->toContain("'per_page' => ['nullable', 'integer', 'min:1', 'max:100']")
-        ->toContain("->where('sales_target_versions.company_id', \$data['company_id'])")
+        ->toContain("\$this->scope->profileIds(")
+        ->toContain("whereIn('sales_target_versions.sales_profile_id', \$ids)")
         ->toContain("->when(\$data['sales_profile_id'] ?? null")
         ->toContain("->when(\$data['month'] ?? null")
         ->toContain("->when(\$data['status'] ?? null")
         ->toContain("->orderByDesc('sales_target_versions.period_start')->orderBy('sales_target_versions.sales_profile_id')")
-        ->toContain("\$page = min((int) (\$data['page'] ?? 1), \$lastPage)");
+        ->toContain("\$page = min((int) (\$data['page'] ?? 1), \$lastPage)")
+        ->not->toContain('company_id', 'resolveCompanyId(');
 });
 
 it('adds rollback-safe nullable command evidence without rewriting existing target rows', function () {

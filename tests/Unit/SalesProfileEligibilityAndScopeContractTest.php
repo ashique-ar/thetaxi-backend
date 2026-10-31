@@ -60,6 +60,20 @@ it('serves bounded exact-hydrated reporting choices and removes page-bound assig
         ->and($logic)->not->toContain('profileOptions:');
 });
 
+it('loads eligible Sales enrollment Staff across the installation without a company selector', function () {
+    $controller = file_get_contents(app_path('Http/Controllers/Api/Sales/SalesProfileController.php'));
+    $template = file_get_contents(base_path('../portal-thetaxi/src/app/modules/sales/components/sales-profile-administration/sales-profile-administration.component.html'));
+    $start = strpos($controller, 'public function staffOptions(');
+    $end = strpos($controller, 'public function reportingProfileOptions(', $start);
+    $staffOptions = substr($controller, $start, $end - $start);
+
+    expect($staffOptions)
+        ->toContain("whereIn('staff_type', \$categories)", "'sales.profiles.manage-all'", 'selected_id')
+        ->not->toContain('company_id', 'resolveCompanyId', 'assertCompany', "DB::table('companies')");
+    expect($template)->toContain('endpoint="/sales/profile-staff-options"')
+        ->not->toContain('[companyId]="companyId"');
+});
+
 it('resolves eligibility and reporting currency from the versioned profile state effective at the business event time', function () {
     $eligibility = file_get_contents(app_path('Services/Sales/SalesProfileEligibilityService.php'));
     $attribution = file_get_contents(app_path('Services/Sales/BookingAttributionService.php'));
@@ -108,6 +122,29 @@ it('requires reasoned optimistic profile configuration changes with versioned be
         ->toContain("'reason' => ['required'");
 });
 
+it('does not expose the legacy profile tenant key in responses or profile audit evidence', function () {
+    $controller = file_get_contents(app_path('Http/Controllers/Api/Sales/SalesProfileController.php'));
+    $scope = file_get_contents(app_path('Services/Sales/SalesAccessScope.php'));
+    $mutation = file_get_contents(app_path('Services/Sales/BookingAttributionMutationService.php'));
+
+    expect($controller)
+        ->not->toContain("'company_id' => \$profile->company_id", "'company_id',\n            'staff_id'")
+        ->and($scope)->not->toContain("\$profile->company_id")
+        ->and($mutation)->not->toContain('company_id');
+});
+
+it('enforces installation-wide Sales codes and staff profile intervals', function () {
+    $controller = file_get_contents(app_path('Http/Controllers/Api/Sales/SalesProfileController.php'));
+    $migration = file_get_contents(database_path('migrations/2026_10_30_000089_make_sales_profile_codes_installation_wide.php'));
+
+    expect($controller)
+        ->toContain("where('sales_code', \$data['sales_code'])")
+        ->toContain('The Sales code is already in use in this installation.')
+        ->not->toContain("CompanyIdScope::constrain(\$_companyIdScope, 'company_id', \$data['company_id'])")
+        ->and($migration)
+        ->toContain("groupBy('sales_code')", 'reconcile duplicates first', "unique('sales_code'");
+});
+
 it('keeps all employees in Staff while Sales remains an explicitly configured Staff category and Profile', function () {
     $controller = file_get_contents(app_path('Http/Controllers/Api/Sales/SalesProfileController.php'));
     $eligibility = file_get_contents(app_path('Services/Sales/SalesProfileEligibilityService.php'));
@@ -119,7 +156,7 @@ it('keeps all employees in Staff while Sales remains an explicitly configured St
         ->toContain('Only Staff in an approved Sales category may be explicitly enrolled as a Sales Profile.')
         ->toContain('Reconcile the linked Staff category through Profile configuration before reactivation.')
         ->toContain("'staff_category_snapshot' => trim((string) \$staff->staff_type)")
-        ->toContain("'sales_staff_category_ready_by_company' => \$categoriesByCompany->map(fn (array \$rows) => \$rows !== [])")
+        ->toContain("'sales_staff_category_ready' => \$this->salesStaffCategories() !== []")
         ->and($eligibility)->toContain("\$configuration['staff_category_snapshot']")
         ->and($staffController)->toContain('End the current/future Sales Profile before changing this Staff category.')
         ->and($policySettings)->toContain('approvedStaffCategories')
@@ -227,15 +264,15 @@ it('projects future-dated handler transfers and Profile closures when their effe
         ->toContain("'projected_at'");
 });
 
-it('preserves historical Sales eligibility after a later legal-entity move while blocking moves with open Profiles', function () {
+it('keeps Sales eligibility installation-wide and locks Staff updates', function () {
     $eligibility = file_get_contents(app_path('Services/Sales/SalesProfileEligibilityService.php'));
     $staffController = file_get_contents(app_path('Http/Controllers/Api/StaffController.php'));
 
     expect($eligibility)
         ->not->toContain("\$staff->company_id !== \$profile->company_id")
         ->not->toContain("where('company_id', \$staff->company_id)")
+        ->not->toContain('company_id', 'legal entity')
         ->and($staffController)
-        ->toContain("'End or transfer every current/future Sales Profile before changing the Staff legal entity.'")
-        ->toContain("SalesProfile::query()")
-        ->toContain('lockForUpdate()');
+        ->toContain('Staff::query()->lockForUpdate()->findOrFail($staff->id)')
+        ->not->toContain('company_id', 'legal entity');
 });

@@ -9,7 +9,7 @@ use Illuminate\Database\Eloquent\Relations\HasOne;
 class SalesCommissionRecoveryCase extends NonSoftDeletableModel
 {
     protected $fillable = [
-        'company_id', 'commission_decision_id', 'entitlement_source_type', 'entitlement_source_id',
+        'commission_decision_id', 'entitlement_source_type', 'entitlement_source_id',
         'entitlement_amount_lkr', 'entitlement_effective_at', 'payment_adjustment_id',
         'corrects_recovery_case_id', 'beneficiary_staff_id',
         'beneficiary_sales_profile_id', 'recovery_kind', 'commission_category', 'collection_cohort',

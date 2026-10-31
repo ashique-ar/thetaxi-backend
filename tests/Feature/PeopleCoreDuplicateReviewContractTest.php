@@ -1,5 +1,5 @@
 <?php
-it('detects tenant duplicate signals and records a maker checker decision without mutating Staff',function(){
+it('detects installation-wide duplicate signals and records a maker-checker decision without mutating Staff',function(){
  $service=file_get_contents(app_path('Services/Hr/PeopleCoreMigrationService.php'));$routes=file_get_contents(base_path('routes/api.php'));$migration=file_get_contents(database_path('migrations/2026_09_04_121000_create_hr_people_duplicate_reviews.php'));
  expect((new App\Models\Hr\HrPeopleDuplicateReview())->getHidden())->toContain('match_fingerprint','candidate_staff_ids','prepared_by','decided_by','consolidated_by','created_user_id','updated_user_id');
  expect((new App\Models\Hr\HrPeopleIdentityLink())->getHidden())->toContain('duplicate_review_id','alias_staff_id','canonical_staff_id','reason','evidence_checksum','approved_by','created_user_id','updated_user_id');
@@ -8,7 +8,7 @@ it('detects tenant duplicate signals and records a maker checker decision withou
   ->toContain("'safe_candidate_snapshot'")
   ->toContain('The duplicate-review preparer cannot decide the same case.')
   ->toContain("in_array(\$canonical,\$review->candidate_staff_ids,true)")
-  ->toContain("where('company_id',\$companyId)->lockForUpdate()")
+  ->toContain("HrPeopleDuplicateReview::whereKey(\$review->id)->lockForUpdate()->firstOrFail()")
   ->and($migration)->toContain("json('candidate_staff_ids')")
   ->toContain("json('safe_candidate_snapshot')")
   ->toContain('Rollback refused: export and reconcile retained People Core duplicate-review decisions first.');
@@ -19,7 +19,7 @@ it('uses canonical identity links instead of rewriting historical domain ownersh
  expect($service)->toContain("'strategy'=>'canonical_link_v1'")->toContain("'historical_references_rewritten'=>false")->toContain("where('alias_staff_id',\$aliasId)->lockForUpdate()")
   ->toContain('The selected canonical Staff is already an alias of another identity.')
   ->toContain('A reviewed alias is already canonical for another identity.')
-  ->and($resolver)->toContain("where('company_id', \$companyId)")->toContain("where('status', 'active')")
+  ->and($resolver)->toContain("where('alias_staff_id', \$staffId)")->toContain("where('status', 'active')")
   ->and($migration)->toContain("foreignUuid('alias_staff_id')->unique()")
   ->toContain('Rollback refused: revoke and export canonical identity links first.');
 });

@@ -5,20 +5,10 @@ use Illuminate\Database\Schema\Blueprint;
 use Illuminate\Support\Facades\Schema;
 
 beforeEach(function () {
-    Schema::create('companies', function (Blueprint $table) {
-        $table->uuid('id')->primary();
-        $table->string('domain')->nullable();
-        $table->string('website')->nullable();
-        $table->boolean('is_active')->default(true);
-        $table->timestamps();
-        $table->softDeletes();
-    });
-
     Schema::create('website_settings', function (Blueprint $table) {
         $table->uuid('id')->primary();
         $table->string('type')->nullable();
         $table->text('value')->nullable();
-        $table->uuid('company_id')->nullable();
         $table->timestamps();
         $table->softDeletes();
     });
@@ -67,7 +57,6 @@ afterEach(function () {
     Schema::dropIfExists('inquiry_service_pages');
     Schema::dropIfExists('inquiry_form_fields');
     Schema::dropIfExists('inquiry_forms');
-    Schema::dropIfExists('companies');
     Schema::dropIfExists('website_settings');
     Schema::dropIfExists('business_settings');
     Schema::dropIfExists('currencies');

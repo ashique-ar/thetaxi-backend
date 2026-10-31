@@ -8,7 +8,7 @@ class SalesCommissionHoldResolution extends BaseModel
 {
 
     protected $fillable = [
-        'company_id', 'commission_decision_id', 'receipt_finality_event_id',
+        'commission_decision_id', 'receipt_finality_event_id',
         'employment_staff_id', 'employment_ended_at', 'employment_terminated_by', 'resolution_kind',
         'original_hold_code', 'frozen_resolution_snapshot', 'resolution_checksum', 'resolution_reason',
         'resolved_by', 'resolved_at', 'idempotency_key', 'request_payload_checksum',

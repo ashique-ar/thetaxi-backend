@@ -1,6 +1,5 @@
 <?php
 
-use App\Models\Company;
 use App\Models\Staff;
 use App\Models\UserContext;
 use Illuminate\Foundation\Testing\RefreshDatabase;
@@ -10,13 +9,11 @@ use function Pest\Laravel\actingAs;
 uses(RefreshDatabase::class);
 
 it('stores private meal dietary data for the selected Staff identity', function () {
-    [$admin, $firstCompany] = hr_seed_admin_actor();
+    [$admin] = hr_seed_admin_actor();
     $admin->givePermissionTo('hr.meals.use');
     config(['hr.features.meals' => true]);
-    $firstStaff = Staff::factory()->create(['company_id' => $firstCompany->id]);
-    $secondCompany = Company::create(['name' => 'Second Meal Programme company']);
+    $firstStaff = Staff::factory()->create();
     $secondStaff = Staff::query()->where('user_id', $admin->id)->firstOrFail();
-    $secondStaff->update(['company_id' => $secondCompany->id]);
     $context = UserContext::query()->where('user_id', $admin->id)->where('context_type', 'staff')->firstOrFail();
     $payload = [
         'opted_in' => true, 'fulfilment_label' => 'Selected context', 'restrictions' => 'Confidential dietary note',

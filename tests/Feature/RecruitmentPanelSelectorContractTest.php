@@ -1,22 +1,25 @@
 <?php
 
-it('provides a bounded tenant-scoped interview panel selector', function () {
+it('provides a bounded installation-wide active Staff interview panel selector', function () {
     $controller=file_get_contents(app_path('Http/Controllers/Api/Hr/RecruitmentController.php'));
     $routes=file_get_contents(base_path('routes/api.php'));
 
     expect($routes)->toContain("Route::get('interview-panel-options', [RecruitmentController::class, 'interviewPanelOptions'])")
         ->and($controller)->toContain('public function interviewPanelOptions(')
         ->toContain("'selected_ids'=>['nullable','array','max:50']")
-        ->toContain("where('staff.company_id',\$company)")
+        ->toContain("whereNull('staff.deleted_at')->whereNull('staff.employment_ended_at')")
+        ->toContain("where('hr_employment_spells.status','active')")
         ->toContain("'value'=>(string)\$row->id")
-        ->toContain("'status'=>'active'");
+        ->toContain("'status'=>'active'")
+        ->not->toContain('company_id', 'companyId');
 });
 
-it('locks and revalidates active same-company panelists before scheduling', function () {
+it('locks and revalidates active panelists before scheduling', function () {
     $controller=file_get_contents(app_path('Http/Controllers/Api/Hr/RecruitmentController.php'));
 
     expect($controller)
         ->toContain("where('id',\$id)->lockForUpdate()->first()")
-        ->toContain("whereIn('id',\$panel)->where('company_id',\$app->company_id)->whereNull('deleted_at')->whereNull('employment_ended_at')->orderBy('id')->lockForUpdate()->get(['id'])")
-        ->toContain('Every panel member must be active in the application legal entity.');
+        ->toContain("whereIn('id',\$panel)->whereNull('deleted_at')->whereNull('employment_ended_at')")
+        ->toContain('Every panel member must be active Staff with an active employment spell.')
+        ->not->toContain('company_id', 'companyId');
 });

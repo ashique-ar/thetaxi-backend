@@ -17,10 +17,10 @@ it('creates a Staff context without a selected or default location', function ()
     $context = app(UserContextService::class)->switchContext($user, 'staff');
     $staff = Staff::query()->findOrFail($context->context_id);
 
-    expect($staff->company_id)->toBeNull();
+    expect(Schema::hasColumn('staff', 'company_id'))->toBeFalse();
 });
 
-it('allows HR access by role when the active staff identity has no company ID', function () {
+it('allows HR access by role across the installation', function () {
     (new Database\Seeders\AllPermissionsSeeder())->run();
     $user = User::factory()->create();
     $user->givePermissionTo('hr.people.view-all');

@@ -27,7 +27,7 @@ use App\Traits\UUID;
  * @property-read \App\Models\User|null $createdBy User who created this record
  * @property-read \App\Models\User|null $updatedBy User who last updated this record
  * @property-read \Illuminate\Database\Eloquent\Collection|\App\Models\State[] $states States in this country
- * @property-read \Illuminate\Database\Eloquent\Collection|\App\Models\Company\Company[] $companies Companies in this country
+ * @property-read \Illuminate\Database\Eloquent\Collection|\App\Models\Company[] $companies Saved locations in this country
  * @property-read \Illuminate\Database\Eloquent\Collection|\App\Models\Customer[] $customers Customers in this country
  */
 class Country extends BaseModel
@@ -85,13 +85,13 @@ class Country extends BaseModel
     }
 
     /**
-     * Get all companies in this country.
+     * Get all saved locations in this country.
      *
      * @return \Illuminate\Database\Eloquent\Relations\HasMany
      */
     public function companies()
     {
-        return $this->hasMany(\App\Models\Company\Company::class);
+        return $this->hasMany(Company::class);
     }
 
     /**

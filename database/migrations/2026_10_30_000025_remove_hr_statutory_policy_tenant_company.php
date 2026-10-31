@@ -4,6 +4,8 @@ use Illuminate\Database\Migrations\Migration;
 use Illuminate\Database\Schema\Blueprint;
 use Illuminate\Support\Facades\Schema;
 
+require_once __DIR__.'/Support/TenantIndexDropper.php';
+
 return new class extends Migration
 {
     public function up(): void
@@ -23,11 +25,12 @@ return new class extends Migration
             }
 
             Schema::table($tableName, fn (Blueprint $table) => $table->dropForeign(['company_id']));
-            Schema::table($tableName, function (Blueprint $table) use ($uniqueIndex, $effectiveIndex): void {
-                $table->dropUnique($uniqueIndex);
-                $table->dropIndex($effectiveIndex);
-                $table->dropColumn('company_id');
-            });
+            foreach (Schema::getIndexes($tableName) as $index) {
+                if (in_array($index['name'], [$uniqueIndex, $effectiveIndex], true)) {
+                    TenantIndexDropper::drop($tableName, $index);
+                }
+            }
+            Schema::table($tableName, fn (Blueprint $table) => $table->dropColumn('company_id'));
             Schema::table($tableName, function (Blueprint $table) use ($statusIndex, $versionIndex): void {
                 $table->index(['status', 'effective_from'], $statusIndex);
                 $table->index('version', $versionIndex);

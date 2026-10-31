@@ -2,14 +2,23 @@
 
 it('binds accounting delivery retries to the payout and exact acknowledgement facts', function () {
     $service = file_get_contents(app_path('Services/Sales/CommissionPayoutService.php'));
+    $delivery = substr($service, strpos($service, 'public function recordAccountingDelivery('), strpos($service, 'private function checksum(') - strpos($service, 'public function recordAccountingDelivery('));
+    $model = file_get_contents(app_path('Models/Sales/SalesCommissionAccountingDelivery.php'));
+    $migration = file_get_contents(database_path('migrations/2026_10_30_000092_remove_commission_accounting_delivery_tenant_company.php'));
+    $payoutModel = file_get_contents(app_path('Models/Sales/SalesCommissionPayout.php'));
+    $statementMigration = file_get_contents(database_path('migrations/2026_10_30_000094_remove_commission_statement_tenant_company.php'));
 
-    expect($service)
+    expect($delivery)
         ->toContain("where('idempotency_key', \$data['idempotency_key'])->lockForUpdate()->first()")
-        ->toContain('hash_equals($duplicate->request_payload_checksum, $checksum)')
+        ->toContain('$this->checksum($facts)')
         ->toContain("'payout_id' => (string) \$payout->id")
-        ->toContain("'company_id' => (string) \$payout->company_id")
         ->toContain("\$payout->accounting_status === 'delivered'")
-        ->toContain('sales.commission.accounting_delivery_recorded');
+        ->toContain('sales.commission.accounting_delivery_recorded')
+        ->not->toContain('lockActiveCompany', "'company_id' =>");
+    expect($model)->not->toContain("'company_id'");
+    expect($payoutModel)->not->toContain("'company_id'");
+    expect($migration)->toContain("'sales_commission_accounting_deliveries'", "dropColumn('company_id')");
+    expect($statementMigration)->toContain('normalizeLegacyDeliveryChecksums()', "dropColumn('company_id')", 'period_installation_unique');
 });
 
 it('recovers concurrent payout, reversal, and accounting-delivery idempotency collisions', function () {
@@ -21,16 +30,22 @@ it('recovers concurrent payout, reversal, and accounting-delivery idempotency co
         ->toContain('hash_equals($duplicate->request_payload_checksum, $checksum), 409');
 });
 
-it('locks an active company before payout, reversal, and delivery rows', function () {
+it('keeps payout and reversal execution installation-wide', function () {
     $service = file_get_contents(app_path('Services/Sales/CommissionPayoutService.php'));
     $pay = substr($service, strpos($service, 'public function pay('), strpos($service, 'public function reverse(') - strpos($service, 'public function pay('));
     $reverse = substr($service, strpos($service, 'public function reverse('), strpos($service, 'public function recordAccountingDelivery(') - strpos($service, 'public function reverse('));
     $delivery = substr($service, strpos($service, 'public function recordAccountingDelivery('), strpos($service, 'private function checksum(') - strpos($service, 'public function recordAccountingDelivery('));
 
-    foreach ([$pay, $reverse, $delivery] as $mutation) {
-        expect(strpos($mutation, '$this->lockActiveCompany('))->toBeLessThan(strpos($mutation, 'lockForUpdate()'));
-    }
-    expect($service)->toContain("where('is_active', true)", "whereNull('deleted_at')");
+    expect($pay)->not->toContain('company_id', 'lockActiveCompany')
+        ->and($reverse)->not->toContain('company_id', 'lockActiveCompany')
+        ->and($delivery)->not->toContain('lockActiveCompany');
+});
+
+it('removes payout company scope after checking installation-wide reference collisions', function () {
+    $migration = file_get_contents(database_path('migrations/2026_10_30_000093_remove_commission_payout_tenant_company.php'));
+
+    expect($migration)->toContain("'sales_commission_payouts'", "'payment_reference'", "dropColumn('company_id')")
+        ->and($migration)->toContain('havingRaw(\'COUNT(*) > 1\')');
 });
 
 it('requires reversal evidence and limits manual delivery reports to failures', function () {

@@ -9,7 +9,7 @@ use Illuminate\Console\Command;
 class ProvisionCorporateRoles extends Command
 {
     protected $signature = 'corporate:provision-roles {--corporate= : Provision one corporate UUID only}';
-    protected $description = 'Create four company-specific starter roles and migrate legacy assignments';
+    protected $description = 'Create four corporate-account roles and migrate legacy assignments';
 
     public function handle(CorporateRoleStarterService $service): int
     {

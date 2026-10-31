@@ -10,16 +10,15 @@ use function Pest\Laravel\actingAs;
 uses(RefreshDatabase::class);
 
 it('returns readable reporting-line labels without Staff or company UUIDs', function () {
-    [$admin, $company] = hr_seed_admin_actor();
+    [$admin] = hr_seed_admin_actor();
     config(['hr.features.people_core' => true]);
-    $manager = Staff::factory()->create(['company_id' => $company->id, 'code' => 'MGR-001']);
-    $member = Staff::factory()->create(['company_id' => $company->id, 'code' => 'MEM-001']);
+    $manager = Staff::factory()->create(['code' => 'MGR-001']);
+    $member = Staff::factory()->create(['code' => 'MEM-001']);
     $lineId = (string) Str::uuid();
     $now = now();
 
     DB::table('hr_reporting_lines')->insert([
         'id' => $lineId,
-        'company_id' => $company->id,
         'manager_staff_id' => $manager->id,
         'member_staff_id' => $member->id,
         'line_type' => 'primary',
@@ -39,17 +38,16 @@ it('returns readable reporting-line labels without Staff or company UUIDs', func
 });
 
 it('omits internal identifiers and reasons from create and end responses while retaining audit snapshots', function () {
-    [$admin, $company] = hr_seed_admin_actor();
+    [$admin] = hr_seed_admin_actor();
     config(['hr.features.people_core' => true]);
-    $manager = Staff::factory()->create(['company_id' => $company->id]);
-    $member = Staff::factory()->create(['company_id' => $company->id]);
+    $manager = Staff::factory()->create();
+    $member = Staff::factory()->create();
     $now = now();
 
     foreach ([$manager, $member] as $staff) {
         DB::table('hr_employment_spells')->insert([
             'id' => (string) Str::uuid(),
             'staff_id' => $staff->id,
-            'company_id' => $company->id,
             'spell_number' => 1,
             'joined_at' => '2020-01-01',
             'service_date' => '2020-01-01',

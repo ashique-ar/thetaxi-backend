@@ -21,19 +21,18 @@ class CustomerMergeService
         'sales_tasks', 'phone_calls',
     ];
 
-    public function merge(Customer $primary, Customer $duplicate, string $companyId, string $actorId, string $reason): Customer
+    public function merge(Customer $primary, Customer $duplicate, string $actorId, string $reason): Customer
     {
         if ((string) $primary->id === (string) $duplicate->id) {
             throw ValidationException::withMessages(['customer_id' => ['Choose two different customer records.']]);
         }
 
-        return DB::transaction(function () use ($primary, $duplicate, $companyId, $actorId, $reason): Customer {
+        return DB::transaction(function () use ($primary, $duplicate, $actorId, $reason): Customer {
             $locked = Customer::query()->whereIn('id', [$primary->id, $duplicate->id])->orderBy('id')->lockForUpdate()->get()->keyBy('id');
             $primary = $locked->get($primary->id);
             $duplicate = $locked->get($duplicate->id);
             abort_unless($primary && $duplicate, 404, 'One of these customer records is no longer available.');
-            $this->assertSingleCompanyMerge($primary, $duplicate, $companyId);
-            $phoneCallingCode = CompanyCustomerScope::phoneCallingCode($companyId);
+            $phoneCallingCode = null;
 
             $sourceUser = User::query()->whereKey($duplicate->user_id)->lockForUpdate()->firstOrFail();
             $alias = DB::table('customer_user_aliases')->where('user_id', $sourceUser->id)->first();
@@ -51,8 +50,7 @@ class CustomerMergeService
                 throw ValidationException::withMessages(['customer_id' => ['The records no longer share a matching email or phone. Review them again before merging.']]);
             }
 
-            if (DB::table('customer_duplicate_decisions')->where(fn ($_companyIdScope) => \App\Services\CompanyIdScope::constrain($_companyIdScope, 'company_id', $companyId))
-                ->where('customer_id', $primary->id)->where('other_customer_id', $duplicate->id)->exists()) {
+            if (DB::table('customer_duplicate_decisions')->where('customer_id', $primary->id)->where('other_customer_id', $duplicate->id)->exists()) {
                 throw ValidationException::withMessages(['customer_id' => ['This customer pair already has a review decision.']]);
             }
 
@@ -87,7 +85,7 @@ class CustomerMergeService
 
             if ((string) $sourceUser->id !== (string) $primary->user_id) {
                 DB::table('customer_user_aliases')->insertOrIgnore([
-                    'id' => (string) Str::uuid(), 'company_id' => $companyId,
+                    'id' => (string) Str::uuid(),
                     'source_customer_id' => $duplicate->id, 'customer_id' => $primary->id,
                     'user_id' => $sourceUser->id, 'merged_by_user_id' => $actorId,
                     'reason' => trim($reason), 'created_at' => now(), 'updated_at' => now(),
@@ -96,7 +94,7 @@ class CustomerMergeService
                     ->where('customer_id', $primary->id)->exists(), 409, 'This login is already linked to another customer profile.');
             }
             DB::table('customer_duplicate_decisions')->insert([
-                'id' => (string) Str::uuid(), 'company_id' => $companyId,
+                'id' => (string) Str::uuid(),
                 'customer_id' => $primary->id, 'other_customer_id' => $duplicate->id,
                 'canonical_customer_id' => $primary->id, 'reviewed_by_user_id' => $actorId,
                 'decision' => 'same_person_merged', 'reason' => trim($reason),
@@ -106,38 +104,11 @@ class CustomerMergeService
             $duplicate->updated_user_id = $actorId;
             $duplicate->delete();
             activity('customer-duplicate-review')->causedBy(User::query()->find($actorId))->performedOn($primary)
-                ->withProperties(['company_id' => $companyId, 'merged_customer_id' => $duplicate->id, 'merged_user_id' => $sourceUser->id])
+                ->withProperties(['merged_customer_id' => $duplicate->id, 'merged_user_id' => $sourceUser->id])
                 ->log('customer_duplicate_merged');
 
             return $primary->fresh(['user', 'state', 'paymentMethods']);
         });
-    }
-
-    private function assertSingleCompanyMerge(Customer $primary, Customer $duplicate, string $companyId): void
-    {
-        foreach (DB::table('companies')->pluck('id') as $candidateCompanyId) {
-            foreach ([$primary, $duplicate] as $customer) {
-                $query = Customer::query()->whereKey($customer->id);
-                CompanyCustomerScope::constrain($query, 'customers', (string) $candidateCompanyId);
-                if ($query->exists() && (string) $candidateCompanyId !== $companyId) {
-                    throw ValidationException::withMessages(['customer_id' => ['These customer records are used by more than one company. Ask a system administrator to review the cross-company records.']]);
-                }
-            }
-        }
-
-        foreach ([
-            ['customer_relationship_owner_assignments', 'customer_id'], ['inquiries', 'customer_id'],
-            ['sales_opportunities', 'customer_id'], ['sales_booking_attributions', 'customer_id'],
-            ['phone_calls', 'customer_id'], ['integration_contact_messages', 'linked_customer_id'],
-            ['sales_activities', 'customer_id'], ['sales_tasks', 'customer_id'],
-        ] as [$table, $column]) {
-            if (! Schema::hasTable($table) || ! Schema::hasColumn($table, $column) || ! Schema::hasColumn($table, 'company_id')) continue;
-            $otherCompanyHasReferences = DB::table($table)->whereIn($column, [$primary->id, $duplicate->id])
-                ->whereNot(fn ($scope) => \App\Services\CompanyIdScope::constrain($scope, 'company_id', $companyId))->exists();
-            if ($otherCompanyHasReferences) {
-                throw ValidationException::withMessages(['customer_id' => ['These customer records have activity in another company. Ask a system administrator to review the cross-company records.']]);
-            }
-        }
     }
 
     private function identityUsers(Customer $customer)

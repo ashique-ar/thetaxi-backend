@@ -1,6 +1,5 @@
 <?php
 
-use App\Models\Company;
 use App\Models\Staff;
 use App\Models\User;
 use App\Models\UserContext;
@@ -14,25 +13,23 @@ use function Pest\Laravel\actingAs;
 
 uses(RefreshDatabase::class);
 
-it('reconciles Work Requests and timesheets against only the latest company-owned attendance result per date', function () {
+it('reconciles Work Requests and timesheets against the latest installation-wide attendance result per date', function () {
     config(['hr.features.leave_overtime' => true]);
     $requester = User::factory()->create();
     $decider = User::factory()->create();
-    $company = Company::create(['name' => 'Reconciliation Company']);
-    $otherCompany = Company::create(['name' => 'Other Reconciliation Company', 'is_default' => false]);
-    $staff = Staff::factory()->create(['user_id' => $requester->id, 'company_id' => $company->id]);
+    $staff = Staff::factory()->create(['user_id' => $requester->id]);
     $policyId = (string) Str::uuid();
     DB::table('hr_work_request_policies')->insert([
-        'id' => $policyId, 'company_id' => $company->id, 'request_kind' => 'overtime', 'code' => 'OT-RECON',
+        'id' => $policyId, 'request_kind' => 'overtime', 'code' => 'OT-RECON',
         'version' => 1, 'rules' => json_encode(['maximum_request_minutes' => 10080], JSON_THROW_ON_ERROR),
         'effective_from' => '2026-01-01', 'status' => 'approved', 'created_by' => $requester->id,
         'approved_by' => $decider->id, 'approved_at' => now(), 'created_at' => now(), 'updated_at' => now(),
     ]);
 
-    $insertResult = function (string $companyId, string $workDate, int $version, int $minutes, ?string $supersedesId = null) use ($staff): string {
+    $insertResult = function (string $workDate, int $version, int $minutes, ?string $supersedesId = null) use ($staff): string {
         $id = (string) Str::uuid();
         DB::table('hr_attendance_daily_results')->insert([
-            'id' => $id, 'company_id' => $companyId, 'staff_id' => $staff->id, 'work_date' => $workDate,
+            'id' => $id, 'staff_id' => $staff->id, 'work_date' => $workDate,
             'result_version' => $version, 'supersedes_id' => $supersedesId, 'day_status' => 'present',
             'worked_minutes' => $minutes, 'late_minutes' => 0, 'early_leave_minutes' => 0, 'payable_minutes' => $minutes,
             'source_kind' => 'calculated', 'calculated_at' => now(), 'input_checksum' => str_repeat('a', 64),
@@ -42,21 +39,21 @@ it('reconciles Work Requests and timesheets against only the latest company-owne
 
         return $id;
     };
-    $firstVersionId = $insertResult($company->id, '2026-11-02', 1, 120);
-    $insertResult($company->id, '2026-11-02', 2, 240, $firstVersionId);
-    $insertResult($otherCompany->id, '2026-11-03', 1, 900);
+    $firstVersionId = $insertResult('2026-11-02', 1, 120);
+    $insertResult('2026-11-02', 2, 240, $firstVersionId);
+    $insertResult('2026-11-03', 1, 900);
 
     $service = app(WorkforceWorkflowService::class);
     $request = $service->submitWorkRequest([
-        'company_id' => $company->id, 'staff_id' => $staff->id, 'policy_id' => $policyId,
+        'staff_id' => $staff->id, 'policy_id' => $policyId,
         'request_kind' => 'overtime', 'starts_at' => '2026-11-02T09:00:00+05:30', 'ends_at' => '2026-11-03T10:00:00+05:30',
         'settlement_kind' => 'informational', 'reason' => 'Reconcile the approved overtime request.', 'idempotency_key' => 'work-request-attendance-reconciliation',
     ], $requester->id);
     $decided = $service->decideWorkRequest($request->id, 'approve', 'Reviewed latest attendance versions.', $decider->id);
-    expect(json_decode($decided->request_snapshot, true, 512, JSON_THROW_ON_ERROR)['attendance_reconciliation']['worked_minutes'])->toBe(240);
+    expect(json_decode($decided->request_snapshot, true, 512, JSON_THROW_ON_ERROR)['attendance_reconciliation']['worked_minutes'])->toBe(1140);
 
     $sheet = $service->saveTimesheet([
-        'company_id' => $company->id, 'staff_id' => $staff->id, 'period_start' => '2026-11-02', 'period_end' => '2026-11-03',
+        'staff_id' => $staff->id, 'period_start' => '2026-11-02', 'period_end' => '2026-11-03',
         'entries' => [
             ['work_date' => '2026-11-02', 'minutes' => 35, 'entry_mode' => 'manual', 'activity_code' => 'operations', 'billable' => false],
             ['work_date' => '2026-11-03', 'minutes' => 25, 'entry_mode' => 'manual', 'activity_code' => 'operations', 'billable' => false],
@@ -66,14 +63,15 @@ it('reconciles Work Requests and timesheets against only the latest company-owne
     $reconciliation = json_decode($submitted->reconciliation_snapshot, true, 512, JSON_THROW_ON_ERROR);
     expect($reconciliation)->toMatchArray([
         'timesheet_minutes' => 60,
-        'attendance_worked_minutes' => 240,
-        'variance_minutes' => -180,
+        'attendance_worked_minutes' => 1140,
+        'variance_minutes' => -1080,
         'not_assumed_equal' => true,
     ]);
 
-    $mismatchedSheetId = (string) Str::uuid();
+    $otherStaff = Staff::factory()->create();
+    $otherSheetId = (string) Str::uuid();
     DB::table('hr_timesheets')->insert([
-        'id' => $mismatchedSheetId, 'company_id' => $otherCompany->id, 'staff_id' => $staff->id,
+        'id' => $otherSheetId, 'staff_id' => $otherStaff->id,
         'period_start' => '2026-11-10', 'period_end' => '2026-11-11', 'status' => 'draft', 'version' => 1,
         'created_at' => now(), 'updated_at' => now(),
     ]);
@@ -86,36 +84,25 @@ it('reconciles Work Requests and timesheets against only the latest company-owne
     actingAs($requester, 'api')->withHeaders([
         'X-Active-Context-Type' => 'staff', 'X-Active-Context-Id' => $context->id,
     ])->getJson('/api/hr/workforce/timesheets')->assertOk()
-        ->assertJsonFragment(['id' => $sheet->id])->assertJsonMissing(['id' => $mismatchedSheetId]);
-
-    expect(fn () => $service->saveTimesheet([
-        'company_id' => $company->id, 'staff_id' => $staff->id, 'period_start' => '2026-11-10', 'period_end' => '2026-11-11',
-        'entries' => [['work_date' => '2026-11-10', 'minutes' => 30, 'entry_mode' => 'manual', 'activity_code' => 'operations', 'billable' => false]],
-    ], $requester->id))->toThrow(HttpException::class, 'The existing timesheet belongs to another legal entity.');
-    expect(fn () => $service->transitionTimesheet($mismatchedSheetId, 'submit', 'Submit mismatched sheet.', $requester->id))
-        ->toThrow(HttpException::class, 'Staff and timesheet legal entities must match.');
-    expect(DB::table('hr_timesheet_events')->where('timesheet_id', $mismatchedSheetId)->count())->toBe(0);
+        ->assertJsonFragment(['id' => $sheet->id])->assertJsonMissing(['id' => $otherSheetId]);
 });
 
-it('rechecks the active company before timesheet creation and transition', function () {
+it('rejects edits once a timesheet has left the editable state', function () {
     config(['hr.features.leave_overtime' => true]);
     $user = User::factory()->create();
-    $company = Company::create(['name' => 'Inactive Timesheet Company', 'is_active' => true, 'is_default' => true]);
-    $staff = Staff::factory()->create(['user_id' => $user->id, 'company_id' => $company->id]);
+    $staff = Staff::factory()->create(['user_id' => $user->id]);
     $service = app(WorkforceWorkflowService::class);
     $sheet = $service->saveTimesheet([
-        'company_id' => $company->id, 'staff_id' => $staff->id, 'period_start' => '2026-01-01', 'period_end' => '2026-01-31',
+        'staff_id' => $staff->id, 'period_start' => '2026-01-01', 'period_end' => '2026-01-31',
         'entries' => [['work_date' => '2026-01-01', 'minutes' => 60, 'entry_mode' => 'manual', 'activity_code' => 'operations', 'billable' => false]],
     ], $user->id);
-    DB::table('companies')->where('id', $company->id)->update(['is_active' => false]);
+    $service->transitionTimesheet($sheet->id, 'submit', 'Submit timesheet.', $user->id);
 
     expect(fn () => $service->saveTimesheet([
-        'company_id' => $company->id, 'staff_id' => $staff->id, 'period_start' => '2026-02-01', 'period_end' => '2026-02-28',
-        'entries' => [['work_date' => '2026-02-01', 'minutes' => 60, 'entry_mode' => 'manual', 'activity_code' => 'operations', 'billable' => false]],
-    ], $user->id))->toThrow(HttpException::class, 'Workforce operations require an active legal entity.');
-    expect(fn () => $service->transitionTimesheet($sheet->id, 'submit', 'Submit timesheet.', $user->id))
-        ->toThrow(HttpException::class, 'Workforce operations require an active legal entity.');
-    expect(DB::table('hr_timesheets')->where('id', $sheet->id)->value('status'))->toBe('draft')
+        'staff_id' => $staff->id, 'period_start' => '2026-01-01', 'period_end' => '2026-01-31',
+        'entries' => [['work_date' => '2026-01-01', 'minutes' => 30, 'entry_mode' => 'manual', 'activity_code' => 'operations', 'billable' => false]],
+    ], $user->id))->toThrow(HttpException::class, 'Only draft or returned timesheets may be edited.');
+    expect(DB::table('hr_timesheets')->where('id', $sheet->id)->value('status'))->toBe('submitted')
         ->and(DB::table('hr_timesheet_entries')->where('timesheet_id', $sheet->id)->count())->toBe(1)
-        ->and(DB::table('hr_timesheet_events')->where('timesheet_id', $sheet->id)->count())->toBe(0);
+        ->and(DB::table('hr_timesheet_events')->where('timesheet_id', $sheet->id)->count())->toBe(1);
 });

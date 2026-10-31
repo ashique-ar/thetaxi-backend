@@ -11,23 +11,25 @@ use function Pest\Laravel\actingAs;
 
 uses(RefreshDatabase::class);
 
-it('searches and exactly hydrates active Staff alert owners inside the authorized company', function () {
-    [$admin, $company] = hr_seed_admin_actor(['name' => 'Alert Owner Company']);
-    $profileStaff = Staff::factory()->create(['company_id' => $company->id]);
+it('searches and exactly hydrates active Staff alert owners across the installation', function () {
+    [$admin] = hr_seed_admin_actor();
+    $profileStaff = Staff::factory()->create();
     SalesProfile::query()->create([
-        'id' => (string) Str::uuid(), 'company_id' => $company->id, 'staff_id' => $profileStaff->id,
+        'id' => (string) Str::uuid(), 'staff_id' => $profileStaff->id,
         'sales_code' => 'ALERT-001', 'status' => 'active', 'effective_from' => now()->subDay(),
     ]);
-    $owner = Staff::factory()->create(['company_id' => $company->id, 'code' => 'OWNER-001']);
+    $owner = Staff::factory()->create(['code' => 'OWNER-001']);
     UserContext::create(['user_id' => $owner->user_id, 'context_type' => 'staff', 'context_id' => $owner->id,
         'is_active' => true, 'created_user_id' => $admin->id]);
-    $inactiveOwner = Staff::factory()->create(['company_id' => $company->id, 'code' => 'OWNER-INACTIVE']);
+    $inactiveOwner = Staff::factory()->create(['code' => 'OWNER-INACTIVE']);
     $inactiveOwner->user->update(['is_active' => false]);
     UserContext::create(['user_id' => $inactiveOwner->user_id, 'context_type' => 'staff', 'context_id' => $inactiveOwner->id,
         'is_active' => true, 'created_user_id' => $admin->id]);
-    $contextlessOwner = Staff::factory()->create(['company_id' => $company->id, 'code' => 'OWNER-CONTEXTLESS']);
+    $contextlessOwner = Staff::factory()->create(['code' => 'OWNER-CONTEXTLESS']);
     $foreignOwner = Staff::factory()->create(['code' => 'FOREIGN-001']);
-    $url = '/api/sales/performance/alert-owner-options?company_id='.$company->id;
+    UserContext::create(['user_id' => $foreignOwner->user_id, 'context_type' => 'staff', 'context_id' => $foreignOwner->id,
+        'is_active' => true, 'created_user_id' => $admin->id]);
+    $url = '/api/sales/performance/alert-owner-options?';
 
     $response = actingAs($admin, 'api')->getJson($url.'&search=OWNER-001&per_page=1')->assertOk()
         ->assertJsonPath('data.data.0.value', $owner->user_id)
@@ -36,7 +38,7 @@ it('searches and exactly hydrates active Staff alert owners inside the authorize
     actingAs($admin, 'api')->getJson($url.'&selected_id='.$owner->user_id.'&search=no-match')
         ->assertOk()->assertJsonPath('data.data.0.value', $owner->user_id);
     actingAs($admin, 'api')->getJson($url.'&selected_id='.$foreignOwner->user_id)
-        ->assertOk()->assertJsonCount(0, 'data.data');
+        ->assertOk()->assertJsonPath('data.data.0.value', $foreignOwner->user_id);
     actingAs($admin, 'api')->getJson($url.'&selected_id='.$inactiveOwner->user_id)
         ->assertOk()->assertJsonCount(0, 'data.data');
     actingAs($admin, 'api')->getJson($url.'&selected_id='.$contextlessOwner->user_id)
@@ -45,8 +47,8 @@ it('searches and exactly hydrates active Staff alert owners inside the authorize
 });
 
 it('refuses to save an alert policy for a deactivated owner', function () {
-    [$admin, $company] = hr_seed_admin_actor();
-    $owner = Staff::factory()->create(['company_id' => $company->id]);
+    [$admin] = hr_seed_admin_actor();
+    $owner = Staff::factory()->create();
     $owner->user->update(['is_active' => false]);
     $rules = [
         'no_new_sales' => ['enabled' => true, 'severity' => 'low'],
@@ -68,7 +70,7 @@ it('refuses to save an alert policy for a deactivated owner', function () {
     ];
 
     expect(fn () => app(SalesPerformanceService::class)->storeAlertPolicy([
-        'company_id' => $company->id, 'rules' => $rules, 'effective_from' => now()->toDateString(), 'effective_until' => null,
+        'rules' => $rules, 'effective_from' => now()->toDateString(), 'effective_until' => null,
     ], (string) $admin->id))->toThrow(\Symfony\Component\HttpKernel\Exception\HttpException::class);
-    expect(SalesAlertPolicyVersion::query()->where('company_id', $company->id)->exists())->toBeFalse();
+    expect(SalesAlertPolicyVersion::query()->exists())->toBeFalse();
 });

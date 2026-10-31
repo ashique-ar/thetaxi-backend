@@ -13,23 +13,26 @@ class BookingPaymentReceipt extends BaseModel
     private const IMMUTABLE_EVIDENCE_FIELDS = [
         'booking_id', 'amount', 'payment_method', 'payment_stage', 'payment_purpose',
         'reference', 'received_at', 'received_by', 'received_via', 'payer_type',
-        'payer_id', 'driver_id', 'idempotency_key', 'company_id', 'source_amount',
+        'payer_id', 'driver_id', 'idempotency_key', 'source_amount',
         'source_currency', 'lkr_amount', 'fx_rate_to_lkr', 'fx_rate_at', 'fx_source',
         'initial_finality_status', 'provider_event_id', 'provider_payload_checksum',
         'request_payload_checksum', 'corporate_remittance_id', 'legacy_repair_request_checksum', 'legacy_repair_before_checksum',
-        'legacy_repair_evidence_file_id', 'legacy_repair_reason',
+        'legacy_repair_evidence_file_id', 'legacy_repair_reason', 'legacy_repair_checksum_version',
+        'legacy_repair_after_checksum_v1', 'legacy_repair_state_checksum_v2',
     ];
     protected $fillable = [
         'booking_id', 'amount', 'refunded_amount', 'payment_method', 'payment_stage', 'payment_purpose', 'reference', 'idempotency_key',
         'received_at', 'received_by', 'notes', 'metadata', 'received_via', 'payer_type', 'payer_id', 'corporate_remittance_id',
         'driver_id', 'allocated_amount', 'driver_company_settled_amount', 'allocation_status', 'driver_company_settlement_status', 'driver_company_settled_at',
-        'company_id', 'source_amount', 'source_currency', 'lkr_amount', 'fx_rate_to_lkr', 'fx_rate_at',
+        'source_amount', 'source_currency', 'lkr_amount', 'fx_rate_to_lkr', 'fx_rate_at',
         'fx_source', 'initial_finality_status', 'finality_status', 'finalized_at', 'provider_event_id', 'provider_payload_checksum',
         'request_payload_checksum', 'event_version', 'legacy_repair_request_checksum', 'legacy_repair_before_checksum',
-        'legacy_repair_evidence_file_id', 'legacy_repair_reason',
+        'legacy_repair_evidence_file_id', 'legacy_repair_reason', 'legacy_repair_checksum_version',
+        'legacy_repair_after_checksum_v1', 'legacy_repair_state_checksum_v2',
     ];
     protected $hidden = [
         'legacy_repair_request_checksum', 'legacy_repair_before_checksum', 'legacy_repair_evidence_file_id', 'legacy_repair_reason',
+        'legacy_repair_checksum_version', 'legacy_repair_after_checksum_v1', 'legacy_repair_state_checksum_v2',
     ];
 
     protected $casts = [
@@ -46,6 +49,7 @@ class BookingPaymentReceipt extends BaseModel
         'fx_rate_at' => 'datetime',
         'finalized_at' => 'datetime',
         'event_version' => 'integer',
+        'legacy_repair_checksum_version' => 'integer',
     ];
 
     protected static function booted(): void

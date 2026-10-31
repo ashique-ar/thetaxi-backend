@@ -30,18 +30,16 @@ class VerifiedCommissionAccountingDeliveryService
             'An idempotency key is required.');
 
         return DB::transaction(function () use ($payout, $sourceEventId, $providerTransactionId, $providerResponseChecksum, $idempotencyKey) {
-            DB::table('companies')->where('id', $payout->company_id)->where('is_active', true)
-                ->whereNull('deleted_at')->lockForUpdate()->firstOrFail();
             $payout = SalesCommissionPayout::query()->lockForUpdate()->findOrFail($payout->id);
             $eventType = $payout->reverses_payout_id ? 'payout_reversal' : 'payout';
-            $requestChecksum = hash('sha256', json_encode([
-                'company_id' => (string) $payout->company_id,
+            $facts = [
                 'payout_id' => (string) $payout->id,
                 'source_event_id' => $sourceEventId,
                 'provider_transaction_id' => $providerTransactionId,
                 'provider_response_checksum' => strtolower($providerResponseChecksum),
                 'idempotency_key' => $idempotencyKey,
-            ], JSON_THROW_ON_ERROR | JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE));
+            ];
+            $requestChecksum = hash('sha256', json_encode($facts, JSON_THROW_ON_ERROR | JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE));
 
             $duplicate = SalesCommissionAccountingDelivery::query()
                 ->where('idempotency_key', $idempotencyKey)->lockForUpdate()->first();
@@ -59,13 +57,12 @@ class VerifiedCommissionAccountingDeliveryService
             abort_unless($payout->accounting_status !== 'delivered', 409,
                 'A QuickBooks delivery is already verified for this payout.');
 
-            $integrity = $this->reconciliation->reconcilePayout((string) $payout->company_id, (string) $payout->id);
+            $integrity = $this->reconciliation->reconcilePayout((string) $payout->id);
             abort_unless($integrity && $integrity['issues'] === []
                 && hash_equals((string) $integrity['accounting_event_id'], $sourceEventId), 409,
                 'The payout source and accounting outbox event must reconcile before QuickBooks acceptance is recorded.');
 
             $accountingDelivery = SalesCommissionAccountingDelivery::create([
-                'company_id' => $payout->company_id,
                 'payout_id' => $payout->id,
                 'event_type' => $eventType,
                 'status' => 'accepted',
@@ -81,7 +78,7 @@ class VerifiedCommissionAccountingDeliveryService
                 'recorded_at' => now(),
             ]);
             $payout->update(['accounting_status' => 'delivered']);
-            $this->events->record('sales', $payout->company_id, 'commission_payout', $payout->id,
+            $this->events->record('sales', 'commission_payout', $payout->id,
                 'sales.commission.accounting_delivery_verified', 3, 1, [
                     'payout_id' => $payout->id,
                     'event_type' => $eventType,
@@ -95,4 +92,5 @@ class VerifiedCommissionAccountingDeliveryService
             return $accountingDelivery;
         });
     }
+
 }

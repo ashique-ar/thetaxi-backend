@@ -1,14 +1,14 @@
 <?php
 
-it('bounds PPE lookup by permission tenant employee date and current custody state', function () {
+it('bounds PPE lookup by permission employee date and current custody state', function () {
     $source = file_get_contents(app_path('Http/Controllers/Api/Hr/SafetyController.php'));
     $lookup = explode('public function incidentStaffLabels', explode('public function ppeCustodyOptions', $source)[1])[0];
     $routes = file_get_contents(base_path('routes/api.php'));
     expect($routes)->toContain("Route::get('ppe-custody-options', [SafetyController::class, 'ppeCustodyOptions'])->middleware('permission:hr.safety.manage')");
     expect($lookup)->toContain("'max:50'", "'selected_id'", "->where('staff_id', \$data['staff_id'])",
-        "->where('company_id', \$actor->company_id)", "->where('status', 'assigned')->whereNull('returned_at')",
+        "->where('status', 'assigned')->whereNull('returned_at')",
         "->whereDate('assigned_at', '<=', \$data['issued_at'])", "'label' => \$row->item_name");
-    expect($lookup)->not->toContain('encrypted_details', 'condition_snapshot');
+    expect($lookup)->not->toContain('encrypted_details', 'condition_snapshot', 'company_id', 'companyId');
 });
 
 it('makes issuance and audit atomic and revalidates custody under locks with conflict checked retries', function () {
@@ -17,8 +17,9 @@ it('makes issuance and audit atomic and revalidates custody under locks with con
     expect($write)->toContain('returnDB::transaction(', "->where('status','assigned')->whereNull('returned_at')",
         "->whereDate('assigned_at','<=',\$d['issued_at'])->lockForUpdate()->first()",
         "hash_equals(\$existing->issuance_checksum,\$checksum)", "\$id=\$d['idempotency_key']",
-        "\$existing->company_id===\$a->company_id", "\$existing->issued_by===\$r->user()->id",
+        "\$existing->issued_by===\$r->user()->id",
         "\$this->registerEvent(");
+    expect($write)->not->toContain('company_id', 'companyId');
     expect(strpos($write, 'if($existing)'))->toBeLessThan(strpos($write, "\$this->activeStaff("));
 });
 

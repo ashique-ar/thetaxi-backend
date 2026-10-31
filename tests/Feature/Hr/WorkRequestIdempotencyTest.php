@@ -1,6 +1,5 @@
 <?php
 
-use App\Models\Company;
 use App\Models\Staff;
 use App\Models\User;
 use App\Services\Hr\Workforce\WorkforceWorkflowService;
@@ -14,16 +13,15 @@ uses(RefreshDatabase::class);
 it('returns the original work request on retry and rejects key reuse with changed evidence', function () {
     config(['hr.features.leave_overtime' => true]);
     $user = User::factory()->create();
-    $company = Company::create(['name' => 'Work Request Company']);
-    $staff = Staff::factory()->create(['user_id' => $user->id, 'company_id' => $company->id]);
+    $staff = Staff::factory()->create(['user_id' => $user->id]);
     $policyId = (string) Str::uuid();
     DB::table('hr_work_request_policies')->insert([
-        'id' => $policyId, 'company_id' => $company->id, 'request_kind' => 'overtime', 'code' => 'OT-1',
+        'id' => $policyId, 'request_kind' => 'overtime', 'code' => 'OT-1',
         'version' => 1, 'rules' => '{}', 'effective_from' => '2026-01-01', 'status' => 'approved',
         'created_by' => $user->id, 'approved_by' => $user->id, 'approved_at' => now(), 'created_at' => now(), 'updated_at' => now(),
     ]);
     $data = [
-        'company_id' => $company->id, 'staff_id' => $staff->id, 'policy_id' => $policyId,
+        'staff_id' => $staff->id, 'policy_id' => $policyId,
         'request_kind' => 'overtime', 'starts_at' => '2026-11-02T09:00:00+05:30',
         'ends_at' => '2026-11-02T10:00:00+05:30', 'rate_category' => null, 'settlement_kind' => 'pay',
         'reason' => 'Support call', 'idempotency_key' => 'work-request-retry-1',
@@ -51,32 +49,27 @@ it('returns the original work request on retry and rejects key reuse with change
     }
 });
 
-it('ignores an overlapping Work Request owned by another company for the same Staff ID', function () {
+it('rejects an overlapping Work Request for the same Staff across the installation', function () {
     config(['hr.features.leave_overtime' => true]);
     $user = User::factory()->create();
-    $company = Company::create(['name' => 'Selected Work Request Company']);
-    $otherCompany = Company::create(['name' => 'Other Work Request Company', 'is_default' => false]);
-    $staff = Staff::factory()->create(['user_id' => $user->id, 'company_id' => $company->id]);
+    $staff = Staff::factory()->create(['user_id' => $user->id]);
     $policyId = (string) Str::uuid();
     DB::table('hr_work_request_policies')->insert([
-        'id' => $policyId, 'company_id' => $company->id, 'request_kind' => 'overtime', 'code' => 'OT-SCOPE',
+        'id' => $policyId, 'request_kind' => 'overtime', 'code' => 'OT-SCOPE',
         'version' => 1, 'rules' => '{}', 'effective_from' => '2026-01-01', 'status' => 'approved',
         'created_by' => $user->id, 'approved_by' => User::factory()->create()->id, 'approved_at' => now(), 'created_at' => now(), 'updated_at' => now(),
     ]);
     DB::table('hr_work_requests')->insert([
-        'id' => (string) Str::uuid(), 'company_id' => $otherCompany->id, 'staff_id' => $staff->id, 'policy_id' => $policyId,
+        'id' => (string) Str::uuid(), 'staff_id' => $staff->id, 'policy_id' => $policyId,
         'request_kind' => 'overtime', 'starts_at' => '2026-11-03T09:00:00+05:30', 'ends_at' => '2026-11-03T10:00:00+05:30',
-        'requested_minutes' => 60, 'status' => 'pending_approval', 'reason' => 'Foreign tenant overlap', 'request_snapshot' => '{}',
-        'request_checksum' => str_repeat('a', 64), 'idempotency_key' => 'foreign-work-request-overlap', 'requested_by' => $user->id,
+        'requested_minutes' => 60, 'status' => 'pending_approval', 'reason' => 'Existing overlap', 'request_snapshot' => '{}',
+        'request_checksum' => str_repeat('a', 64), 'idempotency_key' => 'existing-work-request-overlap', 'requested_by' => $user->id,
         'created_at' => now(), 'updated_at' => now(),
     ]);
 
-    $request = app(WorkforceWorkflowService::class)->submitWorkRequest([
-        'company_id' => $company->id, 'staff_id' => $staff->id, 'policy_id' => $policyId,
+    expect(fn () => app(WorkforceWorkflowService::class)->submitWorkRequest([
+        'staff_id' => $staff->id, 'policy_id' => $policyId,
         'request_kind' => 'overtime', 'starts_at' => '2026-11-03T09:30:00+05:30', 'ends_at' => '2026-11-03T10:30:00+05:30',
-        'settlement_kind' => 'informational', 'reason' => 'Selected company request.', 'idempotency_key' => 'selected-work-request-overlap',
-    ], $user->id);
-
-    expect($request->company_id)->toBe($company->id)
-        ->and($request->status)->toBe('pending_approval');
+        'settlement_kind' => 'informational', 'reason' => 'Installation-wide request.', 'idempotency_key' => 'installation-work-request-overlap',
+    ], $user->id))->toThrow(HttpException::class, 'An active work request overlaps this interval.');
 });

@@ -19,8 +19,6 @@ class MyWorkController extends Controller
 {
     public function __invoke(Request $request): JsonResponse
     {
-        // These legacy policy accessors now resolve installation-wide values.
-        $companyId = '';
         $userId = (string) $request->user()->id;
         $queues = [];
         $attention = [];

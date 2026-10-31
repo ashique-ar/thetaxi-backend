@@ -33,6 +33,7 @@ class BusinessSettingController extends Controller
             'content_generation_url',
             'site_timezone',
             'default_currency',
+            'default_country_code',
         ],
         'branding' => [
             'portal_title',
@@ -195,6 +196,19 @@ class BusinessSettingController extends Controller
                     'status' => 'error',
                     'message' => 'Portal booking notice must be between 0 and 8760 hours; corporate settings may use decimals.',
                     'errors' => $timingValidator->errors(),
+                ], 422);
+            }
+        }
+
+        if ($category === 'general') {
+            $countryValidator = Validator::make($request->input('settings', []), [
+                'default_country_code' => ['sometimes', 'nullable', 'string', 'size:2', 'alpha'],
+            ]);
+            if ($countryValidator->fails()) {
+                return response()->json([
+                    'status' => 'error',
+                    'message' => 'Default country must be a two-letter ISO code.',
+                    'errors' => $countryValidator->errors(),
                 ], 422);
             }
         }

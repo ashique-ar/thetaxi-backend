@@ -78,7 +78,6 @@ beforeEach(function () {
         $table->uuid('id')->primary();
         $table->string('type');
         $table->text('value')->nullable();
-        $table->uuid('company_id')->nullable();
         $table->timestamps();
         $table->softDeletes();
     });

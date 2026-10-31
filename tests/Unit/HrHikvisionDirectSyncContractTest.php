@@ -22,10 +22,11 @@ PHP)
     expect($service)
         ->toContain("hash_equals(\$existingChecksum, \$payloadChecksum)")
         ->toContain("->where('device_id', \$device->id)->where('provider_event_id', \$event['provider_event_id'])->value('payload_checksum')")
-        ->toContain("where('id', \$device->company_id)->where('is_active', true)->whereNull('deleted_at')")
-        ->toContain('Attendance synchronization requires an active legal entity.')
+        ->toContain("where('id', \$device->id)->where('status', 'active')->where('integration_mode', 'direct_isapi')")
+        ->toContain('Attendance synchronization requires an active undeleted device.')
         ->toContain("where('integration_mode', 'direct_isapi')->whereNull('deleted_at')->exists()")
-        ->toContain("where('id', \$device->id)->where('company_id', \$company->id)->where('status', 'active')->whereNull('deleted_at')->lockForUpdate()");
+        ->toContain("where('id', \$device->id)->where('status', 'active')->whereNull('deleted_at')->lockForUpdate()")
+        ->not->toContain('company_id', 'legal entity');
 });
 
 it('exposes permission-gated manual sync and run diagnostics in the admin UI', function () {
@@ -165,7 +166,7 @@ it('makes the complete portal workflow discoverable and exposes Staff prerequisi
     $navigation = file_get_contents(base_path('../portal-thetaxi/src/app/core/navigation/sections/navigation.people.ts'));
     $template = file_get_contents(base_path('../portal-thetaxi/src/app/modules/hr-attendance/components/attendance-people/attendance-people.component.html'));
     expect($routes)->toContain('legacy-staff-gaps')->toContain('permission:staff.edit-all')
-        ->and($controller)->toContain('public function legacyStaffGaps')->toContain("whereNull('staff.company_id')->orWhereNull('staff.code')")
+        ->and($controller)->toContain('public function legacyStaffGaps')->toContain("whereNull('staff.code')")->not->toContain('company_id')
         ->and($navigation)->toContain("title: 'Attendance Operations'")->toContain("'hr.attendance.devices.view'")->toContain("'hr.attendance.results.view'")
         ->and($template)->toContain('Terminal people')->toContain('Map to Staff')->toContain('Staff member')->toContain('Save reviewed mapping')
         ->toContain('Search name or employee number')->toContain('Attendance terminal')->toContain('Terminal display name');

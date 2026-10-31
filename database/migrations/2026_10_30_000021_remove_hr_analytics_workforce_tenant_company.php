@@ -5,6 +5,8 @@ use Illuminate\Database\Schema\Blueprint;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Schema;
 
+require_once __DIR__.'/Support/TenantIndexDropper.php';
+
 return new class extends Migration
 {
     private const TABLES = [
@@ -72,9 +74,7 @@ return new class extends Migration
                 continue;
             }
 
-            Schema::table($tableName, fn (Blueprint $table) => $index['unique']
-                ? $table->dropUnique($index['name'])
-                : $table->dropIndex($index['name']));
+            TenantIndexDropper::drop($tableName, $index);
         }
 
         Schema::table($tableName, fn (Blueprint $table) => $table->dropColumn('company_id'));

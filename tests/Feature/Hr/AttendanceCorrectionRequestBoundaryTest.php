@@ -1,6 +1,5 @@
 <?php
 
-use App\Models\Company;
 use App\Models\Staff;
 use App\Models\User;
 use App\Models\UserContext;
@@ -14,7 +13,7 @@ use function Pest\Laravel\actingAs;
 uses(RefreshDatabase::class);
 
 it('requires a configured approved roster and mapping before accepting a correction', function () {
-    [$admin, $company] = hr_seed_admin_actor();
+    [$admin] = hr_seed_admin_actor();
     $staff = Staff::query()->where('user_id', $admin->id)->firstOrFail();
     $context = UserContext::query()->where('user_id', $admin->id)->where('context_id', $staff->id)->firstOrFail();
     $headers = ['X-Active-Context-Type' => 'staff', 'X-Active-Context-Id' => $context->id];
@@ -33,7 +32,6 @@ it('requires a configured approved roster and mapping before accepting a correct
     $correctionId = (string) Str::uuid();
     DB::table('hr_attendance_correction_requests')->insert([
         'id' => $correctionId,
-        'company_id' => $company->id,
         'staff_id' => $staff->id,
         'work_date' => '2026-06-01',
         'correction_type' => 'worked_minutes',
@@ -46,31 +44,29 @@ it('requires a configured approved roster and mapping before accepting a correct
         'created_at' => now(),
         'updated_at' => now(),
     ]);
-    $foreignCorrectionId = (string) Str::uuid();
-    $otherCompany = Company::create(['name' => 'Other Correction Company']);
+    $installationCorrectionId = (string) Str::uuid();
     DB::table('hr_attendance_correction_requests')->insert([
-        'id' => $foreignCorrectionId,
-        'company_id' => $otherCompany->id,
+        'id' => $installationCorrectionId,
         'staff_id' => $staff->id,
         'work_date' => '2026-06-02',
         'correction_type' => 'worked_minutes',
         'requested_values' => json_encode(['worked_minutes' => 480], JSON_THROW_ON_ERROR),
-        'reason' => 'Mismatched historical entity.',
+        'reason' => 'Installation-wide correction.',
         'status' => 'pending_approval',
-        'idempotency_key' => 'foreign-attendance-correction-1',
+        'idempotency_key' => 'installation-attendance-correction-1',
         'request_checksum' => str_repeat('b', 64),
         'requested_by' => $admin->id,
         'created_at' => now(),
         'updated_at' => now(),
     ]);
-    $correctionList = actingAs($admin, 'api')->withHeaders($headers)->getJson('/api/hr/attendance/corrections?company_id='.$company->id)
-        ->assertOk()->assertJsonPath('data.total', 1)->assertJsonPath('data.data.0.is_requester', true)
-        ->assertJsonPath('data.data.0.requested_values.worked_minutes', 420)
+    $correctionList = actingAs($admin, 'api')->withHeaders($headers)->getJson('/api/hr/attendance/corrections')
+        ->assertOk()->assertJsonPath('data.total', 2)
         ->assertJsonMissingPath('data.data.0.staff_id')
         ->assertJsonMissingPath('data.data.0.requested_by')
         ->assertJsonMissingPath('data.data.0.decided_by');
-    expect(collect($correctionList->json('data.data'))->pluck('id')->all())->toContain($correctionId)
-        ->not->toContain($foreignCorrectionId);
+    $listedCorrection = collect($correctionList->json('data.data'))->firstWhere('id', $correctionId);
+    expect(collect($correctionList->json('data.data'))->pluck('id')->all())->toContain($correctionId, $installationCorrectionId)
+        ->and($listedCorrection['requested_values']['worked_minutes'])->toBe(420);
 
     expect(fn () => app(AttendanceResultService::class)->approveCorrection(
         $correctionId,
@@ -86,7 +82,6 @@ it('requires a configured approved roster and mapping before accepting a correct
     $rejector->assignRole('admin');
     $reviewerStaff = Staff::factory()->create([
         'user_id' => $rejector->id,
-        'company_id' => $company->id,
         'staff_type' => 'admin',
     ]);
     $rejectorContext = UserContext::create([
@@ -105,22 +100,14 @@ it('requires a configured approved roster and mapping before accepting a correct
     $rejectionAudit = DB::table('activity_log')->where('description', 'attendance_correction_rejected')->latest('id')->value('properties');
     expect(json_decode((string) $rejectionAudit, true, 512, JSON_THROW_ON_ERROR))->toBe([
         'correction_id' => $correctionId,
-        'company_id' => $company->id,
         'status' => 'rejected',
     ]);
     $replayResponse = actingAs($rejector, 'api')->withHeaders($rejectorHeaders)->postJson($rejectPath, ['decision_note' => $decisionNote])->assertOk();
     expect($replayResponse->json('data.decided_at'))->toBe($rejectedResponse->json('data.decided_at'))
         ->and(DB::table('activity_log')->where('description', 'attendance_correction_rejected')->count())->toBe($eventsAfterRejection);
-    expect(fn () => app(AttendanceResultService::class)->rejectCorrection($correctionId, (string) $company->id, (string) User::factory()->create()->id, $decisionNote))
+    expect(fn () => app(AttendanceResultService::class)->rejectCorrection($correctionId, (string) User::factory()->create()->id, $decisionNote))
         ->toThrow(\Symfony\Component\HttpKernel\Exception\HttpException::class);
-    expect(fn () => app(AttendanceResultService::class)->rejectCorrection($correctionId, (string) $company->id, (string) $rejector->id, 'Changed decision note.'))
-        ->toThrow(\Symfony\Component\HttpKernel\Exception\HttpException::class);
-    expect(fn () => app(AttendanceResultService::class)->rejectCorrection($correctionId, (string) $otherCompany->id, (string) $rejector->id, $decisionNote))
-        ->toThrow(\Symfony\Component\HttpKernel\Exception\HttpException::class);
-    actingAs($rejector, 'api')->withHeaders($rejectorHeaders)->postJson('/api/hr/attendance/corrections/'.$foreignCorrectionId.'/reject', ['decision_note' => $decisionNote])
-        ->assertNotFound();
-    DB::table('companies')->where('id', $company->id)->update(['is_active' => false]);
-    expect(fn () => app(AttendanceResultService::class)->rejectCorrection($correctionId, (string) $company->id, (string) $rejector->id, $decisionNote))
+    expect(fn () => app(AttendanceResultService::class)->rejectCorrection($correctionId, (string) $rejector->id, 'Changed decision note.'))
         ->toThrow(\Symfony\Component\HttpKernel\Exception\HttpException::class);
     $this->assertDatabaseHas('hr_attendance_correction_requests', [
         'id' => $correctionId,

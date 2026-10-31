@@ -35,7 +35,7 @@ class BookingAttributionService
 
             $securedAt = $booking->confirmed_at ?? $booking->updated_at ?? now();
             $resolved = $this->resolveProfiles($booking, $securedAt);
-            if ($stageUnownedHistorical && ! $this->hasHistoricalCompanySource($booking)) {
+            if ($stageUnownedHistorical && ! $this->hasHistoricalOwnerSource($booking)) {
                 $resolved['acquisition_profile'] = null;
                 $resolved['acquisition_profile_id'] = null;
                 $resolved['collection_profile'] = null;
@@ -46,7 +46,6 @@ class BookingAttributionService
             $acquisitionProfileId = $resolved['acquisition_profile_id'];
             $collectionProfile = $resolved['collection_profile'];
             $collectionProfileId = $resolved['collection_profile_id'];
-            $companyId = $resolved['company_id'];
             $value = (string) ($booking->total_actual ?? $booking->total_estimated ?? 0);
             $currency = strtoupper((string) ($booking->currency ?: 'LKR'));
             $category = ($booking->is_recurring || $rootAttribution) ? 'long_term' : 'one_time';
@@ -56,7 +55,6 @@ class BookingAttributionService
             $attribution = SalesBookingAttribution::create([
                 'booking_id' => $booking->id,
                 'root_attribution_id' => $rootAttribution?->root_attribution_id ?? $rootAttribution?->id,
-                'company_id' => $companyId,
                 'acquisition_sales_profile_id' => $acquisitionProfileId,
                 'collection_sales_profile_id' => $collectionProfileId,
                 'customer_id' => $booking->customer_id,
@@ -97,13 +95,13 @@ class BookingAttributionService
                 $collectionProfile,
                 $currency,
             );
-            if ($stageUnownedHistorical && ! $this->hasHistoricalCompanySource($booking)) {
+            if ($stageUnownedHistorical && ! $this->hasHistoricalOwnerSource($booking)) {
                 DB::table('sales_attribution_exceptions')->insertOrIgnore([
                     'id' => (string) Str::uuid(),
                     'booking_id' => $booking->id,
-                    'exception_type' => 'historical_company_owner_review_required',
+                    'exception_type' => 'historical_owner_review_required',
                     'status' => 'open',
-                    'details' => 'Historical booking ownership must be established by an authorized owner before assigning a legal entity.',
+                    'details' => 'Historical booking ownership must be reviewed before assigning a salesperson.',
                     'detected_at' => now(),
                     'created_at' => now(),
                     'updated_at' => now(),
@@ -112,7 +110,6 @@ class BookingAttributionService
             $attribution = $this->commissionPlans->freezeFamilyForAttribution($attribution) ?? $attribution;
             $this->events->record(
                 'sales',
-                $companyId,
                 'booking_attribution',
                 $attribution->id,
                 'sales.booking.confirmed',
@@ -130,7 +127,7 @@ class BookingAttributionService
                 "booking:{$booking->id}",
             );
 
-            if (! $stageUnownedHistorical || $this->hasHistoricalCompanySource($booking)) {
+            if (! $stageUnownedHistorical || $this->hasHistoricalOwnerSource($booking)) {
                 $this->crm->markWonFromBooking($booking);
             }
             $this->metricFacts->projectBookingConfirmation($attribution);
@@ -148,16 +145,14 @@ class BookingAttributionService
         $acquisitionProfileId = $resolved['acquisition_profile_id'];
         $collectionProfile = $resolved['collection_profile'];
         $collectionProfileId = $resolved['collection_profile_id'];
-        $companyId = $resolved['company_id'];
         $currency = strtoupper((string) ($booking->currency ?: 'LKR'));
-        $historicalCompanyReviewRequired = $companyId !== null && ! $this->hasHistoricalCompanySource($booking);
+        $historicalOwnerReviewRequired = ! $this->hasHistoricalOwnerSource($booking);
 
         return [
             'booking_id' => $booking->id,
             'booking_label' => $booking->booking_number ?: ($booking->log_code ?: ($booking->created_at ? 'Booking on ' . $booking->created_at->format('Y-m-d') : 'Booking')),
             'eligible' => $this->isConfirmed($booking),
             'root_attribution_id' => $root?->root_attribution_id ?? $root?->id,
-            'company_id' => $companyId,
             'acquisition_sales_profile_id' => $acquisitionProfileId,
             'collection_sales_profile_id' => $collectionProfileId,
             'commission_category' => ($booking->is_recurring || $root) ? 'long_term' : 'one_time',
@@ -170,13 +165,13 @@ class BookingAttributionService
                 $acquisitionProfileId && ! $acquisitionProfile ? 'acquisition_owner_ineligible' : null,
                 ! $collectionProfileId ? 'collection_handler_missing' : null,
                 $collectionProfileId && ! $collectionProfile ? 'collection_handler_ineligible' : null,
-                $historicalCompanyReviewRequired ? 'historical_company_owner_review_required' : null,
+                $historicalOwnerReviewRequired ? 'historical_owner_review_required' : null,
                 $currency === 'LKR' ? null : 'fx_snapshot_missing',
             ])),
         ];
     }
 
-    private function hasHistoricalCompanySource(Booking $booking): bool
+    private function hasHistoricalOwnerSource(Booking $booking): bool
     {
         if ($this->rootAttribution($booking)) {
             return true;
@@ -218,7 +213,6 @@ class BookingAttributionService
     {
         $root = $this->rootAttribution($booking);
         if ($root) {
-            $companyId = $booking->company_id;
             $acquisitionProfileId = $root->acquisition_sales_profile_id;
             $acquisitionProfile = $this->profileEligibility->byIdAt(
                 $acquisitionProfileId,
@@ -238,11 +232,9 @@ class BookingAttributionService
                 'acquisition_profile' => $acquisitionProfile,
                 'collection_profile_id' => $collectionProfileId,
                 'collection_profile' => $collectionProfile,
-                'company_id' => $companyId,
             ];
         }
 
-        $companyId = $booking->company_id;
         $staff = $this->resolveAcquisitionStaff($booking);
         $acquisitionProfile = $staff
             ? $this->profileEligibility->forStaffAt($staff, 'acquisition', $securedAt)
@@ -258,7 +250,6 @@ class BookingAttributionService
             'acquisition_profile' => $acquisitionProfile,
             'collection_profile_id' => $collectionProfile?->id,
             'collection_profile' => $collectionProfile,
-            'company_id' => $companyId,
         ];
     }
 

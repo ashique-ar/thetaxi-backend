@@ -535,8 +535,8 @@ class PeopleCoreController extends Controller
             'job_family_id' => ['nullable', 'uuid'],
             'job_grade_id' => ['nullable', 'uuid'],
         ]);
-        $this->assertOptionalCompanyReference($data['job_family_id'] ?? null, 'hr_job_families', 'Job family');
-        $this->assertOptionalCompanyReference($data['job_grade_id'] ?? null, 'hr_job_grades', 'Job grade');
+        $this->assertOptionalReference($data['job_family_id'] ?? null, 'hr_job_families', 'Job family');
+        $this->assertOptionalReference($data['job_grade_id'] ?? null, 'hr_job_grades', 'Job grade');
         $rows = $this->catalogQuery('hr_designations', $data)
             ->when($data['job_family_id'] ?? null, fn($query, $id) => $query->where('job_family_id', $id))
             ->when($data['job_grade_id'] ?? null, fn($query, $id) => $query->where('job_grade_id', $id))
@@ -563,8 +563,8 @@ class PeopleCoreController extends Controller
             'designation_id' => ['nullable', 'uuid'],
             'availability' => ['nullable', Rule::in(['vacant', 'partially_filled', 'filled', 'inactive'])],
         ]);
-        $this->assertOptionalCompanyReference($data['organization_unit_id'] ?? null, 'hr_organization_units', 'Organization unit');
-        $this->assertOptionalCompanyReference($data['designation_id'] ?? null, 'hr_designations', 'Designation');
+        $this->assertOptionalReference($data['organization_unit_id'] ?? null, 'hr_organization_units', 'Organization unit');
+        $this->assertOptionalReference($data['designation_id'] ?? null, 'hr_designations', 'Designation');
         $asOf = $data['effective_at'] ?? now()->toDateString();
         $occupancy = DB::table('hr_employment_assignments')
             ->where('effective_from', '<=', $asOf)
@@ -874,7 +874,7 @@ class PeopleCoreController extends Controller
         return ltrim($whole, '0') . str_pad($fraction, 4, '0');
     }
 
-    private function assertOptionalCompanyReference(?string $id, string $table, string $label): void
+    private function assertOptionalReference(?string $id, string $table, string $label): void
     {
         if ($id) {
             abort_unless(DB::table($table)->where('id', $id)->exists(), 422, "{$label} must exist.");

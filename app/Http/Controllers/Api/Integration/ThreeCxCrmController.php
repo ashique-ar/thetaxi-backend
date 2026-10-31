@@ -233,7 +233,6 @@ class ThreeCxCrmController extends Controller
                             ? $endedAt->copy()->addMinutes((int) $connection->missed_call_callback_minutes)->utc()
                             : $endedAt->copy()->setTimezone(config('app.timezone'))->endOfDay()->utc();
                         $task = $crm->createTask([
-                            'company_id' => $assignment->company_id,
                             'owner_sales_profile_id' => $owner->id,
                             'customer_id' => $customer->id,
                             'creation_idempotency_key' => '3cx-missed-call-callback:'.$call->id,

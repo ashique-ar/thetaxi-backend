@@ -16,14 +16,12 @@ class Theme04NewsletterTest extends TestCase
         $this->withoutMiddleware();
         Schema::create('newsletter_subscribers', function (Blueprint $table) {
             $table->id();
-            $table->string('company_id');
             $table->string('email');
             $table->timestamps();
-            $table->unique(['company_id', 'email']);
+            $table->unique('email');
         });
 
         $settings = Mockery::mock(WebsiteSettingsService::class);
-        $settings->shouldReceive('resolveCurrentCompanyId')->andReturn('company-1');
         $settings->shouldReceive('get')->with('footer_newsletter_enabled', true)->andReturn('true');
         $this->app->instance(WebsiteSettingsService::class, $settings);
 

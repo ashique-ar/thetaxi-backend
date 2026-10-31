@@ -15,19 +15,14 @@ class SalesAlertReconciliationService
 {
     public function __construct(private readonly SalesPerformanceService $performance) {}
 
-    public function reconcile(SalesPerformanceAlert $alert, bool $includeCompanyEvidence): array
+    public function reconcile(SalesPerformanceAlert $alert, bool $includeInstallationEvidence): array
     {
         $snapshot = SalesKpiSnapshot::query()->findOrFail($alert->snapshot_id);
         $row = SalesKpiSnapshotRow::query()->where('snapshot_id', $snapshot->id)
             ->where('sales_profile_id', $alert->sales_profile_id)->firstOrFail();
         $policy = SalesAlertPolicyVersion::query()->findOrFail($alert->policy_version_id);
 
-        abort_unless(\App\Services\CompanyIdScope::sameCompanyId((string) ($snapshot->company_id), (string) ($alert->company_id))
-            && \App\Services\CompanyIdScope::sameCompanyId((string) ($policy->company_id), (string) ($alert->company_id)), 409,
-            'The alert evidence crosses legal-entity boundaries and cannot be reconciled.');
-
         $currentRows = collect($this->performance->preview(
-            $alert->company_id,
             $snapshot->period_start->toDateString(),
             $snapshot->period_end->toDateString(),
             $snapshot->cutoff_at,
@@ -115,14 +110,14 @@ class SalesAlertReconciliationService
         })->values()->all();
         $this->check($checks, 'action_history_version', (string) $alert->event_version, (string) $expectedVersion);
 
-        $companyEvidence = null;
-        if ($includeCompanyEvidence) {
+        $installationEvidence = null;
+        if ($includeInstallationEvidence) {
             $source = $snapshot->source_reconciliation_snapshot ?? [];
-            $factChecksums = SalesMetricFact::query()->where(fn ($_companyIdScope) => \App\Services\CompanyIdScope::constrain($_companyIdScope, 'company_id', $alert->company_id))
+            $factChecksums = SalesMetricFact::query()
                 ->whereBetween('occurred_on', [$snapshot->period_start->toDateString(), $snapshot->period_end->toDateString()])
                 ->where('occurred_at', '<=', $snapshot->cutoff_at)->orderBy('occurred_at')->orderBy('id')
                 ->pluck('fact_checksum')->all();
-            $targetChecksums = SalesTargetVersion::query()->where(fn ($_companyIdScope) => \App\Services\CompanyIdScope::constrain($_companyIdScope, 'company_id', $alert->company_id))->where('status', 'approved')
+            $targetChecksums = SalesTargetVersion::query()->where('status', 'approved')
                 ->whereDate('period_start', '<=', $snapshot->period_end)->whereDate('period_end', '>=', $snapshot->period_start)
                 ->orderBy('sales_profile_id')->orderBy('period_start')->pluck('payload_checksum')->all();
             $current = [
@@ -138,11 +133,11 @@ class SalesAlertReconciliationService
                     ->max('task_deadline_or_history_missing_count'),
             ];
             foreach ($current as $key => $actual) {
-                $this->check($checks, "company_source_{$key}", data_get($source, $key), $actual);
+                $this->check($checks, "installation_source_{$key}", data_get($source, $key), $actual);
             }
             $this->check($checks, 'frozen_source_reconciliation_checksum', $snapshot->source_reconciliation_checksum,
                 hash('sha256', CanonicalJson::encode($source)));
-            $companyEvidence = [
+            $installationEvidence = [
                 'frozen' => $source,
                 'current_checksums' => $current,
                 'snapshot_checksum' => $snapshot->snapshot_checksum,
@@ -152,7 +147,7 @@ class SalesAlertReconciliationService
 
         return [
             'status' => collect($checks)->every(fn (array $check) => $check['status'] === 'matched') ? 'matched' : 'mismatch',
-            'privacy_scope' => $includeCompanyEvidence ? 'company_view_all' : 'authorized_profile_only',
+            'privacy_scope' => $includeInstallationEvidence ? 'installation_view_all' : 'authorized_profile_only',
             'alert' => [
                 'id' => $alert->id,
                 'type' => $alert->alert_type,
@@ -177,7 +172,7 @@ class SalesAlertReconciliationService
             ],
             'actions' => $actionEvidence,
             'checks' => $checks,
-            'company_reconciliation' => $companyEvidence,
+            'installation_reconciliation' => $installationEvidence,
         ];
     }
 

@@ -43,7 +43,7 @@ it('keeps change reasons behind reporting-line manage permission', function () {
     $controller = file_get_contents(app_path('Http/Controllers/Api/Hr/ReportingLineController.php'));
 
     expect($controller)->toContain("can('hr.reporting-lines.manage') ? 'line.reason' : 'NULL AS reason'")
-        ->toContain("where('staff.company_id', \$companyId)")
+        ->not->toContain('company_id', 'companyId', 'company(')
         ->toContain("from('hr_employment_spells')");
 });
 
@@ -56,7 +56,7 @@ it('adds retained event history and refuses destructive rollback after use', fun
         ->toContain("Schema::dropIfExists('hr_reporting_line_events')");
 });
 
-it('uses a bounded tenant-scoped Staff selector for both reporting-line references', function () {
+it('uses a bounded installation-wide Staff selector for both reporting-line references', function () {
     $controller = file_get_contents(app_path('Http/Controllers/Api/Hr/ReportingLineController.php'));
     $routes = file_get_contents(base_path('routes/api.php'));
     $dialog = file_get_contents(base_path('../portal-thetaxi/src/app/modules/hr-people/components/reporting-line-administration/reporting-line-create-dialog.component.ts'));
@@ -66,7 +66,7 @@ it('uses a bounded tenant-scoped Staff selector for both reporting-line referenc
         ->toContain('public function staffSelectorOptions(Request $request): JsonResponse')
         ->toContain("'selected_id' => ['nullable', 'uuid']")
         ->toContain("'max:50'")
-        ->toContain("where('staff.company_id', \$companyId)")
+        ->not->toContain('company_id', 'companyId', 'company(')
         ->and($routes)->toContain("reporting-line-staff-selector-options', [ReportingLineController::class, 'staffSelectorOptions'])->middleware('permission:hr.reporting-lines.manage')")
         ->and($dialog)->toContain('formControlName="member_staff_id" endpoint="/hr/organization/reporting-line-staff-selector-options"')
         ->toContain('formControlName="manager_staff_id" endpoint="/hr/organization/reporting-line-staff-selector-options"')

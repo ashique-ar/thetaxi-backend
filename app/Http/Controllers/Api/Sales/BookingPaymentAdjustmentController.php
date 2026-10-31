@@ -7,10 +7,7 @@ use App\Models\Booking\Booking;
 use App\Models\Sales\SalesBookingAttribution;
 use App\Services\Sales\BookingPaymentAdjustmentService;
 use App\Services\Sales\SalesAccessScope;
-use App\Services\Sales\SalesCollectionCompanyIntegrity;
 use App\Services\Sales\SalesPolicySettingsService;
-use App\Services\CompanySettingsAccessService;
-use App\Services\WebsiteSettingsService;
 use Closure;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
@@ -22,48 +19,15 @@ class BookingPaymentAdjustmentController extends Controller
     public function __construct(
         private readonly SalesAccessScope $access,
         private readonly SalesPolicySettingsService $policySettings,
-        private readonly SalesCollectionCompanyIntegrity $companyIntegrity,
     ) {}
-
-    public function companyOptions(Request $request): JsonResponse
-    {
-        $data = $request->validate([
-            'search' => ['nullable', 'string', 'max:120'], 'selected_id' => ['nullable', 'uuid'],
-            'page' => ['nullable', 'integer', 'min:1'], 'per_page' => ['nullable', 'integer', 'min:1', 'max:50'],
-        ]);
-        $companyIds = $this->access->companyIds($request->user(), 'sales.payment-adjustments.create-all');
-        $defaultCompanyId = app(WebsiteSettingsService::class)->resolveCurrentCompanyId();
-        if ($request->header('X-Active-Context-Type') === 'staff') {
-            abort_unless($defaultCompanyId, 409, 'Select an active business for Sales work.');
-            app(CompanySettingsAccessService::class)->assertCanAccess($request->user(), (string) $defaultCompanyId);
-            $companyIds = [(string) $defaultCompanyId];
-        }
-        if ($defaultCompanyId && $companyIds !== null && ! in_array($defaultCompanyId, $companyIds, true)) $defaultCompanyId = null;
-        $query = DB::table('companies')->whereNull('deleted_at')
-            ->when($companyIds !== null, fn ($company) => $company->whereIn('id', $companyIds));
-        if (! empty($data['selected_id'])) $query->where('id', $data['selected_id']);
-        elseif (! empty($data['search'])) {
-            $term = '%' . addcslashes($data['search'], '%_\\') . '%';
-            $query->where(fn ($company) => $company->where('name', 'like', $term)->orWhere('city', 'like', $term));
-        }
-        $rows = $query->select(['id', 'name', 'city', 'is_active', 'is_default'])->orderByDesc('is_active')->orderByDesc('is_default')->orderBy('name')->orderBy('id')->paginate($data['per_page'] ?? 25);
-        $rows->getCollection()->transform(fn ($company) => ['value' => (string) $company->id, 'label' => $company->name,
-            'metadata' => array_filter(['city' => $company->city, 'availability' => $company->is_active ? null : 'Inactive']) + ['is_default' => (bool) $company->is_default],
-            'status' => $company->is_active ? 'active' : 'inactive']);
-        return response()->json(['status' => 'success', 'data' => $rows, 'default_company_id' => $defaultCompanyId]);
-    }
 
     public function context(Request $request): JsonResponse
     {
         $data = $request->validate([
-            'company_id' => ['nullable', 'uuid', 'exists:companies,id'],
             'search' => ['nullable', 'string', 'max:100'],
             'per_page' => ['nullable', 'integer', 'min:1', 'max:100'],
         ]);
-        $data['company_id'] = $this->resolveCompanyId($data['company_id'] ?? null);
-        abort_unless(DB::table('companies')->where('id', $data['company_id'])->whereNull('deleted_at')->exists(), 422, 'Select an available legal entity.');
-        $this->access->assertCompany($request->user(), $data['company_id'], 'sales.payment-adjustments.create-all');
-        $profileIds = $this->profileIds($request, $data['company_id']);
+        $profileIds = $this->profileIds($request);
         $query = DB::table('booking_payment_receipt_components as component')
             ->join('booking_payment_receipts as receipt', 'receipt.id', '=', 'component.receipt_id')
             ->join('bookings as booking', 'booking.id', '=', 'receipt.booking_id')
@@ -73,8 +37,6 @@ class BookingPaymentAdjustmentController extends Controller
                     ->whereIn('decision.status', ['earned', 'shadow_earned']);
             })
             ->whereNull('component.deleted_at')->whereNull('receipt.deleted_at')->whereNull('attribution.deleted_at')
-            ->where(fn ($_companyIdScope) => \App\Services\CompanyIdScope::constrain($_companyIdScope, 'receipt.company_id', $data['company_id']))
-            ->where(fn ($sameCompany) => \App\Services\CompanyIdScope::sameCompany($sameCompany, 'receipt.company_id', 'attribution.company_id'))
             ->where('receipt.finality_status', 'confirmed');
         if ($profileIds !== null) $query->whereIn('attribution.collection_sales_profile_id', $profileIds);
         if ($search = trim((string) ($data['search'] ?? ''))) {
@@ -207,46 +169,19 @@ class BookingPaymentAdjustmentController extends Controller
     private function withinBookingScope(Request $request, Booking $booking, Closure $operation): JsonResponse
     {
         return DB::transaction(function () use ($request, $booking, $operation): JsonResponse {
-            $tenant = SalesBookingAttribution::query()->where('booking_id', $booking->id)->first(['company_id']);
-            abort_unless($tenant?->company_id, 409, 'This booking needs a reviewed legal-entity attribution before payment adjustment.');
-            $company = DB::table('companies')->where('id', $tenant->company_id)->where('is_active', true)
-                ->whereNull('deleted_at')->lockForUpdate()->first(['id']);
-            abort_unless($company, 422, 'Select an active legal entity.');
             $booking = Booking::query()->whereKey($booking->id)->lockForUpdate()->firstOrFail();
             $attribution = SalesBookingAttribution::query()->where('booking_id', $booking->id)->lockForUpdate()->firstOrFail();
-            abort_unless(\App\Services\CompanyIdScope::sameCompanyId((string) ((string) $attribution->company_id), (string) ((string) $company->id)), 409,
-                'The booking legal entity changed before payment-adjustment review.');
-            $profileIds = $this->profileIds($request, $attribution->company_id);
+            $profileIds = $this->profileIds($request);
             abort_unless($profileIds === null || in_array($attribution->collection_sales_profile_id, $profileIds, true), 403,
                 'Booking is outside your permitted payment-adjustment scope.');
-            $this->companyIntegrity->assertConsistent($booking, $attribution->company_id);
 
             return $operation($booking);
         });
     }
 
-    private function profileIds(Request $request, ?string $companyId = null): ?array
+    private function profileIds(Request $request): ?array
     {
-        if ($request->header('X-Active-Context-Type') === 'staff') {
-            $activeCompanyId = app(WebsiteSettingsService::class)->resolveCurrentCompanyId();
-            abort_unless($activeCompanyId, 409, 'Select an active business for Sales work.');
-            app(CompanySettingsAccessService::class)->assertCanAccess($request->user(), (string) $activeCompanyId);
-            abort_unless($companyId === null || (string) $companyId === (string) $activeCompanyId, 403,
-                'Payment adjustment is outside your selected Staff business.');
-            $companyId = (string) $activeCompanyId;
-        }
         return $this->access->profileIds($request->user(), 'sales.payment-adjustments.create-all',
-            'sales.payment-adjustments.create-team', $companyId);
-    }
-
-    private function resolveCompanyId(?string $companyId): string
-    {
-        $companyId = $companyId ?: app(WebsiteSettingsService::class)->resolveCurrentCompanyId();
-        abort_unless($companyId, 409, 'Select an active business for Sales work.');
-        if (request()->header('X-Active-Context-Type') === 'staff') {
-            app(CompanySettingsAccessService::class)->assertCanAccess(request()->user(), (string) $companyId);
-        }
-
-        return (string) $companyId;
+            'sales.payment-adjustments.create-team');
     }
 }

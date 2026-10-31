@@ -112,7 +112,7 @@ class ServiceFormConfigController extends Controller
                 ->getServiceFormConfiguration($serviceType->code);
             $fields = is_array($resolved['fields'] ?? null) ? $resolved['fields'] : [];
         }
-        $fields = \App\Services\DynamicServiceConfigurationService::hydrateCompanyLocations($fields);
+        $fields = \App\Services\DynamicServiceConfigurationService::hydrateSavedLocations($fields);
 
         // Inject airport options into conditional location fields
         $airports = null;
@@ -886,8 +886,8 @@ class ServiceFormConfigController extends Controller
                 'form_config.*.options.*.value' => 'required|string',
                 'form_config.*.options.*.label' => 'required|string',
                 'form_config.*.options.*.action' => 'nullable|in:fixed_location,google_search',
-                'form_config.*.options.*.location_source' => 'nullable|in:configured,company',
-                'form_config.*.options.*.company_id' => 'nullable|uuid|exists:companies,id',
+                'form_config.*.options.*.location_source' => 'nullable|in:configured,saved_location',
+                'form_config.*.options.*.location_id' => 'nullable|uuid|exists:companies,id',
                 'form_config.*.options.*.address' => 'nullable|string|max:500',
                 'form_config.*.options.*.latitude' => 'nullable|numeric|between:-90,90',
                 'form_config.*.options.*.longitude' => 'nullable|numeric|between:-180,180',
@@ -958,21 +958,21 @@ class ServiceFormConfigController extends Controller
 
                 foreach ($options as $optionIndex => $option) {
                     $locationSource = $option['location_source'] ?? 'configured';
-                    if ($locationSource !== 'company') {
-                        unset($formConfig[$fieldName]['options'][$optionIndex]['company_id']);
+                    if ($locationSource !== 'saved_location') {
+                        unset($formConfig[$fieldName]['options'][$optionIndex]['location_id']);
                         continue;
                     }
 
-                    $company = Company::query()->where('is_active', true)->find($option['company_id'] ?? null);
-                    if (!$company || $company->latitude === null || $company->longitude === null) {
+                    $location = Company::query()->where('is_active', true)->find($option['location_id'] ?? null);
+                    if (!$location || $location->latitude === null || $location->longitude === null) {
                         throw ValidationException::withMessages([
-                            "form_config.{$fieldName}.options.{$optionIndex}.company_id" => 'Choose an active company with a saved map location.',
+                            "form_config.{$fieldName}.options.{$optionIndex}.location_id" => 'Choose an active saved location with map coordinates.',
                         ]);
                     }
 
-                    $formConfig[$fieldName]['options'][$optionIndex]['address'] = $company->address ?? $option['label'];
-                    $formConfig[$fieldName]['options'][$optionIndex]['latitude'] = (float) $company->latitude;
-                    $formConfig[$fieldName]['options'][$optionIndex]['longitude'] = (float) $company->longitude;
+                    $formConfig[$fieldName]['options'][$optionIndex]['address'] = $location->address ?? $option['label'];
+                    $formConfig[$fieldName]['options'][$optionIndex]['latitude'] = (float) $location->latitude;
+                    $formConfig[$fieldName]['options'][$optionIndex]['longitude'] = (float) $location->longitude;
                 }
 
                 if ($defaultOptionValue !== null) {

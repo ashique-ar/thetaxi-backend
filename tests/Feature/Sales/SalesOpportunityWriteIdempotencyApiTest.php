@@ -1,6 +1,5 @@
 <?php
 
-use App\Models\Company;
 use App\Models\Booking\Booking;
 use App\Models\Customer;
 use App\Models\Sales\SalesFeatureSetting;
@@ -17,7 +16,7 @@ use function Pest\Laravel\actingAs;
 uses(RefreshDatabase::class);
 
 it('replays only the original opportunity transition and transfer command', function () {
-    [$actor, $company] = hr_seed_admin_actor(['name' => 'Opportunity command company']);
+    [$actor] = hr_seed_admin_actor();
     foreach (['sales.crm.view', 'sales.crm.view-all', 'sales.crm.manage', 'sales.crm.manage-all'] as $permission) {
         $actor->givePermissionTo(Permission::findByName($permission, 'api'));
     }
@@ -28,14 +27,14 @@ it('replays only the original opportunity transition and transfer command', func
         'created_by' => $actor->id, 'approved_by' => $actor->id, 'approved_at' => now(),
     ]);
 
-    $makeProfile = function (string $code) use ($actor, $company): SalesProfile {
-        $staff = Staff::factory()->create(['company_id' => $company->id]);
+    $makeProfile = function (string $code) use ($actor): SalesProfile {
+        $staff = Staff::factory()->create();
         UserContext::create([
             'user_id' => $staff->user_id, 'context_type' => 'staff', 'context_id' => $staff->id,
             'is_active' => true, 'created_user_id' => $actor->id,
         ]);
         return SalesProfile::query()->create([
-            'company_id' => $company->id, 'staff_id' => $staff->id, 'sales_code' => $code,
+            'staff_id' => $staff->id, 'sales_code' => $code,
             'status' => 'active', 'effective_from' => now()->subDay(), 'staff_category_snapshot' => 'Sales',
             'reporting_currency' => 'LKR', 'acquisition_eligible' => true, 'created_user_id' => $actor->id,
         ]);
@@ -43,7 +42,7 @@ it('replays only the original opportunity transition and transfer command', func
     $owner = $makeProfile('OPP-IDEM-OWNER');
     $newOwner = $makeProfile('OPP-IDEM-NEW-OWNER');
     $makeOpportunity = fn (string $number) => SalesOpportunity::query()->create([
-        'company_id' => $company->id, 'owner_sales_profile_id' => $owner->id,
+        'owner_sales_profile_id' => $owner->id,
         'opportunity_number' => $number, 'name' => $number, 'source' => 'manual', 'created_user_id' => $actor->id,
     ]);
     $first = $makeOpportunity('OPP-IDEM-1');
@@ -104,11 +103,10 @@ it('replays only the original opportunity transition and transfer command', func
         'status' => 'pending', 'currency' => 'LKR', 'commission_owner_staff_id' => $newOwner->staff_id,
         'created_user_id' => $actor->id,
     ]);
-    $foreignCompany = Company::create(['name' => 'Foreign booking company', 'is_active' => true, 'is_default' => false]);
-    $foreignStaff = Staff::factory()->create(['company_id' => $foreignCompany->id]);
+    $unmatchedStaff = Staff::factory()->create();
     $foreignBooking = Booking::create([
         'customer_id' => $customer->id,
-        'status' => 'pending', 'currency' => 'LKR', 'commission_owner_staff_id' => $foreignStaff->id,
+        'status' => 'pending', 'currency' => 'LKR', 'commission_owner_staff_id' => $unmatchedStaff->id,
         'created_user_id' => $actor->id,
     ]);
     $link = ['booking_id' => $booking->id, 'idempotency_key' => 'opportunity-booking-idem-1'];
@@ -122,7 +120,7 @@ it('replays only the original opportunity transition and transfer command', func
     actingAs($actor, 'api')->postJson('/api/sales/opportunities/'.$second->id.'/link-booking', $link)->assertConflict();
     actingAs($otherActor, 'api')->postJson('/api/sales/opportunities/'.$first->id.'/link-booking', $link)->assertForbidden();
     actingAs($actor, 'api')->postJson('/api/sales/opportunities/'.$first->id.'/link-booking', [
-        'booking_id' => $foreignBooking->id, 'idempotency_key' => 'opportunity-booking-foreign-company',
+        'booking_id' => $foreignBooking->id, 'idempotency_key' => 'opportunity-booking-unmatched-owner',
     ])->assertUnprocessable();
     expect(SalesOpportunityStageEvent::query()->where('idempotency_key', 'opportunity-stage-idem-1')->count())->toBe(1)
         ->and(SalesOpportunityStageEvent::query()->where('idempotency_key', 'opportunity-owner-idem-1')->count())->toBe(1)
@@ -134,8 +132,4 @@ it('replays only the original opportunity transition and transfer command', func
         ->and($otherBooking->fresh()->sales_opportunity_id)->toBeNull()
         ->and($foreignBooking->fresh()->sales_opportunity_id)->toBeNull()
         ->and($second->fresh()->state_version)->toBe(1);
-
-    $company->update(['is_active' => false]);
-    actingAs($actor, 'api')->postJson('/api/sales/opportunities/'.$first->id.'/transition', $transition)->assertUnprocessable();
-    actingAs($actor, 'api')->postJson('/api/sales/opportunities/'.$first->id.'/transfer', $transfer)->assertUnprocessable();
 });

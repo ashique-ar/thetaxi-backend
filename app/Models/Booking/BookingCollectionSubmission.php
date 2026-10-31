@@ -8,7 +8,7 @@ use Illuminate\Database\Eloquent\Relations\BelongsTo;
 class BookingCollectionSubmission extends BaseModel
 {
     private const IMMUTABLE_SUBMISSION_FIELDS = [
-        'company_id', 'booking_id', 'booking_payment_schedule_id', 'submitted_by_sales_profile_id',
+        'booking_id', 'booking_payment_schedule_id', 'submitted_by_sales_profile_id',
         'submitted_by_staff_id', 'submitted_by_user_id',
         'source_amount', 'source_currency', 'payment_method', 'reference', 'received_at',
         'evidence_file_id', 'staff_notes', 'idempotency_key', 'request_payload_checksum',
@@ -16,7 +16,7 @@ class BookingCollectionSubmission extends BaseModel
     private const DECISION_FIELDS = ['status', 'verification_notes', 'verified_by', 'verified_at', 'booking_payment_receipt_id'];
 
     protected $fillable = [
-        'company_id', 'booking_id', 'booking_payment_schedule_id', 'submitted_by_sales_profile_id',
+        'booking_id', 'booking_payment_schedule_id', 'submitted_by_sales_profile_id',
         'submitted_by_staff_id', 'submitted_by_user_id',
         'source_amount', 'source_currency', 'payment_method', 'reference', 'received_at', 'evidence_file_id',
         'status', 'staff_notes', 'verification_notes', 'verified_by', 'verified_at',

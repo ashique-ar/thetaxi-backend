@@ -1,6 +1,6 @@
 <?php
 
-it('keeps the People directory workforce-wide and hierarchy scoped', function () {
+it('keeps the People directory installation-wide and hierarchy scoped', function () {
     $controller=file_get_contents(app_path('Http/Controllers/Api/Hr/PeopleCoreController.php'));
     $access=file_get_contents(app_path('Services/Hr/PeopleAccessService.php'));
     $routes=file_get_contents(base_path('routes/api.php'));
@@ -12,7 +12,7 @@ it('keeps the People directory workforce-wide and hierarchy scoped', function ()
         ->toContain('Sales Profile enrollment and eligibility are managed separately')
         ->not->toContain('SalesProfile::query()')
         ->and($access)
-        ->toContain("where('company_id', \$actorStaff->company_id)")
+        ->not->toContain('company_id', 'companyId', 'company(')
         ->toContain("can('hr.people.view-team')")
         ->toContain("can('hr.people.view-all')")
         ->toContain("orWhereIn('id', \$reportingMembers)")
@@ -27,8 +27,8 @@ it('rechecks People mutation subjects and related-record ownership', function ()
     expect(substr_count($controller,'$this->access->authorize($request->user(), $staff)'))->toBeGreaterThanOrEqual(7)
         ->and($controller)
         ->toContain('The employment spell does not belong to this employee.')
-        ->toContain('The manager must belong to the employee legal entity.')
+        ->not->toContain('company_id', 'legal entity', 'company(')
         ->not->toContain('hr.features.people_core')
         ->and($organizationAdmin)
-        ->toContain('Parent organization unit must belong to your legal entity.');
+        ->not->toContain('company_id', 'legal entity', 'company(');
 });

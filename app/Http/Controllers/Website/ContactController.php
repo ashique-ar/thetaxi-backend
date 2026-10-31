@@ -30,6 +30,7 @@ class ContactController extends Controller
 
         // Get website settings for dynamic content
         $settings = $this->settingsService->getContactPageSettings();
+        $settings['default_country_code'] = strtolower((string) ($settings['default_country_code'] ?? 'lk'));
 
         // Get all active countries ordered by name
         $countries = Country::where('is_active', true)

@@ -2,7 +2,6 @@
 
 use App\Models\Staff;
 use App\Models\User;
-use App\Models\Company;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\DB;
 
@@ -11,15 +10,15 @@ use function Pest\Laravel\actingAs;
 uses(RefreshDatabase::class);
 
 it('records an HR employee detail view after authorized scope succeeds', function () {
-    [$admin, $company] = hr_seed_admin_actor();
+    [$admin] = hr_seed_admin_actor();
     config(['hr.features.people_core' => true]);
-    $employee = Staff::factory()->create(['company_id' => $company->id]);
-    $manager = Staff::factory()->create(['company_id' => $company->id]);
+    $employee = Staff::factory()->create();
+    $manager = Staff::factory()->create();
     $privateMarker = 'private-employment-history-data';
     $spellId = (string) \Illuminate\Support\Str::uuid();
     $assignmentId = (string) \Illuminate\Support\Str::uuid();
     DB::table('hr_employment_spells')->insert([
-        'id' => $spellId, 'staff_id' => $employee->id, 'company_id' => $company->id, 'spell_number' => 1,
+        'id' => $spellId, 'staff_id' => $employee->id, 'spell_number' => 1,
         'joined_at' => '2025-01-01', 'service_date' => '2025-01-01', 'gratuity_service_start' => '2025-01-01',
         'status' => 'active', 'termination_reason' => $privateMarker, 'gratuity_service_decision' => $privateMarker,
         'prior_service_decisions' => json_encode(['note' => $privateMarker], JSON_THROW_ON_ERROR),
@@ -27,14 +26,13 @@ it('records an HR employee detail view after authorized scope succeeds', functio
     ]);
     DB::table('hr_employment_assignments')->insert([
         'id' => $assignmentId, 'employment_spell_id' => $spellId, 'staff_id' => $employee->id,
-        'company_id' => $company->id, 'manager_staff_id' => $manager->id, 'location_code' => 'COLOMBO',
+        'manager_staff_id' => $manager->id, 'location_code' => 'COLOMBO',
         'assignment_type' => 'primary', 'effective_from' => '2025-01-01', 'change_reason' => $privateMarker,
         'snapshot' => json_encode(['private' => $privateMarker], JSON_THROW_ON_ERROR), 'approved_by' => $admin->id,
         'created_user_id' => $admin->id, 'updated_user_id' => $admin->id, 'created_at' => now(), 'updated_at' => now(),
     ]);
     DB::table('hr_reporting_lines')->insert([
         'id' => (string) \Illuminate\Support\Str::uuid(),
-        'company_id' => $company->id,
         'manager_staff_id' => $manager->id,
         'member_staff_id' => $employee->id,
         'line_type' => 'primary',
@@ -49,7 +47,7 @@ it('records an HR employee detail view after authorized scope succeeds', functio
         ->assertJsonPath('data.current_reporting_lines.0.manager_employee_number', $manager->code)
         ->assertJsonMissingPath('data.employee.id')
         ->assertJsonMissingPath('data.employee.company_id')
-        ->assertJsonPath('data.employee.company_name', $company->name)
+        ->assertJsonMissingPath('data.employee.company_name')
         ->assertJsonMissingPath('data.employee.current_spell_id')
         ->assertJsonMissingPath('data.employee.current_assignment.id')
         ->assertJsonMissingPath('data.employee.current_assignment.manager_staff_id')
@@ -64,7 +62,7 @@ it('records an HR employee detail view after authorized scope succeeds', functio
     expect($detail->getContent())->not->toContain($privateMarker)
         ->not->toContain((string) $employee->id)
         ->not->toContain((string) $manager->id)
-        ->not->toContain((string) $company->id);
+        ->not->toContain('company_id');
 
     $history = actingAs($admin, 'api')->getJson('/api/hr/employees/'.$employee->id.'/employment-history')->assertOk();
     $spell = $history->json('data.0');
@@ -86,13 +84,15 @@ it('records an HR employee detail view after authorized scope succeeds', functio
         'causer_id' => $admin->id,
     ]);
     $properties = json_decode(DB::table('activity_log')->where('description', 'employee_360_viewed')->value('properties'), true);
-    expect(array_keys($properties))->toEqualCanonicalizing(['company_id', 'ip']);
+    expect(array_keys($properties))->toEqualCanonicalizing(['ip']);
 });
 
-it('does not load or audit an Employee 360 view outside the actor People scope', function () {
+it('does not load or audit an Employee 360 view outside the actor People permission scope', function () {
     [$admin] = hr_seed_admin_actor();
     config(['hr.features.people_core' => true]);
-    $outside = Staff::factory()->create(['company_id' => Company::create(['name' => 'Outside People Scope'])->id]);
+    $admin->removeRole('admin');
+    $admin->givePermissionTo('hr.people.view');
+    $outside = Staff::factory()->create();
 
     actingAs($admin, 'api')->getJson('/api/hr/employees/'.$outside->id)->assertForbidden();
 

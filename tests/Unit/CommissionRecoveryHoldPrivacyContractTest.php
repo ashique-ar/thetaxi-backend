@@ -37,7 +37,7 @@ it('projects Commission hold reads and writes without serializing decision evide
     );
 });
 
-it('preselects the authorized default company for recovery and hold filters', function () {
+it('keeps recovery review installation-wide while retaining the separate commission hold workflow', function () {
     $recovery = file_get_contents(app_path('Http/Controllers/Api/Sales/CommissionRecoveryController.php'));
     $hold = file_get_contents(app_path('Http/Controllers/Api/Sales/CommissionHoldController.php'));
     $portal = file_get_contents(base_path('../portal-thetaxi/src/app/modules/sales/components/sales-financial-corrections/sales-financial-corrections.component.ts'));
@@ -47,22 +47,26 @@ it('preselects the authorized default company for recovery and hold filters', fu
     $selector = file_get_contents(base_path('../portal-thetaxi/src/app/shared/components/ui/managed-record-select/managed-record-select.component.ts'));
     $routes = file_get_contents(base_path('routes/api.php'));
 
-    expect($recovery)->toContain("companyIds(\$request->user(), 'sales.commission-recoveries.view-all')", 'default_company_id', 'selected_id', 'search', "where('company_id', \$id)", "where('is_active', true)");
-    expect($hold)->toContain("companyIds(\$request->user(), 'sales.commission-decisions.view-all')", 'default_company_id', 'selected_id', 'search', "where('company_id', \$id)", "where('is_active', true)");
-    expect($portal)->toContain('company_id:this.recoveryCompanyId', 'recoveryCompanyChanged(companyId: string)', 'recoveryRequestVersion');
-    expect($holdPortal)->toContain('company_id: this.companyId', 'companyChanged(companyId: string)', 'loadVersion');
-    expect($recoveryHtml)->toContain('endpoint="/sales/commission-recoveries/company-options"', 'Search authorized companies');
-    expect($holdHtml)->toContain('endpoint="/sales/commission-holds/company-options"', 'Search authorized companies');
-    expect($selector)->toContain('default_company_id', 'is_default', 'this.onChange(this.value)');
-    expect($routes)->toContain("commission-recoveries/company-options", "commission-holds/company-options");
+    expect($recovery)->not->toContain('company_id', 'company-options', 'default_company_id', 'CompanySettingsAccessService');
+    expect($hold)->not->toContain('company_id', 'companyOptions', 'default_company_id', 'CompanySettingsAccessService')
+        ->toContain("profileIds(\$request->user(), 'sales.commission-decisions.view-all'");
+    expect($portal)->not->toContain('recoveryCompanyId', 'recoveryCompanyChanged', 'company_id:');
+    expect($portal)->toContain('recoveryRequestVersion');
+    expect($holdPortal)->not->toContain('companyId', 'company_id', 'companyChanged')
+        ->toContain('ngOnInit(): void { this.load(); }', 'loadVersion');
+    expect($recoveryHtml)->not->toContain('commission-recoveries/company-options', 'Search authorized companies');
+    expect($holdHtml)->not->toContain('commission-holds/company-options', 'Search authorized companies');
+    expect($selector)->not->toContain('default_company_id')
+        ->toContain('is_default', 'this.onChange(this.value)');
+    expect($routes)->not->toContain('commission-recoveries/company-options', 'commission-holds/company-options');
 });
 
-it('locks an active company before deciding a commission recovery case', function () {
+it('decides a commission recovery case without requiring an active location row', function () {
     $service = file_get_contents(app_path('Services/Sales/CommissionRecoveryService.php'));
     $start = strpos($service, 'public function decide(');
     $end = strpos($service, 'private function allowedDecisions(', $start);
     $decision = substr($service, $start, $end - $start);
 
-    expect(strpos($decision, "DB::table('companies')"))->toBeLessThan(strpos($decision, 'SalesCommissionRecoveryCase::query()->lockForUpdate()'))
-        ->and($decision)->toContain("where('is_active', true)", "whereNull('deleted_at')");
+    expect($decision)->not->toContain("DB::table('companies')", 'company_id', 'is_active', 'deleted_at')
+        ->toContain('SalesCommissionRecoveryCase::query()->lockForUpdate()');
 });

@@ -435,10 +435,7 @@ class CheckoutController extends Controller
 
         // Load countries for dynamic dropdown
         $countries = \App\Models\Country::orderBy('name')->get(['id', 'name', 'code', 'callcode']);
-        $checkoutDefaultCountry = strtolower((string) DB::table('companies')
-            ->join('countries', 'countries.id', '=', 'companies.country_id')
-            ->where('companies.id', $this->websiteSettingsService->resolveCompanyId())
-            ->value('countries.code'));
+        $checkoutDefaultCountry = strtolower((string) $this->websiteSettingsService->get('default_country_code', 'lk'));
         if (! preg_match('/^[a-z]{2}$/', $checkoutDefaultCountry)
             || ! $countries->contains(fn ($country) => strtolower((string) $country->code) === $checkoutDefaultCountry)) {
             $checkoutDefaultCountry = $countries->contains(fn ($country) => strtolower((string) $country->code) === 'lk')

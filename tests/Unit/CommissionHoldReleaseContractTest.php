@@ -134,8 +134,8 @@ it('appends a typed acquisition-owner correction only for missing ineligible or 
         ->toContain("'acquisition_owner_corrected'")
         ->toContain("'collection_sales_profile_id'")
         ->toContain('collectionProfileEvidenceAt')
-        ->toContain('This legal-entity mismatch belongs to the receipt beneficiary')
-        ->toContain('Exactly one immutable acquisition-owner correction must replace the original missing, ineligible, or wrong-entity Profile reference.')
+        ->toContain('This historical mismatch belongs to the receipt beneficiary')
+        ->toContain('Exactly one immutable acquisition-owner correction must replace the original missing, ineligible, or historically mismatched Profile reference.')
         ->toContain("['collection', 'commission']")
         ->toContain("'adjustment_kind' => 'late_acquisition_owner_entitlement'")
         ->toContain("'beneficiary_attribution_event_id' => \$beneficiaryEvent->id")
@@ -183,6 +183,7 @@ it('appends a typed late-finality entitlement only from approved original-time p
         ->toContain("'finality_policy_id' => \$finalityPolicy?->id")
         ->toContain('Exactly one approved payment-finality policy must cover the original receipt timestamp.')
         ->and($holds)->toContain("\$finalityEvent->finality_policy_id === \$decision->finality_policy_id")
+        ->not->toContain('$finalityEvent->company_id')
         ->and($eventModel)->toContain("'finality_policy_id'")
         ->and($statements)->toContain('Approved late finality-policy commission entitlement');
 });
@@ -253,32 +254,63 @@ it('closes failed finality as immutable zero-value non-entitlement without finan
     expect($holds)->not->toContain('projectCommissionHoldResolution');
 });
 
-it('locks the active company before manual commission hold release retries and decisions', function () {
+it('locks commission release retries and decisions without requiring an active company', function () {
     $holds = file_get_contents(app_path('Services/Sales/CommissionHoldService.php'));
     $start = strpos($holds, 'public function release(');
     $end = strpos($holds, 'public function releaseForFinality(', $start);
     $release = substr($holds, $start, $end - $start);
 
-    expect(strpos($release, "DB::table('companies')"))->toBeLessThan(strpos($release, "where('idempotency_key', \$idempotencyKey)"))
-        ->and($release)->toContain("where('is_active', true)", "whereNull('deleted_at')")
-        ->and(strpos($release, "where('idempotency_key', \$idempotencyKey)"))->toBeLessThan(strpos($release, 'SalesCommissionDecision::query()->lockForUpdate()'));
+    expect($release)->not->toContain("DB::table('companies')", "where('is_active', true)", 'defaultCompanyId()')
+        ->and(strpos($release, "where('idempotency_key', \$idempotencyKey)"))
+            ->toBeLessThan(strpos($release, 'SalesCommissionDecision::query()->lockForUpdate()'));
 });
 
-it('locks the active company before linked hold-adjustment retries and receipt/decision rows', function () {
+it('locks linked hold-adjustment retries, receipt, and decision without requiring an active company', function () {
     $service = file_get_contents(app_path('Services/Sales/CommissionHoldAdjustmentService.php'));
     $start = strpos($service, 'public function append(');
     $end = strpos($service, 'private function ', $start);
     $append = substr($service, $start, $end - $start);
 
-    expect(strpos($append, "DB::table('companies')"))->toBeLessThan(strpos($append, 'SalesCommissionHoldAdjustment::query()->where'))
-        ->and($append)->toContain("where('is_active', true)", "whereNull('deleted_at')")
+    expect($append)->not->toContain("DB::table('companies')", "where('is_active', true)", 'defaultCompanyId()')
         ->and(strpos($append, 'SalesCommissionHoldAdjustment::query()->where'))
             ->toBeLessThan(strpos($append, 'BookingPaymentReceipt::query()->whereKey($receiptId)->lockForUpdate()'))
         ->and(strpos($append, 'BookingPaymentReceipt::query()->whereKey($receiptId)->lockForUpdate()'))
             ->toBeLessThan(strpos($append, 'SalesCommissionDecision::query()->lockForUpdate()'));
 });
 
-it('locks the active booking company before payment-adjustment booking and receipt writes', function () {
+it('removes company ownership from commission hold ledger rows and new snapshots', function () {
+    $release = file_get_contents(app_path('Services/Sales/CommissionHoldService.php'));
+    $employmentExit = file_get_contents(app_path('Services/Sales/CommissionEmploymentExitResolutionService.php'));
+    $adjustment = file_get_contents(app_path('Services/Sales/CommissionHoldAdjustmentService.php'));
+    $statements = file_get_contents(app_path('Services/Sales/CommissionStatementService.php'));
+    $migration = file_get_contents(database_path('migrations/2026_10_30_000086_remove_commission_hold_tenant_company.php'));
+
+    expect($release)->not->toContain("'company_id' =>", 'defaultCompanyId()', 'release->company_id')
+        ->and($employmentExit)->not->toContain('company_id', 'defaultCompanyId()', 'sameCompanyId')
+        ->and($adjustment)->not->toContain("'company_id' => \$decision->company_id", 'adjustment->company_id')
+        ->and(preg_match('/SalesCommissionHoldRelease::query\(\)\s*->where\(fn/', $statements))->toBe(0)
+        ->and(preg_match('/SalesCommissionHoldAdjustment::query\(\)\s*->where\(fn/', $statements))->toBe(0)
+        ->and($migration)->toContain(
+            "'sales_commission_hold_releases'",
+            "'sales_commission_hold_resolutions'",
+            "'sales_commission_hold_adjustments'",
+            "dropColumn('company_id')",
+        );
+});
+
+it('remediates legacy attribution-missing holds through canonical attribution evidence', function () {
+    $adjustment = file_get_contents(app_path('Services/Sales/CommissionHoldAdjustmentService.php'));
+    $remediation = file_get_contents(app_path('Services/Sales/CommissionHoldRemediationService.php'));
+    $migration = file_get_contents(database_path('migrations/2026_10_30_000087_allow_company_free_legacy_hold_adjustments.php'));
+
+    expect($adjustment)->not->toContain('previewLateLegalEntity', 'legal_entity_established', '$attribution->company_id')
+        ->toContain("'adjustment_kind' => 'late_attribution_entitlement'")
+        ->and($remediation)->toContain('This hold comes from a retired attribution rule.')
+        ->and($migration)->toContain("original_hold_code IN ('attribution_missing', 'legal_entity_missing')")
+        ->toContain('late_legal_entity_entitlement');
+});
+
+it('locks the authorized booking and receipt before payment-adjustment writes', function () {
     $service = file_get_contents(app_path('Services/Sales/BookingPaymentAdjustmentService.php'));
     $start = strpos($service, 'public function record(');
     $end = strpos($service, 'public function previewReportingFx(', $start);
@@ -287,11 +319,12 @@ it('locks the active booking company before payment-adjustment booking and recei
     $start = strpos($controller, 'private function withinBookingScope(');
     $scope = substr($controller, $start);
 
-    expect(strpos($record, "DB::table('companies')"))->toBeLessThan(strpos($record, 'Booking::query()->lockForUpdate()'))
+    expect($record)->not->toContain("DB::table('companies')", 'company_id', 'legal entity')
         ->and(strpos($record, 'Booking::query()->lockForUpdate()'))->toBeLessThan(strpos($record, 'BookingPaymentReceiptComponent::query()'))
-        ->and($record)->toContain("where('is_active', true)", "whereNull('deleted_at')", 'receipt legal entity does not match the booking')
-        ->and(strpos($scope, "DB::table('companies')"))->toBeLessThan(strpos($scope, 'Booking::query()->whereKey($booking->id)->lockForUpdate()'))
-        ->and($scope)->toContain("where('is_active', true)", "whereNull('deleted_at')");
+        ->and($scope)->not->toContain("DB::table('companies')", 'company_id', 'legal entity')
+        ->and(strpos($scope, 'Booking::query()->whereKey($booking->id)->lockForUpdate()'))
+            ->toBeLessThan(strpos($scope, 'SalesBookingAttribution::query()->where'))
+        ->and($scope)->toContain('permitted payment-adjustment scope');
 });
 
 it('rejects a pending-clearance policy that could expose commission to payout', function () {
@@ -308,7 +341,7 @@ it('rejects a pending-clearance policy that could expose commission to payout', 
         ->toContain("'commission_release_kind'");
 });
 
-it('appends a typed beneficiary-correction entitlement only for a missing ineligible or wrong-entity collection handler resolved by a governed correction', function () {
+it('appends a typed beneficiary-correction entitlement for missing or ineligible collection handlers resolved by a governed correction', function () {
     $service = file_get_contents(app_path('Services/Sales/CommissionHoldAdjustmentService.php'));
     $mutation = file_get_contents(app_path('Services/Sales/BookingAttributionMutationService.php'));
     $controller = file_get_contents(app_path('Http/Controllers/Api/Sales/SalesBookingAttributionController.php'));
@@ -333,8 +366,8 @@ it('appends a typed beneficiary-correction entitlement only for a missing inelig
         ->toContain('$this->mutations->correctCollectionHandler(')
         ->and($routes)->toContain('attributions/{attribution}/correct-collection-handler')
         ->toContain("permission:sales.attributions.correct")
-        ->and($remediation)->toContain("A beneficiary-side legal-entity mismatch becomes adjustment-previewable only after one governed, actor-owned collection-handler correction")
-        ->toContain('A missing or ineligible collection beneficiary becomes adjustment-previewable only after one governed, actor-owned collection-handler correction')
+        ->and($remediation)->toContain('A historical beneficiary mismatch becomes adjustment-previewable after one governed, actor-owned collection-handler correction')
+        ->toContain('A missing or ineligible collection beneficiary becomes adjustment-previewable after one governed, actor-owned correction')
         ->toContain("'beneficiary_missing', 'collection_handler_ineligible', 'commission_beneficiary_ineligible',")
         ->and($migration)->toContain("adjustment_kind = 'late_beneficiary_correction_entitlement' AND original_hold_code IN ('beneficiary_missing', 'legal_entity_mismatch') AND beneficiary_attribution_event_id IS NULL AND finality_policy_id IS NOT NULL AND receipt_finality_event_id IS NULL")
         ->toContain('Rollback refused: export and reconcile late beneficiary-correction commission entitlement evidence first.')
@@ -369,36 +402,14 @@ it('freezes a uniquely approved historical plan family before appending a linked
         ->toContain('Rollback refused: export and reconcile late plan-family commission entitlement evidence first.');
 });
 
-it('establishes a missing legal entity and acquisition owner together from one target Profile before a linked entitlement is previewable', function () {
-    $mutation = file_get_contents(app_path('Services/Sales/BookingAttributionMutationService.php'));
-    $adjustments = file_get_contents(app_path('Services/Sales/CommissionHoldAdjustmentService.php'));
+it('does not require location metadata to create a new commission decision', function () {
+    $decision = file_get_contents(app_path('Services/Sales/CommissionDecisionService.php'));
     $controller = file_get_contents(app_path('Http/Controllers/Api/Sales/SalesBookingAttributionController.php'));
-    $remediation = file_get_contents(app_path('Services/Sales/CommissionHoldRemediationService.php'));
     $routes = file_get_contents(base_path('routes/api.php'));
-    $migration = file_get_contents(database_path('migrations/2026_09_01_172000_add_late_legal_entity_hold_adjustments.php'));
 
-    expect($mutation)->toContain('public function establishLegalEntity(')
-        ->toContain('The attribution already has an immutable legal entity; use the acquisition-owner correction instead.')
-        ->toContain('The attribution has an acquisition owner but no legal entity; this state is not supported by this command.')
-        ->toContain("'event_type' => 'legal_entity_established'")
-        ->toContain("'field_name' => 'company_id'")
-        ->toContain("'event_type' => 'acquisition_owner_corrected'")
-        ->toContain("'field_name' => 'acquisition_sales_profile_id'")
-        ->toContain('freezeFamilyForAttribution($locked)')
-        ->toContain("'legal_entity_missing', 'acquisition_owner_missing', 'acquisition_owner_ineligible'")
-        ->and($adjustments)->toContain("'legal_entity_missing', 'acquisition_profile_missing'")
-        ->toContain('previewLateLegalEntity')
-        ->toContain("where('event_type', 'legal_entity_established')->where('field_name', 'company_id')")
-        ->toContain("where('event_type', 'acquisition_owner_corrected')->where('field_name', 'acquisition_sales_profile_id')")
-        ->toContain('lacks a uniquely approved historical commission plan family')
-        ->toContain("'adjustment_kind' => 'late_legal_entity_entitlement'")
-        ->and($controller)->toContain('public function establishLegalEntity(Request $request, string $attribution)')
-        ->toContain('$this->mutations->establishLegalEntity(')
-        ->and($routes)->toContain('attributions/{attribution}/establish-legal-entity')
-        ->and($remediation)->toContain("if (\$code === 'legal_entity_missing')")
-        ->toContain('Establish missing legal entity')
-        ->and($migration)->toContain("adjustment_kind = 'late_legal_entity_entitlement' AND original_hold_code = 'legal_entity_missing'")
-        ->toContain('Rollback refused: export and reconcile late legal-entity commission entitlement evidence first.');
+    expect($decision)->not->toContain('defaultCompanyId()', "'legal_entity_missing'", 'legal_entity_mismatch')
+        ->and($controller)->not->toContain('establishLegalEntity', 'attribution-company-options')
+        ->and($routes)->not->toContain('establish-legal-entity', 'attribution-company-options');
 });
 
 it('establishes a missing receipt-component FX/LKR snapshot as separate evidence before a linked entitlement is previewable', function () {

@@ -13,7 +13,7 @@ it('redacts the device password from the health endpoint, only ever exposing ip_
     $health = hr_attendance_device_method_slice('function health(', 'public function storeConnector(');
 
     expect($health)
-        ->toContain("'id', 'company_id', 'connector_id'")
+        ->toContain("'id', 'connector_id'")
         ->toContain("->only(['ip_address', 'port', 'username'])")
         ->toContain("->makeHidden('encrypted_configuration')")
         ->not->toContain("'password'");

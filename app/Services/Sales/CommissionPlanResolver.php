@@ -51,13 +51,12 @@ class CommissionPlanResolver
         if ($attribution->commission_plan_family_id || $attribution->commission_plan_assignment_id) {
             return ['correction_allowed' => false, 'blocker' => 'The attribution already has frozen commission plan evidence.', 'write_performed' => false];
         }
-        $companyId = $attribution->company_id ?: \App\Services\CompanyIdScope::defaultCompanyId();
-        if (! $companyId || ! $attribution->acquisition_sales_profile_id || ! $attribution->secured_at) {
-            return ['correction_allowed' => false, 'blocker' => 'Legal entity, acquisition Profile, and secured time are required before plan-family correction.', 'write_performed' => false];
+        if (! $attribution->acquisition_sales_profile_id || ! $attribution->secured_at) {
+            return ['correction_allowed' => false, 'blocker' => 'Acquisition Profile and secured time are required before plan-family correction.', 'write_performed' => false];
         }
         $profile = SalesProfile::query()->withTrashed()->with('staff')->find($attribution->acquisition_sales_profile_id);
-        if (! $profile || !\App\Services\CompanyIdScope::sameCompanyId((string) ($profile->company_id), (string) ($companyId))) {
-            return ['correction_allowed' => false, 'blocker' => 'The frozen acquisition Profile does not reconcile to the attribution legal entity.', 'write_performed' => false];
+        if (! $profile) {
+            return ['correction_allowed' => false, 'blocker' => 'The frozen acquisition Profile is unavailable.', 'write_performed' => false];
         }
         $matches = $this->assignmentCandidates($attribution, $profile);
         if ($matches->isEmpty()) {
@@ -74,14 +73,12 @@ class CommissionPlanResolver
             return ['correction_allowed' => false, 'blocker' => 'The winning plan assignment lacks maker-checker approval evidence.', 'write_performed' => false];
         }
         $family = $assignment->planFamily;
-        if (! $family || !\App\Services\CompanyIdScope::sameCompanyId((string) ($family->company_id), (string) ($companyId))
-            || $family->status !== 'approved' || $family->commission_category !== $attribution->commission_category) {
-            return ['correction_allowed' => false, 'blocker' => 'The winning plan family does not reconcile to the attribution legal entity and category.', 'write_performed' => false];
+        if (! $family || $family->status !== 'approved' || $family->commission_category !== $attribution->commission_category) {
+            return ['correction_allowed' => false, 'blocker' => 'The winning plan family does not match the attribution commission category.', 'write_performed' => false];
         }
         $snapshot = [
             'attribution_id' => $attribution->id,
             'attribution_version' => $attribution->version,
-            'company_id' => $companyId,
             'secured_at' => $attribution->secured_at->toIso8601String(),
             'commission_category' => $attribution->commission_category,
             'acquisition_sales_profile_id' => $profile->id,
@@ -169,7 +166,7 @@ class CommissionPlanResolver
                 'commission_plan_resolved_at' => $attribution->secured_at,
                 'version' => $version, 'updated_user_id' => $actorUserId,
             ]);
-            $this->events->record('sales', $attribution->company_id, 'booking_attribution', $attribution->id,
+            $this->events->record('sales', 'booking_attribution', $attribution->id,
                 'sales.attribution.commission_plan_family_corrected', $version, 1, [
                     'booking_id' => $attribution->booking_id,
                     'plan_family_id' => $snapshot['plan_family_id'],
@@ -186,17 +183,16 @@ class CommissionPlanResolver
     {
         $staff = $profile->staff;
         return SalesCommissionPlanAssignment::query()
-            ->where(fn ($_companyIdScope) => \App\Services\CompanyIdScope::constrain($_companyIdScope, 'sales_commission_plan_assignments.company_id', $attribution->company_id))
             ->where('sales_commission_plan_assignments.status', 'approved')
             ->where('sales_commission_plan_assignments.effective_from', '<=', $attribution->secured_at)
             ->where(fn ($q) => $q->whereNull('sales_commission_plan_assignments.effective_until')
                 ->orWhere('sales_commission_plan_assignments.effective_until', '>', $attribution->secured_at))
-            ->with('planFamily:id,company_id,code,name,commission_category,status')
-            ->whereHas('planFamily', fn ($q) => $q->where(fn ($_companyIdScope) => \App\Services\CompanyIdScope::constrain($_companyIdScope, 'company_id', $attribution->company_id))
+            ->with('planFamily:id,code,name,commission_category,status')
+            ->whereHas('planFamily', fn ($q) => $q
                 ->where('status', 'approved')
                 ->where('commission_category', $attribution->commission_category))
             ->where(function ($q) use ($profile, $staff) {
-                $q->where('scope_type', 'company')
+                $q->where('scope_type', 'installation')
                     ->orWhere(fn ($profileScope) => $profileScope->where('scope_type', 'sales_profile')->where('sales_profile_id', $profile->id))
                     ->orWhere(fn ($employeeScope) => $employeeScope->where('scope_type', 'employee')->where('staff_id', $staff?->id))
                     ->orWhere(fn ($categoryScope) => $categoryScope->where('scope_type', 'staff_category')->where('staff_category', $staff?->staff_type));

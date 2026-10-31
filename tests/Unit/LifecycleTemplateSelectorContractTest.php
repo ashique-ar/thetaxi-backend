@@ -8,7 +8,7 @@ it('uses a bounded approved-template selector without loading templates into the
     $component = file_get_contents(base_path('../portal-thetaxi/src/app/modules/hr-lifecycle/components/lifecycle-cases/lifecycle-cases.component.ts'));
 
     expect($routes)->toContain("Route::get('template-options', [LifecycleController::class, 'templateOptions'])")
-        ->and($controller)->toContain("where('company_id',\$d['company_id'])")
+        ->and($controller)->not->toContain('company_id', 'companyId', 'company(')
         ->toContain("where('status','approved')")
         ->toContain("'per_page'=>['nullable','integer','min:1','max:50']")
         ->and($service)->toContain("where('status', 'approved')")

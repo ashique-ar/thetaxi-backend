@@ -30,10 +30,6 @@ class StaffAccessService
             return $query->whereRaw('1 = 0');
         }
 
-        if ($actor->can('staff.view-legal-entity')) {
-            return $query;
-        }
-
         if ($actor->can('staff.view-team')) {
             $teamIds = StaffScopeAssignment::query()
                 ->whereIn('manager_staff_id', $actorStaff->pluck('id'))
@@ -69,8 +65,6 @@ class StaffAccessService
         }
 
         $actorStaff = $this->actorStaffs($actor);
-        $sameLegalEntity = $actor->can("staff.{$action}-legal-entity");
-
         $teamMember = $actor->can("staff.{$action}-team")
             && $actorStaff->isNotEmpty()
             && StaffScopeAssignment::query()
@@ -80,7 +74,7 @@ class StaffAccessService
                 ->where(fn ($assignment) => $assignment->whereNull('effective_until')->orWhere('effective_until', '>', now()))
                 ->exists();
 
-        return $actorStaff->contains('id', $staff->id) || $sameLegalEntity || $teamMember;
+        return $actorStaff->contains('id', $staff->id) || $teamMember;
     }
 
     private function actorStaff(User $actor): ?Staff

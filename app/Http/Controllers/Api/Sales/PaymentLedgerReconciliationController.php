@@ -8,10 +8,7 @@ use App\Models\Booking\BookingPaymentReceipt;
 use App\Models\Booking\BookingPaymentReceiptComponent;
 use App\Models\Sales\SalesBookingAttribution;
 use App\Services\BookingPaymentLedgerService;
-use App\Services\Sales\SalesCollectionCompanyIntegrity;
 use App\Services\Sales\SalesAccessScope;
-use App\Services\CompanySettingsAccessService;
-use App\Services\WebsiteSettingsService;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
@@ -21,22 +18,19 @@ class PaymentLedgerReconciliationController extends Controller
     public function __construct(
         private readonly BookingPaymentLedgerService $ledger,
         private readonly SalesAccessScope $scope,
-        private readonly SalesCollectionCompanyIntegrity $companyIntegrity,
     ) {}
 
     public function preview(Request $request): JsonResponse
     {
         $data = $request->validate([
-            'company_id' => ['nullable', 'uuid', 'exists:companies,id'],
             'booking_number' => ['nullable', 'string', 'max:80'],
             'limit' => ['nullable', 'integer', 'min:1', 'max:1000'],
         ]);
-        $data['company_id'] = $this->resolveCompanyId($data['company_id'] ?? null);
-        $this->scope->assertCompany($request->user(), $data['company_id'], 'sales.collections.view-all');
+        $this->scope->assertAccess($request->user(), 'sales.collections.view-all');
         $limit = $data['limit'] ?? 250;
         $paidWithoutReceipt = Booking::query()
             ->whereIn('payment_status', ['paid', 'success', 'online_paid'])
-            ->whereHas('salesAttribution', fn($query) => $query->where(fn ($_companyIdScope) => \App\Services\CompanyIdScope::constrain($_companyIdScope, 'company_id', $data['company_id'])))
+            ->whereHas('salesAttribution')
             ->whereDoesntHave('paymentReceipts')
             ->when($data['booking_number'] ?? null, fn($query, $number) => $query->where('booking_number', $number))
             ->orderBy('booking_number')->limit($limit + 1)
@@ -54,10 +48,8 @@ class PaymentLedgerReconciliationController extends Controller
         $receiptExceptions = DB::table('booking_payment_receipts as receipt')
             ->join('bookings as booking', 'booking.id', '=', 'receipt.booking_id')
             ->join('sales_booking_attributions as attribution', 'attribution.booking_id', '=', 'booking.id')
-            ->where(fn ($_companyIdScope) => \App\Services\CompanyIdScope::constrain($_companyIdScope, 'attribution.company_id', $data['company_id']))
             ->whereNull('attribution.deleted_at')
-            ->where(fn($query) => $query->whereNot(fn ($company) => \App\Services\CompanyIdScope::sameCompany($company, 'receipt.company_id', 'attribution.company_id'))
-                ->orWhereNull('receipt.source_currency')
+            ->where(fn($query) => $query->whereNull('receipt.source_currency')
                 ->orWhere(fn($fx) => $fx->where('receipt.source_currency', '!=', 'LKR')->whereNull('receipt.fx_rate_to_lkr'))
                 ->orWhereNotExists(fn($components) => $components->selectRaw('1')
                     ->from('booking_payment_receipt_components as component')
@@ -72,7 +64,6 @@ class PaymentLedgerReconciliationController extends Controller
                 'receipt.fx_rate_to_lkr',
                 'receipt.finality_status',
             ])
-            ->selectRaw("CASE WHEN receipt.company_id = attribution.company_id OR (receipt.company_id IS NULL AND EXISTS (SELECT 1 FROM companies default_company WHERE default_company.id = attribution.company_id AND default_company.is_default = true AND default_company.is_active = true AND default_company.deleted_at IS NULL)) OR (attribution.company_id IS NULL AND EXISTS (SELECT 1 FROM companies default_company WHERE default_company.id = receipt.company_id AND default_company.is_default = true AND default_company.is_active = true AND default_company.deleted_at IS NULL)) OR (receipt.company_id IS NULL AND attribution.company_id IS NULL AND EXISTS (SELECT 1 FROM companies default_company WHERE default_company.is_default = true AND default_company.is_active = true AND default_company.deleted_at IS NULL)) THEN 'matched' WHEN receipt.company_id IS NULL THEN 'missing' ELSE 'mismatch' END AS company_state")
             ->selectRaw("CASE WHEN EXISTS (SELECT 1 FROM booking_payment_receipt_components component WHERE component.receipt_id = receipt.id) THEN 1 ELSE 0 END AS has_components")
             ->get();
         $receiptsHaveMore = $receiptExceptions->count() > $limit;
@@ -83,7 +74,6 @@ class PaymentLedgerReconciliationController extends Controller
             'source_currency' => $receipt->source_currency,
             'fx_rate_to_lkr' => $receipt->fx_rate_to_lkr,
             'finality_status' => $receipt->finality_status,
-            'company_state' => $receipt->company_state,
             'has_components' => (bool) $receipt->has_components,
         ])->values();
 
@@ -104,19 +94,15 @@ class PaymentLedgerReconciliationController extends Controller
     public function receiptComponentOptions(Request $request): JsonResponse
     {
         $data = $request->validate([
-            'company_id' => ['nullable', 'uuid', 'exists:companies,id'],
             'search' => ['nullable', 'string', 'max:120'],
             'selected_id' => ['nullable', 'uuid'],
             'page' => ['nullable', 'integer', 'min:1'],
             'per_page' => ['nullable', 'integer', 'min:1', 'max:50'],
         ]);
-        $data['company_id'] = $this->resolveCompanyId($data['company_id'] ?? null);
-        $this->scope->assertCompany($request->user(), $data['company_id'], 'sales.collections.view-all');
+        $this->scope->assertAccess($request->user(), 'sales.collections.view-all');
         $query = DB::table('booking_payment_receipts as receipt')
             ->join('bookings as booking', 'booking.id', '=', 'receipt.booking_id')
             ->join('sales_booking_attributions as attribution', 'attribution.booking_id', '=', 'booking.id')
-            ->where(fn ($_companyIdScope) => \App\Services\CompanyIdScope::constrain($_companyIdScope, 'receipt.company_id', $data['company_id']))
-            ->where(fn ($_companyIdScope) => \App\Services\CompanyIdScope::constrain($_companyIdScope, 'attribution.company_id', $data['company_id']))
             ->whereNull('attribution.deleted_at')
             ->whereIn('receipt.payment_purpose', ['booking_payment', 'service_deposit', 'security_deposit'])
             ->whereNotExists(fn ($components) => $components->selectRaw('1')
@@ -146,19 +132,16 @@ class PaymentLedgerReconciliationController extends Controller
     public function legacyReceiptBookingOptions(Request $request): JsonResponse
     {
         $data = $request->validate([
-            'company_id' => ['nullable', 'uuid', 'exists:companies,id'],
             'search' => ['nullable', 'string', 'max:120'],
             'selected_id' => ['nullable', 'uuid'],
             'page' => ['nullable', 'integer', 'min:1'],
             'per_page' => ['nullable', 'integer', 'min:1', 'max:50'],
         ]);
-        $data['company_id'] = $this->resolveCompanyId($data['company_id'] ?? null);
-        $this->scope->assertCompany($request->user(), $data['company_id'], 'sales.collections.view-all');
+        $this->scope->assertAccess($request->user(), 'sales.collections.view-all');
         $query = DB::table('bookings as booking')
             ->join('sales_booking_attributions as attribution', 'attribution.booking_id', '=', 'booking.id')
             ->whereNull('booking.deleted_at')
             ->whereNull('attribution.deleted_at')
-            ->where(fn ($_companyIdScope) => \App\Services\CompanyIdScope::constrain($_companyIdScope, 'attribution.company_id', $data['company_id']))
             ->where(function ($paid): void {
                 $paid->where('booking.payment_collected_amount', '>', 0)
                     ->orWhere(function ($fullyPaid): void {
@@ -209,13 +192,11 @@ class PaymentLedgerReconciliationController extends Controller
     public function legacyReceiptRepairHistory(Request $request): JsonResponse
     {
         $data = $request->validate([
-            'company_id' => ['nullable', 'uuid', 'exists:companies,id'],
             'booking_number' => ['nullable', 'string', 'max:80'],
             'page' => ['nullable', 'integer', 'min:1'],
             'per_page' => ['nullable', 'integer', 'min:1', 'max:50'],
         ]);
-        $data['company_id'] = $this->resolveCompanyId($data['company_id'] ?? null);
-        $this->scope->assertCompany($request->user(), $data['company_id'], 'sales.collections.view-all');
+        $this->scope->assertAccess($request->user(), 'sales.collections.view-all');
         $query = DB::table('financial_audit_events as event')
             ->join('booking_payment_receipts as receipt', 'receipt.id', '=', 'event.subject_id')
             ->join('bookings as booking', 'booking.id', '=', 'event.booking_id')
@@ -223,7 +204,6 @@ class PaymentLedgerReconciliationController extends Controller
             ->leftJoin('domain_evidence_files as evidence', function ($join) use ($data): void {
                 $join->on('evidence.id', '=', 'receipt.legacy_repair_evidence_file_id')
                     ->where('evidence.domain', 'sales')
-                    ->where(fn ($_companyIdScope) => \App\Services\CompanyIdScope::constrain($_companyIdScope, 'evidence.company_id', $data['company_id']))
                     ->where('evidence.subject_type', 'booking')
                     ->whereColumn('evidence.subject_id', 'booking.id')
                     ->where('evidence.evidence_type', 'legacy_paid_receipt_repair')
@@ -231,11 +211,9 @@ class PaymentLedgerReconciliationController extends Controller
                     ->whereNull('evidence.deleted_at');
             })
             ->where('event.domain', 'sales')
-            ->where(fn ($_companyIdScope) => \App\Services\CompanyIdScope::constrain($_companyIdScope, 'event.company_id', $data['company_id']))
             ->where('event.subject_type', 'booking_payment')
             ->where('event.event_type', 'legacy_payment_receipt_repaired')
             ->whereColumn('event.booking_id', 'booking.id')
-            ->where(fn ($_companyIdScope) => \App\Services\CompanyIdScope::constrain($_companyIdScope, 'attribution.company_id', $data['company_id']))
             ->whereNull('booking.deleted_at')
             ->whereNull('attribution.deleted_at')
             ->where('receipt.metadata->reconciliation_repair', true)
@@ -249,7 +227,6 @@ class PaymentLedgerReconciliationController extends Controller
             ])
             ->selectSub(DB::table('financial_audit_events as matching_event')->selectRaw('COUNT(*)')
                 ->where('matching_event.domain', 'sales')
-                ->where(fn ($_companyIdScope) => \App\Services\CompanyIdScope::constrain($_companyIdScope, 'matching_event.company_id', $data['company_id']))
                 ->where('matching_event.subject_type', 'booking_payment')
                 ->whereColumn('matching_event.subject_id', 'receipt.id')
                 ->whereColumn('matching_event.booking_id', 'booking.id')
@@ -297,7 +274,6 @@ class PaymentLedgerReconciliationController extends Controller
     public function repairLegacyBooking(Request $request, Booking $booking): JsonResponse
     {
         $data = $request->validate([
-            'company_id' => ['nullable', 'uuid', 'exists:companies,id'],
             'payment_method' => ['required', 'string', 'max:50'],
             'reference' => ['required', 'string', 'max:160'],
             'received_at' => ['required', 'date', 'before_or_equal:now'],
@@ -306,10 +282,9 @@ class PaymentLedgerReconciliationController extends Controller
             'reason' => ['required', 'string', 'min:10', 'max:2000'],
             'idempotency_key' => ['required', 'uuid'],
         ]);
-        $data['company_id'] = $this->resolveCompanyId($data['company_id'] ?? null);
-        $this->scope->assertCompany($request->user(), $data['company_id'], 'sales.collections.view-all');
+        $this->scope->assertAccess($request->user(), 'sales.collections.view-all');
 
-        $result = $this->ledger->repairLegacyPaidBooking($booking, $data, (string) $request->user()->id, $data['company_id']);
+        $result = $this->ledger->repairLegacyPaidBooking($booking, $data, (string) $request->user()->id);
         return response()->json([
             'status' => 'success',
             'data' => $result['summary'],
@@ -320,29 +295,22 @@ class PaymentLedgerReconciliationController extends Controller
     public function repairComponents(Request $request, BookingPaymentReceipt $receipt): JsonResponse
     {
         $data = $request->validate([
-            'company_id' => ['nullable', 'uuid', 'exists:companies,id'],
             'evidence_file_id' => ['required', 'uuid', 'exists:domain_evidence_files,id'],
             'reason' => ['required', 'string', 'min:10', 'max:2000'],
             'idempotency_key' => ['required', 'uuid'],
         ]);
-        $data['company_id'] = $this->resolveCompanyId($data['company_id'] ?? null);
-        $this->scope->assertCompany($request->user(), $data['company_id'], 'sales.collections.view-all');
+        $this->scope->assertAccess($request->user(), 'sales.collections.view-all');
 
         $result = DB::transaction(function () use ($receipt, $data, $request): array {
             $booking = Booking::query()->lockForUpdate()->findOrFail($receipt->booking_id);
             $attribution = SalesBookingAttribution::query()->where('booking_id', $booking->id)->lockForUpdate()->first();
-            abort_unless($attribution?->company_id && hash_equals($data['company_id'], (string) $attribution->company_id), 409,
-                'The booking legal entity is missing or changed; refresh the authorized reconciliation scope.');
-            $this->companyIntegrity->assertConsistent($booking, (string) $attribution->company_id);
+            abort_unless($attribution, 409, 'Sales attribution is required before receipt component repair.');
             $receipt = BookingPaymentReceipt::query()->lockForUpdate()->findOrFail($receipt->id);
-            abort_unless(hash_equals((string) $attribution->company_id, (string) $receipt->company_id), 409,
-                'The receipt company does not match its booking attribution.');
             $componentType = (string) $receipt->payment_purpose;
             abort_unless(in_array($componentType, ['booking_payment', 'service_deposit', 'security_deposit'], true), 409,
                 'The receipt purpose is not governed for component repair.');
             $eligible = in_array($componentType, ['booking_payment', 'service_deposit'], true);
             $requestChecksum = hash('sha256', json_encode([
-                'company_id' => (string) $attribution->company_id,
                 'booking_id' => (string) $booking->id,
                 'receipt_id' => (string) $receipt->id,
                 'component_type' => $componentType,
@@ -355,19 +323,25 @@ class PaymentLedgerReconciliationController extends Controller
             $duplicate = BookingPaymentReceiptComponent::query()
                 ->where('repair_idempotency_key', $data['idempotency_key'])->first();
             if ($duplicate) {
+                $checksumVersion = (int) ($duplicate->repair_checksum_version ?? 1);
                 abort_unless((string) $duplicate->receipt_id === (string) $receipt->id
-                    && hash_equals((string) $duplicate->repair_request_checksum, $requestChecksum), 409,
+                    && ($checksumVersion === 1
+                        ? (string) $duplicate->component_type === $componentType
+                            && (bool) $duplicate->is_allocatable === true
+                            && (bool) $duplicate->is_collection_target_eligible === $eligible
+                            && (bool) $duplicate->is_commission_eligible === $eligible
+                            && (string) $duplicate->repair_evidence_file_id === (string) $data['evidence_file_id']
+                            && (string) $duplicate->repair_reason === trim((string) $data['reason'])
+                        : hash_equals((string) $duplicate->repair_request_checksum, $requestChecksum)), 409,
                     'This component repair key was already used with different facts.');
                 $originalEvidence = app(\App\Services\Sales\SalesEvidenceIntegrityService::class)->assertAttachedFile(
-                    (string) $duplicate->repair_evidence_file_id, (string) $attribution->company_id,
-                    'booking_payment_receipt', [$receipt->id], true,
+                    (string) $duplicate->repair_evidence_file_id, 'booking_payment_receipt', [$receipt->id], true,
                 );
                 abort_unless($originalEvidence->evidence_type === 'legacy_payment_component_repair'
                     && $originalEvidence->classification === 'restricted', 409,
                     'Original restricted component repair evidence is missing or unavailable.');
                 $afterChecksum = $this->componentRepairChecksum($duplicate);
                 $events = DB::table('domain_audit_events')->where('domain', 'sales')
-                    ->where(fn ($_companyIdScope) => \App\Services\CompanyIdScope::constrain($_companyIdScope, 'company_id', $attribution->company_id))
                     ->where('event_type', 'sales.payment.component.repaired')
                     ->where('correlation_id', $data['idempotency_key'])
                     ->where('subject_type', 'booking_payment_receipt_component')
@@ -381,21 +355,19 @@ class PaymentLedgerReconciliationController extends Controller
                 return [...$this->componentRepairResult($duplicate), 'replayed' => true];
             }
             abort_if(DB::table('domain_audit_events')->where('domain', 'sales')
-                ->where(fn ($_companyIdScope) => \App\Services\CompanyIdScope::constrain($_companyIdScope, 'company_id', $attribution->company_id))
                 ->where('event_type', 'sales.payment.component.repaired')
                 ->where('correlation_id', $data['idempotency_key'])->exists(), 409,
                 'Component repair audit evidence exists without its source row; replay is held.');
             abort_if($receipt->components()->exists(), 422,
                 'Receipt components already exist; create an adjustment instead of rewriting classification.');
             $evidence = app(\App\Services\Sales\SalesEvidenceIntegrityService::class)->assertAttachedFile(
-                $data['evidence_file_id'], (string) $attribution->company_id,
-                'booking_payment_receipt', [$receipt->id], true,
+                $data['evidence_file_id'], 'booking_payment_receipt', [$receipt->id], true,
             );
             abort_unless($evidence->evidence_type === 'legacy_payment_component_repair'
                 && $evidence->classification === 'restricted', 422,
-                'Restricted evidence must be attached to this receipt and legal entity.');
+                'Restricted evidence must be attached to this receipt.');
             $beforeChecksum = hash('sha256', json_encode([
-                'booking_id' => (string) $booking->id, 'company_id' => (string) $attribution->company_id,
+                'booking_id' => (string) $booking->id,
                 'receipt_id' => (string) $receipt->id, 'payment_purpose' => $componentType,
                 'source_amount' => (string) ($receipt->source_amount ?? $receipt->amount),
                 'lkr_amount' => $receipt->lkr_amount === null ? null : (string) $receipt->lkr_amount,
@@ -414,12 +386,12 @@ class PaymentLedgerReconciliationController extends Controller
                 'repair_before_checksum' => $beforeChecksum,
                 'repair_evidence_file_id' => $data['evidence_file_id'],
                 'repair_reason' => trim($data['reason']),
+                'repair_checksum_version' => 2,
             ]);
             $afterChecksum = $this->componentRepairChecksum($component);
             DB::table('domain_audit_events')->insert([
                 'id' => (string) \Illuminate\Support\Str::uuid(),
                 'domain' => 'sales',
-                'company_id' => $receipt->company_id,
                 'subject_type' => 'booking_payment_receipt_component',
                 'subject_id' => $component->id,
                 'event_type' => 'sales.payment.component.repaired',
@@ -450,17 +422,6 @@ class PaymentLedgerReconciliationController extends Controller
             'is_collection_target_eligible' => (bool) $component->is_collection_target_eligible,
             'is_commission_eligible' => (bool) $component->is_commission_eligible,
         ];
-    }
-
-    private function resolveCompanyId(?string $companyId): string
-    {
-        $companyId = $companyId ?: app(WebsiteSettingsService::class)->resolveCurrentCompanyId();
-        abort_unless($companyId, 409, 'Select an active business for Sales work.');
-        if (request()->header('X-Active-Context-Type') === 'staff') {
-            app(CompanySettingsAccessService::class)->assertCanAccess(request()->user(), (string) $companyId);
-        }
-
-        return (string) $companyId;
     }
 
     private function componentRepairChecksum(BookingPaymentReceiptComponent $component): string

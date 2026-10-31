@@ -1,6 +1,5 @@
 <?php
 
-use App\Models\Company;
 use App\Models\Staff;
 use App\Models\UserContext;
 use Illuminate\Foundation\Testing\RefreshDatabase;
@@ -10,20 +9,18 @@ use function Pest\Laravel\actingAs;
 
 uses(RefreshDatabase::class);
 
-it('lists only travel requests in the selected Staff company', function () {
-    [$admin, $firstCompany] = hr_seed_admin_actor();
+it('lists travel requests for the selected Staff identity across the installation', function () {
+    [$admin] = hr_seed_admin_actor();
     $admin->givePermissionTo('hr.travel.view');
-    $firstStaff = Staff::query()->where('user_id', $admin->id)->firstOrFail();
-    $secondCompany = Company::create(['name' => 'Selected travel company']);
     $secondStaff = Staff::query()->where('user_id', $admin->id)->firstOrFail();
-    $secondStaff->update(['company_id' => $secondCompany->id]);
+    $firstStaff = Staff::factory()->create();
     $context = UserContext::query()->where('user_id', $admin->id)->where('context_type', 'staff')->firstOrFail();
 
     $requestIds = [];
-    foreach ([[$firstCompany->id, $firstStaff->id], [$secondCompany->id, $secondStaff->id]] as [$companyId, $staffId]) {
+    foreach ([$firstStaff->id, $secondStaff->id] as $staffId) {
         $id = (string) Str::uuid();
         DB::table('hr_travel_requests')->insert([
-            'id' => $id, 'company_id' => $companyId, 'staff_id' => $staffId, 'request_number' => 'TR-'.$id,
+            'id' => $id, 'staff_id' => $staffId, 'request_number' => 'TR-'.$id,
             'purpose' => 'Business travel', 'origin' => 'Colombo', 'destination' => 'Kandy',
             'departs_at' => now()->addDay(), 'returns_at' => now()->addDays(2), 'timezone' => 'Asia/Colombo',
             'itinerary' => '[]', 'currency' => 'LKR', 'estimated_cost' => 100, 'requested_advance' => 0,

@@ -9,9 +9,9 @@ use function Pest\Laravel\actingAs;
 uses(RefreshDatabase::class);
 
 it('hides source identifiers, private summaries and idempotency keys from timeline API rows', function () {
-    [$admin, $company] = hr_seed_admin_actor();
+    [$admin] = hr_seed_admin_actor();
     config(['hr.features.people_core' => true]);
-    $staff = \App\Models\Staff::factory()->create(['company_id' => $company->id]);
+    $staff = \App\Models\Staff::factory()->create();
     $spellId = (string) Str::uuid();
     $eventId = (string) Str::uuid();
     $sourceId = (string) Str::uuid();
@@ -20,7 +20,7 @@ it('hides source identifiers, private summaries and idempotency keys from timeli
     $now = now();
 
     DB::table('hr_employment_spells')->insert([
-        'id' => $spellId, 'staff_id' => $staff->id, 'company_id' => $company->id, 'spell_number' => 1,
+        'id' => $spellId, 'staff_id' => $staff->id, 'spell_number' => 1,
         'joined_at' => '2026-01-01', 'service_date' => '2026-01-01', 'gratuity_service_start' => '2026-01-01',
         'status' => 'active', 'created_user_id' => $admin->id, 'created_at' => $now, 'updated_at' => $now,
     ]);

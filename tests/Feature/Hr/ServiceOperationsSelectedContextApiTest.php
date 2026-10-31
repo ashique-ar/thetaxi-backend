@@ -1,7 +1,5 @@
 <?php
 
-use App\Models\Company;
-use App\Models\Staff;
 use App\Models\UserContext;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\DB;
@@ -10,19 +8,16 @@ use function Pest\Laravel\actingAs;
 
 uses(RefreshDatabase::class);
 
-it('limits expense policy options to the selected Staff company', function () {
-    [$admin, $firstCompany] = hr_seed_admin_actor();
+it('shows installation-wide expense policy options under the selected Staff context', function () {
+    [$admin] = hr_seed_admin_actor();
     $admin->givePermissionTo('hr.expenses.submit');
-    $secondCompany = Company::create(['name' => 'Selected service operations company']);
-    $secondStaff = Staff::query()->where('user_id', $admin->id)->firstOrFail();
-    $secondStaff->update(['company_id' => $secondCompany->id]);
     $context = UserContext::query()->where('user_id', $admin->id)->where('context_type', 'staff')->firstOrFail();
 
     $firstPolicy = (string) Str::uuid();
     $secondPolicy = (string) Str::uuid();
-    foreach ([[$firstPolicy, $firstCompany->id, 'FIRST'], [$secondPolicy, $secondCompany->id, 'SELECTED']] as [$id, $companyId, $code]) {
+    foreach ([[$firstPolicy, 'FIRST'], [$secondPolicy, 'SELECTED']] as [$id, $code]) {
         DB::table('hr_expense_policy_versions')->insert([
-            'id' => $id, 'company_id' => $companyId, 'code' => $code, 'version' => 1, 'status' => 'approved',
+            'id' => $id, 'code' => $code, 'version' => 1, 'status' => 'approved',
             'rules' => '{}', 'effective_from' => today()->subDay()->toDateString(), 'created_by' => $admin->id,
             'approved_by' => $admin->id, 'approved_at' => now(), 'created_at' => now(), 'updated_at' => now(),
         ]);
@@ -32,7 +27,7 @@ it('limits expense policy options to the selected Staff company', function () {
     actingAs($admin, 'api')->getJson($url)->assertOk();
     actingAs($admin, 'api')->withHeaders([
         'X-Active-Context-Type' => 'staff', 'X-Active-Context-Id' => $context->id,
-    ])->getJson($url)->assertOk()->assertJsonCount(1, 'data.data')
-        ->assertJsonPath('data.data.0.value', $secondPolicy)
-        ->assertJsonPath('data.data.0.label', 'SELECTED v1');
+    ])->getJson($url)->assertOk()->assertJsonCount(2, 'data.data')
+        ->assertJsonFragment(['value' => $firstPolicy])
+        ->assertJsonFragment(['value' => $secondPolicy]);
 });

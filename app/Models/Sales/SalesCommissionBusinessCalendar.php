@@ -7,7 +7,7 @@ use App\Models\NonSoftDeletableModel;
 class SalesCommissionBusinessCalendar extends NonSoftDeletableModel
 {
     protected $fillable = [
-        'company_id', 'code', 'name', 'timezone', 'weekly_working_days', 'effective_from',
+        'code', 'name', 'timezone', 'weekly_working_days', 'effective_from',
         'effective_until', 'status', 'created_by', 'approved_by', 'approved_at',
     ];
 

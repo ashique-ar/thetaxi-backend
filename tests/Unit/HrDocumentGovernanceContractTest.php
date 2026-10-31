@@ -22,13 +22,13 @@ it('refuses migration rollback while any document type event or legal hold is re
         ->toContain("where('legal_hold', true)");
 });
 
-it('governs document types as a versioned legal-entity register reusing the shared organization event ledger', function () {
+it('governs document types as an installation-wide versioned register using the shared organization event ledger', function () {
     $service = file_get_contents(app_path('Services/Hr/OrganizationAdministrationService.php'));
 
     expect($service)
-        ->toContain('public function createDocumentType(array $data,string $companyId,string $actorUserId):array')
-        ->toContain('public function updateDocumentType(string $typeId,array $data,string $companyId,string $actorUserId):array')
-        ->toContain("if(\$replay=\$this->replay(\$data['idempotency_key'],\$checksum,\$companyId,'document_type'))return\$replay;");
+        ->toContain('public function createDocumentType(array $data,string $actorUserId):array')
+        ->toContain('public function updateDocumentType(string $typeId,array $data,string $actorUserId):array')
+        ->not->toContain('companyId', 'company_id');
 });
 
 it('scopes required-document rules to an approved category list without inventing statutory document requirements', function () {

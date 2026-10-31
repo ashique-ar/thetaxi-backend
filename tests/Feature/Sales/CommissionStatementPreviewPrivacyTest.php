@@ -1,7 +1,6 @@
 <?php
 
 use App\Contracts\Foundation\DomainEventPublisher;
-use App\Models\Company;
 use App\Models\Sales\SalesProfile;
 use App\Models\Staff;
 use App\Services\Sales\CommissionStatementService;
@@ -15,17 +14,17 @@ use function Pest\Laravel\actingAs;
 uses(RefreshDatabase::class);
 
 it('returns readable statement preview facts without source identifiers or snapshots', function () {
-    [$admin, $company] = hr_seed_admin_actor(['name' => 'Statement Preview Company']);
+    [$admin] = hr_seed_admin_actor();
     $admin->givePermissionTo(['sales.commission-statements.generate', 'sales.commission-statements.view-all']);
-    $staff = Staff::factory()->create(['company_id' => $company->id]);
+    $staff = Staff::factory()->create();
     $profile = SalesProfile::query()->create([
-        'id' => (string) Str::uuid(), 'company_id' => $company->id, 'staff_id' => $staff->id,
+        'id' => (string) Str::uuid(), 'staff_id' => $staff->id,
         'sales_code' => 'PREVIEW-PRIVACY', 'status' => 'active', 'effective_from' => now()->subDay(),
         'staff_category_snapshot' => 'sales', 'reporting_currency' => 'LKR', 'commission_eligible' => true,
     ]);
     $sourceId = (string) Str::uuid();
     $statementService = Mockery::mock(CommissionStatementService::class);
-    $statementService->shouldReceive('preview')->twice()->andReturn([
+    $statementService->shouldReceive('preview')->times(3)->andReturn([
         'period_start' => CarbonImmutable::parse('2026-01-01'),
         'period_end' => CarbonImmutable::parse('2026-01-31'),
         'cutoff_at' => CarbonImmutable::parse('2026-02-01T00:00:00Z'),
@@ -45,24 +44,24 @@ it('returns readable statement preview facts without source identifiers or snaps
             'line_type' => 'earning', 'source_type' => 'commission_decision', 'source_id' => $sourceId,
             'description' => 'Collection commission earning', 'gross_lkr' => 1250, 'deduction_lkr' => 0,
             'net_lkr' => 1250, 'line_status' => 'included', 'hold_code' => null,
-            'snapshot' => ['staff_id' => (string) $staff->id, 'company_id' => (string) $company->id],
+            'snapshot' => ['staff_id' => (string) $staff->id],
         ]],
         'write_performed' => false,
     ]);
     app()->instance(CommissionStatementService::class, $statementService);
 
-    $foreignCompany = Company::create(['name' => 'Different Statement Entity']);
+    $legacyCompanyId = '00000000-0000-0000-0000-000000000001';
     actingAs($admin, 'api')->postJson('/api/sales/commission-statements/preview', [
         'sales_profile_id' => $profile->id,
         'period_start' => '2026-01-01', 'period_end' => '2026-01-31', 'cutoff_at' => '2026-02-01T00:00:00Z',
     ])->assertOk();
     actingAs($admin, 'api')->postJson('/api/sales/commission-statements/preview', [
-        'company_id' => $foreignCompany->id, 'sales_profile_id' => $profile->id,
+        'company_id' => $legacyCompanyId, 'sales_profile_id' => $profile->id,
         'period_start' => '2026-01-01', 'period_end' => '2026-01-31', 'cutoff_at' => '2026-02-01T00:00:00Z',
-    ])->assertUnprocessable();
+    ])->assertOk();
 
     $response = actingAs($admin, 'api')->postJson('/api/sales/commission-statements/preview', [
-        'company_id' => $company->id,
+        'company_id' => $legacyCompanyId,
         'sales_profile_id' => $profile->id,
         'period_start' => '2026-01-01',
         'period_end' => '2026-01-31',
@@ -77,13 +76,13 @@ it('returns readable statement preview facts without source identifiers or snaps
 
     expect($response->getContent())->not->toContain($sourceId)
         ->and($response->getContent())->not->toContain((string) $staff->id)
-        ->and($response->getContent())->not->toContain((string) $company->id);
+        ->and($response->getContent())->not->toContain($legacyCompanyId);
 });
 
 it('returns minimized commission and accounting views without source or owner identifiers', function () {
-    [$admin, $company] = hr_seed_admin_actor(['name' => 'Statement Detail Company']);
+    [$admin] = hr_seed_admin_actor();
     $admin->givePermissionTo(['sales.commission-statements.view-all', 'sales.commission-payouts.reverse']);
-    $staff = Staff::factory()->create(['company_id' => $company->id]);
+    $staff = Staff::factory()->create();
     $profileId = (string) Str::uuid();
     $cycleId = (string) Str::uuid();
     $assignmentId = (string) Str::uuid();
@@ -93,12 +92,12 @@ it('returns minimized commission and accounting views without source or owner id
     $now = now();
 
     DB::table('sales_profiles')->insert([
-        'id' => $profileId, 'company_id' => $company->id, 'staff_id' => $staff->id,
+        'id' => $profileId, 'staff_id' => $staff->id,
         'sales_code' => 'DETAIL-PRIVACY', 'effective_from' => $now->copy()->subYear(),
         'created_at' => $now, 'updated_at' => $now,
     ]);
     DB::table('sales_commission_cycle_versions')->insert([
-        'id' => $cycleId, 'company_id' => $company->id, 'code' => 'DETAIL-CYCLE', 'version' => 1,
+        'id' => $cycleId, 'code' => 'DETAIL-CYCLE', 'version' => 1,
         'timezone' => 'Asia/Colombo', 'earning_period_rule' => 'monthly', 'cutoff_day' => 25,
         'finalization_day' => 26, 'approval_deadline_day' => 27, 'settlement_day' => 28,
         'holiday_rule' => 'next_business_day', 'effective_from' => $now->copy()->subYear(),
@@ -106,13 +105,13 @@ it('returns minimized commission and accounting views without source or owner id
         'approved_at' => $now, 'created_at' => $now, 'updated_at' => $now,
     ]);
     DB::table('sales_commission_cycle_assignments')->insert([
-        'id' => $assignmentId, 'company_id' => $company->id, 'cycle_version_id' => $cycleId,
-        'scope_type' => 'company', 'precedence' => 1, 'effective_from' => $now->copy()->subYear(),
+        'id' => $assignmentId, 'cycle_version_id' => $cycleId,
+        'scope_type' => 'installation', 'precedence' => 1, 'effective_from' => $now->copy()->subYear(),
         'status' => 'approved', 'created_by' => $admin->id, 'approved_by' => $admin->id,
         'approved_at' => $now, 'created_at' => $now, 'updated_at' => $now,
     ]);
     DB::table('sales_commission_statements')->insert([
-        'id' => $statementId, 'company_id' => $company->id, 'staff_id' => $staff->id,
+        'id' => $statementId, 'staff_id' => $staff->id,
         'sales_profile_id' => $profileId, 'cycle_version_id' => $cycleId, 'cycle_assignment_id' => $assignmentId,
         'statement_number' => 'SCS-DETAIL-PRIVACY', 'period_start' => '2026-09-01', 'period_end' => '2026-09-30',
         'cutoff_at' => $now, 'timezone' => 'Asia/Colombo', 'status' => 'approved', 'prepared_by' => $admin->id,
@@ -123,12 +122,12 @@ it('returns minimized commission and accounting views without source or owner id
         'id' => $lineId, 'statement_id' => $statementId, 'line_type' => 'earning',
         'source_type' => 'commission_decision', 'source_id' => $sourceId, 'description' => 'Collection commission earning',
         'gross_lkr' => 1250, 'deduction_lkr' => 0, 'net_lkr' => 1250, 'line_status' => 'included',
-        'calculation_snapshot' => json_encode(['company_id' => $company->id, 'staff_id' => $staff->id]),
+        'calculation_snapshot' => json_encode(['staff_id' => $staff->id]),
         'snapshot_checksum' => str_repeat('b', 64), 'created_at' => $now, 'updated_at' => $now,
     ]);
     $disputeId = (string) Str::uuid();
     DB::table('sales_commission_disputes')->insert([
-        'id' => $disputeId, 'company_id' => $company->id, 'statement_id' => $statementId,
+        'id' => $disputeId, 'statement_id' => $statementId,
         'statement_line_id' => $lineId, 'raised_by_staff_id' => $staff->id, 'category' => 'earning',
         'reason' => 'The frozen earning amount needs review.', 'contested_amount_lkr' => 250,
         'status' => 'open', 'raised_at' => $now, 'response_due_at' => $now->copy()->addDays(5),
@@ -136,7 +135,7 @@ it('returns minimized commission and accounting views without source or owner id
     ]);
     $payoutId = (string) Str::uuid();
     DB::table('sales_commission_payouts')->insert([
-        'id' => $payoutId, 'company_id' => $company->id, 'staff_id' => $staff->id,
+        'id' => $payoutId, 'staff_id' => $staff->id,
         'payout_number' => 'SCP-DETAIL-PRIVACY', 'amount_lkr' => 500, 'payment_method' => 'bank',
         'payment_account_snapshot' => Crypt::encrypt(['account' => 'confidential account snapshot']), 'payment_reference' => 'PAY-DETAIL-PRIVACY',
         'paid_at' => $now, 'status' => 'confirmed', 'accounting_status' => 'pending_delivery',
@@ -152,7 +151,7 @@ it('returns minimized commission and accounting views without source or owner id
     actingAs($admin, 'api')->getJson('/api/sales/commission-disputes')->assertOk();
     actingAs($admin, 'api')->getJson('/api/sales/commission-payouts')->assertOk();
 
-    $index = actingAs($admin, 'api')->getJson('/api/sales/commission-statements?company_id='.$company->id)
+    $index = actingAs($admin, 'api')->getJson('/api/sales/commission-statements')
         ->assertOk()
         ->assertJsonPath('data.data.0.id', $statementId)
         ->assertJsonPath('data.data.0.statement_number', 'SCS-DETAIL-PRIVACY')
@@ -184,7 +183,7 @@ it('returns minimized commission and accounting views without source or owner id
         ->assertJsonMissingPath('data.lines.0.calculation_snapshot')
         ->assertJsonMissingPath('data.lines.0.snapshot_checksum');
 
-    $disputes = actingAs($admin, 'api')->getJson('/api/sales/commission-disputes?company_id='.$company->id.'&status=open')
+    $disputes = actingAs($admin, 'api')->getJson('/api/sales/commission-disputes?status=open')
         ->assertOk()
         ->assertJsonPath('data.data.0.id', $disputeId)
         ->assertJsonPath('data.data.0.category', 'earning')
@@ -195,7 +194,7 @@ it('returns minimized commission and accounting views without source or owner id
         ->assertJsonMissingPath('data.data.0.raised_by_staff_id')
         ->assertJsonMissingPath('data.data.0.idempotency_key');
 
-    $payouts = actingAs($admin, 'api')->getJson('/api/sales/commission-payouts?company_id='.$company->id)
+    $payouts = actingAs($admin, 'api')->getJson('/api/sales/commission-payouts')
         ->assertOk()
         ->assertJsonPath('data.data.0.id', $payoutId)
         ->assertJsonPath('data.data.0.payout_number', 'SCP-DETAIL-PRIVACY')
@@ -228,21 +227,19 @@ it('returns minimized commission and accounting views without source or owner id
         ->toBe('delivery_failed');
 
     expect($index->getContent())->not->toContain(
-        (string) $company->id, (string) $staff->id, $profileId, $cycleId, $assignmentId,
+        (string) $staff->id, $profileId, $cycleId, $assignmentId,
     )->and($response->getContent())->not->toContain(
-        $sourceId, (string) $company->id, (string) $staff->id, (string) $admin->id, $profileId, $cycleId, $assignmentId,
+        $sourceId, (string) $staff->id, (string) $admin->id, $profileId, $cycleId, $assignmentId,
         str_repeat('a', 64), str_repeat('b', 64),
     )->and($disputes->getContent())->not->toContain(
-        (string) $company->id, (string) $staff->id, $statementId, $lineId,
+        (string) $staff->id, $statementId, $lineId,
     )->and($payouts->getContent())->not->toContain(
-        (string) $company->id, (string) $staff->id, (string) $admin->id,
+        (string) $staff->id, (string) $admin->id,
         'confidential account snapshot', str_repeat('c', 64), 'confidential payout reason',
     )->and($delivery->getContent())->not->toContain(
-        (string) $company->id, (string) $staff->id, (string) $admin->id, $payoutId,
+        (string) $staff->id, (string) $admin->id, $payoutId,
         $deliveryKey, 'PRIVATE-FAILURE-DETAIL',
     );
 
-    DB::table('companies')->where('id', $company->id)->update(['is_active' => false]);
-    actingAs($admin, 'api')->getJson('/api/sales/commission-statements/'.$statementId)->assertNotFound();
-    actingAs($admin, 'api')->postJson('/api/sales/commission-payouts/'.$payoutId.'/reverse', [])->assertForbidden();
+    actingAs($admin, 'api')->getJson('/api/sales/commission-statements/'.$statementId)->assertOk();
 });

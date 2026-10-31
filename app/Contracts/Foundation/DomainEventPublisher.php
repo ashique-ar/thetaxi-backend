@@ -8,7 +8,6 @@ interface DomainEventPublisher
 {
     public function record(
         string $domain,
-        ?string $companyId,
         string $aggregateType,
         string $aggregateId,
         string $eventType,

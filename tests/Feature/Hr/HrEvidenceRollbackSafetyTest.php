@@ -1,6 +1,5 @@
 <?php
 
-use App\Models\Company;
 use App\Models\Hr\Attendance\AttendanceDevice;
 use App\Models\Staff;
 use App\Models\User;
@@ -12,8 +11,7 @@ use Illuminate\Support\Str;
 uses(RefreshDatabase::class);
 
 it('refuses to drop populated attendance ledger evidence', function () {
-    $company = Company::create(['name' => 'Attendance rollback company', 'is_active' => true]);
-    $device = AttendanceDevice::factory()->create(['company_id' => $company->id]);
+    $device = AttendanceDevice::factory()->create();
     $migration = require database_path('migrations/2026_08_13_100000_create_hr_attendance_raw_ledger.php');
 
     expect(fn () => $migration->down())
@@ -23,9 +21,8 @@ it('refuses to drop populated attendance ledger evidence', function () {
 });
 
 it('preflights every attendance model table before removing alignment columns', function () {
-    $company = Company::create(['name' => 'Attendance alignment rollback company', 'is_active' => true]);
     $actor = User::factory()->create();
-    $device = AttendanceDevice::factory()->create(['company_id' => $company->id]);
+    $device = AttendanceDevice::factory()->create();
     DB::table('hr_attendance_devices')->where('id', $device->id)->update(['updated_user_id' => $actor->id]);
     $migration = require database_path('migrations/2026_08_31_171000_align_attendance_models_with_base_model.php');
 
@@ -37,15 +34,13 @@ it('preflights every attendance model table before removing alignment columns', 
 });
 
 it('preflights both employment tables before removing alignment columns', function () {
-    $company = Company::create(['name' => 'Employment alignment rollback company', 'is_active' => true]);
     $actor = User::factory()->create();
-    $staff = \App\Models\Staff::factory()->create(['company_id' => $company->id]);
+    $staff = \App\Models\Staff::factory()->create();
     $spellId = (string) Str::uuid();
     $assignmentId = (string) Str::uuid();
     DB::table('hr_employment_spells')->insert([
         'id' => $spellId,
         'staff_id' => $staff->id,
-        'company_id' => $company->id,
         'spell_number' => 1,
         'joined_at' => '2026-01-01',
         'service_date' => '2026-01-01',
@@ -58,7 +53,6 @@ it('preflights both employment tables before removing alignment columns', functi
         'id' => $assignmentId,
         'employment_spell_id' => $spellId,
         'staff_id' => $staff->id,
-        'company_id' => $company->id,
         'assignment_type' => 'primary',
         'effective_from' => '2026-01-01',
         'change_reason' => 'Synthetic alignment fixture',
@@ -77,7 +71,6 @@ it('preflights both employment tables before removing alignment columns', functi
 });
 
 it('refuses to drop populated attendance-results evidence', function () {
-    $company = Company::create(['name' => 'Attendance results rollback company', 'is_active' => true]);
     $actor = User::factory()->create();
     $calendarId = (string) Str::uuid();
     DB::table('hr_work_calendars')->insert([
@@ -101,13 +94,11 @@ it('refuses to drop populated attendance-results evidence', function () {
 });
 
 it('refuses to drop populated daily-result tracking evidence', function () {
-    $company = Company::create(['name' => 'Attendance tracking rollback company', 'is_active' => true]);
     $actor = User::factory()->create();
-    $staff = \App\Models\Staff::factory()->create(['company_id' => $company->id]);
+    $staff = \App\Models\Staff::factory()->create();
     $resultId = (string) Str::uuid();
     DB::table('hr_attendance_daily_results')->insert([
         'id' => $resultId,
-        'company_id' => $company->id,
         'staff_id' => $staff->id,
         'work_date' => '2026-10-01',
         'result_version' => 1,
@@ -134,12 +125,10 @@ it('refuses to drop populated daily-result tracking evidence', function () {
 });
 
 it('refuses to drop populated lifecycle request evidence', function () {
-    $company = Company::create(['name' => 'Lifecycle rollback company', 'is_active' => true]);
-    $staff = Staff::factory()->create(['company_id' => $company->id]);
+    $staff = Staff::factory()->create();
     $requestId = (string) Str::uuid();
     DB::table('hr_request_index')->insert([
         'id' => $requestId,
-        'company_id' => $company->id,
         'requester_staff_id' => $staff->id,
         'request_type' => 'leave',
         'source_type' => 'leave_request',
@@ -160,12 +149,10 @@ it('refuses to drop populated lifecycle request evidence', function () {
 });
 
 it('refuses to drop populated leave and payroll evidence', function () {
-    $company = Company::create(['name' => 'Leave rollback company', 'is_active' => true]);
     $actor = User::factory()->create();
     $leaveTypeId = (string) Str::uuid();
     DB::table('hr_leave_types')->insert([
         'id' => $leaveTypeId,
-        'company_id' => $company->id,
         'code' => 'ROLLBACK-LEAVE',
         'name' => 'Retained leave type',
         'category' => 'annual',
@@ -187,12 +174,10 @@ it('refuses to drop populated leave and payroll evidence', function () {
 });
 
 it('refuses to drop populated talent and performance evidence', function () {
-    $company = Company::create(['name' => 'Performance rollback company', 'is_active' => true]);
     $actor = User::factory()->create();
     $cycleId = (string) Str::uuid();
     DB::table('hr_review_cycles')->insert([
         'id' => $cycleId,
-        'company_id' => $company->id,
         'code' => 'ROLLBACK-CYCLE',
         'name' => 'Retained review cycle',
         'period_start' => '2026-01-01',
@@ -213,14 +198,12 @@ it('refuses to drop populated talent and performance evidence', function () {
 });
 
 it('refuses to drop populated talent audit evidence', function () {
-    $company = Company::create(['name' => 'Talent audit rollback company', 'is_active' => true]);
     $actor = User::factory()->create();
-    $staff = Staff::factory()->create(['company_id' => $company->id]);
+    $staff = Staff::factory()->create();
     $achievementId = (string) Str::uuid();
     $eventId = (string) Str::uuid();
     DB::table('hr_achievements')->insert([
         'id' => $achievementId,
-        'company_id' => $company->id,
         'staff_id' => $staff->id,
         'category' => 'delivery',
         'title' => 'Retained achievement',
@@ -251,12 +234,10 @@ it('refuses to drop populated talent audit evidence', function () {
 });
 
 it('refuses to drop populated expense decision evidence', function () {
-    $company = Company::create(['name' => 'Expense rollback company', 'is_active' => true]);
-    $staff = Staff::factory()->create(['company_id' => $company->id]);
+    $staff = Staff::factory()->create();
     $claimId = (string) Str::uuid();
     DB::table('hr_expense_claims')->insert([
         'id' => $claimId,
-        'company_id' => $company->id,
         'staff_id' => $staff->id,
         'claim_number' => 'ROLLBACK-CLAIM',
         'claim_type' => 'reimbursement',
@@ -279,13 +260,11 @@ it('refuses to drop populated expense decision evidence', function () {
 });
 
 it('refuses to drop populated custody extension evidence', function () {
-    $company = Company::create(['name' => 'Custody rollback company', 'is_active' => true]);
     $actor = User::factory()->create();
-    $staff = Staff::factory()->create(['company_id' => $company->id]);
+    $staff = Staff::factory()->create();
     $assignmentId = (string) Str::uuid();
     DB::table('hr_custody_assignments')->insert([
         'id' => $assignmentId,
-        'company_id' => $company->id,
         'staff_id' => $staff->id,
         'custody_type' => 'equipment',
         'item_code' => 'ROLLBACK-ITEM',
@@ -351,11 +330,9 @@ it('refuses to drop populated meal-programme evidence', function () {
 });
 
 it('refuses to drop accounting delivery target evidence', function () {
-    $company = Company::create(['name' => 'Meal delivery rollback company', 'is_active' => true]);
     $outboxId = (string) Str::uuid();
     DB::table('hr_accounting_outbox')->insert([
         'id' => $outboxId,
-        'company_id' => $company->id,
         'event_type' => 'meal_order',
         'aggregate_type' => 'meal_order',
         'aggregate_id' => (string) Str::uuid(),
@@ -378,12 +355,10 @@ it('refuses to drop accounting delivery target evidence', function () {
 });
 
 it('refuses to drop populated relations and safety case evidence', function () {
-    $company = Company::create(['name' => 'Relations rollback company', 'is_active' => true]);
     $actor = User::factory()->create();
     $caseId = (string) Str::uuid();
     DB::table('hr_relation_cases')->insert([
         'id' => $caseId,
-        'company_id' => $company->id,
         'case_number' => 'ROLLBACK-CASE',
         'case_type' => 'grievance',
         'severity' => 'normal',
@@ -405,12 +380,10 @@ it('refuses to drop populated relations and safety case evidence', function () {
 });
 
 it('refuses to drop populated safety register audit evidence', function () {
-    $company = Company::create(['name' => 'Safety audit rollback company', 'is_active' => true]);
     $actor = User::factory()->create();
     $eventId = (string) Str::uuid();
     DB::table('hr_safety_register_events')->insert([
         'id' => $eventId,
-        'company_id' => $company->id,
         'register_type' => 'hazard',
         'register_id' => (string) Str::uuid(),
         'event_type' => 'created',
@@ -428,12 +401,10 @@ it('refuses to drop populated safety register audit evidence', function () {
 });
 
 it('refuses to drop populated engagement and wellness evidence', function () {
-    $company = Company::create(['name' => 'Engagement rollback company', 'is_active' => true]);
     $actor = User::factory()->create();
     $announcementId = (string) Str::uuid();
     DB::table('hr_announcements')->insert([
         'id' => $announcementId,
-        'company_id' => $company->id,
         'title' => 'Retained announcement fixture',
         'body' => 'Synthetic test content.',
         'audience' => json_encode([], JSON_THROW_ON_ERROR),
@@ -508,12 +479,10 @@ it('refuses to drop populated reporting and data-quality evidence', function () 
 });
 
 it('refuses to drop populated notification template evidence', function () {
-    $company = Company::create(['name' => 'Notification rollback company', 'is_active' => true]);
     $actor = User::factory()->create();
     $templateId = (string) Str::uuid();
     DB::table('hr_notification_template_versions')->insert([
         'id' => $templateId,
-        'company_id' => $company->id,
         'code' => 'ROLLBACK-TEMPLATE',
         'version' => 1,
         'event_type' => 'leave_update',
@@ -578,12 +547,10 @@ it('refuses to drop evolved custom-field version evidence', function () {
 });
 
 it('refuses to drop evolved job-definition metadata', function () {
-    $company = Company::create(['name' => 'Job definition rollback company', 'is_active' => true]);
     $actor = User::factory()->create();
     $familyId = (string) Str::uuid();
     DB::table('hr_job_families')->insert([
         'id' => $familyId,
-        'company_id' => $company->id,
         'code' => 'ROLLBACK-FAMILY',
         'name' => 'Retained family fixture',
         'status' => 'active',
@@ -602,14 +569,12 @@ it('refuses to drop evolved job-definition metadata', function () {
 });
 
 it('refuses to drop evolved reporting-line governance evidence', function () {
-    $company = Company::create(['name' => 'Reporting-line rollback company', 'is_active' => true]);
     $actor = User::factory()->create();
-    $manager = \App\Models\Staff::factory()->create(['company_id' => $company->id]);
-    $member = \App\Models\Staff::factory()->create(['company_id' => $company->id]);
+    $manager = \App\Models\Staff::factory()->create();
+    $member = \App\Models\Staff::factory()->create();
     $lineId = (string) Str::uuid();
     DB::table('hr_reporting_lines')->insert([
         'id' => $lineId,
-        'company_id' => $company->id,
         'manager_staff_id' => $manager->id,
         'member_staff_id' => $member->id,
         'line_type' => 'primary',
@@ -674,12 +639,10 @@ it('refuses to drop populated custom-field value history metadata', function () 
 });
 
 it('refuses to drop populated payroll-group definitions', function () {
-    $company = Company::create(['name' => 'Payroll-group rollback company', 'is_active' => true]);
     $actor = User::factory()->create();
     $groupId = (string) Str::uuid();
     DB::table('hr_payroll_groups')->insert([
         'id' => $groupId,
-        'company_id' => $company->id,
         'code' => 'ROLLBACK-GROUP',
         'name' => 'Retained payroll group fixture',
         'pay_frequency' => 'monthly',
@@ -699,12 +662,10 @@ it('refuses to drop populated payroll-group definitions', function () {
 });
 
 it('refuses to drop retained statutory contribution policy evidence', function () {
-    $company = Company::create(['name' => 'Contribution policy rollback company', 'is_active' => true]);
     $actor = User::factory()->create();
     $policyId = (string) Str::uuid();
     DB::table('hr_epf_etf_contribution_policies')->insert([
         'id' => $policyId,
-        'company_id' => $company->id,
         'version' => 1,
         'status' => 'retired',
         'employee_epf_rate_percent' => 1,
@@ -729,12 +690,10 @@ it('refuses to drop retained statutory contribution policy evidence', function (
 });
 
 it('refuses to drop retained gratuity policy evidence', function () {
-    $company = Company::create(['name' => 'Gratuity policy rollback company', 'is_active' => true]);
     $actor = User::factory()->create();
     $policyId = (string) Str::uuid();
     DB::table('hr_gratuity_policies')->insert([
         'id' => $policyId,
-        'company_id' => $company->id,
         'version' => 1,
         'status' => 'draft',
         'minimum_qualifying_service_years' => 1,
@@ -760,13 +719,11 @@ it('refuses to drop retained gratuity policy evidence', function () {
 });
 
 it('refuses to drop populated learning-requirement definitions', function () {
-    $company = Company::create(['name' => 'Learning requirement rollback company', 'is_active' => true]);
     $actor = User::factory()->create();
     $courseId = (string) Str::uuid();
     $requirementId = (string) Str::uuid();
     DB::table('hr_courses')->insert([
         'id' => $courseId,
-        'company_id' => $company->id,
         'code' => 'ROLLBACK-COURSE',
         'title' => 'Synthetic course fixture',
         'status' => 'active',
@@ -776,7 +733,6 @@ it('refuses to drop populated learning-requirement definitions', function () {
     ]);
     DB::table('hr_learning_requirements')->insert([
         'id' => $requirementId,
-        'company_id' => $company->id,
         'course_id' => $courseId,
         'due_days' => 30,
         'status' => 'active',
@@ -794,15 +750,13 @@ it('refuses to drop populated learning-requirement definitions', function () {
 });
 
 it('refuses to drop retained document employment-spell links', function () {
-    $company = Company::create(['name' => 'Document rollback company', 'is_active' => true]);
     $actor = User::factory()->create();
-    $staff = \App\Models\Staff::factory()->create(['company_id' => $company->id]);
+    $staff = \App\Models\Staff::factory()->create();
     $spellId = (string) Str::uuid();
     $documentId = (string) Str::uuid();
     DB::table('hr_employment_spells')->insert([
         'id' => $spellId,
         'staff_id' => $staff->id,
-        'company_id' => $company->id,
         'spell_number' => 1,
         'joined_at' => '2026-01-01',
         'service_date' => '2026-01-01',
@@ -834,15 +788,13 @@ it('refuses to drop retained document employment-spell links', function () {
 });
 
 it('refuses to drop leave return and recall confirmation evidence', function () {
-    $company = Company::create(['name' => 'Leave return rollback company', 'is_active' => true]);
     $actor = User::factory()->create();
-    $staff = \App\Models\Staff::factory()->create(['company_id' => $company->id]);
+    $staff = \App\Models\Staff::factory()->create();
     $leaveTypeId = (string) Str::uuid();
     $policyId = (string) Str::uuid();
     $requestId = (string) Str::uuid();
     DB::table('hr_leave_types')->insert([
         'id' => $leaveTypeId,
-        'company_id' => $company->id,
         'code' => 'ROLLBACK-RETURN',
         'name' => 'Return fixture',
         'category' => 'annual',
@@ -857,7 +809,6 @@ it('refuses to drop leave return and recall confirmation evidence', function () 
     ]);
     DB::table('hr_leave_policies')->insert([
         'id' => $policyId,
-        'company_id' => $company->id,
         'leave_type_id' => $leaveTypeId,
         'code' => 'ROLLBACK-RETURN-POLICY',
         'version' => 1,
@@ -870,7 +821,6 @@ it('refuses to drop leave return and recall confirmation evidence', function () 
     ]);
     DB::table('hr_leave_requests')->insert([
         'id' => $requestId,
-        'company_id' => $company->id,
         'staff_id' => $staff->id,
         'leave_type_id' => $leaveTypeId,
         'policy_id' => $policyId,
@@ -909,15 +859,13 @@ it('refuses to drop leave return and recall confirmation evidence', function () 
 });
 
 it('refuses to drop delegation checksums when the retry key is empty', function () {
-    $company = Company::create(['name' => 'Delegation rollback company', 'is_active' => true]);
     $actor = User::factory()->create();
-    $delegator = Staff::factory()->create(['company_id' => $company->id]);
-    $delegate = Staff::factory()->create(['company_id' => $company->id]);
+    $delegator = Staff::factory()->create();
+    $delegate = Staff::factory()->create();
     $id = (string) Str::uuid();
     $checksum = str_repeat('e', 64);
     DB::table('hr_approval_delegations')->insert([
         'id' => $id,
-        'company_id' => $company->id,
         'delegator_staff_id' => $delegator->id,
         'delegate_staff_id' => $delegate->id,
         'request_types' => json_encode(['leave'], JSON_THROW_ON_ERROR),

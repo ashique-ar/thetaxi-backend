@@ -9,7 +9,7 @@ class SalesTargetCopyBatch extends BaseModel
 {
 
     protected $fillable = [
-        'company_id', 'source_period_start', 'source_period_end', 'target_period_start',
+        'source_period_start', 'source_period_end', 'target_period_start',
         'target_period_end', 'selection_snapshot', 'preview_checksum', 'reason', 'prepared_by',
         'prepared_at', 'idempotency_key', 'request_payload_checksum',
     ];

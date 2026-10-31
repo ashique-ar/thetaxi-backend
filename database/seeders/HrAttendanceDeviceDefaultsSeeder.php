@@ -10,7 +10,7 @@ use Illuminate\Support\Str;
 
 /**
  * Seeds one clearly-inactive demo Hikvision connector + device for the
- * default Company so the Attendance Operations / device screens have
+ * installation so the Attendance Operations / device screens have
  * something to render on a fresh install, without ever attempting to
  * contact a real device (status is "inactive" throughout, so
  * AttendanceProviderManager/adapters that gate on `status === 'active'`
@@ -33,24 +33,18 @@ class HrAttendanceDeviceDefaultsSeeder extends Seeder
 
     public function run(): void
     {
-        $company = DB::table('companies')->where('is_default', true)->whereNull('deleted_at')->first();
-        if (!$company) {
-            $this->command?->warn('HR attendance device defaults skipped: no default company exists.');
-            return;
-        }
-
-        $actor = DB::table('staff')->where('company_id', $company->id)->whereNotNull('user_id')->whereNull('employment_ended_at')->whereNull('deleted_at')->orderBy('created_at')->value('user_id');
+        $actor = DB::table('staff')->whereNotNull('user_id')->whereNull('employment_ended_at')
+            ->whereNull('deleted_at')->orderBy('created_at')->value('user_id');
         if (!$actor) {
-            $this->command?->warn('HR attendance device defaults skipped: the default company has no active Staff user for audit ownership.');
+            $this->command?->warn('HR attendance device defaults skipped: no active Staff user exists for audit ownership.');
             return;
         }
 
-        $organizationUnitId = DB::table('hr_organization_units')->where('company_id', $company->id)->where('code', 'HO')->value('id');
+        $organizationUnitId = DB::table('hr_organization_units')->where('code', 'HO')->value('id');
 
         $connector = AttendanceConnector::firstOrCreate(
             ['connector_key' => self::CONNECTOR_KEY],
             [
-                'company_id' => $company->id,
                 'name' => 'Demo Hikvision Connector (inactive placeholder)',
                 'topology' => 'local_connector',
                 'signing_secret' => Str::random(64),
@@ -64,7 +58,6 @@ class HrAttendanceDeviceDefaultsSeeder extends Seeder
         $device = AttendanceDevice::firstOrCreate(
             ['provider' => 'hikvision', 'serial_number' => self::DEVICE_SERIAL],
             [
-                'company_id' => $company->id,
                 'connector_id' => $connector->id,
                 'organization_unit_id' => $organizationUnitId,
                 'integration_mode' => 'direct_isapi',
@@ -78,6 +71,6 @@ class HrAttendanceDeviceDefaultsSeeder extends Seeder
             ]
         );
 
-        $this->command?->info("HR attendance device defaults ready for {$company->name}: connector '{$connector->name}' and device '{$device->model}' are seeded as inactive/demo (status=inactive).");
+        $this->command?->info("HR attendance device defaults ready for this installation: connector '{$connector->name}' and device '{$device->model}' are seeded as inactive/demo (status=inactive).");
     }
 }

@@ -13,7 +13,7 @@ class SalesTask extends Model
     protected $hidden = ['creation_idempotency_key'];
 
     protected $fillable = [
-        'company_id', 'owner_sales_profile_id', 'opportunity_id', 'customer_id', 'inquiry_id', 'booking_id',
+        'owner_sales_profile_id', 'opportunity_id', 'customer_id', 'inquiry_id', 'booking_id',
         'creation_idempotency_key',
         'title', 'description', 'priority', 'status', 'due_at', 'remind_at', 'reminder_dispatched_at',
         'escalate_at', 'deadline_contract_version', 'deadline_snapshot', 'deadline_checksum',

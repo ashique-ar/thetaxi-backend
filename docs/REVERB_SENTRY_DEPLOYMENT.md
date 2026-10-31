@@ -1,10 +1,10 @@
 # Reverb and Sentry Deployment Guide
 
-This guide explains how to set up Laravel Reverb WebSockets and Sentry error monitoring for each company deployment.
+This guide explains how to set up Laravel Reverb WebSockets and Sentry error monitoring for each standalone installation.
 
 For Booking Management signal definitions, dashboards, alert routing, privacy boundaries, and validation, also follow [BOOKING_OPERATIONS_MONITORING.md](BOOKING_OPERATIONS_MONITORING.md).
 
-Use this document when onboarding a new company, staging domain, or production domain.
+Use this document when onboarding a new installation, staging domain, or production domain.
 
 ## Components
 
@@ -16,12 +16,12 @@ Use this document when onboarding a new company, staging domain, or production d
 - Web server on Bitnami servers: Apache
 - Optional proxy/CDN: Cloudflare
 
-## Values To Prepare Per Company
+## Values To Prepare Per Installation
 
 Prepare these values before deployment:
 
 ```text
-COMPANY_NAME=
+INSTALLATION_NAME=
 BACKEND_DOMAIN=api-or-backend-domain.example.com
 PORTAL_DOMAIN=portal-domain.example.com
 APP_ENV=production
@@ -42,7 +42,7 @@ php -r "echo bin2hex(random_bytes(32)).PHP_EOL;"
 Recommended mapping:
 
 ```env
-REVERB_APP_ID=company-production
+REVERB_APP_ID=installation-production
 REVERB_APP_KEY=<32_char_random_value>
 REVERB_APP_SECRET=<64_char_random_value>
 ```
@@ -75,7 +75,7 @@ BROADCAST_CONNECTION=reverb
 
 REVERB_SERVER_HOST=0.0.0.0
 REVERB_SERVER_PORT=8080
-REVERB_APP_ID=company-production
+REVERB_APP_ID=installation-production
 REVERB_APP_KEY=<generated_app_key>
 REVERB_APP_SECRET=<generated_app_secret>
 REVERB_HOST=BACKEND_DOMAIN
@@ -162,7 +162,7 @@ npm install
 npm run build
 ```
 
-Deploy the built Angular files to the company portal document root.
+Deploy the built Angular files to the portal document root.
 
 ## Run Reverb With Systemd
 
@@ -182,7 +182,7 @@ Use:
 
 ```ini
 [Unit]
-Description=Company Laravel Reverb WebSocket Server
+Description=Laravel Reverb WebSocket Server
 After=network.target bitnami.service
 Requires=bitnami.service
 
@@ -243,7 +243,7 @@ Uncomment:
 LoadModule proxy_wstunnel_module modules/mod_proxy_wstunnel.so
 ```
 
-Find the vhost file for the company backend domain:
+Find the vhost file for the installation's backend domain:
 
 ```bash
 grep -R "BACKEND_DOMAIN\|DocumentRoot\|VirtualHost" /opt/bitnami/apache/conf/vhosts /opt/bitnami/apache/conf/bitnami 2>/dev/null
@@ -476,9 +476,9 @@ Sentry does not receive events:
 - Confirm the Sentry project is for Laravel/backend.
 - Confirm outbound HTTPS is allowed from the server.
 
-## Per-Company Checklist
+## Per-Installation Checklist
 
-Use this checklist for every company:
+Use this checklist for every standalone installation:
 
 ```text
 [ ] Backend domain chosen

@@ -1,6 +1,5 @@
 <?php
 
-use App\Models\Company;
 use App\Models\Staff;
 use App\Models\User;
 use App\Models\UserContext;
@@ -20,11 +19,10 @@ it('replays a lifecycle template submission without duplicating rows or audit', 
 
     $user = User::factory()->create();
     $user->givePermissionTo(['hr.lifecycle.manage', 'hr.lifecycle.view']);
-    $company = Company::create(['name' => 'Template Idempotency Company', 'is_active' => true, 'is_default' => true]);
-    $userStaff = Staff::factory()->create(['user_id' => $user->id, 'company_id' => $company->id]);
+    $userStaff = Staff::factory()->create(['user_id' => $user->id]);
     UserContext::create(['user_id' => $user->id, 'context_type' => 'staff', 'context_id' => $userStaff->id, 'is_active' => true, 'created_user_id' => $user->id]);
     $payload = [
-        'company_id' => $company->id, 'case_type' => 'onboarding', 'code' => 'SAFE-ONBOARDING', 'version' => 1,
+        'case_type' => 'onboarding', 'code' => 'SAFE-ONBOARDING', 'version' => 1,
         'applicability' => ['staff_type' => 'employee'],
         'task_definitions' => [['code' => 'account', 'title' => 'Create employee account']],
         'idempotency_key' => (string) Str::uuid(),
@@ -37,7 +35,7 @@ it('replays a lifecycle template submission without duplicating rows or audit', 
         ->assertConflict();
 
     expect($replay->json('data.id'))->toBe($first->json('data.id'))
-        ->and(DB::table('hr_lifecycle_templates')->where('company_id', $company->id)->count())->toBe(1)
+        ->and(DB::table('hr_lifecycle_templates')->count())->toBe(1)
         ->and(DB::table('activity_log')->where('log_name', 'hr-lifecycle')->where('description', 'lifecycle_template_submitted')->count())->toBe(1);
 
     actingAs($user, 'api')->getJson('/api/hr/lifecycle/templates')->assertOk()

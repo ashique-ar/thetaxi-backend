@@ -14,3 +14,14 @@ it('does not change location CRUD based on a default-company marker', function (
 
     expect($controller)->not->toContain('is_default', 'default_company_id', 'active_default_guard');
 });
+
+it('labels saved-location permissions as locations while retaining their stable keys', function () {
+    $permission = new \\Spatie\\Permission\\Models\\Permission();
+    $permission->forceFill(['id' => 1, 'name' => 'companies.view', 'guard_name' => 'api']);
+    $formatted = app(\\App\\Services\\PermissionRegistry::class)->formatPermission($permission);
+
+    expect(config('permissions.modules.companies.label'))->toBe('Locations')
+        ->and($formatted['name'])->toBe('companies.view')
+        ->and($formatted['module_label'])->toBe('Locations')
+        ->and($formatted['display_name'])->toBe('View Locations');
+});

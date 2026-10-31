@@ -1,6 +1,5 @@
 <?php
 
-use App\Models\Company;
 use App\Models\Hr\HrEmployeeRecord;
 use App\Models\Hr\HrEmployeeNumberAlias;
 use App\Models\Hr\HrEmployeeTimelineEvent;
@@ -24,8 +23,7 @@ uses(RefreshDatabase::class);
 it('keeps encrypted employee records and profile details out of activity logs', function () {
     config(['hr.features.people_core' => true]);
     $actor = User::factory()->create();
-    $company = Company::create(['name' => 'HR audit privacy company', 'is_active' => true, 'is_default' => true]);
-    $staff = Staff::factory()->create(['company_id' => $company->id]);
+    $staff = Staff::factory()->create();
     actingAs($actor, 'api');
 
     $payloadMarker = 'private-employee-record-payload';
@@ -68,7 +66,6 @@ it('keeps encrypted employee records and profile details out of activity logs', 
     ]);
 
     $import = HrPeopleImportJob::create([
-        'company_id' => $company->id,
         'mode' => 'preview',
         'status' => 'ready',
         'original_file_name' => 'private-import-file.csv',
@@ -85,7 +82,6 @@ it('keeps encrypted employee records and profile details out of activity logs', 
         'created_by' => $actor->id,
     ]);
     $export = HrPeopleExport::create([
-        'company_id' => $company->id,
         'disk' => 'hr_private',
         'path' => 'private/export/path',
         'file_name' => 'private-export-file.csv',
@@ -127,12 +123,10 @@ it('keeps encrypted employee records and profile details out of activity logs', 
 
 it('keeps HR history snapshots out of activity logs', function () {
     $actor = User::factory()->create();
-    $company = Company::create(['name' => 'HR history audit company', 'is_active' => true, 'is_default' => true]);
-    $staff = Staff::factory()->create(['company_id' => $company->id]);
+    $staff = Staff::factory()->create();
     $privateMarker = 'private-hr-history-snapshot';
     $spell = HrEmploymentSpell::create([
         'staff_id' => $staff->id,
-        'company_id' => $company->id,
         'spell_number' => 1,
         'joined_at' => '2025-01-01',
         'service_date' => '2025-01-01',
@@ -142,9 +136,8 @@ it('keeps HR history snapshots out of activity logs', function () {
         'prior_service_decisions' => ['private' => $privateMarker],
         'created_user_id' => $actor->id,
     ]);
-    $manager = Staff::factory()->create(['company_id' => $company->id]);
+    $manager = Staff::factory()->create();
     $reportingLine = HrReportingLine::create([
-        'company_id' => $company->id,
         'manager_staff_id' => $manager->id,
         'member_staff_id' => $staff->id,
         'line_type' => 'primary',
@@ -156,7 +149,6 @@ it('keeps HR history snapshots out of activity logs', function () {
     $assignment = HrEmploymentAssignment::create([
         'employment_spell_id' => $spell->id,
         'staff_id' => $staff->id,
-        'company_id' => $company->id,
         'assignment_type' => 'primary',
         'effective_from' => '2025-01-01',
         'change_reason' => $privateMarker,
@@ -195,7 +187,6 @@ it('keeps HR history snapshots out of activity logs', function () {
         ->not->toHaveKey('idempotency_key');
     $case = HrRehireCase::create([
         'staff_id' => $staff->id,
-        'company_id' => $company->id,
         'prior_spell_id' => $spell->id,
         'status' => 'pending_approval',
         'proposed_rehire_date' => '2026-01-01',
@@ -216,14 +207,12 @@ it('keeps HR history snapshots out of activity logs', function () {
     $rehireAudit = DB::table('activity_log')->where('subject_type', HrRehireCase::class)->where('subject_id', $case->id)->value('attribute_changes');
 
     expect($reportingAudit)->not->toBeNull()
-        ->and($reportingAudit)->toContain((string) $company->id)
         ->and($reportingAudit)->toContain('primary')
         ->and($reportingAudit)->not->toContain((string) $manager->id)
         ->and($reportingAudit)->not->toContain((string) $staff->id)
         ->and($reportingAudit)->not->toContain($privateMarker)
         ->and($reportingAudit)->not->toContain('private-reporting-line-key')
         ->and($spellAudit)->not->toBeNull()
-        ->and($spellAudit)->toContain((string) $company->id)
         ->and($spellAudit)->toContain('active')
         ->and($spellAudit)->not->toContain((string) $staff->id)
         ->and($assignmentAudit)->not->toBeNull()
@@ -237,7 +226,6 @@ it('keeps HR history snapshots out of activity logs', function () {
         ->and($timelineAudit)->not->toContain($privateMarker)
         ->and($timelineAudit)->not->toContain('private-timeline-event-key')
         ->and($rehireAudit)->not->toBeNull()
-        ->and($rehireAudit)->toContain((string) $company->id)
         ->and($rehireAudit)->toContain('pending_approval')
         ->and($rehireAudit)->not->toContain((string) $staff->id)
         ->and($rehireAudit)->not->toContain((string) $actor->id)
@@ -246,18 +234,17 @@ it('keeps HR history snapshots out of activity logs', function () {
         ->and($rehireAudit)->not->toContain(hash('sha256', $privateMarker));
 });
 
-it('refuses to add an employee record to an inactive company', function () {
+it('adds an employee record without a company assignment', function () {
     config(['hr.features.people_core' => true]);
-    $company = Company::create(['name' => 'Inactive HR records company', 'is_active' => false, 'is_default' => false]);
-    $staff = Staff::factory()->create(['company_id' => $company->id]);
+    $staff = Staff::factory()->create();
 
-    expect(fn () => app(PeopleCoreService::class)->addEmployeeRecord($staff, [
+    $record = app(PeopleCoreService::class)->addEmployeeRecord($staff, [
         'record_type' => 'qualification',
         'title' => 'Qualification record',
         'encrypted_data' => ['value' => 'private'],
         'confidentiality' => 'hr_private',
         'source' => 'hr_entry',
-    ], (string) $staff->user_id))->toThrow(\Symfony\Component\HttpKernel\Exception\HttpException::class);
+    ], (string) $staff->user_id);
 
-    $this->assertDatabaseMissing('hr_employee_records', ['staff_id' => $staff->id]);
+    $this->assertDatabaseHas('hr_employee_records', ['id' => $record->id, 'staff_id' => $staff->id]);
 });

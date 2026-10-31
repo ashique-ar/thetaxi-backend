@@ -65,7 +65,7 @@ class CommissionBusinessCalendarService
             throw ValidationException::withMessages(['business_calendar_id' => ['The commission cycle has no approved business calendar.']]);
         }
         $calendar = SalesCommissionBusinessCalendar::query()->whereKey($cycle->business_calendar_id)
-            ->where(fn ($_companyIdScope) => \App\Services\CompanyIdScope::constrain($_companyIdScope, 'company_id', $cycle->company_id))->where('status', 'approved')
+            ->where('status', 'approved')
             ->whereDate('effective_from', '<=', $at)
             ->where(fn ($query) => $query->whereNull('effective_until')->orWhereDate('effective_until', '>', $at))->first();
         if (! $calendar) {

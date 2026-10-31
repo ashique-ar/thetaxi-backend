@@ -32,7 +32,6 @@ use App\Services\Sales\SalesMetricFactService;
 use App\Models\Booking\BookingPaymentScheduleRule;
 use App\Services\Sales\RollingPaymentScheduleService;
 use App\Services\Sales\SalesPolicySettingsService;
-use App\Services\Sales\SalesCollectionCompanyIntegrity;
 use Carbon\CarbonInterface;
 use Illuminate\Support\Str;
 
@@ -44,7 +43,6 @@ class BookingPaymentLedgerService
         private readonly SalesMetricFactService $metricFacts,
         private readonly RollingPaymentScheduleService $rollingSchedules,
         private readonly SalesPolicySettingsService $policySettings,
-        private readonly SalesCollectionCompanyIntegrity $collectionCompanyIntegrity,
     ) {}
 
     public function createRollingScheduleRule(Booking $booking, array $data, string $actorUserId): array
@@ -666,22 +664,17 @@ class BookingPaymentLedgerService
         });
     }
 
-    public function repairLegacyPaidBooking(Booking $booking, array $data, string $actorUserId, string $authorizedCompanyId): array
+    public function repairLegacyPaidBooking(Booking $booking, array $data, string $actorUserId): array
     {
         try {
-            return DB::transaction(function () use ($booking, $data, $actorUserId, $authorizedCompanyId) {
+            return DB::transaction(function () use ($booking, $data, $actorUserId) {
             $data['payment_method'] = trim((string) $data['payment_method']);
             $data['reference'] = trim((string) $data['reference']);
             $data['notes'] = trim((string) $data['notes']);
             $data['reason'] = trim((string) $data['reason']);
-            $company = DB::table('companies')->where('id', $authorizedCompanyId)->where('is_active', true)
-                ->whereNull('deleted_at')->lockForUpdate()->first(['id']);
-            abort_unless($company, 422, 'Select an active legal entity.');
             $booking = Booking::query()->lockForUpdate()->findOrFail($booking->id);
             $attribution = SalesBookingAttribution::query()->where('booking_id', $booking->id)->lockForUpdate()->first();
-            abort_unless($attribution && \App\Services\CompanyIdScope::sameCompanyId((string) $attribution->company_id, (string) $company->id), 409,
-                'The booking legal entity is missing or changed; refresh the authorized reconciliation scope.');
-            $this->collectionCompanyIntegrity->assertConsistent($booking, (string) $company->id);
+            abort_unless($attribution, 409, 'Sales attribution is required before repairing a legacy payment ledger.');
             $sourceCurrency = strtoupper(trim((string) $booking->currency));
             abort_unless($sourceCurrency === 'LKR', 409,
                 'This legacy balance is held because its booking currency is missing or non-LKR and no approved Finance conversion policy is configured.');
@@ -702,7 +695,6 @@ class BookingPaymentLedgerService
             }
             abort_if($legacyAmount <= 0, 422, 'The booking has no legacy paid balance to reconcile.');
             $requestChecksum = hash('sha256', json_encode([
-                'company_id' => (string) $company->id,
                 'booking_id' => (string) $booking->id,
                 'legacy_amount' => number_format($legacyAmount, 2, '.', ''),
                 'source_currency' => $sourceCurrency,
@@ -717,12 +709,14 @@ class BookingPaymentLedgerService
             ], JSON_THROW_ON_ERROR | JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE));
 
             if ($duplicate) {
-                abort_unless($duplicate->legacy_repair_request_checksum
-                    && hash_equals((string) $duplicate->legacy_repair_request_checksum, $requestChecksum), 409,
+                $checksumVersion = (int) ($duplicate->legacy_repair_checksum_version ?? 1);
+                abort_unless($checksumVersion === 1
+                    ? $this->legacyRepairRequestMatchesReceipt($duplicate, $booking, $data)
+                    : $duplicate->legacy_repair_request_checksum
+                        && hash_equals((string) $duplicate->legacy_repair_request_checksum, $requestChecksum), 409,
                     'This repair key was already used with different payment facts.');
                 $originalEvidence = app(\App\Services\Sales\SalesEvidenceIntegrityService::class)->assertAttachedFile(
-                    (string) $duplicate->legacy_repair_evidence_file_id, (string) $company->id,
-                    'booking', [$booking->id], true,
+                    (string) $duplicate->legacy_repair_evidence_file_id, 'booking', [$booking->id], true,
                 );
                 abort_unless($originalEvidence->evidence_type === 'legacy_paid_receipt_repair'
                     && $originalEvidence->classification === 'restricted', 409,
@@ -731,11 +725,14 @@ class BookingPaymentLedgerService
                     ->where('subject_type', 'booking_payment')->where('subject_id', $duplicate->id)
                     ->where('event_type', 'legacy_payment_receipt_repaired')->limit(2)->get();
                 $event = $events->first();
-                $currentChecksum = $this->legacyRepairStateChecksum($booking, (string) $company->id);
+                $currentChecksum = $this->legacyRepairStateChecksum($booking);
                 abort_unless($duplicate->legacy_repair_before_checksum && $events->count() === 1
                     && hash_equals((string) $duplicate->legacy_repair_before_checksum, (string) ($event?->metadata['before_checksum'] ?? ''))
-                    && hash_equals($requestChecksum, (string) ($event?->metadata['request_checksum'] ?? ''))
-                    && hash_equals($currentChecksum, (string) ($event?->metadata['after_checksum'] ?? ''))
+                    && hash_equals((string) $duplicate->legacy_repair_request_checksum, (string) ($event?->metadata['request_checksum'] ?? ''))
+                    && ($checksumVersion === 1
+                        ? hash_equals((string) $duplicate->legacy_repair_after_checksum_v1, (string) ($event?->metadata['after_checksum'] ?? ''))
+                        : hash_equals($currentChecksum, (string) ($event?->metadata['after_checksum'] ?? '')))
+                    && hash_equals((string) $duplicate->legacy_repair_state_checksum_v2, $currentChecksum)
                     && (string) ($event?->metadata['evidence_file_id'] ?? '') === (string) $duplicate->legacy_repair_evidence_file_id
                     && (string) ($event?->metadata['repair_reason'] ?? '') === (string) $duplicate->legacy_repair_reason, 409,
                     'The original receipt repair audit or after-state no longer matches; hold this retry for reconciliation.');
@@ -743,12 +740,12 @@ class BookingPaymentLedgerService
                 return ['summary' => $this->summary($booking->fresh()), 'replayed' => true];
             }
             $evidence = app(\App\Services\Sales\SalesEvidenceIntegrityService::class)->assertAttachedFile(
-                $data['evidence_file_id'], (string) $company->id, 'booking', [$booking->id], true,
+                $data['evidence_file_id'], 'booking', [$booking->id], true,
             );
             abort_unless($evidence->evidence_type === 'legacy_paid_receipt_repair'
                 && $evidence->classification === 'restricted', 422,
                 'Attach restricted receipt evidence to this booking before repairing its payment ledger.');
-            $beforeChecksum = $this->legacyRepairStateChecksum($booking, (string) $company->id);
+            $beforeChecksum = $this->legacyRepairStateChecksum($booking);
 
             $receiptData = [
                 ...$data,
@@ -778,6 +775,7 @@ class BookingPaymentLedgerService
                 'driver_company_settlement_status' => $booking->payment_collected_by_driver_id ? 'unsettled' : 'not_applicable',
                 'legacy_repair_before_checksum' => $beforeChecksum,
                 'legacy_repair_request_checksum' => $requestChecksum,
+                'legacy_repair_checksum_version' => 2,
                 'legacy_repair_evidence_file_id' => $data['evidence_file_id'],
                 'legacy_repair_reason' => trim($data['reason']),
                 ...$this->canonicalReceiptFields($booking, $receiptData),
@@ -786,7 +784,10 @@ class BookingPaymentLedgerService
             if ($receipt->finality_status === 'confirmed') {
                 $this->allocateReceiptToSchedule($booking, $receipt, $legacyAmount, $actorUserId);
             }
-            $afterChecksum = $this->legacyRepairStateChecksum($booking->fresh(), (string) $company->id);
+            $afterChecksum = $this->legacyRepairStateChecksum($booking->fresh());
+            DB::table('booking_payment_receipts')->where('id', $receipt->id)->update([
+                'legacy_repair_state_checksum_v2' => $afterChecksum,
+            ]);
             FinancialAuditEvent::create([
                 'subject_type' => 'booking_payment', 'subject_id' => $receipt->id, 'booking_id' => $booking->id,
                 'event_type' => 'legacy_payment_receipt_repaired', 'amount' => $legacyAmount,
@@ -804,17 +805,33 @@ class BookingPaymentLedgerService
         } catch (QueryException $exception) {
             $duplicate = BookingPaymentReceipt::withTrashed()->where('idempotency_key', $data['idempotency_key'])->first();
             if (! $duplicate) throw $exception;
-            return $this->repairLegacyPaidBooking($booking, $data, $actorUserId, $authorizedCompanyId);
+            return $this->repairLegacyPaidBooking($booking, $data, $actorUserId);
         }
     }
 
-    private function legacyRepairStateChecksum(Booking $booking, string $companyId): string
+    private function legacyRepairRequestMatchesReceipt(
+        BookingPaymentReceipt $receipt,
+        Booking $booking,
+        array $data,
+    ): bool {
+        return (string) $receipt->booking_id === (string) $booking->id
+            && (string) $receipt->payment_method === trim((string) $data['payment_method'])
+            && (string) $receipt->reference === trim((string) $data['reference'])
+            && Carbon::parse($receipt->received_at)->equalTo(Carbon::parse($data['received_at']))
+            && (string) $receipt->notes === trim((string) $data['notes'])
+            && strtoupper((string) $receipt->source_currency) === strtoupper((string) $data['source_currency'])
+            && (string) ($receipt->provider_event_id ?? '') === (string) ($data['provider_event_id'] ?? '')
+            && (string) ($receipt->provider_payload_checksum ?? '') === (string) ($data['provider_payload_checksum'] ?? '')
+            && (string) $receipt->legacy_repair_evidence_file_id === (string) $data['evidence_file_id']
+            && (string) $receipt->legacy_repair_reason === trim((string) $data['reason']);
+    }
+
+    private function legacyRepairStateChecksum(Booking $booking): string
     {
         $receiptIds = DB::table('booking_payment_receipts')->where('booking_id', $booking->id)->orderBy('id')->pluck('id');
         $scheduleIds = BookingPaymentSchedule::query()->where('booking_id', $booking->id)->orderBy('id')->pluck('id');
 
         return hash('sha256', json_encode([
-            'company_id' => $companyId,
             'booking' => DB::table('bookings')->where('id', $booking->id)->first([
                 'id', 'total_actual', 'total_estimated', 'amount_to_pay', 'payment_status',
                 'payment_collection_status', 'payment_collected_amount', 'payment_collected_at',
@@ -824,7 +841,7 @@ class BookingPaymentLedgerService
             ]),
             'receipts' => DB::table('booking_payment_receipts')->where('booking_id', $booking->id)->orderBy('id')->get([
                 'id', 'amount', 'refunded_amount', 'payment_method', 'payment_stage', 'payment_purpose', 'reference', 'idempotency_key',
-                'received_at', 'received_by', 'notes', 'metadata', 'received_via', 'company_id', 'source_amount', 'source_currency',
+                'received_at', 'received_by', 'notes', 'metadata', 'received_via', 'source_amount', 'source_currency',
                 'lkr_amount', 'fx_rate_to_lkr', 'fx_rate_at', 'fx_source', 'finality_status', 'finalized_at',
                 'allocated_amount', 'allocation_status', 'driver_company_settlement_status',
                 'driver_company_settled_amount', 'driver_company_settled_at', 'event_version',
@@ -1024,11 +1041,9 @@ class BookingPaymentLedgerService
     private function canonicalScheduleFields(Booking $booking, float $amount, string $kind): array
     {
         $attribution = SalesBookingAttribution::query()->where('booking_id', $booking->id)->first();
-        $companyId = $attribution?->company_id ?: \App\Services\CompanyIdScope::defaultCompanyId();
         $currency = strtoupper((string) ($booking->currency ?? 'LKR'));
 
         return [
-            'company_id' => $companyId,
             'schedule_kind' => $kind,
             'source_amount' => round($amount, 4),
             'source_currency' => $currency,
@@ -1046,7 +1061,6 @@ class BookingPaymentLedgerService
                 BookingCollectionWorkItem::firstOrCreate([
                     'idempotency_key' => 'schedule-collection:'.$schedule->id,
                 ], [
-                    'company_id' => $schedule->company_id,
                     'booking_id' => $schedule->booking_id,
                     'booking_payment_schedule_id' => $schedule->id,
                     'assigned_sales_profile_id' => $schedule->collection_sales_profile_id,
@@ -1242,7 +1256,6 @@ class BookingPaymentLedgerService
             }
 
             $event = BookingPaymentReceiptFinalityEvent::create([
-                'company_id' => $receipt->company_id,
                 'booking_id' => $receipt->booking_id,
                 'booking_payment_receipt_id' => $receipt->id,
                 'finality_policy_id' => $finalityPolicy?->id,

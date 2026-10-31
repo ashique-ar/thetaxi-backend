@@ -99,7 +99,6 @@ class SalesEffectiveProjectionService
             ->keyBy('id');
         $target = $event->to_sales_profile_id ? $profiles->get($event->to_sales_profile_id) : null;
         $eligibleTarget = $target
-            && \App\Services\CompanyIdScope::sameCompanyId((string) ($target->company_id), (string) ($attribution->company_id))
             && $this->profileEligibility->isEligibleAt($target, ['collection'], $effectiveAt)
                 ? $target
                 : null;

@@ -632,21 +632,11 @@ class DynamicServiceConfigurationService
         // Resolve the authoritative public record before caching. Including its
         // identity and revision prevents the renderer from showing freshly saved
         // defaults while validation/pricing still consumes an older cached form.
-        $resolvedCompanyId = app(\App\Services\WebsiteSettingsService::class)->resolveCompanyId();
-        $serviceType = null;
-        if ($resolvedCompanyId) {
-            $serviceType = ServiceType::forContext('public', 'company', (string) $resolvedCompanyId)
-                ->where('code', $serviceCode)
-                ->where('is_active', true)
-                ->orderByDesc('updated_at')
-                ->first();
-        }
-        if (!$serviceType) {
-            $serviceType = ServiceType::publicContext()
-                ->where('code', $serviceCode)
-                ->orderByDesc('updated_at')
-                ->first();
-        }
+        $serviceType = ServiceType::publicContext()
+            ->where('code', $serviceCode)
+            ->where('is_active', true)
+            ->orderByDesc('updated_at')
+            ->first();
 
         if (!$serviceType) {
             return [
@@ -664,8 +654,7 @@ class DynamicServiceConfigurationService
         }
         $revision = $serviceType->updated_at?->format('YmdHisv') ?? 'unversioned';
         $parentRevision = $parentServiceType?->updated_at?->format('YmdHisv') ?? 'none';
-        $companySuffix = $resolvedCompanyId ? "_{$resolvedCompanyId}" : '';
-        $cacheKey = "service_form_config_public_v7_{$serviceCode}_{$serviceType->id}_{$revision}_{$parentRevision}{$companySuffix}";
+        $cacheKey = "service_form_config_public_v7_{$serviceCode}_{$serviceType->id}_{$revision}_{$parentRevision}";
 
         $config = Cache::remember($cacheKey, self::CACHE_TIMEOUT, function () use ($serviceCode, $serviceType, $parentServiceType) {
             // Public form fields come only from the service type's database configuration.
@@ -723,13 +712,13 @@ class DynamicServiceConfigurationService
             ];
         });
 
-        $config['fields'] = self::hydrateCompanyLocations($config['fields'] ?? []);
+        $config['fields'] = self::hydrateSavedLocations($config['fields'] ?? []);
         return $config;
     }
 
-    public static function hydrateCompanyLocations(array $fields): array
+    public static function hydrateSavedLocations(array $fields): array
     {
-        $companies = [];
+        $locations = [];
         foreach ($fields as &$field) {
             if (($field['type'] ?? null) !== 'location') {
                 continue;
@@ -738,26 +727,21 @@ class DynamicServiceConfigurationService
             $options = $field['options'] ?? [];
             foreach ($options as &$option) {
                 $source = $option['location_source'] ?? null;
-                $locationCompany = null;
-                if ($source === 'company' && !empty($option['company_id'])) {
-                    $companyId = (string) $option['company_id'];
-                    $locationCompany = $companies[$companyId] ??= \App\Models\Company::query()
+                $location = null;
+                if ($source === 'saved_location' && !empty($option['location_id'])) {
+                    $locationId = (string) $option['location_id'];
+                    $location = $locations[$locationId] ??= \App\Models\Company::query()
                         ->where('is_active', true)
-                        ->find($companyId);
+                        ->find($locationId);
                 }
 
-                if ($source === 'default_company') {
-                    $option['location_source'] = 'configured';
-                    unset($option['company_id']);
-                }
-
-                if (!$locationCompany || $locationCompany->latitude === null || $locationCompany->longitude === null) {
+                if (!$location || $location->latitude === null || $location->longitude === null) {
                     continue;
                 }
 
-                $option['latitude'] = (float) $locationCompany->latitude;
-                $option['longitude'] = (float) $locationCompany->longitude;
-                $option['address'] = $locationCompany->address ?? $option['address'] ?? $option['label'] ?? '';
+                $option['latitude'] = (float) $location->latitude;
+                $option['longitude'] = (float) $location->longitude;
+                $option['address'] = $location->address ?? $option['address'] ?? $option['label'] ?? '';
             }
             unset($option);
             $field['options'] = $options;

@@ -41,3 +41,14 @@ it('exposes work calendars under the existing hr.organization permissions withou
         ->toContain("middleware('permission:hr.organization.view')")
         ->toContain("middleware('permission:hr.organization.manage')");
 });
+
+it('preserves historical calendar audit facts while removing tenant metadata', function () {
+    $migration = file_get_contents(database_path('migrations/2026_10_30_000022_remove_work_calendar_tenant_company.php'));
+
+    expect($migration)
+        ->toContain("unset(\$after['company_id'])")
+        ->toContain("unset(\$before['company_id'])")
+        ->toContain("'request_checksum' => hash('sha256'")
+        ->toContain("DB::table('hr_work_calendars')")
+        ->toContain("dropColumn('company_id')");
+});

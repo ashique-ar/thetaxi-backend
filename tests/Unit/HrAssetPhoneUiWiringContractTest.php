@@ -21,7 +21,7 @@ it('omits reviewer user IDs from phone usage responses', function () {
     expect($phoneUsage)->toContain("'u.reviewed_at'");
 });
 
-it('uses tenant-scoped readable selectors for phone subscription, Staff, and linked asset references', function () {
+it('uses installation-wide readable selectors for phone subscription, Staff, and linked asset references', function () {
     $controller = file_get_contents(app_path('Http/Controllers/Api/Hr/AssetOperationsController.php'));
     $routes = file_get_contents(base_path('routes/api.php'));
     $usage = file_get_contents(base_path('../portal-thetaxi/src/app/modules/hr-talent/components/assets-travel/dialogs/phone-usage-dialog.component.ts'));
@@ -31,23 +31,22 @@ it('uses tenant-scoped readable selectors for phone subscription, Staff, and lin
     expect($routes)->toContain("Route::get('phone-reference-options', [AssetOperationsController::class, 'phoneReferenceOptions'])->middleware('permission:hr.assets.phone.manage|hr.assets.approve');")
         ->and($controller)->toContain("Rule::in(['subscription','staff','asset_item'])")
         ->and($controller)->toContain("private function actor(Request\$r):Staff{return app(\\App\\Services\\StaffAccessService::class)->currentActorStaff(\$r->user());}")
-        ->and($controller)->toContain("'company_id'=>\$a->company_id")
+        ->and($controller)->not->toContain('company_id')
         ->and($controller)->toContain("'per_page'=>['nullable','integer','min:1','max:50']")
         ->and($usage)->toContain('recordType="subscription"')->toContain('recordType="staff"')
         ->and($usage)->not->toContain('Phone subscription ID')->not->toContain('Staff ID')->not->toContain('[companyId]')
         ->and($subscription)->toContain('recordType="asset_item"')->not->toContain('Linked asset item ID')
         ->and($subscription)->not->toContain('company_id: this.data.companyId')
-        ->and($workspace)->not->toContain("if (!companyId) { this.snack.open('Your legal-entity context is unavailable.'");
+        ->and($workspace)->not->toContain('companyId', 'legal-entity context');
 });
 
-it('limits asset approval selection to readable available inventory of the requested legal entity and type', function () {
+it('limits asset approval selection to available inventory of the requested type', function () {
     $controller = file_get_contents(app_path('Http/Controllers/Api/Hr/AssetOperationsController.php'));
     $dialog = file_get_contents(base_path('../portal-thetaxi/src/app/modules/hr-talent/components/assets-travel/dialogs/asset-decision-dialog.component.ts'));
 
-    expect($controller)->toContain("'q.company_id'")
+    expect($controller)->not->toContain('company_id')
         ->and($controller)->toContain("when(\$d['asset_type_id']??null")
         ->and($controller)->toContain("when(\$d['status']??null")
-        ->and($controller)->toContain("->where('company_id',\$q->company_id)->where('asset_type_id',\$q->asset_type_id)->lockForUpdate()")
         ->and($controller)->toContain("\$item&&\$item->status==='available'")
         ->and($dialog)->toContain('app-ui-managed-record-select')
         ->and($dialog)->toContain("[queryParams]=\"{ asset_type_id: data.row.asset_type_id, status: 'available' }\"")

@@ -155,18 +155,7 @@ class BookingController extends Controller
      */
     protected function resolveServiceType(string $code): ?ServiceType
     {
-        $resolvedCompanyId = app(\App\Services\WebsiteSettingsService::class)->resolveCompanyId();
         $identifierColumn = Str::isUuid($code) ? 'id' : 'code';
-        if ($resolvedCompanyId) {
-            $companyServiceType = ServiceType::forContext('public', 'company', (string) $resolvedCompanyId)
-                ->where($identifierColumn, $code)
-                ->where('is_active', true)
-                ->first();
-            if ($companyServiceType) {
-                return $companyServiceType;
-            }
-        }
-
         $serviceType = ServiceType::publicContext()
             ->where($identifierColumn, $code)
             ->where('is_active', true)
@@ -944,17 +933,17 @@ class BookingController extends Controller
      */
     protected function formatLocation(array $data, string $prefix): array
     {
-        $companyId = $data["{$prefix}_company_id"] ?? null;
-        if ($companyId) {
-            $company = \App\Models\Company::query()
+        $locationId = $data["{$prefix}_location_id"] ?? null;
+        if ($locationId) {
+            $location = \App\Models\Company::query()
                 ->where('is_active', true)
-                ->find($companyId);
-            if ($company && $company->latitude !== null && $company->longitude !== null) {
+                ->find($locationId);
+            if ($location && $location->latitude !== null && $location->longitude !== null) {
                 return [
-                    'address' => $company->address ?? $company->name,
-                    'latitude' => (float) $company->latitude,
-                    'longitude' => (float) $company->longitude,
-                    'company_id' => $company->id,
+                    'address' => $location->address ?? $location->name,
+                    'latitude' => (float) $location->latitude,
+                    'longitude' => (float) $location->longitude,
+                    'location_id' => $location->id,
                 ];
             }
         }
@@ -2117,7 +2106,7 @@ class BookingController extends Controller
                 ], 404);
             }
 
-            // Keep this endpoint on the same company-aware configuration path as the public form.
+            // Keep this endpoint on the same installation-wide configuration path as the public form.
             $formConfig = app(\App\Services\DynamicServiceConfigurationService::class)
                 ->getServiceFormConfiguration($serviceType->code);
             $fields = $formConfig['fields'] ?? [];

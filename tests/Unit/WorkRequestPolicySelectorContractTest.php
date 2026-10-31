@@ -8,7 +8,7 @@ it('uses a bounded authorized work-policy selector for the selected Staff interv
     $template = file_get_contents(base_path('../portal-thetaxi/src/app/modules/hr-workforce/components/workforce-overview/workforce-overview.component.html'));
 
     expect($routes)->toContain("Route::get('work-request-policy-options', [WorkforceController::class, 'workRequestPolicyOptions'])")
-        ->and($controller)->toContain("where('company_id', \$companyId)")
+        ->and($controller)->not->toContain('company_id', 'companyId', 'company(')
         ->toContain("where('request_kind', \$d['request_kind'])")
         ->toContain("where('status', 'approved')")
         ->toContain("whereDate('effective_from', '<=', \$start)")

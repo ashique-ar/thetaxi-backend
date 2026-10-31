@@ -1,6 +1,6 @@
 <?php
 
-it('provides a tenant-scoped preview-first People Core legacy import and reconciliation workflow', function () {
+it('provides an installation-wide preview-first People Core legacy import and reconciliation workflow', function () {
     $routes=file_get_contents(base_path('routes/api.php'));
     $controller=file_get_contents(app_path('Http/Controllers/Api/Hr/PeopleCoreController.php'));
     $service=file_get_contents(app_path('Services/Hr/PeopleCoreMigrationService.php'));
@@ -11,21 +11,21 @@ it('provides a tenant-scoped preview-first People Core legacy import and reconci
         ->toContain("Route::post('exports'")
         ->toContain("Route::get('exports/{export}/download'")
         ->and($controller)->toContain("hash_equals(\$job->file_checksum")
-        ->toContain("\$job->company_id===\$this->access->actorCompanyId")
+        ->not->toContain('company_id', 'actorCompanyId')
         ->and($service)->toContain("public const MAPPING_VERSION")
         ->toContain("A People Core import is limited to 10,000 data rows.")
-        ->toContain("Employee number is ambiguous in this legal entity.")
+        ->toContain('Employee number is ambiguous across the installation.')
         ->toContain("Employment history changed after preview")
         ->toContain("'organization_unit_code','position_number','manager_employee_number'")
         ->toContain('Position and organization unit do not match.')
         ->toContain('An employee cannot manage their own imported assignment.')
         ->toContain("\$this->people->addImportedInitialAssignment")
-        ->toContain("where('company_id',\$companyId)->lockForUpdate()")
+        ->toContain("Staff::withTrashed()->whereKey(\$row->matched_staff_id)->lockForUpdate()->firstOrFail()")
         ->toContain("'legacy_import'=>true")
         ->toContain("'before'=>\$job->reconciliation_totals['before']??null,'after'=>\$after");
 });
 
-it('creates integrity checked private tenant exports with spreadsheet injection protection', function () {
+it('creates integrity-checked private installation-wide exports with spreadsheet injection protection', function () {
     $service=file_get_contents(app_path('Services/Hr/PeopleCoreMigrationService.php'));
     expect($service)->toContain("Storage::disk('hr_private')->put")
         ->toContain("'scope_checksum'=>\$scopeChecksum")

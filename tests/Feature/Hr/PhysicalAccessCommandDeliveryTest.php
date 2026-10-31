@@ -15,22 +15,22 @@ use function Pest\Laravel\actingAs;
 uses(RefreshDatabase::class);
 
 it('blocks physical access grants to former Staff before approval or delivery', function () {
-    [$user, $company] = hr_seed_admin_actor([], true);
+    [$user] = hr_seed_admin_actor([], true);
     config(['hr.features.physical_access_commands' => true]);
-    $former = Staff::factory()->create(['company_id' => $company->id, 'employment_ended_at' => now()->subDay()]);
+    $former = Staff::factory()->create(['employment_ended_at' => now()->subDay()]);
     $device = AttendanceDevice::factory()->create([
-        'company_id' => $company->id, 'provider' => 'hikvision', 'integration_mode' => 'direct_isapi', 'status' => 'active',
+        'provider' => 'hikvision', 'integration_mode' => 'direct_isapi', 'status' => 'active',
     ]);
 
     actingAs($user, 'api')->postJson('/api/hr/attendance/access-commands', [
-        'company_id' => $company->id, 'staff_id' => $former->id, 'device_id' => $device->id, 'command_type' => 'grant',
+        'staff_id' => $former->id, 'device_id' => $device->id, 'command_type' => 'grant',
         'reason' => 'Grant reviewed access', 'idempotency_key' => 'former-staff-grant',
     ])->assertConflict();
 
     $commandId = (string) Str::uuid();
     $approver = User::factory()->create();
     DB::table('hr_attendance_access_commands')->insert([
-        'id' => $commandId, 'company_id' => $company->id, 'staff_id' => $former->id, 'device_id' => $device->id,
+        'id' => $commandId, 'staff_id' => $former->id, 'device_id' => $device->id,
         'command_type' => 'grant', 'status' => 'approved_pending_delivery', 'request_snapshot' => '{}',
         'idempotency_key' => 'former-staff-approved-grant', 'requested_by' => $user->id, 'approved_by' => $approver->id,
         'approved_at' => now(), 'created_at' => now(), 'updated_at' => now(),
@@ -45,14 +45,14 @@ it('blocks physical access grants to former Staff before approval or delivery', 
 });
 
 it('does not automatically repeat a physical access command after an ambiguous provider result', function () {
-    [$user, $company] = hr_seed_admin_actor([], true);
+    [$user] = hr_seed_admin_actor([], true);
     config(['hr.features.physical_access_commands' => true]);
-    $staff = Staff::factory()->create(['company_id' => $company->id]);
+    $staff = Staff::factory()->create();
     $device = AttendanceDevice::factory()->create([
-        'company_id' => $company->id, 'provider' => 'hikvision', 'integration_mode' => 'direct_isapi', 'status' => 'active',
+        'provider' => 'hikvision', 'integration_mode' => 'direct_isapi', 'status' => 'active',
     ]);
     DB::table('hr_attendance_person_mappings')->insert([
-        'id' => (string) Str::uuid(), 'company_id' => $company->id, 'staff_id' => $staff->id, 'device_id' => $device->id,
+        'id' => (string) Str::uuid(), 'staff_id' => $staff->id, 'device_id' => $device->id,
         'provider_person_id' => 'EMP-ACCESS-RETRY', 'employee_number_snapshot' => 'EMP-ACCESS-RETRY', 'enrollment_status' => 'verified',
         'effective_from' => now($device->timezone)->toDateString(), 'created_by' => $user->id, 'verified_by' => $user->id,
         'last_verified_at' => now(), 'created_at' => now(), 'updated_at' => now(),
@@ -60,14 +60,14 @@ it('does not automatically repeat a physical access command after an ambiguous p
     $commandId = (string) Str::uuid();
     $approver = User::factory()->create();
     DB::table('hr_attendance_access_commands')->insert([
-        'id' => $commandId, 'company_id' => $company->id, 'staff_id' => $staff->id, 'device_id' => $device->id,
+        'id' => $commandId, 'staff_id' => $staff->id, 'device_id' => $device->id,
         'command_type' => 'revoke', 'status' => 'approved_pending_delivery', 'request_snapshot' => '{}',
         'idempotency_key' => 'access-command-ambiguous', 'requested_by' => $user->id, 'approved_by' => $approver->id,
         'approved_at' => now(), 'created_at' => now(), 'updated_at' => now(),
     ]);
     $staleId = (string) Str::uuid();
     DB::table('hr_attendance_access_commands')->insert([
-        'id' => $staleId, 'company_id' => $company->id, 'staff_id' => $staff->id, 'device_id' => $device->id,
+        'id' => $staleId, 'staff_id' => $staff->id, 'device_id' => $device->id,
         'command_type' => 'revoke', 'status' => 'delivering', 'request_snapshot' => '{}', 'attempt_count' => 1,
         'idempotency_key' => 'access-command-stale-claim', 'requested_by' => $user->id, 'approved_by' => $approver->id,
         'approved_at' => now(), 'created_at' => now()->subMinutes(5), 'updated_at' => now()->subMinutes(5),
@@ -93,18 +93,18 @@ it('does not automatically repeat a physical access command after an ambiguous p
 });
 
 it('replays a physical access approval only for the same approver without changing its evidence', function () {
-    [$requester, $company] = hr_seed_admin_actor();
+    [$requester] = hr_seed_admin_actor();
     $approver = User::factory()->create();
     $approver->assignRole('admin');
-    $staff = Staff::factory()->create(['user_id' => $approver->id, 'company_id' => $company->id, 'staff_type' => 'admin']);
+    $staff = Staff::factory()->create(['user_id' => $approver->id, 'staff_type' => 'admin']);
     \App\Models\UserContext::create([
         'user_id' => $approver->id, 'context_type' => 'staff', 'context_id' => $staff->id,
         'is_active' => true, 'created_user_id' => $approver->id,
     ]);
-    $device = AttendanceDevice::factory()->create(['company_id' => $company->id]);
+    $device = AttendanceDevice::factory()->create();
     $commandId = (string) Str::uuid();
     DB::table('hr_attendance_access_commands')->insert([
-        'id' => $commandId, 'company_id' => $company->id, 'staff_id' => $staff->id, 'device_id' => $device->id,
+        'id' => $commandId, 'staff_id' => $staff->id, 'device_id' => $device->id,
         'command_type' => 'revoke', 'status' => 'pending_approval', 'request_snapshot' => '{}',
         'idempotency_key' => 'approval-replay-'.$commandId, 'requested_by' => $requester->id,
         'created_at' => now(), 'updated_at' => now(),
@@ -119,7 +119,7 @@ it('replays a physical access approval only for the same approver without changi
 
     $otherApprover = User::factory()->create();
     $otherApprover->assignRole('admin');
-    $otherStaff = Staff::factory()->create(['user_id' => $otherApprover->id, 'company_id' => $company->id, 'staff_type' => 'admin']);
+    $otherStaff = Staff::factory()->create(['user_id' => $otherApprover->id, 'staff_type' => 'admin']);
     \App\Models\UserContext::create([
         'user_id' => $otherApprover->id, 'context_type' => 'staff', 'context_id' => $otherStaff->id,
         'is_active' => true, 'created_user_id' => $otherApprover->id,
@@ -128,12 +128,12 @@ it('replays a physical access approval only for the same approver without changi
 });
 
 it('replays a pending manual command retry only for the same actor and reason', function () {
-    [$user, $company] = hr_seed_admin_actor([], true);
+    [$user] = hr_seed_admin_actor([], true);
     $staff = Staff::query()->where('user_id', $user->id)->firstOrFail();
-    $device = AttendanceDevice::factory()->create(['company_id' => $company->id]);
+    $device = AttendanceDevice::factory()->create();
     $commandId = (string) Str::uuid();
     DB::table('hr_attendance_access_commands')->insert([
-        'id' => $commandId, 'company_id' => $company->id, 'staff_id' => $staff->id, 'device_id' => $device->id,
+        'id' => $commandId, 'staff_id' => $staff->id, 'device_id' => $device->id,
         'command_type' => 'revoke', 'status' => 'dead_letter', 'request_snapshot' => '{}',
         'idempotency_key' => 'manual-retry-'.$commandId, 'requested_by' => $user->id,
         'created_at' => now(), 'updated_at' => now(),
@@ -148,12 +148,12 @@ it('replays a pending manual command retry only for the same actor and reason', 
     expect(DB::table('hr_attendance_access_commands')->where('id', $commandId)->value('next_attempt_at'))->toBe($nextAttemptAt);
     actingAs($user, 'api')->postJson($url, ['reason' => 'Different retry evidence'])->assertStatus(409);
     $audit = DB::table('activity_log')->where('description', 'attendance_access_command_retry_requested')->first();
-    expect(json_decode($audit->properties, true))->toBe(['company_id' => $company->id, 'status' => 'retry_pending', 'command_type' => 'revoke'])
+    expect(json_decode($audit->properties, true))->toBe(['status' => 'retry_pending', 'command_type' => 'revoke'])
         ->and(DB::table('activity_log')->where('description', 'attendance_access_command_retry_requested')->count())->toBe(1);
 
     $otherActor = User::factory()->create();
     $otherActor->assignRole('admin');
-    $otherStaff = Staff::factory()->create(['user_id' => $otherActor->id, 'company_id' => $company->id, 'staff_type' => 'admin']);
+    $otherStaff = Staff::factory()->create(['user_id' => $otherActor->id, 'staff_type' => 'admin']);
     \App\Models\UserContext::create([
         'user_id' => $otherActor->id, 'context_type' => 'staff', 'context_id' => $otherStaff->id,
         'is_active' => true, 'created_user_id' => $otherActor->id,
@@ -162,12 +162,12 @@ it('replays a pending manual command retry only for the same actor and reason', 
 });
 
 it('allows an authorized manual retry to bring forward an automatic retry', function () {
-    [$user, $company] = hr_seed_admin_actor([], true);
+    [$user] = hr_seed_admin_actor([], true);
     $staff = Staff::query()->where('user_id', $user->id)->firstOrFail();
-    $device = AttendanceDevice::factory()->create(['company_id' => $company->id]);
+    $device = AttendanceDevice::factory()->create();
     $commandId = (string) Str::uuid();
     DB::table('hr_attendance_access_commands')->insert([
-        'id' => $commandId, 'company_id' => $company->id, 'staff_id' => $staff->id, 'device_id' => $device->id,
+        'id' => $commandId, 'staff_id' => $staff->id, 'device_id' => $device->id,
         'command_type' => 'revoke', 'status' => 'retry_pending', 'request_snapshot' => '{}',
         'idempotency_key' => 'automatic-retry-'.$commandId, 'requested_by' => $user->id,
         'failure_message' => 'Temporary provider failure.', 'next_attempt_at' => now()->addHour(),
@@ -180,37 +180,37 @@ it('allows an authorized manual retry to bring forward an automatic retry', func
 });
 
 it('allows revocation for soft-deleted former Staff while keeping the Staff row locked through delivery', function () {
-    [$user, $company] = hr_seed_admin_actor([], true);
+    [$user] = hr_seed_admin_actor([], true);
     config(['hr.features.physical_access_commands' => true]);
-    $former = Staff::factory()->create(['company_id' => $company->id, 'employment_ended_at' => now()->subDay()]);
+    $former = Staff::factory()->create(['employment_ended_at' => now()->subDay()]);
     $former->delete();
     $device = AttendanceDevice::factory()->create([
-        'company_id' => $company->id, 'provider' => 'hikvision', 'integration_mode' => 'direct_isapi', 'status' => 'active',
+        'provider' => 'hikvision', 'integration_mode' => 'direct_isapi', 'status' => 'active',
     ]);
     DB::table('hr_attendance_person_mappings')->insert([
-        'id' => (string) Str::uuid(), 'company_id' => $company->id, 'staff_id' => $former->id, 'device_id' => $device->id,
+        'id' => (string) Str::uuid(), 'staff_id' => $former->id, 'device_id' => $device->id,
         'provider_person_id' => 'EMP-FORMER-REVOKE', 'employee_number_snapshot' => 'EMP-FORMER-REVOKE', 'enrollment_status' => 'verified',
         'effective_from' => now($device->timezone)->toDateString(), 'created_by' => $user->id, 'verified_by' => $user->id,
         'last_verified_at' => now(), 'created_at' => now(), 'updated_at' => now(),
     ]);
 
     $formerOptions = actingAs($user, 'api')->getJson('/api/hr/attendance/mapping-candidates?'.http_build_query([
-        'company_id' => $company->id, 'include_former' => true, 'search' => $former->code,
+        'include_former' => true, 'search' => $former->code,
     ]))->assertOk()->json('data.data');
     expect($formerOptions)->toHaveCount(1)
         ->and($formerOptions[0]['status'])->toBe('ended')
         ->and($formerOptions[0]['label'])->toStartWith('Former Staff · ');
     actingAs($user, 'api')->getJson('/api/hr/attendance/mapping-candidates?'.http_build_query([
-        'company_id' => $company->id, 'search' => $former->code,
+        'search' => $former->code,
     ]))->assertOk()->assertJsonPath('data.data', []);
 
     actingAs($user, 'api')->postJson('/api/hr/attendance/access-commands', [
-        'company_id' => $company->id, 'staff_id' => $former->id, 'device_id' => $device->id, 'command_type' => 'grant',
+        'staff_id' => $former->id, 'device_id' => $device->id, 'command_type' => 'grant',
         'access_group_code' => 'FORMER-STAFF', 'reason' => 'Should stay blocked', 'idempotency_key' => 'former-staff-no-grant',
     ])->assertConflict();
 
     $response = actingAs($user, 'api')->postJson('/api/hr/attendance/access-commands', [
-        'company_id' => $company->id, 'staff_id' => $former->id, 'device_id' => $device->id, 'command_type' => 'revoke',
+        'staff_id' => $former->id, 'device_id' => $device->id, 'command_type' => 'revoke',
         'reason' => 'Remove access after employment ended', 'idempotency_key' => 'former-staff-revoke',
     ])->assertCreated();
     $commandId = $response->json('data.id');

@@ -1,7 +1,6 @@
 <?php
 
 use App\Contracts\Foundation\DomainEventPublisher;
-use App\Models\Company;
 use App\Models\Sales\SalesCommissionPayout;
 use App\Models\Staff;
 use App\Models\User;
@@ -12,6 +11,7 @@ use App\Services\Sales\SalesPolicySettingsService;
 use App\Services\Sales\VerifiedCommissionAccountingDeliveryService;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Storage;
 use Illuminate\Support\Str;
 use Symfony\Component\HttpKernel\Exception\HttpException;
 
@@ -19,12 +19,11 @@ uses(RefreshDatabase::class);
 
 function payout_reversal_fixture(string $accountingStatus = 'delivered'): array
 {
-    $company = Company::create(['name' => 'Payout reversal company']);
-    $staff = Staff::factory()->create(['company_id' => $company->id]);
+    Storage::fake('sales_private');
+    $staff = Staff::factory()->create();
     $payer = User::factory()->create();
     $actor = User::factory()->create();
     $payout = SalesCommissionPayout::create([
-        'company_id' => $company->id,
         'staff_id' => $staff->id,
         'payout_number' => 'SCP-'.Str::uuid(),
         'amount_lkr' => 1000,
@@ -44,12 +43,12 @@ function payout_reversal_fixture(string $accountingStatus = 'delivered'): array
     $statementId = (string) Str::uuid();
     $now = now();
     DB::table('sales_profiles')->insert([
-        'id' => $profileId, 'company_id' => $company->id, 'staff_id' => $staff->id,
+        'id' => $profileId, 'staff_id' => $staff->id,
         'sales_code' => 'PAYOUT-'.Str::upper(Str::random(8)), 'effective_from' => $now->copy()->subYear(),
         'created_at' => $now, 'updated_at' => $now,
     ]);
     DB::table('sales_commission_cycle_versions')->insert([
-        'id' => $cycleVersionId, 'company_id' => $company->id, 'code' => 'PAYOUT-CYCLE', 'version' => 1,
+        'id' => $cycleVersionId, 'code' => 'PAYOUT-CYCLE', 'version' => 1,
         'timezone' => 'Asia/Colombo', 'earning_period_rule' => 'monthly', 'cutoff_day' => 25,
         'finalization_day' => 26, 'approval_deadline_day' => 27, 'settlement_day' => 28,
         'holiday_rule' => 'next_business_day', 'effective_from' => $now->copy()->subYear(),
@@ -57,13 +56,13 @@ function payout_reversal_fixture(string $accountingStatus = 'delivered'): array
         'approved_at' => $now, 'created_at' => $now, 'updated_at' => $now,
     ]);
     DB::table('sales_commission_cycle_assignments')->insert([
-        'id' => $cycleAssignmentId, 'company_id' => $company->id, 'cycle_version_id' => $cycleVersionId,
-        'scope_type' => 'company', 'precedence' => 1, 'effective_from' => $now->copy()->subYear(),
+        'id' => $cycleAssignmentId, 'cycle_version_id' => $cycleVersionId,
+        'scope_type' => 'installation', 'precedence' => 1, 'effective_from' => $now->copy()->subYear(),
         'status' => 'approved', 'created_by' => $payer->id, 'approved_by' => $payer->id,
         'approved_at' => $now, 'created_at' => $now, 'updated_at' => $now,
     ]);
     DB::table('sales_commission_statements')->insert([
-        'id' => $statementId, 'company_id' => $company->id, 'staff_id' => $staff->id,
+        'id' => $statementId, 'staff_id' => $staff->id,
         'sales_profile_id' => $profileId, 'cycle_version_id' => $cycleVersionId,
         'cycle_assignment_id' => $cycleAssignmentId, 'statement_number' => 'SCS-'.Str::uuid(),
         'period_start' => $now->toDateString(), 'period_end' => $now->toDateString(), 'cutoff_at' => $now,
@@ -77,44 +76,46 @@ function payout_reversal_fixture(string $accountingStatus = 'delivered'): array
         'amount_lkr' => 1000, 'created_at' => $now, 'updated_at' => $now,
     ]);
     $policy = Mockery::mock(SalesPolicySettingsService::class);
-    $policy->shouldReceive('featureEnabled')->zeroOrMoreTimes()->with($company->id, 'payouts')->andReturn(true);
+    $policy->shouldReceive('featureEnabled')->zeroOrMoreTimes()->with('payouts')->andReturn(true);
     $events = Mockery::mock(DomainEventPublisher::class);
     $service = new CommissionPayoutService($events, $policy);
 
     return [$service, $payout, $actor, $events, $policy];
 }
 
-it('rejects payout execution when a statement profile belongs to another company', function () {
-    [$service, $payout, $actor] = payout_reversal_fixture();
+it('allows payout execution for an installation-wide Sales Profile', function () {
+    [$service, $payout, $actor, $events] = payout_reversal_fixture();
     $statementId = DB::table('sales_commission_payout_allocations')->where('payout_id', $payout->id)->value('statement_id');
-    $profileId = DB::table('sales_commission_statements')->where('id', $statementId)->value('sales_profile_id');
-    $foreignCompany = Company::create(['name' => 'Foreign payout profile company']);
-    DB::table('sales_profiles')->where('id', $profileId)->update(['company_id' => $foreignCompany->id]);
 
-    expect(fn () => $service->pay([$statementId], [
+    DB::table('sales_commission_statements')->where('id', $statementId)->update([
+        'status' => 'approved', 'paid_lkr' => 0, 'settlement_at' => now()->subDay(),
+    ]);
+    $events->shouldReceive('record')->twice()->andReturn((string) Str::uuid());
+    expect($service->pay([$statementId], [
         'amount_lkr' => 1000,
         'payment_method' => 'bank',
         'payment_account_snapshot' => ['holder' => 'Test payee'],
         'payment_reference' => 'new-'.Str::uuid(),
         'paid_at' => now()->toIso8601String(),
         'idempotency_key' => (string) Str::uuid(),
-    ], $actor->id))->toThrow(HttpException::class, 'Every statement must match its frozen Sales Profile company and Staff beneficiary.');
+    ], $actor->id)->status)->toBe('confirmed');
 });
 
-it('rejects payout reversal when its legal entity is inactive', function () {
-    [$service, $payout, $actor] = payout_reversal_fixture();
-    Company::query()->whereKey($payout->company_id)->update(['is_active' => false]);
+it('allows payout reversal without a company or location association', function () {
+    [$service, $payout, $actor, $events] = payout_reversal_fixture();
+    $evidenceId = payout_reversal_evidence($payout, $actor);
+    $events->shouldReceive('record')->twice()->andReturn((string) Str::uuid());
 
-    expect(fn () => $service->reverse($payout, [
+    expect($service->reverse($payout, [
         'payment_method' => 'bank', 'payment_reference' => 'reversal-'.Str::uuid(),
-        'reversed_at' => now()->toIso8601String(), 'evidence_file_id' => (string) Str::uuid(),
+        'reversed_at' => now()->toIso8601String(), 'evidence_file_id' => $evidenceId,
         'reason' => 'Finance-authorized reversal', 'idempotency_key' => (string) Str::uuid(),
-    ], (string) $actor->id))->toThrow(HttpException::class, 'Select an active legal entity.');
+    ], (string) $actor->id)->status)->toBe('reversal');
 });
 
 it('rejects payout reversal when allocations do not reconcile to the original amount', function () {
     [$service, $payout, $actor] = payout_reversal_fixture();
-    $evidenceId = payout_reversal_evidence($payout, $payout->company_id, $actor);
+    $evidenceId = payout_reversal_evidence($payout, $actor);
     DB::table('sales_commission_payout_allocations')->where('payout_id', $payout->id)->update(['amount_lkr' => 900]);
 
     expect(fn () => $service->reverse($payout, [
@@ -129,7 +130,7 @@ it('rejects payout reversal when allocations do not reconcile to the original am
 
 it('rejects payout reversal when an allocation exceeds the current statement paid balance', function () {
     [$service, $payout, $actor] = payout_reversal_fixture();
-    $evidenceId = payout_reversal_evidence($payout, $payout->company_id, $actor);
+    $evidenceId = payout_reversal_evidence($payout, $actor);
     $statementId = DB::table('sales_commission_payout_allocations')->where('payout_id', $payout->id)->value('statement_id');
     DB::table('sales_commission_statements')->where('id', $statementId)->update(['paid_lkr' => 500]);
 
@@ -143,22 +144,23 @@ it('rejects payout reversal when an allocation exceeds the current statement pai
     ], $actor->id))->toThrow(HttpException::class, 'Payout reversal allocation exceeds its statement paid balance.');
 });
 
-function payout_reversal_evidence(SalesCommissionPayout $payout, string $companyId, User $actor): string
+function payout_reversal_evidence(SalesCommissionPayout $payout, User $actor): string
 {
     $id = (string) Str::uuid();
+    $path = 'sales/'.now()->format('Y/m').'/'.$id.'.pdf';
+    Storage::disk('sales_private')->put($path, 'e');
     DB::table('domain_evidence_files')->insert([
         'id' => $id,
         'domain' => 'sales',
-        'company_id' => $companyId,
         'subject_type' => 'commission_payout',
         'subject_id' => $payout->id,
         'evidence_type' => 'payout_reversal',
         'classification' => 'restricted',
-        'disk' => 'private',
-        'path' => 'sales/test/payout-reversal.pdf',
+        'disk' => 'sales_private',
+        'path' => $path,
         'file_name' => 'payout-reversal.pdf',
         'file_size' => 1,
-        'file_checksum' => str_repeat('b', 64),
+        'file_checksum' => hash('sha256', 'e'),
         'uploaded_by' => $actor->id,
         'created_at' => now(),
         'updated_at' => now(),
@@ -179,24 +181,9 @@ it('rejects payout reversal calls that bypass the controller without evidence', 
     ], $actor->id))->toThrow(HttpException::class, 'Payout-reversal evidence is required.');
 });
 
-it('rejects payout evidence attached to a different legal entity', function () {
-    [$service, $payout, $actor] = payout_reversal_fixture();
-    $foreignCompany = Company::create(['name' => 'Foreign payout evidence company']);
-    $evidenceId = payout_reversal_evidence($payout, $foreignCompany->id, $actor);
-
-    expect(fn () => $service->reverse($payout, [
-        'payment_method' => 'bank',
-        'payment_reference' => 'reversal-'.Str::uuid(),
-        'reversed_at' => now()->toIso8601String(),
-        'evidence_file_id' => $evidenceId,
-        'reason' => 'Reverse the original payout with supporting evidence',
-        'idempotency_key' => (string) Str::uuid(),
-    ], $actor->id))->toThrow(HttpException::class, 'Payout-reversal evidence must be bound to the original payout and Sales legal entity.');
-});
-
-it('reverses the payout only with evidence bound to that payout and company', function () {
+it('reverses the payout only with evidence bound to that payout', function () {
     [$service, $payout, $actor, $events] = payout_reversal_fixture();
-    $evidenceId = payout_reversal_evidence($payout, $payout->company_id, $actor);
+    $evidenceId = payout_reversal_evidence($payout, $actor);
     $events->shouldReceive('record')->twice()->andReturn((string) Str::uuid());
 
     $reversal = $service->reverse($payout, [
@@ -216,7 +203,7 @@ it('reverses the payout only with evidence bound to that payout and company', fu
 
 it('writes an immutable, causally linked accounting-ready event for a payout reversal', function () {
     [, $payout, $actor, , $policy] = payout_reversal_fixture();
-    $evidenceId = payout_reversal_evidence($payout, $payout->company_id, $actor);
+    $evidenceId = payout_reversal_evidence($payout, $actor);
     $service = new CommissionPayoutService(new DomainOutboxService(), $policy);
 
     $reversal = $service->reverse($payout, [
@@ -250,7 +237,7 @@ it('writes an immutable, causally linked accounting-ready event for a payout rev
             )->value('statement_number')],
         ]);
 
-    $reconciliation = (new CommissionAccountingOutboxReconciliationService())->preview($payout->company_id);
+    $reconciliation = (new CommissionAccountingOutboxReconciliationService())->preview();
     $reconciledReversal = $reconciliation['data']->getCollection()
         ->firstWhere('payout_number', $reversal->payout_number);
     expect($reconciledReversal['issues'])->toBe([])
@@ -292,16 +279,13 @@ it('writes an immutable accounting-ready event when a commission payout is confi
             'reverses_document_id' => null, 'accounting_status' => 'pending_delivery',
         ]);
 
-    $reconciliation = (new CommissionAccountingOutboxReconciliationService())->preview($payout->company_id);
+    $reconciliation = (new CommissionAccountingOutboxReconciliationService())->preview();
     expect($reconciliation['summary']['page_issue_count'])->toBe(0)
         ->and($reconciliation['data']->getCollection()->first()['accounting_event_checksum_valid'])->toBeTrue();
 
-    $foreignCompany = Company::create(['name' => 'Foreign allocation statement company']);
-    DB::table('sales_commission_statements')->where('id', $statementId)->update(['company_id' => $foreignCompany->id]);
-    $corruptedReconciliation = (new CommissionAccountingOutboxReconciliationService())->preview($payout->company_id);
+    $corruptedReconciliation = (new CommissionAccountingOutboxReconciliationService())->preview();
     $corruptedIssues = $corruptedReconciliation['data']->getCollection()->first()['issues'];
-    expect($corruptedIssues)->toContain('payout_allocations_missing', 'payout_allocation_total_mismatch', 'accounting_event_facts_mismatch');
-    DB::table('sales_commission_statements')->where('id', $statementId)->update(['company_id' => $payout->company_id]);
+    expect($corruptedIssues)->toBe([]);
 
     $verifier = new VerifiedCommissionAccountingDeliveryService(
         new DomainOutboxService(), new CommissionAccountingOutboxReconciliationService(),

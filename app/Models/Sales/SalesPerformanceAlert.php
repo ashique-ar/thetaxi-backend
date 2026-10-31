@@ -10,7 +10,7 @@ class SalesPerformanceAlert extends Model
     use HasUuids;
 
     protected $fillable = [
-        'company_id', 'sales_profile_id', 'snapshot_id', 'policy_version_id', 'alert_type', 'severity', 'status',
+        'sales_profile_id', 'snapshot_id', 'policy_version_id', 'alert_type', 'severity', 'status',
         'explanation', 'evidence_snapshot', 'detected_at', 'assigned_to', 'acknowledged_at', 'resolved_at',
         'resolution_note', 'deduplication_key', 'policy_contract_snapshot', 'threshold_snapshot',
         'comparison_snapshot', 'evaluation_checksum', 'event_version', 'snoozed_until',

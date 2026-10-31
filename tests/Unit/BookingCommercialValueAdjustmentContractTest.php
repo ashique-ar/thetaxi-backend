@@ -40,19 +40,30 @@ it('binds apply() to a checksum-matched preview and de-duplicates by booking plu
         ->toContain("'preview_checksum' => (string) \$data['preview_checksum']");
 });
 
-it('locks the active company before booking, attribution, and commercial adjustment rows', function () {
+it('locks the booking and attribution without requiring a company row', function () {
     $service = file_get_contents(app_path('Services/Sales/BookingCommercialValueAdjustmentService.php'));
     $apply = substr($service, strpos($service, 'public function apply('), strpos($service, 'private function ', strpos($service, 'public function apply(') + 1) - strpos($service, 'public function apply('));
     $controller = file_get_contents(app_path('Http/Controllers/Api/Sales/SalesBookingAttributionController.php'));
     $scope = substr($controller, strpos($controller, 'private function withinCommercialAdjustmentScope('));
 
-    expect(strpos($apply, "DB::table('companies')"))->toBeLessThan(strpos($apply, 'Booking::query()->lockForUpdate()'))
+    expect($apply)->not->toContain("DB::table('companies')", 'sameCompanyId', 'active legal entity')
         ->and(strpos($apply, 'Booking::query()->lockForUpdate()'))->toBeLessThan(strpos($apply, 'BookingCommercialValueAdjustment::query()'))
-        ->and(strpos($scope, "DB::table('companies')"))->toBeLessThan(strpos($scope, 'Booking::query()->whereKey($candidate->booking_id)->lockForUpdate()'))
+        ->and($scope)->not->toContain("DB::table('companies')", 'sameCompanyId')
         ->and(strpos($scope, 'Booking::query()->whereKey($candidate->booking_id)->lockForUpdate()'))
             ->toBeLessThan(strpos($scope, 'SalesBookingAttribution::query()->whereKey($candidate->id)->lockForUpdate()'))
-        ->and($apply)->toContain("where('is_active', true)", "whereNull('deleted_at')->lockForUpdate()")
-        ->and($scope)->toContain("where('is_active', true)", "whereNull('deleted_at')->lockForUpdate()");
+        ->and($apply)->toContain('Booking::query()->lockForUpdate()', 'SalesBookingAttribution::query()->where(\'booking_id\', $booking->id)->lockForUpdate()');
+});
+
+it('removes the commercial adjustment tenant column while preserving the ledger', function () {
+    $service = file_get_contents(app_path('Services/Sales/BookingCommercialValueAdjustmentService.php'));
+    $performance = file_get_contents(app_path('Services/Sales/SalesPerformanceService.php'));
+    $model = file_get_contents(app_path('Models/Booking/BookingCommercialValueAdjustment.php'));
+    $migration = file_get_contents(database_path('migrations/2026_10_30_000088_remove_commercial_value_adjustment_tenant_company.php'));
+
+    expect($service)->not->toContain("'company_id' =>", 'sameCompanyId', 'companies')
+        ->and($performance)->not->toContain("'adjustment.company_id'")
+        ->and($model)->not->toContain("'company_id'")
+        ->and($migration)->toContain("'booking_commercial_value_adjustments'", "dropColumn('company_id')");
 });
 
 it('keeps the schedule-revision override additive and backward compatible when absent', function () {
