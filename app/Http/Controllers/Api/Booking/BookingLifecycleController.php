@@ -494,7 +494,7 @@ class BookingLifecycleController extends Controller
         } catch (\DomainException|\InvalidArgumentException $e) {
             return response()->json(['status' => 'error', 'message' => $e->getMessage()], 422);
         } catch (\Illuminate\Database\Eloquent\ModelNotFoundException $e) {
-            return response()->json(['status' => 'error', 'message' => 'Booking or trip was not found for this company.'], 404);
+            return response()->json(['status' => 'error', 'message' => 'Booking or trip was not found.'], 404);
         }
     }
 
@@ -514,7 +514,7 @@ class BookingLifecycleController extends Controller
         } catch (\DomainException|\InvalidArgumentException $e) {
             return response()->json(['status' => 'error', 'message' => $e->getMessage()], 422);
         } catch (\Illuminate\Database\Eloquent\ModelNotFoundException $e) {
-            return response()->json(['status' => 'error', 'message' => 'Booking or trip was not found for this company.'], 404);
+            return response()->json(['status' => 'error', 'message' => 'Booking or trip was not found.'], 404);
         }
     }
 

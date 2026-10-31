@@ -32,13 +32,9 @@ class ServiceTypeCloneService
                     'name' => $targetAttributes['name'] ?? ($source->name . ' Copy'),
                     'slug' => $targetAttributes['slug'] ?? $this->makeUniqueSlug(
                         $targetAttributes['code'],
-                        $targetAttributes['context'] ?? $source->context,
-                        $targetAttributes['owner_type'] ?? $source->owner_type,
-                        $targetAttributes['owner_id'] ?? $source->owner_id
+                        $targetAttributes['context'] ?? $source->context
                     ),
                     'context' => $targetAttributes['context'] ?? $source->context,
-                    'owner_type' => $targetAttributes['owner_type'] ?? $source->owner_type,
-                    'owner_id' => $targetAttributes['owner_id'] ?? $source->owner_id,
                     'parent_service_type_id' => $source->id,
                     'created_user_id' => $userId,
                     'updated_user_id' => $userId,
@@ -249,7 +245,7 @@ class ServiceTypeCloneService
         }
     }
 
-    private function makeUniqueSlug(string $code, string $context, string $ownerType, string $ownerId): string
+    private function makeUniqueSlug(string $code, string $context): string
     {
         $slug = Str::slug($code, '-');
         $candidate = $slug;
@@ -258,8 +254,6 @@ class ServiceTypeCloneService
         while (
             ServiceType::where('slug', $candidate)
                 ->where('context', $context)
-                ->where('owner_type', $ownerType)
-                ->where('owner_id', $ownerId)
                 ->exists()
         ) {
             $candidate = Str::limit($slug, 240, '') . '-' . $counter;

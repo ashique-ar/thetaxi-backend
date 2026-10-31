@@ -417,22 +417,19 @@ class KmRangePricingController extends Controller
     {
         try {
             $context = (string) $request->input('context', 'public');
-            $ownerType = (string) $request->input('owner_type', ($context === 'corporate' ? 'corporate' : ''));
             $ownerId = (string) $request->input('owner_id', '');
 
-            if ($context === 'corporate' && $ownerType === 'corporate' && $ownerId !== '') {
+            if ($context === 'corporate' && $ownerId !== '') {
                 $serviceTypes = Corporate::findOrFail($ownerId)
                     ->serviceTypes()
                     ->where('service_types.context', 'corporate')
-                    ->where('service_types.owner_type', '')
-                    ->where('service_types.owner_id', '')
-                    ->select('service_types.id', 'service_types.name', 'service_types.code', 'service_types.context', 'service_types.owner_type', 'service_types.owner_id')
+                    ->select('service_types.id', 'service_types.name', 'service_types.code', 'service_types.context')
                     ->where('service_types.is_active', true)
                     ->orderBy('service_types.name')
                     ->get();
             } else {
-                $serviceTypes = ServiceType::forContext($context, '', '')
-                    ->select('id', 'name', 'code', 'context', 'owner_type', 'owner_id')
+                $serviceTypes = ServiceType::forContext($context)
+                    ->select('id', 'name', 'code', 'context')
                     ->where('is_active', true)
                     ->orderBy('name')
                     ->get();

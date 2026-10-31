@@ -9,26 +9,11 @@ use Illuminate\Validation\Rule;
 
 class UpdateServiceTypeRequest extends FormRequest
 {
-    protected function prepareForValidation(): void
-    {
-        $serviceType = $this->route('service_type');
-        $context = $this->input('context', $serviceType?->context);
-
-        if ($context === 'corporate') {
-            $this->merge([
-                'owner_type' => '',
-                'owner_id' => '',
-            ]);
-        }
-    }
-
     public function rules()
     {
         $serviceType = $this->route('service_type');
         $id = $serviceType->id;
         $context = (string) $this->input('context', $serviceType->context ?? 'portal');
-        $ownerType = (string) $this->input('owner_type', $serviceType->owner_type ?? '');
-        $ownerId = (string) $this->input('owner_id', $serviceType->owner_id ?? '');
 
         return [
             'code' => [
@@ -38,15 +23,10 @@ class UpdateServiceTypeRequest extends FormRequest
                 'max:50',
                 Rule::unique('service_types', 'code')
                     ->ignore($id)
-                    ->where(fn ($query) => $query
-                        ->where('context', $context)
-                        ->where('owner_type', $ownerType)
-                        ->where('owner_id', $ownerId)),
+                    ->where(fn ($query) => $query->where('context', $context)),
             ],
             'name' => ['sometimes', 'required', 'string', 'max:255'],
             'context' => ['sometimes', 'required', 'string', 'max:50'],
-            'owner_type' => ['sometimes', 'nullable', 'string', 'max:100'],
-            'owner_id' => ['sometimes', 'nullable', 'string', 'max:100'],
             'description' => ['sometimes', 'nullable', 'string'],
             'type' => ['sometimes', 'nullable', 'string'],
             'trip_mode' => ['sometimes', 'required', 'string', 'in:fixed_route,open_package'],
@@ -57,10 +37,7 @@ class UpdateServiceTypeRequest extends FormRequest
                 'max:255',
                 Rule::unique('service_types', 'slug')
                     ->ignore($id)
-                    ->where(fn ($query) => $query
-                        ->where('context', $context)
-                        ->where('owner_type', $ownerType)
-                        ->where('owner_id', $ownerId)),
+                    ->where(fn ($query) => $query->where('context', $context)),
             ],
             'thumbnail' => ['sometimes', 'nullable', 'string', 'max:255'],
             'pricing_mode' => ['sometimes', 'nullable', 'string', 'in:trip,day,hourly'],

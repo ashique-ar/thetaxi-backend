@@ -13,8 +13,6 @@ class ServiceTypeResource extends JsonResource
             'code' => $this->code,
             'name' => $this->name,
             'context' => $this->context,
-            'owner_type' => $this->owner_type,
-            'owner_id' => $this->owner_id,
             'parent_service_type_id' => $this->parent_service_type_id,
             'description' => $this->description,
             'slug' => $this->slug,

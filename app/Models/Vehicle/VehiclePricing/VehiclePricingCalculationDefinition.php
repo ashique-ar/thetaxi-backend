@@ -899,21 +899,21 @@ class VehiclePricingCalculationDefinition extends Model
             if (
                 $varName === 'extra_km_rate'
                 && ($inputs['include_garage_distance'] ?? false)
-                && ($inputs['pickup_and_dropoff_at_company_location'] ?? false)
+                && ($inputs['pickup_and_dropoff_at_saved_location'] ?? false)
             ) {
                 $value = 0;
                 if (isset($this->resolvedRateSources[$varName])) {
                     $this->resolvedRateSources[$varName]['resolved_value'] = 0;
-                    $this->resolvedRateSources[$varName]['waived_reason'] = 'Pickup and drop-off are at company locations.';
+                    $this->resolvedRateSources[$varName]['waived_reason'] = 'Pickup and drop-off are at saved locations.';
                 }
             }
 
             $isDeliveryRate = $varType === 'common_rate'
                 && preg_match('/deliver(?:y)?_rate/i', $varName);
             $deliveryRateWaivedForGarageSetting = !($inputs['include_garage_distance'] ?? false);
-            $deliveryRateWaivedForCompanyLocation = $inputs['delivery_location_is_company_location'] ?? false;
+            $deliveryRateWaivedForSavedLocation = $inputs['delivery_location_is_saved_location'] ?? false;
 
-            if ($isDeliveryRate && ($deliveryRateWaivedForGarageSetting || $deliveryRateWaivedForCompanyLocation)) {
+            if ($isDeliveryRate && ($deliveryRateWaivedForGarageSetting || $deliveryRateWaivedForSavedLocation)) {
                 $value = 0;
                 $rateKey = str_starts_with($varName, 'common_rate_')
                     ? substr($varName, 12)
@@ -922,7 +922,7 @@ class VehiclePricingCalculationDefinition extends Model
                     $this->resolvedRateSources[$rateKey]['resolved_value'] = 0;
                     $this->resolvedRateSources[$rateKey]['waived_reason'] = $deliveryRateWaivedForGarageSetting
                         ? 'Garage-to-garage pricing is disabled.'
-                        : 'Delivery location is a company location.';
+                        : 'Delivery location is a saved location.';
                 }
             }
 

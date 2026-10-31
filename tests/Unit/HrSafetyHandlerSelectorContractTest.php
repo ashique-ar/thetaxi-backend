@@ -1,6 +1,6 @@
 <?php
 
-it('uses bounded tenant-scoped readable selectors for safety investigators and action owners', function () {
+it('uses bounded permission-gated selectors for active safety investigators and action owners', function () {
     $controller = file_get_contents(app_path('Http/Controllers/Api/Hr/SafetyController.php'));
     $routes = file_get_contents(base_path('routes/api.php'));
     $component = file_get_contents(base_path('../portal-thetaxi/src/app/modules/hr-relations/components/safety-detail/safety-detail.component.html'));

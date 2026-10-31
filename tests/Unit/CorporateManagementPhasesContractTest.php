@@ -2,7 +2,7 @@
 
 use Illuminate\Support\Facades\Artisan;
 
-it('keeps management analytics company scoped and separates distance purposes', function () {
+it('keeps management analytics scoped to the corporate account and separates distance purposes', function () {
     $source = file_get_contents(app_path('Services/CorporateManagementAnalyticsService.php'));
     expect($source)
         ->toContain("where('corporate_account_id', \$corporateId)")

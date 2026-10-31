@@ -50,7 +50,6 @@ class ServiceTypeController extends Controller
         if (! empty($data['service_type_id'])) {
             $serviceType = ServiceType::query()->findOrFail($data['service_type_id']);
             $this->pricingContextPolicy->assertServiceTypeIsWritable($serviceType);
-            $this->resolveScope($request, $serviceType);
         }
 
         return response()->json([
@@ -82,22 +81,22 @@ class ServiceTypeController extends Controller
 
     public function index(Request $request): AnonymousResourceCollection
     {
-        [$context, $ownerType, $ownerId] = $this->resolveScope($request);
+        $context = $this->resolveContext($request);
         $hasSearch = $request->filled('search');
         $perPage = (int) ($request->per_page ?? 15);
         $page = (int) ($request->get('page', 1));
 
-        $q = $this->buildScopedIndexQuery($request, $context, $ownerType, $ownerId);
+        $q = $this->buildContextIndexQuery($request, $context);
 
         $fallbackContext = (string) $request->input('fallback_context', '');
         if ($fallbackContext !== '' && !(clone $q)->exists()) {
-            [$fallbackContext, $fallbackOwnerType, $fallbackOwnerId] = $this->resolveFallbackScope($request);
-            $q = $this->buildScopedIndexQuery($request, $fallbackContext, $fallbackOwnerType, $fallbackOwnerId);
+            $fallbackContext = $this->resolveFallbackContext($request);
+            $q = $this->buildContextIndexQuery($request, $fallbackContext);
         }
 
         if (!$hasSearch) {
             $v = (int) Cache::get('ref.service-types.v', 0);
-            $cacheKey = "ref.service-types.v{$v}.ctx{$context}.ot{$ownerType}.oi{$ownerId}.p{$perPage}.pg{$page}";
+            $cacheKey = "ref.service-types.v{$v}.ctx{$context}.p{$perPage}.pg{$page}";
             $results = Cache::remember($cacheKey, 3600, fn () => $q->paginate($perPage));
             return ServiceTypeResource::collection($results);
         }
@@ -111,10 +110,8 @@ class ServiceTypeController extends Controller
         $tripMode = $data['trip_mode'] ?? 'fixed_route';
         unset($data['trip_mode']);
         $data['form_config'] = array_merge($data['form_config'] ?? [], ['trip_mode' => $tripMode]);
-        [$context, $ownerType, $ownerId] = $this->resolveScope($request);
-        $data['context'] = $data['context'] ?? $context;
-        $data['owner_type'] = $data['owner_type'] ?? $ownerType;
-        $data['owner_id'] = $data['owner_id'] ?? $ownerId;
+        $context = $this->resolveContext($request);
+        $data['context'] = $context;
         $data['slug'] = $data['slug'] ?? Str::slug($data['code']);
         $data['created_user_id'] = $request->user()->id;
         $svc = DB::transaction(function () use ($data, $request): ServiceType {
@@ -147,12 +144,10 @@ class ServiceTypeController extends Controller
     {
         $this->pricingContextPolicy->assertServiceTypeIsWritable($serviceType);
         $data = $request->validated();
-        [$context, $ownerType, $ownerId] = $this->resolveScope($request, $serviceType);
+        $context = $this->resolveContext($request, $serviceType);
         $data['code'] = strtolower(str_replace(' ', '_', $data['code'] ?? $serviceType->code));
         $duplicateCodeExists = ServiceType::query()
             ->where('context', $context)
-            ->where('owner_type', $ownerType)
-            ->where('owner_id', $ownerId)
             ->whereRaw('LOWER(REPLACE(code, ?, ?)) = ?', [' ', '_', $data['code']])
             ->where('id', '!=', $serviceType->id)
             ->exists();
@@ -162,9 +157,7 @@ class ServiceTypeController extends Controller
                 'message' => 'Service type code must be unique.',
             ], 422);
         }
-        $data['context'] = $data['context'] ?? $context;
-        $data['owner_type'] = $data['owner_type'] ?? $ownerType;
-        $data['owner_id'] = $data['owner_id'] ?? $ownerId;
+        $data['context'] = $context;
         $data['updated_user_id'] = $request->user()->id;
         $serviceType = DB::transaction(function () use ($serviceType, $data, $request): ServiceType {
             $locked = ServiceType::query()->whereKey($serviceType->id)->lockForUpdate()->firstOrFail();
@@ -272,14 +265,10 @@ class ServiceTypeController extends Controller
             'name' => ['nullable', 'string', 'max:255'],
             'slug' => ['nullable', 'string', 'max:255'],
             'context' => ['nullable', 'string', 'max:50'],
-            'owner_type' => ['nullable', 'string', 'max:100'],
-            'owner_id' => ['nullable', 'string', 'max:100'],
         ]);
 
-        [$context, $ownerType, $ownerId] = $this->resolveScope($request, $serviceType);
-        $payload['context'] = $payload['context'] ?? $context;
-        $payload['owner_type'] = $payload['owner_type'] ?? $ownerType;
-        $payload['owner_id'] = $payload['owner_id'] ?? $ownerId;
+        $context = $this->resolveContext($request, $serviceType);
+        $payload['context'] = $context;
 
         $cloned = $this->cloneService->clone($serviceType, $payload, $request->user()?->id);
 
@@ -290,26 +279,15 @@ class ServiceTypeController extends Controller
         ], 201);
     }
 
-    private function resolveScope(Request $request, ?ServiceType $serviceType = null): array
+    private function resolveContext(Request $request, ?ServiceType $serviceType = null): string
     {
         $context = (string) $request->input('context', $serviceType?->context ?? 'portal');
-        $ownerType = (string) $request->input('owner_type', $serviceType?->owner_type ?? '');
-        $ownerId = (string) $request->input('owner_id', $serviceType?->owner_id ?? '');
-
-        if ($context === 'corporate') {
-            return [$context, '', ''];
-        }
-
-        if ($ownerType === 'company') {
-            $ownerType = '';
-            $ownerId = '';
-        }
 
         if ($context !== 'all') {
             $context = $this->pricingContextPolicy->effectiveContext($context);
         }
 
-        return [$context, $ownerType, $ownerId];
+        return $context;
     }
 
     private function recordWorkflowRevision(ServiceType $serviceType, ?array $workflowConfig, ?string $actorUserId, string $changeType, string $status = 'active'): void
@@ -330,25 +308,19 @@ class ServiceTypeController extends Controller
         ]);
     }
 
-    private function resolveFallbackScope(Request $request): array
+    private function resolveFallbackContext(Request $request): string
     {
         $context = (string) $request->input('fallback_context', 'portal');
-        $ownerType = (string) $request->input('fallback_owner_type', '');
-        $ownerId = (string) $request->input('fallback_owner_id', '');
 
-        return [
-            $context === 'all' ? 'all' : $this->pricingContextPolicy->effectiveContext($context),
-            $ownerType,
-            $ownerId,
-        ];
+        return $context === 'all' ? 'all' : $this->pricingContextPolicy->effectiveContext($context);
     }
 
-    private function buildScopedIndexQuery(Request $request, string $context, string $ownerType, string $ownerId)
+    private function buildContextIndexQuery(Request $request, string $context)
     {
         $query = ServiceType::withInactive();
 
         if ($context !== 'all') {
-            $query->forContext($context, $ownerType, $ownerId);
+            $query->forContext($context);
         }
 
         if ($request->filled('search')) {

@@ -44,7 +44,7 @@ class CorporateDistancePolicyResolver
                     'source' => 'service_override',
                     'policy' => null,
                     'override' => $override,
-                    'error' => 'The enabled service distance policy has no effective policy for this company.',
+                    'error' => 'The enabled service distance policy has no effective policy for this Corporate account.',
                 ];
             }
 

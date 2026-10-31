@@ -10,7 +10,7 @@ final class TenantIndexDropper
     {
         $isUnique = ($index['unique'] ?? false) || ($index['type'] ?? null) === 'unique';
 
-        if ($isUnique && DB::getDriverName() === 'pgsql') {
+        if (DB::getDriverName() === 'pgsql') {
             $grammar = DB::connection()->getQueryGrammar();
             $isConstraint = DB::table('pg_constraint as c')
                 ->join('pg_class as r', 'r.oid', '=', 'c.conrelid')

@@ -190,8 +190,6 @@ class CorporateService
         $validIds = DB::table('service_types')
             ->whereIn('id', $serviceTypeIds)
             ->where('context', 'corporate')
-            ->where('owner_type', '')
-            ->where('owner_id', '')
             ->where('is_active', true)
             ->whereNull('deleted_at')
             ->pluck('id');

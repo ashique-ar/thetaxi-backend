@@ -50,8 +50,6 @@ class ServiceType extends BaseModel
         'code',
         'name',
         'context',
-        'owner_type',
-        'owner_id',
         'parent_service_type_id',
         'description',
         'type', // self_driven/self_drive or with_driver
@@ -95,8 +93,6 @@ class ServiceType extends BaseModel
         'frontend_category' => 'string',
         'category' => 'string',
         'context' => 'string',
-        'owner_type' => 'string',
-        'owner_id' => 'string',
         'form_config' => 'array',
         'workflow_config' => 'array',
     ];
@@ -194,12 +190,9 @@ class ServiceType extends BaseModel
         return $query->where('is_active', true)->whereNull('deleted_at');
     }
 
-    public function scopeForContext($query, string $context, string $ownerType = '', string $ownerId = '')
+    public function scopeForContext($query, string $context)
     {
-        return $query
-            ->where('context', $context)
-            ->where('owner_type', $ownerType)
-            ->where('owner_id', $ownerId);
+        return $query->where('context', $context);
     }
 
     public function scopePublicContext($query)

@@ -23,7 +23,7 @@ return new class extends Migration
                 if ($duplicates->isNotEmpty()) {
                     $ids = DB::table($tableName)->whereIn($keyColumn, $duplicates)->orderBy($keyColumn)->orderBy('id')
                         ->get([$keyColumn, 'id'])->map(fn ($row) => "{$row->{$keyColumn}}={$row->id}")->implode(', ');
-                    throw new RuntimeException("Sales portfolio policy {$keyColumn} values collide across locations. Reconcile the policy IDs before retrying: {$ids}");
+                    throw new RuntimeException("Sales portfolio policy {$keyColumn} values collide after removing former company partitions. Reconcile the policy IDs before retrying: {$ids}");
                 }
             }
 
@@ -41,7 +41,7 @@ return new class extends Migration
                 ->limit(20)->get(['earlier.id as earlier_id', 'later.id as later_id']);
             if ($overlaps->isNotEmpty()) {
                 $ids = $overlaps->map(fn ($row) => "{$row->earlier_id}/{$row->later_id}")->implode(', ');
-                throw new RuntimeException("Approved Sales portfolio status policies overlap across locations. Reconcile the policy IDs before retrying: {$ids}");
+                throw new RuntimeException("Approved Sales portfolio status policies overlap after removing former company partitions. Reconcile the policy IDs before retrying: {$ids}");
             }
 
             foreach (Schema::getForeignKeys($tableName) as $foreignKey) {

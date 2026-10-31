@@ -4419,7 +4419,7 @@ class BookingFlowService
             $lng >= -180 && $lng <= 180;
     }
 
-    private function matchesCompanyLocation(array $location, \App\Models\Company $company): bool
+    private function matchesSavedLocation(array $location, \App\Models\Company $company): bool
     {
         $latitude = $this->extractLatitude($location);
         $longitude = $this->extractLongitude($location);
@@ -4429,13 +4429,13 @@ class BookingFlowService
             && round($longitude, 5) === round((float) $company->longitude, 5);
     }
 
-    private function isConfiguredCompanyLocation(array $location): bool
+    private function isConfiguredSavedLocation(array $location): bool
     {
         $locationId = $location['location_id'] ?? null;
         return Company::query()->where('is_active', true)
             ->when($locationId, fn ($query) => $query->whereKey($locationId))
             ->get(['id', 'latitude', 'longitude'])
-            ->contains(fn (Company $company): bool => $this->matchesCompanyLocation($location, $company));
+            ->contains(fn (Company $company): bool => $this->matchesSavedLocation($location, $company));
     }
 
     /**
@@ -5503,7 +5503,7 @@ class BookingFlowService
         $deliveryLocation = $isWithDriver && $this->isValidLocationArray($dropoffLocation)
             ? $dropoffLocation
             : ($params['pickup_location'] ?? []);
-        $inputs['delivery_location_is_company_location'] = $this->isConfiguredCompanyLocation(
+        $inputs['delivery_location_is_saved_location'] = $this->isConfiguredSavedLocation(
             $this->normalizeLocationInput($deliveryLocation)
         );
         $pickupLocationForWaiver = $this->normalizeLocationInput($params['pickup_location'] ?? []);
@@ -5511,9 +5511,9 @@ class BookingFlowService
         if (!$this->isValidLocationArray($dropoffLocationForWaiver)) {
             $dropoffLocationForWaiver = $pickupLocationForWaiver;
         }
-        $inputs['pickup_and_dropoff_at_company_location'] = $this->isConfiguredCompanyLocation(
+        $inputs['pickup_and_dropoff_at_saved_location'] = $this->isConfiguredSavedLocation(
             $pickupLocationForWaiver
-        ) && $this->isConfiguredCompanyLocation($dropoffLocationForWaiver);
+        ) && $this->isConfiguredSavedLocation($dropoffLocationForWaiver);
 
         if ($serviceType && $serviceType->minimum_km > 0) {
             $minimumKm = (float) $serviceType->minimum_km;
@@ -7873,7 +7873,7 @@ class BookingFlowService
     /**
      * Get saved locations for booking dropdowns
      */
-    public function getCompanyLocations(): array
+    public function getSavedLocations(): array
     {
         // Only locations with valid address and coordinates can be selected.
         $companies = Company::where('is_active', true)
@@ -7893,7 +7893,7 @@ class BookingFlowService
                 'address' => $company->address,
                 'latitude' => (float) $company->latitude,
                 'longitude' => (float) $company->longitude,
-                'type' => 'company_location'
+                'type' => 'saved_location'
             ];
         }
 
@@ -8687,6 +8687,7 @@ class BookingFlowService
                 'to_time' => (string) ($item->to_time ?? ''),
                 'pickup_location' => [
                     'address' => $item->pickup_location['address'] ?? '',
+                    'location_id' => $item->pickup_location['location_id'] ?? null,
                     'latitude' => $item->pickup_latitude ?? ($item->pickup_location['latitude'] ?? null),
                     'longitude' => $item->pickup_longitude ?? ($item->pickup_location['longitude'] ?? null),
                     'place_id' => $item->pickup_location['place_id'] ?? null,
@@ -8696,6 +8697,7 @@ class BookingFlowService
                 ],
                 'dropoff_location' => $item->dropoff_location ? [
                     'address' => $item->dropoff_location['address'] ?? '',
+                    'location_id' => $item->dropoff_location['location_id'] ?? null,
                     'latitude' => $item->dropoff_latitude ?? ($item->dropoff_location['latitude'] ?? null),
                     'longitude' => $item->dropoff_longitude ?? ($item->dropoff_location['longitude'] ?? null),
                     'place_id' => $item->dropoff_location['place_id'] ?? null,
@@ -8852,6 +8854,7 @@ class BookingFlowService
                 'to_time' => $booking->to_time ?? null,
                 'pickup_location' => [
                     'address' => $booking->pickup_location['address'] ?? '',
+                    'location_id' => $booking->pickup_location['location_id'] ?? null,
                     'latitude' => $booking->pickup_latitude ?? ($booking->pickup_location['latitude'] ?? null),
                     'longitude' => $booking->pickup_longitude ?? ($booking->pickup_location['longitude'] ?? null),
                     'place_id' => $booking->pickup_location['place_id'] ?? null,
@@ -8861,6 +8864,7 @@ class BookingFlowService
                 ],
                 'dropoff_location' => $booking->dropoff_location ? [
                     'address' => $booking->dropoff_location['address'] ?? '',
+                    'location_id' => $booking->dropoff_location['location_id'] ?? null,
                     'latitude' => $booking->dropoff_latitude ?? ($booking->dropoff_location['latitude'] ?? null),
                     'longitude' => $booking->dropoff_longitude ?? ($booking->dropoff_location['longitude'] ?? null),
                     'place_id' => $booking->dropoff_location['place_id'] ?? null,
@@ -10756,12 +10760,14 @@ class BookingFlowService
             'to_time' => property_exists($booking, 'to_time') ? (string) $booking->to_time : null,
             'pickup_location' => [
                 'address' => $booking->pickup_location['address'] ?? '',
+                'location_id' => $booking->pickup_location['location_id'] ?? null,
                 'latitude' => $booking->pickup_location['latitude'] ?? null,
                 'longitude' => $booking->pickup_location['longitude'] ?? null,
                 'place_id' => $booking->pickup_location['place_id'] ?? null,
             ],
             'dropoff_location' => $booking->dropoff_location ? [
                 'address' => $booking->dropoff_location['address'] ?? '',
+                'location_id' => $booking->dropoff_location['location_id'] ?? null,
                 'latitude' => $booking->dropoff_location['latitude'] ?? null,
                 'longitude' => $booking->dropoff_location['longitude'] ?? null,
                 'place_id' => $booking->dropoff_location['place_id'] ?? null,

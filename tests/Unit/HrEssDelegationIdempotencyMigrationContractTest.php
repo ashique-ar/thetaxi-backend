@@ -12,7 +12,9 @@ it('preserves historical delegation keys and enforces installation-wide idempote
         ->toContain("dropColumn(['idempotency_key', 'request_payload_checksum'])");
     expect($cleanup)->toContain("dropColumn('company_id')");
     expect($global)->toContain("'hr_approval_delegations' => [['idempotency_key']]")
-        ->toContain('Cannot enforce installation-wide idempotency');
+        ->toContain('Cannot enforce installation-wide idempotency')
+        ->toContain("array_unique(['id', ...\$columns])")
+        ->toContain('json_encode($details, JSON_THROW_ON_ERROR)');
 });
 
 it('recovers concurrent delegation idempotency collisions as replay or conflict', function () {

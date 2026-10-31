@@ -1959,7 +1959,8 @@ class AssignmentController extends Controller
                             'fresh' => true,
                         ];
                     }
-                    if ($outgoingPhase === 'in_progress' && (!$handoff || !$handoff['fresh'])) {
+                    if (in_array($request->swap_type, ['driver', 'both'], true)
+                        && $outgoingPhase === 'in_progress' && (!$handoff || !$handoff['fresh'])) {
                         throw \Illuminate\Validation\ValidationException::withMessages([
                             'handoff_location' => 'The current driver location is missing or stale. Confirm the passenger handoff coordinates before swapping resources.',
                         ]);

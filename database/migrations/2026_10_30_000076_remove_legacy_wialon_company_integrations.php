@@ -21,12 +21,19 @@ return new class extends Migration
 
         $settings = DB::table('wialon_installation_settings')->where('id', 'installation')->first();
         $source = $settings ?: $legacyRows->first();
-        foreach ($legacyRows as $row) {
-            if (decrypt($row->token) !== decrypt($source->token)
-                || $row->base_url !== $source->base_url
-                || (bool) $row->enabled !== (bool) $source->enabled) {
-                throw new RuntimeException('Wialon company configurations have different credentials, endpoints, or enabled states. Reconcile them into the installation settings before retrying.');
-            }
+        $conflicts = $legacyRows->filter(fn (object $row): bool =>
+            decrypt($row->token) !== decrypt($source->token)
+            || $row->base_url !== $source->base_url
+            || (bool) $row->enabled !== (bool) $source->enabled
+        )->map(fn (object $row): array => [
+            'id' => $row->id,
+            'company_id' => $row->company_id,
+            'base_url' => $row->base_url,
+            'enabled' => (bool) $row->enabled,
+            'token_fingerprint' => substr(hash('sha256', decrypt($row->token)), 0, 12),
+        ])->values();
+        if ($conflicts->isNotEmpty()) {
+            throw new RuntimeException('Legacy Wialon integrations differ from the installation settings; reconcile these rows before retrying: '.json_encode($conflicts, JSON_THROW_ON_ERROR));
         }
 
         if (! $settings) {

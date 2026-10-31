@@ -28,9 +28,11 @@ class BookingFlowRequest extends FormRequest
 
             // Locations (same as calculate)
             'pickup_location' => 'required|array',
+            'pickup_location.location_id' => 'nullable|uuid|exists:companies,id',
             'pickup_location.latitude' => 'required|numeric',
             'pickup_location.longitude' => 'required|numeric',
             'dropoff_location' => 'required|array',
+            'dropoff_location.location_id' => 'nullable|uuid|exists:companies,id',
             'dropoff_location.latitude' => 'required|numeric',
             'dropoff_location.longitude' => 'required|numeric',
 

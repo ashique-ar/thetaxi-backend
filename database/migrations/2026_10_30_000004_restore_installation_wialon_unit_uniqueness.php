@@ -12,7 +12,7 @@ return new class extends Migration
         $duplicates = DB::table('vehicles')->select('wialon_unit_id')->whereNotNull('wialon_unit_id')
             ->groupBy('wialon_unit_id')->havingRaw('COUNT(*) > 1')->get();
         if ($duplicates->isNotEmpty()) {
-            throw new RuntimeException('Resolve duplicate Wialon unit links across locations before applying installation-wide fleet uniqueness.');
+                throw new RuntimeException('Resolve duplicate Wialon unit links across former company partitions before applying installation-wide fleet uniqueness.');
         }
 
         if (Schema::hasIndex('vehicles', 'vehicles_company_wialon_unit_unique', 'unique')) {

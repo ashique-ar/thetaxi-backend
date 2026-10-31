@@ -418,21 +418,14 @@ Route::middleware(['auth:api'])->group(function () {
     Route::get('booking-flow/service-types', function (Request $request) {
         $context = app(PricingContextPolicyService::class)
             ->effectiveContext((string) $request->input('context', 'portal'));
-        $ownerType = (string) $request->input('owner_type', '');
-        $ownerId = (string) $request->input('owner_id', '');
         $fallbackContext = (string) $request->input('fallback_context', '');
         $perPage = (int) ($request->input('per_page', 100));
-
-        if ($context === 'corporate') {
-            $ownerType = '';
-            $ownerId = '';
-        }
 
         $query = ServiceType::query()
             ->where('is_active', true);
 
         if ($context !== 'all') {
-            $query->forContext($context, $ownerType, $ownerId);
+            $query->forContext($context);
         }
 
         if ($request->filled('search')) {
@@ -444,11 +437,9 @@ Route::middleware(['auth:api'])->group(function () {
         }
 
         if ($fallbackContext !== '' && !(clone $query)->exists()) {
-            $fallbackOwnerType = (string) $request->input('fallback_owner_type', '');
-            $fallbackOwnerId = (string) $request->input('fallback_owner_id', '');
             $query = ServiceType::query()
                 ->where('is_active', true)
-                ->forContext($fallbackContext, $fallbackOwnerType, $fallbackOwnerId);
+                ->forContext($fallbackContext);
         }
 
         if ($context === 'corporate' && $request->filled('corporate_account_id')) {
@@ -2426,8 +2417,8 @@ Route::middleware(['auth:api'])->group(function () {
                 ->middleware('permission:bookings.create');
             Route::post('corporates/{corporateId}/employees', [BookingFlowController::class, 'createCorporateEmployee'])
                 ->middleware('permission:bookings.create');
-            // Company/System Routes
-            Route::get('company/locations', [BookingFlowController::class, 'getCompanyLocations'])
+            // Saved location search for booking forms
+            Route::get('locations', [BookingFlowController::class, 'getSavedLocations'])
                 ->middleware('permission:bookings.view');
 
             // Route Calculation for Multiple Locations

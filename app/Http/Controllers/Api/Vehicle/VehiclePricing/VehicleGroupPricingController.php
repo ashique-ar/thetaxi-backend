@@ -126,7 +126,6 @@ class VehicleGroupPricingController extends Controller
         $serviceTypeId = $request->input('service_type_id');
         $vehicleGroupId = $request->input('vehicle_group_id');
         $context = (string) $request->input('context', 'public');
-        $ownerType = (string) $request->input('owner_type', ($context === 'corporate' ? 'corporate' : ''));
         $ownerId = (string) $request->input('owner_id', '');
         $includeInactive = $request->boolean('include_inactive', false);
         $page = $request->input('page', 1);
@@ -161,22 +160,20 @@ class VehicleGroupPricingController extends Controller
 
         try {
             // Get all service types with optimized query (no pagination for service types)
-            if ($context === 'corporate' && $ownerType === 'corporate' && $ownerId !== '') {
+            if ($context === 'corporate' && $ownerId !== '') {
                 $serviceTypes = Corporate::findOrFail($ownerId)
                     ->serviceTypes()
                     ->when($serviceTypeId, fn($q) => $q->where('service_types.id', $serviceTypeId))
                     ->when(!$includeInactive, fn($q) => $q->where('service_types.is_active', true))
                     ->where('service_types.context', 'corporate')
-                    ->where('service_types.owner_type', '')
-                    ->where('service_types.owner_id', '')
-                    ->select(['service_types.id', 'service_types.name', 'service_types.description', 'service_types.code', 'service_types.context', 'service_types.owner_type', 'service_types.owner_id', 'service_types.is_active'])
+                    ->select(['service_types.id', 'service_types.name', 'service_types.description', 'service_types.code', 'service_types.context', 'service_types.is_active'])
                     ->orderBy('service_types.priority')
                     ->get();
             } else {
-                $serviceTypes = ServiceType::forContext($context, '', '')
+                $serviceTypes = ServiceType::forContext($context)
                     ->when($serviceTypeId, fn($q) => $q->where('id', $serviceTypeId))
                     ->when(!$includeInactive, fn($q) => $q->where('is_active', true))
-                    ->select(['id', 'name', 'description', 'code', 'context', 'owner_type', 'owner_id', 'is_active'])
+                    ->select(['id', 'name', 'description', 'code', 'context', 'is_active'])
                     ->orderBy('priority')
                     ->get();
             }

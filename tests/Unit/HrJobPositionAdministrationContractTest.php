@@ -52,6 +52,8 @@ it('removes tenant ownership from organization and position records without inve
         ->toContain('cannot regain tenant company scope');
     expect($historyMigration)->toContain("->date('effective_from')->nullable()");
     expect($uniqueMigration)->toContain("groupBy('position_number')")
-        ->toContain('Reconcile duplicate installation-wide HR position numbers')
+        ->toContain("whereIn('position_number', \$duplicates)")
+        ->toContain("get(['id', 'position_number', 'title', 'organization_unit_id', 'effective_from', 'effective_until'])")
+        ->toContain('Reconcile duplicate installation-wide HR positions')
         ->toContain("unique('position_number', 'hr_positions_installation_number_unique')");
 });

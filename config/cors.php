@@ -46,7 +46,6 @@ return [
         'X-Requested-With',
         'Accept',
         'X-XSRF-TOKEN',
-        'X-Company-Context',
         'user-location',
         'X-Req-Domain',
         'X-Active-Context-Type',

@@ -16,7 +16,10 @@ return new class extends Migration
         $duplicates = DB::table('hr_positions')->select('position_number')->groupBy('position_number')
             ->havingRaw('COUNT(*) > 1')->limit(20)->pluck('position_number');
         if ($duplicates->isNotEmpty()) {
-            throw new RuntimeException('Reconcile duplicate installation-wide HR position numbers before migration: '.implode(', ', $duplicates->all()));
+            $details = DB::table('hr_positions')->whereIn('position_number', $duplicates)
+                ->orderBy('position_number')->orderBy('id')
+                ->get(['id', 'position_number', 'title', 'organization_unit_id', 'effective_from', 'effective_until']);
+            throw new RuntimeException('Reconcile duplicate installation-wide HR positions before migration: '.json_encode($details, JSON_THROW_ON_ERROR));
         }
 
         $hasGlobalUnique = collect(Schema::getIndexes('hr_positions'))->contains(

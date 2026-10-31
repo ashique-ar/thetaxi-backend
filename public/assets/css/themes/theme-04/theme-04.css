@@ -388,7 +388,7 @@ body.theme-theme-04 .t4-hero {
     background: var(--t4-surface-soft);
 }
 
-body.theme-theme-04 .t4-hero::after {
+body.theme-theme-04 .t4-hero__media::after {
     position: absolute;
     inset: 0;
     z-index: 1;

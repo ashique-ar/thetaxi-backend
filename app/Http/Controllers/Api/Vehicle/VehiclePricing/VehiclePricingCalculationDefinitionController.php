@@ -860,23 +860,20 @@ class VehiclePricingCalculationDefinitionController extends Controller
     {
         try {
             $context = (string) $request->input('context', 'public');
-            $ownerType = (string) $request->input('owner_type', ($context === 'corporate' ? 'corporate' : ''));
             $ownerId = (string) $request->input('owner_id', '');
 
-            if ($context === 'corporate' && $ownerType === 'corporate' && $ownerId !== '') {
+            if ($context === 'corporate' && $ownerId !== '') {
                 $serviceTypes = Corporate::findOrFail($ownerId)
                     ->serviceTypes()
                     ->where('service_types.context', 'corporate')
-                    ->where('service_types.owner_type', '')
-                    ->where('service_types.owner_id', '')
                     ->where('service_types.is_active', true)
-                    ->select('service_types.id', 'service_types.name', 'service_types.description', 'service_types.code', 'service_types.context', 'service_types.owner_type', 'service_types.owner_id')
+                    ->select('service_types.id', 'service_types.name', 'service_types.description', 'service_types.code', 'service_types.context')
                     ->orderBy('service_types.name')
                     ->get();
             } else {
-                $serviceTypes = ServiceType::forContext($context, '', '')
+                $serviceTypes = ServiceType::forContext($context)
                     ->where('is_active', true)
-                    ->select('id', 'name', 'description', 'code', 'context', 'owner_type', 'owner_id')
+                    ->select('id', 'name', 'description', 'code', 'context')
                     ->orderBy('name')
                     ->get();
             }
@@ -896,7 +893,7 @@ class VehiclePricingCalculationDefinitionController extends Controller
     {
         $context = (string) $request->input('context', 'public');
 
-        return ServiceType::forContext($context, '', '')
+        return ServiceType::forContext($context)
             ->whereKey($serviceTypeId)
             ->where('is_active', true)
             ->exists();

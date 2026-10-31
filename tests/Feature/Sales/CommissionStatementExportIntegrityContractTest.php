@@ -22,7 +22,7 @@ it('uses a readable Staff code in statement exports and omits raw record identif
         ->and($statement)->toContain('function staff(): BelongsTo');
 });
 
-it('checks statement company scope before streaming an export', function () {
+it('checks Staff and profile access before streaming a statement export', function () {
     $controller = file_get_contents(app_path('Http/Controllers/Api/Sales/CommissionStatementController.php'));
     $routes = file_get_contents(base_path('routes/api.php'));
     $downloadStart = strpos($controller, 'public function downloadExport');

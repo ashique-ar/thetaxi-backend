@@ -1,7 +1,9 @@
 <?php
 
 it('drops tenant indexes through the PostgreSQL constraint-aware helper', function () {
+    $dropper = file_get_contents(database_path('migrations/Support/TenantIndexDropper.php'));
     $migrations = [
+        '2026_10_30_000007_make_hr_employee_numbering_installation_wide.php',
         '2026_10_30_000010_remove_sms_tenant_company_ids.php',
         '2026_10_30_000011_remove_booking_extension_tenant_company.php',
         '2026_10_30_000012_remove_booking_tenant_company.php',
@@ -12,9 +14,16 @@ it('drops tenant indexes through the PostgreSQL constraint-aware helper', functi
         '2026_10_30_000021_remove_hr_analytics_workforce_tenant_company.php',
         '2026_10_30_000022_remove_work_calendar_tenant_company.php',
         '2026_10_30_000023_remove_custom_field_tenant_company.php',
+        '2026_10_30_000024_remove_attendance_tenant_company.php',
         '2026_10_30_000025_remove_hr_statutory_policy_tenant_company.php',
         '2026_10_30_000027_remove_medical_record_tenant_company.php',
     ];
+
+    expect($dropper)
+        ->toContain("if (DB::getDriverName() === 'pgsql')")
+        ->toContain("where('c.contype', 'u')")
+        ->toContain("DROP CONSTRAINT ")
+        ->not->toContain("if (\$isUnique && DB::getDriverName() === 'pgsql')");
 
     foreach ($migrations as $migrationFile) {
         $source = file_get_contents(database_path('migrations/'.$migrationFile));

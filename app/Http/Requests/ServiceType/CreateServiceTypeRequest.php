@@ -9,36 +9,19 @@ use Illuminate\Validation\Rule;
 
 class CreateServiceTypeRequest extends FormRequest
 {
-    protected function prepareForValidation(): void
-    {
-        if ($this->input('context') === 'corporate') {
-            $this->merge([
-                'owner_type' => '',
-                'owner_id' => '',
-            ]);
-        }
-    }
-
     public function rules()
     {
         $context = (string) $this->input('context', 'portal');
-        $ownerType = (string) $this->input('owner_type', '');
-        $ownerId = (string) $this->input('owner_id', '');
 
         return [
             'code' => [
                 'required',
                 'string',
                 'max:50',
-                Rule::unique('service_types', 'code')->where(fn ($query) => $query
-                    ->where('context', $context)
-                    ->where('owner_type', $ownerType)
-                    ->where('owner_id', $ownerId)),
+                Rule::unique('service_types', 'code')->where(fn ($query) => $query->where('context', $context)),
             ],
             'name' => ['required', 'string', 'max:255'],
             'context' => ['sometimes', 'required', 'string', 'max:50'],
-            'owner_type' => ['sometimes', 'nullable', 'string', 'max:100'],
-            'owner_id' => ['sometimes', 'nullable', 'string', 'max:100'],
             'description' => ['nullable', 'string'],
             'type' => ['nullable', 'string'],
             'trip_mode' => ['sometimes', 'required', 'string', 'in:fixed_route,open_package'],
@@ -46,10 +29,7 @@ class CreateServiceTypeRequest extends FormRequest
                 'nullable',
                 'string',
                 'max:255',
-                Rule::unique('service_types', 'slug')->where(fn ($query) => $query
-                    ->where('context', $context)
-                    ->where('owner_type', $ownerType)
-                    ->where('owner_id', $ownerId)),
+                Rule::unique('service_types', 'slug')->where(fn ($query) => $query->where('context', $context)),
             ],
             'thumbnail' => ['nullable', 'string', 'max:255'],
             'pricing_mode' => ['nullable', 'string', 'in:trip,day,hourly'],

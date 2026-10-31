@@ -647,11 +647,6 @@ class DynamicServiceConfigurationService
         }
 
         $parentServiceType = $serviceType->parentServiceType;
-        if (!$parentServiceType && $serviceType->owner_type) {
-            $parentServiceType = ServiceType::publicContext()
-                ->where('code', $serviceType->code)
-                ->first();
-        }
         $revision = $serviceType->updated_at?->format('YmdHisv') ?? 'unversioned';
         $parentRevision = $parentServiceType?->updated_at?->format('YmdHisv') ?? 'none';
         $cacheKey = "service_form_config_public_v7_{$serviceCode}_{$serviceType->id}_{$revision}_{$parentRevision}";

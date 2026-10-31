@@ -84,7 +84,7 @@ class VehiclePricingSlabDefinitionController extends Controller
         }
 
         $serviceTypes = ServiceType::withInactive()
-            ->forContext($context, '', '')
+            ->forContext($context)
             ->where('is_active', true)
             ->select([
                 'id',
@@ -92,8 +92,6 @@ class VehiclePricingSlabDefinitionController extends Controller
                 'description',
                 'code',
                 'context',
-                'owner_type',
-                'owner_id',
                 'is_active',
             ])
             ->orderBy('priority')

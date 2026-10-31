@@ -200,8 +200,6 @@ class CorporateController extends Controller
                 Rule::exists('service_types', 'id')->where(
                     fn ($query) => $query
                         ->where('context', 'corporate')
-                        ->where('owner_type', '')
-                        ->where('owner_id', '')
                         ->where('is_active', true)
                         ->whereNull('deleted_at')
                 ),

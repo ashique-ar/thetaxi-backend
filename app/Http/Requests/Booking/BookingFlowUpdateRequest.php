@@ -27,9 +27,11 @@ class BookingFlowUpdateRequest extends FormRequest
             'to_time' => 'sometimes|nullable|string',
 
             'pickup_location' => 'sometimes|array',
+            'pickup_location.location_id' => 'nullable|uuid|exists:companies,id',
             'pickup_location.latitude' => 'required_with:pickup_location|numeric',
             'pickup_location.longitude' => 'required_with:pickup_location|numeric',
             'dropoff_location' => 'sometimes|array',
+            'dropoff_location.location_id' => 'nullable|uuid|exists:companies,id',
             'dropoff_location.latitude' => 'required_with:dropoff_location|numeric',
             'dropoff_location.longitude' => 'required_with:dropoff_location|numeric',
 

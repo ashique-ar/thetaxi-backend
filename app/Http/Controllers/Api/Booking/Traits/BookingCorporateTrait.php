@@ -515,20 +515,20 @@ trait BookingCorporateTrait
         ], 201);
     }
 
-    public function getCompanyLocations(): JsonResponse
+    public function getSavedLocations(): JsonResponse
     {
         try {
-            $locations = $this->bookingFlowService->getCompanyLocations();
+            $locations = $this->bookingFlowService->getSavedLocations();
 
             return response()->json([
                 'status' => 'success',
                 'data' => $locations
             ]);
         } catch (\Exception $e) {
-            Log::error('Error getting company locations: ' . $e->getMessage());
+            Log::error('Error getting saved locations: ' . $e->getMessage());
             return response()->json([
                 'status' => 'error',
-                'message' => 'Failed to get company locations',
+                'message' => 'Failed to get saved locations',
                 'error' => $e->getMessage()
             ], 500);
         }

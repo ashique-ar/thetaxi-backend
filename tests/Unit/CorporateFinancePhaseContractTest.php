@@ -1,6 +1,6 @@
 <?php
 
-it('keeps corporate finance routes company scoped and payment permission protected', function () {
+it('keeps corporate finance routes scoped to the corporate account and payment permission protected', function () {
     $routes=file_get_contents(base_path('routes/api.php'));
     $controller=file_get_contents(app_path('Http/Controllers/Api/Corporate/CorporateFinanceController.php'));
     expect($routes)->toContain("Route::get('finance/account'")->toContain("Route::get('finance/settlements/{settlement}'")->toContain("Route::get('finance/settlements/{settlement}/invoice'")->toContain("Route::get('finance/settlements/{settlement}/statement'")

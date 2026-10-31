@@ -36,7 +36,7 @@ return new class extends Migration
 
             if ($overlaps->isNotEmpty()) {
                 $details = $overlaps->map(fn ($row) => "{$row->earlier_id}/{$row->later_id}")->implode(', ');
-                throw new RuntimeException("Approved Sales alert policies overlap across locations. Reconcile the policy IDs before retrying: {$details}");
+                throw new RuntimeException("Approved Sales alert policies overlap after removing former company partitions. Reconcile the policy IDs before retrying: {$details}");
             }
 
             foreach (Schema::getForeignKeys($tableName) as $foreignKey) {

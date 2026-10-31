@@ -32,7 +32,16 @@ return new class extends Migration
                 }
                 $duplicates = $query->select($columns)->groupBy(...$columns)->havingRaw('COUNT(*) > 1')->limit(20)->get();
                 if ($duplicates->isNotEmpty()) {
-                    throw new RuntimeException("Cannot enforce installation-wide idempotency on {$tableName} (".implode(', ', $columns).'); reconcile duplicate rows first: '.json_encode($duplicates));
+                    $details = $duplicates->flatMap(function (object $duplicate) use ($tableName, $columns) {
+                        return DB::table($tableName)
+                            ->where(function ($query) use ($columns, $duplicate): void {
+                                foreach ($columns as $column) {
+                                    $query->where($column, $duplicate->{$column});
+                                }
+                            })
+                            ->orderBy('id')->get(array_values(array_unique(['id', ...$columns])));
+                    })->values();
+                    throw new RuntimeException("Cannot enforce installation-wide idempotency on {$tableName} (".implode(', ', $columns).'); reconcile duplicate rows first: '.json_encode($details, JSON_THROW_ON_ERROR));
                 }
             }
         }

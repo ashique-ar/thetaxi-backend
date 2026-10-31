@@ -14,7 +14,7 @@ it('does not return a saved location without map coordinates', function () {
 
     $service = (new ReflectionClass(BookingFlowService::class))->newInstanceWithoutConstructor();
 
-    expect($service->getCompanyLocations())->toBe([])->and($company->is_active)->toBeTrue();
+    expect($service->getSavedLocations())->toBe([])->and($company->is_active)->toBeTrue();
 });
 
 it('returns mapped saved locations without requiring a default location', function () {
@@ -31,9 +31,20 @@ it('returns mapped saved locations without requiring a default location', functi
     ]);
 
     $service = (new ReflectionClass(BookingFlowService::class))->newInstanceWithoutConstructor();
-    $locations = $service->getCompanyLocations();
+    $locations = $service->getSavedLocations();
 
     expect($locations)->toHaveCount(1)
         ->and($locations[0]['name'])->toBe('Mapped location')
         ->and($locations[0])->not->toHaveKey('is_default');
+});
+
+it('preserves saved location IDs in booking detail responses for edit hydration', function () {
+    $source = file_get_contents(app_path('Services/BookingFlowService.php'));
+    $start = strpos($source, 'public function getBookingDetails(');
+    $end = strpos($source, 'public function getBookingTrends(', $start);
+    $method = substr($source, $start, $end - $start);
+
+    expect($method)
+        ->toContain("'location_id' => \$booking->pickup_location['location_id'] ?? null")
+        ->toContain("'location_id' => \$booking->dropoff_location['location_id'] ?? null");
 });
