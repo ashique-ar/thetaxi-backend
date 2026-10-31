@@ -12,7 +12,8 @@ it('exposes selectable operating locations without a default-tenant field', func
 it('does not change location CRUD based on a default-company marker', function () {
     $controller = file_get_contents(app_path('Http/Controllers/Api/CompanyController.php'));
 
-    expect($controller)->not->toContain('is_default', 'default_company_id', 'active_default_guard');
+    expect($controller)->not->toContain('is_default', 'default_company_id', 'active_default_guard')
+        ->and($controller)->toContain("only(['index', 'show', 'options', 'option', 'stats'])");
 });
 
 it('labels saved-location permissions as locations while retaining their stable keys', function () {
