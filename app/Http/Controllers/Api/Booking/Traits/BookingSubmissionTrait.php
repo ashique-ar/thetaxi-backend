@@ -31,6 +31,7 @@ trait BookingSubmissionTrait
         $dropoffRequired = (bool) ($requirements['dropoff_location_required'] ?? true);
 
         $rules = [
+            ...$this->bookingSavedStopReferenceRules(),
             'customer_id' => 'nullable|string',
             'is_corporate_booking' => 'sometimes|boolean',
             'corporate_account_id' => 'nullable|uuid|exists:corporates,id',
@@ -147,6 +148,7 @@ trait BookingSubmissionTrait
         $dropoffRequired = (bool) ($requirements['dropoff_location_required'] ?? true);
 
         $rules = [
+            ...$this->bookingSavedStopReferenceRules(),
             'customer_id' => 'nullable|string',
             'is_corporate_booking' => 'sometimes|boolean',
             'corporate_account_id' => 'nullable|uuid|exists:corporates,id',
@@ -332,10 +334,9 @@ trait BookingSubmissionTrait
                 'dropoff_location.latitude' => 'required_with:dropoff_location|numeric',
                 'dropoff_location.longitude' => 'required_with:dropoff_location|numeric',
                 'additional_pickup_locations' => 'sometimes|array',
-                'additional_pickup_locations.*.location_id' => 'nullable|uuid|exists:companies,id',
                 'additional_dropoff_locations' => 'sometimes|array',
-                'additional_dropoff_locations.*.location_id' => 'nullable|uuid|exists:companies,id',
                 'ordered_additional_stops' => 'sometimes|array',
+                ...$this->bookingSavedStopReferenceRules(),
                 'selected_addons' => 'sometimes|array',
                 'selected_addons.*.id' => 'required|string',
                 'selected_addons.*.quantity' => 'sometimes|integer|min:1',
@@ -728,6 +729,28 @@ trait BookingSubmissionTrait
                 'message' => $e->getMessage()
             ], 500);
         }
+    }
+
+    private function bookingSavedStopReferenceRules(): array
+    {
+        return [
+            'additional_pickup_locations.*.location_id' => 'nullable|uuid|exists:companies,id',
+            'additional_dropoff_locations.*.location_id' => 'nullable|uuid|exists:companies,id',
+            'ordered_additional_stops.*.location_id' => 'nullable|uuid|exists:companies,id',
+            'ordered_additional_stops.*.location.location_id' => 'nullable|uuid|exists:companies,id',
+            'booking_items.*.additional_pickup_locations.*.location_id' => 'nullable|uuid|exists:companies,id',
+            'booking_items.*.additional_dropoff_locations.*.location_id' => 'nullable|uuid|exists:companies,id',
+            'booking_items.*.ordered_additional_stops.*.location_id' => 'nullable|uuid|exists:companies,id',
+            'booking_items.*.ordered_additional_stops.*.location.location_id' => 'nullable|uuid|exists:companies,id',
+            'metadata.multi_pickup_locations.*.location_id' => 'nullable|uuid|exists:companies,id',
+            'metadata.multi_dropoff_locations.*.location_id' => 'nullable|uuid|exists:companies,id',
+            'metadata.multi_route_stop_order.*.location_id' => 'nullable|uuid|exists:companies,id',
+            'metadata.multi_route_stop_order.*.location.location_id' => 'nullable|uuid|exists:companies,id',
+            'booking_items.*.metadata.multi_pickup_locations.*.location_id' => 'nullable|uuid|exists:companies,id',
+            'booking_items.*.metadata.multi_dropoff_locations.*.location_id' => 'nullable|uuid|exists:companies,id',
+            'booking_items.*.metadata.multi_route_stop_order.*.location_id' => 'nullable|uuid|exists:companies,id',
+            'booking_items.*.metadata.multi_route_stop_order.*.location.location_id' => 'nullable|uuid|exists:companies,id',
+        ];
     }
 
     private function bookingEmployeeIdRules(): array
