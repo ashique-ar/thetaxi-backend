@@ -10,6 +10,8 @@ it('preserves inquiry scope history while removing its obsolete company field', 
         ->toContain('TenantIndexDropper::drop($tableName, $index)')
         ->toContain('Schema::rename($oldTable, $historyTable)')
         ->toContain("'2026_10_30_000052_drop_inquiry_company_scope_history'")
-        ->toContain('Restore inquiry_company_scope_events from backup')
+        ->toContain('Log::warning(')
+        ->toContain('continuing installation-wide cleanup')
+        ->not->toContain('Restore inquiry_company_scope_events from backup, then retry')
         ->not->toContain('Schema::drop(');
 });

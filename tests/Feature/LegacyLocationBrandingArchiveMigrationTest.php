@@ -17,7 +17,35 @@ beforeEach(function () {
         $table->uuid('id')->primary();
         $table->string('domain')->nullable();
         $table->string('website')->nullable();
+        $table->softDeletes();
     });
+});
+
+it('keeps complete branding evidence for deleted locations after the obsolete columns are dropped', function () {
+    Schema::table('companies', function (Blueprint $table): void {
+        $table->string('brand_name')->nullable();
+        $table->string('logo')->nullable();
+        $table->index('domain');
+    });
+    $values = ['brand_name' => 'Legacy transport', 'domain' => 'old.example', 'logo' => 'logos/legacy.svg'];
+    DB::table('companies')->insert($values + [
+        'id' => 'deleted-location', 'website' => 'https://location.example', 'deleted_at' => now(),
+    ]);
+
+    $archive = require database_path('migrations/2026_10_31_000024_500000_archive_legacy_location_branding.php');
+    $remove = require database_path('migrations/2026_10_31_000025_remove_company_tenant_branding_fields.php');
+    $archive->up();
+    $remove->up();
+    $archive->up();
+    $remove->up();
+
+    $saved = DB::table('legacy_location_branding_archive')->where('source_record_id', 'deleted-location')->sole();
+    expect(json_decode($saved->branding_values, true, 512, JSON_THROW_ON_ERROR))->toBe($values)
+        ->and(Schema::hasColumn('companies', 'brand_name'))->toBeFalse()
+        ->and(Schema::hasColumn('companies', 'domain'))->toBeFalse()
+        ->and(Schema::hasColumn('companies', 'logo'))->toBeFalse()
+        ->and(DB::table('companies')->where('id', 'deleted-location')->value('website'))->toBe('https://location.example')
+        ->and(DB::table('companies')->where('id', 'deleted-location')->value('deleted_at'))->not->toBeNull();
 });
 
 afterEach(function () {

@@ -3,6 +3,7 @@
 use Illuminate\Database\Migrations\Migration;
 use Illuminate\Database\Schema\Blueprint;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Facades\Schema;
 
 require_once __DIR__.'/Support/TenantIndexDropper.php';
@@ -22,7 +23,11 @@ return new class extends Migration
         if (! Schema::hasTable($tableName)) {
             $legacyDrop = '2026_10_30_000052_drop_inquiry_company_scope_history';
             if (Schema::hasTable('migrations') && DB::table('migrations')->where('migration', $legacyDrop)->exists()) {
-                throw new RuntimeException('Inquiry scope history was dropped by migration 2026_10_30_000052 before it could be preserved. Restore inquiry_company_scope_events from backup, then retry the pending history migration.');
+                Log::warning('Legacy inquiry scope history is unavailable after its table was dropped; continuing installation-wide cleanup. Recover any required historical events from backup through a separate data recovery.', [
+                    'migration' => '2026_10_31_000032_preserve_inquiry_scope_history_without_company',
+                    'legacy_migration' => $legacyDrop,
+                    'missing_tables' => [$oldTable, $historyTable],
+                ]);
             }
 
             return;
