@@ -7,6 +7,7 @@ test('unified pricing applies vehicle filters before pagination and caching', fu
     $method = Str::between($source, 'public function unifiedPricing(', 'public function getPriceAnalytics(');
 
     expect($method)->toContain("'vehicle_filters' => \$vehicleFilters")
+        ->and($method)->toContain("\$ownerType = \$request->input('owner_type');")
         ->and($method)->toContain("'grade_id', 'class_id', 'fuel_type_id', 'transmission_id', 'category_id'")
         ->and($method)->toContain("'make_id', 'model_id', 'ownership_type', 'payment_model'")
         ->and($method)->toContain("->whereHas('vehicles'")

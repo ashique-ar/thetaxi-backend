@@ -126,6 +126,7 @@ class VehicleGroupPricingController extends Controller
         $serviceTypeId = $request->input('service_type_id');
         $vehicleGroupId = $request->input('vehicle_group_id');
         $context = (string) $request->input('context', 'public');
+        $ownerType = $request->input('owner_type');
         $ownerId = (string) $request->input('owner_id', '');
         $includeInactive = $request->boolean('include_inactive', false);
         $page = $request->input('page', 1);
