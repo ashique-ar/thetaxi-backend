@@ -15,6 +15,7 @@ use Carbon\Carbon;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Facades\Auth;
+use Illuminate\Support\Facades\Schema;
 use Illuminate\Support\Str;
 use Illuminate\Validation\ValidationException;
 
@@ -123,8 +124,8 @@ class AssignmentService
                 $params['assignment_type'] = $vehicle->allowsConcurrentAssignments() ? 'concurrent' : 'override';
                 $params['overlap_type'] = $params['assignment_type'];
                 $params['overlap_details'] = $conflicts;
-                $params['requires_approval'] = true;
-                $params['status'] = 'pending_approval';
+                $params['requires_approval'] = !($params['manually_confirmed'] ?? false);
+                $params['status'] = $params['requires_approval'] ? 'pending_approval' : 'active';
             }
             if (! empty($params['requires_approval'])) $params['status'] = 'pending_approval';
 
@@ -143,6 +144,7 @@ class AssignmentService
                 'overlap_type' => $params['overlap_type'] ?? null,
                 'overlap_details' => $params['overlap_details'] ?? [],
                 'requires_approval' => $params['requires_approval'] ?? false,
+                'manually_confirmed' => $params['manually_confirmed'] ?? false,
                 'override_reasons' => $params['override_reasons'] ?? [],
                 'assigned_by' => $userId,
                 'created_user_id' => $userId,
@@ -164,8 +166,8 @@ class AssignmentService
                 $params['assignment_type'] = 'override';
                 $params['overlap_type'] = 'override';
                 $params['overlap_details'] = $conflicts;
-                $params['requires_approval'] = true;
-                $params['status'] = 'pending_approval';
+                $params['requires_approval'] = !($params['manually_confirmed'] ?? false);
+                $params['status'] = $params['requires_approval'] ? 'pending_approval' : 'active';
             }
             if (! empty($params['requires_approval'])) $params['status'] = 'pending_approval';
 
@@ -199,6 +201,7 @@ class AssignmentService
                 'overlap_type' => $params['overlap_type'] ?? null,
                 'overlap_details' => $params['overlap_details'] ?? [],
                 'requires_approval' => $params['requires_approval'] ?? false,
+                'manually_confirmed' => $params['manually_confirmed'] ?? false,
                 'override_reasons' => $params['override_reasons'] ?? [],
                 'hourly_rate' => $params['hourly_rate'] ?? null,
                 'overtime_applicable' => $params['overtime_applicable'] ?? false,
@@ -231,7 +234,8 @@ class AssignmentService
             $requestedBookingItemId = $params['booking_item_id'] ?? null;
             $assignmentType = $params['assignment_type'] ?? 'primary';
             $overrideReasons = $params['override_reasons'] ?? [];
-            $requiresApprovalForAssignment = $assignmentType !== 'primary';
+            $manuallyConfirmed = (bool) ($params['manually_confirmed'] ?? false);
+            $requiresApprovalForAssignment = $assignmentType !== 'primary' && !$manuallyConfirmed;
             $assignmentStatus = $requiresApprovalForAssignment ? 'pending_approval' : 'active';
 
             $booking = Booking::with('bookingItems')->findOrFail($bookingId);
@@ -258,6 +262,18 @@ class AssignmentService
             $fromDate = Carbon::parse($params['from_date']);
             $toDate = Carbon::parse($params['to_date']);
 
+            if ($manuallyConfirmed) {
+                VehicleAssignment::query()->where('booking_id', $bookingId)
+                    ->whereIn('status', ['pending', 'pending_approval'])
+                    ->where('assigned_from', '<', $toDate)->where('assigned_to', '>', $fromDate)
+                    ->update(['status' => 'rejected', 'requires_approval' => false]);
+                DriverAssignment::query()->where('booking_id', $bookingId)
+                    ->when($bookingItem && Schema::hasColumn('driver_assignments', 'booking_item_id'), fn ($query) => $query->where('booking_item_id', $bookingItem->id))
+                    ->whereIn('status', ['pending', 'pending_approval'])
+                    ->where('assigned_from', '<', $toDate)->where('assigned_to', '>', $fromDate)
+                    ->update(['status' => 'rejected', 'requires_approval' => false]);
+            }
+
             $assignments = [];
             $requiresApproval = false;
 
@@ -273,6 +289,7 @@ class AssignmentService
                     'assignment_type' => $assignmentType,
                     'status' => $assignmentStatus,
                     'requires_approval' => $requiresApprovalForAssignment,
+                    'manually_confirmed' => $manuallyConfirmed,
                     'override_reasons' => $overrideReasons,
                 ];
 
@@ -302,6 +319,7 @@ class AssignmentService
                     'assignment_type' => $assignmentType,
                     'status' => $assignmentStatus,
                     'requires_approval' => $requiresApprovalForAssignment,
+                    'manually_confirmed' => $manuallyConfirmed,
                     'override_reasons' => $overrideReasons,
                 ];
 

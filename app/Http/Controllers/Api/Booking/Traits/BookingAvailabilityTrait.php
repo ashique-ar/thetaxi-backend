@@ -508,6 +508,7 @@ trait BookingAvailabilityTrait
             'to_date' => 'required',
             'customer_name' => 'required|string',
             'service_type' => 'required|string',
+            'manually_confirmed' => 'sometimes|boolean',
             'override_reasons' => 'nullable|array',
             'overlap_details' => 'nullable|array',
             'overlap_type' => 'nullable|string|in:full,partial,concurrent,override',

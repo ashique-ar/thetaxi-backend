@@ -4332,14 +4332,9 @@ class BookingLifecycleService
             BookingLifecycleStatus::ALLOCATION_PENDING,
             BookingLifecycleStatus::ALLOCATION_CONFLICTS,
         ], true)) {
-            if ($currentStatus === BookingLifecycleStatus::ALLOCATION_CONFLICTS
-                && $this->hasPendingAssignmentApproval($booking, $context['booking_item'])) {
-                $blockingReasons[] = 'Manager approval is required before dispatch';
-            } else {
-                $actions[] = 'assign_vehicle';
-                if (!$isSelfDriven) {
-                    $actions[] = 'assign_driver';
-                }
+            $actions[] = 'assign_vehicle';
+            if (!$isSelfDriven) {
+                $actions[] = 'assign_driver';
             }
         }
 
