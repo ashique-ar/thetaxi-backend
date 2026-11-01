@@ -235,7 +235,7 @@
                                                 data-bs-target="#pills-{{ $i + 1 }}" role="tab"
                                                 aria-controls="pills-{{ $i + 1 }}"
                                                 aria-selected="{{ $i == 0 ? 'true' : 'false' }}">
-                                                <img src="{{ isset($item['image']) && $item['image'] ? (preg_match('/^https?:\/\//', $item['image']) || substr($item['image'], 0, 1) === '/' ? $item['image'] : s3_asset($item['image'])) : asset('assets/img/innerpages/about-page-journey-img' . ($i + 1) . '.jpg') }}"
+                                                <img src="{{ isset($item['image']) && $item['image'] ? (preg_match('/^https?:\/\//', $item['image']) || substr($item['image'], 0, 1) === '/' ? proxy_s3_urls($item['image']) : s3_asset($item['image'])) : asset('assets/img/innerpages/about-page-journey-img' . ($i + 1) . '.jpg') }}"
                                                     alt="">
                                                 <h4>{{ $item['title'] ?? '' }}</h4>
                                             </div>

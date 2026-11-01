@@ -1,3 +1,13 @@
+FROM node:22-alpine AS assets
+
+WORKDIR /var/www/html
+COPY package.json package-lock.json ./
+RUN npm ci
+COPY resources ./resources
+COPY public ./public
+COPY vite.config.js ./
+RUN npm run build
+
 FROM php:8.5.12-fpm-alpine AS base
 
 RUN apk add --no-cache \
@@ -33,6 +43,7 @@ COPY composer.json composer.lock ./
 RUN composer install --no-dev --no-scripts --no-interaction --prefer-dist --optimize-autoloader
 
 COPY . .
+COPY --from=assets /var/www/html/public/build ./public/build
 
 RUN composer run-script post-autoload-dump \
     && php artisan optimize \

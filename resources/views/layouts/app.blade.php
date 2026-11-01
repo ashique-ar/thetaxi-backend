@@ -90,7 +90,7 @@
                     : $ogImage);
 
             if (is_string($ogImagePath) && $ogImagePath !== '') {
-                $ogImageUrl = filter_var($ogImagePath, FILTER_VALIDATE_URL) ? $ogImagePath : s3_asset($ogImagePath);
+                $ogImageUrl = s3_asset($ogImagePath);
             }
         }
         $twitterCard = $settings['seo_twitter_card'] ?? 'summary';

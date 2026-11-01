@@ -91,12 +91,7 @@ class Popup extends BaseModel
             return null;
         }
 
-        try {
-            return s3_asset($this->image);
-        } catch (\Exception $e) {
-            // Fallback to returning the raw image path
-            return $this->image;
-        }
+        return s3_asset($this->image);
     }
 
     /**

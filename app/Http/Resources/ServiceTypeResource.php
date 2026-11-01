@@ -16,7 +16,7 @@ class ServiceTypeResource extends JsonResource
             'parent_service_type_id' => $this->parent_service_type_id,
             'description' => $this->description,
             'slug' => $this->slug,
-            'thumbnail' => $this->thumbnail,
+            'thumbnail' => proxy_s3_urls($this->thumbnail),
             'type' => $this->type,
             'trip_mode' => $this->form_config['trip_mode'] ?? $this->form_config['booking_mode'] ?? $this->form_config['service_mode'] ?? 'fixed_route',
             'priority' => $this->priority,

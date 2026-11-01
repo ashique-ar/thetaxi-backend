@@ -391,13 +391,14 @@
 
             const trimmed = String(imagePath).trim();
 
-            // Full URL -> return as-is
+            // Keep object storage URLs behind the site's media proxy.
             if (trimmed.startsWith('http://') || trimmed.startsWith('https://')) {
-                return trimmed;
-            }
-
-            // Already S3 or CDN -> return as-is
-            if (trimmed.includes('s3.amazonaws.com') || trimmed.includes('cloudfront.net')) {
+                const parsed = new URL(trimmed);
+                if (parsed.hostname.endsWith('.amazonaws.com') || parsed.hostname.endsWith('.cloudfront.net')) {
+                    let path = decodeURIComponent(parsed.pathname).replace(/^\/+/, '');
+                    if (parsed.hostname.startsWith('s3.')) path = path.replace(/^[^/]+\//, '');
+                    return `${location.origin}/resources/${path}`;
+                }
                 return trimmed;
             }
 

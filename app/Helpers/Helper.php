@@ -132,6 +132,24 @@ if (!function_exists('resource_proxy_url')) {
     }
 }
 
+if (!function_exists('proxy_s3_urls')) {
+    function proxy_s3_urls($value)
+    {
+        if (is_array($value)) {
+            return array_map('proxy_s3_urls', $value);
+        }
+
+        if (!is_string($value)) {
+            return $value;
+        }
+
+        return preg_replace_callback('/https?:\/\/[^\s"\'<>]+/i', function ($match) {
+            $url = rtrim($match[0], '.,;)]');
+            return s3_asset($url) . substr($match[0], strlen($url));
+        }, $value);
+    }
+}
+
 if (!function_exists('check_s3_asset')) {
     function check_s3_asset($path, $secure = null)
     {

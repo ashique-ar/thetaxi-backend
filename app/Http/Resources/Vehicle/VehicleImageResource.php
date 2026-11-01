@@ -12,7 +12,7 @@ class VehicleImageResource extends JsonResource
         return [
             'id'         => $this->id,
             'vehicle_id' => $this->vehicle_id,
-            'image_url'  => $this->image_url,
+            'image_url'  => proxy_s3_urls($this->image_url),
             'caption'    => $this->caption,
             'sort_order' => $this->sort_order,
             'is_primary' => $this->is_primary,

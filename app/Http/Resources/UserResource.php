@@ -22,7 +22,7 @@ class UserResource extends JsonResource
             'last_name' => $this->last_name,
             'full_name' => $this->full_name,
             'phone' => $this->phone,
-            'profile_image' => $this->profile_image,
+            'profile_image' => proxy_s3_urls($this->profile_image),
             'avatar_url' => $this->avatar_url,
             'role' => $this->whenLoaded('role', function () {
                 return [

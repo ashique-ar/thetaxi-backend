@@ -318,7 +318,7 @@ class User extends Authenticatable
     public function getAvatarUrlAttribute()
     {
         if ($this->profile_image) {
-            return url('storage/'.$this->profile_image);
+            return s3_asset($this->profile_image);
         }
 
         return 'https://ui-avatars.com/api/?name='.urlencode($this->full_name).'&background=random';

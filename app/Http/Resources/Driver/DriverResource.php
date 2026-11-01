@@ -135,8 +135,8 @@ class DriverResource extends JsonResource
             'vehicle_group' => $group ? ['id' => $group->id, 'name' => $group->name] : null,
             'make' => $make ? ['id' => $make->id, 'name' => $make->name] : null,
             'model' => $model ? ['id' => $model->id, 'name' => $model->name] : null,
-            'thumbnail' => $vehicle->thumbnail,
-            'images' => $vehicle->actual_vehicle_images ?? [],
+            'thumbnail' => proxy_s3_urls($vehicle->thumbnail),
+            'images' => proxy_s3_urls($vehicle->actual_vehicle_images ?? []),
             'documents' => $documents->map(fn ($document) => $this->documentPayload($document))->values(),
         ];
     }

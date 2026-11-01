@@ -18,7 +18,7 @@ class VehicleAddonResource extends JsonResource
             'addon_type' => $this->addon_type,
             'pricing_type' => $this->pricing_type,
             'quantity_unit' => $this->quantity_unit,
-            'thumbnail' => $this->thumbnail,
+            'thumbnail' => proxy_s3_urls($this->thumbnail),
             'min_qty' => $this->min_qty,
             'max_qty' => $this->max_qty,
             'min_quantity' => $this->min_qty, // Alias for frontend compatibility

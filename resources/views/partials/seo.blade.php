@@ -70,7 +70,7 @@
             ? ($ogImage['path'] ?? ($ogImage['url'] ?? ($ogImage[0] ?? null)))
             : (is_object($ogImage) ? ($ogImage->path ?? ($ogImage->url ?? null)) : $ogImage);
         if (is_string($ogImagePath) && $ogImagePath !== '') {
-            $ogImageUrl = filter_var($ogImagePath, FILTER_VALIDATE_URL) ? $ogImagePath : s3_asset($ogImagePath);
+            $ogImageUrl = s3_asset($ogImagePath);
         }
     }
 
@@ -138,7 +138,7 @@
             'areaServed' => $settings['seo_service_area'] ?? null,
             'priceRange' => $settings['seo_price_range'] ?? null,
             'logo' => !empty($settings['logo_header'])
-                ? (filter_var($settings['logo_header'], FILTER_VALIDATE_URL) ? $settings['logo_header'] : s3_asset($settings['logo_header']))
+                ? s3_asset($settings['logo_header'])
                 : null,
             'sameAs' => array_values(array_filter([
                 $settings['social_facebook'] ?? null,
