@@ -557,11 +557,7 @@ class DocumentController extends Controller
 
     private function storageUrl(string $diskName, string $path): string
     {
-        $disk = Storage::disk($diskName);
-
-        return method_exists($disk, 'providesTemporaryUrls') && $disk->providesTemporaryUrls()
-            ? $disk->temporaryUrl($path, now()->addMinutes(15))
-            : $disk->url($path);
+        return resource_proxy_url($path, $diskName);
     }
 
     private function assertDocumentAccess(Request $request, Document $document, string $action): void

@@ -1,7 +1,6 @@
 <?php
 
 use Illuminate\Support\Facades\Storage;
-use Illuminate\Support\Facades\Cache;
 
 if (!function_exists('getUserfromReq')) {
     function getUserfromReq(Request $request)
@@ -89,9 +88,28 @@ if (!function_exists('s3_asset')) {
             return $path;
         }
 
-        // If already a full URL, return as-is
         if (preg_match('/^https?:\/\//', $path)) {
-            return $path;
+            $asset = parse_url($path);
+            $host = strtolower($asset['host'] ?? '');
+            $diskUrl = config('filesystems.disks.s3.url');
+            $configuredHost = strtolower(parse_url($diskUrl ?: '', PHP_URL_HOST) ?: '');
+            $isS3Host = str_ends_with($host, '.amazonaws.com') &&
+                (str_contains($host, '.s3.') || str_starts_with($host, 's3.'));
+
+            if ($configuredHost && $host === $configuredHost) {
+                $path = ltrim($asset['path'] ?? '', '/');
+                $prefix = trim(parse_url($diskUrl, PHP_URL_PATH) ?: '', '/');
+                if ($prefix && str_starts_with($path, $prefix . '/')) {
+                    $path = substr($path, strlen($prefix) + 1);
+                }
+            } elseif ($isS3Host) {
+                $path = ltrim($asset['path'] ?? '', '/');
+                if (str_starts_with($host, 's3.') || str_starts_with($host, 's3-')) {
+                    $path = preg_replace('/^[^\/]+\//', '', $path);
+                }
+            } else {
+                return $path;
+            }
         }
 
         // If path points to local assets folder, use asset() helper
@@ -99,28 +117,18 @@ if (!function_exists('s3_asset')) {
             return app('url')->asset(ltrim($path, '/'), $secure);
         }
 
-        // Cache built S3 URLs to reduce repeated overhead
-        $cacheKey = 'asset_url_' . md5($path);
-        return Cache::remember($cacheKey, 86400, function () use ($path, $secure) {
-            try {
-                // Build S3 URL directly using config
-                $bucket = config('filesystems.disks.s3.bucket');
-                $region = config('filesystems.disks.s3.region');
-                $url = config('filesystems.disks.s3.url');
+        return resource_proxy_url($path, 's3', now()->addYears(10));
+    }
+}
 
-                // Use environment-configured URL if available
-                if ($url) {
-                    return rtrim($url, '/') . '/' . ltrim($path, '/');
-                }
-
-                // Otherwise build standard S3 URL
-                return "https://{$bucket}.s3.{$region}.amazonaws.com/" . ltrim($path, '/');
-            } catch (\Exception $e) {
-                // Fallback to local asset if anything fails
-                \Log::warning("S3 asset failed for: {$path}", ['error' => $e->getMessage()]);
-                return app('url')->asset(ltrim($path, '/'), $secure);
-            }
-        });
+if (!function_exists('resource_proxy_url')) {
+    function resource_proxy_url(string $path, string $disk = 's3', ?\DateTimeInterface $expiresAt = null): string
+    {
+        return \Illuminate\Support\Facades\URL::temporarySignedRoute(
+            'resources.assets',
+            $expiresAt ?? now()->addMinutes(15),
+            ['path' => ltrim($path, '/'), 'disk' => $disk]
+        );
     }
 }
 

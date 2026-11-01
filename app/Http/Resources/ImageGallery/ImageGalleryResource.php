@@ -3,7 +3,6 @@
 namespace App\Http\Resources\ImageGallery;
 
 use Illuminate\Http\Resources\Json\JsonResource;
-use Illuminate\Support\Facades\Storage;
 
 class ImageGalleryResource extends JsonResource
 {
@@ -27,11 +26,6 @@ class ImageGalleryResource extends JsonResource
 
     private function storageUrl(string $path): string
     {
-        $diskName = config('filesystems.default');
-        $disk = Storage::disk($diskName);
-
-        return method_exists($disk, 'providesTemporaryUrls') && $disk->providesTemporaryUrls()
-            ? $disk->temporaryUrl($path, now()->addMinutes(15))
-            : $disk->url($path);
+        return resource_proxy_url($path, config('filesystems.default', 's3'));
     }
 }

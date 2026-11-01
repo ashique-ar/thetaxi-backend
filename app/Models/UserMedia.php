@@ -187,10 +187,13 @@ class UserMedia extends BaseModel
      */
     public function getUrlAttribute(): string
     {
-        $disk = \Storage::disk($this->storage_type ?: config('filesystems.default'));
-        return $disk->providesTemporaryUrls()
-            ? $disk->temporaryUrl($this->full_path, now()->addMinutes(15))
-            : $disk->url($this->full_path);
+        $disk = $this->storage_type ?: 's3';
+        $publicCategory = in_array($this->category, ['general', 'vehicles', 'gallery', 'branding', 'logos', 'banners', 'breadcrumbs', 'sliders', 'team', 'vectors', 'icons', 'sections', 'heroes', 'maps', 'popups', 'seo', 'videos'], true);
+        $publicType = $this->is_image || str_starts_with($this->mime_type, 'video/') || ($this->category === 'sections' && $this->mime_type === 'application/pdf');
+
+        return $publicCategory && $publicType
+            ? url('/resources/' . ltrim($this->full_path, '/'))
+            : resource_proxy_url($this->full_path, $disk);
     }
 
     /**

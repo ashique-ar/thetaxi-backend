@@ -145,7 +145,7 @@ class FileUploadController extends Controller
                     'filename' => $fileName,
                     'original_name' => $originalName,
                     'path' => $fullPath,
-                    'url' => $this->getFileUrl($fullPath),
+                    'url' => $userMedia->url,
                     'mime_type' => $userMedia->mime_type, // Use actual stored MIME type
                     'size' => $uploadResult['size'],
                     'original_size' => $fileSize,
@@ -384,7 +384,7 @@ class FileUploadController extends Controller
         $publicCategories = ['general', 'vehicles', 'gallery', 'branding', 'logos', 'banners', 'breadcrumbs', 'sliders', 'team', 'vectors', 'icons', 'sections', 'heroes', 'maps', 'popups', 'seo', 'videos'];
         $isPublicMedia = $media
             && in_array($media->category, $publicCategories, true)
-            && ($media->is_image || str_starts_with($media->mime_type, 'video/'));
+            && ($media->is_image || str_starts_with($media->mime_type, 'video/') || ($media->category === 'sections' && $media->mime_type === 'application/pdf'));
         abort_unless($isPublicMedia || $request->hasValidSignature(), 404, 'File not found');
 
         $diskName = $isPublicMedia ? $media->storage_type : $request->query('disk', $this->storageDisk());
@@ -642,21 +642,9 @@ class FileUploadController extends Controller
             'id' => $thumbnailMedia->id,
             'filename' => $thumbnailFileName,
             'path' => $fullThumbnailPath,
-            'url' => $this->getFileUrl($fullThumbnailPath),
+            'url' => $thumbnailMedia->url,
             'size' => $thumbnailMedia->size,
         ];
-    }
-
-    /**
-     * Get file URL based on storage type
-     */
-    private function getFileUrl(string $path): string
-    {
-        $disk = Storage::disk($this->storageDisk());
-
-        return method_exists($disk, 'providesTemporaryUrls') && $disk->providesTemporaryUrls()
-            ? $disk->temporaryUrl($path, now()->addMinutes(15))
-            : $disk->url($path);
     }
 
     /**
