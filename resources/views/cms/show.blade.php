@@ -10,7 +10,7 @@
         ? $content->inquiryForm : null;
     $inquiryCta = $content->custom_fields['inquiry_cta'] ?? [];
     $pdfPath = $content->custom_fields['pdf_file'] ?? null;
-    $pdfUrl = $pdfPath ? s3_asset($pdfPath) : null;
+    $pdfUrl = $pdfPath ? url('/resources/' . ltrim($pdfPath, '/')) : null;
     $pdfPreview = $content->custom_fields['pdf_preview'] ?? 'pages';
 
     if (!isset($search) && $hasContentBookingLocations) {
