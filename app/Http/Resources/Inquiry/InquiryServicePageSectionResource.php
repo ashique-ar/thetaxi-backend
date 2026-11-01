@@ -12,7 +12,7 @@ class InquiryServicePageSectionResource extends JsonResource
             'id' => $this->id,
             'inquiry_service_page_id' => $this->inquiry_service_page_id,
             'type' => $this->type,
-            'data' => $this->data,
+            'data' => proxy_s3_urls($this->data),
             'sort_order' => $this->sort_order,
             'is_active' => $this->is_active,
             'created_at' => $this->created_at,

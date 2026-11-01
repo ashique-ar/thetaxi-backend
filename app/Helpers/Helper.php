@@ -93,8 +93,9 @@ if (!function_exists('s3_asset')) {
             $host = strtolower($asset['host'] ?? '');
             $diskUrl = config('filesystems.disks.s3.url');
             $configuredHost = strtolower(parse_url($diskUrl ?: '', PHP_URL_HOST) ?: '');
-            $isS3Host = str_ends_with($host, '.amazonaws.com') &&
-                (str_contains($host, '.s3.') || str_starts_with($host, 's3.'));
+            $isS3Host = (str_ends_with($host, '.amazonaws.com') &&
+                (str_contains($host, '.s3.') || str_starts_with($host, 's3.'))) ||
+                str_ends_with($host, '.cloudfront.net');
 
             if ($configuredHost && $host === $configuredHost) {
                 $path = ltrim($asset['path'] ?? '', '/');

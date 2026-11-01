@@ -47,7 +47,7 @@ class InquiryResource extends JsonResource
             'form_id' => $formId,
             'form_name' => $formName,
             'form_answers' => $payload['form'] ?? [],
-            'attachments' => $payload['attachments'] ?? [],
+            'attachments' => proxy_s3_urls($payload['attachments'] ?? []),
             'source_url' => $payload['meta']['source_url'] ?? null,
             'referrer' => $payload['meta']['referrer'] ?? null,
             'utm' => $payload['meta']['utm'] ?? [],

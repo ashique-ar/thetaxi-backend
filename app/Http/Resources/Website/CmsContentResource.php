@@ -35,7 +35,7 @@ class CmsContentResource extends JsonResource
             'meta_tags' => $this->meta_tags,
             'is_active' => $this->is_active,
             'display_order' => $this->display_order,
-            'url' => $this->url,
+            'url' => proxy_s3_urls($this->url),
             'availability_status' => $this->availability_status,
             'read_time' => $this->custom_fields['read_time'] ?? null,
             'pickup_location' => $this->pickup_location,

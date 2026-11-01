@@ -27,7 +27,7 @@ class InquiryServicePageResource extends JsonResource
             'status' => $this->status,
             'content' => $this->content,
             'sections' => \App\Http\Resources\Inquiry\InquiryServicePageSectionResource::collection($this->whenLoaded('sections')),
-            'settings' => $this->settings,
+            'settings' => proxy_s3_urls($this->settings),
             'seo_title' => $this->seo_title,
             'seo_description' => $this->seo_description,
             'seo_og_image' => proxy_s3_urls($this->seo_og_image),
