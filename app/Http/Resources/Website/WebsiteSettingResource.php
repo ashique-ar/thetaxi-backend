@@ -11,7 +11,7 @@ class WebsiteSettingResource extends JsonResource
         return [
             'id'         => $this->id,
             'type'       => $this->type,
-            'value'      => $this->value,
+            'value'      => proxy_s3_urls($this->value),
             'created_at' => $this->created_at,
             'updated_at' => $this->updated_at,
         ];

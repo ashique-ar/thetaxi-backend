@@ -35,7 +35,7 @@ class ServiceTypeResource extends JsonResource
             'is_active' => $this->is_active,
             'workflow_config' => $this->when(
                 $request->user()?->can('service-types.edit'),
-                $this->workflow_config
+                proxy_s3_urls($this->workflow_config)
             ),
             'is_public' => $this->context === 'public',
             'is_portal' => $this->context === 'portal',

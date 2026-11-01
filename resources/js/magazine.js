@@ -30,7 +30,7 @@ if (book) {
 
     (async () => {
         try {
-            const pdf = await getDocument(book.dataset.pdfUrl).promise;
+            const pdf = await getDocument({ url: book.dataset.pdfUrl }).promise;
             const firstPage = await pdf.getPage(1);
             const original = firstPage.getViewport({ scale: 1 });
             const width = 620;

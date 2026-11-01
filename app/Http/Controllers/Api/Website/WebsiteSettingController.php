@@ -139,7 +139,7 @@ class WebsiteSettingController extends Controller
             'status' => 'success',
             'data' => [
                 'setting' => $setting ? new WebsiteSettingResource($setting) : null,
-                'value' => $setting?->value,
+                'value' => proxy_s3_urls($setting?->value),
             ],
         ]);
     }
@@ -250,7 +250,7 @@ class WebsiteSettingController extends Controller
 
         return response()->json([
             'status' => 'success',
-            'data' => $settings
+            'data' => proxy_s3_urls($settings)
         ]);
     }
 
@@ -294,7 +294,7 @@ class WebsiteSettingController extends Controller
 
             return response()->json([
                 'status' => 'success',
-                'data' => $settings
+                'data' => proxy_s3_urls($settings)
             ]);
         } catch (\InvalidArgumentException $e) {
             return response()->json([
@@ -544,7 +544,7 @@ class WebsiteSettingController extends Controller
 
         return response()->json([
             'status' => 'success',
-            'data' => $settings,
+            'data' => proxy_s3_urls($settings),
             'meta' => ['theme_options' => $this->releasedThemeOptions()],
         ]);
     }
@@ -558,7 +558,7 @@ class WebsiteSettingController extends Controller
 
         return response()->json([
             'status' => 'success',
-            'data' => $settings
+            'data' => proxy_s3_urls($settings)
         ]);
     }
 
@@ -571,7 +571,7 @@ class WebsiteSettingController extends Controller
 
         return response()->json([
             'status' => 'success',
-            'data' => $settings
+            'data' => proxy_s3_urls($settings)
         ]);
     }
 
@@ -584,7 +584,7 @@ class WebsiteSettingController extends Controller
 
         return response()->json([
             'status' => 'success',
-            'data' => $settings
+            'data' => proxy_s3_urls($settings)
         ]);
     }
 
@@ -597,7 +597,7 @@ class WebsiteSettingController extends Controller
 
         return response()->json([
             'status' => 'success',
-            'data' => $settings
+            'data' => proxy_s3_urls($settings)
         ]);
     }
 
@@ -610,7 +610,7 @@ class WebsiteSettingController extends Controller
 
         return response()->json([
             'status' => 'success',
-            'data' => $settings
+            'data' => proxy_s3_urls($settings)
         ]);
     }
 
@@ -623,7 +623,7 @@ class WebsiteSettingController extends Controller
 
         return response()->json([
             'status' => 'success',
-            'data' => $settings
+            'data' => proxy_s3_urls($settings)
         ]);
     }
 
@@ -636,7 +636,7 @@ class WebsiteSettingController extends Controller
 
         return response()->json([
             'status' => 'success',
-            'data' => $settings
+            'data' => proxy_s3_urls($settings)
         ]);
     }
 
@@ -649,7 +649,7 @@ class WebsiteSettingController extends Controller
 
         return response()->json([
             'status' => 'success',
-            'data' => $settings
+            'data' => proxy_s3_urls($settings)
         ]);
     }
 
@@ -662,7 +662,7 @@ class WebsiteSettingController extends Controller
 
         return response()->json([
             'status' => 'success',
-            'data' => $settings,
+            'data' => proxy_s3_urls($settings),
             'meta' => ['theme_options' => $this->releasedThemeOptions()],
         ]);
     }
@@ -693,7 +693,7 @@ class WebsiteSettingController extends Controller
 
         return response()->json([
             'status' => 'success',
-            'data' => $settings
+            'data' => proxy_s3_urls($settings)
         ]);
     }
 
