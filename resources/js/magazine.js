@@ -30,7 +30,8 @@ if (book) {
 
     (async () => {
         try {
-            const pdf = await getDocument({ url: book.dataset.pdfUrl }).promise;
+            const loadingTask = getDocument({ url: book.dataset.pdfUrl });
+            const pdf = await loadingTask.promise;
             const firstPage = await pdf.getPage(1);
             const original = firstPage.getViewport({ scale: 1 });
             const width = 620;
@@ -53,7 +54,7 @@ if (book) {
                 images.push(url);
                 canvas.width = canvas.height = 0;
             }
-            await pdf.destroy();
+            await loadingTask.destroy();
 
             flip = new PageFlip(book, {
                 width,

@@ -11,7 +11,8 @@ document.querySelectorAll('[data-cms-pdf]').forEach(async reader => {
     const next = reader.querySelector('[data-pdf-next]');
     const counter = reader.querySelector('[data-pdf-page]');
     try {
-        const pdf = await getDocument({ url: reader.dataset.pdfUrl }).promise;
+        const loadingTask = getDocument({ url: reader.dataset.pdfUrl });
+        const pdf = await loadingTask.promise;
         for (let number = 1; number <= pdf.numPages; number++) {
             const page = await pdf.getPage(number);
             const viewport = page.getViewport({ scale: Math.min(1.5, 1100 / page.getViewport({ scale: 1 }).width) });
@@ -23,7 +24,7 @@ document.querySelectorAll('[data-cms-pdf]').forEach(async reader => {
             canvas.setAttribute('aria-label', `Page ${number} of ${pdf.numPages}`);
             pages.append(canvas);
         }
-        await pdf.destroy();
+        await loadingTask.destroy();
         let current = 0;
         const update = () => {
             [...pages.children].forEach((page, index) => page.hidden = carousel && index !== current);
