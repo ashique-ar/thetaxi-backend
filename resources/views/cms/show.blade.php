@@ -14,6 +14,8 @@
     $pdfPreview = $content->custom_fields['pdf_preview'] ?? 'pages';
     $pdfPlacement = $content->custom_fields['pdf_placement'] ?? 'bottom';
     $fullWidthArticle = ($content->custom_fields['article_layout'] ?? 'sidebar') === 'full_width';
+    $showEmbeddedBooking = is_theme('theme-04') && $content->service_type;
+    $bottomBookingLayout = $fullWidthArticle && $showEmbeddedBooking;
 
     if (!isset($search) && $hasContentBookingLocations) {
         $search = (object) [
@@ -150,13 +152,52 @@
             margin-top: 0;
         }
 
+        .cms-article-sidebar-bottom .article-sidebar--booking-bottom {
+            grid-template-columns: minmax(0, 1.45fr) minmax(360px, 1fr);
+            gap: 22px;
+        }
+
+        .cms-article-sidebar-bottom .article-sidebar--booking-bottom > .t4-booking-panel--embedded {
+            grid-column: 2;
+            grid-row: 1;
+            min-width: 0;
+            margin: 0;
+        }
+
+        .article-sidebar-widgets--bottom {
+            display: grid;
+            grid-template-columns: repeat(2, minmax(0, 1fr));
+            align-content: start;
+            gap: 16px;
+            min-width: 0;
+        }
+
+        .cms-article-sidebar-bottom .article-sidebar--booking-bottom .article-sidebar-widgets--bottom {
+            grid-column: 1;
+            grid-row: 1;
+        }
+
+        .cms-article-sidebar-bottom .article-sidebar--booking-bottom .sidebar-widget {
+            height: auto;
+            min-width: 0;
+            margin: 0;
+        }
+
+        .article-sidebar-widgets--bottom .related-content-widget {
+            grid-column: 1 / -1;
+        }
+
+        .cms-article-sidebar-bottom .article-sidebar:not(.article-sidebar--booking-bottom) .article-sidebar-widgets--bottom {
+            display: contents;
+        }
+
         .cms-article-sidebar-bottom .sidebar-widget {
             height: 100%;
             margin-bottom: 0;
         }
 
         .cms-article-sidebar-bottom .t4-booking-panel--embedded {
-            grid-column: 1 / -1;
+            grid-column: auto;
         }
 
         .sidebar-widget {
@@ -384,6 +425,16 @@
                 top: auto;
                 margin-top: 28px;
             }
+
+            .cms-article-sidebar-bottom .article-sidebar--booking-bottom {
+                grid-template-columns: minmax(0, 1fr);
+            }
+
+            .cms-article-sidebar-bottom .article-sidebar--booking-bottom > .t4-booking-panel--embedded,
+            .cms-article-sidebar-bottom .article-sidebar--booking-bottom .article-sidebar-widgets--bottom {
+                grid-column: 1;
+                grid-row: auto;
+            }
         }
 
         @media (max-width: 1199px) {
@@ -406,6 +457,10 @@
             .cms-article-page .lead {
                 padding: 18px;
                 font-size: 1rem;
+            }
+
+            .article-sidebar-widgets--bottom {
+                grid-template-columns: minmax(0, 1fr);
             }
         }
 
@@ -558,14 +613,15 @@
                             <p class="text-muted mb-3">Share this story, see its details, or continue with related reading.</p>
                         </div>
                     @endif
-                    <div class="article-sidebar">
-                        @if (is_theme('theme-04') && $content->service_type)
+                    <div class="article-sidebar {{ $bottomBookingLayout ? 'article-sidebar--booking-bottom' : '' }}">
+                        @if ($showEmbeddedBooking)
                             @include('partials.themes.theme-04.booking-form', [
                                 'search' => $search ?? null,
                                 'embedded' => true,
                             ])
                         @endif
 
+                        <div class="{{ $fullWidthArticle ? 'article-sidebar-widgets--bottom' : 'article-sidebar-widgets' }}">
                         <div class="sidebar-widget share-widget">
                             <h6 class="mb-3">Share this article</h6>
                             <div class="share-btns d-flex">
@@ -600,7 +656,7 @@
                         </div>
 
                         @if ($relatedContents && $relatedContents->count() > 0)
-                            <div class="sidebar-widget">
+                            <div class="sidebar-widget related-content-widget">
                                 <h6 class="mb-3">Related {{ $contentType->title }}</h6>
                                 @foreach ($relatedContents as $related)
                                     <a href="{{ route('cms.show', [$contentType->slug, $related->slug]) }}"
@@ -620,6 +676,7 @@
                             </div>
                         @endif
 
+                        </div>
                     </div>
                 </aside>
             </div>
