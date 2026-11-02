@@ -8,6 +8,7 @@ use App\Models\Vehicle\Vehicle;
 use App\Models\DriverAssignment;
 use App\Models\Vehicle\VehicleAssignment;
 use App\Models\Booking\BookingItem;
+use App\Models\Service\ServiceVehicleClassSetting;
 use App\Enums\TripPhase;
 use App\Services\AssignmentService;
 use Illuminate\Http\JsonResponse;
@@ -15,6 +16,7 @@ use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Str;
+use Illuminate\Validation\ValidationException;
 
 class BookingAssignmentController extends Controller
 {
@@ -276,11 +278,36 @@ class BookingAssignmentController extends Controller
 
         try {
             return DB::transaction(function () use ($request, $bookingItem) {
+                $bookingItem = BookingItem::query()->with('serviceType')->whereKey($bookingItem->id)->lockForUpdate()->firstOrFail();
                 $booking = $bookingItem->booking;
                 $results = [];
 
                 // --- Vehicle Assignment ---
                 if ($request->vehicle_id) {
+                    $vehicle = Vehicle::query()->with('group')->whereKey($request->vehicle_id)->lockForUpdate()->firstOrFail();
+                    if ($bookingItem->pricing_basis === 'vehicle_class') {
+                        $purchasedSetting = ServiceVehicleClassSetting::query()
+                            ->where('service_type_id', $bookingItem->service_type_id)
+                            ->where('vehicle_class_id', $bookingItem->vehicle_class_id)
+                            ->where('is_active', true)
+                            ->first();
+                        $actualClassId = $vehicle->group?->class_id ?? $vehicle->class_id;
+                        $actualSetting = $actualClassId ? ServiceVehicleClassSetting::query()
+                            ->where('service_type_id', $bookingItem->service_type_id)
+                            ->where('vehicle_class_id', $actualClassId)
+                            ->where('is_active', true)
+                            ->first() : null;
+                        $partySize = (int) ($booking->passenger_count ?? 0);
+                        $luggageCount = (int) ($booking->luggage_count ?? 0);
+                        $groupCapacity = $vehicle->group?->passengers_count;
+                        $groupLuggageCapacity = $vehicle->group?->hand_luggages;
+                        if (! $vehicle->vehicle_group_id || ! $purchasedSetting || ! $actualSetting || ! $purchasedSetting->allowsOperationalClass((string) $actualClassId)
+                            || $partySize > $actualSetting->max_passengers || $luggageCount > $actualSetting->max_luggage
+                            || ($groupCapacity !== null && $partySize > $groupCapacity)
+                            || ($groupLuggageCapacity !== null && $luggageCount > $groupLuggageCapacity)) {
+                            throw ValidationException::withMessages(['vehicle_id' => 'This vehicle does not match the purchased class or an allowed, suitable substitute.']);
+                        }
+                    }
                     $existingVA = VehicleAssignment::where('booking_id', $booking->id)
                         ->where('vehicle_id', $request->vehicle_id)
                         ->whereIn('status', ['active', 'pending_approval'])
@@ -304,7 +331,10 @@ class BookingAssignmentController extends Controller
                     }
 
                     // Update booking item vehicle reference
-                    $bookingItem->update(['vehicle_id' => $request->vehicle_id]);
+                    $bookingItem->update([
+                        'vehicle_id' => $request->vehicle_id,
+                        ...($bookingItem->pricing_basis === 'vehicle_class' ? ['vehicle_group_id' => $vehicle->vehicle_group_id] : []),
+                    ]);
                 }
 
                 // --- Driver Assignment ---
@@ -346,6 +376,12 @@ class BookingAssignmentController extends Controller
                     'data' => $results,
                 ], 201);
             });
+        } catch (ValidationException $e) {
+            return response()->json([
+                'status' => 'error',
+                'message' => 'The selected assignment is not valid for this booking item.',
+                'errors' => $e->errors(),
+            ], 422);
         } catch (\Exception $e) {
             Log::error('Failed to create booking assignment', [
                 'booking_item_id' => $bookingItem->id,

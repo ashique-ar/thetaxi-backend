@@ -1119,6 +1119,7 @@ class WebsiteSettingsService
             'enable_with_drive',
             'enable_wedding',
             'enable_corporate',
+            'tour_ai_itinerary_enabled',
             'show_return_trip_toggle',
             'public_booking_enforce_vehicle_availability',
             'include_garage_distance_in_pricing',
@@ -1137,6 +1138,7 @@ class WebsiteSettingsService
         ];
 
         $settings = $this->getMultiple($types);
+        $settings['tour_ai_itinerary_enabled'] = filter_var($settings['tour_ai_itinerary_enabled'] ?? false, FILTER_VALIDATE_BOOL);
         $settings['checkout_returning_customer_lookup_enabled'] = filter_var(
             $settings['checkout_returning_customer_lookup_enabled'] ?? true,
             FILTER_VALIDATE_BOOL

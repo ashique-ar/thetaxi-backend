@@ -9,8 +9,10 @@ use App\Mail\QuotationRequestMail;
 use App\Models\Booking\Booking;
 use App\Models\Booking\BookingAddon;
 use App\Models\Booking\BookingItem;
+use App\Models\Cart;
 use App\Models\Customer;
 use App\Models\Service\ServiceType;
+use App\Models\Tours\TourItinerary;
 use App\Models\TermsAndCondition;
 use App\Models\Vehicle\VehicleGroup;
 use App\Models\User;
@@ -78,6 +80,140 @@ class CheckoutController extends Controller
         $this->promoCodeService = $promoCodeService;
         $this->websiteSettingsService = $websiteSettingsService;
         $this->paymentEventService = $paymentEventService;
+    }
+
+    private function syncTourCartItem(Cart $cart): void
+    {
+        $items = $cart->items ?? [];
+        $tourKeys = collect($items)->filter(fn ($item) => is_array($item) && !empty($item['is_tour']))->keys();
+        if ($tourKeys->isEmpty()) {
+            return;
+        }
+
+        $itineraryId = (string) session('tour_checkout_itinerary_id', '');
+        $quoteId = (string) session('tour_checkout_quote_id', '');
+        $userId = (string) session('tour_checkout_user_id', '');
+        abort_unless($tourKeys->count() === 1 && $itineraryId && $quoteId && $userId, 409, 'This Tour checkout session is no longer valid. Return to Tours and try again.');
+
+        $itinerary = TourItinerary::query()
+            ->where('user_id', $userId)
+            ->with(['package', 'vehicleClass', 'days.stops.activity', 'days.stops.destination'])
+            ->findOrFail($itineraryId);
+        $serviceType = ServiceType::publicContext()->whereKey($itinerary->service_type_id)->firstOrFail();
+        $quote = $itinerary->quotes()->whereKey($quoteId)->where('status', 'accepted')->firstOrFail();
+        abort_unless(
+            $itinerary->status === 'accepted'
+            && !$itinerary->booking_id
+            && (int) $quote->itinerary_revision === (int) $itinerary->revision
+            && $this->currencyService->isValidCurrency($quote->currency)
+            && is_numeric($quote->total_amount)
+            && abs((float) $quote->total_amount - (float) data_get($quote->pricing_snapshot, 'total_amount')) < 0.01,
+            409,
+            'This accepted Tour quote is no longer available in the selected currency. Return to Tours and request a current quote.'
+        );
+        abort_unless($serviceType->is_active && $serviceType->tour_booking_enabled, 409, 'This Tour is no longer accepting bookings.');
+
+        $days = $itinerary->days->map(fn ($day): array => [
+            'day_number' => $day->day_number,
+            'service_date' => $day->service_date?->toDateString(),
+            'timezone' => $day->timezone,
+            'start_time' => substr((string) $day->start_time, 0, 5),
+            'start_location' => $day->start_location_snapshot,
+            'end_location' => $day->end_location_snapshot,
+            'overnight_location' => $day->overnight_destination_id,
+            'stops' => $day->stops->map(fn ($stop): array => [
+                'kind' => $stop->kind,
+                'name' => $stop->activity?->name ?? $stop->destination?->name ?? data_get($stop->location_snapshot, 'name'),
+                'location' => $stop->location_snapshot,
+                'visit_duration_minutes' => $stop->visit_duration_minutes,
+                'activity_id' => $stop->tour_activity_id,
+                'destination_id' => $stop->tour_destination_id,
+            ])->values()->all(),
+        ])->values()->all();
+        $lastDay = $itinerary->start_date->copy()->addDays($itinerary->duration_days - 1)->toDateString();
+        $amountLkr = $this->currencyService->convertToLKR((float) $quote->total_amount, $quote->currency);
+        $key = 'tour-'.$itinerary->id;
+        abort_unless($tourKeys->first() === $key, 409, 'This Tour cart item does not match the current Tour checkout.');
+        $existingAddons = is_array($items[$key]['addons'] ?? null) ? $items[$key]['addons'] : [];
+        $items[$key] = [
+            'is_tour' => true,
+            'tour_itinerary_id' => (string) $itinerary->id,
+            'tour_quote_id' => (string) $quote->id,
+            'tour_distance_km' => (float) $quote->distance_km,
+            'tour_itinerary_revision' => (int) $itinerary->revision,
+            'tour_route_snapshot' => $quote->route_snapshot,
+            'tour_days_snapshot' => $days,
+            'tour_quote_snapshot' => $quote->pricing_snapshot,
+            'tour_custom_answers' => $itinerary->custom_answers ?? [],
+            'tour_custom_fields_snapshot' => $itinerary->custom_fields_snapshot ?? [],
+            'activity_entry_note' => 'Activity visits are included in your route only. Tickets, entry fees and activity reservations are not included. Please arrange these separately. Activity booking will be introduced in a future release.',
+            'vehicle_class_id' => (string) $itinerary->vehicle_class_id,
+            'pricing_basis' => 'vehicle_class',
+            'service_type' => $serviceType->code,
+            'service_type_data' => ['id' => (string) $itinerary->service_type_id, 'name' => $serviceType->name],
+            'service_package_id' => $itinerary->service_package_id,
+            'service_package_info' => $itinerary->package ? [
+                'id' => (string) $itinerary->package->id,
+                'name' => $itinerary->package->name,
+                'max_km_per_day' => $itinerary->package->max_km_per_day,
+                'max_km_per_package' => $itinerary->package->max_km_per_package,
+            ] : null,
+            'name' => trim(($serviceType->name ?: 'Tour').' · '.(data_get($quote->pricing_snapshot, 'tour_pricing_lock.purchased_class.name') ?: $itinerary->vehicleClass->name)),
+            'pickup_date' => $itinerary->start_date->toDateString(),
+            'return_date' => $lastDay,
+            'from_date' => $itinerary->start_date->toDateString(),
+            'to_date' => $lastDay,
+            'from_time' => '00:00',
+            'to_time' => '23:59',
+            'days' => (int) $itinerary->duration_days,
+            'passenger_count' => (int) $itinerary->adult_count + (int) $itinerary->child_count,
+            'luggage_count' => (int) $itinerary->luggage_count,
+            'pickup_location' => data_get($days, '0.start_location.name', ''),
+            'dropoff_location' => data_get($days, (string) (count($days) - 1).'.end_location.name', ''),
+            'price_lkr' => $amountLkr,
+            'total_price_lkr' => $amountLkr,
+            'tour_quote_total' => (float) $quote->total_amount,
+            'tour_quote_currency' => $quote->currency,
+            'price' => $amountLkr,
+            'total_price' => $amountLkr,
+            'is_package' => true,
+            'currency' => $quote->currency,
+        ];
+        $this->currencyService->setSelectedCurrency($quote->currency);
+        $cart->items = $items;
+        $cart->save();
+        foreach ($existingAddons as $addonId => $addon) {
+            $quantity = is_array($addon) ? filter_var($addon['qty'] ?? null, FILTER_VALIDATE_INT) : false;
+            if (!is_array($addon) || $quantity === false || $quantity < 1
+                || !$this->cartService->addAddon($cart, $key, (string) ($addon['id'] ?? $addonId), $quantity)) {
+                throw ValidationException::withMessages([
+                    'addons' => ['A selected add-on is no longer available. It has been removed; review the updated total before continuing.'],
+                ]);
+            }
+        }
+        $this->cartService->updateTotals($cart);
+    }
+
+    private function sessionTourCustomer(array $cart): ?Customer
+    {
+        $tourItems = collect($cart)->filter(fn ($item) => is_array($item) && !empty($item['is_tour']));
+        $itineraryId = (string) session('tour_checkout_itinerary_id', '');
+        $userId = (string) session('tour_checkout_user_id', '');
+        $customerId = (string) session('tour_checkout_customer_id', '');
+        if ($tourItems->count() !== 1 || !$itineraryId || !$userId || !$customerId
+            || (string) data_get($tourItems->first(), 'tour_itinerary_id', '') !== $itineraryId
+            || !TourItinerary::query()->where('user_id', $userId)->whereKey($itineraryId)->exists()) {
+            return null;
+        }
+
+        $customer = Customer::query()->with(['user', 'country'])->find($customerId);
+        if (!$customer?->user || $customer->user->trashed() || !$customer->user->is_active) {
+            return null;
+        }
+        $ownsCustomer = (string) $customer->user_id === $userId
+            || DB::table('customer_user_aliases')->where('user_id', $userId)->where('customer_id', $customerId)->exists();
+
+        return $ownsCustomer ? $customer : null;
     }
 
     public function sendCustomerEmailVerificationCode(Request $request, SmsService $sms)
@@ -291,6 +427,7 @@ class CheckoutController extends Controller
             'customer.user',
             'bookingAddons.addon',
             'bookingItems.vehicleGroup',
+            'bookingItems.vehicleClass',
             'bookingItems.serviceType',
             'bookingItems.booking',
             'acceptedTerms.terms'
@@ -343,6 +480,7 @@ class CheckoutController extends Controller
         $bookingBaseCurrency = $this->resolveBookingBaseCurrency($bookingSettings);
         try {
             $cartModel = $this->cartService->getOrCreateCart();
+            $this->syncTourCartItem($cartModel);
             $cartData = $this->cartService->toArray($cartModel);
             $cart = $cartData['items'] ?? [];
 
@@ -350,11 +488,15 @@ class CheckoutController extends Controller
                 return redirect()->route('home')->with('error', 'Your cart is empty.');
             }
         } catch (\Exception $e) {
+            if ($e instanceof ValidationException) {
+                return redirect()->route('checkout')->withErrors($e->errors());
+            }
             Log::error('Error loading cart for checkout: ' . $e->getMessage());
             return redirect()->route('home')->with('error', 'Error loading your cart.');
         }
 
         $verifiedCheckoutCustomer = null;
+        $tourCheckoutCustomer = $this->sessionTourCustomer($cart);
         if ($customerLookupEnabled && session('checkout_verified_customer_id')
             && now()->timestamp - (int) session('checkout_verified_email_at', 0) <= 1800) {
             $customer = Customer::query()->with(['user', 'country'])->find(session('checkout_verified_customer_id'));
@@ -463,7 +605,8 @@ class CheckoutController extends Controller
             'guestBookingEnabled',
             'customerLookupEnabled',
             'verificationResendAfter',
-            'verifiedCheckoutCustomer'
+            'verifiedCheckoutCustomer',
+            'tourCheckoutCustomer'
         ));
     }
 
@@ -705,10 +848,21 @@ class CheckoutController extends Controller
 
         // Get cart from database
         $cartModel = $this->cartService->getOrCreateCart();
+        $this->syncTourCartItem($cartModel);
         $cart = $cartModel->items ?? [];
 
         if (empty($cart)) {
             return redirect()->route('home')->with('error', 'Your cart is empty.');
+        }
+
+        $hasTourItem = collect($cart)->contains(fn ($item) => is_array($item) && !empty($item['is_tour']));
+        $tourSessionCustomer = $hasTourItem ? $this->sessionTourCustomer($cart) : null;
+        if ($hasTourItem && ! $tourSessionCustomer) {
+            throw ValidationException::withMessages(['email' => ['Your Tour checkout session has expired. Return to Tours and try again.']]);
+        }
+        if ($tourSessionCustomer
+            && mb_strtolower(trim((string) $tourSessionCustomer->user?->email)) !== mb_strtolower(trim((string) ($validated['email'] ?? '')))) {
+            throw ValidationException::withMessages(['email' => ['Use the email address saved with this Tour itinerary, or start a new Tour plan.']]);
         }
 
         $availabilityState = $this->bookingFlowService->validatePublicCartAvailability($cart);
@@ -733,6 +887,7 @@ class CheckoutController extends Controller
         $existingCustomer = Auth::check()
             ? $this->customerService->customerForUser(Auth::user())
             : ($emailIdentityConfirmed ? $this->customerService->getCustomerByEmail($validated['email']) : null);
+        $existingCustomer ??= $tourSessionCustomer;
         if (! $existingCustomer && $customerLookupEnabled && $this->hasRecentCheckoutVerification()) {
             $existingCustomer = Customer::query()->find(session('checkout_verified_customer_id'));
         }
@@ -780,6 +935,12 @@ class CheckoutController extends Controller
                     ->unique()
                     ->all();
                 $this->bookingFlowService->lockVehicleGroupCapacity($vehicleGroupIds);
+                foreach (collect($cart)->filter(fn ($item) => is_array($item) && !empty($item['is_tour'])) as $item) {
+                    $this->bookingFlowService->lockTourClassInventoryForCheckout(
+                        (string) $item['tour_itinerary_id'],
+                        (string) $item['tour_quote_id']
+                    );
+                }
                 $lockedAvailability = $this->bookingFlowService->validatePublicCartAvailability($cart);
                 if (!($lockedAvailability['available'] ?? false)) {
                     throw ValidationException::withMessages([
@@ -801,7 +962,8 @@ class CheckoutController extends Controller
             // Step 1: Create or get customer
             $customer = $this->customerService->getOrCreateCustomer(
                 $validated,
-                $guestBookingEnabled && ! $customerLookupEnabled
+                $guestBookingEnabled && ! $customerLookupEnabled,
+                $tourSessionCustomer
             );
 
             // Use the converted snapshot shown on checkout, not the raw LKR cart.
@@ -1020,7 +1182,7 @@ class CheckoutController extends Controller
                 }
 
                 // In booking_items, 'quantity' field stores duration in days for vehicle rentals
-                $durationQuantity = $durationDays;
+                $durationQuantity = !empty($item['is_tour']) ? 1 : $durationDays;
                 $itemAddons = is_array($item['addons'] ?? null) ? $item['addons'] : [];
                 $itemCustomizations = is_array($item['customizations'] ?? null) ? $item['customizations'] : [];
                 $itemMetadata = [
@@ -1044,6 +1206,21 @@ class CheckoutController extends Controller
                     'return_dropoff_location' => $item['return_dropoff_location'] ?? ($item['pickup_location'] ?? null),
                 ];
 
+                if (!empty($item['is_tour'])) {
+                    $itemMetadata = array_merge($itemMetadata, [
+                        'tour_itinerary_id' => $item['tour_itinerary_id'],
+                        'tour_quote_id' => $item['tour_quote_id'],
+                        'tour_itinerary_revision' => $item['tour_itinerary_revision'],
+                        'tour_route_snapshot' => $item['tour_route_snapshot'],
+                        'tour_days_snapshot' => $item['tour_days_snapshot'],
+                        'tour_quote_snapshot' => $item['tour_quote_snapshot'],
+                        'pricing_snapshot' => $item['tour_quote_snapshot'],
+                        'tour_custom_answers' => $item['tour_custom_answers'],
+                        'tour_custom_fields_snapshot' => $item['tour_custom_fields_snapshot'],
+                        'activity_entry_note' => $item['activity_entry_note'],
+                    ]);
+                }
+
                 if ($extraKmCharge) {
                     $itemCustomizations[] = $extraKmCharge;
                     $itemMetadata['extra_km'] = $extraKmCharge['km'];
@@ -1057,6 +1234,8 @@ class CheckoutController extends Controller
                 $bookingItem = BookingItem::create([
                     'booking_id' => $booking->id,
                     'vehicle_group_id' => $item['vehicle_group_id'] ?? null,
+                    'vehicle_class_id' => ($item['pricing_basis'] ?? null) === 'vehicle_class' ? ($item['vehicle_class_id'] ?? null) : null,
+                    'pricing_basis' => ($item['pricing_basis'] ?? null) === 'vehicle_class' ? 'vehicle_class' : 'vehicle_group',
                     'vehicle_id' => $item['vehicle_id'] ?? null,
                     'driver_id' => $item['driver_id'] ?? null,
                     'from_date' => $itemFromDate,
@@ -1089,7 +1268,7 @@ class CheckoutController extends Controller
                         $bookingCurrency
                     ),
                     'status' => 'confirmed',
-                    'item_type' => 'vehicle_group',
+                    'item_type' => ($item['pricing_basis'] ?? null) === 'vehicle_class' ? 'vehicle_class' : 'vehicle_group',
                     'pricing_breakdown' => [
                         'base_price' => $unitPrice,
                         'quantity' => $durationQuantity,  // Duration days
@@ -1120,6 +1299,17 @@ class CheckoutController extends Controller
                         }
                     }
                 }
+            }
+
+            foreach (collect($cart)->filter(fn ($item) => is_array($item) && !empty($item['is_tour'])) as $item) {
+                $itinerary = TourItinerary::query()
+                    ->whereKey($item['tour_itinerary_id'])
+                    ->whereNull('booking_id')
+                    ->lockForUpdate()
+                    ->firstOrFail();
+                $itinerary->booking_id = $booking->id;
+                $itinerary->status = 'converted';
+                $itinerary->save();
             }
 
             // Store cart items for reference
@@ -1665,6 +1855,10 @@ class CheckoutController extends Controller
 
                     session()->forget(['pending_booking_id', 'pending_payment_amount']);
 
+                    if ($this->isTourBooking($booking)) {
+                        return $this->redirectTourPaymentResume($booking, 'The payment did not go through. You can retry securely below.');
+                    }
+
                     return redirect()->route('checkout')->with('error', 'Payment failed. Please try again.');
                 }
             }
@@ -1814,9 +2008,9 @@ class CheckoutController extends Controller
                     ['booking_id' => $booking->id, 'booking_number' => $booking->booking_number, 'payload' => $verificationResult,
                         'source' => 'webxpay', 'status' => $verifiedDecline ? 'declined' : 'reconciliation_required']
                 );
-                DB::transaction(function () use ($booking, $verificationResult, $verifiedDecline): void {
+                $retryAllowed = DB::transaction(function () use ($booking, $verificationResult, $verifiedDecline): bool {
                     $lockedBooking = Booking::where('id', $booking->id)->lockForUpdate()->first();
-                    if (!$lockedBooking || $lockedBooking->payment_status === 'paid') return;
+                    if (!$lockedBooking || $lockedBooking->payment_status === 'paid') return false;
 
                     $workflowData = is_array($lockedBooking->workflow_data) ? $lockedBooking->workflow_data : [];
                     $orderId = (string) ($verificationResult['order_id'] ?? '');
@@ -1845,7 +2039,16 @@ class CheckoutController extends Controller
                         : config('booking.status.payment_processing');
                     $lockedBooking->payment_status = $allAttemptsDeclined ? 'failed' : 'pending';
                     $lockedBooking->save();
+                    return $allAttemptsDeclined;
                 });
+
+                if ($this->isTourBooking($booking)) {
+                    if ($retryAllowed) {
+                        return $this->redirectTourPaymentResume($booking, 'The payment was declined. You can retry securely below.');
+                    }
+
+                    return redirect()->route('checkout')->with('error', 'We could not safely confirm the payment result. Your Tour is being held while the team checks it.');
+                }
 
                 return redirect()->route('checkout')->with('error', $verifiedDecline
                     ? 'The payment was declined. Please try again or choose another payment method.'
@@ -2008,15 +2211,51 @@ class CheckoutController extends Controller
         if ($bookingId) {
             $booking = Booking::find($bookingId);
             if ($booking) {
+                if ($booking->payment_status === 'paid') {
+                    return redirect()->route('checkout.success', [
+                        'type' => 'payment',
+                        'reference' => $booking->booking_number,
+                        'method' => 'online',
+                        'status' => 'confirmed',
+                        'initial_currency' => getBookingDisplayCurrency($booking),
+                    ])->with('success', 'Payment successful! Your booking is confirmed.');
+                }
+
                 $booking->update([
                     'status' => config('booking.status.draft'),
                     'payment_status' => 'cancelled',
                 ]);
+                if ($this->isTourBooking($booking)) {
+                    return $this->redirectTourPaymentResume($booking, 'Payment was cancelled. Your Tour is saved; retry payment below when you are ready.');
+                }
             }
         }
 
         return redirect()->route('checkout')
             ->with('error', 'Payment was cancelled. Please try again or choose a different payment method.');
+    }
+
+    private function isTourBooking(Booking $booking): bool
+    {
+        return $booking->bookingItems()->get()->contains(
+            fn (BookingItem $item) => !empty(data_get($item->metadata, 'tour_itinerary_id'))
+        );
+    }
+
+    private function redirectTourPaymentResume(Booking $booking, string $message)
+    {
+        $token = (string) session('payment_link_token', '');
+        $link = $token !== ''
+            ? \App\Models\Website\PendingPaymentLink::query()
+                ->where('token', $token)
+                ->where('booking_id', $booking->id)
+                ->whereNull('invalidated_at')
+                ->where('expires_at', '>', now())
+                ->first()
+            : null;
+        $link ??= \App\Services\PendingPaymentManager::createPaymentRetryLink($booking);
+
+        return redirect()->route('checkout.payment-resume', ['token' => $link->token])->with('error', $message);
     }
 
     /**
@@ -2290,6 +2529,15 @@ class CheckoutController extends Controller
             if (!$booking) {
                 return redirect()->route('home')->with('error', 'Booking not found.');
             }
+            if ($booking->payment_status === 'paid') {
+                return redirect()->route('checkout.success', [
+                    'type' => 'payment',
+                    'reference' => $booking->booking_number,
+                    'method' => 'online',
+                    'status' => 'confirmed',
+                    'initial_currency' => getBookingDisplayCurrency($booking),
+                ])->with('success', 'Payment successful! Your booking is confirmed.');
+            }
 
             // Extract necessary data
             $context = $paymentLinkData['context'];
@@ -2337,6 +2585,11 @@ class CheckoutController extends Controller
         if (!$linkedBooking || $linkedBooking->payment_status === 'paid'
             || $linkedBooking->status === config('booking.status.payment_processing')) {
             return back()->with('error', 'This booking can no longer be changed through this payment link.');
+        }
+        if ($linkedBooking->bookingItems()->get()->contains(
+            fn ($item) => !empty(data_get($item->metadata, 'tour_itinerary_id'))
+        )) {
+            return back()->with('error', 'A Tour itinerary cannot be changed from payment recovery. Contact our booking team if your plans need updating.');
         }
 
         $context = $link->booking_context ?? [];
@@ -2404,14 +2657,29 @@ class CheckoutController extends Controller
             }
 
             $booking = $paymentLinkData['booking'];
+            // Validate booking ID matches
+            if ($booking->id !== $bookingId) {
+                return back()->with('error', 'Invalid payment request.');
+            }
+            if ($booking->payment_status === 'paid') {
+                return redirect()->route('checkout.success', [
+                    'type' => 'payment',
+                    'reference' => $booking->booking_number,
+                    'method' => 'online',
+                    'status' => 'confirmed',
+                    'initial_currency' => getBookingDisplayCurrency($booking),
+                ])->with('success', 'Payment successful! Your booking is confirmed.');
+            }
             $amount = (float) $paymentLinkData['amount_due'];
             if ($amount <= 0) {
                 return back()->with('success', 'No payment is due for this booking.');
             }
-
-            // Validate booking ID matches
-            if ($booking->id !== $bookingId) {
-                return back()->with('error', 'Invalid payment request.');
+            if ($booking->status === config('booking.status.payment_processing')) {
+                return back()->with('error', 'A payment for this booking is already being processed. Please wait for confirmation before trying again.');
+            }
+            $isTour = $this->isTourBooking($booking);
+            if ($isTour && $paymentMethod !== 'webxpay') {
+                return back()->with('error', 'This Tour payment method is not available. Please use the secure payment button.');
             }
 
             // Apply the saved selection only when the customer commits to payment.
@@ -2468,6 +2736,29 @@ class CheckoutController extends Controller
                 });
             }
 
+            if ($paymentMethod === 'webxpay' && $isTour) {
+                if (!$this->webxPayService->isEnabled()) {
+                    return back()->with('error', 'Online payments are not available.');
+                }
+
+                $claimed = DB::transaction(function () use ($booking): bool {
+                    $lockedBooking = Booking::query()->whereKey($booking->id)->lockForUpdate()->first();
+                    if (!$lockedBooking || $lockedBooking->payment_status === 'paid'
+                        || $lockedBooking->status === config('booking.status.payment_processing')) {
+                        return false;
+                    }
+
+                    $lockedBooking->status = config('booking.status.payment_processing');
+                    $lockedBooking->save();
+
+                    return true;
+                }, 3);
+
+                if (!$claimed) {
+                    return back()->with('error', 'A payment for this booking is already being processed. Please wait for confirmation before trying again.');
+                }
+            }
+
             // Store necessary data in session for payment processing
             session([
                 'resume_booking_id' => $booking->id,
@@ -2512,6 +2803,14 @@ class CheckoutController extends Controller
 
             if (!($result['success'] ?? false)) {
                 Log::error('WebXPay resume payment creation failed', ['booking_id' => $booking->id, 'error' => $result['message'] ?? 'Unknown']);
+                if ($this->isTourBooking($booking)) {
+                    Booking::query()->whereKey($booking->id)
+                        ->where('status', config('booking.status.payment_processing'))
+                        ->update([
+                            'status' => config('booking.status.draft', 'draft'),
+                            'payment_status' => 'failed',
+                        ]);
+                }
                 return back()->with('error', 'Unable to initiate payment. Please try again.');
             }
 

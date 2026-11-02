@@ -158,6 +158,33 @@ class PricingCalculationDefinitionHealthServiceTest extends TestCase
         $this->assertTrue($health['scenario_context']['identifier_fields_are_condition_only']);
     }
 
+    public function test_input_comparison_conditions_are_valid_and_opposite_branches_do_not_overlap(): void
+    {
+        $service = new PricingCalculationDefinitionHealthService($this->createMock(VehiclePricingSlabConfigurationService::class));
+        $daily = $this->definition('daily', 'base_charge', [['name' => 'base_charge', 'type' => 'fixed_value', 'default_value' => 100]]);
+        $daily['conditions'] = [['field' => 'journey_distance', 'operator' => '<=', 'value_field' => 'package_included_km']];
+        $distance = $daily;
+        $distance['id'] = 'distance';
+        $distance['conditions'][0]['operator'] = '>';
+
+        $health = $service->analyzeService('service-1', [$daily, $distance]);
+        $this->assertTrue($health['ready_for_activation'], json_encode($health['issues']));
+        $this->assertNotContains('ambiguous_active_candidates', array_column($health['issues'], 'code'));
+    }
+
+    public function test_input_comparison_rejects_expressions_and_two_comparison_sources(): void
+    {
+        $service = new PricingCalculationDefinitionHealthService($this->createMock(VehiclePricingSlabConfigurationService::class));
+        foreach ([
+            ['field' => 'distance', 'operator' => '<=', 'value_field' => 'days * daily_km'],
+            ['field' => 'distance', 'operator' => '<=', 'value_field' => 'allowed_km', 'value' => 300],
+        ] as $condition) {
+            $definition = $this->definition('invalid', 'base_charge', [['name' => 'base_charge', 'type' => 'fixed_value', 'default_value' => 100]]);
+            $definition['conditions'] = [$condition];
+            $this->assertFalse($service->analyzeDefinition($definition)['ready_for_activation']);
+        }
+    }
+
     /** @return array<string, mixed> */
     private function definition(string $id, string $formula, array $variables): array
     {

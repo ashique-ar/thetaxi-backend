@@ -210,7 +210,7 @@ class AppServiceProvider extends ServiceProvider
             ->by($request->ip()));
         RateLimiter::for('driver-location-live', fn (Request $request) => Limit::perMinute(60)
             ->by('driver-location-live:' . ($request->user()?->getAuthIdentifier() ?: $request->ip())));
-        RateLimiter::for('driver-location-bulk', fn (Request $request) => Limit::perMinute(10)
+        RateLimiter::for('driver-location-bulk', fn (Request $request) => Limit::perMinute(60)
             ->by('driver-location-bulk:' . ($request->user()?->getAuthIdentifier() ?: $request->ip())));
         RateLimiter::for('driver-location-incidents', fn (Request $request) => Limit::perMinute(30)
             ->by('driver-location-incidents:' . ($request->user()?->getAuthIdentifier() ?: $request->ip())));

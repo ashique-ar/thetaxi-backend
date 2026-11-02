@@ -61,7 +61,7 @@
                                                                         <h6 class="vehicle-title">
                                                                             <a
                                                                                 href="#">{{ $item['name'] ?? '' }}</a>
-                                                                            <span class="service-type-badge"><i class="bi bi-car-front-fill" aria-hidden="true"></i> {{ data_get($item, 'service_type_data.name', $item['service_type'] ?? 'Service') }}</span>
+                                                                            <span class="service-type-badge"><i class="{{ !empty($item['is_tour']) ? 'bi bi-map-fill' : 'bi bi-car-front-fill' }}" aria-hidden="true"></i> {{ !empty($item['is_tour']) ? 'Tour' : data_get($item, 'service_type_data.name', $item['service_type'] ?? 'Service') }}</span>
                                                                         </h6>
                                                                         <p class="trip-meta"><small>
                                                                                 <i class="bi bi-calendar-event"></i>
@@ -244,6 +244,23 @@
                                                                             <strong class="checkout-location-label">Dropoff</strong>
                                                                             <span class="checkout-location-address">{{ formatLocationName($dropoffLoc, 'N/A') }}</span>
                                                                         </div>
+
+                                                                        @if (!empty($item['is_tour']))
+                                                                            <div class="tour-checkout-itinerary mt-3">
+                                                                                <strong>Tour itinerary</strong>
+                                                                                <div class="small text-muted">{{ $item['passenger_count'] ?? 0 }} travelers · {{ $item['luggage_count'] ?? 0 }} bags · {{ number_format((float) ($item['tour_distance_km'] ?? 0), 1) }} km estimated</div>
+                                                                                @foreach ($item['tour_days_snapshot'] ?? [] as $tourDay)
+                                                                                    <div class="small mt-1"><strong>Day {{ $tourDay['day_number'] }}:</strong>
+                                                                                        {{ data_get($tourDay, 'start_location.name', 'Start') }}
+                                                                                        @foreach ($tourDay['stops'] ?? [] as $tourStop)
+                                                                                            → {{ $tourStop['name'] ?? 'Stop' }}
+                                                                                        @endforeach
+                                                                                        → {{ data_get($tourDay, 'end_location.name', 'End') }}
+                                                                                    </div>
+                                                                                @endforeach
+                                                                                <p class="small text-muted mt-2 mb-0">{{ $item['activity_entry_note'] ?? '' }}</p>
+                                                                            </div>
+                                                                        @endif
 
                                                                         {{-- Return Trip Info --}}
                                                                         @if (!empty($item['is_return_trip']) && !empty($item['return_trip_date']))

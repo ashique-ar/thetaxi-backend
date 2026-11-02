@@ -193,7 +193,7 @@
                                                 <input class="form-check-input" type="checkbox" value=""
                                                     id="contactCheck22">
                                                 <label class="form-check-label" for="contactCheck22">
-                                                    {{ $settings['contact_form_privacy_text'] ?? 'I will agree with yours privacy policy & terms & conditions.' }}
+                                                    {{ $settings['contact_form_privacy_text'] ?? 'I agree with your privacy policy & terms & conditions.' }}
                                                 </label>
                                             </div>
                                         </div>

@@ -115,8 +115,10 @@ beforeEach(function () {
         $table->uuid('booking_id');
         $table->uuid('service_type_id')->nullable();
         $table->uuid('vehicle_group_id')->nullable();
+        $table->uuid('vehicle_class_id')->nullable();
         $table->uuid('vehicle_id')->nullable();
         $table->uuid('driver_id')->nullable();
+        $table->string('currency', 3)->nullable();
         $table->boolean('is_self_driven')->default(true);
         $table->unsignedInteger('quantity')->default(1);
         $table->decimal('unit_price', 12, 2)->default(100);
@@ -310,10 +312,11 @@ beforeEach(function () {
     });
 
     $this->bookingFlowService = Mockery::mock(BookingFlowService::class);
+    $this->currencyService = Mockery::mock(CurrencyService::class);
     $this->lifecycle = new BookingLifecycleService(
         Mockery::mock(AssignmentService::class),
         $this->bookingFlowService,
-        Mockery::mock(CurrencyService::class),
+        $this->currencyService,
         Mockery::mock(NotificationTriggerService::class),
         $this->invoiceService,
         Mockery::mock(AvailabilityEnforcementService::class),
@@ -324,11 +327,11 @@ beforeEach(function () {
         new FinalPricingTelemetryResolver(),
     );
 
-    $this->booking = Booking::create([
+    $this->booking = Booking::withoutEvents(fn () => Booking::create([
         'booking_number' => 'MULTI-001',
         'status' => 'confirmed',
         'created_user_id' => '00000000-0000-0000-0000-000000000001',
-    ]);
+    ]));
 
     $this->items = collect([1, 2])->map(function (int $number): BookingItem {
         $vehicle = Vehicle::create([
@@ -429,10 +432,14 @@ it('rejects an ambiguous multi-item action without booking_item_id', function ()
 
 it('does not treat booked duration as actual duration for an overtime final calculation', function () {
     $item = $this->items[0];
-    $item->update([
+    $this->currencyService->shouldReceive('getBookingBaseCurrency')->andReturn('LKR');
+    $this->currencyService->shouldReceive('roundAmount')->andReturnUsing(fn ($amount) => round((float) $amount, 2));
+    DB::table('booking_items')->where('id', $item->id)->update([
         'service_type_id' => '11111111-1111-4111-8111-111111111111',
-        'vehicle_group_id' => '22222222-2222-4222-8222-222222222222',
+        'vehicle_group_id' => null,
+        'vehicle_class_id' => '22222222-2222-4222-8222-222222222222',
         'duration_minutes' => 60,
+        'currency' => 'LKR',
     ]);
     DB::table('vehicle_pricing_calculation_definitions')->insert([
         'id' => '33333333-3333-4333-8333-333333333333',
@@ -446,7 +453,11 @@ it('does not treat booked duration as actual duration for an overtime final calc
         'created_at' => now(),
         'updated_at' => now(),
     ]);
-    $this->bookingFlowService->shouldReceive('calculateDynamicPricing')->once()->andReturn([
+    $this->bookingFlowService->shouldReceive('calculateDynamicPricing')
+        ->once()
+        ->withArgs(fn (array $params): bool => $params['vehicle_class_id'] === '22222222-2222-4222-8222-222222222222'
+            && $params['vehicle_group_id'] === null)
+        ->andReturn([
         'total_amount' => 100,
         'pricing_scope' => [
             'calculation_definition_id' => '33333333-3333-4333-8333-333333333333',
@@ -455,7 +466,7 @@ it('does not treat booked duration as actual duration for an overtime final calc
         'calculation_metadata' => ['resolved_variables' => []],
         'adjustment_details' => ['adjustments' => []],
         'breakdown' => [],
-    ]);
+        ]);
 
     $method = new ReflectionMethod($this->lifecycle, 'synchronizeFinalPricing');
 

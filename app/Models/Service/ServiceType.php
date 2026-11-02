@@ -34,6 +34,15 @@ use App\Traits\UUID;
  */
 class ServiceType extends BaseModel
 {
+    public function assertPricingBasisCanChange(string $basis): void
+    {
+        if ($basis !== ($this->pricing_basis ?? 'vehicle_group')
+            && \Illuminate\Support\Facades\DB::table('booking_items')->where('service_type_id', $this->id)->exists()) {
+            throw \Illuminate\Validation\ValidationException::withMessages([
+                'pricing_basis' => 'This service already has bookings. Create a separate service to use a different pricing basis.',
+            ]);
+        }
+    }
 
     public static function isSelfDriveType(mixed $type): bool
     {
@@ -56,6 +65,8 @@ class ServiceType extends BaseModel
         'slug',
         'thumbnail',
         'pricing_mode',
+        'pricing_basis',
+        'tour_booking_enabled',
         'uses_dropoff_time',
         'allow_return_trip',
         'allow_multiple_pickup_locations',
@@ -80,6 +91,7 @@ class ServiceType extends BaseModel
      * @var array<string, string>
      */
     protected $casts = [
+        'tour_booking_enabled' => 'boolean',
         'is_internal' => 'boolean',
         'is_inquiry' => 'boolean',
         'priority' => 'integer',

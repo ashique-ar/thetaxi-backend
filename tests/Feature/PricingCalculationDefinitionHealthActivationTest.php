@@ -196,7 +196,7 @@ it('allows deactivation even when it leaves no active candidate', function () {
         ->and(VehiclePricingCalculationDefinition::findOrFail($definitionId)->status)->toBe('inactive');
 });
 
-it('blocks slab-rate activation when active slab dependencies are missing', function () {
+it('warns about missing slab dependencies without changing the existing activation policy', function () {
     $definitionId = healthTestInsertCalculationDefinition($this->serviceId, 'Slab pricing', 'inactive');
     $controller = app(VehiclePricingCalculationDefinitionController::class);
     $payload = healthTestUpdatePayload($this->serviceId, 'Slab pricing', 'active', 'slab_rate', [[
@@ -206,14 +206,15 @@ it('blocks slab-rate activation when active slab dependencies are missing', func
     ]]);
 
     $response = $controller->update(Request::create('/definition', 'PUT', $payload), $definitionId);
-    $codes = collect($response->getData(true)['health']['focus_issues'])->pluck('code');
+    $issues = collect($response->getData(true)['configuration_health']['focus_issues']);
 
-    expect($response->getStatusCode())->toBe(422)
-        ->and($codes)->toContain('slab_no_active_slabs')
-        ->and(VehiclePricingCalculationDefinition::findOrFail($definitionId)->status)->toBe('inactive');
+    expect($response->getStatusCode())->toBe(200)
+        ->and($issues->pluck('code'))->toContain('slab_no_active_slabs')
+        ->and($issues->firstWhere('code', 'slab_no_active_slabs')['severity'])->toBe('warning')
+        ->and(VehiclePricingCalculationDefinition::findOrFail($definitionId)->status)->toBe('active');
 });
 
-it('blocks common-rate activation when the shared rate has no active values', function () {
+it('warns about missing common-rate values without changing the existing activation policy', function () {
     $definitionId = healthTestInsertCalculationDefinition($this->serviceId, 'Waiting pricing', 'inactive');
     DB::table('vehicle_pricing_common_rate_definitions')->insert([
         'id' => (string) Str::uuid(),
@@ -233,11 +234,12 @@ it('blocks common-rate activation when the shared rate has no active values', fu
     ]]);
 
     $response = $controller->update(Request::create('/definition', 'PUT', $payload), $definitionId);
-    $codes = collect($response->getData(true)['health']['focus_issues'])->pluck('code');
+    $issues = collect($response->getData(true)['configuration_health']['focus_issues']);
 
-    expect($response->getStatusCode())->toBe(422)
-        ->and($codes)->toContain('missing_common_rate_values')
-        ->and(VehiclePricingCalculationDefinition::findOrFail($definitionId)->status)->toBe('inactive');
+    expect($response->getStatusCode())->toBe(200)
+        ->and($issues->pluck('code'))->toContain('missing_common_rate_values')
+        ->and($issues->firstWhere('code', 'missing_common_rate_values')['severity'])->toBe('warning')
+        ->and(VehiclePricingCalculationDefinition::findOrFail($definitionId)->status)->toBe('active');
 });
 
 it('activates when referenced slab and common-rate dependencies are complete', function () {
@@ -403,7 +405,7 @@ it('returns reusable service and definition health response fields', function ()
     $serviceResponse = $controller->health(Request::create('/health', 'GET', [
         'service_type_id' => $this->serviceId,
     ]));
-    $definitionResponse = $controller->definitionHealth($definitionId);
+    $definitionResponse = $controller->definitionHealth(Request::create('/definition-health', 'GET'), $definitionId);
 
     expect($serviceResponse->getStatusCode())->toBe(200)
         ->and($serviceResponse->getData(true)['data'])->toHaveKeys([
@@ -442,6 +444,30 @@ it('publishes the final-pricing runtime variables used by formulas and condition
     }
     expect($variables['customer_type']['condition_only'])->toBeTrue()
         ->and($variables['customer_type']['formula_allowed'])->toBeFalse();
+});
+
+it('saves an input comparison and preserves it when the definition is read', function () {
+    $id = healthTestInsertCalculationDefinition($this->serviceId, 'Tour daily', 'inactive');
+    $payload = healthTestUpdatePayload($this->serviceId, 'Tour daily', 'inactive');
+    $payload['conditions'] = [['field' => 'journey_distance', 'operator' => '<=', 'value_field' => 'package_included_km']];
+
+    $response = app(VehiclePricingCalculationDefinitionController::class)->update(Request::create('/definition', 'PUT', $payload), $id);
+    expect($response->getStatusCode())->toBe(200)
+        ->and(VehiclePricingCalculationDefinition::findOrFail($id)->conditions)->toBe($payload['conditions']);
+});
+
+it('rejects malformed input comparisons before saving a definition', function () {
+    $id = healthTestInsertCalculationDefinition($this->serviceId, 'Tour daily', 'inactive');
+    foreach ([
+        ['field' => 'journey_distance', 'operator' => '<=', 'value_field' => 'days * daily_km'],
+        ['field' => 'journey_distance', 'operator' => '<=', 'value_field' => 'allowed_km', 'value' => 300],
+    ] as $condition) {
+        $payload = healthTestUpdatePayload($this->serviceId, 'Tour daily', 'inactive');
+        $payload['conditions'] = [$condition];
+        $response = app(VehiclePricingCalculationDefinitionController::class)->update(Request::create('/definition', 'PUT', $payload), $id);
+        expect($response->getStatusCode())->toBe(422);
+    }
+    expect(VehiclePricingCalculationDefinition::findOrFail($id)->conditions)->toBe([]);
 });
 
 function healthTestInsertCalculationDefinition(string $serviceId, string $name, string $status): string

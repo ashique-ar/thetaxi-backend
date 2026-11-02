@@ -161,6 +161,9 @@ class ServiceTypeController extends Controller
         $data['updated_user_id'] = $request->user()->id;
         $serviceType = DB::transaction(function () use ($serviceType, $data, $request): ServiceType {
             $locked = ServiceType::query()->whereKey($serviceType->id)->lockForUpdate()->firstOrFail();
+            if (isset($data['pricing_basis'])) {
+                $locked->assertPricingBasisCanChange($data['pricing_basis']);
+            }
             if (array_key_exists('workflow_config', $data) && is_array($data['workflow_config'])) {
                 $data['workflow_config'] = array_replace((array) $locked->workflow_config, $data['workflow_config']);
             }

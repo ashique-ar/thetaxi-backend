@@ -33,6 +33,8 @@ class CreateServiceTypeRequest extends FormRequest
             ],
             'thumbnail' => ['nullable', 'string', 'max:255'],
             'pricing_mode' => ['nullable', 'string', 'in:trip,day,hourly'],
+            'pricing_basis' => ['sometimes', 'required', 'in:vehicle_group,vehicle_class'],
+            'tour_booking_enabled' => ['sometimes', 'boolean'],
             'uses_dropoff_time' => ['nullable', 'boolean'],
             'allow_return_trip' => ['nullable', 'boolean'],
             'frontend_category' => ['nullable', 'string', 'max:100'],
@@ -57,6 +59,10 @@ class CreateServiceTypeRequest extends FormRequest
     public function withValidator(Validator $validator): void
     {
         $validator->after(function (Validator $validator): void {
+            if (filter_var($this->input('tour_booking_enabled', false), FILTER_VALIDATE_BOOLEAN)
+                && $this->input('pricing_basis', 'vehicle_group') !== 'vehicle_class') {
+                $validator->errors()->add('tour_booking_enabled', 'Tours can only be enabled for a vehicle-class-priced service.');
+            }
             $config = $this->input('workflow_config', []);
             if (! is_array($config)) return;
             $returnEnabled = array_key_exists('return_stage_enabled', $config) && $config['return_stage_enabled'] !== null

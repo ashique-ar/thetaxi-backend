@@ -15,6 +15,8 @@
         $isPaid = $isAdvancePayment || $isFullPayment;
         $isPending = $booking && $booking->payment_status === 'pending';
         $isPayOnCheckin = $booking && $booking->payment_type === 'checkin';
+        $tourOnlyBooking = $booking && $booking->bookingItems->count() === 1
+            && filled(data_get($booking->bookingItems->first()->metadata, 'tour_itinerary_id'));
         $bookingCurrencyCode = $booking
             ? getBookingDisplayCurrency($booking)
             : app(\App\Services\CurrencyService::class)->getDefaultCurrency();
@@ -80,7 +82,7 @@
                         <i class="bi bi-clock-fill"></i>
                     </div> --}}
                     <h1>Booking Confirmed!</h1>
-                    <p class="lead">Payment will be collected when you check-in to collect the vehicle.</p>
+                    <p class="lead">{{ $tourOnlyBooking ? 'Your Tour booking is confirmed. Payment is due according to the booking terms.' : 'Payment will be collected when you check-in to collect the vehicle.' }}</p>
                 @else
                     {{-- <div class="success-icon pending">
                         <i class="bi bi-clock-fill"></i>
@@ -135,7 +137,8 @@
                             <!-- Vehicle Wise Trip Details Section -->
                             <div class="section">
                                 <h2 class="section-title">
-                                    <span class="icon">🚗</span> Vehicle Wise Trip Details
+                                    <span class="icon">{{ $tourOnlyBooking ? '🗺️' : '🚗' }}</span>
+                                    {{ $tourOnlyBooking ? 'Tour itinerary and booking details' : 'Vehicle Wise Trip Details' }}
                                 </h2>
                                 @if ($booking->bookingItems->count() > 0)
                                     @foreach ($booking->bookingItems as $index => $item)
@@ -250,7 +253,7 @@
                                         <p>You have successfully paid {{ $advancePercentage }}% advance
                                             ({{ $currencySymbol }}
                                             {{ number_format(floor(max(0, $displayAmount($booking->amount_to_pay ?? 0))), 0) }}).</p>
-                                        <p><strong>Balance Due at Pickup:</strong> {{ $currencySymbol }}
+                                        <p><strong>{{ $tourOnlyBooking ? 'Remaining balance due:' : 'Balance Due at Pickup:' }}</strong> {{ $currencySymbol }}
                                             {{ number_format(floor(max(0, $displayAmount($booking->total_estimated - ($booking->amount_to_pay ?? 0)))), 0) }}
                                         </p>
                                         <p style="margin-bottom: 8px;"><strong>Important Reminders:</strong></p>
@@ -259,17 +262,16 @@
                                             <li>Bring a valid driver's license</li>
                                             <li>A credit card may be required for security deposit</li>
                                             <li>Arrive 15 minutes before scheduled pickup time</li>
-                                            <li><strong>Pay remaining balance at pickup: {{ $currencySymbol }}
+                                            <li><strong>{{ $tourOnlyBooking ? 'Remaining balance: ' : 'Pay remaining balance at pickup: ' }}{{ $currencySymbol }}
                                                     {{ number_format(floor(max(0, $displayAmount($booking->total_estimated - ($booking->amount_to_pay ?? 0)))), 0) }}</strong>
                                             </li>
                                         </ul>
                                     </div>
                                 @elseif($isPayOnCheckin)
                                     <div class="highlight-box success">
-                                        <h3>✓ Pay on Check-in</h3>
-                                        <p>Your booking is confirmed. Please pay the full amount when you check-in to
-                                            collect the vehicle.</p>
-                                        <p><strong>Amount Due at Check-in:</strong> {{ $currencySymbol }}
+                                        <h3>✓ {{ $tourOnlyBooking ? 'Pay Later' : 'Pay on Check-in' }}</h3>
+                                        <p>{{ $tourOnlyBooking ? 'Your booking is confirmed. Please pay the full amount according to the Tour booking terms.' : 'Your booking is confirmed. Please pay the full amount when you check-in to collect the vehicle.' }}</p>
+                                        <p><strong>{{ $tourOnlyBooking ? 'Amount Due:' : 'Amount Due at Check-in:' }}</strong> {{ $currencySymbol }}
                                             {{ number_format(floor(max(0, $displayAmount($booking->total_estimated))), 0) }}</p>
                                         <p style="margin-bottom: 8px;"><strong>Important Reminders:</strong></p>
                                         <ul>

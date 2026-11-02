@@ -18,6 +18,8 @@
     @php
         // Keep all persisted checkout amounts paired with their snapshot currency.
         $currencyCode = getBookingDisplayCurrency($booking);
+        $tourOnlyBooking = $booking->bookingItems->count() === 1
+            && filled(data_get($booking->bookingItems->first()->metadata, 'tour_itinerary_id'));
         $workflowData = is_string($booking->workflow_data)
             ? json_decode($booking->workflow_data, true)
             : $booking->workflow_data ?? [];
@@ -84,10 +86,11 @@
         <div class="reference-number">{{ $booking->booking_number }}</div>
     </div>
 
-    <!-- Vehicle Wise Trip Details Section -->
+    <!-- Booking item details -->
     <div class="section">
         <h2 class="section-title">
-            <span class="icon">🚗</span> Vehicle Wise Trip Details
+            <span class="icon">{{ $tourOnlyBooking ? '🗺️' : '🚗' }}</span>
+            {{ $tourOnlyBooking ? 'Tour itinerary and booking details' : 'Vehicle Wise Trip Details' }}
         </h2>
         @if ($booking->bookingItems->count() > 0)
             @foreach ($booking->bookingItems as $index => $item)

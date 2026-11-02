@@ -49,6 +49,7 @@ class CustomerPortalBookingReadTest extends TestCase
             $table->dateTime('from_date')->nullable(); $table->time('from_time')->nullable();
             $table->dateTime('to_date')->nullable(); $table->time('to_time')->nullable();
             $table->json('pickup_location')->nullable(); $table->json('dropoff_location')->nullable();
+            $table->json('metadata')->nullable();
             $table->decimal('total_price', 12, 2)->nullable();
             $table->timestamps(); $table->softDeletes();
         });
@@ -87,6 +88,11 @@ class CustomerPortalBookingReadTest extends TestCase
             'vehicle_group_id' => (string) Str::uuid(), 'status' => 'pending',
             'from_date' => now()->addDay(), 'pickup_location' => json_encode(['address' => 'Colombo']),
             'dropoff_location' => json_encode(['address' => 'Kandy']),
+            'metadata' => json_encode(['tour_days_snapshot' => [[
+                'day_number' => 1, 'service_date' => '2026-10-01', 'start_time' => '09:00',
+                'start_location' => ['address' => 'Colombo Fort'], 'end_location' => ['address' => 'Kandy'],
+                'stops' => [['kind' => 'activity', 'name' => 'Garden visit', 'visit_duration_minutes' => 45, 'activity_id' => 'private-id']],
+            ]]]),
             'total_price' => 88888, 'created_at' => now(), 'updated_at' => now(),
         ]);
         return $id;
@@ -124,6 +130,10 @@ class CustomerPortalBookingReadTest extends TestCase
         $detail->assertJsonPath('data.trips.0.pickup', 'Colombo');
         $detail->assertJsonMissingPath('data.trips.0.request_status');
         $detail->assertJsonPath('data.request_status', 'Under review');
+        $detail->assertJsonPath('data.trips.0.tour_days.0.stops.0.name', 'Garden visit');
+        $detail->assertJsonPath('data.trips.0.tour_days.0.start_time', '09:00');
+        $detail->assertJsonPath('data.trips.0.tour_activity_note', 'Activity visits are included in your route only. Tickets, entry fees and activity reservations are not included. Please arrange these separately. Activity booking will be introduced in a future release.');
+        $this->assertStringNotContainsString('private-id', $detail->getContent());
         $this->assertStringNotContainsString('99999', $detail->getContent());
         $this->assertStringNotContainsString('88888', $detail->getContent());
 

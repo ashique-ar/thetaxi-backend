@@ -41,6 +41,8 @@ class UpdateServiceTypeRequest extends FormRequest
             ],
             'thumbnail' => ['sometimes', 'nullable', 'string', 'max:255'],
             'pricing_mode' => ['sometimes', 'nullable', 'string', 'in:trip,day,hourly'],
+            'pricing_basis' => ['sometimes', 'required', 'in:vehicle_group,vehicle_class'],
+            'tour_booking_enabled' => ['sometimes', 'boolean'],
             'uses_dropoff_time' => ['sometimes', 'boolean'],
             'allow_return_trip' => ['sometimes', 'boolean'],
             'frontend_category' => ['sometimes', 'nullable', 'string', 'max:100'],
@@ -66,6 +68,19 @@ class UpdateServiceTypeRequest extends FormRequest
     public function withValidator(Validator $validator): void
     {
         $validator->after(function (Validator $validator): void {
+            $serviceType = $this->route('service_type');
+            $tourEnabled = filter_var($this->input('tour_booking_enabled', $serviceType?->tour_booking_enabled ?? false), FILTER_VALIDATE_BOOLEAN);
+            $pricingBasis = $this->input('pricing_basis', $serviceType?->pricing_basis ?? 'vehicle_group');
+            if ($tourEnabled && $pricingBasis !== 'vehicle_class') {
+                $validator->errors()->add('tour_booking_enabled', 'Tours can only be enabled for a vehicle-class-priced service.');
+            }
+            if ($this->filled('pricing_basis') && ! $validator->errors()->has('pricing_basis')) {
+                try {
+                    $this->route('service_type')->assertPricingBasisCanChange($this->input('pricing_basis'));
+                } catch (\Illuminate\Validation\ValidationException $exception) {
+                    $validator->errors()->add('pricing_basis', $exception->errors()['pricing_basis'][0]);
+                }
+            }
             if (! $this->exists('workflow_config') && ! $this->exists('type')) return;
             $incoming = $this->input('workflow_config', []);
             if (! is_array($incoming)) return;

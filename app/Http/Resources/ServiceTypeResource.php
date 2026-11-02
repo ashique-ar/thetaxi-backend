@@ -26,6 +26,8 @@ class ServiceTypeResource extends JsonResource
             'deposit_value'=>(float)($this->deposit_value??0),
             'settlement_due_days'=>$this->settlement_due_days,
             'pricing_mode' => $this->pricing_mode,
+            'pricing_basis' => $this->pricing_basis ?? 'vehicle_group',
+            'tour_booking_enabled' => (bool) $this->tour_booking_enabled,
             'uses_dropoff_time' => (bool) $this->uses_dropoff_time,
             'allow_return_trip' => (bool) $this->allow_return_trip,
             'allow_multiple_pickup_locations' => (bool) $this->allow_multiple_pickup_locations,

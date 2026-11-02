@@ -1,6 +1,8 @@
 <?php
 
 use App\Http\Controllers\Api\Booking\BookingFlowController;
+use App\Http\Controllers\Api\Tours\TourCatalogueController;
+use App\Http\Controllers\Api\Tours\TourItineraryController;
 use App\Http\Controllers\Api\Booking\BookingLifecycleController;
 use App\Http\Controllers\Api\Booking\CustomerMobileActivityController;
 use App\Http\Controllers\Api\Customer\Mobile\DeviceController as CustomerMobileDeviceController;
@@ -280,6 +282,12 @@ Route::prefix('agent-api')
 |--------------------------------------------------------------------------
 */
 Route::prefix('public')->group(function () {
+    Route::prefix('tours')->middleware('tours.schema')->group(function (): void {
+        Route::get('services', [TourCatalogueController::class, 'publishedServices'])->middleware('throttle:60,1');
+        Route::get('catalogue', [TourCatalogueController::class, 'published'])->middleware('throttle:60,1');
+        Route::post('route-suggestion', [TourCatalogueController::class, 'suggestRoute'])->middleware('throttle:30,1');
+        Route::post('suggestions', [TourCatalogueController::class, 'suggestPublicItinerary'])->middleware('throttle:3,1');
+    });
     Route::get('inquiry-services', [PublicInquiryServiceController::class, 'index']);
     Route::get('inquiry-services/{slug}', [PublicInquiryServiceController::class, 'show']);
     Route::get('service-form-configs/{serviceCode}', [ServiceFormConfigController::class, 'publicByCode']);
@@ -345,6 +353,41 @@ Route::post('observability/frontend-log', [ObservabilityController::class, 'fron
     ->middleware('throttle:30,1');
 
 Route::middleware(['auth:api'])->group(function () {
+
+    Route::post('customer-portal/tours/suggestions', [TourCatalogueController::class, 'suggestItinerary'])->middleware(['tours.schema', 'throttle:3,1']);
+
+    Route::prefix('tours')->middleware('tours.schema')->group(function (): void {
+        Route::get('manage-catalogue', [TourCatalogueController::class, 'manageIndex']);
+        Route::post('locations', [TourCatalogueController::class, 'storeLocation']);
+        Route::put('locations/{location}', [TourCatalogueController::class, 'updateLocation']);
+        Route::post('destinations', [TourCatalogueController::class, 'storeDestination']);
+        Route::put('destinations/{destination}', [TourCatalogueController::class, 'updateDestination']);
+        Route::post('activities', [TourCatalogueController::class, 'storeActivity']);
+        Route::put('activities/{activity}', [TourCatalogueController::class, 'updateActivity']);
+    });
+
+    Route::prefix('tours/drafts')->middleware(['tours.schema', 'permission:bookings.create'])->group(function (): void {
+        Route::post('', [TourItineraryController::class, 'store'])->defaults('tour_pricing_context', 'portal')->middleware('throttle:20,1');
+        Route::get('{id}', [TourItineraryController::class, 'show'])->whereUuid('id')->middleware('throttle:60,1');
+        Route::put('{id}', [TourItineraryController::class, 'update'])->whereUuid('id')->middleware('throttle:20,1');
+        Route::post('{id}/route-options', [TourItineraryController::class, 'routeOptions'])->whereUuid('id')->middleware('throttle:20,1');
+        Route::post('{id}/apply-route', [TourItineraryController::class, 'applyRoute'])->whereUuid('id')->middleware('throttle:20,1');
+        Route::post('{id}/quote', [TourItineraryController::class, 'quote'])->whereUuid('id')->middleware('throttle:10,1');
+        Route::post('{id}/quotes/{quoteId}/accept', [TourItineraryController::class, 'acceptQuote'])->whereUuid('id')->whereUuid('quoteId')->middleware('throttle:10,1');
+        Route::post('{id}/convert-to-booking', [TourItineraryController::class, 'convertToBooking'])->defaults('tour_booking_context', 'internal')->whereUuid('id')->middleware('throttle:5,1');
+    });
+
+    Route::prefix('customer-portal/tours/drafts')->middleware('tours.schema')->group(function (): void {
+        Route::post('', [TourItineraryController::class, 'store'])->defaults('tour_pricing_context', 'public')->middleware('throttle:20,1');
+        Route::get('', [TourItineraryController::class, 'index'])->defaults('tour_booking_context', 'customer')->middleware('throttle:30,1');
+        Route::get('{id}', [TourItineraryController::class, 'show'])->defaults('tour_booking_context', 'customer')->whereUuid('id')->middleware('throttle:60,1');
+        Route::put('{id}', [TourItineraryController::class, 'update'])->defaults('tour_booking_context', 'customer')->whereUuid('id')->middleware('throttle:20,1');
+        Route::post('{id}/route-options', [TourItineraryController::class, 'routeOptions'])->defaults('tour_booking_context', 'customer')->whereUuid('id')->middleware('throttle:20,1');
+        Route::post('{id}/apply-route', [TourItineraryController::class, 'applyRoute'])->defaults('tour_booking_context', 'customer')->whereUuid('id')->middleware('throttle:20,1');
+        Route::post('{id}/quote', [TourItineraryController::class, 'quote'])->defaults('tour_booking_context', 'customer')->whereUuid('id')->middleware('throttle:10,1');
+        Route::post('{id}/quotes/{quoteId}/accept', [TourItineraryController::class, 'acceptQuote'])->defaults('tour_booking_context', 'customer')->whereUuid('id')->whereUuid('quoteId')->middleware('throttle:10,1');
+        Route::post('{id}/convert-to-booking', [TourItineraryController::class, 'convertToBooking'])->defaults('tour_booking_context', 'customer')->whereUuid('id')->middleware('throttle:5,1');
+    });
 
     Route::prefix('integrations/respond-io')->middleware('business.module:respond-io')->group(function (): void {
         Route::get('assignee-options', [RespondIoIntegrationController::class, 'assigneeOptions'])->middleware('permission:communication.view');
@@ -466,36 +509,36 @@ Route::middleware(['auth:api'])->group(function () {
         ->middleware('permission:customers.create|staff.create|drivers.create');
 
     Route::middleware('ensure.internal')->group(function () {
-    Route::middleware(['permission:users.view'])->group(function () {
-        Route::get('users', [UserController::class, 'index']);
-        Route::get('users/filter-options', [UserController::class, 'filterOptions']);
-        Route::post('users/search/advanced', [UserController::class, 'advancedSearch']);
-        Route::get('users/export', [UserController::class, 'export'])->middleware('permission:users.manage');
-    });
-    Route::get('users/{user}', [UserController::class, 'show'])->middleware('permission:users.view|users.edit');
-    Route::get('users/{user}/permissions', [UserController::class, 'permissions'])
-        ->middleware('permission:users.view|users.edit|permissions.manage');
-    Route::get('users/{user}/roles', [UserController::class, 'roles'])->middleware('permission:users.edit');
-    Route::get('users/{user}/contexts', [UserController::class, 'contexts'])->middleware('permission:users.edit');
-    Route::post('users', [UserController::class, 'store'])->middleware('permission:users.create');
-    Route::post('users/import', [UserController::class, 'import'])->middleware('permission:users.manage');
-    Route::post('users/bulk', [UserController::class, 'bulk'])->middleware('permission:users.manage');
-    Route::put('users/{user}', [UserController::class, 'update'])->middleware('permission:users.edit');
-    Route::delete('users/{user}', [UserController::class, 'destroy'])->middleware('permission:users.delete');
-    Route::post('users/{user}/activate', [UserController::class, 'activate'])->middleware('permission:users.manage');
-    Route::post('users/{user}/deactivate', [UserController::class, 'deactivate'])->middleware('permission:users.manage');
-    Route::post('users/{user}/unlock', [UserController::class, 'unlock'])->middleware('permission:users.manage');
-    Route::post('users/{user}/impersonate', [UserController::class, 'impersonate'])->middleware('permission:users.manage');
-    Route::post('users/{user}/reset-password', [UserController::class, 'resetPassword'])->middleware('permission:users.manage');
-    Route::post('users/{user}/permissions', [UserController::class, 'assignPermissions'])->middleware('permission:permissions.manage');
-    Route::delete('users/{user}/permissions', [UserController::class, 'revokePermissions'])->middleware('permission:permissions.manage');
-    Route::put('users/{user}/permissions/sync-direct', [UserController::class, 'syncDirectPermissions'])->middleware('permission:permissions.manage');
-    Route::post('users/{user}/roles', [UserController::class, 'assignRoles'])->middleware('permission:users.edit');
-    Route::delete('users/{user}/roles', [UserController::class, 'revokeRoles'])->middleware('permission:users.edit');
-    Route::post('users/{user}/contexts/activate', [UserController::class, 'activateContext'])->middleware('permission:users.edit');
-    Route::post('users/{user}/contexts/deactivate', [UserController::class, 'deactivateContext'])->middleware('permission:users.edit');
-    Route::post('users/{user}/contexts/{context}/roles', [UserController::class, 'assignContextRoles'])->middleware('permission:users.edit');
-    Route::delete('users/{user}/contexts/{context}/roles', [UserController::class, 'revokeContextRole'])->middleware('permission:users.edit');
+        Route::middleware(['permission:users.view'])->group(function () {
+            Route::get('users', [UserController::class, 'index']);
+            Route::get('users/filter-options', [UserController::class, 'filterOptions']);
+            Route::post('users/search/advanced', [UserController::class, 'advancedSearch']);
+            Route::get('users/export', [UserController::class, 'export'])->middleware('permission:users.manage');
+        });
+        Route::get('users/{user}', [UserController::class, 'show'])->middleware('permission:users.view|users.edit');
+        Route::get('users/{user}/permissions', [UserController::class, 'permissions'])
+            ->middleware('permission:users.view|users.edit|permissions.manage');
+        Route::get('users/{user}/roles', [UserController::class, 'roles'])->middleware('permission:users.edit');
+        Route::get('users/{user}/contexts', [UserController::class, 'contexts'])->middleware('permission:users.edit');
+        Route::post('users', [UserController::class, 'store'])->middleware('permission:users.create');
+        Route::post('users/import', [UserController::class, 'import'])->middleware('permission:users.manage');
+        Route::post('users/bulk', [UserController::class, 'bulk'])->middleware('permission:users.manage');
+        Route::put('users/{user}', [UserController::class, 'update'])->middleware('permission:users.edit');
+        Route::delete('users/{user}', [UserController::class, 'destroy'])->middleware('permission:users.delete');
+        Route::post('users/{user}/activate', [UserController::class, 'activate'])->middleware('permission:users.manage');
+        Route::post('users/{user}/deactivate', [UserController::class, 'deactivate'])->middleware('permission:users.manage');
+        Route::post('users/{user}/unlock', [UserController::class, 'unlock'])->middleware('permission:users.manage');
+        Route::post('users/{user}/impersonate', [UserController::class, 'impersonate'])->middleware('permission:users.manage');
+        Route::post('users/{user}/reset-password', [UserController::class, 'resetPassword'])->middleware('permission:users.manage');
+        Route::post('users/{user}/permissions', [UserController::class, 'assignPermissions'])->middleware('permission:permissions.manage');
+        Route::delete('users/{user}/permissions', [UserController::class, 'revokePermissions'])->middleware('permission:permissions.manage');
+        Route::put('users/{user}/permissions/sync-direct', [UserController::class, 'syncDirectPermissions'])->middleware('permission:permissions.manage');
+        Route::post('users/{user}/roles', [UserController::class, 'assignRoles'])->middleware('permission:users.edit');
+        Route::delete('users/{user}/roles', [UserController::class, 'revokeRoles'])->middleware('permission:users.edit');
+        Route::post('users/{user}/contexts/activate', [UserController::class, 'activateContext'])->middleware('permission:users.edit');
+        Route::post('users/{user}/contexts/deactivate', [UserController::class, 'deactivateContext'])->middleware('permission:users.edit');
+        Route::post('users/{user}/contexts/{context}/roles', [UserController::class, 'assignContextRoles'])->middleware('permission:users.edit');
+        Route::delete('users/{user}/contexts/{context}/roles', [UserController::class, 'revokeContextRole'])->middleware('permission:users.edit');
     });
 
     /*
@@ -543,39 +586,39 @@ Route::middleware(['auth:api'])->group(function () {
     */
 
     Route::middleware('ensure.internal')->group(function () {
-    Route::post('roles/ai-permission-suggestions', [RolePermissionAssistantController::class, 'suggest'])
-        ->middleware('permission:roles.edit|roles.manage');
-    Route::apiResource('roles', RoleController::class);
-    Route::get('roles/{role}/permissions', [RoleController::class, 'permissions'])
-        ->middleware('permission:roles.view|roles.edit|roles.manage');
-    Route::put('roles/{role}/permissions/sync', [RoleController::class, 'syncPermissions'])
-        ->middleware('permission:roles.edit|roles.manage');
-    Route::post('roles/{role}/permissions/apply-template', [RoleController::class, 'applyTemplate'])
-        ->middleware('permission:roles.edit|roles.manage');
-    Route::post('roles/{role}/permissions', [RoleController::class, 'assignPermissions'])
-        ->middleware('permission:roles.edit|roles.manage');
-    Route::delete('roles/{role}/permissions', [RoleController::class, 'revokePermissions'])
-        ->middleware('permission:roles.edit|roles.manage');
-    Route::get('roles/{role}/users', [RoleController::class, 'users'])
-        ->middleware('permission:roles.view|roles.edit|roles.manage');
+        Route::post('roles/ai-permission-suggestions', [RolePermissionAssistantController::class, 'suggest'])
+            ->middleware('permission:roles.edit|roles.manage');
+        Route::apiResource('roles', RoleController::class);
+        Route::get('roles/{role}/permissions', [RoleController::class, 'permissions'])
+            ->middleware('permission:roles.view|roles.edit|roles.manage');
+        Route::put('roles/{role}/permissions/sync', [RoleController::class, 'syncPermissions'])
+            ->middleware('permission:roles.edit|roles.manage');
+        Route::post('roles/{role}/permissions/apply-template', [RoleController::class, 'applyTemplate'])
+            ->middleware('permission:roles.edit|roles.manage');
+        Route::post('roles/{role}/permissions', [RoleController::class, 'assignPermissions'])
+            ->middleware('permission:roles.edit|roles.manage');
+        Route::delete('roles/{role}/permissions', [RoleController::class, 'revokePermissions'])
+            ->middleware('permission:roles.edit|roles.manage');
+        Route::get('roles/{role}/users', [RoleController::class, 'users'])
+            ->middleware('permission:roles.view|roles.edit|roles.manage');
 
-    /*
-    |--------------------------------------------------------------------------
-    | Permission Management Routes
-    |--------------------------------------------------------------------------
-    */
+        /*
+        |--------------------------------------------------------------------------
+        | Permission Management Routes
+        |--------------------------------------------------------------------------
+        */
 
-    Route::get('permissions/registry', [PermissionController::class, 'registry'])
-        ->middleware('permission:permissions.view|permissions.manage|roles.create|roles.edit|roles.manage');
-    Route::get('permissions', [PermissionController::class, 'index'])
-        ->middleware('permission:permissions.view|permissions.create|permissions.edit|permissions.delete|permissions.manage');
-    Route::get('permissions/{permission}', [PermissionController::class, 'show'])
-        ->middleware('permission:permissions.view|permissions.create|permissions.edit|permissions.delete|permissions.manage');
-    Route::post('permissions', [PermissionController::class, 'store'])->middleware('permission:permissions.create|permissions.manage');
-    Route::put('permissions/{permission}', [PermissionController::class, 'update'])->middleware('permission:permissions.edit|permissions.manage');
-    Route::delete('permissions/{permission}', [PermissionController::class, 'destroy'])->middleware('permission:permissions.delete|permissions.manage');
-    Route::get('permissions/{permission}/roles', [PermissionController::class, 'roles'])->middleware('permission:permissions.view|permissions.manage');
-    Route::get('permissions/{permission}/users', [PermissionController::class, 'users'])->middleware('permission:permissions.view|permissions.manage');
+        Route::get('permissions/registry', [PermissionController::class, 'registry'])
+            ->middleware('permission:permissions.view|permissions.manage|roles.create|roles.edit|roles.manage');
+        Route::get('permissions', [PermissionController::class, 'index'])
+            ->middleware('permission:permissions.view|permissions.create|permissions.edit|permissions.delete|permissions.manage');
+        Route::get('permissions/{permission}', [PermissionController::class, 'show'])
+            ->middleware('permission:permissions.view|permissions.create|permissions.edit|permissions.delete|permissions.manage');
+        Route::post('permissions', [PermissionController::class, 'store'])->middleware('permission:permissions.create|permissions.manage');
+        Route::put('permissions/{permission}', [PermissionController::class, 'update'])->middleware('permission:permissions.edit|permissions.manage');
+        Route::delete('permissions/{permission}', [PermissionController::class, 'destroy'])->middleware('permission:permissions.delete|permissions.manage');
+        Route::get('permissions/{permission}/roles', [PermissionController::class, 'roles'])->middleware('permission:permissions.view|permissions.manage');
+        Route::get('permissions/{permission}/users', [PermissionController::class, 'users'])->middleware('permission:permissions.view|permissions.manage');
     });
 
     /*
@@ -1624,6 +1667,10 @@ Route::middleware(['auth:api'])->group(function () {
         Route::apiResource('vip-types', VipTypeController::class);
         Route::get('pricing-context-policy', [PricingContextPolicyController::class, 'show']);
         Route::post('service-types/workflow-preview', [ServiceTypeController::class, 'previewWorkflow'])->middleware('pricing.context');
+        Route::get('service-types/{serviceType}/vehicle-classes', [\App\Http\Controllers\Api\Service\ServiceVehicleClassController::class, 'index'])
+            ->middleware(['ensure.internal', 'pricing.context']);
+        Route::put('service-types/{serviceType}/vehicle-classes/{vehicleClass}', [\App\Http\Controllers\Api\Service\ServiceVehicleClassController::class, 'update'])
+            ->middleware(['ensure.internal', 'pricing.context']);
         Route::get('service-types/{serviceType}/workflow-revisions', [ServiceTypeController::class, 'workflowRevisions'])->middleware(['pricing.context', 'permission:service-types.view|service-types.edit']);
         Route::post('service-types/{serviceType}/workflow-revisions/{revision}/review', [ServiceTypeController::class, 'reviewWorkflowRevision'])->middleware('pricing.context');
         Route::apiResource('service-types', ServiceTypeController::class)->middleware('pricing.context');
@@ -1853,6 +1900,11 @@ Route::middleware(['auth:api'])->group(function () {
                 Route::post('/pricing-matrix', [VehicleGroupPricingController::class, 'getPricingMatrix']);
                 Route::get('/matrix', [VehicleGroupPricingController::class, 'matrix']);
                 Route::get('/unified-pricing', [VehicleGroupPricingController::class, 'unifiedPricing']);
+                Route::get('/class-matrix', [VehicleGroupPricingController::class, 'classPricingMatrix']);
+                Route::post('/class-matrix/preview', [VehicleGroupPricingController::class, 'previewClassPricingMatrix']);
+                Route::get('/class-matrix/history', [VehicleGroupPricingController::class, 'getClassPricingHistory']);
+                Route::get('/class-matrix/export', [VehicleGroupPricingController::class, 'exportClassPricingMatrix']);
+                Route::post('/class-matrix/import', [VehicleGroupPricingController::class, 'importClassPricingMatrix']);
                 Route::post('/copy-pricing', [VehicleGroupPricingController::class, 'copyPricing']);
                 Route::post('/{vehicleGroupId}/save-pricing', [VehicleGroupPricingController::class, 'saveVehicleGroupPricing']);
                 Route::get('/{vehicleGroupId}/history', [VehicleGroupPricingController::class, 'getVehicleGroupPricingHistory']);
@@ -2871,7 +2923,7 @@ Route::middleware(['auth:api'])->group(function () {
     Route::prefix('payment-transactions')->middleware(['permission:payments.transactions'])->group(function () {
         Route::get('/', [PaymentController::class, 'getPaymentTransactions']);
         Route::get('refunds/reconciliation', [PaymentController::class, 'getRefundReconciliationQueue']);
-    Route::get('initiations/reconciliation', [PaymentController::class, 'getPaymentInitiationReconciliationQueue']);
+        Route::get('initiations/reconciliation', [PaymentController::class, 'getPaymentInitiationReconciliationQueue']);
         Route::get('{id}', [PaymentController::class, 'getTransactionDetails']);
         Route::post('{id}/refund', [PaymentController::class, 'refundTransaction'])->middleware('permission:payments.refund');
     });

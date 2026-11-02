@@ -1,10 +1,11 @@
+@php $hasTourItem = collect($cart)->contains(fn ($item) => !empty($item['is_tour'])); @endphp
 <div class="checkout-form-wrapper">
     <div class="checkout-form-title">
         <div class="checkout-summary-heading">
             <div>
                 <h4>Order Summary</h4>
                 <span>{{ count($cart) }}
-                    {{ count($cart) === 1 ? 'vehicle' : 'vehicles' }}</span>
+                    {{ $hasTourItem ? (count($cart) === 1 ? 'booking item' : 'booking items') : (count($cart) === 1 ? 'vehicle' : 'vehicles') }}</span>
             </div>
             <div class="checkout-heading-total">
                 <small>Total Amount</small>
@@ -154,7 +155,7 @@
                                         Amount to Pay
                                         ({{ $advancePercentage }}%)
                                     @elseif($paymentType === 'checkin')
-                                        Pay on Check-in
+                                        {{ count($cart) === 1 && $hasTourItem ? 'Pay later' : 'Pay on Check-in' }}
                                     @elseif($paymentType === 'quotation')
                                         Quotation Request
                                     @endif

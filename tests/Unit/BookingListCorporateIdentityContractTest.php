@@ -7,7 +7,8 @@ it('projects and searches corporate and selected employee identity in the canoni
     $template = file_get_contents(base_path('../portal-thetaxi/src/app/modules/booking/components/booking-list/booking-list.component.html'));
 
     expect($query)
-        ->toContain("'booking.employeeUser:id,first_name,last_name,email,phone'")
+        ->toContain("'booking.employeeUser' => fn(\$q) => \$q->withTrashed()")
+        ->toContain("'serviceType:id,name,tour_booking_enabled'")
         ->toContain("->orWhereHas('corporateAccount'")
         ->toContain("->orWhereExists(function (\$employeeUserQuery)")
         ->toContain("users.id::text = bookings.employee_id")
@@ -17,6 +18,7 @@ it('projects and searches corporate and selected employee identity in the canoni
         ->and($mapper)
         ->toContain("if (\$bookingSource === 'corporate')")
         ->toContain("\$booking?->corporateAccount?->name")
+        ->toContain("'tour_booking_enabled' => (bool) \$itemServiceType->tour_booking_enabled")
         ->toContain("'corporate' => \$bookingSource === 'corporate'")
         ->toContain("'employee' => \$bookingSource === 'corporate' && \$employeeUser")
         ->toContain("'email' => \$employeeUser?->email")

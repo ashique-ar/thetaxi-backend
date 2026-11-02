@@ -97,6 +97,15 @@
 
     $customizations = $item->customizations ?? [];
     $metadata = $item->metadata ?? [];
+    $isTourItem = is_array($metadata) && !empty($metadata['tour_itinerary_id']);
+    $tourDays = $isTourItem && is_array($metadata['tour_days_snapshot'] ?? null)
+        ? $metadata['tour_days_snapshot']
+        : [];
+    $purchasedClassName = $isTourItem
+        ? (data_get($metadata, 'pricing_snapshot.tour_pricing_lock.purchased_class.name')
+            ?? $item->vehicleClass?->name
+            ?? 'Vehicle class to be assigned')
+        : $vehicleGroupName;
 
     if (is_array($customizations)) {
         foreach ($customizations as $customization) {
@@ -385,7 +394,9 @@
             }
         @endphp
 
-        @if ($imageUrl)
+        @if ($isTourItem)
+            <div style="width: 108px; height: 72px; flex-shrink: 0; display: flex; align-items: center; justify-content: center; border-radius: 6px; border: 1px solid #c7d2fe; background: #eef2ff; color: #3730a3; font-size: 28px;" aria-hidden="true">🗺️</div>
+        @elseif ($imageUrl)
             <div style="flex-shrink: 0;">
                 <img src="{{ $imageUrl }}" alt="{{ $vehicleGroupName }}"
                     style="width: 108px; height: 72px; object-fit: cover; border-radius: 6px; border: 1px solid #ddd;">
@@ -393,7 +404,7 @@
         @endif
         <div style="flex: 1; min-width: 0;">
             <h3 style="margin-top: 0; margin-bottom: 8px; color: #1f2937; font-size: 18px;">
-                Vehicle {{ $index + 1 }}: {{ $vehicleGroupName }}
+                {{ $isTourItem ? 'Tour' : 'Vehicle' }} {{ $index + 1 }}: {{ $purchasedClassName }}
             </h3>
             <span
                 style="display: table; margin: 0 0 8px 0; background-color: #fff3cd; color: #856404; padding: 4px 10px; border-radius: 12px; font-size: 12px; font-weight: 600; border: 1px solid #ffc107;">
@@ -658,6 +669,37 @@
                             <span style="color: #BF2629; font-weight: 600;">{{ $displayCurrencyLabel }} {{ number_format(floor(max(0, $addon['total'])), 0) }}</span>
                         </div>
                     @endforeach
+                </td>
+            </tr>
+        @endif
+
+        @if ($isTourItem)
+            <tr>
+                <td colspan="2" style="padding: 9px 10px; background: #eef2ff; color: #312e81; font-weight: 700; border-bottom: 1px solid #c7d2fe;">Accepted Tour itinerary</td>
+            </tr>
+            @foreach ($tourDays as $tourDay)
+                <tr>
+                    <td colspan="2" style="padding: 8px 10px; border-bottom: 1px solid #e5e7eb; color: #374151;">
+                        <strong>Day {{ $tourDay['day_number'] ?? $loop->iteration }}</strong>
+                        @if (!empty($tourDay['service_date']))
+                            · {{ \Carbon\Carbon::parse($tourDay['service_date'])->format('M d, Y') }}
+                        @endif
+                        @if (!empty($tourDay['start_time']))
+                            · starts {{ $tourDay['start_time'] }}
+                        @endif
+                        <div style="margin-top: 4px;">
+                            {{ data_get($tourDay, 'start_location.name', 'Start') }}
+                            @foreach ($tourDay['stops'] ?? [] as $tourStop)
+                                → {{ $tourStop['name'] ?? 'Selected stop' }}@if (!empty($tourStop['visit_duration_minutes'])) ({{ $tourStop['visit_duration_minutes'] }} min)@endif
+                            @endforeach
+                            → {{ data_get($tourDay, 'end_location.name', 'End') }}
+                        </div>
+                    </td>
+                </tr>
+            @endforeach
+            <tr>
+                <td colspan="2" style="padding: 8px 10px; color: #4b5563; font-size: 12px;">
+                    {{ $metadata['activity_entry_note'] ?? 'Activity visits are included in your route only. Tickets, entry fees and activity reservations are not included. Please arrange these separately. Activity booking will be introduced in a future release.' }}
                 </td>
             </tr>
         @endif

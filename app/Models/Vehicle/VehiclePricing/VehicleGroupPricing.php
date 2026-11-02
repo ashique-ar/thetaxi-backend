@@ -4,6 +4,7 @@ namespace App\Models\Vehicle\VehiclePricing;
 
 use App\Models\BaseModel;
 use App\Models\Vehicle\VehicleGroup;
+use App\Models\Vehicle\VehiclePricing\Concerns\HasVehiclePricingTarget;
 use Illuminate\Database\Eloquent\Concerns\HasUuids;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
@@ -12,7 +13,7 @@ use Illuminate\Database\Eloquent\SoftDeletes;
 
 class VehicleGroupPricing extends BaseModel
 {
-    use HasFactory, HasUuids, SoftDeletes;
+    use HasFactory, HasUuids, SoftDeletes, HasVehiclePricingTarget;
 
     /**
      * The table associated with the model.
@@ -29,6 +30,7 @@ class VehicleGroupPricing extends BaseModel
     protected $fillable = [
         'slab_definition_id',
         'vehicle_group_id',
+        'vehicle_class_id',
         'rate',
         'rate_type',
         'minimum_charge',

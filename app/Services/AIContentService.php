@@ -171,6 +171,19 @@ PROMPT;
         return rtrim($url, '/');
     }
 
+    /** Drafts stop IDs from the supplied tour catalogue; no customer location or pricing data is sent. */
+    public function suggestTourItinerary(array $trip, array $catalogue): array
+    {
+        $systemPrompt = 'You draft editable tour itineraries using only the supplied published catalogue. Return valid JSON with exactly one top-level key: days. Each day has day_number and stops. Each stop has kind (destination or activity) and catalogue_id copied exactly from the supplied IDs. Do not invent IDs, locations, prices, tickets, reservations, opening hours, availability, or guarantees. Include all trip days and at most 12 stops per day. Keep a sensible, low-backtracking order. Activities are visit suggestions only.';
+        $userPrompt = json_encode(['trip' => $trip, 'published_catalogue' => $catalogue], JSON_UNESCAPED_UNICODE | JSON_THROW_ON_ERROR);
+        $decoded = json_decode($this->callOpenAI($systemPrompt, $userPrompt), true);
+        if (!is_array($decoded) || !is_array($decoded['days'] ?? null)) {
+            throw new \RuntimeException('The itinerary helper returned an invalid draft.');
+        }
+
+        return $decoded;
+    }
+
     /**
      * Call the OpenAI API
      */

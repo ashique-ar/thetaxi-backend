@@ -13,6 +13,14 @@ use Illuminate\Support\Facades\Schema;
 beforeEach(function (): void {
     activity()->disableLogging();
 
+    Schema::dropIfExists('service_types');
+    Schema::create('service_types', function (Blueprint $table): void {
+        $table->string('id')->primary();
+        $table->string('pricing_basis')->default('vehicle_group');
+        $table->boolean('is_active')->default(true);
+        $table->softDeletes();
+    });
+
     foreach ([
         'booking_common_rate_pricings',
         'booking_pricings',

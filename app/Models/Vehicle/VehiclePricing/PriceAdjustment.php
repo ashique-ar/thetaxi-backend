@@ -376,21 +376,28 @@ class PriceAdjustment extends BaseModel
         Carbon $endDate = null,
         ?string $ownerType = null,
         ?string $ownerId = null,
-        ?string $pricingContext = null
+        ?string $pricingContext = null,
+        ?array $lockedAdjustments = null
     ): array {
         $originalAmount = $amount;
 
-        $adjustments = static::getApplicableAdjustments(
-            $amount,
-            $serviceTypeId,
-            $vehicleGroupId,
-            $priceComponent,
-            $date,
-            $endDate,
-            $ownerType,
-            $ownerId,
-            $pricingContext
-        );
+        $adjustments = $lockedAdjustments === null
+            ? static::getApplicableAdjustments(
+                $amount,
+                $serviceTypeId,
+                $vehicleGroupId,
+                $priceComponent,
+                $date,
+                $endDate,
+                $ownerType,
+                $ownerId,
+                $pricingContext
+            )
+            : collect($lockedAdjustments)
+                ->map(fn (array $attributes) => (new static)->forceFill($attributes))
+                ->filter(fn (PriceAdjustment $adjustment) => $adjustment->applies_to === $priceComponent
+                    && $adjustment->appliesTo($amount, $date, $endDate))
+                ->values();
 
         if ($adjustments->isEmpty()) {
             return [

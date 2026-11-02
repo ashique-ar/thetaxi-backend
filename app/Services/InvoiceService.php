@@ -43,6 +43,7 @@ class InvoiceService
             $lockedBooking->loadMissing([
                 'customer.user',
                 'bookingItems.serviceType',
+                'bookingItems.vehicleClass',
                 'bookingItems.vehicle.group',
                 'bookingItems.driver.user',
                 'bookingAddons.addon',
@@ -250,6 +251,7 @@ class InvoiceService
         $booking = $invoice->booking ?? Booking::with([
             'customer.user',
             'bookingItems.serviceType',
+            'bookingItems.vehicleClass',
             'bookingItems.vehicle.group',
             'bookingItems.driver.user',
             'bookingAddons.addon',
@@ -374,10 +376,39 @@ class InvoiceService
             }
 
             $serviceLabel = $item->serviceType?->name ?? 'Transport Service';
-            $vehicleLabel = $item->vehicle?->group?->name ?? $item->vehicle?->title ?? null;
             $durationLabel = $this->describeDuration($item);
             $pricingBreakdown = is_array($item->pricing_breakdown) ? $item->pricing_breakdown : [];
             $metadata = is_array($item->metadata) ? $item->metadata : [];
+            if (!empty($metadata['tour_itinerary_id'])) {
+                $routeSummary = collect($metadata['tour_days_snapshot'] ?? [])->map(function ($day): string {
+                    $locations = collect([
+                        data_get($day, 'start_location.name'),
+                        ...collect($day['stops'] ?? [])->pluck('name')->all(),
+                        data_get($day, 'end_location.name'),
+                    ])->filter()->values();
+
+                    return $locations->isEmpty()
+                        ? ''
+                        : 'Day ' . (int) ($day['day_number'] ?? 0) . ': ' . $locations->implode(' → ');
+                })->filter()->implode('; ');
+                $activityNotice = (string) (
+                    $metadata['activity_entry_note']
+                    ?? 'Activity visits are included in your route only. Tickets, entry fees and activity reservations are not included. Please arrange these separately. Activity booking will be introduced in a future release.'
+                );
+                $routeAndDuration = collect([
+                    $durationLabel,
+                    $routeSummary,
+                ])->filter()->implode(' · ');
+                $routeLimit = max(0, 1400 - mb_strlen($activityNotice) - 3);
+                $durationLabel = collect([
+                    Str::limit($routeAndDuration, $routeLimit),
+                    $activityNotice,
+                ])->filter()->implode(' · ');
+            }
+            $vehicleLabel = $item->pricing_basis === 'vehicle_class'
+                ? (data_get($metadata, 'pricing_snapshot.tour_pricing_lock.purchased_class.name') ?: $item->vehicleClass?->name)
+                : null;
+            $vehicleLabel ??= $item->vehicle?->group?->name ?? $item->vehicle?->title ?? null;
             $hasFinalPricing = data_get($pricingBreakdown, 'final_pricing.audit.status') === 'calculated'
                 || data_get($metadata, 'final_pricing_audit.status') === 'calculated';
             $hasExplicitComponentBase = !$hasFinalPricing
@@ -553,6 +584,12 @@ class InvoiceService
     private function generateAndStorePdf(Invoice $invoice, Booking $booking): void
     {
         try {
+            $booking->loadMissing([
+                'bookingItems.vehicleClass',
+                'bookingItems.vehicle.group',
+                'bookingItems.driver.user',
+                'bookingItems.serviceType',
+            ]);
             $viewData = $this->buildPdfViewData($invoice, $booking);
 
             /** @var \Barryvdh\DomPDF\PDF $pdf */
@@ -597,6 +634,9 @@ class InvoiceService
         $vehicle     = $firstItem?->vehicle;
         $driver      = $firstItem?->driver;
         $serviceType = $firstItem?->serviceType?->name ?? null;
+        $purchasedClassName = $firstItem?->pricing_basis === 'vehicle_class'
+            ? (data_get($firstItem->metadata, 'pricing_snapshot.tour_pricing_lock.purchased_class.name') ?: $firstItem->vehicleClass?->name)
+            : null;
 
         return [
             'invoice'        => $invoice,
@@ -612,7 +652,8 @@ class InvoiceService
             'serviceType'    => $serviceType,
             'fromDate'       => $firstItem?->from_date?->format('d M Y H:i'),
             'toDate'         => $firstItem?->to_date?->format('d M Y H:i'),
-            'vehicle'        => $vehicle ? ($vehicle->group?->name ?? $vehicle->title) . ' (' . $vehicle->license_plate . ')' : null,
+            'vehicle'        => $purchasedClassName
+                ?: ($vehicle ? ($vehicle->group?->name ?? $vehicle->title) . ' (' . $vehicle->license_plate . ')' : null),
             'driver'         => $driver ? trim(($driver->user?->first_name ?? '') . ' ' . ($driver->user?->last_name ?? '')) : null,
             'contractualDistanceBreakdowns' => $this->contractualDistanceBreakdowns($booking),
         ];

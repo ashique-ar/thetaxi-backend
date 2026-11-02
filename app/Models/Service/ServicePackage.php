@@ -17,6 +17,10 @@ class ServicePackage extends BaseModel
         'name',
         'code',
         'description',
+        'default_vehicle_class_id',
+        'allowed_upgrade_class_ids',
+        'tour_itinerary_template',
+        'tour_itinerary_template_version',
         'max_km_per_day',
         'max_km_per_package',
         'price_multiplier',
@@ -34,6 +38,9 @@ class ServicePackage extends BaseModel
     ];
 
     protected $casts = [
+        'allowed_upgrade_class_ids' => 'array',
+        'tour_itinerary_template' => 'array',
+        'tour_itinerary_template_version' => 'integer',
         'max_km_per_day' => 'decimal:2',
         'max_km_per_package' => 'decimal:2',
         'price_multiplier' => 'decimal:4',
@@ -51,6 +58,11 @@ class ServicePackage extends BaseModel
         return $this->belongsTo(ServiceType::class);
     }
 
+    public function defaultVehicleClass(): BelongsTo
+    {
+        return $this->belongsTo(\App\Models\Vehicle\VehicleClass::class, 'default_vehicle_class_id');
+    }
+
     public function districtAdjustments(): HasMany
     {
         return $this->hasMany(DistrictPricingAdjustment::class, 'service_package_id');
@@ -62,6 +74,11 @@ class ServicePackage extends BaseModel
     public function returnRules(): HasMany
     {
         return $this->hasMany(ServicePackageReturnRule::class, 'service_package_id');
+    }
+
+    public function tourTemplateVersions(): HasMany
+    {
+        return $this->hasMany(\App\Models\Tours\TourPackageTemplateVersion::class, 'service_package_id')->orderByDesc('version');
     }
 
     /**

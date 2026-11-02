@@ -7,6 +7,7 @@ use App\Models\BaseModel;
 use App\Traits\UUID;
 use App\Models\User;
 use App\Models\Vehicle\VehicleGroup;
+use App\Models\Vehicle\VehiclePricing\Concerns\HasVehiclePricingTarget;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Database\Eloquent\SoftDeletes;
@@ -32,7 +33,7 @@ use Illuminate\Database\Eloquent\SoftDeletes;
  */
 class VehicleGroupCommonRatePricing extends BaseModel
 {
-    use UUID, SoftDeletes;
+    use UUID, SoftDeletes, HasVehiclePricingTarget;
 
     /**
      * The table associated with the model.
@@ -44,6 +45,7 @@ class VehicleGroupCommonRatePricing extends BaseModel
      */
     protected $fillable = [
         'vehicle_group_id',
+        'vehicle_class_id',
         'common_rate_definition_id',
         'value',
         'owner_type',

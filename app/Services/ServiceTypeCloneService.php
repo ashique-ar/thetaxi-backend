@@ -57,6 +57,8 @@ class ServiceTypeCloneService
                 'code' => fn (string $value) => $this->makeUniqueCode('service_packages', 'code', $value, $target->code),
             ]);
 
+            $this->cloneTableWithServiceType('service_vehicle_class_settings', $source->id, $target->id, $userId);
+
             $this->cloneTableWithServiceType(
                 'service_package_rates',
                 $source->id,
@@ -207,7 +209,7 @@ class ServiceTypeCloneService
                 $payload[$updatedByColumn] = $userId;
             }
 
-            unset($payload['deleted_at']);
+            unset($payload['deleted_at'], $payload['class_rate_scope']);
 
             DB::table($table)->insert($payload);
 

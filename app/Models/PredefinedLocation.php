@@ -34,6 +34,7 @@ class PredefinedLocation extends BaseModel
     protected $fillable = [
         'name',
         'code',
+        'google_place_id',
         'type',
         'address',
         'city',

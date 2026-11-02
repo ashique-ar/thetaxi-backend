@@ -9,10 +9,13 @@ use App\Models\Vehicle\VehiclePricing\VehicleGroupCommonRatePricing;
 use App\Models\Vehicle\VehiclePricing\VehicleGroupServicePricingSetting;
 use App\Models\Vehicle\VehiclePricing\VehiclePricingCommonRateDefinition;
 use App\Models\Vehicle\VehiclePricing\VehiclePricingBulkOperation;
+use App\Models\Vehicle\VehiclePricing\VehiclePricingCalculationDefinition;
 use App\Models\Vehicle\VehicleGroup;
 use App\Models\Service\ServiceType;
+use App\Models\Service\ServiceVehicleClassSetting;
 use App\Models\Corporate\Corporate;
 use App\Models\Vehicle\VehiclePricingHistory;
+use App\Services\Pricing\PricingDefinitionOrchestrator;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Validator;
@@ -24,9 +27,13 @@ class VehicleGroupPricingController extends Controller
 {
     public function __construct()
     {
-        $this->middleware('permission:vehicle-group-pricing.view')->only(['index', 'show', 'matrix', 'unifiedPricing', 'getBulkOperations', 'getBulkOperationStatus', 'downloadBulkOperationReport']);
+        $this->middleware('permission:vehicle-group-pricing.view')->only(['index', 'show', 'matrix', 'unifiedPricing', 'classPricingMatrix', 'getClassPricingHistory', 'getBulkOperations', 'getBulkOperationStatus', 'downloadBulkOperationReport']);
         $this->middleware('permission:vehicle-group-pricing.create')->only(['store', 'bulkStore']);
         $this->middleware('permission:vehicle-group-pricing.edit')->only(['update', 'toggleStatus', 'bulkUpdate', 'copyRates', 'saveVehicleGroupPricing', 'cancelBulkOperation', 'retryBulkOperation']);
+        $this->middleware('permission:vehicle-group-pricing.create|vehicle-group-pricing.edit')->only('bulkSavePricing');
+        $this->middleware('permission:vehicle-group-pricing.create|vehicle-group-pricing.edit')->only('previewClassPricingMatrix');
+        $this->middleware('permission:vehicle-group-pricing.create|vehicle-group-pricing.edit')->only('importClassPricingMatrix');
+        $this->middleware('permission:vehicle-group-pricing.manage')->only('exportClassPricingMatrix');
         $this->middleware('permission:vehicle-group-pricing.delete')->only(['destroy', 'bulkDelete']);
         $this->middleware('permission:vehicle-group-pricing.manage')->only(['syncCommonRates', 'exportPricing', 'importPricing']);
     }
@@ -82,7 +89,7 @@ class VehicleGroupPricingController extends Controller
     public function update(Request $request, string $id): JsonResponse
     {
         $pricing = VehicleGroupPricing::findOrFail($id);
-        $pricing->update($this->validateVehicleGroupPricing($request, true));
+        $pricing->update($this->validateVehicleGroupPricing($request, true, $pricing));
 
         return response()->json([
             'success' => true,
@@ -464,6 +471,538 @@ class VehicleGroupPricingController extends Controller
         }
     }
 
+    public function classPricingMatrix(Request $request): JsonResponse
+    {
+        $data = $request->validate([
+            'service_type_id' => 'required|uuid|exists:service_types,id',
+            'context' => 'nullable|string|in:public,portal,corporate',
+            'owner_type' => 'nullable|required_if:context,corporate|string|in:corporate',
+            'owner_id' => 'nullable|required_if:context,corporate|uuid|exists:corporates,id|required_with:owner_type',
+        ]);
+        $context = $data['context'] ?? 'public';
+        $service = ServiceType::findOrFail($data['service_type_id']);
+        if ($service->context === 'portal') {
+            $service = app(\App\Services\Pricing\PricingContextPolicyService::class)->effectiveServiceType($service);
+        }
+        abort_unless($service->pricing_basis === 'vehicle_class', 422, 'Class pricing is only available for class-priced services.');
+
+        $ownerType = $data['owner_type'] ?? null;
+        $ownerId = $ownerType ? $data['owner_id'] : null;
+        $classSettings = ServiceVehicleClassSetting::query()
+            ->with('vehicleClass')
+            ->where('service_type_id', $service->id)
+            ->where('is_active', true)
+            ->orderBy('sort_order')
+            ->get();
+        $classIds = $classSettings->pluck('vehicle_class_id');
+        $slabs = VehiclePricingSlabDefinition::query()
+            ->where('service_type_id', $service->id)
+            ->where('is_active', true)
+            ->when($ownerType && $ownerId, fn ($query) => $query->where(fn ($scope) => $scope->where(fn ($exact) => $exact->where('owner_type', $ownerType)->where('owner_id', $ownerId))->orWhereNull('owner_type')),
+                fn ($query) => $query->whereNull('owner_type')->whereNull('owner_id'))
+            ->orderBy('sort_order')
+            ->get();
+        $commonRates = VehiclePricingCommonRateDefinition::query()
+            ->where(fn ($query) => $query->where('service_type_id', $service->id)->orWhereNull('service_type_id'))
+            ->where('is_active', true)
+            ->when($ownerType && $ownerId, fn ($query) => $query->where(fn ($scope) => $scope->where(fn ($exact) => $exact->where('owner_type', $ownerType)->where('owner_id', $ownerId))->orWhereNull('owner_type')),
+                fn ($query) => $query->whereNull('owner_type')->whereNull('owner_id'))
+            ->orderBy('sort_order')
+            ->get();
+
+        $slabPricing = VehicleGroupPricing::withInactive()
+            ->whereIn('vehicle_class_id', $classIds)
+            ->whereIn('slab_definition_id', $slabs->pluck('id'))
+            ->when($ownerType && $ownerId, fn ($query) => $query->where(fn ($scope) => $scope->where(fn ($exact) => $exact->where('owner_type', $ownerType)->where('owner_id', $ownerId))->orWhereNull('owner_type')),
+                fn ($query) => $query->whereNull('owner_type')->whereNull('owner_id'))
+            ->get()
+            ->keyBy(fn ($rate) => $rate->vehicle_class_id . '_' . $rate->slab_definition_id);
+        $commonRatePricing = VehicleGroupCommonRatePricing::withInactive()
+            ->whereIn('vehicle_class_id', $classIds)
+            ->whereIn('common_rate_definition_id', $commonRates->pluck('id'))
+            ->when($ownerType && $ownerId, fn ($query) => $query->where(fn ($scope) => $scope->where(fn ($exact) => $exact->where('owner_type', $ownerType)->where('owner_id', $ownerId))->orWhereNull('owner_type')),
+                fn ($query) => $query->whereNull('owner_type')->whereNull('owner_id'))
+            ->get()
+            ->keyBy(fn ($rate) => $rate->vehicle_class_id . '_' . $rate->common_rate_definition_id);
+        $thresholdWarnings = $this->tourThresholdPriceWarnings(
+            $service,
+            $classSettings,
+            $slabs,
+            $commonRates,
+            $context,
+            $ownerType,
+            $ownerId
+        );
+
+        return response()->json([
+            'success' => true,
+            'data' => [
+                'service_type' => $service,
+                'classes' => $classSettings->map(fn ($setting) => [
+                    'id' => $setting->vehicle_class_id,
+                    'name' => $setting->vehicleClass->name,
+                    'settings' => $setting,
+                ]),
+                'slab_definitions' => $slabs,
+                'common_rate_definitions' => $commonRates,
+                'slab_pricing' => $slabPricing->values(),
+                'common_rate_pricing' => $commonRatePricing->values(),
+                'threshold_price_warnings' => $thresholdWarnings,
+            ],
+        ]);
+    }
+
+    public function previewClassPricingMatrix(Request $request): JsonResponse
+    {
+        $data = $request->validate([
+            'service_type_id' => 'required|uuid|exists:service_types,id',
+            'vehicle_class_id' => 'required|uuid',
+            'context' => 'nullable|string|in:public,portal,corporate',
+            'owner_type' => 'nullable|required_if:context,corporate|string|in:corporate',
+            'owner_id' => 'nullable|required_if:context,corporate|uuid|exists:corporates,id|required_with:owner_type',
+            'slab_rates' => 'nullable|array|max:200',
+            'slab_rates.*.slab_definition_id' => 'required|uuid',
+            'slab_rates.*.rate' => 'required|numeric|min:0',
+            'common_rates' => 'nullable|array|max:200',
+            'common_rates.*.common_rate_definition_id' => 'required|uuid',
+            'common_rates.*.value' => 'required|numeric|min:0',
+        ]);
+        $service = ServiceType::findOrFail($data['service_type_id']);
+        if ($service->context === 'portal') {
+            $service = app(\App\Services\Pricing\PricingContextPolicyService::class)->effectiveServiceType($service);
+        }
+        abort_unless($service->pricing_basis === 'vehicle_class', 422, 'Class pricing is only available for class-priced services.');
+
+        $classSettings = ServiceVehicleClassSetting::query()
+            ->with('vehicleClass')
+            ->where('service_type_id', $service->id)
+            ->where('vehicle_class_id', $data['vehicle_class_id'])
+            ->where('is_active', true)
+            ->get();
+        abort_if($classSettings->isEmpty(), 422, 'The selected class is not active for this service.');
+
+        $context = $data['context'] ?? 'public';
+        $ownerType = $data['owner_type'] ?? null;
+        $ownerId = $ownerType ? $data['owner_id'] : null;
+        $slabs = VehiclePricingSlabDefinition::query()
+            ->where('service_type_id', $service->id)
+            ->where('is_active', true)
+            ->when($ownerType && $ownerId, fn ($query) => $query->where(fn ($scope) => $scope->where(fn ($exact) => $exact->where('owner_type', $ownerType)->where('owner_id', $ownerId))->orWhereNull('owner_type')),
+                fn ($query) => $query->whereNull('owner_type')->whereNull('owner_id'))
+            ->get();
+        $commonRates = VehiclePricingCommonRateDefinition::query()
+            ->where(fn ($query) => $query->where('service_type_id', $service->id)->orWhereNull('service_type_id'))
+            ->where('is_active', true)
+            ->when($ownerType && $ownerId, fn ($query) => $query->where(fn ($scope) => $scope->where(fn ($exact) => $exact->where('owner_type', $ownerType)->where('owner_id', $ownerId))->orWhereNull('owner_type')),
+                fn ($query) => $query->whereNull('owner_type')->whereNull('owner_id'))
+            ->get();
+
+        $slabOverrides = collect($data['slab_rates'] ?? [])->mapWithKeys(fn ($rate) => [(string) $rate['slab_definition_id'] => (float) $rate['rate']])->all();
+        $commonRateOverrides = collect($data['common_rates'] ?? [])->mapWithKeys(fn ($rate) => [(string) $rate['common_rate_definition_id'] => (float) $rate['value']])->all();
+        abort_if(array_diff(array_keys($slabOverrides), $slabs->pluck('id')->map(fn ($id) => (string) $id)->all()), 422, 'A slab rate does not belong to this service and pricing context.');
+        abort_if(array_diff(array_keys($commonRateOverrides), $commonRates->pluck('id')->map(fn ($id) => (string) $id)->all()), 422, 'A common rate does not belong to this service and pricing context.');
+
+        return response()->json([
+            'success' => true,
+            'data' => [
+                'threshold_price_warnings' => $this->tourThresholdPriceWarnings(
+                    $service,
+                    $classSettings,
+                    $slabs,
+                    $commonRates,
+                    $context,
+                    $ownerType,
+                    $ownerId,
+                    $slabOverrides,
+                    $commonRateOverrides
+                ),
+            ],
+        ]);
+    }
+
+    public function exportClassPricingMatrix(Request $request)
+    {
+        $data = $request->validate([
+            'service_type_id' => 'required|uuid|exists:service_types,id',
+            'vehicle_class_id' => 'required|uuid|exists:vehicle_classes,id',
+            'context' => 'nullable|string|in:public,portal,corporate',
+            'owner_type' => 'nullable|required_if:context,corporate|string|in:corporate',
+            'owner_id' => 'nullable|required_if:context,corporate|uuid|exists:corporates,id|required_with:owner_type',
+        ]);
+        $service = ServiceType::findOrFail($data['service_type_id']);
+        if ($service->context === 'portal') {
+            $service = app(\App\Services\Pricing\PricingContextPolicyService::class)->effectiveServiceType($service);
+        }
+        abort_unless($service->pricing_basis === 'vehicle_class', 422, 'Class pricing is only available for class-priced services.');
+        abort_unless(ServiceVehicleClassSetting::query()
+            ->where('service_type_id', $service->id)
+            ->where('vehicle_class_id', $data['vehicle_class_id'])
+            ->where('is_active', true)
+            ->exists(), 422, 'The selected class is not active for this service.');
+
+        $ownerType = $data['owner_type'] ?? null;
+        $ownerId = $ownerType ? $data['owner_id'] : null;
+        $slabs = VehicleGroupPricing::query()
+            ->where('vehicle_class_id', $data['vehicle_class_id'])
+            ->whereHas('slabDefinition', fn ($query) => $query->where('service_type_id', $service->id)->where('is_active', true))
+            ->when($ownerType, fn ($query) => $query->where('owner_type', $ownerType)->where('owner_id', $ownerId),
+                fn ($query) => $query->whereNull('owner_type')->whereNull('owner_id'))
+            ->with('slabDefinition')
+            ->get();
+        $commonRates = VehicleGroupCommonRatePricing::query()
+            ->where('vehicle_class_id', $data['vehicle_class_id'])
+            ->whereHas('commonRateDefinition', fn ($query) => $query->where(fn ($definition) => $definition
+                ->where('is_active', true)->where(fn ($scope) => $scope
+                    ->where('service_type_id', $service->id)->orWhereNull('service_type_id'))))
+            ->when($ownerType, fn ($query) => $query->where('owner_type', $ownerType)->where('owner_id', $ownerId),
+                fn ($query) => $query->whereNull('owner_type')->whereNull('owner_id'))
+            ->get();
+
+        $stream = fopen('php://temp', 'r+');
+        fputcsv($stream, ['record_type', 'definition_id', 'value', 'rate_type', 'minimum_charge', 'includes_fuel', 'includes_driver', 'is_active']);
+        foreach ($slabs as $rate) {
+            fputcsv($stream, ['slab', $rate->slab_definition_id, $rate->rate, $rate->rate_type, $rate->minimum_charge, $rate->includes_fuel ? 'yes' : 'no', $rate->includes_driver ? 'yes' : 'no', $rate->is_active ? 'yes' : 'no']);
+        }
+        foreach ($commonRates as $rate) {
+            fputcsv($stream, ['common_rate', $rate->common_rate_definition_id, $rate->value, '', '', '', '', $rate->is_active ? 'yes' : 'no']);
+        }
+        rewind($stream);
+        $csv = stream_get_contents($stream);
+        fclose($stream);
+
+        return response($csv, 200, [
+            'Content-Type' => 'text/csv; charset=UTF-8',
+            'Content-Disposition' => 'attachment; filename="class-pricing.csv"',
+        ]);
+    }
+
+    public function getClassPricingHistory(Request $request): JsonResponse
+    {
+        $data = $request->validate([
+            'service_type_id' => 'required|uuid|exists:service_types,id',
+            'vehicle_class_id' => 'required|uuid|exists:vehicle_classes,id',
+            'context' => 'nullable|string|in:public,portal,corporate',
+            'owner_type' => 'nullable|required_if:context,corporate|string|in:corporate',
+            'owner_id' => 'nullable|required_if:context,corporate|uuid|exists:corporates,id|required_with:owner_type',
+            'page' => 'nullable|integer|min:1',
+            'per_page' => 'nullable|integer|min:1|max:100',
+        ]);
+        $service = ServiceType::findOrFail($data['service_type_id']);
+        if ($service->context === 'portal') {
+            $service = app(\App\Services\Pricing\PricingContextPolicyService::class)->effectiveServiceType($service);
+        }
+        abort_unless($service->pricing_basis === 'vehicle_class', 422, 'Class pricing is only available for class-priced services.');
+        abort_unless(ServiceVehicleClassSetting::query()
+            ->where('service_type_id', $service->id)
+            ->where('vehicle_class_id', $data['vehicle_class_id'])
+            ->exists(), 422, 'The selected class is not configured for this service.');
+
+        $context = $data['context'] ?? 'public';
+        $ownerType = $context === 'corporate' ? ($data['owner_type'] ?? null) : null;
+        $ownerId = $ownerType ? ($data['owner_id'] ?? null) : null;
+        $driver = DB::getDriverName();
+        $ownerTypeExpression = $driver === 'pgsql'
+            ? "COALESCE(new_pricing_data->>'owner_type', old_pricing_data->>'owner_type')"
+            : ($driver === 'mysql'
+                ? "COALESCE(JSON_UNQUOTE(JSON_EXTRACT(new_pricing_data, '$.owner_type')), JSON_UNQUOTE(JSON_EXTRACT(old_pricing_data, '$.owner_type')))"
+                : "COALESCE(json_extract(new_pricing_data, '$.owner_type'), json_extract(old_pricing_data, '$.owner_type'))");
+        $ownerIdExpression = $driver === 'pgsql'
+            ? "COALESCE(new_pricing_data->>'owner_id', old_pricing_data->>'owner_id')"
+            : ($driver === 'mysql'
+                ? "COALESCE(JSON_UNQUOTE(JSON_EXTRACT(new_pricing_data, '$.owner_id')), JSON_UNQUOTE(JSON_EXTRACT(old_pricing_data, '$.owner_id')))"
+                : "COALESCE(json_extract(new_pricing_data, '$.owner_id'), json_extract(old_pricing_data, '$.owner_id'))");
+
+        $query = VehiclePricingHistory::query()
+            ->with(['serviceType:id,name', 'slabDefinition:id,name', 'commonRateDefinition:id,name', 'changedBy:id,first_name,last_name,email'])
+            ->where('vehicle_class_id', $data['vehicle_class_id'])
+            ->where('service_type_id', $service->id)
+            ->whereRaw("{$ownerTypeExpression} " . ($ownerType ? '= ?' : 'IS NULL'), $ownerType ? [$ownerType] : []);
+        $query->whereRaw("{$ownerIdExpression} " . ($ownerId ? '= ?' : 'IS NULL'), $ownerId ? [$ownerId] : []);
+        $history = $query->orderByDesc('changed_at')->paginate($data['per_page'] ?? 20);
+
+        return response()->json([
+            'success' => true,
+            'data' => $history->items(),
+            'pagination' => [
+                'current_page' => $history->currentPage(),
+                'last_page' => $history->lastPage(),
+                'per_page' => $history->perPage(),
+                'total' => $history->total(),
+            ],
+        ]);
+    }
+
+    public function importClassPricingMatrix(Request $request): JsonResponse
+    {
+        $data = $request->validate([
+            'file' => 'required|file|mimes:csv,txt|max:5120',
+            'service_type_id' => 'required|uuid|exists:service_types,id',
+            'vehicle_class_id' => 'required|uuid|exists:vehicle_classes,id',
+            'context' => 'nullable|string|in:public,portal,corporate',
+            'owner_type' => 'nullable|required_if:context,corporate|string|in:corporate',
+            'owner_id' => 'nullable|required_if:context,corporate|uuid|exists:corporates,id|required_with:owner_type',
+        ]);
+        $service = ServiceType::findOrFail($data['service_type_id']);
+        if ($service->context === 'portal') {
+            $service = app(\App\Services\Pricing\PricingContextPolicyService::class)->effectiveServiceType($service);
+        }
+        abort_unless($service->pricing_basis === 'vehicle_class', 422, 'Class pricing is only available for class-priced services.');
+        abort_unless(ServiceVehicleClassSetting::query()
+            ->where('service_type_id', $service->id)
+            ->where('vehicle_class_id', $data['vehicle_class_id'])
+            ->where('is_active', true)
+            ->exists(), 422, 'The selected class is not active for this service.');
+
+        $stream = fopen($data['file']->getRealPath(), 'r');
+        $headers = fgetcsv($stream);
+        if (is_array($headers) && isset($headers[0])) {
+            $headers[0] = ltrim($headers[0], "\xEF\xBB\xBF");
+        }
+        $requiredHeaders = ['record_type', 'definition_id', 'value', 'rate_type', 'minimum_charge', 'includes_fuel', 'includes_driver', 'is_active'];
+        if (!is_array($headers) || array_map('trim', $headers) !== $requiredHeaders) {
+            fclose($stream);
+            throw \Illuminate\Validation\ValidationException::withMessages(['file' => 'Use a class-pricing CSV exported from this matrix.']);
+        }
+
+        $slabDefinitions = VehiclePricingSlabDefinition::query()
+            ->where('service_type_id', $service->id)
+            ->where('is_active', true)
+            ->get()
+            ->keyBy(fn ($definition) => (string) $definition->id);
+        $commonRateDefinitions = VehiclePricingCommonRateDefinition::query()
+            ->where(fn ($query) => $query->where('service_type_id', $service->id)->orWhereNull('service_type_id'))
+            ->where('is_active', true)
+            ->get()
+            ->keyBy(fn ($definition) => (string) $definition->id);
+        $slabRows = [];
+        $commonRateRows = [];
+        $seen = [];
+        $rowNumber = 1;
+        while (($columns = fgetcsv($stream)) !== false) {
+            $rowNumber++;
+            if ($columns === [null] || $columns === []) continue;
+            if (count($columns) !== count($requiredHeaders)) {
+                fclose($stream);
+                throw \Illuminate\Validation\ValidationException::withMessages(['file' => "CSV row {$rowNumber} has the wrong number of columns."]);
+            }
+            $row = array_combine($requiredHeaders, array_map('trim', $columns));
+            $definitionId = (string) $row['definition_id'];
+            $value = filter_var($row['value'], FILTER_VALIDATE_FLOAT);
+            $isActive = filter_var($row['is_active'], FILTER_VALIDATE_BOOLEAN, FILTER_NULL_ON_FAILURE);
+            if ($value === false || $value < 0 || $isActive === null) {
+                fclose($stream);
+                throw \Illuminate\Validation\ValidationException::withMessages(['file' => "CSV row {$rowNumber} has an invalid value or active flag."]);
+            }
+
+            if ($row['record_type'] === 'slab' && $slabDefinitions->has($definitionId)) {
+                if (isset($seen['slab'][$definitionId])) {
+                    fclose($stream);
+                    throw \Illuminate\Validation\ValidationException::withMessages(['file' => "CSV row {$rowNumber} repeats a slab rate."]);
+                }
+                $seen['slab'][$definitionId] = true;
+                $rateType = $row['rate_type'] ?: $this->defaultRateTypeForSlab($definitionId);
+                if (!in_array($rateType, ['per_hour', 'per_day', 'flat_rate', 'per_km'], true)) {
+                    fclose($stream);
+                    throw \Illuminate\Validation\ValidationException::withMessages(['file' => "CSV row {$rowNumber} has an invalid slab rate type."]);
+                }
+                $minimum = $row['minimum_charge'] === '' ? null : filter_var($row['minimum_charge'], FILTER_VALIDATE_FLOAT);
+                if ($minimum !== null && ($minimum === false || $minimum < 0)) {
+                    fclose($stream);
+                    throw \Illuminate\Validation\ValidationException::withMessages(['file' => "CSV row {$rowNumber} has an invalid minimum charge."]);
+                }
+                $fuel = filter_var($row['includes_fuel'], FILTER_VALIDATE_BOOLEAN, FILTER_NULL_ON_FAILURE);
+                $driver = filter_var($row['includes_driver'], FILTER_VALIDATE_BOOLEAN, FILTER_NULL_ON_FAILURE);
+                if ($fuel === null || $driver === null) {
+                    fclose($stream);
+                    throw \Illuminate\Validation\ValidationException::withMessages(['file' => "CSV row {$rowNumber} has an invalid inclusion flag."]);
+                }
+                $slabRows[] = [
+                    'vehicle_class_id' => $data['vehicle_class_id'],
+                    'slab_definition_id' => $definitionId,
+                    'rate' => $value,
+                    'rate_type' => $rateType,
+                    'minimum_charge' => $minimum,
+                    'includes_fuel' => $fuel,
+                    'includes_driver' => $driver,
+                    'is_active' => $isActive,
+                ];
+            } elseif ($row['record_type'] === 'common_rate' && $commonRateDefinitions->has($definitionId)) {
+                if (isset($seen['common_rate'][$definitionId])) {
+                    fclose($stream);
+                    throw \Illuminate\Validation\ValidationException::withMessages(['file' => "CSV row {$rowNumber} repeats a common rate."]);
+                }
+                $seen['common_rate'][$definitionId] = true;
+                $commonRateRows[] = [
+                    'vehicle_class_id' => $data['vehicle_class_id'],
+                    'common_rate_definition_id' => $definitionId,
+                    'value' => $value,
+                    'is_active' => $isActive,
+                ];
+            } else {
+                fclose($stream);
+                throw \Illuminate\Validation\ValidationException::withMessages(['file' => "CSV row {$rowNumber} does not match an active rate for this service."]);
+            }
+            if ($rowNumber > 501) {
+                fclose($stream);
+                throw \Illuminate\Validation\ValidationException::withMessages(['file' => 'A class-pricing CSV can contain at most 500 rate rows.']);
+            }
+        }
+        fclose($stream);
+
+        if ($slabRows === [] && $commonRateRows === []) {
+            throw \Illuminate\Validation\ValidationException::withMessages(['file' => 'The class-pricing CSV contains no rate rows.']);
+        }
+        $bulkRequest = new Request([], [
+            'context' => $data['context'] ?? 'public',
+            'owner_type' => $data['owner_type'] ?? null,
+            'owner_id' => $data['owner_id'] ?? null,
+            'change_reason' => 'Class pricing CSV import',
+            'slab_pricing' => $slabRows,
+            'common_rate_pricing' => $commonRateRows,
+        ]);
+        $bulkRequest->setUserResolver(fn () => $request->user());
+
+        return $this->bulkSavePricing($bulkRequest);
+    }
+
+    private function tourThresholdPriceWarnings(
+        ServiceType $service,
+        $classSettings,
+        $slabs,
+        $commonRates,
+        string $context,
+        ?string $ownerType,
+        ?string $ownerId,
+        array $slabRateOverrides = [],
+        array $commonRateOverrides = []
+    ): array {
+        if (!$service->tour_booking_enabled) {
+            return [];
+        }
+
+        $dailySlabs = $slabs->filter(fn ($slab) => !$slab->service_package_id
+            && in_array($slab->type, ['days', 'per_day'], true)
+            && is_numeric($slab->max_km_per_day) && (float) $slab->max_km_per_day > 0
+            && is_numeric($slab->min_days) && (int) $slab->min_days > 0)->values();
+        if ($dailySlabs->isEmpty()) {
+            return [];
+        }
+
+        $definitions = VehiclePricingCalculationDefinition::query()
+            ->where('service_type_id', $service->id)
+            ->where('status', 'active')
+            ->orderByDesc('priority')
+            ->orderByDesc('created_at')
+            ->get();
+        if ($definitions->isEmpty()) {
+            return [];
+        }
+
+        $warnings = [];
+        $pricing = app(PricingDefinitionOrchestrator::class);
+        $date = now()->toDateString();
+        foreach ($classSettings as $setting) {
+            foreach ($dailySlabs as $slab) {
+                $days = (int) $slab->min_days;
+                $allowance = (float) $slab->max_km_per_day * $days;
+                $inputs = [
+                    'service_type_id' => $service->id,
+                    'vehicle_class_id' => $setting->vehicle_class_id,
+                    'pricing_context' => $context,
+                    'owner_type' => $ownerType,
+                    'owner_id' => $ownerId,
+                    'from_date' => $date,
+                    'to_date' => now()->addDays($days - 1)->toDateString(),
+                    'from_time' => '00:00',
+                    'to_time' => '23:59',
+                    'duration_days' => $days,
+                    'number_of_days' => $days,
+                    'duration_minutes' => $days * 1440,
+                    'package_included_km' => $allowance,
+                    'journey_distance' => $allowance,
+                    'total_distance' => $allowance,
+                ];
+                $customizations = [];
+                if (array_key_exists((string) $slab->id, $slabRateOverrides)) {
+                    $customizations[] = [
+                        'variable_name' => 'slab_rate',
+                        'custom_value' => $slabRateOverrides[(string) $slab->id],
+                    ];
+                }
+                foreach ($definitions as $definition) {
+                    foreach ($definition->variables ?? [] as $variable) {
+                        if (($variable['type'] ?? null) !== 'common_rate') {
+                            continue;
+                        }
+                        $variableName = (string) ($variable['name'] ?? '');
+                        $rateCode = str_starts_with($variableName, 'common_rate_') ? substr($variableName, 12) : $variableName;
+                        $rate = $commonRates->first(fn ($candidate) => $candidate->code === $rateCode);
+                        if ($rate && array_key_exists((string) $rate->id, $commonRateOverrides)) {
+                            $customizations[] = ['variable_name' => $variableName, 'custom_value' => $commonRateOverrides[(string) $rate->id]];
+                        }
+                    }
+                }
+                $atLimit = $pricing->resolve($definitions, $inputs, $customizations);
+                $overLimit = $pricing->resolve($definitions, [
+                    ...$inputs,
+                    'journey_distance' => $allowance + 0.001,
+                    'total_distance' => $allowance + 0.001,
+                ], $customizations);
+                $dailyAmount = $atLimit['result']['total_amount'] ?? null;
+                $kilometerAmount = $overLimit['result']['total_amount'] ?? null;
+                $dailyDefinition = $atLimit['definition'] ?? null;
+                $kilometerDefinition = $overLimit['definition'] ?? null;
+                $selectedSlabId = data_get($atLimit, 'result.slab_info.slab_definition.id');
+                $overLimitSlabId = data_get($overLimit, 'result.slab_info.slab_definition.id');
+                $dailyUsesSlabRate = collect($dailyDefinition?->variables ?? [])->contains(
+                    fn ($variable) => ($variable['name'] ?? null) === 'slab_rate'
+                        && ($variable['type'] ?? null) === 'slab_rate'
+                );
+                $kilometerUsesDistance = collect($kilometerDefinition?->variables ?? [])->contains(
+                    fn ($variable) => in_array($variable['name'] ?? null, ['journey_distance', 'total_distance'], true)
+                        && ($variable['type'] ?? null) === 'distance'
+                );
+                $kilometerRateKeys = collect($kilometerDefinition?->variables ?? [])
+                    ->filter(fn ($variable) => ($variable['type'] ?? null) === 'common_rate')
+                    ->map(fn ($variable) => str_starts_with((string) ($variable['name'] ?? ''), 'common_rate_')
+                        ? substr($variable['name'], 12)
+                        : ($variable['name'] ?? ''))
+                    ->values();
+                $kilometerUsesPerKmRate = $commonRates->contains(fn ($rate) =>
+                    $rate->common_rate_type === 'per_km' && $kilometerRateKeys->contains($rate->code)
+                );
+                if (!$dailyDefinition || !$kilometerDefinition
+                    || (string) $dailyDefinition->id === (string) $kilometerDefinition->id
+                    || (string) $selectedSlabId !== (string) $slab->id
+                    || (string) $overLimitSlabId !== (string) $slab->id
+                    || !$dailyUsesSlabRate || !$kilometerUsesDistance || !$kilometerUsesPerKmRate) {
+                    continue;
+                }
+                if (!is_numeric($dailyAmount) || !is_numeric($kilometerAmount)
+                    || (float) $kilometerAmount >= (float) $dailyAmount) {
+                    continue;
+                }
+
+                $className = $setting->vehicleClass?->name ?? 'Selected class';
+                $warnings[] = [
+                    'code' => 'tour_threshold_price_drop',
+                    'vehicle_class_id' => (string) $setting->vehicle_class_id,
+                    'vehicle_class_name' => $className,
+                    'slab_definition_id' => (string) $slab->id,
+                    'slab_name' => (string) $slab->name,
+                    'allowance_km' => $allowance,
+                    'daily_branch_amount' => (float) $dailyAmount,
+                    'kilometer_branch_amount' => (float) $kilometerAmount,
+                    'message' => "{$className} / {$slab->name}: the evaluated transport price immediately above {$allowance} km ("
+                        . (float) $kilometerAmount . ') is below the price at the allowance ('
+                        . (float) $dailyAmount . '). Review the daily and per-kilometer rates before relying on this configuration.',
+                ];
+            }
+        }
+
+        return $warnings;
+    }
+
     /**
      * Save pricing for a specific vehicle group (unified method for both slab and common rate pricing).
      * Enhanced version with better validation and history tracking.
@@ -828,12 +1367,13 @@ class VehicleGroupPricingController extends Controller
         }
     }
 
-    private function validateVehicleGroupPricing(Request $request, bool $partial = false): array
+    private function validateVehicleGroupPricing(Request $request, bool $partial = false, ?VehicleGroupPricing $existing = null): array
     {
         $required = $partial ? 'sometimes' : 'required';
         $data = $request->validate([
             'slab_definition_id' => [$required, 'uuid', 'exists:vehicle_pricing_slab_definitions,id'],
-            'vehicle_group_id' => [$required, 'uuid', 'exists:vehicle_groups,id'],
+            'vehicle_group_id' => [$partial ? 'sometimes' : 'required_without:vehicle_class_id', 'nullable', 'uuid', 'exists:vehicle_groups,id', 'prohibits:vehicle_class_id'],
+            'vehicle_class_id' => [$partial ? 'sometimes' : 'required_without:vehicle_group_id', 'nullable', 'uuid', 'exists:vehicle_classes,id', 'prohibits:vehicle_group_id'],
             'rate' => [$required, 'numeric', 'min:0'],
             'rate_type' => ['nullable', 'in:per_hour,per_day,flat_rate,per_km'],
             'minimum_charge' => ['nullable', 'numeric', 'min:0'],
@@ -843,6 +1383,17 @@ class VehicleGroupPricingController extends Controller
             'owner_id' => ['nullable', 'uuid', 'exists:corporates,id', 'required_with:owner_type'],
             'priority' => ['nullable', 'integer', 'min:0'],
         ]);
+
+        $slabId = $data['slab_definition_id'] ?? $existing?->slab_definition_id;
+        $service = VehiclePricingSlabDefinition::findOrFail($slabId)->serviceType;
+        $classId = array_key_exists('vehicle_class_id', $data) ? $data['vehicle_class_id'] : $existing?->vehicle_class_id;
+        $groupId = array_key_exists('vehicle_group_id', $data) ? $data['vehicle_group_id'] : $existing?->vehicle_group_id;
+        $classPriced = $service?->pricing_basis === 'vehicle_class';
+        if (($classPriced && (!$classId || $groupId)) || (!$classPriced && (!$groupId || $classId))) {
+            throw \Illuminate\Validation\ValidationException::withMessages([
+                $classPriced ? 'vehicle_class_id' : 'vehicle_group_id' => 'The rate target must match the service vehicle pricing basis.',
+            ]);
+        }
 
         if (array_key_exists('owner_type', $data) && !$data['owner_type']) {
             $data['owner_id'] = null;
@@ -856,6 +1407,15 @@ class VehicleGroupPricingController extends Controller
         }
 
         return $data;
+    }
+
+    private function assertPricingTargetMatchesService(string $targetColumn, ?ServiceType $serviceType): void
+    {
+        if ($serviceType && ($targetColumn === 'vehicle_class_id') !== ($serviceType->pricing_basis === 'vehicle_class')) {
+            throw \Illuminate\Validation\ValidationException::withMessages([
+                $targetColumn => 'The rate target must match the service vehicle pricing basis.',
+            ]);
+        }
     }
 
     private function defaultRateTypeForSlab(string $slabDefinitionId): string
@@ -1003,7 +1563,8 @@ class VehicleGroupPricingController extends Controller
     {
         $validator = Validator::make($request->all(), [
             'slab_pricing' => 'nullable|array',
-            'slab_pricing.*.vehicle_group_id' => 'required|uuid|exists:vehicle_groups,id',
+            'slab_pricing.*.vehicle_group_id' => 'required_without:slab_pricing.*.vehicle_class_id|nullable|uuid|exists:vehicle_groups,id|prohibits:slab_pricing.*.vehicle_class_id',
+            'slab_pricing.*.vehicle_class_id' => 'required_without:slab_pricing.*.vehicle_group_id|nullable|uuid|exists:vehicle_classes,id|prohibits:slab_pricing.*.vehicle_group_id',
             'slab_pricing.*.slab_definition_id' => 'required|uuid|exists:vehicle_pricing_slab_definitions,id',
             'slab_pricing.*.rate' => 'required|numeric|min:0',
             'slab_pricing.*.rate_type' => 'nullable|in:per_hour,per_day,flat_rate,per_km',
@@ -1013,7 +1574,8 @@ class VehicleGroupPricingController extends Controller
             'slab_pricing.*.is_active' => 'boolean',
             'slab_pricing.*.effective_from' => 'nullable|date',
             'common_rate_pricing' => 'nullable|array',
-            'common_rate_pricing.*.vehicle_group_id' => 'required|uuid|exists:vehicle_groups,id',
+            'common_rate_pricing.*.vehicle_group_id' => 'required_without:common_rate_pricing.*.vehicle_class_id|nullable|uuid|exists:vehicle_groups,id|prohibits:common_rate_pricing.*.vehicle_class_id',
+            'common_rate_pricing.*.vehicle_class_id' => 'required_without:common_rate_pricing.*.vehicle_group_id|nullable|uuid|exists:vehicle_classes,id|prohibits:common_rate_pricing.*.vehicle_group_id',
             'common_rate_pricing.*.common_rate_definition_id' => 'required|uuid|exists:vehicle_pricing_common_rate_definitions,id',
             'common_rate_pricing.*.value' => 'nullable|numeric|min:0',
             'common_rate_pricing.*.is_active' => 'boolean',
@@ -1024,6 +1586,25 @@ class VehicleGroupPricingController extends Controller
             'priority' => 'nullable|integer|min:0',
             'change_reason' => 'nullable|string|max:500',
         ]);
+
+        $slabRows = $request->input('slab_pricing', []);
+        foreach (is_array($slabRows) ? $slabRows : [] as $index => $row) {
+            if (!is_array($row)) {
+                continue;
+            }
+            if (filled($row['vehicle_group_id'] ?? null) === filled($row['vehicle_class_id'] ?? null)) {
+                $validator->errors()->add("slab_pricing.{$index}.vehicle_class_id", 'Choose exactly one vehicle group or vehicle class.');
+            }
+        }
+        $commonRateRows = $request->input('common_rate_pricing', []);
+        foreach (is_array($commonRateRows) ? $commonRateRows : [] as $index => $row) {
+            if (!is_array($row)) {
+                continue;
+            }
+            if (filled($row['vehicle_group_id'] ?? null) === filled($row['vehicle_class_id'] ?? null)) {
+                $validator->errors()->add("common_rate_pricing.{$index}.vehicle_class_id", 'Choose exactly one vehicle group or vehicle class.');
+            }
+        }
 
         if ($validator->fails()) {
             return response()->json([
@@ -1065,7 +1646,12 @@ class VehicleGroupPricingController extends Controller
             // Process slab pricing with history tracking
             if ($request->has('slab_pricing') && is_array($request->slab_pricing)) {
                 foreach ($request->slab_pricing as $slabData) {
-                    $existingPricing = VehicleGroupPricing::forVehicleGroup($slabData['vehicle_group_id'])
+                    $targetColumn = !empty($slabData['vehicle_class_id']) ? 'vehicle_class_id' : 'vehicle_group_id';
+                    $targetId = $slabData[$targetColumn];
+                    $slabDefinition = VehiclePricingSlabDefinition::with('serviceType')->findOrFail($slabData['slab_definition_id']);
+                    $this->assertPricingTargetMatchesService($targetColumn, $slabDefinition->serviceType);
+                    $existingPricing = VehicleGroupPricing::withInactive()
+                        ->where($targetColumn, $targetId)
                         ->forSlabDefinition($slabData['slab_definition_id'])
                         ->where('owner_type', $ownerType)
                         ->where('owner_id', $ownerId)
@@ -1099,7 +1685,7 @@ class VehicleGroupPricingController extends Controller
 
                             // Create history record
                             $historyRecord = VehiclePricingHistory::createHistoryRecord([
-                                'vehicle_group_id' => $slabData['vehicle_group_id'],
+                                $targetColumn => $targetId,
                                 'service_type_id' => $existingPricing->slabDefinition->service_type_id,
                                 'pricing_slab_definition_id' => $slabData['slab_definition_id'],
                                 'old_rate' => $oldRate,
@@ -1122,7 +1708,7 @@ class VehicleGroupPricingController extends Controller
                         $slabDefinition = VehiclePricingSlabDefinition::find($slabData['slab_definition_id']);
                         if ($slabDefinition) {
                             $historyRecord = VehiclePricingHistory::createHistoryRecord([
-                                'vehicle_group_id' => $slabData['vehicle_group_id'],
+                                $targetColumn => $targetId,
                                 'service_type_id' => $slabDefinition->service_type_id,
                                 'pricing_slab_definition_id' => $slabData['slab_definition_id'],
                                 'old_rate' => 0,
@@ -1152,7 +1738,12 @@ class VehicleGroupPricingController extends Controller
                     $commonRateData['priority'] = $priority;
                     unset($commonRateData['service_type_id']);
 
-                    $existingCommonRate = VehicleGroupCommonRatePricing::forVehicleGroup($commonRateData['vehicle_group_id'])
+                    $targetColumn = !empty($commonRateData['vehicle_class_id']) ? 'vehicle_class_id' : 'vehicle_group_id';
+                    $targetId = $commonRateData[$targetColumn];
+                    $commonRateDefinition = VehiclePricingCommonRateDefinition::with('serviceType')->findOrFail($commonRateData['common_rate_definition_id']);
+                    $this->assertPricingTargetMatchesService($targetColumn, $commonRateDefinition->serviceType);
+                    $existingCommonRate = VehicleGroupCommonRatePricing::withInactive()
+                        ->where($targetColumn, $targetId)
                         ->forCommonRate($commonRateData['common_rate_definition_id'])
                         ->where('owner_type', $ownerType)
                         ->where('owner_id', $ownerId)
@@ -1174,7 +1765,7 @@ class VehicleGroupPricingController extends Controller
 
                             // Create history record for common rate change
                             $historyRecord = \App\Models\Vehicle\VehiclePricingHistory::createHistoryRecord([
-                                'vehicle_group_id' => $commonRateData['vehicle_group_id'],
+                                $targetColumn => $targetId,
                                 'service_type_id' => $serviceTypeId,
                                 'record_type' => 'common_rate_pricing',
                                 'common_rate_definition_id' => $commonRateData['common_rate_definition_id'],
@@ -1200,7 +1791,7 @@ class VehicleGroupPricingController extends Controller
 
                         // Create history record for new common rate
                         $historyRecord = VehiclePricingHistory::createHistoryRecord([
-                            'vehicle_group_id' => $commonRateData['vehicle_group_id'],
+                            $targetColumn => $targetId,
                             'service_type_id' => $serviceTypeId,
                             'record_type' => 'common_rate_pricing',
                             'common_rate_definition_id' => $commonRateData['common_rate_definition_id'],

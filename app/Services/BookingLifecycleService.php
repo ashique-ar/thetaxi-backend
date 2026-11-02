@@ -2277,7 +2277,7 @@ class BookingLifecycleService
     ): array {
         /** @var BookingItem|null $bookingItem */
         $bookingItem = $context['booking_item'] ?? null;
-        if (!$bookingItem || !$bookingItem->service_type_id || !$bookingItem->vehicle_group_id) {
+        if (!$bookingItem || !$bookingItem->service_type_id || (!$bookingItem->vehicle_group_id && !$bookingItem->vehicle_class_id)) {
             return ['status' => 'preserved', 'reason' => 'booking_item_pricing_context_missing', 'trigger' => $trigger];
         }
 
@@ -2542,6 +2542,7 @@ class BookingLifecycleService
         $params = [
             'service_type_id' => $bookingItem->service_type_id,
             'vehicle_group_id' => $bookingItem->vehicle_group_id,
+            'vehicle_class_id' => $bookingItem->vehicle_class_id,
             'vehicle_id' => $bookingItem->vehicle_id ?: $context['vehicle_id'],
             'corporate_account_id' => $booking->corporate_account_id,
             'is_corporate_booking' => (bool) ($booking->is_corporate_booking && $booking->corporate_account_id),
@@ -2598,6 +2599,10 @@ class BookingLifecycleService
         }
 
         $params = app(PricingContextPolicyService::class)->normalizeCalculationParams($params);
+
+        if (data_get($bookingItem->metadata, 'tour_itinerary_id')) {
+            $params['_trusted_tour_booking_item'] = $bookingItem;
+        }
 
         $activeDefinitions = VehiclePricingCalculationDefinition::query()
             ->where('service_type_id', $params['service_type_id'])
@@ -2998,15 +3003,20 @@ class BookingLifecycleService
                 && ($adjustment['type'] ?? null) === 'price_adjustment'
                 && !empty($adjustment['price_adjustment_id']))
             ->keyBy('price_adjustment_id');
+        $tourPricingLock = data_get($bookingItem->metadata, 'pricing_snapshot.tour_pricing_lock', []);
+        $lockedRules = collect(is_array($tourPricingLock['price_adjustments'] ?? null)
+            ? $tourPricingLock['price_adjustments']
+            : [])->keyBy(fn (array $rule) => (string) ($rule['id'] ?? ''));
 
         foreach ($adjustmentsById as $adjustmentId => $result) {
+            $lockedRule = $lockedRules->get((string) $adjustmentId);
             /** @var PriceAdjustment|null $adjustment */
             $adjustment = PriceAdjustment::query()
                 ->whereKey($adjustmentId)
                 ->lockForUpdate()
                 ->first();
 
-            if (!$adjustment || !$adjustment->is_active) {
+            if ((!$adjustment || !$adjustment->is_active) && !$lockedRule) {
                 throw new \DomainException(
                     'A price adjustment changed while final pricing was being committed. Please retry completion.'
                 );
@@ -3038,15 +3048,23 @@ class BookingLifecycleService
             $recordedUsage = BookingPriceAdjustmentHistory::query()
                 ->where('price_adjustment_id', $adjustmentId)
                 ->count();
-            $effectiveUsage = max((int) $adjustment->usage_count, $recordedUsage);
-            if ($adjustment->usage_limit !== null && $effectiveUsage >= (int) $adjustment->usage_limit) {
+            $effectiveUsage = max(
+                (int) ($adjustment?->usage_count ?? 0),
+                $recordedUsage,
+                (int) ($lockedRule['usage_count'] ?? 0)
+            );
+            $usageLimit = is_array($lockedRule) && array_key_exists('usage_limit', $lockedRule)
+                ? $lockedRule['usage_limit']
+                : $adjustment?->usage_limit;
+            if ($usageLimit !== null && $effectiveUsage >= (int) $usageLimit) {
                 throw new \DomainException(
-                    "Price adjustment {$adjustment->name} has reached its usage limit. Final pricing was stopped."
+                    'Price adjustment ' . ($lockedRule['name'] ?? $adjustment?->name ?? $adjustmentId)
+                        . ' has reached its usage limit. Final pricing was stopped.'
                 );
             }
 
             BookingPriceAdjustmentHistory::query()->create($historyValues);
-            $adjustment->forceFill(['usage_count' => $effectiveUsage + 1])->save();
+            $adjustment?->forceFill(['usage_count' => $effectiveUsage + 1])->save();
         }
     }
 
@@ -3214,8 +3232,12 @@ class BookingLifecycleService
         $pricingBreakdown = is_array($bookingItem->pricing_breakdown)
             ? $bookingItem->pricing_breakdown
             : [];
+        $tourPricingSnapshot = data_get($bookingItem->metadata, 'tour_itinerary_id')
+            ? data_get($bookingItem->metadata, 'pricing_snapshot', [])
+            : [];
         $calculationCurrency = strtoupper(trim((string) (
-            data_get($pricingBreakdown, 'base_pricing.original_currency')
+            data_get($tourPricingSnapshot, 'original_currency')
+            ?? data_get($pricingBreakdown, 'base_pricing.original_currency')
             ?? data_get($pricingBreakdown, 'original_currency')
             ?? $this->currencyService->getBookingBaseCurrency()
         )));
@@ -3239,7 +3261,9 @@ class BookingLifecycleService
             ];
         }
 
-        $snapshotRate = data_get($pricingBreakdown, 'base_pricing.exchange_rate');
+        $tourSnapshotRate = data_get($tourPricingSnapshot, 'exchange_rate');
+        $snapshotRate = data_get($pricingBreakdown, 'base_pricing.exchange_rate')
+            ?? $tourSnapshotRate;
         if ($snapshotRate !== null) {
             $exchangeRate = is_numeric($snapshotRate) ? (float) $snapshotRate : 0.0;
             if (!is_finite($exchangeRate) || $exchangeRate <= 0) {
@@ -3250,7 +3274,9 @@ class BookingLifecycleService
                 'calculation_currency' => $calculationCurrency,
                 'booking_currency' => $bookingCurrency,
                 'exchange_rate' => $exchangeRate,
-                'rate_source' => 'base_pricing_snapshot',
+                'rate_source' => data_get($pricingBreakdown, 'base_pricing.exchange_rate') !== null
+                    ? 'base_pricing_snapshot'
+                    : 'tour_quote_snapshot',
             ];
         }
 

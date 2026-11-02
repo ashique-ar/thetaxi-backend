@@ -22,6 +22,8 @@ class BookingItem extends BaseModel
         'booking_id',
         'item_code',
         'vehicle_group_id',
+        'vehicle_class_id',
+        'pricing_basis',
         'service_type_id',
         'vehicle_id',
         'driver_id',
@@ -257,6 +259,11 @@ class BookingItem extends BaseModel
     public function vehicleGroup(): BelongsTo
     {
         return $this->belongsTo(VehicleGroup::class);
+    }
+
+    public function vehicleClass(): BelongsTo
+    {
+        return $this->belongsTo(\App\Models\Vehicle\VehicleClass::class);
     }
     /**
      * Get the vehicle group for this item

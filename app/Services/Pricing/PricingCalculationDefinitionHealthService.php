@@ -744,6 +744,24 @@ class PricingCalculationDefinitionHealthService
                     'Choose an operator supported by the runtime condition evaluator.'
                 );
             }
+            if (isset($condition['value_field'])) {
+                if (!is_string($condition['value_field']) || !preg_match('/^[A-Za-z_][A-Za-z0-9_]*$/', $condition['value_field'])
+                    || (array_key_exists('value', $condition) && $condition['value'] !== null && $condition['value'] !== '')) {
+                    $issues[] = $this->issue(
+                        'invalid_condition_value_field', 'error', 'conditions', $serviceTypeId, [$definitionId],
+                        'An input comparison must name one runtime input and have no constant value.',
+                        'Select either a constant or another input; do not enter an expression.'
+                    );
+                }
+                if (!in_array($operator, ['=', 'equals', '!=', 'not_equals', '>', 'greater_than', '<', 'less_than', '>=', 'greater_than_or_equal', '<=', 'less_than_or_equal'], true)) {
+                    $issues[] = $this->issue(
+                        'invalid_condition_value_field_operator', 'error', 'conditions', $serviceTypeId, [$definitionId],
+                        'Input comparisons support equality and numeric ordering operators.',
+                        'Choose an equality or ordering operator.'
+                    );
+                }
+                continue;
+            }
             if (!array_key_exists('value', $condition)) {
                 $issues[] = $this->issue(
                     'missing_condition_value', 'error', 'conditions', $serviceTypeId, [$definitionId],
@@ -832,7 +850,7 @@ class PricingCalculationDefinitionHealthService
     {
         $byField = collect($conditions)
             ->filter(fn ($condition) => is_array($condition) && isset($condition['field'], $condition['operator']))
-            ->groupBy(fn (array $condition) => (string) $condition['field']);
+            ->groupBy(fn (array $condition) => (string) $condition['field'] . (isset($condition['value_field']) ? '::' . $condition['value_field'] : ''));
 
         foreach ($byField as $fieldConditions) {
             $equals = null;
@@ -847,7 +865,8 @@ class PricingCalculationDefinitionHealthService
 
             foreach ($fieldConditions as $condition) {
                 $operator = (string) $condition['operator'];
-                $value = $condition['value'] ?? null;
+                // Compare symbolic bounds against zero without mixing them with constant bounds.
+                $value = isset($condition['value_field']) ? 0 : ($condition['value'] ?? null);
                 if (in_array($operator, ['=', 'equals'], true)) {
                     if ($equals !== null && $equals != $value) {
                         return false;

@@ -18,6 +18,12 @@ class HomeController extends Controller
         // CRITICAL: Cache everything with LONG expiry to avoid repeated database hits
         $homeData = $this->getCompleteHomeData();
         try {
+            $homeData['tourBookingEnabled'] = \App\Models\Service\ServiceType::publicContext()
+                ->where('is_active', true)->where('pricing_basis', 'vehicle_class')->where('tour_booking_enabled', true)->exists();
+        } catch (\Throwable) {
+            $homeData['tourBookingEnabled'] = false;
+        }
+        try {
             $homeData['vehicleSections'] = $vehicleSections->visible();
         } catch (\Throwable $e) {
             Log::error('Homepage vehicle sections failed to load', ['error' => $e->getMessage()]);

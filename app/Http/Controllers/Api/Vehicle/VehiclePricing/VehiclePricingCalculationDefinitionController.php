@@ -40,6 +40,20 @@ class VehiclePricingCalculationDefinitionController extends Controller
     /**
      * Display a listing of calculation definitions with pagination and filtering.
      */
+    private function conditionValidationRules(): array
+    {
+        return [
+            'conditions' => 'nullable|array',
+            'conditions.*.field' => ['required', 'string', 'regex:/^[A-Za-z_][A-Za-z0-9_]*$/'],
+            'conditions.*.operator' => ['required', Rule::in(array_merge(
+                array_keys(VehiclePricingCalculationDefinition::getSupportedConditionOperators()),
+                ['=', '!=', '>', '<', '>=', '<=']
+            ))],
+            'conditions.*.value' => ['required_without:conditions.*.value_field'],
+            'conditions.*.value_field' => ['nullable', 'string', 'regex:/^[A-Za-z_][A-Za-z0-9_]*$/', 'prohibits:conditions.*.value'],
+        ];
+    }
+
     public function index(Request $request): JsonResponse
     {
         $validator = Validator::make($request->all(), [
@@ -137,13 +151,7 @@ class VehiclePricingCalculationDefinitionController extends Controller
             'variables.*.type' => ['required', Rule::in(array_keys(VehiclePricingCalculationDefinition::getSupportedVariableTypes()))],
             'variables.*.default_value' => 'nullable',
             'variables.*.description' => 'nullable|string',
-            'conditions' => 'nullable|array',
-            'conditions.*.field' => ['required', 'string', 'regex:/^[A-Za-z_][A-Za-z0-9_]*$/'],
-            'conditions.*.operator' => ['required', Rule::in(array_merge(
-                array_keys(VehiclePricingCalculationDefinition::getSupportedConditionOperators()),
-                ['=', '!=', '>', '<', '>=', '<=']
-            ))],
-            'conditions.*.value' => 'required',
+            ...$this->conditionValidationRules(),
             'status' => 'in:active,inactive,draft',
             'owner_type' => 'nullable|string|in:corporate',
             'owner_id' => 'nullable|uuid|exists:corporates,id|required_with:owner_type',
@@ -347,13 +355,7 @@ class VehiclePricingCalculationDefinitionController extends Controller
             'variables.*.type' => ['required', Rule::in(array_keys(VehiclePricingCalculationDefinition::getSupportedVariableTypes()))],
             'variables.*.default_value' => 'nullable',
             'variables.*.description' => 'nullable|string',
-            'conditions' => 'nullable|array',
-            'conditions.*.field' => ['required', 'string', 'regex:/^[A-Za-z_][A-Za-z0-9_]*$/'],
-            'conditions.*.operator' => ['required', Rule::in(array_merge(
-                array_keys(VehiclePricingCalculationDefinition::getSupportedConditionOperators()),
-                ['=', '!=', '>', '<', '>=', '<=']
-            ))],
-            'conditions.*.value' => 'required',
+            ...$this->conditionValidationRules(),
             'status' => 'in:active,inactive,draft',
             'owner_type' => 'nullable|string|in:corporate',
             'owner_id' => 'nullable|uuid|exists:corporates,id|required_with:owner_type',
@@ -482,9 +484,10 @@ class VehiclePricingCalculationDefinitionController extends Controller
         $validator = Validator::make($request->all(), [
             'formula' => 'required|string',
             'variables' => 'nullable|array',
-            'conditions' => 'nullable|array',
+            ...$this->conditionValidationRules(),
             'test_inputs' => 'required|array',
             'test_inputs.vehicle_group_id' => 'nullable|uuid',
+            'test_inputs.vehicle_class_id' => 'nullable|uuid|prohibits:test_inputs.vehicle_group_id',
             'test_inputs.service_type_id' => 'nullable|uuid',
             'test_inputs.duration_hours' => 'nullable|numeric|min:0',
             'test_inputs.duration_minutes' => 'nullable|numeric|min:0',
@@ -522,6 +525,9 @@ class VehiclePricingCalculationDefinitionController extends Controller
                 ? $request->input('owner_id')
                 : null;
             $tempDefinition->service_type_id = $testInputs['service_type_id'] ?? null;
+            if ($tempDefinition->service_type_id) {
+                $tempDefinition->setRelation('serviceType', ServiceType::find($tempDefinition->service_type_id));
+            }
             $testInputs = $this->prepareTrustedCalculationInputs(
                 [$tempDefinition],
                 $testInputs,
@@ -564,8 +570,9 @@ class VehiclePricingCalculationDefinitionController extends Controller
      * Get common rates for a vehicle group and service type.
      */
     private function getCommonRates(
-        string $vehicleGroupId,
+        string $targetId,
         string $serviceTypeId,
+        string $targetColumn = 'vehicle_group_id',
         ?string $ownerType = null,
         ?string $ownerId = null
     ): array
@@ -574,7 +581,7 @@ class VehiclePricingCalculationDefinitionController extends Controller
             $commonRates = [];
             
             // Get vehicle group specific common rate pricing
-            $vehicleGroupCommonRates = VehicleGroupCommonRatePricing::where('vehicle_group_id', $vehicleGroupId)
+            $vehicleGroupCommonRates = VehicleGroupCommonRatePricing::where($targetColumn, $targetId)
                 ->where('is_active', true)
                 ->whereHas('commonRateDefinition', function ($query) use ($serviceTypeId) {
                     $query->where('is_active', true)
@@ -713,6 +720,19 @@ class VehiclePricingCalculationDefinitionController extends Controller
         ?string $ownerId
     ): array {
         $inputs = $this->normalizeDurationInputs($inputs);
+        $isClassPriced = $serviceTypeId
+            && ServiceType::query()->whereKey($serviceTypeId)->value('pricing_basis') === 'vehicle_class';
+        $targetColumn = $isClassPriced ? 'vehicle_class_id' : 'vehicle_group_id';
+        $targetId = $isClassPriced
+            ? ($inputs['vehicle_class_id'] ?? null)
+            : ($vehicleGroupId ?? $inputs['vehicle_group_id'] ?? null);
+        if ($isClassPriced && $targetId && !\App\Models\Service\ServiceVehicleClassSetting::query()
+            ->where('service_type_id', $serviceTypeId)
+            ->where('vehicle_class_id', $targetId)
+            ->where('is_active', true)
+            ->exists()) {
+            throw new \InvalidArgumentException('Choose a vehicle class enabled for this service before testing its price.');
+        }
         $bookingSettings = app(WebsiteSettingsService::class)->getBookingSettings();
         $inputs['include_garage_distance'] = filter_var(
             $bookingSettings['include_garage_distance_in_pricing'] ?? true,
@@ -726,8 +746,8 @@ class VehiclePricingCalculationDefinitionController extends Controller
         if ($usesPackage || !empty($inputs['slab_definition_id']) || !empty($inputs['service_package_id']) || !empty($inputs['package_id'])) {
             $packageId = $inputs['service_package_id'] ?? $inputs['package_id'] ?? null;
             $slabId = $inputs['slab_definition_id'] ?? null;
-            if (!$serviceTypeId || !$vehicleGroupId || ($usesPackage && !$packageId && !$slabId)) {
-                throw new \InvalidArgumentException('Select a service package or pricing slab and vehicle group before testing package pricing.');
+            if (!$serviceTypeId || !$targetId || ($usesPackage && !$packageId && !$slabId)) {
+                throw new \InvalidArgumentException('Select a service package or pricing slab and pricing target before testing package pricing.');
             }
             $selection = app(VehiclePricingSlabConfigurationService::class)->resolvePackageSlab(
                 $serviceTypeId, $packageId, $slabId,
@@ -739,10 +759,10 @@ class VehiclePricingCalculationDefinitionController extends Controller
             if ($usesPackage && !$package) {
                 throw new \InvalidArgumentException('The selected slab is not linked to a service package.');
             }
-            if ($slab && !VehicleGroupPricing::query()->where('vehicle_group_id', $vehicleGroupId)
+            if ($slab && !VehicleGroupPricing::query()->where($targetColumn, $targetId)
                 ->where('slab_definition_id', $slab->id)->where('is_active', true)
                 ->where('rate', '>', 0)->forOwner($ownerType, $ownerId)->exists()) {
-                throw new \InvalidArgumentException('No active slab price is configured for this package and vehicle group.');
+                throw new \InvalidArgumentException('No active slab price is configured for this package and pricing target.');
             }
             if ($slab) {
                 $inputs['slab_definition_id'] = (string) $slab->id;
@@ -760,8 +780,8 @@ class VehiclePricingCalculationDefinitionController extends Controller
         if ($serviceTypeId) {
             $inputs['service_type_id'] = $serviceTypeId;
         }
-        if ($vehicleGroupId) {
-            $inputs['vehicle_group_id'] = $vehicleGroupId;
+        if ($targetId) {
+            $inputs[$targetColumn] = $targetId;
         }
 
         unset($inputs['slab_rate'], $inputs['rate_type']);
@@ -788,10 +808,11 @@ class VehiclePricingCalculationDefinitionController extends Controller
             unset($inputs[$name]);
         }
 
-        if ($serviceTypeId && $vehicleGroupId && $commonRateNames->isNotEmpty()) {
+        if ($serviceTypeId && $targetId && $commonRateNames->isNotEmpty()) {
             $inputs = array_merge($inputs, $this->getCommonRates(
-                $vehicleGroupId,
+                (string) $targetId,
                 $serviceTypeId,
+                $targetColumn,
                 $ownerType,
                 $ownerId
             ));

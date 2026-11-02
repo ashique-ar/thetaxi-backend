@@ -12,6 +12,7 @@ use App\Http\Controllers\FAQController;
 use App\Http\Controllers\InquiryController;
 use App\Http\Controllers\ShortUrlController;
 use App\Http\Controllers\VehicleController;
+use App\Http\Controllers\Website\TourController;
 use App\Http\Controllers\Website\CmsController;
 use App\Http\Controllers\Website\HomeController;
 use App\Http\Controllers\Website\PageController;
@@ -25,6 +26,28 @@ use App\Services\WebsiteSettingsService;
 
 // Company Website Routes
 Route::get('/', [HomeController::class, 'index'])->name('home');
+Route::middleware('tours.schema')->group(function (): void {
+    Route::get('/tours', [TourController::class, 'index'])->name('tours.index');
+    Route::get('/tours/confirmation', [TourController::class, 'confirmation'])->name('tours.confirmation');
+    Route::post('/tours/drafts', [TourController::class, 'storeDraft'])
+        ->defaults('tour_pricing_context', 'public')->defaults('tour_booking_context', 'customer')
+        ->middleware('throttle:10,1')->name('tours.drafts.store');
+    Route::post('/tours/drafts/{id}/quote', [TourController::class, 'quote'])
+        ->whereUuid('id')->defaults('tour_pricing_context', 'public')->defaults('tour_booking_context', 'customer')
+        ->middleware('throttle:10,1')->name('tours.drafts.quote');
+    Route::post('/tours/drafts/{id}/route', [TourController::class, 'applyRoute'])
+        ->whereUuid('id')->defaults('tour_pricing_context', 'public')->defaults('tour_booking_context', 'customer')
+        ->middleware('throttle:10,1')->name('tours.drafts.route');
+    Route::post('/tours/drafts/{id}/quotes/{quoteId}/accept', [TourController::class, 'acceptQuote'])
+        ->whereUuid('id')->whereUuid('quoteId')->defaults('tour_pricing_context', 'public')->defaults('tour_booking_context', 'customer')
+        ->middleware('throttle:10,1')->name('tours.drafts.accept');
+    Route::post('/tours/drafts/{id}/booking', [TourController::class, 'submitBooking'])
+        ->whereUuid('id')->defaults('tour_pricing_context', 'public')->defaults('tour_booking_context', 'customer')
+        ->middleware('throttle:5,1')->name('tours.drafts.booking');
+    Route::post('/tours/drafts/{id}/request-review', [TourController::class, 'requestReview'])
+        ->whereUuid('id')->defaults('tour_pricing_context', 'public')->defaults('tour_booking_context', 'customer')
+        ->middleware('throttle:5,1')->name('tours.drafts.request-review');
+});
 Route::post('/newsletter/subscribe', function (Request $request, WebsiteSettingsService $settingsService) {
     $email = $request->validateWithBag('newsletter', ['email' => 'required|email:rfc|max:255'])['email'];
     if (!filter_var($settingsService->get('footer_newsletter_enabled', true), FILTER_VALIDATE_BOOLEAN)) {

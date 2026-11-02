@@ -27,6 +27,19 @@
     </div>
 @endif
 <!-- End Booking Form Section -->
+@if ($tourBookingEnabled ?? false)
+    <section class="container my-4" aria-label="Plan a tour">
+        <div class="d-flex flex-wrap align-items-center justify-content-between gap-3 p-4 rounded border">
+            <div>
+                <h2 class="h4 mb-1">Plan a multi-day tour</h2>
+                <p class="mb-0">Choose your vehicle class, build your day-by-day route, and review a transport quote.</p>
+            </div>
+            <a class="btn btn-primary" href="{{ route('tours.index') }}">
+                Plan your tour
+            </a>
+        </div>
+    </section>
+@endif
 @if (!empty($settings['hero_booking_note']))
     <p class="container shared-booking-note">{{ $settings['hero_booking_note'] }}</p>
 @endif

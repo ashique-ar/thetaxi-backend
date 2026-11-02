@@ -38,7 +38,8 @@ class AssignmentController extends Controller
         private readonly ContractualDistanceSnapshotProjector $distanceSnapshotProjector,
         private readonly BookingPaymentLedgerService $paymentLedger,
         private readonly NotificationTriggerService $assignmentNotifications,
-    ) {
+    )
+    {
         $this->assignmentService = $assignmentService;
         $this->bookingFlowService = $bookingFlowService;
     }
@@ -68,6 +69,7 @@ class AssignmentController extends Controller
                 'vehicleAssignments.vehicle',
                 'driverAssignments.driver.user',
                 'bookingItems.serviceType',
+                'bookingItems.vehicleClass',
                 'bookingItems.vehicleGroup',
                 'bookingItems.vehicle.vehicleGroup',
                 'bookingItems.driver.user',
@@ -95,7 +97,7 @@ class AssignmentController extends Controller
                     }
 
                     $selectedBookingItem = $booking->bookingItems
-                        ->sortBy(fn ($item) => sprintf('%08d-%s', (int) ($item->trip_number ?? 0), (string) $item->id))
+                        ->sortBy(fn($item) => sprintf('%08d-%s', (int) ($item->trip_number ?? 0), (string) $item->id))
                         ->first();
                     $selectionWarning = $selectedBookingItem
                         ? 'The selected trip was replaced by a booking update. The current trip has been opened.'
@@ -133,7 +135,7 @@ class AssignmentController extends Controller
                 ?? $selectedVehicle?->vehicleGroup;
             $selectedServiceType = $selectedBookingItem?->serviceType
                 ?? $booking->bookingItems
-                    ->filter(fn ($item) => !empty($item->service_type_id))
+                    ->filter(fn($item) => !empty($item->service_type_id))
                     ->sortBy(function ($item) {
                         return sprintf(
                             '%08d-%s',
@@ -216,8 +218,8 @@ class AssignmentController extends Controller
             $pricingMetrics = $this->buildPricingMetrics($selectedBookingItem, $tripAssignment);
             $contractualDistanceSnapshot = $this->distanceSnapshotProjector->projectForInternal(
                 is_array($selectedBookingItem?->pricing_breakdown)
-                    ? $selectedBookingItem->pricing_breakdown
-                    : (is_array($booking->pricing_snapshot) ? $booking->pricing_snapshot : [])
+                ? $selectedBookingItem->pricing_breakdown
+                : (is_array($booking->pricing_snapshot) ? $booking->pricing_snapshot : [])
             );
             $customerUser = $booking->customer?->user;
             $hasSentQuotation = BookingActivity::query()->where('booking_id', $booking->id)
@@ -303,13 +305,17 @@ class AssignmentController extends Controller
                 'selection_warning' => $selectionWarning,
                 'selected_trip_number' => $selectedBookingItem?->trip_number,
                 'booking_items' => $booking->bookingItems
-                    ->sortBy(fn ($item) => sprintf('%08d-%s', (int) ($item->trip_number ?? 0), (string) $item->id))
+                    ->sortBy(fn($item) => sprintf('%08d-%s', (int) ($item->trip_number ?? 0), (string) $item->id))
                     ->values()
-                    ->map(fn ($item) => [
+                    ->map(fn($item) => [
                         'id' => $item->id,
                         'trip_number' => $item->trip_number,
                         'item_code' => $item->item_code ?? null,
                         'service_name' => $item->serviceType?->name,
+                        'purchased_class_name' => $item->pricing_basis === 'vehicle_class'
+                            ? $item->vehicleClass?->name
+                            : null,
+                        'vehicle_group_name' => $item->vehicleGroup?->name,
                         'from_date' => $item->from_date,
                         'from_time' => $item->from_time,
                         'to_date' => $item->to_date,
@@ -323,6 +329,13 @@ class AssignmentController extends Controller
                         'driver_name' => $item->driver?->user
                             ? trim((string) $item->driver->user->first_name . ' ' . (string) $item->driver->user->last_name)
                             : null,
+                        'tour_plan' => data_get($item->metadata, 'tour_itinerary_id') ? [
+                            'days' => data_get($item->metadata, 'tour_days_snapshot', []),
+                            'route' => data_get($item->metadata, 'tour_route_snapshot'),
+                            'activity_entry_note' => data_get($item->metadata, 'activity_entry_note'),
+                            'custom_answers' => data_get($item->metadata, 'tour_custom_answers', []),
+                            'custom_fields' => data_get($item->metadata, 'tour_custom_fields_snapshot', []),
+                        ] : null,
                     ])->all(),
                 'pricing_metrics' => $pricingMetrics,
                 'contractual_distance_snapshot' => $contractualDistanceSnapshot,
@@ -353,8 +366,8 @@ class AssignmentController extends Controller
                 ] : null,
                 'current_driver' => $selectedDriver ? [
                     'id' => $selectedDriver->id,
-                    'name' => $selectedDriver->user ? 
-                        $selectedDriver->user->first_name . ' ' . $selectedDriver->user->last_name 
+                    'name' => $selectedDriver->user ?
+                        $selectedDriver->user->first_name . ' ' . $selectedDriver->user->last_name
                         : 'Unknown Driver',
                     'license_number' => $selectedDriver->license_no,
                     'is_online' => (bool) ($selectedDriver->is_online ?? false),
@@ -378,32 +391,32 @@ class AssignmentController extends Controller
                                 || (string) $assignment->vehicle_id === (string) $selectedVehicle->id;
                         })
                         ->values()
-                        ->map(function($assignment) {
-                        return [
-                            'id' => $assignment->id,
-                            'vehicle_id' => $assignment->vehicle_id,
-                            'status' => $assignment->status,
-                            'assignment_type' => $assignment->assignment_type,
-                            'requires_approval' => $assignment->requires_approval,
-                            'manually_confirmed' => $assignment->manually_confirmed,
-                            'assigned_from' => $assignment->assigned_from,
-                            'assigned_to' => $assignment->assigned_to,
-                            'overlap_details' => collect($assignment->overlap_details ?? [])->map(fn ($conflict) => [
-                                'service_type' => $conflict['service_type'] ?? null,
-                                'from_datetime' => $conflict['from_datetime'] ?? null,
-                                'to_datetime' => $conflict['to_datetime'] ?? null,
-                                'status' => $conflict['status'] ?? null,
-                                'overlap_type' => $conflict['overlap_type'] ?? null,
-                            ])->values()->all(),
-                            'booking_item_id' => $assignment->booking_item_id,
-                            'vehicle' => $assignment->vehicle ? [
-                                'id' => $assignment->vehicle->id,
-                                'name' => $assignment->vehicle->title,
-                                'license_plate' => $assignment->vehicle->license_plate,
-                            ] : null,
-                        ];
-                    }),
-                    'driver' => $driverAssignments->map(function($assignment) {
+                        ->map(function ($assignment) {
+                            return [
+                                'id' => $assignment->id,
+                                'vehicle_id' => $assignment->vehicle_id,
+                                'status' => $assignment->status,
+                                'assignment_type' => $assignment->assignment_type,
+                                'requires_approval' => $assignment->requires_approval,
+                                'manually_confirmed' => $assignment->manually_confirmed,
+                                'assigned_from' => $assignment->assigned_from,
+                                'assigned_to' => $assignment->assigned_to,
+                                'overlap_details' => collect($assignment->overlap_details ?? [])->map(fn($conflict) => [
+                                    'service_type' => $conflict['service_type'] ?? null,
+                                    'from_datetime' => $conflict['from_datetime'] ?? null,
+                                    'to_datetime' => $conflict['to_datetime'] ?? null,
+                                    'status' => $conflict['status'] ?? null,
+                                    'overlap_type' => $conflict['overlap_type'] ?? null,
+                                ])->values()->all(),
+                                'booking_item_id' => $assignment->booking_item_id,
+                                'vehicle' => $assignment->vehicle ? [
+                                    'id' => $assignment->vehicle->id,
+                                    'name' => $assignment->vehicle->title,
+                                    'license_plate' => $assignment->vehicle->license_plate,
+                                ] : null,
+                            ];
+                        }),
+                    'driver' => $driverAssignments->map(function ($assignment) {
                         return [
                             'id' => $assignment->id,
                             'driver_id' => $assignment->driver_id,
@@ -413,7 +426,7 @@ class AssignmentController extends Controller
                             'manually_confirmed' => $assignment->manually_confirmed,
                             'assigned_from' => $assignment->assigned_from,
                             'assigned_to' => $assignment->assigned_to,
-                            'overlap_details' => collect($assignment->overlap_details ?? [])->map(fn ($conflict) => [
+                            'overlap_details' => collect($assignment->overlap_details ?? [])->map(fn($conflict) => [
                                 'service_type' => $conflict['service_type'] ?? null,
                                 'from_datetime' => $conflict['from_datetime'] ?? null,
                                 'to_datetime' => $conflict['to_datetime'] ?? null,
@@ -424,8 +437,8 @@ class AssignmentController extends Controller
                             'decline_reason' => $assignment->decline_reason,
                             'driver' => $assignment->driver ? [
                                 'id' => $assignment->driver->id,
-                                'name' => $assignment->driver->user ? 
-                                    $assignment->driver->user->first_name . ' ' . $assignment->driver->user->last_name 
+                                'name' => $assignment->driver->user ?
+                                    $assignment->driver->user->first_name . ' ' . $assignment->driver->user->last_name
                                     : 'Unknown Driver',
                                 'license_number' => $assignment->driver->license_no,
                             ] : null,
@@ -476,12 +489,18 @@ class AssignmentController extends Controller
             $booking = Booking::query()->whereKey($bookingId)->lockForUpdate()->firstOrFail();
             $attribution = DB::table('sales_booking_attributions')->where('booking_id', $booking->id)
                 ->whereNull('deleted_at')->lockForUpdate()->first(['collection_sales_profile_id']);
-            abort_unless($attribution?->collection_sales_profile_id, 409,
-                'Assign a collection owner before collecting payment.');
+            abort_unless(
+                $attribution?->collection_sales_profile_id,
+                409,
+                'Assign a collection owner before collecting payment.'
+            );
             $collectionProfile = \App\Models\Sales\SalesProfile::query()->find($attribution->collection_sales_profile_id);
             abort_unless($collectionProfile, 409, 'The booking collection owner is unavailable.');
             app(SalesAccessScope::class)->assertProfile(
-                $request->user(), $collectionProfile, 'sales.collections.view-all', 'sales.collections.view-team',
+                $request->user(),
+                $collectionProfile,
+                'sales.collections.view-all',
+                'sales.collections.view-team',
             );
             return $this->paymentLedger->receive($booking, $data, Auth::id());
         }, 3);
@@ -526,7 +545,7 @@ class AssignmentController extends Controller
             $booking = Booking::query()->whereKey($bookingId)->lockForUpdate()->firstOrFail();
             $item = \App\Models\Booking\BookingItem::query()->where('booking_id', $booking->id)->whereKey($data['booking_item_id'])->lockForUpdate()->firstOrFail();
             $existing = BookingActivity::query()->where('booking_id', $booking->id)
-                ->where('idempotency_key', 'additional-rental-charge-'.$data['idempotency_key'])->first();
+                ->where('idempotency_key', 'additional-rental-charge-' . $data['idempotency_key'])->first();
             if ($existing) {
                 abort_unless(
                     $existing->booking_item_id === $item->id
@@ -544,9 +563,11 @@ class AssignmentController extends Controller
             $amount = round((float) $data['amount'], 2);
             $oldTotal = (float) ($booking->total_actual ?? $booking->total_estimated ?? $booking->amount_to_pay ?? 0);
             $collectedAmount = $booking->payment_collected_amount;
-            if ($collectedAmount === null
+            if (
+                $collectedAmount === null
                 && !\App\Models\Booking\BookingPaymentReceipt::query()->where('booking_id', $booking->id)->exists()
-                && in_array(strtolower((string) $booking->payment_status), ['paid', 'success', 'online_paid'], true)) {
+                && in_array(strtolower((string) $booking->payment_status), ['paid', 'success', 'online_paid'], true)
+            ) {
                 $collectedAmount = $oldTotal;
             }
             $booking->update([
@@ -575,7 +596,7 @@ class AssignmentController extends Controller
                 'source' => 'portal',
                 'title' => 'Additional rental charge added',
                 'detail' => trim($data['description']),
-                'idempotency_key' => 'additional-rental-charge-'.$data['idempotency_key'],
+                'idempotency_key' => 'additional-rental-charge-' . $data['idempotency_key'],
                 'meta' => ['category' => $data['category'], 'amount' => $amount, 'currency' => $booking->currency],
                 'event_at' => now(),
             ]);
@@ -684,8 +705,8 @@ class AssignmentController extends Controller
         $waitingSeconds = $assignment?->total_waiting_time_seconds;
         $waitingHours = $this->firstNumeric([
             isset($finalAuditInputs['waiting_minutes'])
-                ? ((float) $finalAuditInputs['waiting_minutes'] / 60)
-                : null,
+            ? ((float) $finalAuditInputs['waiting_minutes'] / 60)
+            : null,
             $variables['waiting_hours'] ?? null,
             $pricingBreakdown['waiting_hours'] ?? null,
             $basePricing['waiting_hours'] ?? null,
@@ -702,8 +723,8 @@ class AssignmentController extends Controller
         $actualDurationMinutes = $this->firstNumeric([
             $finalAuditInputs['duration_minutes'] ?? null,
             $assignment?->trip_started_at && $assignment?->trip_completed_at
-                ? $assignment->trip_started_at->diffInSeconds($assignment->trip_completed_at) / 60
-                : null,
+            ? $assignment->trip_started_at->diffInSeconds($assignment->trip_completed_at) / 60
+            : null,
             $bookingItem?->duration_minutes,
             $bookingItem?->duration_hours !== null ? (int) $bookingItem->duration_hours * 60 : null,
         ]);
@@ -740,7 +761,7 @@ class AssignmentController extends Controller
                         : null)),
             'actual_duration_minutes' => $this->firstNumeric([
                 $assignment?->trip_started_at && $assignment?->trip_completed_at
-                    ? $assignment->trip_started_at->diffInSeconds($assignment->trip_completed_at) / 60 : null,
+                ? $assignment->trip_started_at->diffInSeconds($assignment->trip_completed_at) / 60 : null,
                 $finalAuditInputs['duration_minutes'] ?? null,
             ]),
             'base_amount' => $this->firstNumeric([
@@ -771,11 +792,11 @@ class AssignmentController extends Controller
                 : ($bookingItem?->duration_hours !== null ? (int) $bookingItem->duration_hours * 60 : null),
             'journey_duration_seconds' => $this->firstNumeric([
                 isset($finalAuditInputs['duration_minutes'])
-                    ? ((float) $finalAuditInputs['duration_minutes'] * 60)
-                    : null,
+                ? ((float) $finalAuditInputs['duration_minutes'] * 60)
+                : null,
                 $assignment?->trip_started_at && $assignment?->trip_completed_at
-                    ? $assignment->trip_started_at->diffInSeconds($assignment->trip_completed_at)
-                    : null,
+                ? $assignment->trip_started_at->diffInSeconds($assignment->trip_completed_at)
+                : null,
                 $metadata['journey_duration_seconds'] ?? null,
                 $distanceDetails['journey_duration_seconds'] ?? null,
                 $distanceDetails['duration_seconds'] ?? null,
@@ -840,7 +861,7 @@ class AssignmentController extends Controller
 
         if ($selectedBookingItemId) {
             $itemScoped = $driverAssignments
-                ->filter(fn ($assignment) => (string) $assignment->booking_item_id === (string) $selectedBookingItemId)
+                ->filter(fn($assignment) => (string) $assignment->booking_item_id === (string) $selectedBookingItemId)
                 ->values();
 
             if ($itemScoped->isNotEmpty()) {
@@ -891,7 +912,7 @@ class AssignmentController extends Controller
                 ->where('driver_id', $selectedDriver->id)
                 ->where(function ($query) use ($tripAssignment) {
                     $query->where('assignment_id', $tripAssignment->id)
-                        ->orWhereHas('routePoints', fn ($points) => $points->where('assignment_id', $tripAssignment->id));
+                        ->orWhereHas('routePoints', fn($points) => $points->where('assignment_id', $tripAssignment->id));
                 })
                 ->orderByDesc('start_time')
                 ->first();
@@ -1221,8 +1242,7 @@ class AssignmentController extends Controller
                         'stops' => [],
                     ],
                 ];
-            }
-            else {
+            } else {
                 $routePayload['distance_summary'] = $distanceSummary;
             }
 
@@ -1366,8 +1386,7 @@ class AssignmentController extends Controller
                 'dropoff' => $this->compareLifecycleLocation($dropoffPoint, $dropoffReference),
                 'pricing_effect' => 'none',
             ];
-        }
-        elseif ($selectedBookingItem) {
+        } elseif ($selectedBookingItem) {
             $pickupPoint = $this->buildMapPoint(
                 $selectedBookingItem->pickup_location ?? $pickupLocation,
                 $selectedBookingItem->pickup_latitude ?? $pickupLatitude,
@@ -1434,9 +1453,11 @@ class AssignmentController extends Controller
     private function compareLifecycleLocation(?array $planned, ?array $actual): array
     {
         $tolerance = (int) config('booking_observability.lifecycle_location_tolerance_meters', 250);
-        if (!$planned || !$actual
+        if (
+            !$planned || !$actual
             || !$this->isValidCoordinate($planned['latitude'] ?? null, $planned['longitude'] ?? null)
-            || !$this->isValidCoordinate($actual['latitude'] ?? null, $actual['longitude'] ?? null)) {
+            || !$this->isValidCoordinate($actual['latitude'] ?? null, $actual['longitude'] ?? null)
+        ) {
             return ['status' => 'not_available', 'distance_meters' => null, 'within_tolerance' => null];
         }
 
@@ -1529,8 +1550,8 @@ class AssignmentController extends Controller
         ];
 
         return collect($events)
-            ->filter(fn ($event) => !empty($event['timestamp']))
-            ->sortBy(fn ($event) => strtotime((string) $event['timestamp']) ?: 0)
+            ->filter(fn($event) => !empty($event['timestamp']))
+            ->sortBy(fn($event) => strtotime((string) $event['timestamp']) ?: 0)
             ->values()
             ->all();
     }
@@ -1724,8 +1745,8 @@ class AssignmentController extends Controller
             ->map(function ($stop) {
                 $displayLabel = $stop->label ?: (
                     $stop->stop_type === 'pickup'
-                        ? 'Pickup ' . ($stop->type_sequence ?: $stop->route_order)
-                        : 'Drop-off ' . ($stop->type_sequence ?: $stop->route_order)
+                    ? 'Pickup ' . ($stop->type_sequence ?: $stop->route_order)
+                    : 'Drop-off ' . ($stop->type_sequence ?: $stop->route_order)
                 );
 
                 $plannedLocation = [
@@ -1903,7 +1924,8 @@ class AssignmentController extends Controller
                 $newDriverId = $request->new_driver_id;
                 if ($newVehicleId && in_array($request->swap_type, ['vehicle', 'both'], true)) {
                     $eligibleVehicle = DB::table('vehicles')->where('id', $newVehicleId)->where('is_active', true)->whereNull('deleted_at')->exists();
-                    if (! $eligibleVehicle) throw \Illuminate\Validation\ValidationException::withMessages(['new_vehicle_id' => 'Choose an active vehicle.']);
+                    if (!$eligibleVehicle)
+                        throw \Illuminate\Validation\ValidationException::withMessages(['new_vehicle_id' => 'Choose an active vehicle.']);
                 }
                 if ($newDriverId && in_array($request->swap_type, ['driver', 'both'], true)) {
                     $eligibleDriver = DB::table('drivers as driver')->join('staff', 'staff.user_id', '=', 'driver.user_id')
@@ -1911,7 +1933,8 @@ class AssignmentController extends Controller
                         ->whereNull('driver.deleted_at')
                         ->whereNull('staff.deleted_at')->whereNull('staff.employment_ended_at')
                         ->whereNull('users.deleted_at')->where('users.is_active', true)->exists();
-                    if (! $eligibleDriver) throw \Illuminate\Validation\ValidationException::withMessages(['new_driver_id' => 'Choose an active driver.']);
+                    if (!$eligibleDriver)
+                        throw \Illuminate\Validation\ValidationException::withMessages(['new_driver_id' => 'Choose an active driver.']);
                 }
                 $reason = $request->reason;
                 $serviceTypeId = $selectedBookingItem?->service_type_id ?? $booking->service_type_id ?? $booking->service_type;
@@ -1936,7 +1959,7 @@ class AssignmentController extends Controller
                     $oldDriverAssignment = $booking->driverAssignments()
                         ->where('driver_id', $oldDriverId)
                         ->where('status', 'active')
-                        ->when($selectedBookingItem?->id, fn ($query) => $query->where('booking_item_id', $selectedBookingItem->id))
+                        ->when($selectedBookingItem?->id, fn($query) => $query->where('booking_item_id', $selectedBookingItem->id))
                         ->latest('assigned_from')
                         ->first();
                     $outgoingPhase = $oldDriverAssignment?->trip_phase?->value ?? (string) ($oldDriverAssignment?->trip_phase ?? '');
@@ -1959,8 +1982,10 @@ class AssignmentController extends Controller
                             'fresh' => true,
                         ];
                     }
-                    if (in_array($request->swap_type, ['driver', 'both'], true)
-                        && $outgoingPhase === 'in_progress' && (!$handoff || !$handoff['fresh'])) {
+                    if (
+                        in_array($request->swap_type, ['driver', 'both'], true)
+                        && $outgoingPhase === 'in_progress' && (!$handoff || !$handoff['fresh'])
+                    ) {
                         throw \Illuminate\Validation\ValidationException::withMessages([
                             'handoff_location' => 'The current driver location is missing or stale. Confirm the passenger handoff coordinates before swapping resources.',
                         ]);
@@ -2059,26 +2084,26 @@ class AssignmentController extends Controller
                             'handoff_instructions' => !$isMidTripHandoff
                                 ? 'Proceed to the scheduled pickup location using the normal dispatch details.'
                                 : ($handoff
-                                ? 'Meet the passenger/current driver at the recorded handoff location. Confirm the passenger handover before continuing the trip.'
-                                : 'Contact dispatch before proceeding. The previous driver location was not available; confirm the passenger handoff location.'),
+                                    ? 'Meet the passenger/current driver at the recorded handoff location. Confirm the passenger handover before continuing the trip.'
+                                    : 'Contact dispatch before proceeding. The previous driver location was not available; confirm the passenger handoff location.'),
                         ],
                     ]);
                     if ($newDriverAssignment->requires_approval) {
                         throw new \Symfony\Component\HttpKernel\Exception\HttpException(409, 'The selected driver is no longer available. No replacement was applied.');
                     }
 
-                    DB::afterCommit(fn () => $this->assignmentNotifications->sendAssignmentNotification($newDriverAssignment));
+                    DB::afterCommit(fn() => $this->assignmentNotifications->sendAssignmentNotification($newDriverAssignment));
 
                     if ($oldDriverId && (string) $oldDriverId !== (string) $newDriverId) {
                         $outgoingDriver = Driver::find($oldDriverId);
                         if ($outgoingDriver) {
-                            DB::afterCommit(fn () => $this->assignmentNotifications->sendDriverPushNotification(
+                            DB::afterCommit(fn() => $this->assignmentNotifications->sendDriverPushNotification(
                                 $outgoingDriver,
                                 'trip_assignment_replaced',
                                 'Trip handoff required',
                                 $isMidTripHandoff
-                                    ? 'Dispatch assigned a replacement driver. Stay with the passenger until the handoff is complete, then stop this trip.'
-                                    : 'Dispatch replaced your assignment. Stop this trip and follow your supervisor instructions.',
+                                ? 'Dispatch assigned a replacement driver. Stay with the passenger until the handoff is complete, then stop this trip.'
+                                : 'Dispatch replaced your assignment. Stop this trip and follow your supervisor instructions.',
                                 [
                                     'booking_id' => $booking->id,
                                     'booking_item_id' => $selectedBookingItem?->id,
@@ -2112,13 +2137,13 @@ class AssignmentController extends Controller
                     }
                     $currentDriver = Driver::find($oldDriverId);
                     if ($currentDriver) {
-                        DB::afterCommit(fn () => $this->assignmentNotifications->sendDriverPushNotification(
+                        DB::afterCommit(fn() => $this->assignmentNotifications->sendDriverPushNotification(
                             $currentDriver,
                             'vehicle_replacement_handoff',
                             'Replacement vehicle dispatch',
                             $handoff
-                                ? 'A replacement vehicle is being sent. Meet it at the handoff location before continuing the trip.'
-                                : 'A replacement vehicle is assigned. Follow the normal dispatch details.',
+                            ? 'A replacement vehicle is being sent. Meet it at the handoff location before continuing the trip.'
+                            : 'A replacement vehicle is assigned. Follow the normal dispatch details.',
                             [
                                 'booking_id' => $booking->id,
                                 'booking_item_id' => $selectedBookingItem?->id,
@@ -2240,7 +2265,8 @@ class AssignmentController extends Controller
                         ));
                     } catch (\Throwable $exception) {
                         Log::warning('Customer replacement completion update could not be queued', [
-                            'booking_id' => $booking->id, 'error' => $exception->getMessage(),
+                            'booking_id' => $booking->id,
+                            'error' => $exception->getMessage(),
                         ]);
                     }
                 }
@@ -2266,7 +2292,7 @@ class AssignmentController extends Controller
                     ],
                 ]);
             });
-        } catch (\Illuminate\Validation\ValidationException|\Illuminate\Database\Eloquent\ModelNotFoundException|\Symfony\Component\HttpKernel\Exception\HttpExceptionInterface $e) {
+        } catch (\Illuminate\Validation\ValidationException | \Illuminate\Database\Eloquent\ModelNotFoundException | \Symfony\Component\HttpKernel\Exception\HttpExceptionInterface $e) {
             throw $e;
         } catch (\Exception $e) {
             Log::error('Error performing swap: ' . $e->getMessage());
@@ -2299,10 +2325,10 @@ class AssignmentController extends Controller
             return DB::transaction(function () use ($request) {
                 $bookingQuery = Booking::with('bookingItems')->whereKey($request->booking_id);
                 $booking = $bookingQuery->lockForUpdate()->firstOrFail();
-                if ($request->filled('booking_item_id') && ! $booking->bookingItems->contains('id', $request->booking_item_id)) {
+                if ($request->filled('booking_item_id') && !$booking->bookingItems->contains('id', $request->booking_item_id)) {
                     throw \Illuminate\Validation\ValidationException::withMessages(['booking_item_id' => 'Select an item from this booking.']);
                 }
-                if ($request->replacement_vehicle_id && ! DB::table('vehicles')->where('id', $request->replacement_vehicle_id)->where('is_active', true)->whereNull('deleted_at')->exists()) {
+                if ($request->replacement_vehicle_id && !DB::table('vehicles')->where('id', $request->replacement_vehicle_id)->where('is_active', true)->whereNull('deleted_at')->exists()) {
                     throw \Illuminate\Validation\ValidationException::withMessages(['replacement_vehicle_id' => 'Choose an active vehicle.']);
                 }
                 $addons = [];
@@ -2310,36 +2336,36 @@ class AssignmentController extends Controller
                 switch ($request->action) {
                     case 'customer_reimburse':
                         $addons[] = $this->createSwapAddon(
-                            $booking->id, 
-                            'reimbursement', 
-                            -($request->estimated_cost ?? 0), 
+                            $booking->id,
+                            'reimbursement',
+                            -($request->estimated_cost ?? 0),
                             1
                         );
                         break;
 
                     case 'workshop':
                         $addons[] = $this->createSwapAddon(
-                            $booking->id, 
-                            'workshop_charge', 
-                            -($request->estimated_cost ?? 0), 
+                            $booking->id,
+                            'workshop_charge',
+                            -($request->estimated_cost ?? 0),
                             1
                         );
                         break;
 
                     case 'send_mechanic':
                         $addons[] = $this->createSwapAddon(
-                            $booking->id, 
-                            'mechanic_callout', 
-                            -($request->estimated_cost ?? 0), 
+                            $booking->id,
+                            'mechanic_callout',
+                            -($request->estimated_cost ?? 0),
                             1
                         );
                         break;
 
                     case 'send_driver':
                         $addons[] = $this->createSwapAddon(
-                            $booking->id, 
-                            'driver_callout', 
-                            -($request->estimated_cost ?? 0), 
+                            $booking->id,
+                            'driver_callout',
+                            -($request->estimated_cost ?? 0),
                             1
                         );
                         break;
@@ -2400,7 +2426,7 @@ class AssignmentController extends Controller
                     ],
                 ]);
             });
-        } catch (\Illuminate\Validation\ValidationException|\Illuminate\Database\Eloquent\ModelNotFoundException|\Symfony\Component\HttpKernel\Exception\HttpExceptionInterface $e) {
+        } catch (\Illuminate\Validation\ValidationException | \Illuminate\Database\Eloquent\ModelNotFoundException | \Symfony\Component\HttpKernel\Exception\HttpExceptionInterface $e) {
             throw $e;
         } catch (\Exception $e) {
             Log::error('Error recording breakdown: ' . $e->getMessage());
@@ -2420,7 +2446,7 @@ class AssignmentController extends Controller
         try {
             $hours = $from->diffInHours($to);
             $days = ceil($hours / 24);
-            
+
             // This is a simplified calculation - you might want to use your actual pricing service
             // For now, return a base rate per day (you should integrate with your pricing system)
             return $days * 100; // $100 per day as example
@@ -2521,7 +2547,8 @@ class AssignmentController extends Controller
         array $addons,
         string $activityType,
         array $context = []
-    ): array {
+    ): array
+    {
         $validAddons = array_values(array_filter($addons, function ($addon) {
             return is_array($addon) && array_key_exists('amount', $addon);
         }));

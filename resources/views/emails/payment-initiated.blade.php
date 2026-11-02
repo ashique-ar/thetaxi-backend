@@ -11,6 +11,8 @@
         // Use the checkout snapshot currency for every amount in this email.
         // The ISO code is intentionally shown instead of an ambiguous symbol.
         $currencyCode = getBookingDisplayCurrency($booking);
+        $tourOnlyBooking = $booking->bookingItems->count() === 1
+            && filled(data_get($booking->bookingItems->first()->metadata, 'tour_itinerary_id'));
         $customerName = $booking->customer?->full_name ?? 'Valued Customer';
         $paymentLink = \App\Helpers\BookingLinkHelper::getPaymentLink($booking);
         $isFallbackPaymentLink = $paymentLink === route('checkout');
@@ -73,7 +75,8 @@
     <!-- Booking Details Section -->
     <div class="section">
         <h2 class="section-title">
-            <span class="icon">🚗</span> Trip Details
+            <span class="icon">{{ $tourOnlyBooking ? '🗺️' : '🚗' }}</span>
+            {{ $tourOnlyBooking ? 'Tour itinerary and booking details' : 'Trip Details' }}
         </h2>
         @if ($booking->bookingItems->count() > 0)
             @foreach ($booking->bookingItems as $index => $item)

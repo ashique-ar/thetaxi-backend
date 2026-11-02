@@ -6,10 +6,14 @@ use App\Http\Controllers\Controller;
 use App\Models\Service\ServicePackage;
 use App\Models\Service\ServicePackageReturnRule;
 use App\Models\Service\ServiceType;
+use App\Models\Tours\TourActivity;
+use App\Models\Tours\TourDestination;
+use App\Models\Tours\TourPackageTemplateVersion;
 use Illuminate\Http\Request;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Validation\ValidationException;
 use Illuminate\Validation\Rule;
+use Illuminate\Support\Facades\DB;
 use App\Services\DynamicServiceConfigurationService;
 use App\Services\Pricing\PricingContextPolicyService;
 
@@ -160,17 +164,43 @@ class ServicePackageController extends Controller
             'charges_extra_km' => 'boolean',
             'sort_order' => 'nullable|integer|min:0',
             'supports_return_trip' => 'boolean',
+            'default_vehicle_class_id' => 'nullable|uuid|exists:vehicle_classes,id',
+            'allowed_upgrade_class_ids' => 'nullable|array',
+            'allowed_upgrade_class_ids.*' => 'uuid|distinct|exists:vehicle_classes,id',
+            'tour_itinerary_template' => 'nullable|array:days',
+            'tour_itinerary_template.days' => 'required_with:tour_itinerary_template|array|min:1|max:60',
+            'tour_itinerary_template.days.*' => 'array:day_number,timezone,start_time,start_destination_id,end_destination_id,overnight_destination_id,is_locked,stops',
+            'tour_itinerary_template.days.*.day_number' => 'required|integer|min:1|max:60|distinct:strict',
+            'tour_itinerary_template.days.*.timezone' => 'required|timezone',
+            'tour_itinerary_template.days.*.start_time' => 'sometimes|date_format:H:i',
+            'tour_itinerary_template.days.*.start_destination_id' => 'required|uuid',
+            'tour_itinerary_template.days.*.end_destination_id' => 'required|uuid',
+            'tour_itinerary_template.days.*.overnight_destination_id' => 'nullable|uuid',
+            'tour_itinerary_template.days.*.is_locked' => 'sometimes|boolean',
+            'tour_itinerary_template.days.*.stops' => 'sometimes|array|max:40',
+            'tour_itinerary_template.days.*.stops.*' => 'array:kind,catalogue_id,is_locked,arrival_time',
+            'tour_itinerary_template.days.*.stops.*.kind' => 'required|in:destination,activity',
+            'tour_itinerary_template.days.*.stops.*.catalogue_id' => 'required|uuid',
+            'tour_itinerary_template.days.*.stops.*.is_locked' => 'sometimes|boolean',
+            'tour_itinerary_template.days.*.stops.*.arrival_time' => 'nullable|date_format:H:i',
         ]);
         $this->assertPositiveDefaultDuration($validated);
-        $this->pricingContextPolicy->assertServiceTypeIsWritable(
-            ServiceType::findOrFail($validated['service_type_id'])
-        );
+        $serviceType = ServiceType::findOrFail($validated['service_type_id']);
+        $this->pricingContextPolicy->assertServiceTypeIsWritable($serviceType);
+        $this->assertPackageVehicleClasses($serviceType, $validated);
+        $this->assertTourItineraryTemplate($serviceType, $validated['tour_itinerary_template'] ?? null);
 
         $validated['created_user_id'] = auth()->id();
         $validated['is_active'] = true;
         $validated['supports_return_trip'] = $validated['supports_return_trip'] ?? false;
 
-        $package = ServicePackage::create($validated);
+        $package = DB::transaction(function () use ($validated): ServicePackage {
+            $package = ServicePackage::create($validated);
+            if (!empty($validated['tour_itinerary_template'])) {
+                $this->publishTourTemplateVersion($package, $validated['tour_itinerary_template']);
+            }
+            return $package;
+        });
 
         return response()->json([
             'status' => 'success',
@@ -215,15 +245,42 @@ class ServicePackageController extends Controller
             'service_type_id' => 'required|exists:service_types,id',
             'is_active' => 'boolean',
             'supports_return_trip' => 'boolean',
+            'default_vehicle_class_id' => 'nullable|uuid|exists:vehicle_classes,id',
+            'allowed_upgrade_class_ids' => 'nullable|array',
+            'allowed_upgrade_class_ids.*' => 'uuid|distinct|exists:vehicle_classes,id',
+            'tour_itinerary_template' => 'nullable|array:days',
+            'tour_itinerary_template.days' => 'required_with:tour_itinerary_template|array|min:1|max:60',
+            'tour_itinerary_template.days.*' => 'array:day_number,timezone,start_time,start_destination_id,end_destination_id,overnight_destination_id,is_locked,stops',
+            'tour_itinerary_template.days.*.day_number' => 'required|integer|min:1|max:60|distinct:strict',
+            'tour_itinerary_template.days.*.timezone' => 'required|timezone',
+            'tour_itinerary_template.days.*.start_time' => 'sometimes|date_format:H:i',
+            'tour_itinerary_template.days.*.start_destination_id' => 'required|uuid',
+            'tour_itinerary_template.days.*.end_destination_id' => 'required|uuid',
+            'tour_itinerary_template.days.*.overnight_destination_id' => 'nullable|uuid',
+            'tour_itinerary_template.days.*.is_locked' => 'sometimes|boolean',
+            'tour_itinerary_template.days.*.stops' => 'sometimes|array|max:40',
+            'tour_itinerary_template.days.*.stops.*' => 'array:kind,catalogue_id,is_locked,arrival_time',
+            'tour_itinerary_template.days.*.stops.*.kind' => 'required|in:destination,activity',
+            'tour_itinerary_template.days.*.stops.*.catalogue_id' => 'required|uuid',
+            'tour_itinerary_template.days.*.stops.*.is_locked' => 'sometimes|boolean',
+            'tour_itinerary_template.days.*.stops.*.arrival_time' => 'nullable|date_format:H:i',
         ]);
         $this->assertPositiveDefaultDuration($validated);
-        $this->pricingContextPolicy->assertServiceTypeIsWritable(
-            ServiceType::findOrFail($validated['service_type_id'])
-        );
+        $serviceType = ServiceType::findOrFail($validated['service_type_id']);
+        $this->pricingContextPolicy->assertServiceTypeIsWritable($serviceType);
+        $this->assertPackageVehicleClasses($serviceType, $validated);
+        $this->assertTourItineraryTemplate($serviceType, $validated['tour_itinerary_template'] ?? null);
 
         $validated['updated_user_id'] = auth()->id();
 
-        $servicePackage->update($validated);
+        $previousTemplate = $servicePackage->tour_itinerary_template;
+        DB::transaction(function () use ($servicePackage, $validated, $previousTemplate): void {
+            $servicePackage->update($validated);
+            $newTemplate = $validated['tour_itinerary_template'] ?? null;
+            if ($newTemplate !== null && $newTemplate !== $previousTemplate) {
+                $this->publishTourTemplateVersion($servicePackage, $newTemplate);
+            }
+        });
 
         return response()->json([
             'status' => 'success',
@@ -256,6 +313,119 @@ class ServicePackageController extends Controller
                 'default_duration_minutes' => 'Package duration must be at least one minute.',
             ]);
         }
+    }
+
+    private function assertPackageVehicleClasses(ServiceType $serviceType, array $data): void
+    {
+        $defaultClassId = $data['default_vehicle_class_id'] ?? null;
+        $upgradeIds = $data['allowed_upgrade_class_ids'] ?? [];
+        if ($serviceType->pricing_basis !== 'vehicle_class') {
+            if ($defaultClassId || $upgradeIds !== []) {
+                throw ValidationException::withMessages(['default_vehicle_class_id' => 'Vehicle classes can only be set for class-priced services.']);
+            }
+
+            return;
+        }
+
+        if (!$defaultClassId) {
+            throw ValidationException::withMessages(['default_vehicle_class_id' => 'Choose the package’s default vehicle class.']);
+        }
+
+        $setting = \App\Models\Service\ServiceVehicleClassSetting::query()
+            ->where('service_type_id', $serviceType->id)
+            ->where('vehicle_class_id', $defaultClassId)
+            ->where('is_active', true)
+            ->where('is_hidden', false)
+            ->first();
+        if (!$setting) {
+            throw ValidationException::withMessages(['default_vehicle_class_id' => 'The package default must be an active, visible class for this service.']);
+        }
+
+        $configuredUpgrades = $setting->allowed_upgrade_class_ids ?? [];
+        if (array_diff($upgradeIds, $configuredUpgrades) !== []) {
+            throw ValidationException::withMessages(['allowed_upgrade_class_ids' => 'Package upgrades must be permitted by the selected class settings.']);
+        }
+        if ($upgradeIds !== []) {
+            $eligibleIds = \App\Models\Service\ServiceVehicleClassSetting::query()
+                ->where('service_type_id', $serviceType->id)
+                ->whereIn('vehicle_class_id', $upgradeIds)
+                ->where('is_active', true)
+                ->where('is_hidden', false)
+                ->pluck('vehicle_class_id')
+                ->all();
+            if (count($eligibleIds) !== count(array_unique($upgradeIds))) {
+                throw ValidationException::withMessages(['allowed_upgrade_class_ids' => 'Every package upgrade must be active and visible for this service.']);
+            }
+        }
+    }
+
+    private function assertTourItineraryTemplate(ServiceType $serviceType, ?array $template): void
+    {
+        if ($template === null) {
+            return;
+        }
+        if ($serviceType->pricing_basis !== 'vehicle_class' || !$serviceType->tour_booking_enabled) {
+            throw ValidationException::withMessages(['tour_itinerary_template' => 'Itinerary templates require an enabled class-priced Tours service.']);
+        }
+
+        $days = collect($template['days'] ?? []);
+        $dayNumbers = $days->pluck('day_number')->map(fn($number) => (int) $number)->sort()->values()->all();
+        if ($dayNumbers !== range(1, $days->count())) {
+            throw ValidationException::withMessages(['tour_itinerary_template.days' => 'Template days must be numbered consecutively from one.']);
+        }
+
+        foreach ($days as $index => $day) {
+            $startId = (string) $day['start_destination_id'];
+            $endId = (string) $day['end_destination_id'];
+            $overnightId = $day['overnight_destination_id'] ?? null;
+            if ($overnightId && (string) $overnightId !== $endId) {
+                throw ValidationException::withMessages(['tour_itinerary_template.days' => 'Each overnight destination must be that day’s end point.']);
+            }
+            if ($index > 0 && (string) $days[$index - 1]['end_destination_id'] !== $startId) {
+                throw ValidationException::withMessages(['tour_itinerary_template.days' => 'Each template day must continue from the previous day’s end point.']);
+            }
+
+            $destinationIds = collect($day['stops'] ?? [])
+                ->where('kind', 'destination')->pluck('catalogue_id')->map(fn($id) => (string) $id)->all();
+            foreach ([$startId, $endId, ...array_filter([$overnightId]), ...$destinationIds] as $destinationId) {
+                $valid = TourDestination::query()
+                    ->where('service_type_id', $serviceType->id)
+                    ->where('is_published', true)
+                    ->whereKey($destinationId)->exists();
+                if (!$valid) {
+                    throw ValidationException::withMessages(['tour_itinerary_template.days' => 'Every template location must be a published destination for this service.']);
+                }
+            }
+
+            foreach (($day['stops'] ?? []) as $stop) {
+                if ($stop['kind'] === 'destination') {
+                    continue;
+                }
+                $activity = TourActivity::query()
+                    ->where('is_published', true)
+                    ->whereKey($stop['catalogue_id'])
+                    ->whereHas('destination', fn($query) => $query
+                        ->where('service_type_id', $serviceType->id)
+                        ->where('is_published', true))
+                    ->first();
+                if (!$activity || !in_array((string) $activity->tour_destination_id, $destinationIds, true)) {
+                    throw ValidationException::withMessages(['tour_itinerary_template.days' => 'Each activity visit needs its published parent destination in that day’s stops.']);
+                }
+            }
+        }
+    }
+
+    private function publishTourTemplateVersion(ServicePackage $package, array $template): void
+    {
+        $version = ((int) $package->tour_itinerary_template_version) + 1;
+        $package->tour_itinerary_template_version = $version;
+        $package->save();
+        $package->tourTemplateVersions()->create([
+            'version' => $version,
+            'template' => $template,
+            'created_user_id' => auth()->id(),
+            'created_at' => now(),
+        ]);
     }
 
     // ==========================================

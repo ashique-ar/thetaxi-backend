@@ -801,6 +801,11 @@ class SettingsCategoryService
                     'type' => 'toggle',
                     'description' => 'Enable Corporate Transport service tab/form'
                 ],
+                'tour_ai_itinerary_enabled' => [
+                    'label' => 'AI Tour Itinerary Suggestions',
+                    'type' => 'toggle',
+                    'description' => 'Let customers request an editable itinerary draft based only on published tour places. Disabled by default; manual planning remains available.',
+                ],
                 'show_return_trip_toggle' => [
                     'label' => 'Show Return Trip Toggle',
                     'type' => 'toggle',

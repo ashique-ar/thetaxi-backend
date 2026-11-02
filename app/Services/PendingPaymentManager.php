@@ -89,6 +89,42 @@ class PendingPaymentManager
         return $paymentLink;
     }
 
+    public static function createPaymentRetryLink(Booking $booking, int $expiryHours = 168): PendingPaymentLink
+    {
+        return DB::transaction(function () use ($booking, $expiryHours): PendingPaymentLink {
+            $lockedBooking = Booking::query()->with('bookingItems')->lockForUpdate()->findOrFail($booking->id);
+            if ($lockedBooking->payment_status === 'paid') {
+                throw new \RuntimeException('This booking has already been paid.');
+            }
+
+            $now = Carbon::now();
+            PendingPaymentLink::query()->where('booking_id', $lockedBooking->id)
+                ->where('type', 'payment_reminder')->whereNull('invalidated_at')
+                ->update(['invalidated_at' => $now, 'expires_at' => $now->copy()->subMinute()]);
+
+            $workflowData = is_array($lockedBooking->workflow_data) ? $lockedBooking->workflow_data : [];
+            $lastAttemptAmount = data_get($workflowData, 'gateway_payment.booking_amount');
+            $amountDue = is_numeric($lastAttemptAmount) && (float) $lastAttemptAmount > 0
+                ? (float) $lastAttemptAmount
+                : (float) ($lockedBooking->amount_to_pay ?? 0);
+            if ($amountDue <= 0) {
+                $amountDue = max(0, (float) $lockedBooking->total_estimated - (float) ($lockedBooking->amount_paid ?? 0));
+            }
+            $amountDue = round(min($amountDue, max(0, (float) $lockedBooking->total_estimated - (float) ($lockedBooking->amount_paid ?? 0))), 2);
+
+            return PendingPaymentLink::query()->create([
+                'booking_id' => $lockedBooking->id,
+                'token' => Str::random(64),
+                'type' => 'payment_reminder',
+                'booking_context' => self::prepareBookingContext($lockedBooking),
+                'amount_due' => $amountDue,
+                'expires_at' => $now->copy()->addHours($expiryHours),
+                'accessed_at' => null,
+                'access_count' => 0,
+            ]);
+        }, 3);
+    }
+
     public static function createQuotationLink(Booking $booking, int $expiryHours = 168): PendingPaymentLink
     {
         return DB::transaction(function () use ($booking, $expiryHours): PendingPaymentLink {
@@ -235,6 +271,7 @@ class PendingPaymentManager
     {
         try {
             $paymentLink = PendingPaymentLink::where('token', $token)
+                ->whereNull('invalidated_at')
                 ->where('expires_at', '>', Carbon::now())
                 ->first();
 
@@ -257,8 +294,12 @@ class PendingPaymentManager
             if (!is_array($bookingContext)) {
                 $bookingContext = json_decode((string) $bookingContext, true) ?: [];
             }
+            $booking = $paymentLink->booking()->first();
+            if (!$booking) {
+                return null;
+            }
             return [
-                'booking' => $paymentLink->booking()->first(),
+                'booking' => $booking,
                 'context' => $bookingContext,
                 'amount_due' => $paymentLink->revision_amount_due ?? $paymentLink->amount_due,
                 'original_amount_due' => $paymentLink->amount_due,
@@ -288,6 +329,7 @@ class PendingPaymentManager
                 'vehicleGroup',
                 'serviceType',
                 'bookingItems.vehicleGroup',
+                'bookingItems.vehicleClass',
                 'bookingItems.serviceType',
                 'addons'
             ]);
@@ -468,6 +510,11 @@ class PendingPaymentManager
 
                 return [
                 'id' => (string) $item->id,
+                    'is_tour' => !empty($metadata['tour_itinerary_id']),
+                    'vehicle_class_name' => data_get($metadata, 'pricing_snapshot.tour_pricing_lock.purchased_class.name')
+                        ?: $item->vehicleClass?->name,
+                    'tour_days' => $metadata['tour_days_snapshot'] ?? [],
+                    'activity_entry_note' => $metadata['activity_entry_note'] ?? null,
                     'vehicle_group' => $item->vehicle_group_name ?? ($item->vehicleGroup?->name ?? 'N/A'),
                     'service_type' => $item->service_type_name ?? ($item->serviceType?->name ?? 'N/A'),
                     'from_date' => $item->from_date?->toDateString(),

@@ -21,17 +21,27 @@ class CustomerPortalBookingController extends BookingFlowController
         $bookings = Booking::query()
             ->where('customer_id', $customer->id)
             ->where('is_corporate_booking', false)
-            ->with(['bookingItems' => fn ($query) => $query->select([
-                'id', 'booking_id', 'status', 'from_date', 'from_time', 'to_date', 'to_time',
-                'pickup_location', 'dropoff_location',
-            ])])
+            ->with([
+                'bookingItems' => fn($query) => $query->select([
+                    'id',
+                    'booking_id',
+                    'status',
+                    'from_date',
+                    'from_time',
+                    'to_date',
+                    'to_time',
+                    'pickup_location',
+                    'dropoff_location',
+                    'metadata',
+                ])
+            ])
             ->select(['id', 'customer_id', 'booking_number', 'status', 'approval_status', 'created_at'])
             ->latest('created_at')
             ->paginate(min(25, max(1, (int) $request->integer('per_page', 10))));
 
         return response()->json([
             'status' => 'success',
-            'data' => $bookings->getCollection()->map(fn (Booking $booking) => $this->requestSummary($booking))->values(),
+            'data' => $bookings->getCollection()->map(fn(Booking $booking) => $this->requestSummary($booking))->values(),
             'pagination' => [
                 'current_page' => $bookings->currentPage(),
                 'last_page' => $bookings->lastPage(),
@@ -48,10 +58,20 @@ class CustomerPortalBookingController extends BookingFlowController
             ->whereKey($id)
             ->where('customer_id', $customer->id)
             ->where('is_corporate_booking', false)
-            ->with(['bookingItems' => fn ($query) => $query->select([
-                'id', 'booking_id', 'status', 'from_date', 'from_time', 'to_date', 'to_time',
-                'pickup_location', 'dropoff_location',
-            ])])
+            ->with([
+                'bookingItems' => fn($query) => $query->select([
+                    'id',
+                    'booking_id',
+                    'status',
+                    'from_date',
+                    'from_time',
+                    'to_date',
+                    'to_time',
+                    'pickup_location',
+                    'dropoff_location',
+                    'metadata',
+                ])
+            ])
             ->select(['id', 'customer_id', 'booking_number', 'status', 'approval_status', 'created_at'])
             ->firstOrFail();
 
@@ -77,7 +97,7 @@ class CustomerPortalBookingController extends BookingFlowController
             'reference' => $booking->booking_number ?: (string) $booking->id,
             'submitted_at' => $booking->created_at?->toIso8601String(),
             'request_status' => $progress,
-            'trips' => $booking->bookingItems->map(fn ($item) => [
+            'trips' => $booking->bookingItems->map(fn($item) => [
                 'id' => (string) $item->id,
                 'status' => $this->customerTripStatus($item->status),
                 'pickup' => $this->locationLabel($item->pickup_location),
@@ -86,9 +106,43 @@ class CustomerPortalBookingController extends BookingFlowController
                 'from_time' => $item->from_time,
                 'to_date' => $item->to_date,
                 'to_time' => $item->to_time,
+                'tour_days' => $this->tourDays($item->metadata),
+                'tour_activity_note' => $this->tourActivityNote($item->metadata),
             ])->values()->all(),
             'support_hint' => 'Contact TheTaxi support and quote this reference for help with your request.',
         ];
+    }
+
+    private function tourDays(?array $metadata): ?array
+    {
+        $days = data_get($metadata, 'tour_days_snapshot');
+        if (!is_array($days))
+            return null;
+
+        return collect($days)->map(fn($day) => [
+            'day_number' => (int) ($day['day_number'] ?? 0),
+            'service_date' => $day['service_date'] ?? null,
+            'start_time' => isset($day['start_time']) ? substr((string) $day['start_time'], 0, 5) : null,
+            'start' => $this->locationLabel($day['start_location'] ?? null),
+            'end' => $this->locationLabel($day['end_location'] ?? null),
+            'stops' => collect($day['stops'] ?? [])->map(fn($stop) => [
+                'kind' => $stop['kind'] ?? null,
+                'name' => $stop['name'] ?? null,
+                'visit_duration_minutes' => isset($stop['visit_duration_minutes']) ? (int) $stop['visit_duration_minutes'] : null,
+            ])->values()->all(),
+        ])->values()->all();
+    }
+
+    private function tourActivityNote(?array $metadata): ?string
+    {
+        $hasActivityVisit = collect(data_get($metadata, 'tour_days_snapshot', []))
+            ->contains(fn($day) => collect($day['stops'] ?? [])->contains(fn($stop) => ($stop['kind'] ?? null) === 'activity'));
+        if (!$hasActivityVisit) {
+            return null;
+        }
+
+        return data_get($metadata, 'activity_entry_note')
+            ?: 'Activity visits are included in your route only. Tickets, entry fees and activity reservations are not included. Please arrange these separately. Activity booking will be introduced in a future release.';
     }
 
     private function customerTripStatus(?string $status): ?string
@@ -121,7 +175,8 @@ class CustomerPortalBookingController extends BookingFlowController
         }
         if (is_array($value)) {
             foreach (['address', 'formatted_address', 'label', 'name', 'description'] as $key) {
-                if (is_string($value[$key] ?? null) && trim($value[$key]) !== '') return trim($value[$key]);
+                if (is_string($value[$key] ?? null) && trim($value[$key]) !== '')
+                    return trim($value[$key]);
             }
             return null;
         }
@@ -133,17 +188,29 @@ class CustomerPortalBookingController extends BookingFlowController
         $user = $request->user();
         abort_unless($user, 403, 'An active customer profile is required.');
         $activeContext = app(UserContextService::class)->resolveActiveContextFromRequest($user, $request);
-        abort_unless($activeContext && ($activeContext['portal_profile'] ?? null) === 'customer', 403,
-            'An active customer profile is required.');
-        abort_if($request->header('X-Active-Context-Id') &&
-            $request->header('X-Active-Context-Id') !== (string) $activeContext['id'], 403,
-            'The selected customer context is unavailable.');
-        abort_if($request->header('X-Active-Context-Type') &&
-            $request->header('X-Active-Context-Type') !== 'customer', 403,
-            'A customer context is required.');
-        abort_if($request->header('X-Active-Portal-Profile') &&
-            $request->header('X-Active-Portal-Profile') !== 'customer', 403,
-            'A customer profile is required.');
+        abort_unless(
+            $activeContext && ($activeContext['portal_profile'] ?? null) === 'customer',
+            403,
+            'An active customer profile is required.'
+        );
+        abort_if(
+            $request->header('X-Active-Context-Id') &&
+            $request->header('X-Active-Context-Id') !== (string) $activeContext['id'],
+            403,
+            'The selected customer context is unavailable.'
+        );
+        abort_if(
+            $request->header('X-Active-Context-Type') &&
+            $request->header('X-Active-Context-Type') !== 'customer',
+            403,
+            'A customer context is required.'
+        );
+        abort_if(
+            $request->header('X-Active-Portal-Profile') &&
+            $request->header('X-Active-Portal-Profile') !== 'customer',
+            403,
+            'A customer profile is required.'
+        );
         $context = $user->contexts()->whereKey($activeContext['id'])
             ->where('context_type', 'customer')->where('is_active', true)->first();
         $customer = $context?->context_id

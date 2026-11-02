@@ -29,6 +29,7 @@
     @php
         // Cart data is passed from controller
         $cart = $cartData['items'] ?? [];
+        $tourOnlyCheckout = count($cart) === 1 && !empty(collect($cart)->first()['is_tour']);
         $totals = $cartData['totals'] ?? [];
         $currencySymbol = $cartData['currency_symbol'] ?? getCurrencySymbol();
         $displayCurrency = $cartData['currency'] ?? getSelectedCurrency();
@@ -106,7 +107,7 @@
                 @php
                     $canBookAsNewCustomer = $guestBookingEnabled || Auth::check();
                     $showCheckoutDetails = (!$customerLookupEnabled && $canBookAsNewCustomer)
-                        || !empty($verifiedCheckoutCustomer) || old('email') || old('first_name');
+                        || !empty($verifiedCheckoutCustomer) || !empty($tourCheckoutCustomer) || old('email') || old('first_name');
                 @endphp
                 @if ($customerLookupEnabled)
                     <div id="checkout-customer-choice" class="checkout-form-wrapper checkout-customer-choice mb-3" aria-labelledby="checkout-customer-choice-title">
@@ -205,7 +206,7 @@
                                             <div class="form-inner two mb-25">
                                                 <label>First Name*</label>
                                                 <input type="text" name="first_name" placeholder="Enter your first name"
-                                                    required value="{{ old('first_name') }}">
+                                                    required value="{{ old('first_name', $tourCheckoutCustomer?->user?->first_name) }}">
                                                 @error('first_name')
                                                     <span class="text-danger">{{ $message }}</span>
                                                 @enderror
@@ -215,7 +216,7 @@
                                             <div class="form-inner two mb-25">
                                                 <label>Last Name*</label>
                                                 <input type="text" name="last_name" placeholder="Enter your last name"
-                                                    value="{{ old('last_name') }}">
+                                                    value="{{ old('last_name', $tourCheckoutCustomer?->user?->last_name) }}">
                                                 @error('last_name')
                                                     <span class="text-danger">{{ $message }}</span>
                                                 @enderror
@@ -227,7 +228,7 @@
                                                 <input type="tel" id="phone-input" name="phone"
                                                     placeholder="Mobile number" autocomplete="tel"
                                                     required
-                                                    value="{{ old('phone', Auth::user()?->phone) }}" style="padding-left: 48px;">
+                                                    value="{{ old('phone', Auth::user()?->phone ?? $tourCheckoutCustomer?->user?->phone) }}" style="padding-left: 48px;">
                                                 <div id="phone-error" class="text-danger mt-2" style="display: none;">
                                                 </div>
                                                 <div id="phone-valid" class="text-success small mt-1"
@@ -247,7 +248,7 @@
                                                 <label>Email Address<span class="checkout-contact-required">*</span></label>
                                                 <input type="email" name="email" placeholder="Enter email address"
                                                     required
-                                                    value="{{ old('email', Auth::user()?->email) }}">
+                                                    value="{{ old('email', Auth::user()?->email ?? $tourCheckoutCustomer?->user?->email) }}">
                                                 @error('email')
                                                     <span class="text-danger">{{ $message }}</span>
                                                 @enderror
@@ -540,7 +541,7 @@
                                                                                     class="bi bi-credit-card text-warning"></i>
                                                                                 <h6>Pay <span data-advance-percentage>{{ $advanceActualPercentage }}</span>% Advance
                                                                                 </h6>
-                                                                                <p class="mb-0">Pay remaining on pickup
+                                                                                <p class="mb-0">{{ $tourOnlyCheckout ? 'Pay the balance later' : 'Pay remaining on pickup' }}
                                                                                 </p>
                                                                                 <small class="text-muted">Now:
                                                                                     {{ $currencySymbol }}
@@ -563,8 +564,8 @@
                                                                             <div class="payment-card">
                                                                                 <i
                                                                                     class="bi bi-cash-coin text-primary"></i>
-                                                                                <h6>Pay on Check-in</h6>
-                                                                                <p class="mb-0">Pay when you collect</p>
+                                                                                <h6>{{ $tourOnlyCheckout ? 'Pay later' : 'Pay on Check-in' }}</h6>
+                                                                                <p class="mb-0">{{ $tourOnlyCheckout ? 'No payment is due now' : 'Pay when you collect' }}</p>
                                                                                 <small class="text-muted">Due:
                                                                                     {{ $currencySymbol }}
                                                                                     {{ number_format(floor(max(0, $total)), 0) }}</small>
@@ -613,9 +614,8 @@
                                                         @break
 
                                                         @case('checkin')
-                                                            <h6><i class="bi bi-cash-coin"></i> Pay on Check-in</h6>
-                                                            <p class="mb-0">No payment is required now. You will pay the full
-                                                                amount when you check-in to collect the vehicle.</p>
+                                                            <h6><i class="bi bi-cash-coin"></i> {{ $tourOnlyCheckout ? 'Pay later' : 'Pay on Check-in' }}</h6>
+                                                            <p class="mb-0">{{ $tourOnlyCheckout ? 'No payment is required now. The full amount is due according to your Tour booking terms.' : 'No payment is required now. You will pay the full amount when you check-in to collect the vehicle.' }}</p>
                                                         @break
 
                                                         @case('quotation')
@@ -641,7 +641,7 @@
                                                     @if ($paymentType === 'quotation')
                                                         Submit Quotation Request
                                                     @elseif ($paymentType === 'checkin')
-                                                        Confirm Booking - Pay on Check-in
+                                                        Confirm Booking - {{ $tourOnlyCheckout ? 'Pay Later' : 'Pay on Check-in' }}
                                                     @else
                                                         Complete Booking -
                                                         <small class="currency-symbol">{{ $currencySymbol }}</small>
@@ -2080,6 +2080,7 @@
                 const alertContent = $('#alert-content');
                 const paymentMethodSection = $('.choose-payment-method');
                 const submitBtn = $('#checkout-submit-btn span');
+                const tourOnlyCheckout = @json($tourOnlyCheckout);
 
                 // Calculate payment amounts
                 const advanceAmount = calculateAdvanceAmount(checkoutTotal);
@@ -2091,7 +2092,7 @@
                         const actualAdvancePercentage = formatAdvancePercentage(checkoutTotal);
                         alertContent.html(`
                     <h6><i class="bi bi-info-circle"></i> Advance Payment (${actualAdvancePercentage}%)</h6>
-                    <p class="mb-0">You are paying ${actualAdvancePercentage}% advance. The remaining amount will be collected at the time of vehicle pickup.</p>
+                    <p class="mb-0">${tourOnlyCheckout ? `You are paying ${actualAdvancePercentage}% advance. The remaining amount is due according to your Tour booking terms.` : `You are paying ${actualAdvancePercentage}% advance. The remaining amount will be collected at the time of vehicle pickup.`}</p>
                 `);
                         $('[data-advance-percentage]').text(actualAdvancePercentage);
                         paymentMethodSection.show();
@@ -2112,12 +2113,12 @@
                         break;
                     case 'checkin':
                         alertContent.html(`
-                    <h6><i class="bi bi-cash-coin"></i> Pay on Check-in</h6>
-                    <p class="mb-0">No payment is required now. You will pay the full amount when you check-in to collect the vehicle.</p>
+                    <h6><i class="bi bi-cash-coin"></i> ${tourOnlyCheckout ? 'Pay later' : 'Pay on Check-in'}</h6>
+                    <p class="mb-0">${tourOnlyCheckout ? 'No payment is required now. The full amount is due according to your Tour booking terms.' : 'No payment is required now. You will pay the full amount when you check-in to collect the vehicle.'}</p>
                 `);
                         paymentMethodSection.hide();
                         submitBtn.html(
-                            `Confirm Booking - Pay on Check-in <svg width="10" height="10" viewBox="0 0 10 10" xmlns="http://www.w3.org/2000/svg"><path d="M9.73535 1.14746C9.57033 1.97255 9.32924 3.26406 9.24902 4.66797C9.16817 6.08312 9.25559 7.5453 9.70214 8.73633C9.84754 9.12406 9.65129 9.55659 9.26367 9.70215C8.9001 9.83849 8.4969 9.67455 8.32812 9.33398L8.29785 9.26367L8.19921 8.98438C7.73487 7.5758 7.67054 5.98959 7.75097 4.58203C7.77875 4.09598 7.82525 3.62422 7.87988 3.17969L1.53027 9.53027C1.23738 9.82317 0.762615 9.82317 0.469722 9.53027C0.176829 9.23738 0.176829 8.76262 0.469722 8.46973L6.83593 2.10254C6.3319 2.16472 5.79596 2.21841 5.25 2.24902C3.8302 2.32862 2.2474 2.26906 0.958003 1.79102L0.704097 1.68945L0.635738 1.65527C0.303274 1.47099 0.157578 1.06102 0.310542 0.704102C0.463655 0.347333 0.860941 0.170391 1.22363 0.28418L1.29589 0.310547L1.48828 0.387695C2.47399 0.751207 3.79966 0.827571 5.16601 0.750977C6.60111 0.670504 7.97842 0.428235 8.86132 0.262695L9.95312 0.0585938L9.73535 1.14746Z"></path></svg>`
+                            `Confirm Booking - ${tourOnlyCheckout ? 'Pay Later' : 'Pay on Check-in'} <svg width="10" height="10" viewBox="0 0 10 10" xmlns="http://www.w3.org/2000/svg"><path d="M9.73535 1.14746C9.57033 1.97255 9.32924 3.26406 9.24902 4.66797C9.16817 6.08312 9.25559 7.5453 9.70214 8.73633C9.84754 9.12406 9.65129 9.55659 9.26367 9.70215C8.9001 9.83849 8.4969 9.67455 8.32812 9.33398L8.29785 9.26367L8.19921 8.98438C7.73487 7.5758 7.67054 5.98959 7.75097 4.58203C7.77875 4.09598 7.82525 3.62422 7.87988 3.17969L1.53027 9.53027C1.23738 9.82317 0.762615 9.82317 0.469722 9.53027C0.176829 9.23738 0.176829 8.76262 0.469722 8.46973L6.83593 2.10254C6.3319 2.16472 5.79596 2.21841 5.25 2.24902C3.8302 2.32862 2.2474 2.26906 0.958003 1.79102L0.704097 1.68945L0.635738 1.65527C0.303274 1.47099 0.157578 1.06102 0.310542 0.704102C0.463655 0.347333 0.860941 0.170391 1.22363 0.28418L1.29589 0.310547L1.48828 0.387695C2.47399 0.751207 3.79966 0.827571 5.16601 0.750977C6.60111 0.670504 7.97842 0.428235 8.86132 0.262695L9.95312 0.0585938L9.73535 1.14746Z"></path></svg>`
                         );
                         break;
                     default:

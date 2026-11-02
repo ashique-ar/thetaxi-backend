@@ -166,7 +166,7 @@ class CustomerService
      * @param array $data Checkout form data
      * @return Customer
      */
-    public function getOrCreateCustomer(array $data, bool $allowUnverifiedExistingCustomer = false): Customer
+    public function getOrCreateCustomer(array $data, bool $allowUnverifiedExistingCustomer = false, ?Customer $sessionOwnedCustomer = null): Customer
     {
         $data = $this->normalizeCheckoutData($data);
 
@@ -198,6 +198,12 @@ class CustomerService
             $customer = $this->getCustomerByEmail($data['customer_email']);
 
             if ($customer) {
+                if ($sessionOwnedCustomer
+                    && (string) $sessionOwnedCustomer->id === (string) $customer->id
+                    && (string) $sessionOwnedCustomer->user_id === (string) $customer->user_id) {
+                    return $this->updateCustomerProfile($customer, $data)->load('user');
+                }
+
                 $emailVerified = $this->checkoutEmailIsVerified($data['customer_email']);
                 if (!$emailVerified && !$allowUnverifiedExistingCustomer) {
                     throw ValidationException::withMessages([

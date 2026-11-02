@@ -484,13 +484,17 @@ class CartService
             if (isset($item['price'])) {
                 $priceLkr = (float) ($item['price_lkr'] ?? $item['price']);
                 $item['price_lkr'] = $priceLkr;
-                $item['price'] = $this->currencyService->convertFromLKR($priceLkr, $selectedCurrency);
+                $item['price'] = !empty($item['is_tour']) && strtoupper((string) ($item['tour_quote_currency'] ?? '')) === $selectedCurrency && is_numeric($item['tour_quote_total'] ?? null)
+                    ? $this->currencyService->roundAmount((float) $item['tour_quote_total'], $selectedCurrency)
+                    : $this->currencyService->convertFromLKR($priceLkr, $selectedCurrency);
             }
 
             if (isset($item['total_price'])) {
                 $totalPriceLkr = (float) ($item['total_price_lkr'] ?? $item['total_price']);
                 $item['total_price_lkr'] = $totalPriceLkr;
-                $item['total_price'] = $this->currencyService->convertFromLKR($totalPriceLkr, $selectedCurrency);
+                $item['total_price'] = !empty($item['is_tour']) && strtoupper((string) ($item['tour_quote_currency'] ?? '')) === $selectedCurrency && is_numeric($item['tour_quote_total'] ?? null)
+                    ? $this->currencyService->roundAmount((float) $item['tour_quote_total'], $selectedCurrency)
+                    : $this->currencyService->convertFromLKR($totalPriceLkr, $selectedCurrency);
             }
 
             if (isset($item['addons']) && is_array($item['addons'])) {

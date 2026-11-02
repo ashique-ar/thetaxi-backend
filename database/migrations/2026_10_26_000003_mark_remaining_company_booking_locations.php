@@ -9,7 +9,10 @@ return new class extends Migration
 {
     public function up(): void
     {
-        $company = Company::getDefaultCompany();
+        $company = Company::query()
+            ->where('is_active', true)
+            ->where('is_default', true)
+            ->first();
         if (!$company || $company->latitude === null || $company->longitude === null) {
             return;
         }

@@ -24,6 +24,7 @@ class VehiclePricingHistory extends BaseModel
 
     protected $fillable = [
         'vehicle_group_id',
+        'vehicle_class_id',
         'service_type_id',
         'record_type',
         'pricing_slab_definition_id',
@@ -179,7 +180,8 @@ class VehiclePricingHistory extends BaseModel
         }
 
         return self::create([
-            'vehicle_group_id' => $data['vehicle_group_id'],
+            'vehicle_group_id' => $data['vehicle_group_id'] ?? null,
+            'vehicle_class_id' => $data['vehicle_class_id'] ?? null,
             'service_type_id' => $data['service_type_id'],
             'record_type' => $data['record_type'] ?? 'slab_pricing',
             'pricing_slab_definition_id' => $data['pricing_slab_definition_id'] ?? null,
@@ -192,7 +194,7 @@ class VehiclePricingHistory extends BaseModel
             'change_reason' => $data['change_reason'] ?? null,
             'old_pricing_data' => $data['old_pricing_data'] ?? null,
             'new_pricing_data' => $data['new_pricing_data'] ?? null,
-            'changed_by' => $data['changed_by'],
+            'changed_by' => $data['changed_by'] ?? null,
             'changed_at' => $data['changed_at'] ?? now()
         ]);
     }

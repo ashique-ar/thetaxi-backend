@@ -14,11 +14,15 @@
         $amountDue = $paymentData['amount_due'];
         $quotedItems = $context['booking_items'] ?? [];
         $selectedItemIds = $paymentData['revision_item_ids'] ?? array_column($quotedItems, 'id');
-        $canEditVehicles = count($quotedItems) > 0 && collect($quotedItems)->every(fn ($item) => !empty($item['id']));
+        $hasTours = collect($quotedItems)->contains(fn ($item) => !empty($item['is_tour']));
+        $canEditVehicles = count($quotedItems) > 0
+            && collect($quotedItems)->every(fn ($item) => !empty($item['id']))
+            && !$hasTours;
         $hasRevisedSelection = !empty($paymentData['revision_item_ids']) && count($paymentData['revision_item_ids']) < count($quotedItems);
         $currencySymbol = getCurrencySymbol($context['pricing']['currency'] ?? 'LKR');
 
         $paymentStatus = $booking?->payment_status ?? ($context['payment_status'] ?? 'pending');
+        $paymentProcessing = $booking?->status === config('booking.status.payment_processing');
         if ($amountDue > 0 && $paymentStatus === 'not_required') {
             $paymentStatus = 'pending';
         }
@@ -71,7 +75,7 @@
                         <!-- Vehicle Wise Trip Details Section -->
                         <div class="section">
                             <h2 class="section-title">
-                                <span class="icon">🚗</span> Vehicle Wise Trip Details
+                                <span class="icon">{{ $hasTours ? '🗺️' : '🚗' }}</span> {{ $hasTours ? 'Trip and Tour Details' : 'Vehicle Wise Trip Details' }}
                             </h2>
                             @if ($canEditVehicles)
                             <p style="color:#555;">Choose the vehicles you want to keep. Your original quotation is preserved.</p>
@@ -151,11 +155,32 @@
                                             @endif
                                             <div style="flex: 1;">
                                                 <div class="vehicle-header">
-                                                    <h3>Vehicle {{ $index + 1 }}: {{ $item['vehicle_group'] }}</h3>
+                                                    <h3>{{ !empty($item['is_tour']) ? 'Tour itinerary' : 'Vehicle ' . ($index + 1) . ': ' . ($item['vehicle_group'] ?? 'N/A') }}</h3>
                                                     <span class="service-type-badge">{{ $item['service_type'] }}</span>
                                                 </div>
+                                                @if (!empty($item['is_tour']) && !empty($item['vehicle_class_name']))
+                                                    <p><strong>Purchased class:</strong> {{ $item['vehicle_class_name'] }}</p>
+                                                @endif
                                             </div>
                                         </div>
+
+                                        @if (!empty($item['is_tour']) && !empty($item['tour_days']))
+                                            <div class="tour-itinerary-summary" style="margin:14px 0;padding:14px;border:1px solid #dbeafe;border-radius:8px;background:#eff6ff;">
+                                                @foreach ($item['tour_days'] as $tourDay)
+                                                    <div style="margin-bottom:10px;">
+                                                        <strong>Day {{ $tourDay['day_number'] ?? $loop->iteration }} · {{ $tourDay['service_date'] ?? '' }}</strong>
+                                                        <ol style="margin:6px 0 0;padding-left:22px;">
+                                                            @foreach (($tourDay['stops'] ?? []) as $tourStop)
+                                                                <li>{{ $tourStop['name'] ?? 'Tour stop' }}@if (!empty($tourStop['visit_duration_minutes'])) · {{ $tourStop['visit_duration_minutes'] }} min @endif</li>
+                                                            @endforeach
+                                                        </ol>
+                                                    </div>
+                                                @endforeach
+                                                @if (!empty($item['activity_entry_note']))
+                                                    <p role="note" style="margin:8px 0 0;">{{ $item['activity_entry_note'] }}</p>
+                                                @endif
+                                            </div>
+                                        @endif
 
                                         <div class="trip-details">
                                             <div class="location-info">
@@ -435,6 +460,10 @@
                             </h2>
 
                             <div class="highlight-box warning">
+                                @if ($paymentProcessing)
+                                    <h3>⌛ Payment confirmation in progress</h3>
+                                    <p>Your payment request is being checked. Please do not submit another payment. Refresh this page after a few moments to check the result.</p>
+                                @else
                                 <h3>⏳ Payment Required to Confirm Booking</h3>
                                 <p>Your booking is currently
                                     <strong>{{ ucfirst(str_replace('_', ' ', $context['payment_status'])) }}</strong>.
@@ -450,6 +479,7 @@
                                         <li>Secure payment processing</li>
                                     </ul>
                                 </div>
+                                @endif
                             </div>
 
                             <!-- Payment Form -->
@@ -462,7 +492,9 @@
 
                                 <!-- Payment CTA -->
                                 <div class="btn-container" style="margin: 30px 0;">
-                                    @if ($amountDue > 0)
+                                    @if ($paymentProcessing)
+                                        <p role="status" style="text-align:center;color:#6b7280;font-weight:600;">Payment confirmation is in progress. Do not try to pay again.</p>
+                                    @elseif ($amountDue > 0)
                                         <button type="submit" class="btn submit-btn">
                                             Pay {{ $currencySymbol }} {{ number_format(floor($amountDue), 0) }}
                                         </button>

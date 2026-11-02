@@ -99,10 +99,11 @@
         </table>
     </div>
 
-    <!-- Vehicles Wise Trip Details Section -->
+    <!-- Booking item details -->
     <div class="section">
         <h2 class="section-title">
-            <span class="icon">🚗</span> Vehicle Wise Trip Details
+            <span class="icon">{{ $booking->bookingItems->contains(fn ($item) => filled(data_get($item->metadata, 'tour_itinerary_id'))) ? '🗺️' : '🚗' }}</span>
+            {{ $booking->bookingItems->contains(fn ($item) => filled(data_get($item->metadata, 'tour_itinerary_id'))) ? 'Tour itinerary and booking details' : 'Vehicle Wise Trip Details' }}
         </h2>
         @php
             // Keep all persisted checkout amounts paired with their snapshot currency.
