@@ -25,6 +25,7 @@ class CreateCmsContentRequest extends FormRequest
             'custom_fields' => ['nullable', 'array'],
             'custom_fields.*' => ['nullable'],
             'custom_fields.article_layout' => ['nullable', 'in:sidebar,full_width'],
+            'custom_fields.pdf_placement' => ['nullable', 'in:top,bottom'],
             'featured_image' => ['nullable', 'string', 'max:255'],
             'gallery_images' => ['nullable', 'array'],
             'gallery_images.*' => ['string', 'max:255'],

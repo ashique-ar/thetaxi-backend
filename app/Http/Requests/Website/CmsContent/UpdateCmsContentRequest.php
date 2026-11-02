@@ -27,6 +27,7 @@ class UpdateCmsContentRequest extends FormRequest
             'custom_fields' => ['sometimes', 'nullable', 'array'],
             'custom_fields.*' => ['nullable'],
             'custom_fields.article_layout' => ['sometimes', 'nullable', 'in:sidebar,full_width'],
+            'custom_fields.pdf_placement' => ['sometimes', 'nullable', 'in:top,bottom'],
             'featured_image' => ['sometimes', 'nullable', 'string', 'max:255'],
             'gallery_images' => ['sometimes', 'nullable', 'array'],
             'gallery_images.*' => ['string', 'max:255'],
