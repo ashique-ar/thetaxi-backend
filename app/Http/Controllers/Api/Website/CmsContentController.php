@@ -345,6 +345,9 @@ class CmsContentController extends Controller
         if (isset($data['custom_fields']) && is_array($data['custom_fields'])) {
             $customFields = array_merge($customFields, $data['custom_fields']);
         }
+        if (array_key_exists('pdf_file', $customFields)) {
+            $customFields['pdf_file'] = cms_pdf_path($customFields['pdf_file']);
+        }
 
         // Allow manual read_time override; otherwise calculate from body
         if (array_key_exists('body', $data)) {

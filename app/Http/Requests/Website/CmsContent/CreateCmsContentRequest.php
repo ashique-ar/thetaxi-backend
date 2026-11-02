@@ -23,6 +23,8 @@ class CreateCmsContentRequest extends FormRequest
             'status' => ['in:draft,published,archived'],
             'excerpt' => ['nullable', 'string'],
             'custom_fields' => ['nullable', 'array'],
+            'custom_fields.*' => ['nullable'],
+            'custom_fields.article_layout' => ['nullable', 'in:sidebar,full_width'],
             'featured_image' => ['nullable', 'string', 'max:255'],
             'gallery_images' => ['nullable', 'array'],
             'gallery_images.*' => ['string', 'max:255'],

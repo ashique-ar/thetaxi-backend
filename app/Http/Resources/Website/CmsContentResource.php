@@ -11,6 +11,11 @@ class CmsContentResource extends JsonResource
 {
     public function toArray($request)
     {
+        $customFields = $this->custom_fields;
+        if (is_array($customFields) && array_key_exists('pdf_file', $customFields)) {
+            $customFields['pdf_file'] = cms_pdf_path($customFields['pdf_file']);
+        }
+
         return [
             'id' => $this->id,
             'cms_content_type_id' => $this->cms_content_type_id,
@@ -23,7 +28,7 @@ class CmsContentResource extends JsonResource
             'published_at' => $this->published_at,
             'status' => $this->status,
             'excerpt' => $this->excerpt,
-            'custom_fields' => proxy_s3_urls($this->custom_fields),
+            'custom_fields' => proxy_s3_urls($customFields),
             'featured_image' => proxy_s3_urls($this->featured_image),
             'gallery_images' => proxy_s3_urls($this->gallery_images),
             'views_count' => $this->views_count,

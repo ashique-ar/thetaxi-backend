@@ -122,6 +122,37 @@ if (!function_exists('s3_asset')) {
     }
 }
 
+if (!function_exists('cms_pdf_path')) {
+    function cms_pdf_path($value): ?string
+    {
+        if (is_array($value)) {
+            $value = $value['path'] ?? ($value['url'] ?? null);
+        } elseif (is_object($value)) {
+            $value = $value->path ?? ($value->url ?? null);
+        }
+
+        if (!is_string($value) || $value === '') {
+            return null;
+        }
+
+        $parts = parse_url($value);
+        $path = $parts['path'] ?? $value;
+        $host = strtolower($parts['host'] ?? '');
+        $trustedHosts = array_filter([
+            strtolower(parse_url(config('app.url'), PHP_URL_HOST) ?: ''),
+            strtolower(request()->getHost()),
+        ]);
+
+        if ($host && !in_array($host, $trustedHosts, true)) {
+            return $value;
+        }
+
+        return str_starts_with($path, '/resources/')
+            ? ltrim(rawurldecode(substr($path, strlen('/resources/'))), '/')
+            : $value;
+    }
+}
+
 if (!function_exists('resource_proxy_url')) {
     function resource_proxy_url(string $path, string $disk = 's3', ?\DateTimeInterface $expiresAt = null): string
     {

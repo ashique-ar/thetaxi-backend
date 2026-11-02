@@ -9,9 +9,10 @@
     $serviceInquiryForm = $contentType->slug === 'services' && $content->inquiryForm?->is_active
         ? $content->inquiryForm : null;
     $inquiryCta = $content->custom_fields['inquiry_cta'] ?? [];
-    $pdfPath = $content->custom_fields['pdf_file'] ?? null;
+    $pdfPath = cms_pdf_path($content->custom_fields['pdf_file'] ?? null);
     $pdfUrl = $pdfPath ? s3_asset($pdfPath) : null;
     $pdfPreview = $content->custom_fields['pdf_preview'] ?? 'pages';
+    $fullWidthArticle = ($content->custom_fields['article_layout'] ?? 'sidebar') === 'full_width';
 
     if (!isset($search) && $hasContentBookingLocations) {
         $search = (object) [
@@ -131,6 +132,30 @@
         .article-sidebar {
             position: sticky;
             top: 120px;
+        }
+
+        .cms-article-sidebar-bottom {
+            margin-top: 12px;
+            padding-top: 34px;
+            border-top: 1px solid rgba(15, 23, 42, 0.08);
+        }
+
+        .cms-article-sidebar-bottom .article-sidebar {
+            position: static;
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(min(100%, 260px), 1fr));
+            gap: 20px;
+            align-items: stretch;
+            margin-top: 0;
+        }
+
+        .cms-article-sidebar-bottom .sidebar-widget {
+            height: 100%;
+            margin-bottom: 0;
+        }
+
+        .cms-article-sidebar-bottom .t4-booking-panel--embedded {
+            grid-column: 1 / -1;
         }
 
         .sidebar-widget {
@@ -426,8 +451,8 @@
 
     <section class="article-page cms-article-page">
         <div class="container">
-            <div class="row">
-                <main class="col-xl-8 col-lg-8">
+            <div class="row {{ $fullWidthArticle ? 'cms-article-layout-full-width' : '' }}">
+                <main class="{{ $fullWidthArticle ? 'col-12' : 'col-xl-8 col-lg-8' }}">
                     <article class="cms-article-main mb-4" data-aos="fade-up">
                         <h1 class="cms-article-title">{{ $content->title }}</h1>
                         @if ($serviceInquiryForm && ($inquiryCta['enabled'] ?? false))
@@ -536,7 +561,14 @@
 
                 </main>
 
-                <aside class="col-xl-4 col-lg-4">
+                <aside class="{{ $fullWidthArticle ? 'col-12 cms-article-sidebar-bottom' : 'col-xl-4 col-lg-4' }}" aria-label="Article information and related content">
+                    @if ($fullWidthArticle)
+                        <div class="cms-article-sidebar-heading">
+                            <span class="text-uppercase small fw-bold text-muted">End of article</span>
+                            <h2 class="h4 mt-1 mb-1">Keep exploring</h2>
+                            <p class="text-muted mb-3">Share this story, see its details, or continue with related reading.</p>
+                        </div>
+                    @endif
                     <div class="article-sidebar">
                         @if (is_theme('theme-04') && $content->service_type)
                             @include('partials.themes.theme-04.booking-form', [
