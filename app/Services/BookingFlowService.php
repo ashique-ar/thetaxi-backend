@@ -1911,6 +1911,9 @@ class BookingFlowService
     {
         $quote = $params['_trusted_tour_quote'];
         $itinerary = $quote->itinerary()->firstOrFail();
+        if ($itinerary->start_date->lt(today())) {
+            throw ValidationException::withMessages(['from_date' => 'This Tour start date has passed. Choose new dates and request a current quote.']);
+        }
         $setting = \App\Models\Service\ServiceVehicleClassSetting::query()
             ->where('service_type_id', $itinerary->service_type_id)
             ->where('vehicle_class_id', $itinerary->vehicle_class_id)
