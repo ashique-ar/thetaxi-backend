@@ -10287,7 +10287,7 @@ class BookingFlowService
         $paginated = $query->paginate($perPage);
 
         $listItems = collect($paginated->items())
-            ->map(fn(BookingItem $bookingItem) => $this->mapBookingListItem($bookingItem))
+            ->map(fn(BookingItem $bookingItem) => $this->mapBookingListItem($bookingItem, !empty($filters['driver_id'])))
             ->values()
             ->all();
 
@@ -10645,7 +10645,7 @@ class BookingFlowService
         ];
     }
 
-    private function mapBookingListItem(BookingItem $item): array
+    private function mapBookingListItem(BookingItem $item, bool $includeMobileTripDistance = false): array
     {
         $booking = $item->booking;
         $customer = $booking?->customer;
@@ -10816,6 +10816,25 @@ class BookingFlowService
         $listToDate = $lastTrip?->to_date ?? $lastTrip?->from_date ?? $item->to_date ?? null;
         $listToTime = $lastTrip?->to_time ?? $lastTrip?->from_time ?? $item->to_time ?? null;
 
+        $mobileTripEvidence = null;
+        if ($includeMobileTripDistance && $item->driver_id) {
+            $distanceAssignment = $matchingDriverAssignments
+                ->where('booking_item_id', (string) $item->id)
+                ->where('driver_id', (string) $item->driver_id)
+                ->sortByDesc(fn($assignment) => optional($assignment->created_at)->getTimestamp() ?? 0)
+                ->first();
+            if ($distanceAssignment?->trip_started_at) {
+                $mobileTripEvidence = app(\App\Services\Driver\RouteEvidenceService::class)->calculate(
+                    $distanceAssignment->routePoints()
+                        ->orderBy('recorded_at')
+                        ->orderBy('id')
+                        ->cursor(['id', 'latitude', 'longitude', 'accuracy', 'recorded_at']),
+                    $distanceAssignment->trip_started_at->copy()->utc(),
+                    ($distanceAssignment->trip_completed_at ?? $distanceAssignment->actual_end ?? Carbon::now('UTC'))->copy()->utc()
+                );
+            }
+        }
+
         return [
             'id' => (string) $item->id,
             'booking_id' => (string) $item->booking_id,
@@ -10916,6 +10935,9 @@ class BookingFlowService
             ] : null,
             'vehicle_assignments' => $vehicleAssignmentRows,
             'driver_assignments' => $driverAssignmentRows,
+            'mobile_trip_km' => $mobileTripEvidence['recorded_distance_km'] ?? null,
+            'mobile_trip_gap_count' => $mobileTripEvidence['gap_count'] ?? null,
+            'mobile_trip_gap_duration_seconds' => $mobileTripEvidence['gap_duration_seconds'] ?? null,
             'notes' => $item->notes,
             'pickup_location' => $this->mapBookingListLocation(
                 $item->pickup_location ?? ($booking?->pickup_location ?? null),

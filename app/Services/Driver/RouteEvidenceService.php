@@ -25,7 +25,7 @@ class RouteEvidenceService
         $acceptedCount = 0;
         $movementRejectedCount = 0;
         $distance = 0.0;
-        $gapCount = $longestGap = $segmentCount = 0;
+        $gapCount = $gapDurationSeconds = $longestGap = $segmentCount = 0;
         $firstAccepted = $lastAccepted = $previous = null;
 
         foreach ($ordered as $point) {
@@ -65,6 +65,7 @@ class RouteEvidenceService
             $longestGap = max($longestGap, $seconds);
             if ($seconds > self::GAP_THRESHOLD_SECONDS) {
                 $gapCount++;
+                $gapDurationSeconds += $seconds;
                 $previous = $point;
                 continue;
             }
@@ -85,6 +86,7 @@ class RouteEvidenceService
             $endingGap = Carbon::parse($lastAccepted->recorded_at)->diffInSeconds($tripCompletedAt, false);
             if ($endingGap > self::GAP_THRESHOLD_SECONDS) {
                 $gapCount++;
+                $gapDurationSeconds += $endingGap;
                 $longestGap = max($longestGap, $endingGap);
             }
         }
@@ -115,6 +117,7 @@ class RouteEvidenceService
             // count split. It is identical to the canonical rejected count.
             'quality_rejected_point_count' => $rejectedCount,
             'gap_count' => $gapCount,
+            'gap_duration_seconds' => $gapDurationSeconds,
             'longest_gap_seconds' => $longestGap,
             'first_valid_point_at' => $firstAccepted?->recorded_at?->utc()->toIso8601String(),
             'last_valid_point_at' => $lastAccepted?->recorded_at?->utc()->toIso8601String(),
