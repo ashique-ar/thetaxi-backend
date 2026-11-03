@@ -5,6 +5,7 @@ namespace Tests\Feature;
 use App\Http\Controllers\Api\Tours\TourItineraryController;
 use App\Models\Tours\TourItinerary;
 use App\Models\User;
+use App\Models\Cart;
 use App\Models\Service\ServiceType;
 use App\Services\BookingFlowService;
 use App\Services\CurrencyService;
@@ -12,6 +13,7 @@ use App\Services\AssignmentService;
 use App\Services\AvailabilityEnforcementService;
 use App\Services\MailDispatchService;
 use App\Services\PricingVariableService;
+use App\Services\CartService;
 use App\Services\Sms\SmsAutomationService;
 use App\Services\Tours\TourBookingConversionService;
 use App\Services\Tours\TourItineraryQuoteService;
@@ -250,7 +252,7 @@ class TourItineraryTest extends TestCase
             'max_passengers' => 4,
             'max_luggage' => 3,
         ]);
-        DB::table('currencies')->insert(['code' => 'LKR']);
+        DB::table('currencies')->updateOrInsert(['code' => 'LKR']);
     }
 
     public function test_owned_draft_stores_server_mapped_location_snapshots_and_updates_by_revision(): void
@@ -732,6 +734,193 @@ class TourItineraryTest extends TestCase
         self::assertContains('auth:api', $portalDraft->gatherMiddleware());
         self::assertContains('tours.schema', $portalDraft->gatherMiddleware());
         self::assertNotNull($websiteDraft);
+    }
+
+    public function test_accepted_public_tour_enters_the_existing_vehicle_checkout_cart(): void
+    {
+        [$destinationId, $activityId] = $this->createCatalogueStops();
+        $customerId = 'f303f830-cb7a-4b80-9e6e-b0c81c3339ab';
+        $contextId = '7ea0310d-faf0-46dd-a912-ea8670ca8fe6';
+        DB::table('customers')->insert(['id' => $customerId, 'user_id' => self::USER_ID]);
+        DB::table('user_contexts')->insert([
+            'id' => $contextId, 'user_id' => self::USER_ID, 'context_type' => 'customer',
+            'context_id' => $customerId, 'is_active' => true,
+        ]);
+        DB::table('currencies')->insert(['code' => 'LKR']);
+
+        $itinerary = (new TourItineraryController)->store(
+            $this->request($this->payload($destinationId, $activityId))
+        )->getData(true)['data'];
+        $quoteId = '35f1716b-2dfc-4a4f-9db6-161df50fb524';
+        DB::table('tour_quotes')->insert([
+            'id' => $quoteId, 'tour_itinerary_id' => $itinerary['id'], 'itinerary_revision' => 1,
+            'status' => 'accepted', 'currency' => 'LKR', 'total_amount' => 52000,
+            'distance_km' => 23, 'route_snapshot' => json_encode([]),
+            'pricing_snapshot' => json_encode(['total_amount' => 52000]),
+        ]);
+        DB::table('tour_itineraries')->where('id', $itinerary['id'])->update(['status' => 'accepted']);
+
+        $cart = new Cart;
+        $cartService = $this->createMock(CartService::class);
+        $cartService->expects(self::once())->method('getOrCreateCart')->willReturn($cart);
+        $cartService->expects(self::once())->method('addItem')->with($cart, ['is_tour' => true], 'tour-'.$itinerary['id']);
+        app()->instance(CartService::class, $cartService);
+
+        $this->withSession([
+            'tour_checkout_customer_id' => $customerId,
+            'tour_checkout_user_id' => self::USER_ID,
+            'tour_checkout_itinerary_id' => $itinerary['id'],
+        ])->postJson('/tours/drafts/'.$itinerary['id'].'/booking', [
+            'quote_id' => $quoteId, 'expected_revision' => 1,
+        ])->assertOk()->assertJsonPath('data.checkout_url', route('checkout'))
+            ->assertSessionHas('tour_checkout_itinerary_id', $itinerary['id'])
+            ->assertSessionHas('tour_checkout_quote_id', $quoteId);
+    }
+
+    public function test_authenticated_customer_portal_saves_and_scopes_tour_drafts(): void
+    {
+        [$destinationId, $activityId] = $this->createCatalogueStops();
+        $otherUserId = '46747c21-083e-44bf-95d4-6c4017d36e66';
+        $customerIds = [self::USER_ID => '3149ba80-18ae-49e2-935e-58da31554d55', $otherUserId => '622a3d0f-90f0-46e0-a519-c1e49181a8a3'];
+        $contextIds = [self::USER_ID => '2157df51-0748-4fa0-a0be-d45b905f6b86', $otherUserId => '774951fb-52d3-4d6b-849b-3eea9eaa4eac'];
+        DB::table('users')->insert(['id' => $otherUserId, 'email' => 'other-tour-customer@example.test']);
+        foreach ($customerIds as $userId => $customerId) {
+            DB::table('customers')->insert(['id' => $customerId, 'user_id' => $userId, 'created_at' => now(), 'updated_at' => now()]);
+            DB::table('user_contexts')->insert([
+                'id' => $contextIds[$userId], 'user_id' => $userId, 'context_type' => 'customer',
+                'context_id' => $customerId, 'is_active' => true, 'created_at' => now(), 'updated_at' => now(),
+            ]);
+        }
+        $contexts = \Mockery::mock(\App\Services\UserContextService::class);
+        $contexts->shouldReceive('resolveActiveContextFromRequest')->andReturnUsing(
+            fn (User $user) => ['id' => $contextIds[$user->id], 'portal_profile' => 'customer']
+        );
+        app()->instance(\App\Services\UserContextService::class, $contexts);
+
+        $customer = User::findOrFail(self::USER_ID);
+        $created = $this->actingAs($customer, 'api')
+            ->postJson('/api/customer-portal/tours/drafts', $this->payload($destinationId, $activityId))
+            ->assertCreated()
+            ->assertJsonPath('data.status', 'draft')
+            ->assertJsonPath('data.pricing_context', 'public')
+            ->json('data');
+
+        $this->getJson('/api/customer-portal/tours/drafts')
+            ->assertOk()
+            ->assertJsonPath('data.0.id', $created['id']);
+
+        $this->actingAs(User::findOrFail($otherUserId), 'api')
+            ->getJson('/api/customer-portal/tours/drafts/'.$created['id'])
+            ->assertNotFound();
+    }
+
+    public function test_staff_route_creates_a_portal_priced_draft_with_booking_permission(): void
+    {
+        [$destinationId, $activityId] = $this->createCatalogueStops();
+        Schema::create('permissions', function (Blueprint $table): void {
+            $table->bigIncrements('id');
+            $table->string('name');
+            $table->string('guard_name');
+            $table->timestamps();
+            $table->unique(['name', 'guard_name']);
+        });
+        Schema::create('roles', function (Blueprint $table): void {
+            $table->bigIncrements('id');
+            $table->string('name');
+            $table->string('guard_name');
+            $table->timestamps();
+            $table->unique(['name', 'guard_name']);
+        });
+        Schema::create('role_has_permissions', function (Blueprint $table): void {
+            $table->unsignedBigInteger('permission_id');
+            $table->unsignedBigInteger('role_id');
+            $table->primary(['permission_id', 'role_id']);
+            $table->foreign('permission_id')->references('id')->on('permissions')->cascadeOnDelete();
+            $table->foreign('role_id')->references('id')->on('roles')->cascadeOnDelete();
+        });
+        Schema::create('model_has_roles', function (Blueprint $table): void {
+            $table->unsignedBigInteger('role_id');
+            $table->string('model_type');
+            $table->string('model_id');
+            $table->primary(['role_id', 'model_id', 'model_type']);
+            $table->foreign('role_id')->references('id')->on('roles')->cascadeOnDelete();
+        });
+        Schema::create('model_has_permissions', function (Blueprint $table): void {
+            $table->unsignedBigInteger('permission_id');
+            $table->string('model_type');
+            $table->string('model_id');
+            $table->primary(['permission_id', 'model_id', 'model_type']);
+            $table->foreign('permission_id')->references('id')->on('permissions')->cascadeOnDelete();
+        });
+        $staff = User::findOrFail(self::USER_ID);
+        $staff->givePermissionTo(collect(['bookings.create', 'service-types.edit'])->map(
+            fn (string $name) => \Spatie\Permission\Models\Permission::create(['name' => $name, 'guard_name' => 'api'])
+        ));
+
+        $location = $this->actingAs($staff, 'api')->postJson('/api/tours/locations', [
+            'name' => 'Mapped museum entrance', 'code' => 'mapped-museum-entrance',
+            'google_place_id' => 'google-place-museum-entrance', 'address' => 'Museum entrance, Kandy',
+            'city' => 'Kandy', 'country' => 'Sri Lanka', 'latitude' => 7.291, 'longitude' => 80.632,
+        ])->assertCreated()->assertJsonPath('data.type', 'tour')->json('data');
+        $destination = $this->postJson('/api/tours/destinations', [
+            'service_type_id' => self::SERVICE_ID, 'predefined_location_id' => $location['id'],
+            'code' => 'mapped-museum', 'name' => 'Museum', 'timezone' => 'Asia/Colombo',
+        ])->assertCreated()->assertJsonPath('data.predefined_location_id', $location['id']);
+
+        $created = $this->actingAs($staff, 'api')
+            ->postJson('/api/tours/drafts', $this->payload($destinationId, $activityId))
+            ->assertCreated()
+            ->assertJsonPath('data.status', 'draft')
+            ->json('data');
+
+        self::assertSame('portal', DB::table('tour_itineraries')->where('id', $created['id'])->value('pricing_context'));
+        self::assertSame(self::USER_ID, DB::table('tour_itineraries')->where('id', $created['id'])->value('user_id'));
+        self::assertSame(201, $destination->getStatusCode());
+
+        $customerId = '9f1e3ed9-66a7-4c82-9b04-50105ca381fd';
+        $bookingId = 'd0037120-22e7-45c2-82c0-64e42fe77eb6';
+        DB::table('customers')->insert(['id' => $customerId]);
+        DB::table('tour_quotes')->insert([
+            'id' => '9f1e3ed9-66a7-4c82-9b04-50105ca381fe',
+            'tour_itinerary_id' => $created['id'],
+            'itinerary_revision' => 1,
+            'status' => 'accepted',
+            'currency' => 'LKR',
+            'total_amount' => 52000,
+            'distance_km' => 23,
+            'route_snapshot' => json_encode([]),
+            'pricing_snapshot' => json_encode(['total_amount' => 52000]),
+        ]);
+        DB::table('tour_itineraries')->where('id', $created['id'])->update(['status' => 'accepted']);
+        DB::table('bookings')->insert([
+            'id' => $bookingId, 'booking_number' => 'BK-TOUR-STAFF', 'status' => 'pending',
+            'total_estimated' => 52000, 'currency' => 'LKR',
+        ]);
+        $flow = $this->createMock(BookingFlowService::class);
+        $flow->expects(self::once())->method('confirmBooking')
+            ->with(self::callback(fn (array $params): bool => $params['customer_id'] === $customerId
+                && $params['_tour_itinerary_id'] === $created['id']
+                && $params['_trusted_tour_quote']->id === '9f1e3ed9-66a7-4c82-9b04-50105ca381fe'
+                && $params['booking_items'][0]['vehicle_class_id'] === self::CLASS_ID
+                && $params['booking_items'][0]['pricing_basis'] === 'vehicle_class'
+                && !isset($params['defer_confirmation'], $params['payment_responsibility'])))
+            ->willReturn(\App\Models\Booking\Booking::findOrFail($bookingId));
+        app()->instance(BookingFlowService::class, $flow);
+        app()->instance(TourBookingConversionService::class, new TourBookingConversionService($flow));
+        $this->postJson('/api/tours/drafts/'.$created['id'].'/convert-to-booking', [
+            'quote_id' => '9f1e3ed9-66a7-4c82-9b04-50105ca381fe',
+            'expected_revision' => 1,
+            'customer_id' => $customerId,
+        ])->assertCreated()
+            ->assertJsonPath('data.booking_id', $bookingId)
+            ->assertJsonPath('data.booking_number', 'BK-TOUR-STAFF')
+            ->assertJsonPath('data.currency', 'LKR');
+
+        $unauthorizedId = 'e05bc429-6dda-4e95-8cb1-6c5e85a3b8d7';
+        DB::table('users')->insert(['id' => $unauthorizedId, 'email' => 'unauthorized-tour-staff@example.test']);
+        $this->actingAs(User::findOrFail($unauthorizedId), 'api')
+            ->postJson('/api/tours/drafts', $this->payload($destinationId, $activityId))
+            ->assertForbidden();
     }
 
     private function createCatalogueStops(): array
