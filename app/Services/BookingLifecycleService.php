@@ -2515,7 +2515,8 @@ class BookingLifecycleService
         $packageIncludedKm = $this->resolvePackageIncludedKilometres(
             $metadata,
             is_array($bookingItem->pricing_breakdown) ? $bookingItem->pricing_breakdown : [],
-            $pricingDurationDays
+            $pricingDurationDays,
+            data_get($metadata, 'pricing_snapshot.tour_pricing_lock.package_included_km')
         );
 
         // Operational charges must be available to the calculation graph so a
@@ -2858,7 +2859,8 @@ class BookingLifecycleService
             $booking,
             $bookingItem,
             data_get($result, 'adjustment_details.adjustments', []),
-            $currencyContext['calculation_currency']
+            $currencyContext['calculation_currency'],
+            $definitionId ? (string) $definitionId : null
         );
 
         $bookingItem->update([
@@ -3002,7 +3004,8 @@ class BookingLifecycleService
         Booking $booking,
         BookingItem $bookingItem,
         array $adjustments,
-        string $currency
+        string $currency,
+        ?string $calculationDefinitionId = null
     ): void {
         $adjustmentsById = collect($adjustments)
             ->filter(fn ($adjustment) => is_array($adjustment)
@@ -3010,6 +3013,13 @@ class BookingLifecycleService
                 && !empty($adjustment['price_adjustment_id']))
             ->keyBy('price_adjustment_id');
         $tourPricingLock = data_get($bookingItem->metadata, 'pricing_snapshot.tour_pricing_lock', []);
+        $branchLock = data_get(
+            $tourPricingLock,
+            'branches.' . (string) $calculationDefinitionId
+        );
+        if (is_array($branchLock)) {
+            $tourPricingLock = array_merge($tourPricingLock, $branchLock);
+        }
         $lockedRules = collect(is_array($tourPricingLock['price_adjustments'] ?? null)
             ? $tourPricingLock['price_adjustments']
             : [])->keyBy(fn (array $rule) => (string) ($rule['id'] ?? ''));
@@ -3193,9 +3203,11 @@ class BookingLifecycleService
     private function resolvePackageIncludedKilometres(
         array $metadata,
         array $pricingBreakdown,
-        int $durationDays
+        int $durationDays,
+        mixed $acceptedTourAllowance = null
     ): ?float {
         $packageCandidates = [
+            $acceptedTourAllowance,
             data_get($metadata, 'package_included_km'),
             data_get($metadata, 'included_km'),
             data_get($metadata, 'package_info.max_km_per_package'),

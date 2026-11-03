@@ -775,6 +775,10 @@ class MobileAssignmentService
         $payload['pickup_longitude'] = $bookingItem?->pickup_longitude;
         $payload['dropoff_latitude'] = $bookingItem?->dropoff_latitude;
         $payload['dropoff_longitude'] = $bookingItem?->dropoff_longitude;
+        $tourNotes = $this->tourDriverNotes($bookingItem);
+        if ($tourNotes !== null) {
+            $payload['notes'] = $tourNotes;
+        }
         $itemMetadata = is_array($bookingItem?->metadata) ? $bookingItem->metadata : [];
         $isOpenPackage = ($itemMetadata['trip_mode'] ?? null) === 'open_package';
         $payload['trip_mode'] = $isOpenPackage ? 'open_package' : 'fixed_route';
@@ -1371,5 +1375,74 @@ class MobileAssignmentService
         }
 
         return $location;
+    }
+
+    private function tourDriverNotes(?BookingItem $bookingItem): ?string
+    {
+        $metadata = is_array($bookingItem?->metadata) ? $bookingItem->metadata : [];
+        $days = $metadata['tour_days_snapshot'] ?? null;
+        if (empty($metadata['tour_itinerary_id']) || !is_array($days) || $days === []) {
+            return null;
+        }
+
+        $lines = ['TOUR ROUTE — follow the saved day-by-day order.'];
+        foreach ($days as $day) {
+            if (!is_array($day)) {
+                continue;
+            }
+
+            $date = trim((string) ($day['service_date'] ?? ''));
+            $startTime = trim((string) ($day['start_time'] ?? ''));
+            $timezone = trim((string) ($day['timezone'] ?? ''));
+            $lines[] = 'Day ' . (int) ($day['day_number'] ?? 0)
+                . ($date !== '' ? ' (' . $date . ')' : '')
+                . ($timezone !== '' ? ' ' . $timezone : '')
+                . ($startTime !== '' ? ' — start ' . $startTime : '') . ':';
+            $start = $this->extractLocationLabel($day['start_location'] ?? null);
+            if ($start) {
+                $startName = trim((string) data_get($day, 'start_location.name', ''));
+                $lines[] = 'Start: ' . ($startName !== '' && $startName !== $start ? $startName . ' — ' . $start : $start);
+            }
+
+            foreach (is_array($day['stops'] ?? null) ? $day['stops'] : [] as $stop) {
+                if (!is_array($stop)) {
+                    continue;
+                }
+                $kind = ($stop['kind'] ?? null) === 'activity' ? 'Activity visit' : 'Destination';
+                $name = trim((string) ($stop['name'] ?? ''));
+                $location = $this->extractLocationLabel($stop['location'] ?? null);
+                $line = '- ' . $kind . ': ' . ($name !== '' ? $name : ($location ?? 'Tour stop'));
+                if ($location && $location !== $name) {
+                    $line .= ' — ' . $location;
+                }
+                if (!empty($stop['estimated_arrival'])) {
+                    $line .= '; ETA ' . $stop['estimated_arrival'];
+                } elseif (!empty($stop['arrival_time'])) {
+                    $line .= '; fixed arrival ' . $stop['arrival_time'];
+                }
+                if (isset($stop['visit_duration_minutes'])) {
+                    $line .= '; visit ' . (int) $stop['visit_duration_minutes'] . ' min';
+                }
+                if (!empty($stop['opens_at']) || !empty($stop['closes_at'])) {
+                    $line .= '; hours ' . ($stop['opens_at'] ?? '?') . '–' . ($stop['closes_at'] ?? '?');
+                }
+                $lines[] = $line;
+            }
+
+            $end = $this->extractLocationLabel($day['end_location'] ?? null);
+            if ($end) {
+                $endName = trim((string) data_get($day, 'end_location.name', ''));
+                $lines[] = 'End: ' . ($endName !== '' && $endName !== $end ? $endName . ' — ' . $end : $end);
+            }
+        }
+
+        if ((int) ($metadata['tour_child_seat_count'] ?? 0) > 0) {
+            $lines[] = 'Child seats requested: ' . (int) $metadata['tour_child_seat_count'] . ' (confirm availability).';
+        }
+        if (!empty($metadata['activity_entry_note'])) {
+            $lines[] = (string) $metadata['activity_entry_note'];
+        }
+
+        return count($lines) > 1 ? implode("\n", $lines) : null;
     }
 }

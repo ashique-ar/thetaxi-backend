@@ -253,11 +253,12 @@
                                                                                     <div class="small mt-1"><strong>Day {{ $tourDay['day_number'] }}:</strong>
                                                                                         {{ data_get($tourDay, 'start_location.name', 'Start') }}
                                                                                         @foreach ($tourDay['stops'] ?? [] as $tourStop)
-                                                                                            → {{ $tourStop['name'] ?? 'Stop' }}
+                                                                                            → {{ $tourStop['name'] ?? 'Stop' }}@if (!empty($tourStop['estimated_arrival'])) <span class="text-muted">(~{{ $tourStop['estimated_arrival'] }})</span>@endif
                                                                                         @endforeach
                                                                                         → {{ data_get($tourDay, 'end_location.name', 'End') }}
                                                                                     </div>
                                                                                 @endforeach
+                                                                                <p class="small text-muted mt-2 mb-0">Arrival times are route estimates in each day’s local time zone.</p>
                                                                                 <p class="small text-muted mt-2 mb-0">{{ $item['activity_entry_note'] ?? '' }}</p>
                                                                             </div>
                                                                         @endif
@@ -408,6 +409,7 @@
                                                                 @endforelse
                                                             </div>
                                                         </div>
+                                                        @if (empty($item['is_tour']))
                                                         @php
                                                             $currentExtraKm = $item['extra_km']['km'] ?? 0;
                                                         @endphp
@@ -429,4 +431,5 @@
                                                                 <div class="checkout-extra-km-loading">Loading extra KM options...</div>
                                                             </div>
                                                         </div>
+                                                        @endif
                                                     </li>

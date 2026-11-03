@@ -140,7 +140,7 @@
                         </div>
                         <div class="col-md-4"><label for="tour-child-seats" class="form-label">Child seats needed</label><input
                                 id="tour-child-seats" type="number" class="form-control" min="0" max="100" value="0" required>
-                            <div class="form-text">At checkout, choose matching child-seat add-ons if available. Seats are subject to confirmation.</div>
+                            <div class="form-text">At checkout, select matching add-ons tagged child-seat. Seat availability is subject to confirmation.</div>
                         </div>
                         <div class="col-md-4"><label for="tour-luggage" class="form-label">Luggage</label><input
                                 id="tour-luggage" type="number" class="form-control" min="0" max="100" value="0" required>
@@ -390,6 +390,10 @@
                     const current = Number(select.value) || 1;
                     select.innerHTML = Array.from({ length: count }, (_, day) => `<option value="${day + 1}" ${current === day + 1 ? 'selected' : ''}>Day ${day + 1}</option>`).join('');
                 });
+                document.querySelectorAll('.tour-activity-day').forEach(select => {
+                    const current = Number(select.value) || 1;
+                    select.innerHTML = Array.from({ length: count }, (_, day) => `<option value="${day + 1}" ${current === day + 1 ? 'selected' : ''}>Day ${day + 1}</option>`).join('');
+                });
                 const firstDay = [...days].sort((a, b) => a.day_number - b.day_number)[0];
                 startSelect.value = firstDay.start_destination_id;
                 renderDaySettings();
@@ -404,15 +408,15 @@
                         const input = [...document.querySelectorAll(selector)].find(item => item.value === stop.catalogue_id);
                         if (input) {
                             input.checked = true;
-                            if (stop.kind === 'destination') delete input.dataset.activityOnlyParent;
+                            if (stop.kind === 'destination') {
+                                const daySelect = document.getElementById(`tour-place-day-${input.id.replace('tour-destination-', '')}`);
+                                if (daySelect) daySelect.value = String(day.day_number);
+                            }
                             if (stop.kind === 'activity') {
-                                const parent = document.getElementById(input.dataset.destinationCheckbox);
-                                if (parent) { parent.checked = true; if (!(day.stops || []).some(item => item.kind === 'destination' && item.catalogue_id === parent.value)) parent.dataset.activityOnlyParent = 'true'; }
+                                const activityDay = document.querySelector(`.tour-activity-day[data-activity="${CSS.escape(stop.catalogue_id)}"]`);
+                                if (activityDay) activityDay.value = String(day.day_number);
                             }
                         }
-                        const parentId = stop.kind === 'activity' ? document.querySelector(`.tour-activity[value="${CSS.escape(stop.catalogue_id)}"]`)?.dataset.parent : stop.catalogue_id;
-                        const destinationInput = parentId ? [...document.querySelectorAll('.tour-destination')].find(item => item.value === parentId) : null;
-                        if (destinationInput) { const cardIndex = destinationInput.id.replace('tour-destination-', ''); const daySelect = document.getElementById(`tour-place-day-${cardIndex}`); if (daySelect) daySelect.value = day.day_number; }
                     }
                 }
                 limitPackageClasses();
@@ -450,6 +454,7 @@
                 const previousDestinations = new Set(sameService ? [...document.querySelectorAll('.tour-destination:checked')].map(box => box.value) : []);
                 const previousActivities = new Set(sameService ? [...document.querySelectorAll('.tour-activity:checked')].map(box => box.value) : []);
                 const previousDays = new Map(sameService ? [...document.querySelectorAll('.tour-place-day')].map(select => [select.id.replace('tour-place-day-', ''), select.value]) : []);
+                const previousActivityDays = new Map(sameService ? [...document.querySelectorAll('.tour-activity-day')].map(select => [select.dataset.activity, select.value]) : []);
                 clearError(); results.hidden = true; destinationList.innerHTML = ''; daySettings.innerHTML = ''; startSelect.innerHTML = '<option value="">Choose a listed place</option>'; document.getElementById('tour-start-search').value = ''; document.getElementById('tour-destination-search').value = '';
                 const data = await request(`${api}/catalogue?service_type_id=${encodeURIComponent(serviceSelect.value)}`);
                 catalogue = data;
@@ -459,25 +464,10 @@
                 if (destinations.some(item => item.id === previousStart)) startSelect.value = previousStart;
                 destinationList.innerHTML = destinations.map((item, index) => `
                 <div class="col-md-6"><div class="tour-option">
-                    <label class="form-check-label d-flex gap-2 align-items-start"><input class="form-check-input tour-destination" type="checkbox" value="${escapeHtml(item.id)}" id="tour-destination-${index}" ${previousDestinations.has(item.id) ? 'checked' : ''}><span><strong>${escapeHtml(item.name)}</strong><br><span class="small tour-muted">${escapeHtml(item.description || item.location?.city || item.location?.address || '')}</span></span></label>
-                    <div class="mt-2"><label class="small tour-muted" for="tour-place-day-${index}">Visit on</label><select class="form-select form-select-sm tour-place-day" id="tour-place-day-${index}">${Array.from({ length: Number(document.getElementById('tour-days').value) || 1 }, (_, day) => `<option value="${day + 1}" ${Number(previousDays.get(String(index))) === day + 1 ? 'selected' : ''}>Day ${day + 1}</option>`).join('')}</select></div>
-                    ${(item.activities || []).length ? `<div class="border-top mt-3 pt-3"><p class="small fw-semibold mb-2">Activities at this place</p>${item.activities.map((activity, activityIndex) => `<label class="form-check small mb-2"><input class="form-check-input tour-activity" type="checkbox" value="${escapeHtml(activity.id)}" data-parent="${escapeHtml(item.id)}" data-destination-checkbox="tour-destination-${index}" id="tour-activity-${index}-${activityIndex}" ${previousActivities.has(activity.id) ? 'checked' : ''}><span class="form-check-label">${escapeHtml(activity.name)}${activity.visit_duration_minutes ? ` <span class="tour-muted">(${escapeHtml(activity.visit_duration_minutes)} min)</span>` : ''}${activity.description ? `<br><span class="tour-muted">${escapeHtml(activity.description)}</span>` : ''}</span></label>`).join('')}</div>` : ''}
+                    <label class="form-check-label d-flex gap-2 align-items-start"><input class="form-check-input tour-destination" type="checkbox" value="${escapeHtml(item.id)}" id="tour-destination-${index}" ${previousDestinations.has(item.id) ? 'checked' : ''}><span><strong>Visit ${escapeHtml(item.name)}</strong><br><span class="small tour-muted">${escapeHtml(item.description || item.location?.city || item.location?.address || '')}</span></span></label>
+                    <div class="mt-2"><label class="small tour-muted" for="tour-place-day-${index}">Destination visit on</label><select class="form-select form-select-sm tour-place-day" id="tour-place-day-${index}">${Array.from({ length: Number(document.getElementById('tour-days').value) || 1 }, (_, day) => `<option value="${day + 1}" ${Number(previousDays.get(String(index))) === day + 1 ? 'selected' : ''}>Day ${day + 1}</option>`).join('')}</select></div>
+                    ${(item.activities || []).length ? `<div class="border-top mt-3 pt-3"><p class="small fw-semibold mb-2">Activities at this place</p>${item.activities.map((activity, activityIndex) => `<div class="mb-2"><label class="form-check small mb-1"><input class="form-check-input tour-activity" type="checkbox" value="${escapeHtml(activity.id)}" id="tour-activity-${index}-${activityIndex}" ${previousActivities.has(activity.id) ? 'checked' : ''}><span class="form-check-label">${escapeHtml(activity.name)}${activity.visit_duration_minutes ? ` <span class="tour-muted">(${escapeHtml(activity.visit_duration_minutes)} min)</span>` : ''}<br><span class="tour-muted">Route visit: ${escapeHtml(activity.location?.name || activity.location?.address || 'mapped entrance')}</span>${activity.description ? `<br><span class="tour-muted">${escapeHtml(activity.description)}</span>` : ''}</span></label><label class="small tour-muted ms-4" for="tour-activity-day-${index}-${activityIndex}">Activity visit on</label><select class="form-select form-select-sm tour-activity-day ms-4" id="tour-activity-day-${index}-${activityIndex}" data-activity="${escapeHtml(activity.id)}">${Array.from({ length: Number(document.getElementById('tour-days').value) || 1 }, (_, day) => `<option value="${day + 1}" ${Number(previousActivityDays.get(activity.id) ?? previousDays.get(String(index))) === day + 1 ? 'selected' : ''}>Day ${day + 1}</option>`).join('')}</select></div>`).join('')}</div>` : ''}
                 </div></div>`).join('');
-                document.querySelectorAll('.tour-destination').forEach(box => box.addEventListener('change', () => {
-                    const activities = [...document.querySelectorAll(`.tour-activity[data-parent="${CSS.escape(box.value)}"]`)];
-                    if (box.checked) { delete box.dataset.activityOnlyParent; return; }
-                    activities.forEach(activity => { activity.checked = false; });
-                    delete box.dataset.activityOnlyParent;
-                }));
-                document.querySelectorAll('.tour-activity').forEach(box => box.addEventListener('change', () => {
-                    const parent = document.getElementById(box.dataset.destinationCheckbox);
-                    if (box.checked) {
-                        if (!parent.checked) { parent.dataset.activityOnlyParent = 'true'; parent.checked = true; }
-                        return;
-                    }
-                    const anotherActivitySelected = [...document.querySelectorAll(`.tour-activity:checked[data-parent="${CSS.escape(box.dataset.parent)}"]`)].length > 0;
-                    if (parent.dataset.activityOnlyParent === 'true' && !anotherActivitySelected) { parent.checked = false; delete parent.dataset.activityOnlyParent; }
-                }));
                 filterDestinationCards();
                 renderDaySettings();
             }
@@ -493,29 +483,26 @@
                 preview.hidden = false;
                 document.getElementById('tour-ai-apply').addEventListener('click', () => {
                     document.querySelectorAll('.tour-destination,.tour-activity').forEach(input => { input.checked = false; });
-                    const dayForDestination = new Map();
                     for (const day of suggestion.days) {
                         for (const stop of day.stops) {
                             const activity = stop.kind === 'activity'
                                 ? [...document.querySelectorAll('.tour-activity')].find(input => input.value === stop.catalogue_id)
                                 : null;
-                            const destinationId = stop.kind === 'destination' ? stop.catalogue_id : activity?.dataset.parent;
+                            const destinationId = stop.kind === 'destination' ? stop.catalogue_id : null;
                             const destination = destinationId
                                 ? [...document.querySelectorAll('.tour-destination')].find(input => input.value === destinationId)
                                 : null;
                             if (destination) {
                                 destination.checked = true;
-                                dayForDestination.set(destination.value, day.day_number);
+                                const index = destination.id.replace('tour-destination-', '');
+                                const daySelect = document.getElementById(`tour-place-day-${index}`);
+                                if (daySelect) daySelect.value = String(day.day_number);
                             }
-                            if (activity) activity.checked = true;
-                        }
-                    }
-                    for (const destination of document.querySelectorAll('.tour-destination')) {
-                        const day = dayForDestination.get(destination.value);
-                        if (day) {
-                            const index = destination.id.replace('tour-destination-', '');
-                            const daySelect = document.getElementById(`tour-place-day-${index}`);
-                            if (daySelect) daySelect.value = String(day);
+                            if (activity) {
+                                activity.checked = true;
+                                const daySelect = document.querySelector(`.tour-activity-day[data-activity="${CSS.escape(activity.value)}"]`);
+                                if (daySelect) daySelect.value = String(day.day_number);
+                            }
                         }
                     }
                     selectedTemplateDays = [];
@@ -542,7 +529,8 @@
                 const count = Number(document.getElementById('tour-days').value);
                 if (!Number.isInteger(count) || count < 1 || count > 60) throw new Error('Choose between 1 and 60 trip days.');
                 const selected = [...document.querySelectorAll('.tour-destination:checked')];
-                if (!selected.length) throw new Error('Choose at least one place to visit.');
+                const selectedActivities = [...document.querySelectorAll('.tour-activity:checked')];
+                if (!selected.length && !selectedActivities.length) throw new Error('Choose at least one destination or activity to visit.');
                 const endByDay = new Map();
                 document.querySelectorAll('.tour-day-end').forEach(select => endByDay.set(Number(select.dataset.day), select.value));
                 return Array.from({ length: count }, (_, index) => {
@@ -556,20 +544,27 @@
                     selected.filter(box => Number(document.getElementById(box.id.replace('tour-destination-', 'tour-place-day-')).value) === day).forEach(box => {
                         const destination = destinations.get(box.value);
                         if (destination) { const preset = templateStop('destination', destination.id); stops.push({ kind: 'destination', catalogue_id: destination.id, is_locked: !!preset.is_locked, arrival_time: preset.arrival_time || null }); }
-                        document.querySelectorAll(`.tour-activity:checked[data-parent="${CSS.escape(box.value)}"]`).forEach(activity => { const preset = templateStop('activity', activity.value); stops.push({ kind: 'activity', catalogue_id: activity.value, is_locked: !!preset.is_locked, arrival_time: preset.arrival_time || null }); });
                     });
+                    [...document.querySelectorAll('.tour-activity:checked')].filter(activity => Number(document.querySelector(`.tour-activity-day[data-activity="${CSS.escape(activity.value)}"]`)?.value) === day).forEach(activity => { const preset = templateStop('activity', activity.value); stops.push({ kind: 'activity', catalogue_id: activity.value, is_locked: !!preset.is_locked, arrival_time: preset.arrival_time || null }); });
                     const startPlace = destinations.get(startId);
                     return { day_number: day, timezone: templateDay?.timezone || startPlace?.timezone || 'Asia/Colombo', start_time: templateDay?.start_time || document.getElementById('tour-time').value, start_destination_id: startId, end_destination_id: endId, overnight_destination_id: day < count ? endId : null, is_locked: !!templateDay?.is_locked, stops };
                 });
             }
             function renderRoute(data) {
                 const unavailable = data.status !== 'ready';
+                const routeMessage = data.status === 'unavailable'
+                    ? 'We could not verify every road route. You can save this plan and ask our team to review it.'
+                    : data.status === 'review_required'
+                        ? 'This schedule has timing conflicts. Ask our team to review it before a transport price can be confirmed.'
+                        : data.changed
+                            ? 'Compare the original order with the suggested order for every day. Every selected destination and activity stays in the plan.'
+                            : 'Your selected order is already the best route we found.';
                 const renderAggregate = (route, label) => {
                     const canQuote = route.quote?.status === 'priced' && !unavailable;
                     const disabledLabel = route.quote?.status === 'quotation_required' || unavailable ? 'Staff review required' : 'Price needs staff review';
                     return `<div class="col-md-6"><div class="tour-option h-100"><h3 class="h6">${escapeHtml(label)}</h3><p><strong>${route.distance_km == null ? 'Distance unavailable' : `${escapeHtml(route.distance_km)} km total`}</strong>${route.duration_seconds != null ? ` · ${Math.round(route.duration_seconds / 3600 * 10) / 10} hr driving` : ''}</p>${route.quote?.status === 'priced' ? `<p class="h5">${escapeHtml(route.quote.currency)} ${Number(route.quote.total_amount).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</p>` : `<p class="small text-warning">${escapeHtml(route.quote?.reason || 'Price needs staff review.')}</p>`}<div>${(route.days || []).map(day => `<p class="small mb-1">Day ${day.day_number}: ${escapeHtml((day.schedule || []).map(stop => stop.stop_name).join(' → '))}</p>`).join('')}</div><button type="button" class="btn btn-outline-primary mt-2 tour-use-route" data-route="${label === 'Suggested route' ? 'suggested' : 'original'}" ${canQuote ? '' : 'disabled'}>${canQuote ? 'Use this route and review price' : disabledLabel}</button></div></div>`;
                 };
-                return `<div class="alert ${data.status === 'unavailable' ? 'alert-warning' : 'alert-info'}">${data.status === 'unavailable' ? 'We could not verify every road route. You can save this plan and ask our team to review it.' : data.changed ? 'Compare the original order with the suggested order for every day. Every selected destination and activity stays in the plan.' : 'Your selected order is already the best route we found.'}</div><div class="row g-3">${renderAggregate(data.original, 'Your selected order')}${renderAggregate(data.suggested, 'Suggested route')}</div><div class="small tour-muted mt-3">${(data.issues || []).map(issue => `<p class="mb-1">Day ${issue.day_number}: ${escapeHtml(issue.message)}</p>`).join('')}<p class="mb-0">Activity visits are included in your route only. Tickets, entry fees and activity reservations are not included. Please arrange these separately. Activity booking will be introduced in a future release.</p></div><div class="mt-3"><button type="button" id="tour-request-review" class="btn btn-outline-primary">Ask our team to review this Tour</button><p class="small tour-muted mt-2 mb-0">This sends your itinerary for follow-up only. It does not book a vehicle or take payment.</p></div>`;
+                return `<div class="alert ${unavailable ? 'alert-warning' : 'alert-info'}">${routeMessage}</div><div class="row g-3">${renderAggregate(data.original, 'Your selected order')}${renderAggregate(data.suggested, 'Suggested route')}</div><div class="small tour-muted mt-3">${(data.issues || []).map(issue => `<p class="mb-1">Day ${issue.day_number}: ${escapeHtml(issue.message)}</p>`).join('')}<p class="mb-0">Activity visits are included in your route only. Tickets, entry fees and activity reservations are not included. Please arrange these separately. Activity booking will be introduced in a future release.</p></div><div class="mt-3"><button type="button" id="tour-request-review" class="btn btn-outline-primary">Ask our team to review this Tour</button><p class="small tour-muted mt-2 mb-0">This sends your itinerary for follow-up only. It does not book a vehicle or take payment.</p></div>`;
             }
             form.addEventListener('submit', async event => {
                 event.preventDefault(); clearError(); invalidateDisplayedQuote();
@@ -663,6 +658,10 @@
                 clearAiSuggestion();
                 const count = Math.max(1, Math.min(60, Number(document.getElementById('tour-days').value) || 1));
                 document.querySelectorAll('.tour-place-day').forEach(select => {
+                    const selected = Math.min(count, Number(select.value) || 1);
+                    select.innerHTML = Array.from({ length: count }, (_, day) => `<option value="${day + 1}" ${selected === day + 1 ? 'selected' : ''}>Day ${day + 1}</option>`).join('');
+                });
+                document.querySelectorAll('.tour-activity-day').forEach(select => {
                     const selected = Math.min(count, Number(select.value) || 1);
                     select.innerHTML = Array.from({ length: count }, (_, day) => `<option value="${day + 1}" ${selected === day + 1 ? 'selected' : ''}>Day ${day + 1}</option>`).join('');
                 });

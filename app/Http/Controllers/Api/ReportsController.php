@@ -1639,6 +1639,7 @@ class ReportsController extends Controller
             'dropoff_location' => ['Dropoff Location', fn ($booking) => json_encode($booking->bookingItems->first()?->dropoff_location)],
             'vehicle_registration' => ['Vehicle Registration', fn ($booking) => $booking->bookingItems->pluck('vehicle.license_plate')->filter()->unique()->implode(', ')],
             'vehicle_group' => ['Vehicle Group', fn ($booking) => $booking->bookingItems->pluck('vehicle.group.name')->filter()->unique()->implode(', ')],
+            'purchased_vehicle_class' => ['Purchased Vehicle Class', fn ($booking) => $booking->bookingItems->pluck('vehicleClass.name')->filter()->unique()->implode(', ')],
             'driver_name' => ['Driver Name', fn ($booking) => $booking->bookingItems->map(fn ($item) => trim(($item->driver?->user?->first_name ?? '') . ' ' . ($item->driver?->user?->last_name ?? '')))->filter()->unique()->implode(', ')],
             'total_amount' => ['Total Amount', fn ($booking) => $booking->total_actual],
             'currency' => ['Currency', fn ($booking) => strtoupper((string) ($booking->currency ?: 'LKR'))],
@@ -1651,7 +1652,7 @@ class ReportsController extends Controller
         if ($fields->isEmpty()) $fields = collect(['booking_id', 'status', 'created_at']);
         if ($fields->contains('total_amount')) $fields->push('currency');
 
-        $query = Booking::with(['customer.user', 'bookingItems.serviceType', 'bookingItems.vehicle.group', 'bookingItems.driver.user'])
+        $query = Booking::with(['customer.user', 'bookingItems.serviceType', 'bookingItems.vehicleClass', 'bookingItems.vehicle.group', 'bookingItems.driver.user'])
             ->orderByDesc('created_at');
         $this->applyFilters($query, $filters);
         $rows = $query->get()->map(fn ($booking) => $fields->map(fn ($field) => $fieldLabels[$field][1]($booking))->all())->all();

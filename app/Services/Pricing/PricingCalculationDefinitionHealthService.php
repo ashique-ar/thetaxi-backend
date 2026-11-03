@@ -7,6 +7,7 @@ use App\Models\Vehicle\VehiclePricing\VehicleGroupPricing;
 use App\Models\Vehicle\VehiclePricing\VehiclePricingCalculationDefinition;
 use App\Models\Vehicle\VehiclePricing\VehiclePricingCommonRateDefinition;
 use App\Models\Vehicle\VehiclePricing\VehiclePricingSlabDefinition;
+use App\Models\Service\ServiceType;
 use App\Services\VehiclePricingSlabConfigurationService;
 use Illuminate\Support\Collection;
 use Illuminate\Support\Facades\DB;
@@ -416,8 +417,10 @@ class PricingCalculationDefinitionHealthService
             ->whereNull('owner_id')
             ->where('is_active', true)
             ->get();
+        $targetColumn = $this->pricingTargetColumn($serviceTypeId);
         $pricing = VehicleGroupPricing::withInactive()
             ->whereIn('slab_definition_id', $slabs->pluck('id'))
+            ->whereNotNull($targetColumn)
             ->where('is_active', true)
             ->get();
         $publicPricing = $pricing
@@ -434,26 +437,26 @@ class PricingCalculationDefinitionHealthService
                 'slab_dependency',
                 $serviceTypeId,
                 [$definitionId],
-                "Slab {$slab->name} has no active vehicle-group price value.",
-                'Configure at least one active vehicle-group price for every active slab.'
+                "Slab {$slab->name} has no active {$this->pricingTargetLabel($targetColumn)} price value.",
+                'Configure at least one active price value for every active slab.'
             );
         }
 
-        $applicableGroupIds = $this->applicableVehicleGroupIds($serviceTypeId, [
-            $pricing->pluck('vehicle_group_id'),
+        $applicableTargetIds = $this->applicablePricingTargetIds($serviceTypeId, $targetColumn, [
+            $pricing->pluck($targetColumn),
         ], $ownerType, $ownerId);
         $missingPublicPairs = [];
         foreach ($slabs as $slab) {
-            foreach ($applicableGroupIds as $vehicleGroupId) {
+            foreach ($applicableTargetIds as $targetId) {
                 $hasPublicValue = $publicPricing->contains(
                     fn ($row) => (string) $row->slab_definition_id === (string) $slab->id
-                        && (string) $row->vehicle_group_id === (string) $vehicleGroupId
+                        && (string) $row->{$targetColumn} === (string) $targetId
                         && is_numeric($row->rate)
                 );
                 $hasCorporateValue = $ownerType === 'corporate' && $ownerId
                     ? $pricing->contains(fn ($row) =>
                         (string) $row->slab_definition_id === (string) $slab->id
-                        && (string) $row->vehicle_group_id === (string) $vehicleGroupId
+                        && (string) $row->{$targetColumn} === (string) $targetId
                         && (string) $row->owner_type === 'corporate'
                         && (string) $row->owner_id === (string) $ownerId
                         && is_numeric($row->rate))
@@ -461,7 +464,7 @@ class PricingCalculationDefinitionHealthService
                 if (!$hasPublicValue && !$hasCorporateValue) {
                     $missingPublicPairs[] = [
                         'slab_definition_id' => (string) $slab->id,
-                        'vehicle_group_id' => (string) $vehicleGroupId,
+                        $targetColumn => (string) $targetId,
                     ];
                 }
             }
@@ -469,16 +472,16 @@ class PricingCalculationDefinitionHealthService
         if ($missingPublicPairs !== []) {
             $corporateScope = $ownerType === 'corporate' && $ownerId;
             $issues[] = $this->issue(
-                'missing_public_slab_group_values',
+                'missing_public_slab_' . ($targetColumn === 'vehicle_class_id' ? 'class' : 'group') . '_values',
                 'error',
                 'slab_dependency',
                 $serviceTypeId,
                 [$definitionId],
-                count($missingPublicPairs) . ' active slab/vehicle-group combinations have no '
+                count($missingPublicPairs) . ' active slab/' . $this->pricingTargetLabel($targetColumn) . ' combinations have no '
                     . ($corporateScope ? 'effective corporate or public fallback' : 'public') . ' price value.',
                 $corporateScope
-                    ? 'Configure a corporate value or a public fallback for each assigned vehicle group and slab.'
-                    : 'Configure a public baseline for every applicable vehicle group and slab; corporate rows are overrides only.'
+                    ? 'Configure a corporate value or a public fallback for each applicable target and slab.'
+                    : 'Configure a public baseline for every applicable target and slab; corporate rows are overrides only.'
             );
         }
 
@@ -509,7 +512,8 @@ class PricingCalculationDefinitionHealthService
                 'priced_slab_count' => $pricedSlabIds->count(),
                 'pricing_value_count' => $pricing->count(),
                 'unpriced_slab_ids' => $unpricedSlabs->pluck('id')->values()->all(),
-                'applicable_vehicle_group_ids' => $applicableGroupIds->all(),
+                'applicable_vehicle_group_ids' => $targetColumn === 'vehicle_group_id' ? $applicableTargetIds->all() : [],
+                'applicable_vehicle_class_ids' => $targetColumn === 'vehicle_class_id' ? $applicableTargetIds->all() : [],
                 'missing_public_group_values' => $missingPublicPairs,
                 'rate_types' => $rateTypes->all(),
                 'public_value_count' => $pricing->whereNull('owner_type')->count(),
@@ -566,8 +570,10 @@ class PricingCalculationDefinitionHealthService
             );
         }
 
+        $targetColumn = $this->pricingTargetColumn($serviceTypeId);
         $values = VehicleGroupCommonRatePricing::withInactive()
             ->whereIn('common_rate_definition_id', $allDefinitions->pluck('id'))
+            ->whereNotNull($targetColumn)
             ->where('is_active', true)
             ->get();
         if ($definitions->isNotEmpty() && $values->isEmpty()) {
@@ -577,8 +583,8 @@ class PricingCalculationDefinitionHealthService
                 'common_rate_dependency',
                 $serviceTypeId,
                 [$definitionId],
-                "Common rate {$rateKey} has no active vehicle-group value.",
-                'Configure at least one public or corporate vehicle-group value for this common rate.'
+                "Common rate {$rateKey} has no active {$this->pricingTargetLabel($targetColumn)} value.",
+                'Configure at least one public or corporate value for this common rate.'
             );
         }
 
@@ -590,26 +596,27 @@ class PricingCalculationDefinitionHealthService
             ->whereNull('owner_id')
             ->filter(fn ($row) => is_numeric($row->value))
             ->values();
-        $applicableGroupIds = $this->applicableVehicleGroupIds($serviceTypeId, [
-            $values->pluck('vehicle_group_id'),
+        $applicableTargetIds = $this->applicablePricingTargetIds($serviceTypeId, $targetColumn, [
+            $values->pluck($targetColumn),
         ], $ownerType, $ownerId);
-        $missingPublicGroups = $applicableGroupIds->reject(function ($vehicleGroupId) use (
+        $missingPublicGroups = $applicableTargetIds->reject(function ($targetId) use (
             $publicValues,
             $values,
             $definitionServiceIds,
             $serviceTypeId,
             $ownerType,
-            $ownerId
+            $ownerId,
+            $targetColumn
         ) {
             if ($ownerType === 'corporate' && $ownerId && $values->contains(fn ($row) =>
-                (string) $row->vehicle_group_id === (string) $vehicleGroupId
+                (string) $row->{$targetColumn} === (string) $targetId
                 && (string) $row->owner_type === 'corporate'
                 && (string) $row->owner_id === (string) $ownerId
                 && is_numeric($row->value))) {
                 return true;
             }
             $candidates = $publicValues->filter(
-                fn ($row) => (string) $row->vehicle_group_id === (string) $vehicleGroupId
+                fn ($row) => (string) $row->{$targetColumn} === (string) $targetId
             );
 
             return $candidates->contains(function ($row) use ($definitionServiceIds, $serviceTypeId) {
@@ -629,7 +636,7 @@ class PricingCalculationDefinitionHealthService
                 [$definitionId],
                 "Common rate {$rateKey} has no "
                     . ($corporateScope ? 'effective corporate or public fallback' : 'public')
-                    . ' value for ' . $missingPublicGroups->count() . ' applicable vehicle group(s).',
+                    . ' value for ' . $missingPublicGroups->count() . ' applicable ' . $this->pricingTargetLabel($targetColumn) . '(s).',
                 $corporateScope
                     ? 'Configure a corporate value or a public fallback for each assigned vehicle group.'
                     : 'Configure a public baseline for each applicable vehicle group; corporate rows are overrides only.'
@@ -648,8 +655,10 @@ class PricingCalculationDefinitionHealthService
                 'pricing_value_count' => $values->count(),
                 'public_value_count' => $values->whereNull('owner_type')->count(),
                 'corporate_value_count' => $values->where('owner_type', 'corporate')->count(),
-                'applicable_vehicle_group_ids' => $applicableGroupIds->all(),
-                'missing_public_vehicle_group_ids' => $missingPublicGroups->all(),
+                'applicable_vehicle_group_ids' => $targetColumn === 'vehicle_group_id' ? $applicableTargetIds->all() : [],
+                'applicable_vehicle_class_ids' => $targetColumn === 'vehicle_class_id' ? $applicableTargetIds->all() : [],
+                'missing_public_vehicle_group_ids' => $targetColumn === 'vehicle_group_id' ? $missingPublicGroups->all() : [],
+                'missing_public_vehicle_class_ids' => $targetColumn === 'vehicle_class_id' ? $missingPublicGroups->all() : [],
             ],
         ];
     }
@@ -711,6 +720,47 @@ class PricingCalculationDefinitionHealthService
             ->map(fn ($id) => (string) $id)
             ->unique()
             ->values();
+    }
+
+    private function pricingTargetColumn(string $serviceTypeId): string
+    {
+        return ServiceType::query()->whereKey($serviceTypeId)->value('pricing_basis') === 'vehicle_class'
+            ? 'vehicle_class_id'
+            : 'vehicle_group_id';
+    }
+
+    /** @param array<int, Collection> $fallbackCollections */
+    private function applicablePricingTargetIds(
+        string $serviceTypeId,
+        string $targetColumn,
+        array $fallbackCollections = [],
+        ?string $ownerType = null,
+        ?string $ownerId = null
+    ): Collection {
+        if ($targetColumn === 'vehicle_group_id') {
+            return $this->applicableVehicleGroupIds($serviceTypeId, $fallbackCollections, $ownerType, $ownerId);
+        }
+
+        if (Schema::hasTable('service_vehicle_class_settings')) {
+            return DB::table('service_vehicle_class_settings')
+                ->where('service_type_id', $serviceTypeId)
+                ->where('is_active', true)
+                ->where('is_hidden', false)
+                ->where('is_inquiry_only', false)
+                ->whereNull('deleted_at')
+                ->pluck('vehicle_class_id')
+                ->map(fn ($id) => (string) $id)
+                ->unique()
+                ->values();
+        }
+
+        return collect($fallbackCollections)->flatMap(fn ($ids) => collect($ids))
+            ->filter()->map(fn ($id) => (string) $id)->unique()->values();
+    }
+
+    private function pricingTargetLabel(string $targetColumn): string
+    {
+        return $targetColumn === 'vehicle_class_id' ? 'vehicle-class' : 'vehicle-group';
     }
 
     /** @return array<int, array<string, mixed>> */

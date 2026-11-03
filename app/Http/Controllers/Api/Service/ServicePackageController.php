@@ -408,8 +408,8 @@ class ServicePackageController extends Controller
                         ->where('service_type_id', $serviceType->id)
                         ->where('is_published', true))
                     ->first();
-                if (!$activity || !in_array((string) $activity->tour_destination_id, $destinationIds, true)) {
-                    throw ValidationException::withMessages(['tour_itinerary_template.days' => 'Each activity visit needs its published parent destination in that day’s stops.']);
+                if (!$activity) {
+                    throw ValidationException::withMessages(['tour_itinerary_template.days' => 'Every activity visit must be published and belong to this Tours service.']);
                 }
             }
         }

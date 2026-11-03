@@ -79,23 +79,38 @@ class TourBookingConversionService
                 throw ValidationException::withMessages(['child_seat_count' => 'Child seats cannot exceed the number of children travelling.']);
             }
             $routeSnapshot = $quote->route_snapshot;
-            $daysSnapshot = $locked->days->map(fn($day): array => [
-                'day_number' => $day->day_number,
-                'service_date' => $day->service_date,
-                'timezone' => $day->timezone,
-                'start_time' => substr((string) $day->start_time, 0, 5),
-                'start_location' => $day->start_location_snapshot,
-                'end_location' => $day->end_location_snapshot,
-                'overnight_location' => $day->overnight_destination_id,
-                'stops' => $day->stops->map(fn($stop): array => [
-                    'kind' => $stop->kind,
-                    'name' => $stop->activity?->name ?? $stop->destination?->name ?? data_get($stop->location_snapshot, 'name'),
-                    'location' => $stop->location_snapshot,
-                    'visit_duration_minutes' => $stop->visit_duration_minutes,
-                    'activity_id' => $stop->tour_activity_id,
-                    'destination_id' => $stop->tour_destination_id,
-                ])->values()->all(),
-            ])->values()->all();
+            $daysSnapshot = $locked->days->map(function ($day) use ($routeSnapshot): array {
+                $routeDay = collect(data_get($routeSnapshot, 'days', []))->firstWhere('day_number', (int) $day->day_number);
+                $schedule = collect($routeDay['schedule'] ?? [])->keyBy('stop_id');
+
+                return [
+                    'day_number' => $day->day_number,
+                    'service_date' => $day->service_date,
+                    'timezone' => $day->timezone,
+                    'start_time' => substr((string) $day->start_time, 0, 5),
+                    'start_location' => $day->start_location_snapshot,
+                    'end_location' => $day->end_location_snapshot,
+                    'overnight_location' => $day->overnight_destination_id,
+                    'stops' => $day->stops->map(function ($stop) use ($schedule): array {
+                        $timing = $schedule->get((string) $stop->id, []);
+
+                        return [
+                            'id' => (string) $stop->id,
+                            'kind' => $stop->kind,
+                            'name' => $stop->activity?->name ?? $stop->destination?->name ?? data_get($stop->location_snapshot, 'name'),
+                            'location' => $stop->location_snapshot,
+                            'visit_duration_minutes' => $stop->visit_duration_minutes,
+                            'arrival_time' => $stop->arrival_time ? substr((string) $stop->arrival_time, 0, 5) : null,
+                            'estimated_arrival' => $timing['estimated_arrival'] ?? null,
+                            'opens_at' => $timing['opens_at'] ?? null,
+                            'closes_at' => $timing['closes_at'] ?? null,
+                            'is_locked' => (bool) $stop->is_locked,
+                            'activity_id' => $stop->tour_activity_id,
+                            'destination_id' => $stop->tour_destination_id,
+                        ];
+                    })->values()->all(),
+                ];
+            })->values()->all();
 
             $booking = $this->bookingFlow->confirmBooking([
                 'service_type_id' => $locked->service_type_id,

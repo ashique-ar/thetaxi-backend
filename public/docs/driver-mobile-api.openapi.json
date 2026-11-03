@@ -4312,9 +4312,11 @@
                                                 "dropoff_location_label": {
                                                     "nullable": true
                                                 },
-                                                "is_multi_stop": {
-                                                    "type": "boolean",
-                                                    "example": false
+                                                "notes": {
+                                                    "type": "string",
+                                                    "nullable": true,
+                                                    "description": "For Tours, a readable day-by-day route with visit order, estimated arrivals, visit hours, child-seat request, and activity-ticket notice. The driver app displays this through its existing Notes field.",
+                                                    "example": "TOUR ROUTE — follow the saved day-by-day order.\\nDay 1 (2026-11-10) — start 09:00:\\nStart: Colombo\\n- Activity visit: Temple walk — Kandy; ETA 10:30; visit 60 min"
                                                 },
                                                 "route_stops": {
                                                     "type": "array",
@@ -4708,6 +4710,12 @@
                                                         "type": "boolean",
                                                         "example": false
                                                     },
+                                                    "notes": {
+                                                        "type": "string",
+                                                        "nullable": true,
+                                                        "description": "For Tours, a readable day-by-day route with visit order, estimated arrivals, visit hours, child-seat request, and activity-ticket notice. The driver app displays this through its existing Notes field.",
+                                                        "example": "TOUR ROUTE — follow the saved day-by-day order.\\nDay 1 (2026-11-10) — start 09:00:\\nStart: Colombo\\n- Activity visit: Temple walk — Kandy; ETA 10:30; visit 60 min"
+                                                    },
                                                     "route_stops": {
                                                         "type": "array",
                                                         "items": []
@@ -5005,6 +5013,12 @@
                                                 "is_multi_stop": {
                                                     "type": "boolean",
                                                     "example": true
+                                                },
+                                                "notes": {
+                                                    "type": "string",
+                                                    "nullable": true,
+                                                    "description": "For Tours, a readable day-by-day route with visit order, estimated arrivals, visit hours, child-seat request, and activity-ticket notice. The driver app displays this through its existing Notes field.",
+                                                    "example": "TOUR ROUTE — follow the saved day-by-day order.\\nDay 1 (2026-11-10) — start 09:00:\\nStart: Colombo\\n- Activity visit: Temple walk — Kandy; ETA 10:30; visit 60 min"
                                                 },
                                                 "route_stops": {
                                                     "type": "array",
@@ -5689,6 +5703,12 @@
                                                     "type": "boolean",
                                                     "example": true
                                                 },
+                                                "notes": {
+                                                    "type": "string",
+                                                    "nullable": true,
+                                                    "description": "For Tours, a readable day-by-day route with visit order, estimated arrivals, visit hours, child-seat request, and activity-ticket notice. The driver app displays this through its existing Notes field.",
+                                                    "example": "TOUR ROUTE — follow the saved day-by-day order.\\nDay 1 (2026-11-10) — start 09:00:\\nStart: Colombo\\n- Activity visit: Temple walk — Kandy; ETA 10:30; visit 60 min"
+                                                },
                                                 "route_stops": {
                                                     "type": "array",
                                                     "items": {
@@ -6217,6 +6237,12 @@
                                                     "is_multi_stop": {
                                                         "type": "boolean",
                                                         "example": true
+                                                    },
+                                                    "notes": {
+                                                        "type": "string",
+                                                        "nullable": true,
+                                                        "description": "For Tours, a readable day-by-day route with visit order, estimated arrivals, visit hours, child-seat request, and activity-ticket notice. The driver app displays this through its existing Notes field.",
+                                                        "example": "TOUR ROUTE — follow the saved day-by-day order.\\nDay 1 (2026-11-10) — start 09:00:\\nStart: Colombo\\n- Activity visit: Temple walk — Kandy; ETA 10:30; visit 60 min"
                                                     },
                                                     "route_stops": {
                                                         "type": "array",
@@ -14983,6 +15009,12 @@
                                                                 "type": "boolean",
                                                                 "example": true
                                                             },
+                                                            "notes": {
+                                                                "type": "string",
+                                                                "nullable": true,
+                                                                "description": "For Tours, a readable day-by-day route with visit order, estimated arrivals, visit hours, child-seat request, and activity-ticket notice. The driver app displays this through its existing Notes field.",
+                                                                "example": "TOUR ROUTE — follow the saved day-by-day order.\\nDay 1 (2026-11-10) — start 09:00:\\nStart: Colombo\\n- Activity visit: Temple walk — Kandy; ETA 10:30; visit 60 min"
+                                                            },
                                                             "route_stops": {
                                                                 "type": "array",
                                                                 "items": {
@@ -15478,6 +15510,12 @@
                                                             "is_multi_stop": {
                                                                 "type": "boolean",
                                                                 "example": true
+                                                            },
+                                                            "notes": {
+                                                                "type": "string",
+                                                                "nullable": true,
+                                                                "description": "For Tours, a readable day-by-day route with visit order, estimated arrivals, visit hours, child-seat request, and activity-ticket notice. The driver app displays this through its existing Notes field.",
+                                                                "example": "TOUR ROUTE — follow the saved day-by-day order.\\nDay 1 (2026-11-10) — start 09:00:\\nStart: Colombo\\n- Activity visit: Temple walk — Kandy; ETA 10:30; visit 60 min"
                                                             },
                                                             "route_stops": {
                                                                 "type": "array",

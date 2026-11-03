@@ -105,6 +105,7 @@ class VehiclePricingCalculationDefinition extends Model
             $this->assertValidDateWindow($inputs);
 
             if (($tourLock = $this->tourPricingLock($inputs)) !== null) {
+                $inputs = array_merge($tourLock['condition_inputs'] ?? [], $inputs);
                 $acceptedAllowance = $tourLock['package_included_km']
                     ?? ($tourLock['resolved_variables']['package_included_km'] ?? null);
                 if (is_numeric($acceptedAllowance) && (float) $acceptedAllowance >= 0) {
@@ -993,9 +994,24 @@ class VehiclePricingCalculationDefinition extends Model
     {
         if (($varName === 'package_included_km' || in_array($varType, ['slab_rate', 'common_rate'], true))
             && ($tourLock = $this->tourPricingLock($inputs)) !== null) {
-            $acceptedValue = $tourLock['resolved_variables'][$varName] ?? null;
+            $acceptedValue = $varName === 'package_included_km'
+                ? ($tourLock['package_included_km'] ?? $tourLock['resolved_variables'][$varName] ?? null)
+                : ($tourLock['resolved_variables'][$varName] ?? null);
             if (!is_numeric($acceptedValue)) {
                 throw new \DomainException("Accepted Tour pricing snapshot is missing locked variable {$varName}.");
+            }
+
+            if ($varName !== 'package_included_km') {
+                $rateSource = collect($tourLock['rate_sources'] ?? [])->first(
+                    fn ($source) => is_array($source)
+                        && in_array($source['variable'] ?? null, [$varName, 'common_rate_' . $varName], true)
+                );
+                if (is_array($rateSource)) {
+                    $this->resolvedRateSources[$varName] = array_merge($rateSource, [
+                        'source_type' => 'accepted_tour_snapshot',
+                        'resolved_value' => (float) $acceptedValue,
+                    ]);
+                }
             }
 
             return (float) $acceptedValue;
@@ -1062,8 +1078,21 @@ class VehiclePricingCalculationDefinition extends Model
         }
 
         $lock = data_get($item->metadata, 'pricing_snapshot.tour_pricing_lock');
-        if (!is_array($lock) || (string) ($lock['definition_id'] ?? '') !== (string) $this->id
-            || (string) data_get($lock, 'definition.id') !== (string) $this->id) {
+        if (!is_array($lock)) {
+            throw new \DomainException('The Tour item does not match its accepted pricing definition snapshot. Final pricing was stopped.');
+        }
+
+        if ((string) ($lock['definition_id'] ?? '') !== (string) $this->id) {
+            $branch = $lock['branches'][(string) $this->id] ?? null;
+            if (!is_array($branch) || (string) data_get($branch, 'definition.id') !== (string) $this->id) {
+                return null;
+            }
+            $lock = array_merge($lock, array_filter(
+                $branch,
+                fn ($value) => $value !== null
+            ));
+        }
+        if ((string) data_get($lock, 'definition.id') !== (string) $this->id) {
             throw new \DomainException('The Tour item does not match its accepted pricing definition snapshot. Final pricing was stopped.');
         }
 

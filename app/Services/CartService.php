@@ -360,7 +360,7 @@ class CartService
         // Calculate extra km charges
         $extraKmCharges = 0;
         foreach ($items as $item) {
-            if (is_array($item) && !empty($item['extra_km'])) {
+            if (is_array($item) && empty($item['is_tour']) && !empty($item['extra_km'])) {
                 $extraKmCharges += (float) ($item['extra_km']['total_cost'] ?? 0);
             }
         }
@@ -472,6 +472,10 @@ class CartService
         $convertedItems = collect($items)->map(function ($item) use ($selectedCurrency) {
             $item = is_array($item) ? $item : (array) $item;
 
+            if (!empty($item['is_tour'])) {
+                unset($item['extra_km']);
+            }
+
             // Preserve package service indicators
             $serviceType = $item['service_type'] ?? '';
             $isPackage = ($item['is_package'] ?? false) || in_array($serviceType, ['wedding_hire', 'airport_transfers']);
@@ -523,7 +527,7 @@ class CartService
             }
 
             // Convert extra_km prices if present
-            if (isset($item['extra_km']) && is_array($item['extra_km'])) {
+            if (empty($item['is_tour']) && isset($item['extra_km']) && is_array($item['extra_km'])) {
                 $extraKm = $item['extra_km'];
                 $item['extra_km'] = [
                     'km' => $extraKm['km'] ?? 0,
@@ -849,7 +853,7 @@ class CartService
         $selectedCurrency = $this->currencyService->getSelectedCurrency();
 
         $addons = $query
-            ->select('id', 'name', 'description', 'thumbnail', 'amount', 'rate_type', 'min_qty', 'max_qty')
+            ->select('id', 'name', 'description', 'thumbnail', 'amount', 'rate_type', 'min_qty', 'max_qty', 'tags')
             ->orderBy('name')
             ->get()
             ->map(function ($addon) use ($selectedCurrency) {
@@ -867,6 +871,8 @@ class CartService
                     'rate_type' => $addon->rate_type,
                     'min_qty' => $addon->min_qty,
                     'max_qty' => $addon->max_qty,
+                    'is_child_seat' => collect($addon->tags ?? [])
+                        ->contains(fn ($tag): bool => is_string($tag) && mb_strtolower(trim($tag)) === 'child-seat'),
                     'currency' => $selectedCurrency
                 ];
             })->toArray();
@@ -981,7 +987,7 @@ class CartService
         // Calculate extra km charges (if any)
         $extraKmCharges = 0;
         foreach ($items as $item) {
-            if (is_array($item) && !empty($item['extra_km'])) {
+            if (is_array($item) && empty($item['is_tour']) && !empty($item['extra_km'])) {
                 $extraKmCharges += (float) ($item['extra_km']['total_cost'] ?? 0);
             }
         }
@@ -1341,6 +1347,10 @@ class CartService
      */
     public function getExtraKmOfferForItem(array $item): ?array
     {
+        if (!empty($item['is_tour'])) {
+            return null;
+        }
+
         $vehicleGroupId = $this->cartItemIdentifier($item, 'vehicle_group_id');
         $serviceTypeId = $this->cartItemNestedIdentifier($item, 'service_type_data', 'id');
 

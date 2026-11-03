@@ -166,7 +166,6 @@ class TourCatalogueController extends Controller
         }
 
         $days = [];
-        $destinationDays = [];
         foreach ($rawDays as $day) {
             if (!is_array($day) || !is_numeric($day['day_number'] ?? null) || !is_array($day['stops'] ?? null)) {
                 throw new \RuntimeException('The suggestion contains an invalid day.');
@@ -187,21 +186,6 @@ class TourCatalogueController extends Controller
                     || ($kind === 'destination' && !in_array($id, $destinationIds, true))
                     || ($kind === 'activity' && !$activityParents->has($id))) {
                     throw new \RuntimeException('The suggestion included a place outside the published catalogue.');
-                }
-                if ($kind === 'activity') {
-                    $parentId = $activityParents->get($id);
-                    if (isset($destinationDays[$parentId]) && $destinationDays[$parentId] !== $number) {
-                        throw new \RuntimeException('The suggestion repeats a place across days that the planner cannot represent yet.');
-                    }
-                    $destinationDays[$parentId] = $number;
-                    if (!isset($seen['destination:'.$parentId])) {
-                        $stops[] = ['kind' => 'destination', 'catalogue_id' => $parentId];
-                        $seen['destination:'.$parentId] = true;
-                    }
-                } elseif (isset($destinationDays[$id]) && $destinationDays[$id] !== $number) {
-                    throw new \RuntimeException('The suggestion repeats a place across days that the planner cannot represent yet.');
-                } else {
-                    $destinationDays[$id] = $number;
                 }
                 $key = $kind.':'.$id;
                 if (!isset($seen[$key])) {
@@ -330,10 +314,6 @@ class TourCatalogueController extends Controller
             }
         }
 
-        $destinationIds = collect($data['stops'])
-            ->where('kind', 'destination')
-            ->pluck('catalogue_id')
-            ->all();
         $visits = [];
         foreach ($data['stops'] as $stop) {
             if ($stop['kind'] === 'destination') {
@@ -349,7 +329,6 @@ class TourCatalogueController extends Controller
             } else {
                 $activity = TourActivity::query()
                     ->where('is_published', true)
-                    ->whereIn('tour_destination_id', $destinationIds)
                     ->whereHas('destination', fn($query) => $query
                         ->where('service_type_id', $service->id)
                         ->where('is_published', true))

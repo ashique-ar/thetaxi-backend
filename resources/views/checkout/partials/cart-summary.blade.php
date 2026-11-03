@@ -1,4 +1,7 @@
-@php $hasTourItem = collect($cart)->contains(fn ($item) => !empty($item['is_tour'])); @endphp
+@php
+    $hasTourItem = collect($cart)->contains(fn ($item) => !empty($item['is_tour']));
+    $hasNonTourItem = collect($cart)->contains(fn ($item) => empty($item['is_tour']));
+@endphp
 <div class="checkout-form-wrapper">
     <div class="checkout-form-title">
         <div class="checkout-summary-heading">
@@ -143,7 +146,7 @@
                         <li class="total-row">
                             <div>
                                 <strong>Total Amount</strong>
-                                <small>Includes selected add-ons and extra KM</small>
+                                <small>Includes selected add-ons{{ $hasNonTourItem ? ' and extra KM' : '' }}</small>
                             </div>
                             <strong class="checkout-summary-amount" data-summary-field="total">{{ $currencySymbol }}
                                 {{ number_format(floor(max(0, $total)), 0) }}</strong>

@@ -139,6 +139,9 @@ class CustomerPortalBookingController extends BookingFlowController
                 'kind' => $stop['kind'] ?? null,
                 'name' => $stop['name'] ?? null,
                 'visit_duration_minutes' => isset($stop['visit_duration_minutes']) ? (int) $stop['visit_duration_minutes'] : null,
+                'estimated_arrival' => $stop['estimated_arrival'] ?? null,
+                'opens_at' => $stop['opens_at'] ?? null,
+                'closes_at' => $stop['closes_at'] ?? null,
             ])->values()->all(),
         ])->values()->all();
     }

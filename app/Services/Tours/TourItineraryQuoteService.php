@@ -30,6 +30,13 @@ class TourItineraryQuoteService
         if ($routes['status'] === 'unavailable') {
             return $routes + ['price_difference' => null];
         }
+        if ($routes['status'] !== 'ready') {
+            $reason = 'This route has a timing conflict and needs staff review before a transport price can be confirmed.';
+            $routes['original']['quote'] = ['status' => 'quotation_required', 'reason' => $reason];
+            $routes['suggested']['quote'] = ['status' => 'quotation_required', 'reason' => $reason];
+
+            return $routes + ['price_difference' => null];
+        }
 
         $setting = ServiceVehicleClassSetting::query()
             ->where('service_type_id', $itinerary->service_type_id)
@@ -87,7 +94,7 @@ class TourItineraryQuoteService
             throw ValidationException::withMessages(['pricing' => 'This vehicle class requires staff confirmation.']);
         }
         $baseDistance = $routes['original']['distance_km'];
-        $calculation = $this->calculatePricing($itinerary, $baseDistance);
+        $calculation = $this->calculatePricing($itinerary, $baseDistance, true);
         if (($calculation['public']['status'] ?? null) !== 'priced') {
             throw ValidationException::withMessages(['pricing' => $calculation['public']['reason'] ?? 'Transport pricing needs staff review.']);
         }
@@ -101,6 +108,8 @@ class TourItineraryQuoteService
             'max_passengers' => (int) $setting->max_passengers,
             'max_luggage' => (int) $setting->max_luggage,
         ];
+        $fullPricingSnapshot['tour_pricing_lock']['branches'] = $fullPricingSnapshot['_tour_pricing_branches'] ?? [];
+        unset($fullPricingSnapshot['_tour_pricing_branches']);
 
         return DB::transaction(function () use ($itinerary, $revision, $routes, $fullPricingSnapshot, $pricing, $baseDistance): TourQuote {
             $locked = TourItinerary::query()->whereKey($itinerary->id)->lockForUpdate()->firstOrFail();
@@ -287,7 +296,11 @@ class TourItineraryQuoteService
         ];
     }
 
-    private function calculatePricing(TourItinerary $itinerary, float $distance): array
+    private function calculatePricing(
+        TourItinerary $itinerary,
+        float $distance,
+        bool $captureTourPricingBranches = false
+    ): array
     {
         $baseCurrency = $this->currencyService->getBookingBaseCurrency();
         $pricing = $this->bookingFlow->calculateDynamicPricing([
@@ -305,7 +318,7 @@ class TourItineraryQuoteService
             'total_distance' => $distance,
             'pricing_context' => $itinerary->pricing_context,
             'mode' => 'full_calculation',
-        ]);
+        ], $captureTourPricingBranches);
         $pricing = $this->currencyService->convertPricingStructure($pricing, $baseCurrency, $itinerary->currency);
         if (!isset($pricing['calculation_metadata']['definition_used']) || !is_numeric($pricing['total_amount'] ?? null)) {
             return [

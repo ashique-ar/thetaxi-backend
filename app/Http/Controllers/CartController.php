@@ -1275,6 +1275,13 @@ class CartController extends Controller
                 ], 404);
             }
 
+            if (!empty($items[$cartKey]['is_tour'])) {
+                return response()->json([
+                    'success' => false,
+                    'message' => 'Tour distance is already included in its accepted itinerary price.'
+                ], 422);
+            }
+
             $vehicleGroupId = $items[$cartKey]['vehicle_group_id'] ?? null;
             if (!$vehicleGroupId) {
                 return response()->json([

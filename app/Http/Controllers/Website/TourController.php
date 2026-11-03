@@ -48,7 +48,7 @@ class TourController extends Controller
         $inquiryId = $request->session()->get('tour_checkout_inquiry_id');
         abort_unless($customer && ($bookingId || $inquiryId), 404);
         $booking = $bookingId
-            ? Booking::query()->whereKey($bookingId)->where('customer_id', $customer->id)->firstOrFail()
+            ? Booking::query()->with('bookingItems.vehicleClass')->whereKey($bookingId)->where('customer_id', $customer->id)->firstOrFail()
             : null;
         $inquiry = $inquiryId
             ? Inquiry::query()->whereKey($inquiryId)->where('customer_id', $customer->id)->firstOrFail()
@@ -247,20 +247,35 @@ class TourController extends Controller
                 return Inquiry::query()->findOrFail($itinerary->review_inquiry_id);
             }
 
-            $days = $itinerary->days->map(fn ($day): array => [
-                'day_number' => $day->day_number,
-                'date' => $day->service_date,
-                'timezone' => $day->timezone,
-                'start' => $day->start_location_snapshot,
-                'end' => $day->end_location_snapshot,
-                'stops' => $day->stops->map(fn ($stop): array => [
-                    'kind' => $stop->kind,
-                    'name' => $stop->activity?->name ?? $stop->destination?->name,
-                    'location' => $stop->location_snapshot,
-                    'visit_duration_minutes' => $stop->visit_duration_minutes,
-                ])->values()->all(),
-            ])->values()->all();
             $quote = $itinerary->quotes()->whereIn('status', ['current', 'accepted'])->latest()->first();
+            $routeSnapshot = $quote?->route_snapshot;
+            $days = $itinerary->days->map(function ($day) use ($routeSnapshot): array {
+                $routeDay = collect(data_get($routeSnapshot, 'days', []))->firstWhere('day_number', (int) $day->day_number);
+                $schedule = collect($routeDay['schedule'] ?? [])->keyBy('stop_id');
+
+                return [
+                    'day_number' => $day->day_number,
+                    'date' => $day->service_date,
+                    'timezone' => $day->timezone,
+                    'start_time' => substr((string) $day->start_time, 0, 5),
+                    'start' => $day->start_location_snapshot,
+                    'end' => $day->end_location_snapshot,
+                    'stops' => $day->stops->map(function ($stop) use ($schedule): array {
+                        $timing = $schedule->get((string) $stop->id, []);
+
+                        return [
+                            'kind' => $stop->kind,
+                            'name' => $stop->activity?->name ?? $stop->destination?->name,
+                            'location' => $stop->location_snapshot,
+                            'visit_duration_minutes' => $stop->visit_duration_minutes,
+                            'arrival_time' => $stop->arrival_time ? substr((string) $stop->arrival_time, 0, 5) : null,
+                            'estimated_arrival' => $timing['estimated_arrival'] ?? null,
+                            'opens_at' => $timing['opens_at'] ?? null,
+                            'closes_at' => $timing['closes_at'] ?? null,
+                        ];
+                    })->values()->all(),
+                ];
+            })->values()->all();
             $name = trim((string) $user->first_name.' '.(string) $user->last_name);
             $inquiry = Inquiry::createWithUniqueNumber([
                 'customer_id' => $customer->id,

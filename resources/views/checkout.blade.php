@@ -2489,11 +2489,12 @@
                     if (qty > 0) {
                         selectedCount++;
                     }
+                    const isChildSeat = addon.is_child_seat === true;
                     const maxQty = Number(addon.max_qty || 999);
                     return `
                         <div class="checkout-addon-card" data-addon-id="${addon.id}">
                             <div class="checkout-addon-info">
-                                <strong>${checkoutEscapeHtml(addon.name)}</strong>
+                                <strong>${checkoutEscapeHtml(addon.name)}${isChildSeat ? ' · Child seat' : ''}</strong>
                                 <small>${checkoutEscapeHtml(addon.description || 'Add-on')}</small>
                                 <small>${checkoutAddonAmount(addon)}</small>
                             </div>

@@ -15,6 +15,7 @@ use App\Models\Service\ServiceType;
 use App\Models\Tours\TourItinerary;
 use App\Models\TermsAndCondition;
 use App\Models\Vehicle\VehicleGroup;
+use App\Models\Vehicle\VehicleAddon;
 use App\Models\User;
 use App\Models\Website\WebsiteSetting;
 use App\Models\Website\PendingPaymentLink;
@@ -113,23 +114,38 @@ class CheckoutController extends Controller
         );
         abort_unless($serviceType->is_active && $serviceType->tour_booking_enabled, 409, 'This Tour is no longer accepting bookings.');
 
-        $days = $itinerary->days->map(fn ($day): array => [
-            'day_number' => $day->day_number,
-            'service_date' => $day->service_date?->toDateString(),
-            'timezone' => $day->timezone,
-            'start_time' => substr((string) $day->start_time, 0, 5),
-            'start_location' => $day->start_location_snapshot,
-            'end_location' => $day->end_location_snapshot,
-            'overnight_location' => $day->overnight_destination_id,
-            'stops' => $day->stops->map(fn ($stop): array => [
-                'kind' => $stop->kind,
-                'name' => $stop->activity?->name ?? $stop->destination?->name ?? data_get($stop->location_snapshot, 'name'),
-                'location' => $stop->location_snapshot,
-                'visit_duration_minutes' => $stop->visit_duration_minutes,
-                'activity_id' => $stop->tour_activity_id,
-                'destination_id' => $stop->tour_destination_id,
-            ])->values()->all(),
-        ])->values()->all();
+        $days = $itinerary->days->map(function ($day) use ($quote): array {
+            $routeDay = collect(data_get($quote->route_snapshot, 'days', []))->firstWhere('day_number', (int) $day->day_number);
+            $schedule = collect($routeDay['schedule'] ?? [])->keyBy('stop_id');
+
+            return [
+                'day_number' => $day->day_number,
+                'service_date' => $day->service_date?->toDateString(),
+                'timezone' => $day->timezone,
+                'start_time' => substr((string) $day->start_time, 0, 5),
+                'start_location' => $day->start_location_snapshot,
+                'end_location' => $day->end_location_snapshot,
+                'overnight_location' => $day->overnight_destination_id,
+                'stops' => $day->stops->map(function ($stop) use ($schedule): array {
+                    $timing = $schedule->get((string) $stop->id, []);
+
+                    return [
+                        'id' => (string) $stop->id,
+                        'kind' => $stop->kind,
+                        'name' => $stop->activity?->name ?? $stop->destination?->name ?? data_get($stop->location_snapshot, 'name'),
+                        'location' => $stop->location_snapshot,
+                        'visit_duration_minutes' => $stop->visit_duration_minutes,
+                        'arrival_time' => $stop->arrival_time ? substr((string) $stop->arrival_time, 0, 5) : null,
+                        'estimated_arrival' => $timing['estimated_arrival'] ?? null,
+                        'opens_at' => $timing['opens_at'] ?? null,
+                        'closes_at' => $timing['closes_at'] ?? null,
+                        'is_locked' => (bool) $stop->is_locked,
+                        'activity_id' => $stop->tour_activity_id,
+                        'destination_id' => $stop->tour_destination_id,
+                    ];
+                })->values()->all(),
+            ];
+        })->values()->all();
         $lastDay = $itinerary->start_date->copy()->addDays($itinerary->duration_days - 1)->toDateString();
         $amountLkr = $this->currencyService->convertToLKR((float) $quote->total_amount, $quote->currency);
         $key = 'tour-'.$itinerary->id;
@@ -189,6 +205,28 @@ class CheckoutController extends Controller
                 || !$this->cartService->addAddon($cart, $key, (string) ($addon['id'] ?? $addonId), $quantity)) {
                 throw ValidationException::withMessages([
                     'addons' => ['A selected add-on is no longer available. It has been removed; review the updated total before continuing.'],
+                ]);
+            }
+        }
+        $requiredSeats = (int) $itinerary->child_seat_count;
+        if ($requiredSeats > 0) {
+            $selectedSeatAddons = VehicleAddon::query()
+                ->available()
+                ->whereIn('id', collect($existingAddons)->map(fn ($addon, $id) => is_array($addon) ? ($addon['id'] ?? $id) : $id)->all())
+                ->get(['id', 'tags'])
+                ->filter(fn (VehicleAddon $addon): bool => collect($addon->tags ?? [])
+                    ->contains(fn ($tag): bool => is_string($tag) && mb_strtolower(trim($tag)) === 'child-seat'))
+                ->keyBy('id');
+            $selectedSeatCount = collect($existingAddons)->sum(function ($addon, $id) use ($selectedSeatAddons): int {
+                if (!is_array($addon) || !$selectedSeatAddons->has($addon['id'] ?? $id)) {
+                    return 0;
+                }
+
+                return max(0, (int) ($addon['qty'] ?? 0));
+            });
+            if ($selectedSeatCount < $requiredSeats) {
+                throw ValidationException::withMessages([
+                    'addons' => ["Select at least {$requiredSeats} child-seat add-on(s) to match your Tour request, or return to Tours to change the requested seat count."],
                 ]);
             }
         }

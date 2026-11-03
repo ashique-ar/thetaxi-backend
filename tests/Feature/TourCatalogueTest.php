@@ -199,7 +199,7 @@ class TourCatalogueTest extends TestCase
         }
     }
 
-    public function test_package_template_rejects_unpublished_or_cross_service_destinations(): void
+    public function test_package_template_allows_activity_access_point_without_parent_stop_and_rejects_unpublished_destinations(): void
     {
         $serviceId = 'c2c58e96-7a3d-4974-81b8-2f6fef280947';
         $locationId = 'fdf67648-c2dd-4622-9a2b-bca6706026f1';
@@ -215,6 +215,15 @@ class TourCatalogueTest extends TestCase
 
         $controller = new ServicePackageController(app(PricingContextPolicyService::class));
         $validate = new \ReflectionMethod($controller, 'assertTourItineraryTemplate');
+        $activityId = 'f985d2b4-0f43-425e-b608-1cd123a887b2';
+        DB::table('tour_activities')->insert([
+            'id' => $activityId,
+            'tour_destination_id' => $destinationId,
+            'predefined_location_id' => $locationId,
+            'code' => 'garden-gate',
+            'name' => 'Garden gate visit',
+            'is_published' => true,
+        ]);
         $template = ['days' => [[
             'day_number' => 1,
             'timezone' => 'Asia/Colombo',
@@ -222,6 +231,9 @@ class TourCatalogueTest extends TestCase
             'end_destination_id' => $destinationId,
             'stops' => [['kind' => 'destination', 'catalogue_id' => $destinationId]],
         ]]];
+        $validate->invoke($controller, ServiceType::findOrFail($serviceId), $template);
+
+        $template['days'][0]['stops'] = [['kind' => 'activity', 'catalogue_id' => $activityId]];
         $validate->invoke($controller, ServiceType::findOrFail($serviceId), $template);
 
         $template['days'][0]['end_destination_id'] = 'e0b17b74-93e2-49cb-aa73-7c1d12bb4a35';
@@ -295,7 +307,7 @@ class TourCatalogueTest extends TestCase
         self::assertArrayNotHasKey('ticket_price', $activity);
     }
 
-    public function test_ai_suggestion_output_is_limited_to_published_catalogue_ids_and_keeps_activity_parent(): void
+    public function test_ai_suggestion_routes_activities_to_their_access_points_across_days_and_uses_published_ids(): void
     {
         $controller = new TourCatalogueController;
         $location = $controller->storeLocation(Request::create('/tours/locations', 'POST', [
@@ -313,6 +325,12 @@ class TourCatalogueTest extends TestCase
             'code' => 'ai-garden', 'name' => 'Garden visit', 'visit_duration_minutes' => 60,
             'is_published' => true,
         ]))->getData(true)['data'];
+        $secondActivity = $controller->storeActivity(Request::create('/tours/activities', 'POST', [
+            'tour_destination_id' => $destination['id'],
+            'predefined_location_id' => $location['id'],
+            'code' => 'ai-lake-visit', 'name' => 'Lake visit', 'visit_duration_minutes' => 45,
+            'is_published' => true,
+        ]))->getData(true)['data'];
         $published = \App\Models\Tours\TourDestination::query()->with([
             'activities' => fn($query) => $query->where('is_published', true),
         ])->where('is_published', true)->get();
@@ -323,9 +341,13 @@ class TourCatalogueTest extends TestCase
         ]], 1, $published);
 
         self::assertSame([
-            ['kind' => 'destination', 'catalogue_id' => $destination['id']],
             ['kind' => 'activity', 'catalogue_id' => $activity['id']],
         ], $suggestion[0]['stops']);
+        $spreadAcrossDays = $sanitize->invoke($controller, [
+            ['day_number' => 1, 'stops' => [['kind' => 'activity', 'catalogue_id' => $activity['id']]]],
+            ['day_number' => 2, 'stops' => [['kind' => 'activity', 'catalogue_id' => $secondActivity['id']]]],
+        ], 2, $published);
+        self::assertSame($secondActivity['id'], $spreadAcrossDays[1]['stops'][0]['catalogue_id']);
         try {
             $sanitize->invoke($controller, [['day_number' => 1, 'stops' => [['kind' => 'destination', 'catalogue_id' => (string) \Illuminate\Support\Str::uuid()]]]], 1, $published);
             self::fail('AI output must not introduce an unpublished or unknown location.');
@@ -367,8 +389,9 @@ class TourCatalogueTest extends TestCase
         $result = $controller->suggestPublicItinerary($request, $ai)->getData(true);
 
         self::assertTrue($result['success']);
-        self::assertSame($destination['id'], $result['data']['days'][0]['stops'][0]['catalogue_id']);
-        self::assertSame($activity['id'], $result['data']['days'][0]['stops'][1]['catalogue_id']);
+        self::assertSame([
+            ['kind' => 'activity', 'catalogue_id' => $activity['id']],
+        ], $result['data']['days'][0]['stops']);
         self::assertStringContainsString('do not confirm availability', $result['data']['notice']);
     }
 

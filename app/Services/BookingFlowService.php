@@ -5413,7 +5413,7 @@ class BookingFlowService
      * Calculate dynamic pricing using calculation definitions
      * This is the core method that integrates with the dynamic calculation system
      */
-    public function calculateDynamicPricing(array $params): array
+    public function calculateDynamicPricing(array $params, bool $captureTourPricingBranches = false): array
     {
         try {
             $params = app(PricingContextPolicyService::class)->normalizeCalculationParams($params);
@@ -5447,13 +5447,36 @@ class BookingFlowService
             $trustedTourItem = $this->trustedTourBookingItem($params, (string) $serviceTypeId);
             if ($trustedTourItem) {
                 $lock = data_get($trustedTourItem->metadata, 'pricing_snapshot.tour_pricing_lock');
-                $definitionData = data_get($lock, 'definition');
-                if (!is_array($definitionData) || (string) ($definitionData['id'] ?? '') !== (string) data_get($lock, 'definition_id')) {
-                    throw new \DomainException('The accepted Tour pricing definition snapshot is missing or incomplete. Final pricing was stopped.');
+                $branchSnapshots = data_get($lock, 'branches');
+                if (is_array($branchSnapshots) && $branchSnapshots !== []) {
+                    $calculationDefinitions = collect($branchSnapshots)
+                        ->filter(fn ($branch, $id) => is_array($branch)
+                            && is_array($branch['definition'] ?? null)
+                            && (string) ($branch['definition']['id'] ?? '') === (string) $id)
+                        ->sortBy(fn (array $branch) => (int) ($branch['order'] ?? PHP_INT_MAX))
+                        ->map(function (array $branch) use ($serviceTypeId, $params) {
+                            $definition = (new VehiclePricingCalculationDefinition)->forceFill($branch['definition']);
+                            $serviceType = $this->resolveCalculationServiceType($serviceTypeId, $params);
+                            if ($serviceType) {
+                                $serviceType = clone $serviceType;
+                                $serviceType->pricing_basis = 'vehicle_class';
+                            }
+                            $definition->setRelation('serviceType', $serviceType);
+
+                            return $definition;
+                        })->values();
+                    if ($calculationDefinitions->isEmpty()) {
+                        throw new \DomainException('The accepted Tour pricing branch snapshots are incomplete. Final pricing was stopped.');
+                    }
+                } else {
+                    $definitionData = data_get($lock, 'definition');
+                    if (!is_array($definitionData) || (string) ($definitionData['id'] ?? '') !== (string) data_get($lock, 'definition_id')) {
+                        throw new \DomainException('The accepted Tour pricing definition snapshot is missing or incomplete. Final pricing was stopped.');
+                    }
+                    $definition = (new VehiclePricingCalculationDefinition)->forceFill($definitionData);
+                    $definition->setRelation('serviceType', $this->resolveCalculationServiceType($serviceTypeId, $params));
+                    $calculationDefinitions = collect([$definition]);
                 }
-                $definition = (new VehiclePricingCalculationDefinition)->forceFill($definitionData);
-                $definition->setRelation('serviceType', $this->resolveCalculationServiceType($serviceTypeId, $params));
-                $calculationDefinitions = collect([$definition]);
             }
 
             if ($calculationDefinitions->isEmpty()) {
@@ -5506,6 +5529,13 @@ class BookingFlowService
 
             // Resolve Service Package information
             $servicePackageInfo = $this->getServicePackageInformation($calculationInputs);
+            if ($trustedTourItem) {
+                $lock = data_get($trustedTourItem->metadata, 'pricing_snapshot.tour_pricing_lock', []);
+                $primaryBranch = data_get($lock, 'branches.' . (string) ($lock['definition_id'] ?? ''));
+                if (is_array($primaryBranch) && array_key_exists('service_package_info', $primaryBranch)) {
+                    $servicePackageInfo = $primaryBranch['service_package_info'];
+                }
+            }
 
             // Resolve district pricing adjustment
             $districtInfo = null;
@@ -5521,6 +5551,81 @@ class BookingFlowService
             $calculationDefinition = $orchestration['definition'];
             $calculationResult = $orchestration['result'];
             $candidateFailures = $orchestration['candidate_failures'];
+
+            $tourPricingBranches = [];
+            if ($captureTourPricingBranches
+                && $this->resolveCalculationServiceType($serviceTypeId, $params)?->pricing_basis === 'vehicle_class') {
+                $adjustmentQuery = PriceAdjustment::query()
+                    ->active()
+                    ->valid(
+                        Carbon::parse($calculationInputs['from_date'] ?? now()),
+                        Carbon::parse($calculationInputs['to_date'] ?? $calculationInputs['from_date'] ?? now())
+                    )
+                    ->withinUsageLimit()
+                    ->forPricingContext($calculationInputs['pricing_context'] ?? 'public')
+                    ->forService((string) $serviceTypeId)
+                    ->whereNull('vehicle_group_id');
+                if ($ownerType && $ownerId) {
+                    $adjustmentQuery->where(function ($query) use ($ownerType, $ownerId) {
+                        $query->where(fn ($scoped) => $scoped
+                            ->where('owner_type', $ownerType)
+                            ->where('owner_id', $ownerId))
+                            ->orWhereNull('owner_type');
+                    });
+                } else {
+                    $adjustmentQuery->whereNull('owner_type')->whereNull('owner_id');
+                }
+                $acceptedAdjustments = $adjustmentQuery->orderByPriority()->get()->map(
+                    fn (PriceAdjustment $adjustment) => $adjustment->only([
+                        'id', 'name', 'description', 'scope', 'service_type_id', 'vehicle_group_id',
+                        'owner_type', 'owner_id', 'adjustment_type', 'percentage_change',
+                        'fixed_amount_change', 'applies_to', 'applicable_contexts',
+                        'minimum_booking_amount', 'maximum_discount_amount', 'is_active',
+                        'priority', 'is_cumulative', 'valid_from', 'valid_to', 'usage_limit',
+                        'usage_count', 'created_at',
+                    ])
+                )->values()->all();
+                $branchOrder = 0;
+                foreach ($calculationDefinitions as $candidate) {
+                    $candidateOrder = $branchOrder++;
+                    $definition = clone $candidate;
+                    $definition->setRelation('serviceType', $this->resolveCalculationServiceType($serviceTypeId, $params));
+                    $definition->conditions = [];
+                    $branchResult = $definition->calculatePrice(
+                        $calculationInputs,
+                        $appliedCustomizations,
+                        $servicePackageInfo,
+                        $districtInfo
+                    );
+                    if (($branchResult['calculation_success'] ?? false) !== true) {
+                        continue;
+                    }
+                    $conditionFields = collect($candidate->conditions ?? [])
+                        ->flatMap(fn ($condition) => array_filter([
+                            $condition['field'] ?? null,
+                            $condition['value_field'] ?? null,
+                        ]))
+                        ->unique();
+                    $tourPricingBranches[(string) $candidate->id] = [
+                        'order' => $candidateOrder,
+                        'definition' => $candidate->only([
+                            'id', 'service_type_id', 'name', 'formula', 'variables', 'conditions',
+                            'owner_type', 'owner_id', 'priority',
+                        ]),
+                        'condition_inputs' => $conditionFields
+                            ->filter(fn ($field) => array_key_exists($field, $calculationInputs))
+                            ->mapWithKeys(fn ($field) => [$field => $calculationInputs[$field]])
+                            ->all(),
+                        'resolved_variables' => $branchResult['resolved_variables'] ?? [],
+                        'rate_sources' => $branchResult['rate_sources'] ?? [],
+                        'service_package_info' => $servicePackageInfo,
+                        'package_included_km' => $calculationInputs['package_included_km']
+                            ?? data_get($branchResult, 'km_calculations.allowed_km'),
+                        'slab_information' => $branchResult['slab_info'] ?? null,
+                        'price_adjustments' => $acceptedAdjustments,
+                    ];
+                }
+            }
 
             if (!$calculationDefinition || !$calculationResult) {
                 Log::warning('No calculation definition matched the pricing scenario', [
@@ -5562,6 +5667,9 @@ class BookingFlowService
                 ])
                 ->values()
                 ->all();
+            if ($tourPricingBranches !== []) {
+                $transformed['_tour_pricing_branches'] = $tourPricingBranches;
+            }
             $transformed['calculation_metadata']['runtime_context'] = collect($calculationInputs)
                 ->only([
                     'from_date',
@@ -9844,6 +9952,7 @@ class BookingFlowService
                         ->orderBy('created_at');
                 },
                 'serviceType:id,name,tour_booking_enabled',
+                'vehicleClass:id,name',
                 'vehicle',
                 'vehicle.vehicleGroup:id,name',
                 'driver',
@@ -10748,6 +10857,9 @@ class BookingFlowService
                 'name' => $itemServiceType->name,
                 'tour_booking_enabled' => (bool) $itemServiceType->tour_booking_enabled,
             ] : null,
+            'pricing_basis' => $item->pricing_basis ?? 'vehicle_group',
+            'vehicle_class_id' => $item->vehicle_class_id ? (string) $item->vehicle_class_id : null,
+            'vehicle_class_name' => $item->vehicleClass?->name,
             'customer' => [
                 'id' => (string) ($customer?->id ?? ''),
                 'code' => $customer?->code,
@@ -10832,6 +10944,8 @@ class BookingFlowService
             'total_amount' => (float) ($item->total_price ?? 0),
             'booking_total_amount' => (float) ($booking?->total_actual ?? $booking?->total_estimated ?? 0),
             'currency' => $item->currency ?? $this->currencyService->getBookingBaseCurrency(),
+            'payment_status' => $booking?->payment_status,
+            'payment_method' => $booking?->payment_method,
             'payment_collected_amount' => $booking?->payment_collected_amount !== null
                 ? (float) $booking->payment_collected_amount
                 : null,
@@ -10839,6 +10953,7 @@ class BookingFlowService
                 ? (float) $booking->discount_amount
                 : 0.0,
             'created_at' => $item->created_at ?? $booking?->created_at,
+            'updated_at' => $booking?->updated_at,
             'requires_approval' => $requiresApproval,
             'booking_requires_approval' => $requiresApproval,
             'approval_triggers' => $approvalTriggers,

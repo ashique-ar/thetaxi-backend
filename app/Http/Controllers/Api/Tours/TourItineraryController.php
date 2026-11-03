@@ -244,19 +244,34 @@ class TourItineraryController extends Controller
             }
             $itinerary->load(['serviceType', 'package', 'vehicleClass', 'days.stops.activity', 'days.stops.destination']);
             $quote = $itinerary->quotes()->whereIn('status', ['current', 'accepted'])->latest()->first();
-            $days = $itinerary->days->map(fn ($day): array => [
-                'day_number' => $day->day_number,
-                'date' => $day->service_date,
-                'timezone' => $day->timezone,
-                'start' => $day->start_location_snapshot,
-                'end' => $day->end_location_snapshot,
-                'stops' => $day->stops->map(fn ($stop): array => [
-                    'kind' => $stop->kind,
-                    'name' => $stop->activity?->name ?? $stop->destination?->name,
-                    'location' => $stop->location_snapshot,
-                    'visit_duration_minutes' => $stop->visit_duration_minutes,
-                ])->values()->all(),
-            ])->values()->all();
+            $routeSnapshot = $quote?->route_snapshot;
+            $days = $itinerary->days->map(function ($day) use ($routeSnapshot): array {
+                $routeDay = collect(data_get($routeSnapshot, 'days', []))->firstWhere('day_number', (int) $day->day_number);
+                $schedule = collect($routeDay['schedule'] ?? [])->keyBy('stop_id');
+
+                return [
+                    'day_number' => $day->day_number,
+                    'date' => $day->service_date,
+                    'timezone' => $day->timezone,
+                    'start_time' => substr((string) $day->start_time, 0, 5),
+                    'start' => $day->start_location_snapshot,
+                    'end' => $day->end_location_snapshot,
+                    'stops' => $day->stops->map(function ($stop) use ($schedule): array {
+                        $timing = $schedule->get((string) $stop->id, []);
+
+                        return [
+                            'kind' => $stop->kind,
+                            'name' => $stop->activity?->name ?? $stop->destination?->name,
+                            'location' => $stop->location_snapshot,
+                            'visit_duration_minutes' => $stop->visit_duration_minutes,
+                            'arrival_time' => $stop->arrival_time ? substr((string) $stop->arrival_time, 0, 5) : null,
+                            'estimated_arrival' => $timing['estimated_arrival'] ?? null,
+                            'opens_at' => $timing['opens_at'] ?? null,
+                            'closes_at' => $timing['closes_at'] ?? null,
+                        ];
+                    })->values()->all(),
+                ];
+            })->values()->all();
             $inquiry = Inquiry::createWithUniqueNumber([
                 'customer_id' => $customer->id,
                 'name' => trim((string) $user->first_name.' '.(string) $user->last_name),
@@ -355,7 +370,7 @@ class TourItineraryController extends Controller
 
     private function validateItinerary(Request $request, bool $updating = false): array
     {
-        return $request->validate([
+        $data = $request->validate([
             'service_type_id' => [$updating ? 'sometimes' : 'required', 'uuid', 'exists:service_types,id'],
             'service_package_id' => 'nullable|uuid',
             'service_package_template_version' => 'nullable|integer|min:1',
@@ -382,6 +397,12 @@ class TourItineraryController extends Controller
             'days.*.stops.*.is_locked' => 'sometimes|boolean',
             'days.*.stops.*.arrival_time' => 'nullable|date_format:H:i',
         ]);
+
+        if (!collect($data['days'])->contains(fn (array $day): bool => !empty($day['stops']))) {
+            throw ValidationException::withMessages(['days' => 'Select at least one destination or activity visit for the Tour.']);
+        }
+
+        return $data;
     }
 
     private function assertConfiguration(array $data, Request $request): ServiceType
@@ -497,8 +518,6 @@ class TourItineraryController extends Controller
                 'overnight_destination_id' => $overnight?->id,
                 'is_locked' => $dayData['is_locked'] ?? false,
             ]);
-            $destinationIds = collect($dayData['stops'] ?? [])->where('kind', 'destination')->pluck('catalogue_id')->all();
-
             foreach (($dayData['stops'] ?? []) as $index => $stopData) {
                 if ($stopData['kind'] === 'destination') {
                     $destination = TourDestination::query()
@@ -513,7 +532,6 @@ class TourItineraryController extends Controller
                 } else {
                     $activity = TourActivity::query()
                         ->where('is_published', true)
-                        ->whereIn('tour_destination_id', $destinationIds)
                         ->whereHas('destination', fn($query) => $query
                             ->where('service_type_id', $itinerary->service_type_id)
                             ->where('is_published', true))
