@@ -120,7 +120,10 @@ class TourClassPricingMigrationTest extends TestCase
 
         self::assertCount(2, $copies);
         self::assertSame('standard', DB::table('vehicle_group_pricing')->where('id', $copies['class'])->value('vehicle_class_id'));
-        self::assertStringContainsString('copied-definition', DB::table('vehicle_group_pricing')->where('id', $copies['class'])->value('class_rate_scope'));
+        self::assertSame('copied-definition', DB::table('vehicle_group_pricing')->where('id', $copies['class'])->value('slab_definition_id'));
+        if (Schema::hasColumn('vehicle_group_pricing', 'class_rate_scope')) {
+            self::assertStringContainsString('copied-definition', DB::table('vehicle_group_pricing')->where('id', $copies['class'])->value('class_rate_scope'));
+        }
         self::assertSame('group', DB::table('vehicle_group_pricing')->where('id', $copies['existing'])->value('vehicle_group_id'));
     }
 

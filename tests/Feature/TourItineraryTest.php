@@ -200,6 +200,32 @@ class TourItineraryTest extends TestCase
         (require database_path('migrations/2026_11_02_000009_add_tour_quote_terms_evidence.php'))->up();
         (require database_path('migrations/2026_11_02_000010_add_configured_fields_to_tour_itineraries.php'))->up();
         (require database_path('migrations/2026_11_02_000011_add_review_inquiry_to_tour_itineraries.php'))->up();
+        (require database_path('migrations/2026_11_03_000001_add_child_seat_count_to_tour_itineraries.php'))->up();
+        (require database_path('migrations/2025_12_01_120002_create_price_adjustments_table.php'))->up();
+        Schema::table('price_adjustments', function (Blueprint $table): void {
+            $table->string('owner_type')->nullable();
+            $table->uuid('owner_id')->nullable();
+            $table->json('applicable_contexts')->nullable();
+        });
+        Schema::create('migrations', function (Blueprint $table): void {
+            $table->id();
+            $table->string('migration');
+            $table->integer('batch');
+        });
+        DB::table('migrations')->insert(collect([
+            '2026_11_02_000001_add_class_targets_to_vehicle_pricing',
+            '2026_11_02_000002_add_service_class_settings_and_purchased_booking_class',
+            '2026_11_02_000003_create_tour_catalogue',
+            '2026_11_02_000004_create_tour_itineraries_and_quotes',
+            '2026_11_02_000005_link_tour_itinerary_to_booking',
+            '2026_11_02_000006_add_tour_day_start_time',
+            '2026_11_02_000007_add_tour_templates_to_service_packages',
+            '2026_11_02_000008_version_tour_package_templates',
+            '2026_11_02_000009_add_tour_quote_terms_evidence',
+            '2026_11_02_000010_add_configured_fields_to_tour_itineraries',
+            '2026_11_02_000011_add_review_inquiry_to_tour_itineraries',
+            '2026_11_03_000001_add_child_seat_count_to_tour_itineraries',
+        ])->map(fn (string $migration) => ['migration' => $migration, 'batch' => 1])->all());
         DB::table('users')->insert(['id' => self::USER_ID, 'email' => 'tour-customer@example.test', 'first_name' => 'Tour', 'last_name' => 'Customer', 'phone' => '+94770000000']);
         DB::table('service_types')->insert([
             'id' => self::SERVICE_ID,

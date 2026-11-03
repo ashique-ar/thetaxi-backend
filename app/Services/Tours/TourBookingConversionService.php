@@ -97,7 +97,7 @@ class TourBookingConversionService
                         return [
                             'id' => (string) $stop->id,
                             'kind' => $stop->kind,
-                            'name' => $stop->activity?->name ?? $stop->destination?->name ?? data_get($stop->location_snapshot, 'name'),
+                            'name' => $timing['stop_name'] ?? $stop->activity?->name ?? $stop->destination?->name ?? data_get($stop->location_snapshot, 'name'),
                             'location' => $stop->location_snapshot,
                             'visit_duration_minutes' => $stop->visit_duration_minutes,
                             'arrival_time' => $stop->arrival_time ? substr((string) $stop->arrival_time, 0, 5) : null,

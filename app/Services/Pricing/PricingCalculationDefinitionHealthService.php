@@ -514,7 +514,8 @@ class PricingCalculationDefinitionHealthService
                 'unpriced_slab_ids' => $unpricedSlabs->pluck('id')->values()->all(),
                 'applicable_vehicle_group_ids' => $targetColumn === 'vehicle_group_id' ? $applicableTargetIds->all() : [],
                 'applicable_vehicle_class_ids' => $targetColumn === 'vehicle_class_id' ? $applicableTargetIds->all() : [],
-                'missing_public_group_values' => $missingPublicPairs,
+                'missing_public_group_values' => $targetColumn === 'vehicle_group_id' ? $missingPublicPairs : [],
+                'missing_public_class_values' => $targetColumn === 'vehicle_class_id' ? $missingPublicPairs : [],
                 'rate_types' => $rateTypes->all(),
                 'public_value_count' => $pricing->whereNull('owner_type')->count(),
                 'corporate_value_count' => $pricing->where('owner_type', 'corporate')->count(),
@@ -629,7 +630,7 @@ class PricingCalculationDefinitionHealthService
         if ($missingPublicGroups->isNotEmpty()) {
             $corporateScope = $ownerType === 'corporate' && $ownerId;
             $issues[] = $this->issue(
-                'missing_public_common_rate_group_values',
+                'missing_public_common_rate_' . ($targetColumn === 'vehicle_class_id' ? 'class' : 'group') . '_values',
                 'error',
                 'common_rate_dependency',
                 $serviceTypeId,
@@ -638,8 +639,8 @@ class PricingCalculationDefinitionHealthService
                     . ($corporateScope ? 'effective corporate or public fallback' : 'public')
                     . ' value for ' . $missingPublicGroups->count() . ' applicable ' . $this->pricingTargetLabel($targetColumn) . '(s).',
                 $corporateScope
-                    ? 'Configure a corporate value or a public fallback for each assigned vehicle group.'
-                    : 'Configure a public baseline for each applicable vehicle group; corporate rows are overrides only.'
+                    ? 'Configure a corporate value or a public fallback for each applicable target.'
+                    : 'Configure a public baseline for each applicable target; corporate rows are overrides only.'
             );
         }
 

@@ -1417,7 +1417,8 @@ class MobileAssignmentService
                 }
                 if (!empty($stop['estimated_arrival'])) {
                     $line .= '; ETA ' . $stop['estimated_arrival'];
-                } elseif (!empty($stop['arrival_time'])) {
+                }
+                if (!empty($stop['arrival_time'])) {
                     $line .= '; fixed arrival ' . $stop['arrival_time'];
                 }
                 if (isset($stop['visit_duration_minutes'])) {

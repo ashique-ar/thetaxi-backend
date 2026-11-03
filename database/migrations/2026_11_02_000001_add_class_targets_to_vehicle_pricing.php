@@ -76,24 +76,24 @@ return new class extends Migration
                     DB::unprepared("DROP TRIGGER IF EXISTS {$constraint}_{$event}");
                 }
             } elseif (DB::getDriverName() === 'mysql') {
-                DB::statement("ALTER TABLE {$name} DROP CHECK {$constraint}");
+                $serverVersion = (string) DB::connection()->getPdo()->getAttribute(PDO::ATTR_SERVER_VERSION);
+                $dropClause = stripos($serverVersion, 'mariadb') !== false ? 'DROP CONSTRAINT' : 'DROP CHECK';
+                DB::statement("ALTER TABLE {$name} {$dropClause} {$constraint}");
             } else {
                 DB::statement("ALTER TABLE {$name} DROP CONSTRAINT {$constraint}");
             }
             if (DB::getDriverName() === 'mysql') {
                 Schema::table($name, function (Blueprint $table): void {
                     $table->dropUnique(['class_rate_scope']);
+                    $table->dropColumn('class_rate_scope');
                 });
             } else {
                 DB::statement("DROP INDEX IF EXISTS {$name}_class_scope_unique");
             }
             Schema::table($name, function (Blueprint $table) use ($index): void {
-                $table->dropIndex($index);
                 $table->dropForeign(['vehicle_class_id']);
+                $table->dropIndex($index);
                 $table->dropColumn('vehicle_class_id');
-                if (DB::getDriverName() === 'mysql') {
-                    $table->dropColumn('class_rate_scope');
-                }
             });
         }
         Schema::table('service_types', fn (Blueprint $table) => $table->dropColumn(['pricing_basis', 'tour_booking_enabled']));
