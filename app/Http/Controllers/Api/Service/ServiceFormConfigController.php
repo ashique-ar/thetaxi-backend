@@ -985,6 +985,11 @@ class ServiceFormConfigController extends Controller
             }
 
             foreach ($formConfig as $fieldName => $fieldConfig) {
+                if (($fieldConfig['type'] ?? null) !== 'location'
+                    || ($fieldConfig['location_mode'] ?? null) !== 'predefined_or_custom') {
+                    continue;
+                }
+
                 foreach ($fieldConfig['options'] ?? [] as $optionIndex => $option) {
                     if (($option['action'] ?? null) !== 'fixed_location') {
                         continue;

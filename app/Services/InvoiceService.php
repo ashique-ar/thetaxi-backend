@@ -397,6 +397,9 @@ class InvoiceService
                 );
                 $routeAndDuration = collect([
                     $durationLabel,
+                    (int) ($metadata['tour_child_seat_count'] ?? 0) > 0
+                        ? 'Child seats requested: ' . (int) $metadata['tour_child_seat_count'] . ' (subject to confirmation)'
+                        : null,
                     $routeSummary,
                 ])->filter()->implode(' · ');
                 $routeLimit = max(0, 1400 - mb_strlen($activityNotice) - 3);

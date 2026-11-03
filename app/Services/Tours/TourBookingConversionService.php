@@ -75,6 +75,9 @@ class TourBookingConversionService
             $fromDate = $locked->start_date->toDateString();
             $toDate = $locked->start_date->copy()->addDays($locked->duration_days - 1)->toDateString();
             $partySize = (int) $locked->adult_count + (int) $locked->child_count;
+            if ((int) $locked->child_seat_count > (int) $locked->child_count) {
+                throw ValidationException::withMessages(['child_seat_count' => 'Child seats cannot exceed the number of children travelling.']);
+            }
             $routeSnapshot = $quote->route_snapshot;
             $daysSnapshot = $locked->days->map(fn($day): array => [
                 'day_number' => $day->day_number,
@@ -140,6 +143,7 @@ class TourBookingConversionService
                             'tour_route_snapshot' => $routeSnapshot,
                             'tour_days_snapshot' => $daysSnapshot,
                             'tour_custom_answers' => $locked->custom_answers ?? [],
+                            'tour_child_seat_count' => (int) $locked->child_seat_count,
                             'tour_custom_fields_snapshot' => $locked->custom_fields_snapshot ?? [],
                             'activity_entry_note' => 'Activity visits are included in your route only. Tickets, entry fees and activity reservations are not included. Please arrange these separately. Activity booking will be introduced in a future release.',
                         ],

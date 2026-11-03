@@ -330,6 +330,7 @@ class AssignmentController extends Controller
                             ? trim((string) $item->driver->user->first_name . ' ' . (string) $item->driver->user->last_name)
                             : null,
                         'tour_plan' => data_get($item->metadata, 'tour_itinerary_id') ? [
+                            'child_seat_count' => (int) data_get($item->metadata, 'tour_child_seat_count', 0),
                             'days' => data_get($item->metadata, 'tour_days_snapshot', []),
                             'route' => data_get($item->metadata, 'tour_route_snapshot'),
                             'activity_entry_note' => data_get($item->metadata, 'activity_entry_note'),

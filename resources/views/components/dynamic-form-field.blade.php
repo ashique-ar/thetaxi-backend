@@ -99,10 +99,10 @@
                     $activeCondValue = '';
                     $normalizeConditionValue = static fn ($value) => str_replace('-', '_', strtolower(trim((string) $value)));
 
-                    // Try transferType prop first (from parent booking form)
-                    if ($condField === 'transfer_type' && !empty($transferType)) {
-                        $activeCondValue = $transferType;
-                    }
+                    $activeCondValue = old($condField, request()->input(
+                        $condField,
+                        $condField === 'transfer_type' ? ($transferType ?? '') : ''
+                    ));
 
                     // Older defaults use hyphens while Service Type forms may use underscores.
                     // Resolve both formats to the actual saved condition key.

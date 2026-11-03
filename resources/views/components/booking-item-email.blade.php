@@ -677,6 +677,11 @@
             <tr>
                 <td colspan="2" style="padding: 9px 10px; background: #eef2ff; color: #312e81; font-weight: 700; border-bottom: 1px solid #c7d2fe;">Accepted Tour itinerary</td>
             </tr>
+            @if ((int) ($metadata['tour_child_seat_count'] ?? 0) > 0)
+                <tr>
+                    <td colspan="2" style="padding: 8px 10px; color: #374151;">Child seats requested: {{ (int) $metadata['tour_child_seat_count'] }}. Availability is subject to confirmation.</td>
+                </tr>
+            @endif
             @foreach ($tourDays as $tourDay)
                 <tr>
                     <td colspan="2" style="padding: 8px 10px; border-bottom: 1px solid #e5e7eb; color: #374151;">

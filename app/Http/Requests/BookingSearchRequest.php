@@ -261,10 +261,14 @@ class BookingSearchRequest extends FormRequest
         }
 
         $conditionField = (string) ($config['condition_field'] ?? 'transfer_type');
-        $activeValue = strtolower(str_replace('-', '_', trim((string) ($data[$conditionField] ?? ''))));
-        $activeCondition = collect($config['conditions'])->first(
-            static fn ($condition, $value) => strtolower(str_replace('-', '_', (string) $value)) === $activeValue
-        );
+        $selectedValue = trim((string) ($data[$conditionField] ?? ''));
+        $activeCondition = $config['conditions'][$selectedValue] ?? null;
+        if ($activeCondition === null) {
+            $activeValue = strtolower(str_replace('-', '_', $selectedValue));
+            $activeCondition = collect($config['conditions'])->first(
+                static fn ($condition, $value) => strtolower(str_replace('-', '_', trim((string) $value))) === $activeValue
+            );
+        }
 
         if (!is_array($activeCondition)) {
             return $config;

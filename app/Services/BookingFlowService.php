@@ -1926,6 +1926,9 @@ class BookingFlowService
         }
 
         $partySize = (int) $itinerary->adult_count + (int) $itinerary->child_count;
+        if ((int) $itinerary->child_seat_count > (int) $itinerary->child_count) {
+            throw ValidationException::withMessages(['child_seat_count' => 'Child seats cannot exceed the number of children travelling.']);
+        }
         if ($partySize < 1 || $partySize > $setting->max_passengers || (int) $itinerary->luggage_count > $setting->max_luggage) {
             throw ValidationException::withMessages(['vehicle_class_id' => 'The selected class no longer fits this party and luggage.']);
         }

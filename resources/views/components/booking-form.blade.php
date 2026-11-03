@@ -583,14 +583,28 @@
                 var sharedLat = container.querySelector('.conditional-lat');
                 var sharedLng = container.querySelector('.conditional-lng');
 
+                function getConditionValue() {
+                    var control = form.elements.namedItem(condField);
+                    return control ? control.value : '';
+                }
+
+                function findConditionalVariant(value) {
+                    var variantsArray = Array.from(variants);
+                    var exactMatch = variantsArray.find(function(variant) {
+                        return variant.dataset.conditionValue === value;
+                    });
+                    if (exactMatch) return exactMatch;
+                    var normalizedValue = value.toLowerCase().replace(/-/g, '_');
+                    return variantsArray.find(function(variant) {
+                        return variant.dataset.conditionValue.toLowerCase().replace(/-/g, '_') === normalizedValue;
+                    }) || null;
+                }
+
                 function updateConditionalVisibility() {
-                    var checkedRadio = form.querySelector('input[name="' + condField + '"]:checked');
-                    var currentValue = checkedRadio ? checkedRadio.value : '';
-                    var normalizedCurrentValue = currentValue.toLowerCase().replace(/-/g, '_');
+                    var currentValue = getConditionValue();
+                    var activeVariant = findConditionalVariant(currentValue);
                     variants.forEach(function(variant) {
-                        var condValue = variant.dataset.conditionValue;
-                        var isCurrentVariant = condValue === currentValue
-                            || condValue.toLowerCase().replace(/-/g, '_') === normalizedCurrentValue;
+                        var isCurrentVariant = variant === activeVariant;
                         if (isCurrentVariant) {
                             variant.style.display = 'block';
                             variant.querySelectorAll('input, select').forEach(function(inp) { inp.disabled = false; });
@@ -603,9 +617,11 @@
                     });
                 }
 
-                var radios = form.querySelectorAll('input[name="' + condField + '"]');
-                radios.forEach(function(radio) {
-                    radio.addEventListener('change', updateConditionalVisibility);
+                var conditionControls = Array.from(form.elements).filter(function(control) {
+                    return control.name === condField;
+                });
+                conditionControls.forEach(function(control) {
+                    control.addEventListener('change', updateConditionalVisibility);
                 });
                 updateConditionalVisibility();
 
@@ -625,16 +641,9 @@
 
                 // Initial sync: find the ACTIVE variant and sync its coordinates
                 (function syncActiveVariantCoords() {
-                    var checkedRadio = form.querySelector('input[name="' + condField + '"]:checked');
-                    var activeValue = checkedRadio ? checkedRadio.value : '';
+                    var activeValue = getConditionValue();
                     if (!activeValue) return;
-                    var activeVariant = container.querySelector('.conditional-variant[data-condition-value="' + activeValue + '"]');
-                    if (!activeVariant) {
-                        var normalizedActiveValue = activeValue.toLowerCase().replace(/-/g, '_');
-                        activeVariant = Array.from(variants).find(function(variant) {
-                            return variant.dataset.conditionValue.toLowerCase().replace(/-/g, '_') === normalizedActiveValue;
-                        });
-                    }
+                    var activeVariant = findConditionalVariant(activeValue);
                     if (!activeVariant) return;
 
                     // Check if active variant has an airport select with a value
@@ -650,16 +659,10 @@
                 })();
 
                 // When transfer type changes, sync the newly active variant's coordinates
-                radios.forEach(function(radio) {
-                    radio.addEventListener('change', function() {
-                        var newValue = this.value;
-                        var newVariant = container.querySelector('.conditional-variant[data-condition-value="' + newValue + '"]');
-                        if (!newVariant) {
-                            var normalizedNewValue = newValue.toLowerCase().replace(/-/g, '_');
-                            newVariant = Array.from(variants).find(function(variant) {
-                                return variant.dataset.conditionValue.toLowerCase().replace(/-/g, '_') === normalizedNewValue;
-                            });
-                        }
+                conditionControls.forEach(function(control) {
+                    control.addEventListener('change', function() {
+                        var newValue = getConditionValue();
+                        var newVariant = findConditionalVariant(newValue);
                         if (!newVariant) return;
                         var airportSelect = newVariant.querySelector('select.airport-select');
                         if (airportSelect && airportSelect.value) {

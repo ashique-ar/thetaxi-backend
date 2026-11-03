@@ -21,6 +21,7 @@ class EnsureTourSchemaReady
         '2026_11_02_000009_add_tour_quote_terms_evidence',
         '2026_11_02_000010_add_configured_fields_to_tour_itineraries',
         '2026_11_02_000011_add_review_inquiry_to_tour_itineraries',
+        '2026_11_03_000001_add_child_seat_count_to_tour_itineraries',
     ];
 
     public function handle(Request $request, Closure $next): Response

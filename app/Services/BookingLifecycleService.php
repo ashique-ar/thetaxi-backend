@@ -2506,10 +2506,16 @@ class BookingLifecycleService
         $slabId = $metadata['slab_definition_id']
             ?? data_get($bookingItem->pricing_breakdown, 'calculation_metadata.runtime_context.slab_definition_id');
         $additionalStops = $this->resolveBookedAdditionalStops($metadata);
+        $actualCalendarDays = max(1, (int) ceil($durationMinutes / 1440));
+        $acceptedTourDays = filled(data_get($bookingItem->metadata, 'tour_itinerary_id'))
+            ? max(1, (int) $bookingItem->duration_days)
+            : 0;
+        // Actual telemetry can be shorter than a multi-day itinerary's accepted calendar hire.
+        $pricingDurationDays = max($actualCalendarDays, $acceptedTourDays);
         $packageIncludedKm = $this->resolvePackageIncludedKilometres(
             $metadata,
             is_array($bookingItem->pricing_breakdown) ? $bookingItem->pricing_breakdown : [],
-            $durationMinutes
+            $pricingDurationDays
         );
 
         // Operational charges must be available to the calculation graph so a
@@ -2560,8 +2566,8 @@ class BookingLifecycleService
             // A known positive final duration always occupies at least one
             // billable calendar day. Missing duration is handled separately.
             'duration_days' => $durationMinutes > 0
-                ? max(1, (int) ceil($durationMinutes / 1440))
-                : 0,
+                ? $pricingDurationDays
+                : $acceptedTourDays,
             'extra_minutes' => $extraMinutes,
             'extra_hours' => $extraMinutes / 60,
             'overtime_minutes' => $extraMinutes,
@@ -3187,7 +3193,7 @@ class BookingLifecycleService
     private function resolvePackageIncludedKilometres(
         array $metadata,
         array $pricingBreakdown,
-        int $durationMinutes
+        int $durationDays
     ): ?float {
         $packageCandidates = [
             data_get($metadata, 'package_included_km'),
@@ -3214,7 +3220,7 @@ class BookingLifecycleService
         ];
         foreach ($dailyCandidates as $candidate) {
             if (is_numeric($candidate) && (float) $candidate >= 0) {
-                return round((float) $candidate * max(1, (int) ceil($durationMinutes / 1440)), 2);
+                return round((float) $candidate * max(1, $durationDays), 2);
             }
         }
 

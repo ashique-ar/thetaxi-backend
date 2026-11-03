@@ -12,7 +12,7 @@ class TourFormConfiguration
         $fields = $service->form_config['fields'] ?? $service->form_config ?? [];
 
         return collect($fields)->filter(fn ($field, $key) => is_array($field)
-            && in_array($field['type'] ?? null, ['text', 'textarea', 'number', 'select', 'radio', 'checkbox'], true)
+            && in_array($field['type'] ?? null, ['text', 'textarea', 'number', 'date', 'time', 'select', 'radio', 'checkbox'], true)
             && !empty($field['label']))->map(fn ($field, $key) => [
                 'name' => (string) $key,
                 'type' => $field['type'],
@@ -47,6 +47,14 @@ class TourFormConfiguration
                 $max = $field['validation']['max'] ?? null;
                 if (($min !== null && $value < $min) || ($max !== null && $value > $max)) {
                     throw ValidationException::withMessages(["custom_answers.{$name}" => "{$field['label']} is outside the allowed range."]);
+                }
+            } elseif ($field['type'] === 'date' && $value !== null && $value !== '') {
+                if (!is_string($value) || !preg_match('/^\d{4}-\d{2}-\d{2}$/', $value) || !checkdate((int) substr($value, 5, 2), (int) substr($value, 8, 2), (int) substr($value, 0, 4))) {
+                    throw ValidationException::withMessages(["custom_answers.{$name}" => "{$field['label']} must be a valid date."]);
+                }
+            } elseif ($field['type'] === 'time' && $value !== null && $value !== '') {
+                if (!is_string($value) || !preg_match('/^(?:[01]\d|2[0-3]):[0-5]\d$/', $value)) {
+                    throw ValidationException::withMessages(["custom_answers.{$name}" => "{$field['label']} must be a valid 24-hour time."]);
                 }
             } elseif ($value !== null) {
                 if (!is_scalar($value) || mb_strlen((string) $value) > 2000) {

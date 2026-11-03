@@ -74,6 +74,7 @@ class TourController extends Controller
             'duration_days' => 'required|integer|min:1|max:60',
             'adult_count' => 'required|integer|min:0|max:100',
             'child_count' => 'required|integer|min:0|max:100',
+            'child_seat_count' => 'sometimes|integer|min:0|max:100',
             'luggage_count' => 'required|integer|min:0|max:100',
             'days' => 'required|array',
             'days.*.day_number' => 'required|integer|min:1|max:60|distinct:strict',
@@ -89,6 +90,10 @@ class TourController extends Controller
         if (count($data['days']) !== (int) $data['duration_days']) {
             throw ValidationException::withMessages(['days' => 'Add one route plan for every trip day.']);
         }
+        if ((int) ($data['child_seat_count'] ?? 0) > (int) $data['child_count']) {
+            throw ValidationException::withMessages(['child_seat_count' => 'Child seats cannot exceed the number of children travelling.']);
+        }
+        $request->merge(['child_seat_count' => (int) ($data['child_seat_count'] ?? 0)]);
 
         $request->merge([
             'currency' => $currency->getBookingBaseCurrency(),
@@ -255,6 +260,7 @@ class TourController extends Controller
                     'visit_duration_minutes' => $stop->visit_duration_minutes,
                 ])->values()->all(),
             ])->values()->all();
+            $quote = $itinerary->quotes()->whereIn('status', ['current', 'accepted'])->latest()->first();
             $name = trim((string) $user->first_name.' '.(string) $user->last_name);
             $inquiry = Inquiry::createWithUniqueNumber([
                 'customer_id' => $customer->id,
@@ -277,8 +283,16 @@ class TourController extends Controller
                     'party' => [
                         'adults' => (int) $itinerary->adult_count,
                         'children' => (int) $itinerary->child_count,
+                        'child_seats' => (int) $itinerary->child_seat_count,
                         'luggage' => (int) $itinerary->luggage_count,
                     ],
+                    'quote' => $quote ? [
+                        'status' => $quote->status,
+                        'currency' => $quote->currency,
+                        'total_amount' => (float) $quote->total_amount,
+                        'distance_km' => (float) $quote->distance_km,
+                        'expires_at' => $quote->expires_at?->toIso8601String(),
+                    ] : null,
                     'days' => $days,
                     'custom_answers' => $itinerary->custom_answers ?? [],
                     'custom_fields' => $itinerary->custom_fields_snapshot ?? [],

@@ -32,6 +32,7 @@ class CustomerPortalBookingController extends BookingFlowController
                     'to_time',
                     'pickup_location',
                     'dropoff_location',
+                    'currency',
                     'metadata',
                 ])
             ])
@@ -69,6 +70,7 @@ class CustomerPortalBookingController extends BookingFlowController
                     'to_time',
                     'pickup_location',
                     'dropoff_location',
+                    'currency',
                     'metadata',
                 ])
             ])
@@ -106,6 +108,14 @@ class CustomerPortalBookingController extends BookingFlowController
                 'from_time' => $item->from_time,
                 'to_date' => $item->to_date,
                 'to_time' => $item->to_time,
+                'tour_vehicle_class' => filled(data_get($item->metadata, 'tour_itinerary_id'))
+                    ? data_get($item->metadata, 'pricing_snapshot.tour_pricing_lock.purchased_class.name') : null,
+                'tour_quote_amount' => filled(data_get($item->metadata, 'tour_itinerary_id'))
+                    ? data_get($item->metadata, 'pricing_snapshot.total_amount') : null,
+                'tour_quote_currency' => filled(data_get($item->metadata, 'tour_itinerary_id'))
+                    ? (data_get($item->metadata, 'pricing_snapshot.currency') ?: $item->currency) : null,
+                'tour_child_seat_count' => filled(data_get($item->metadata, 'tour_itinerary_id'))
+                    ? (int) data_get($item->metadata, 'tour_child_seat_count', 0) : null,
                 'tour_days' => $this->tourDays($item->metadata),
                 'tour_activity_note' => $this->tourActivityNote($item->metadata),
             ])->values()->all(),

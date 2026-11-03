@@ -47,6 +47,10 @@ class InquiryResource extends JsonResource
             'form_id' => $formId,
             'form_name' => $formName,
             'form_answers' => $payload['form'] ?? [],
+            'tour_plan' => $this->when(
+                $this->inquiry_type === 'tour_review' && $request->user()?->can('inquiries.view'),
+                $payload,
+            ),
             'attachments' => proxy_s3_urls($payload['attachments'] ?? []),
             'source_url' => $payload['meta']['source_url'] ?? null,
             'referrer' => $payload['meta']['referrer'] ?? null,

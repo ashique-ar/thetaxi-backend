@@ -248,7 +248,7 @@
                                                                         @if (!empty($item['is_tour']))
                                                                             <div class="tour-checkout-itinerary mt-3">
                                                                                 <strong>Tour itinerary</strong>
-                                                                                <div class="small text-muted">{{ $item['passenger_count'] ?? 0 }} travelers · {{ $item['luggage_count'] ?? 0 }} bags · {{ number_format((float) ($item['tour_distance_km'] ?? 0), 1) }} km estimated</div>
+                                                                                <div class="small text-muted">{{ $item['passenger_count'] ?? 0 }} travelers · {{ $item['luggage_count'] ?? 0 }} bags · {{ $item['child_seat_count'] ?? 0 }} child seats requested · {{ number_format((float) ($item['tour_distance_km'] ?? 0), 1) }} km estimated</div>
                                                                                 @foreach ($item['tour_days_snapshot'] ?? [] as $tourDay)
                                                                                     <div class="small mt-1"><strong>Day {{ $tourDay['day_number'] }}:</strong>
                                                                                         {{ data_get($tourDay, 'start_location.name', 'Start') }}

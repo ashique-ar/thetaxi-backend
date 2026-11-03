@@ -58,6 +58,7 @@ class TourItineraryController extends Controller
     public function store(Request $request): JsonResponse
     {
         $data = $this->validateItinerary($request);
+        $data['child_seat_count'] = (int) ($data['child_seat_count'] ?? 0);
         $this->customerPortalProfile($request);
         $service = $this->assertConfiguration($data, $request);
         $data['custom_answers'] = TourFormConfiguration::validate($service, $request->input('custom_answers', []));
@@ -93,6 +94,9 @@ class TourItineraryController extends Controller
     {
         $data = $this->validateItinerary($request, true);
         $itinerary = TourItinerary::query()->where('user_id', $request->user()->id)->findOrFail($id);
+        $data['child_seat_count'] = array_key_exists('child_seat_count', $data)
+            ? (int) $data['child_seat_count']
+            : (int) $itinerary->child_seat_count;
         if (isset($data['service_type_id']) && $data['service_type_id'] !== $itinerary->service_type_id) {
             throw ValidationException::withMessages(['service_type_id' => 'A draft cannot be moved to a different service type.']);
         }
@@ -239,6 +243,7 @@ class TourItineraryController extends Controller
                 return Inquiry::query()->findOrFail($itinerary->review_inquiry_id);
             }
             $itinerary->load(['serviceType', 'package', 'vehicleClass', 'days.stops.activity', 'days.stops.destination']);
+            $quote = $itinerary->quotes()->whereIn('status', ['current', 'accepted'])->latest()->first();
             $days = $itinerary->days->map(fn ($day): array => [
                 'day_number' => $day->day_number,
                 'date' => $day->service_date,
@@ -271,7 +276,14 @@ class TourItineraryController extends Controller
                     'vehicle_class' => $itinerary->vehicleClass?->name,
                     'start_date' => $itinerary->start_date?->toDateString(),
                     'duration_days' => (int) $itinerary->duration_days,
-                    'party' => ['adults' => (int) $itinerary->adult_count, 'children' => (int) $itinerary->child_count, 'luggage' => (int) $itinerary->luggage_count],
+                    'party' => ['adults' => (int) $itinerary->adult_count, 'children' => (int) $itinerary->child_count, 'child_seats' => (int) $itinerary->child_seat_count, 'luggage' => (int) $itinerary->luggage_count],
+                    'quote' => $quote ? [
+                        'status' => $quote->status,
+                        'currency' => $quote->currency,
+                        'total_amount' => (float) $quote->total_amount,
+                        'distance_km' => (float) $quote->distance_km,
+                        'expires_at' => $quote->expires_at?->toIso8601String(),
+                    ] : null,
                     'days' => $days,
                     'custom_answers' => $itinerary->custom_answers ?? [],
                     'custom_fields' => $itinerary->custom_fields_snapshot ?? [],
@@ -352,6 +364,7 @@ class TourItineraryController extends Controller
             'duration_days' => 'required|integer|min:1|max:60',
             'adult_count' => 'required|integer|min:0|max:100',
             'child_count' => 'required|integer|min:0|max:100',
+            'child_seat_count' => 'sometimes|integer|min:0|max:100',
             'luggage_count' => 'required|integer|min:0|max:100',
             'currency' => 'required|string|size:3|exists:currencies,code',
             'expected_revision' => [$updating ? 'required' : 'prohibited', 'integer', 'min:1'],
@@ -386,6 +399,9 @@ class TourItineraryController extends Controller
         $partySize = (int) ($data['adult_count'] ?? 0) + (int) ($data['child_count'] ?? 0);
         if ($partySize < 1 || $partySize > $classSetting->max_passengers || (int) ($data['luggage_count'] ?? 0) > $classSetting->max_luggage) {
             throw ValidationException::withMessages(['vehicle_class_id' => 'The selected class does not fit this party and luggage.']);
+        }
+        if ((int) ($data['child_seat_count'] ?? 0) > (int) ($data['child_count'] ?? 0)) {
+            throw ValidationException::withMessages(['child_seat_count' => 'Child seats cannot exceed the number of children travelling.']);
         }
 
         $packageId = $data['service_package_id'] ?? null;
@@ -426,6 +442,7 @@ class TourItineraryController extends Controller
             'duration_days',
             'adult_count',
             'child_count',
+            'child_seat_count',
             'luggage_count',
             'currency',
             'custom_answers',
