@@ -18,9 +18,9 @@ class TourBookingConversionService
     {
     }
 
-    public function convert(TourItinerary $itinerary, string $quoteId, string $customerId): Booking
+    public function convert(TourItinerary $itinerary, string $quoteId, string $customerId, bool $customerPortal = false, bool $publicWebsite = false): Booking
     {
-        return DB::transaction(function () use ($itinerary, $quoteId, $customerId): Booking {
+        return DB::transaction(function () use ($itinerary, $quoteId, $customerId, $customerPortal, $publicWebsite): Booking {
             $locked = TourItinerary::query()->whereKey($itinerary->id)->lockForUpdate()->firstOrFail();
             if ($locked->booking_id) {
                 return Booking::query()->findOrFail($locked->booking_id);
@@ -34,7 +34,7 @@ class TourBookingConversionService
                 abort(409, 'Accept the current Tour quote before creating a booking.');
             }
 
-            $service = ServiceType::query()
+            $service = (($customerPortal || $publicWebsite) ? ServiceType::publicContext() : ServiceType::query())
                 ->where('is_active', true)->findOrFail($locked->service_type_id);
             abort_unless($service->is_active && $service->pricing_basis === 'vehicle_class' && $service->tour_booking_enabled, 404);
             $classSetting = ServiceVehicleClassSetting::query()
@@ -97,6 +97,7 @@ class TourBookingConversionService
             $booking = $this->bookingFlow->confirmBooking([
                 'service_type_id' => $locked->service_type_id,
                 'customer_id' => $customerId,
+                ...(($customerPortal || $publicWebsite) ? ['payment_responsibility' => 'customer', 'defer_confirmation' => true] : []),
                 'send_confirmation_sms' => false,
                 'send_confirmation_emails' => false,
                 'notify_internal_team' => false,

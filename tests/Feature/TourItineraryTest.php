@@ -694,13 +694,18 @@ class TourItineraryTest extends TestCase
         (new TourItineraryController)->store($this->request($payload));
     }
 
-    public function test_authenticated_customer_portal_has_no_separate_tour_booking_routes(): void
+    public function test_customer_portal_tour_routes_are_separate_from_public_website_routes(): void
     {
         $routes = collect(app('router')->getRoutes()->getRoutes());
+        $portalDraft = $routes->first(fn ($route) => str_ends_with($route->uri(), 'customer-portal/tours/drafts')
+            && in_array('POST', $route->methods(), true));
+        $websiteDraft = $routes->first(fn ($route) => $route->uri() === 'tours/drafts'
+            && in_array('POST', $route->methods(), true));
 
-        self::assertFalse($routes->contains(
-            fn ($route) => str_starts_with($route->uri(), 'api/customer-portal/tours')
-        ));
+        self::assertNotNull($portalDraft);
+        self::assertContains('auth:api', $portalDraft->gatherMiddleware());
+        self::assertContains('tours.schema', $portalDraft->gatherMiddleware());
+        self::assertNotNull($websiteDraft);
     }
 
     private function createCatalogueStops(): array

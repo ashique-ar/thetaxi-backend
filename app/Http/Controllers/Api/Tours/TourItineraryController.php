@@ -12,9 +12,15 @@ use App\Models\Tours\TourItinerary;
 use App\Models\Tours\TourItineraryDay;
 use App\Models\Tours\TourQuote;
 use App\Models\Customer;
+use App\Models\Inquiry;
 use App\Models\User;
+use App\Mail\InquiryConfirmationMail;
 use App\Services\UserContextService;
+use App\Services\MailDispatchService;
+use App\Services\Sms\SmsAutomationService;
 use App\Services\Tours\TourBookingConversionService;
+use App\Services\WebsiteSettingsService;
+use Illuminate\Support\Facades\Validator;
 use App\Services\Tours\TourItineraryQuoteService;
 use App\Services\Tours\TourFormConfiguration;
 use Carbon\Carbon;
@@ -26,6 +32,29 @@ use Illuminate\Validation\ValidationException;
 
 class TourItineraryController extends Controller
 {
+    public function index(Request $request): JsonResponse
+    {
+        $this->customerPortalProfile($request);
+        $drafts = TourItinerary::query()
+            ->where('user_id', $request->user()->id)
+            ->whereIn('status', ['draft', 'quoted', 'accepted'])
+            ->with('serviceType:id,name')
+            ->orderByDesc('updated_at')
+            ->limit(50)
+            ->get(['id', 'service_type_id', 'start_date', 'duration_days', 'status', 'updated_at'])
+            ->map(fn(TourItinerary $itinerary): array => [
+                'id' => $itinerary->id,
+                'service_type_id' => $itinerary->service_type_id,
+                'service_name' => $itinerary->serviceType?->name,
+                'start_date' => $itinerary->start_date?->toDateString(),
+                'duration_days' => (int) $itinerary->duration_days,
+                'status' => $itinerary->status,
+                'updated_at' => $itinerary->updated_at?->toIso8601String(),
+            ])->values();
+
+        return response()->json(['success' => true, 'data' => $drafts]);
+    }
+
     public function store(Request $request): JsonResponse
     {
         $data = $this->validateItinerary($request);
@@ -90,6 +119,7 @@ class TourItineraryController extends Controller
             $locked->fill($this->itineraryFields($data));
             $locked->revision++;
             $locked->status = 'draft';
+            $locked->review_inquiry_id = null;
             $locked->save();
             $this->saveDays($locked, $data);
 
@@ -164,6 +194,7 @@ class TourItineraryController extends Controller
             $itinerary->quotes()->whereIn('status', ['current', 'accepted'])->update(['status' => 'superseded']);
             $itinerary->revision++;
             $itinerary->status = 'draft';
+            $itinerary->review_inquiry_id = null;
             $itinerary->save();
 
             return $itinerary;
@@ -197,19 +228,106 @@ class TourItineraryController extends Controller
         return response()->json(['success' => true, 'data' => $this->publicQuote($quote)]);
     }
 
+    public function requestReview(Request $request, string $id, SmsAutomationService $sms, MailDispatchService $mail): JsonResponse
+    {
+        $customer = $this->customerPortalProfile($request);
+        $user = $request->user();
+        $inquiry = DB::transaction(function () use ($id, $customer, $user): Inquiry {
+            $itinerary = TourItinerary::query()->where('user_id', $user->id)->lockForUpdate()->findOrFail($id);
+            abort_unless(in_array($itinerary->status, ['draft', 'quoted', 'accepted'], true) && !$itinerary->booking_id, 409, 'This Tour can no longer be sent for review.');
+            if ($itinerary->review_inquiry_id) {
+                return Inquiry::query()->findOrFail($itinerary->review_inquiry_id);
+            }
+            $itinerary->load(['serviceType', 'package', 'vehicleClass', 'days.stops.activity', 'days.stops.destination']);
+            $days = $itinerary->days->map(fn ($day): array => [
+                'day_number' => $day->day_number,
+                'date' => $day->service_date,
+                'timezone' => $day->timezone,
+                'start' => $day->start_location_snapshot,
+                'end' => $day->end_location_snapshot,
+                'stops' => $day->stops->map(fn ($stop): array => [
+                    'kind' => $stop->kind,
+                    'name' => $stop->activity?->name ?? $stop->destination?->name,
+                    'location' => $stop->location_snapshot,
+                    'visit_duration_minutes' => $stop->visit_duration_minutes,
+                ])->values()->all(),
+            ])->values()->all();
+            $inquiry = Inquiry::createWithUniqueNumber([
+                'customer_id' => $customer->id,
+                'name' => trim((string) $user->first_name.' '.(string) $user->last_name),
+                'email' => $user->email,
+                'phone' => $user->phone,
+                'inquiry_type' => 'tour_review',
+                'subject' => 'Tour route or vehicle availability review',
+                'message' => 'The customer requested staff review of the saved Tour itinerary. No vehicle has been booked or reserved.',
+                'status' => 'open',
+                'source' => 'customer_portal',
+                'created_user_id' => $user->id,
+                'payload' => [
+                    'tour_itinerary_id' => (string) $itinerary->id,
+                    'revision' => (int) $itinerary->revision,
+                    'service_type' => $itinerary->serviceType?->name,
+                    'package' => $itinerary->package?->name,
+                    'vehicle_class' => $itinerary->vehicleClass?->name,
+                    'start_date' => $itinerary->start_date?->toDateString(),
+                    'duration_days' => (int) $itinerary->duration_days,
+                    'party' => ['adults' => (int) $itinerary->adult_count, 'children' => (int) $itinerary->child_count, 'luggage' => (int) $itinerary->luggage_count],
+                    'days' => $days,
+                    'custom_answers' => $itinerary->custom_answers ?? [],
+                    'custom_fields' => $itinerary->custom_fields_snapshot ?? [],
+                ],
+            ]);
+            $itinerary->review_inquiry_id = $inquiry->id;
+            $itinerary->save();
+
+            return $inquiry;
+        }, 3);
+
+        if ($inquiry->wasRecentlyCreated) {
+            try {
+                $sms->queueWebsiteInquiryReceived($inquiry);
+                $mail->sendToCustomer((string) $inquiry->email, new InquiryConfirmationMail($inquiry, 'Tour review request', 'We have received your Tour plan and will review the route or vehicle availability.'));
+            } catch (\Throwable $exception) {
+                report($exception);
+            }
+        }
+
+        return response()->json(['success' => true, 'data' => ['inquiry_number' => $inquiry->inquiry_number, 'status' => $inquiry->status]], 201);
+    }
+
     public function convertToBooking(Request $request, string $id, TourBookingConversionService $conversion): JsonResponse
     {
-        abort_unless($request->route('tour_booking_context') === 'internal', 404);
         $data = $request->validate([
             'quote_id' => 'required|uuid',
             'expected_revision' => 'required|integer|min:1',
-            'customer_id' => 'required|uuid|exists:customers,id',
+            'customer_id' => [$request->route('tour_booking_context') === 'internal' ? 'required' : 'prohibited', 'uuid', 'exists:customers,id'],
         ]);
         $itinerary = $this->ownedItinerary($request, $id);
         if ($itinerary->revision !== (int) $data['expected_revision']) {
             abort(409, 'This itinerary changed. Reload it before creating the booking.');
         }
-        $booking = $conversion->convert($itinerary, $data['quote_id'], (string) $data['customer_id']);
+        $customerPortal = $request->route('tour_booking_context') === 'customer';
+        $publicWebsite = $request->route('tour_booking_context') === 'website';
+        $activeCustomer = ($customerPortal || $publicWebsite) ? $this->customerPortalProfile($request) : null;
+        $customerId = $data['customer_id'] ?? $activeCustomer?->id ?? Customer::query()->where('user_id', $request->user()->id)->value('id');
+        if (!$customerId && DB::table('customer_user_aliases')->where('user_id', $request->user()->id)->exists()) {
+            $customerId = DB::table('customer_user_aliases')
+                ->where('user_id', $request->user()->id)
+                ->value('customer_id');
+        }
+        if (!$customerId) {
+            throw ValidationException::withMessages(['customer_id' => 'Your account is not connected to a customer profile yet.']);
+        }
+
+        if ($customerPortal) {
+            $payload = ['from_date' => $itinerary->start_date->toDateString(), 'from_time' => '00:00'];
+            $validator = Validator::make($payload, []);
+            app(WebsiteSettingsService::class)->validatePortalBookingAdvance($validator, $payload, 'customer_portal_booking_advance_hours');
+            if ($validator->fails()) {
+                return response()->json(['status' => 'error', 'message' => 'The selected pickup time is too soon.', 'errors' => $validator->errors()], 422);
+            }
+        }
+        $booking = $conversion->convert($itinerary, $data['quote_id'], (string) $customerId, $customerPortal, $publicWebsite);
 
         return response()->json([
             'success' => true,
