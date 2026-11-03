@@ -1995,6 +1995,10 @@ class BookingFlowService
 
     private function assertBookingGroupCapacityAvailable(array $params, ?Booking $booking = null): void
     {
+        if (!$this->publicWebsiteAvailabilityEnforced()) {
+            return;
+        }
+
         $items = $params['booking_items'] ?? [];
         $groupSelection = $items === [] && !empty($params['vehicle_groups']);
         if ($items === [] && !empty($params['vehicle_groups'])) {

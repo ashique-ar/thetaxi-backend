@@ -13,7 +13,6 @@ use App\Services\CurrencyService;
 use App\Services\Tours\TourRoutePlanner;
 use App\Services\WebsiteSettingsService;
 use App\Services\AIContentService;
-use App\Services\UserContextService;
 use Illuminate\Database\Migrations\Migration;
 use Illuminate\Database\Schema\Blueprint;
 use Illuminate\Http\Request;
@@ -335,37 +334,8 @@ class TourCatalogueTest extends TestCase
         }
     }
 
-    public function test_customer_ai_suggestion_uses_only_the_published_tour_catalogue(): void
+    public function test_public_ai_suggestion_uses_only_the_published_tour_catalogue(): void
     {
-        Schema::create('users', function (Blueprint $table): void {
-            $table->uuid('id')->primary();
-            $table->string('first_name');
-            $table->string('last_name')->nullable();
-            $table->string('email')->unique();
-            $table->string('password');
-            $table->boolean('is_active')->default(true);
-            $table->timestamps();
-            $table->softDeletes();
-        });
-        Schema::create('customers', function (Blueprint $table): void {
-            $table->uuid('id')->primary();
-            $table->uuid('user_id');
-            $table->timestamps();
-            $table->softDeletes();
-        });
-        Schema::create('user_contexts', function (Blueprint $table): void {
-            $table->uuid('id')->primary();
-            $table->uuid('user_id');
-            $table->string('context_type');
-            $table->uuid('context_id');
-            $table->boolean('is_active')->default(true);
-            $table->timestamps();
-            $table->softDeletes();
-        });
-        Schema::create('customer_user_aliases', function (Blueprint $table): void {
-            $table->uuid('user_id');
-            $table->uuid('customer_id');
-        });
         $controller = new TourCatalogueController;
         $location = $controller->storeLocation(Request::create('/tours/locations', 'POST', [
             'name' => 'Kandy', 'code' => 'ai-flow-kandy', 'google_place_id' => 'google-ai-flow-kandy',
@@ -382,16 +352,6 @@ class TourCatalogueTest extends TestCase
             'is_published' => true,
         ]))->getData(true)['data'];
 
-        $userId = (string) \Illuminate\Support\Str::uuid();
-        $customerId = (string) \Illuminate\Support\Str::uuid();
-        $contextId = (string) \Illuminate\Support\Str::uuid();
-        DB::table('users')->insert(['id' => $userId, 'first_name' => 'Tour', 'email' => 'ai-tour@example.test', 'password' => 'hashed', 'created_at' => now(), 'updated_at' => now()]);
-        DB::table('customers')->insert(['id' => $customerId, 'user_id' => $userId, 'created_at' => now(), 'updated_at' => now()]);
-        DB::table('user_contexts')->insert(['id' => $contextId, 'user_id' => $userId, 'context_type' => 'customer', 'context_id' => $customerId, 'is_active' => true, 'created_at' => now(), 'updated_at' => now()]);
-        $user = \App\Models\User::findOrFail($userId);
-        $contexts = \Mockery::mock(UserContextService::class);
-        $contexts->shouldReceive('resolveActiveContextFromRequest')->once()->andReturn(['id' => $contextId, 'portal_profile' => 'customer']);
-        app()->instance(UserContextService::class, $contexts);
         $settings = \Mockery::mock(WebsiteSettingsService::class);
         $settings->shouldReceive('get')->with('tour_ai_itinerary_enabled', false)->andReturn(true);
         app()->instance(WebsiteSettingsService::class, $settings);
@@ -400,13 +360,11 @@ class TourCatalogueTest extends TestCase
             ['duration_days' => 1, 'start_date' => '2026-12-01', 'interests' => 'gardens'],
             \Mockery::on(fn(array $catalogue): bool => count($catalogue) === 1 && $catalogue[0]['id'] === $destination['id'] && !array_key_exists('latitude', $catalogue[0]))
         )->andReturn(['days' => [['day_number' => 1, 'stops' => [['kind' => 'activity', 'catalogue_id' => $activity['id']]]]]]);
-        $request = Request::create('/customer-portal/tours/suggestions', 'POST', [
+        $request = Request::create('/api/public/tours/suggestions', 'POST', [
             'service_type_id' => 'c2c58e96-7a3d-4974-81b8-2f6fef280947',
             'duration_days' => 1, 'start_date' => '2026-12-01', 'interests' => 'gardens',
         ]);
-        $request->setUserResolver(fn() => $user);
-
-        $result = $controller->suggestItinerary($request, $ai)->getData(true);
+        $result = $controller->suggestPublicItinerary($request, $ai)->getData(true);
 
         self::assertTrue($result['success']);
         self::assertSame($destination['id'], $result['data']['days'][0]['stops'][0]['catalogue_id']);

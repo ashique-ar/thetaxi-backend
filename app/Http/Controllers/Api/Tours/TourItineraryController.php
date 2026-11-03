@@ -15,8 +15,6 @@ use App\Models\Customer;
 use App\Models\User;
 use App\Services\UserContextService;
 use App\Services\Tours\TourBookingConversionService;
-use App\Services\WebsiteSettingsService;
-use Illuminate\Support\Facades\Validator;
 use App\Services\Tours\TourItineraryQuoteService;
 use App\Services\Tours\TourFormConfiguration;
 use Carbon\Carbon;
@@ -28,29 +26,6 @@ use Illuminate\Validation\ValidationException;
 
 class TourItineraryController extends Controller
 {
-    public function index(Request $request): JsonResponse
-    {
-        $this->customerPortalProfile($request);
-        $drafts = TourItinerary::query()
-            ->where('user_id', $request->user()->id)
-            ->whereIn('status', ['draft', 'quoted', 'accepted'])
-            ->with('serviceType:id,name')
-            ->orderByDesc('updated_at')
-            ->limit(50)
-            ->get(['id', 'service_type_id', 'start_date', 'duration_days', 'status', 'updated_at'])
-            ->map(fn(TourItinerary $itinerary): array => [
-                'id' => $itinerary->id,
-                'service_type_id' => $itinerary->service_type_id,
-                'service_name' => $itinerary->serviceType?->name,
-                'start_date' => $itinerary->start_date?->toDateString(),
-                'duration_days' => (int) $itinerary->duration_days,
-                'status' => $itinerary->status,
-                'updated_at' => $itinerary->updated_at?->toIso8601String(),
-            ])->values();
-
-        return response()->json(['success' => true, 'data' => $drafts]);
-    }
-
     public function store(Request $request): JsonResponse
     {
         $data = $this->validateItinerary($request);
@@ -224,37 +199,17 @@ class TourItineraryController extends Controller
 
     public function convertToBooking(Request $request, string $id, TourBookingConversionService $conversion): JsonResponse
     {
+        abort_unless($request->route('tour_booking_context') === 'internal', 404);
         $data = $request->validate([
             'quote_id' => 'required|uuid',
             'expected_revision' => 'required|integer|min:1',
-            'customer_id' => [$request->route('tour_booking_context') === 'internal' ? 'required' : 'prohibited', 'uuid', 'exists:customers,id'],
+            'customer_id' => 'required|uuid|exists:customers,id',
         ]);
         $itinerary = $this->ownedItinerary($request, $id);
         if ($itinerary->revision !== (int) $data['expected_revision']) {
             abort(409, 'This itinerary changed. Reload it before creating the booking.');
         }
-        $customerPortal = $request->route('tour_booking_context') === 'customer';
-        $publicWebsite = $request->route('tour_booking_context') === 'website';
-        $activeCustomer = ($customerPortal || $publicWebsite) ? $this->customerPortalProfile($request) : null;
-        $customerId = $data['customer_id'] ?? $activeCustomer?->id ?? Customer::query()->where('user_id', $request->user()->id)->value('id');
-        if (!$customerId && DB::table('customer_user_aliases')->where('user_id', $request->user()->id)->exists()) {
-            $customerId = DB::table('customer_user_aliases')
-                ->where('user_id', $request->user()->id)
-                ->value('customer_id');
-        }
-        if (!$customerId) {
-            throw ValidationException::withMessages(['customer_id' => 'Your account is not connected to a customer profile yet.']);
-        }
-
-        if ($customerPortal) {
-            $payload = ['from_date' => $itinerary->start_date->toDateString(), 'from_time' => '00:00'];
-            $validator = Validator::make($payload, []);
-            app(WebsiteSettingsService::class)->validatePortalBookingAdvance($validator, $payload, 'customer_portal_booking_advance_hours');
-            if ($validator->fails()) {
-                return response()->json(['status' => 'error', 'message' => 'The selected pickup time is too soon.', 'errors' => $validator->errors()], 422);
-            }
-        }
-        $booking = $conversion->convert($itinerary, $data['quote_id'], (string) $customerId, $customerPortal, $publicWebsite);
+        $booking = $conversion->convert($itinerary, $data['quote_id'], (string) $data['customer_id']);
 
         return response()->json([
             'success' => true,

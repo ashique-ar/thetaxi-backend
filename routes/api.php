@@ -354,8 +354,6 @@ Route::post('observability/frontend-log', [ObservabilityController::class, 'fron
 
 Route::middleware(['auth:api'])->group(function () {
 
-    Route::post('customer-portal/tours/suggestions', [TourCatalogueController::class, 'suggestItinerary'])->middleware(['tours.schema', 'throttle:3,1']);
-
     Route::prefix('tours')->middleware('tours.schema')->group(function (): void {
         Route::get('manage-catalogue', [TourCatalogueController::class, 'manageIndex']);
         Route::post('locations', [TourCatalogueController::class, 'storeLocation']);
@@ -375,18 +373,6 @@ Route::middleware(['auth:api'])->group(function () {
         Route::post('{id}/quote', [TourItineraryController::class, 'quote'])->whereUuid('id')->middleware('throttle:10,1');
         Route::post('{id}/quotes/{quoteId}/accept', [TourItineraryController::class, 'acceptQuote'])->whereUuid('id')->whereUuid('quoteId')->middleware('throttle:10,1');
         Route::post('{id}/convert-to-booking', [TourItineraryController::class, 'convertToBooking'])->defaults('tour_booking_context', 'internal')->whereUuid('id')->middleware('throttle:5,1');
-    });
-
-    Route::prefix('customer-portal/tours/drafts')->middleware('tours.schema')->group(function (): void {
-        Route::post('', [TourItineraryController::class, 'store'])->defaults('tour_pricing_context', 'public')->middleware('throttle:20,1');
-        Route::get('', [TourItineraryController::class, 'index'])->defaults('tour_booking_context', 'customer')->middleware('throttle:30,1');
-        Route::get('{id}', [TourItineraryController::class, 'show'])->defaults('tour_booking_context', 'customer')->whereUuid('id')->middleware('throttle:60,1');
-        Route::put('{id}', [TourItineraryController::class, 'update'])->defaults('tour_booking_context', 'customer')->whereUuid('id')->middleware('throttle:20,1');
-        Route::post('{id}/route-options', [TourItineraryController::class, 'routeOptions'])->defaults('tour_booking_context', 'customer')->whereUuid('id')->middleware('throttle:20,1');
-        Route::post('{id}/apply-route', [TourItineraryController::class, 'applyRoute'])->defaults('tour_booking_context', 'customer')->whereUuid('id')->middleware('throttle:20,1');
-        Route::post('{id}/quote', [TourItineraryController::class, 'quote'])->defaults('tour_booking_context', 'customer')->whereUuid('id')->middleware('throttle:10,1');
-        Route::post('{id}/quotes/{quoteId}/accept', [TourItineraryController::class, 'acceptQuote'])->defaults('tour_booking_context', 'customer')->whereUuid('id')->whereUuid('quoteId')->middleware('throttle:10,1');
-        Route::post('{id}/convert-to-booking', [TourItineraryController::class, 'convertToBooking'])->defaults('tour_booking_context', 'customer')->whereUuid('id')->middleware('throttle:5,1');
     });
 
     Route::prefix('integrations/respond-io')->middleware('business.module:respond-io')->group(function (): void {

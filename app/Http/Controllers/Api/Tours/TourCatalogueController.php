@@ -4,26 +4,22 @@ namespace App\Http\Controllers\Api\Tours;
 
 use App\Http\Controllers\Controller;
 use App\Models\PredefinedLocation;
-use App\Models\Customer;
 use App\Models\Service\ServicePackage;
 use App\Models\Service\ServiceType;
 use App\Models\Service\ServiceVehicleClassSetting;
 use App\Models\Tours\TourActivity;
 use App\Models\Tours\TourDestination;
-use App\Models\User;
 use App\Services\AIContentService;
 use App\Services\BookingFlowService;
 use App\Services\CurrencyService;
 use App\Services\Tours\TourRoutePlanner;
 use App\Services\Tours\TourFormConfiguration;
-use App\Services\UserContextService;
 use App\Services\WebsiteSettingsService;
 use Carbon\Carbon;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Validation\Rule;
 use Illuminate\Validation\ValidationException;
-use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Collection;
 
@@ -85,13 +81,6 @@ class TourCatalogueController extends Controller
             });
 
         return response()->json(['success' => true, 'data' => ['services' => $services]]);
-    }
-
-    public function suggestItinerary(Request $request, AIContentService $ai): JsonResponse
-    {
-        $this->assertCustomerPortalUser($request);
-
-        return $this->makeItinerarySuggestion($request, $ai);
     }
 
     public function suggestPublicItinerary(Request $request, AIContentService $ai): JsonResponse
@@ -217,22 +206,6 @@ class TourCatalogueController extends Controller
         }
 
         return array_values($days);
-    }
-
-    private function assertCustomerPortalUser(Request $request): void
-    {
-        $user = $request->user();
-        abort_unless($user instanceof User, 403, 'An active customer profile is required.');
-        $active = app(UserContextService::class)->resolveActiveContextFromRequest($user, $request);
-        abort_unless($active && ($active['portal_profile'] ?? null) === 'customer', 403, 'An active customer profile is required.');
-        abort_if($request->header('X-Active-Context-Id') && $request->header('X-Active-Context-Id') !== (string) $active['id'], 403);
-        abort_if($request->header('X-Active-Context-Type') && $request->header('X-Active-Context-Type') !== 'customer', 403);
-        abort_if($request->header('X-Active-Portal-Profile') && $request->header('X-Active-Portal-Profile') !== 'customer', 403);
-        $context = $user->contexts()->whereKey($active['id'])->where('context_type', 'customer')->where('is_active', true)->first();
-        $customer = $context?->context_id ? Customer::query()->find($context->context_id) : null;
-        $owns = $customer && ((string) $customer->user_id === (string) $user->id
-            || DB::table('customer_user_aliases')->where('user_id', $user->id)->where('customer_id', $customer->id)->exists());
-        abort_unless($owns, 403, 'An active customer profile is required.');
     }
 
     public function published(Request $request): JsonResponse

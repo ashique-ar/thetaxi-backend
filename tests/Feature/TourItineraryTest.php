@@ -624,8 +624,8 @@ class TourItineraryTest extends TestCase
             self::assertSame('Near the hotel entrance', $params['booking_items'][0]['metadata']['tour_custom_answers']['pickup_note']);
             self::assertSame('Pickup note', $params['booking_items'][0]['metadata']['tour_custom_fields_snapshot'][0]['label']);
             self::assertStringContainsString('not included', $params['booking_items'][0]['metadata']['activity_entry_note']);
-            self::assertTrue($params['defer_confirmation']);
-            self::assertSame('customer', $params['payment_responsibility']);
+            self::assertArrayNotHasKey('defer_confirmation', $params);
+            self::assertArrayNotHasKey('payment_responsibility', $params);
 
             return true;
         }))->willReturn(\App\Models\Booking\Booking::findOrFail($bookingId));
@@ -636,7 +636,7 @@ class TourItineraryTest extends TestCase
             'custom_fields_snapshot' => [['name' => 'pickup_note', 'label' => 'Pickup note']],
         ])->save();
 
-        $created = $service->convert($tour, $quoteId, 'd59f643c-51c8-4bb6-b801-ea78c3ce9e1c', false, true);
+        $created = $service->convert($tour, $quoteId, 'd59f643c-51c8-4bb6-b801-ea78c3ce9e1c');
         $retried = $service->convert($tour, $quoteId, 'another-customer-is-ignored-on-idempotent-retry');
 
         self::assertSame($bookingId, $created->id);
@@ -694,31 +694,13 @@ class TourItineraryTest extends TestCase
         (new TourItineraryController)->store($this->request($payload));
     }
 
-    public function test_customer_tour_draft_routes_require_an_active_customer_profile(): void
+    public function test_authenticated_customer_portal_has_no_separate_tour_booking_routes(): void
     {
-        $id = 'ad7669ba-776a-4211-89c3-0f5a0d669f65';
-        $request = Request::create('/api/customer-portal/tours/drafts/'.$id, 'GET');
-        $matched = app('router')->getRoutes()->match($request);
-        $request->setRouteResolver(fn () => $matched);
-        $request->setUserResolver(fn () => null);
+        $routes = collect(app('router')->getRoutes()->getRoutes());
 
-        try {
-            (new TourItineraryController)->show($request, $id);
-            self::fail('Customer Tour draft routes must require an active customer profile.');
-        } catch (HttpException $exception) {
-            self::assertSame(403, $exception->getStatusCode());
-        }
-
-        $listRequest = Request::create('/api/customer-portal/tours/drafts', 'GET');
-        $listRoute = app('router')->getRoutes()->match($listRequest);
-        $listRequest->setRouteResolver(fn () => $listRoute);
-        $listRequest->setUserResolver(fn () => null);
-        try {
-            (new TourItineraryController)->index($listRequest);
-            self::fail('The customer draft list must require an active customer profile.');
-        } catch (HttpException $exception) {
-            self::assertSame(403, $exception->getStatusCode());
-        }
+        self::assertFalse($routes->contains(
+            fn ($route) => str_starts_with($route->uri(), 'api/customer-portal/tours')
+        ));
     }
 
     private function createCatalogueStops(): array
