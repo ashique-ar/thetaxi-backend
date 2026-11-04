@@ -13,7 +13,7 @@ it('uses bounded authorized booking references for return inspection filters', f
         ->and($controller)->toContain("'record_type' => 'required|string|in:customer,vehicle,driver,service_type'")
         ->and($controller)->toContain("'per_page' => 'nullable|integer|min:1|max:50'")
         ->and($controller)->toContain("'operations_queue' => 'nullable|string|in:active'")
-        ->and($controller)->toContain('$this->bookingFlowService->getFilteredBookings($filters)')
+        ->and($controller)->toContain('$this->bookingFlowService->getFilteredBookings($filters, false)')
         ->and($controller)->toContain("->unique('value')")
         ->and($template)->toContain('endpoint="/booking-flow/return-inspection/options"')
         ->and($template)->toContain('recordType="customer"')

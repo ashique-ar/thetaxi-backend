@@ -61,7 +61,6 @@ use Spatie\Activitylog\Models\Activity;
 
 class BookingFlowService
 {
-    private static ?bool $bookingListCacheLocksAvailable = null;
     private static ?bool $bookingListDriverAssignmentItemColumnExists = null;
 
     private const CANONICAL_SUBMIT_AS_ALIASES = [
@@ -9862,7 +9861,7 @@ class BookingFlowService
     /**
      * Get filtered bookings with pagination
      */
-    public function getFilteredBookings(array $filters): array
+    public function getFilteredBookings(array $filters, bool $includeSummary = true): array
     {
         $bookingStatuses = $this->normalizeFilterValues(
             $filters['status'] ?? null,
@@ -10276,6 +10275,7 @@ class BookingFlowService
         }
 
         $perPage = max(1, min((int) ($filters['per_page'] ?? 15), 100));
+        $summaryQuery = clone $query;
         $paginated = $query->paginate($perPage);
         $lifecycleService = app(BookingLifecycleService::class);
 
@@ -10299,7 +10299,13 @@ class BookingFlowService
                 'to' => $paginated->lastItem(),
             ],
             'filters_applied' => $filters,
-            'summary' => $this->getBookingsSummary($query, $queueBaseQuery),
+            'summary' => $includeSummary
+                ? $this->getBookingsSummary(
+                    $summaryQuery,
+                    $queueBaseQuery,
+                    $this->parseBooleanFilter($filters['include_queue_counts'] ?? null) !== false
+                )
+                : [],
         ];
     }
 
@@ -10747,15 +10753,7 @@ class BookingFlowService
             ? $lifecycleService->getLifecycleContract($booking, (string) $item->id)
             : null;
 
-        $bookingItems = collect($booking?->bookingItems ?? [])
-            ->sortBy(function ($bookingItem) {
-                $dateKey = (string) ($bookingItem->from_date ?? '');
-                $timeKey = (string) ($bookingItem->from_time ?? '');
-                $createdKey = optional($bookingItem->created_at)->timestamp ?? 0;
-
-                return sprintf('%s|%s|%010d', $dateKey, $timeKey, $createdKey);
-            })
-            ->values();
+        $bookingItems = $booking?->bookingItems ?? collect();
 
         $itemCount = max(1, $bookingItems->count());
         $itemSequenceIndex = $bookingItems->search(
@@ -10825,13 +10823,24 @@ class BookingFlowService
                 ->sortByDesc(fn($assignment) => optional($assignment->created_at)->getTimestamp() ?? 0)
                 ->first();
             if ($distanceAssignment?->trip_started_at) {
-                $mobileTripEvidence = app(\App\Services\Driver\RouteEvidenceService::class)->calculate(
-                    $distanceAssignment->routePoints()
-                        ->orderBy('recorded_at')
-                        ->orderBy('id')
-                        ->cursor(['id', 'latitude', 'longitude', 'accuracy', 'recorded_at']),
-                    $distanceAssignment->trip_started_at->copy()->utc(),
-                    ($distanceAssignment->trip_completed_at ?? $distanceAssignment->actual_end ?? Carbon::now('UTC'))->copy()->utc()
+                $tripStartedAt = $distanceAssignment->trip_started_at->copy()->utc();
+                $tripEndedAt = $distanceAssignment->trip_completed_at ?? $distanceAssignment->actual_end;
+                $tripCompletedAt = $tripEndedAt?->copy()->utc() ?? Carbon::now('UTC');
+                $evidenceCacheKey = 'booking-list-route-evidence:v1:'.sha1(implode('|', [
+                    (string) $distanceAssignment->id,
+                    $tripStartedAt->toIso8601String(),
+                    $tripEndedAt?->toIso8601String() ?? 'active',
+                ]));
+                $mobileTripEvidence = Cache::store('file')->flexible($evidenceCacheKey, [3, 10], fn () =>
+                    app(\App\Services\Driver\RouteEvidenceService::class)->calculate(
+                        $distanceAssignment->routePoints()
+                            ->orderBy('recorded_at')
+                            ->orderBy('id')
+                            ->cursor(['id', 'latitude', 'longitude', 'accuracy', 'recorded_at']),
+                        $tripStartedAt,
+                        $tripCompletedAt
+                    ),
+                    ['seconds' => 30]
                 );
             }
         }
@@ -12290,7 +12299,7 @@ class BookingFlowService
 
         // Apply filters (reuse filtering logic)
         if (!empty($filters)) {
-            $bookingsData = $this->getFilteredBookings($filters);
+            $bookingsData = $this->getFilteredBookings($filters, false);
             $bookings = collect($bookingsData['bookings']);
         } else {
             if ($includeRelations) {
@@ -12325,21 +12334,28 @@ class BookingFlowService
     /**
      * Get bookings summary for filtered results
      */
-    private function getBookingsSummary($query, $queueBaseQuery = null): array
+    private function getBookingsSummary($query, $queueBaseQuery = null, bool $includeQueueCounts = true): array
     {
         $baseQuery = clone $query;
         $baseQuery->reorder();
         $queueBaseQuery ??= clone $baseQuery;
         $summarySql = $baseQuery->toBase();
         $queueSql = (clone $queueBaseQuery)->reorder()->toBase();
+        $queueCounts = $includeQueueCounts
+            ? $this->rememberBookingListSummary(
+                'booking-list-queue-counts:v1:'.hash('sha256', $queueSql->toSql().'|'.serialize($queueSql->getBindings())),
+                fn () => $this->getBookingQueueCounts($queueBaseQuery)
+            )
+            : [];
         $cacheKey = 'booking-list-summary:v1:'.hash('sha256', implode('|', [
             $summarySql->toSql(),
             serialize($summarySql->getBindings()),
             $queueSql->toSql(),
             serialize($queueSql->getBindings()),
+            $includeQueueCounts ? 'with-queues' : 'without-queues',
         ]));
 
-        return $this->rememberBookingListSummary($cacheKey, function () use ($baseQuery, $queueBaseQuery): array {
+        return $this->rememberBookingListSummary($cacheKey, function () use ($baseQuery, $queueCounts): array {
             $amounts = (clone $baseQuery)
                 ->toBase()
                 ->selectRaw('SUM(booking_items.total_price) AS total_amount, AVG(booking_items.total_price) AS average_amount')
@@ -12371,7 +12387,7 @@ class BookingFlowService
                 'status_counts' => $statusCounts,
                 'service_type_counts' => $serviceTypeCounts,
                 'booking_status_counts' => $bookingStatusCounts,
-                'queue_counts' => $this->getBookingQueueCounts($queueBaseQuery),
+                'queue_counts' => $queueCounts,
             ];
         });
     }
@@ -12414,21 +12430,17 @@ class BookingFlowService
     private function rememberBookingListSummary(string $cacheKey, callable $calculate): array
     {
         // shortcut: summary counters can be 30 seconds stale; reduce only if operations needs faster counter refreshes.
-        // shortcut: lock-table availability is cached per PHP worker; restart workers after cache schema changes.
-        $lockTable = config('cache.stores.database.lock_table') ?: 'cache_locks';
-        if (! (self::$bookingListCacheLocksAvailable ??= Schema::hasTable($lockTable))) {
-            return Cache::remember($cacheKey, now()->addSeconds(5), $calculate);
-        }
-
-        $flexible = fn (): array => Cache::flexible($cacheKey, [5, 30], $calculate, ['seconds' => 30]);
-        if (is_array(Cache::get($cacheKey))) {
+        // shortcut: file cache is shared on this single host; use Redis if adding app hosts.
+        $cache = Cache::store('file');
+        $flexible = fn (): array => $cache->flexible($cacheKey, [5, 30], $calculate, ['seconds' => 30]);
+        if (is_array($cache->get($cacheKey))) {
             return $flexible();
         }
 
         try {
-            return Cache::lock($cacheKey.':lock', 30)->block(5, $flexible);
+            return $cache->lock($cacheKey.':lock', 30)->block(5, $flexible);
         } catch (\Illuminate\Contracts\Cache\LockTimeoutException) {
-            $cached = Cache::get($cacheKey);
+            $cached = $cache->get($cacheKey);
             if (is_array($cached)) {
                 return $flexible();
             }

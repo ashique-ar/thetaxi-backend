@@ -5,6 +5,7 @@ namespace App\Console\Commands;
 use App\Jobs\Foundation\RelayDomainOutboxEvent;
 use App\Services\Foundation\DomainOutboxService;
 use Illuminate\Console\Command;
+use Illuminate\Support\Facades\Bus;
 use Illuminate\Support\Facades\Schema;
 use Throwable;
 
@@ -30,15 +31,18 @@ class PublishDomainOutboxEvents extends Command
         }
 
         $claimed = $outbox->claimDuePublications($limit);
-        $relayed = 0;
+        $jobs = $claimed->map(fn ($row) => (new RelayDomainOutboxEvent($row->id))->onQueue('domain-outbox'));
 
-        foreach ($claimed as $row) {
-            try {
-                RelayDomainOutboxEvent::dispatch($row->id)->onQueue('domain-outbox');
-                $relayed++;
-            } catch (Throwable $e) {
+        try {
+            Bus::bulk($jobs);
+            $relayed = $jobs->count();
+        } catch (Throwable $e) {
+            foreach ($claimed as $row) {
                 $outbox->revertClaim($row->id, $e->getMessage());
             }
+            $this->error('Failed to relay '.$claimed->count().' domain outbox event(s): '.$e->getMessage());
+
+            return self::FAILURE;
         }
 
         $this->info("Relayed {$relayed} of {$claimed->count()} claimed domain outbox event(s).");

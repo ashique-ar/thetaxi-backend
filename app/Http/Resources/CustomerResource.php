@@ -8,6 +8,16 @@ class CustomerResource extends JsonResource
 {
     public function toArray($request)
     {
+        if ($request->boolean('booking_lookup')) {
+            return [
+                'id' => $this->id,
+                'user' => $this->whenLoaded('user', fn ($user) => [
+                    'first_name' => $user?->first_name,
+                    'last_name' => $user?->last_name,
+                ]),
+            ];
+        }
+
         return [
             'id'              => $this->id,
             'user_id'         => $this->user_id,

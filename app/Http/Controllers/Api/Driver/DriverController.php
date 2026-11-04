@@ -61,11 +61,25 @@ class DriverController extends Controller
                 'defaultVehicle',
                 'profilePhotoDocument',
                 'devices:id,driver_id,device_uuid,device_name,device_model,device_manufacturer,platform,os_version,app_version,app_build,push_token,push_provider,is_active,last_active_at,registered_at,locale,timezone,created_at,updated_at',
+                'realtimeStatusAssignments' => fn ($query) => $this->currentAssignmentForResource($query),
             ])
             ->withCount(['assignments as total_trips' => function ($query) {
                 $query->where('trip_phase', 'completed');
             }]);
         return DriverResource::collection($q->paginate($request->integer('per_page', 25)));
+    }
+
+    private function currentAssignmentForResource($query)
+    {
+        return $query
+            ->select(['id', 'driver_id', 'booking_id'])
+            ->with('booking:id,booking_number')
+            ->whereIn('trip_phase', ['active', 'confirmed', 'accepted', 'pickup_arrived', 'in_progress'])
+            ->where('status', '!=', 'cancelled')
+            ->whereHas('booking', fn ($bookingQuery) => $bookingQuery
+                ->whereNotIn('status', ['completed', 'cancelled', 'inquiry_cancelled']))
+            ->latest('assigned_from')
+            ->limit(1);
     }
 
     public function listSummary(Request $request): JsonResponse
@@ -1251,7 +1265,13 @@ class DriverController extends Controller
             ->values();
 
         $topPerformers = Driver::query()
-            ->with(['user', 'licenseType', 'paymentMethod', 'defaultVehicle'])
+            ->with([
+                'user',
+                'licenseType',
+                'paymentMethod',
+                'defaultVehicle',
+                'realtimeStatusAssignments' => fn ($query) => $this->currentAssignmentForResource($query),
+            ])
             ->withCount(['assignments as total_trips' => function ($query) use ($from, $to) {
                 $query->where('trip_phase', 'completed')
                     ->whereBetween('trip_completed_at', [$from, $to]);

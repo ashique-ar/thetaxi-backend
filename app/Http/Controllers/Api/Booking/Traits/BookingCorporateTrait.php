@@ -25,6 +25,15 @@ trait BookingCorporateTrait
             $query->where('name', 'like', '%' . $request->search . '%');
         }
 
+        if ($request->boolean('booking_lookup')) {
+            return response()->json([
+                'status' => 'success',
+                'data' => [
+                    'corporates' => $query->limit($perPage)->get(['id', 'name']),
+                ],
+            ]);
+        }
+
         $corporates = $query->paginate($perPage);
 
         return response()->json([

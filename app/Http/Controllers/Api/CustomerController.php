@@ -51,11 +51,25 @@ class CustomerController extends Controller
     public function index(Request $request): AnonymousResourceCollection
     {
         $request->validate([
+            'booking_lookup' => ['nullable', 'boolean'],
             'owner_status' => ['nullable', 'in:assigned,unassigned'],
             'owner_staff_id' => ['nullable', 'uuid'],
             'possible_phone_match' => ['nullable', 'boolean'],
             'possible_duplicate' => ['nullable', 'boolean'],
         ]);
+        if ($request->boolean('booking_lookup')) {
+            $perPage = min(100, max(1, (int) $request->input('per_page', 15)));
+
+            return CustomerResource::collection(
+                Customer::query()
+                    ->select(['id', 'user_id'])
+                    ->with(['user:id,first_name,last_name'])
+                    ->latest('customers.created_at')
+                    ->limit($perPage)
+                    ->get()
+            );
+        }
+
         $q = Customer::query()->select('customers.*')
             ->leftJoin('users as customer_phone', 'customer_phone.id', '=', 'customers.user_id')
             ->with(['user', 'state', 'paymentMethods']);

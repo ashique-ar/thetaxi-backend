@@ -922,7 +922,7 @@ trait BookingSubmissionTrait
             unset($filters['search']);
         }
 
-        $rows = collect($this->bookingFlowService->getFilteredBookings($filters)['bookings'] ?? []);
+        $rows = collect($this->bookingFlowService->getFilteredBookings($filters, false)['bookings'] ?? []);
         $options = $rows->map(function (array $row) use ($recordType): ?array {
             $record = $row[$recordType] ?? null;
             if (! is_array($record) || empty($record['id'])) {

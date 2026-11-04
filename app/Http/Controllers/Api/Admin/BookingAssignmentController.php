@@ -171,7 +171,12 @@ class BookingAssignmentController extends Controller
      */
     public function driversWithStatus(Request $request): JsonResponse
     {
-        $query = Driver::with(['user', 'defaultVehicle', 'activeSession']);
+        $query = Driver::query()
+            ->select(['id', 'user_id', 'code', 'license_no', 'is_online', 'last_active_at', 'default_vehicle_id'])
+            ->with([
+                'user:id,first_name,last_name',
+                'defaultVehicle:id,title,license_plate',
+            ]);
 
         if ($request->filled('search')) {
             $search = $request->search;
@@ -187,19 +192,21 @@ class BookingAssignmentController extends Controller
         $drivers = $query->get();
 
         // Batch-load in-progress assignment IDs for on_hire detection
-        $onHireDriverIds = DriverAssignment::whereIn('trip_phase', [
+        $onHireDriverIds = DriverAssignment::query()
+            ->whereIn('driver_id', $drivers->modelKeys())
+            ->whereIn('trip_phase', [
                 TripPhase::ACCEPTED,
                 TripPhase::PICKUP_ARRIVED,
                 TripPhase::IN_PROGRESS,
             ])
             ->whereIn('status', ['active', 'confirmed'])
+            ->distinct()
             ->pluck('driver_id')
-            ->unique()
-            ->toArray();
+            ->mapWithKeys(static fn ($driverId) => [(string) $driverId => true]);
 
         $data = $drivers->map(function (Driver $driver) use ($onHireDriverIds) {
             $isOnline = (bool) $driver->is_online;
-            $isOnHire = in_array($driver->id, $onHireDriverIds);
+            $isOnHire = $onHireDriverIds->has((string) $driver->id);
 
             if ($isOnHire) {
                 $status = 'on_hire';

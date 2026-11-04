@@ -28,6 +28,15 @@ class VehicleGroupController extends Controller
 
     public function index(Request $request)
     {
+        if ($request->boolean('booking_lookup')) {
+            return response()->json([
+                'status' => 'success',
+                'data' => VehicleGroup::withInactive()
+                    ->orderBy('name')
+                    ->get(['id', 'name']),
+            ]);
+        }
+
         $q = VehicleGroup::withInactive()->with(
             'grade',
             'make',

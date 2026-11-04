@@ -690,7 +690,9 @@ class WialonService
         $startedAt = microtime(true);
         $logPayload = in_array($service, ['unit/update_mileage_counter', 'unit/update_eh_counter', 'unit/exec_cmd', 'unit_group/update_units'], true);
         $logLevel = $logPayload ? 'info' : 'debug';
-        Log::log($logLevel, 'Wialon API request', $context);
+        // Successful read logs use synchronous HTTP to Loki in production; keep them for local debugging only.
+        $logSuccess = $logPayload || config('app.debug');
+        if ($logSuccess) Log::log($logLevel, 'Wialon API request', $context);
         try {
             $response = Http::asForm()->timeout(20)->post($this->baseUrl . '/wialon/ajax.html', $body);
         } catch (ConnectionException $error) {
@@ -730,7 +732,7 @@ class WialonService
             }
             throw new RuntimeException('The GPS service rejected ' . $service . (isset($data['error']) ? ' (' . $data['error'] . ')' : '') . '.');
         }
-        Log::log($logLevel, 'Wialon API response', $responseContext);
+        if ($logSuccess) Log::log($logLevel, 'Wialon API response', $responseContext);
         return $data;
     }
 
