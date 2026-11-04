@@ -5072,7 +5072,8 @@ class BookingFlowService
             $driverRows = $query->get();
         }
 
-        $drivers = $driverRows->map(function ($driver) use ($fromDate, $toDate, $excludeBookingId) {
+        $driverAppEnabled = app(WebsiteSettingsService::class)->isDriverMobileAppEnabled();
+        $drivers = $driverRows->map(function ($driver) use ($fromDate, $toDate, $excludeBookingId, $driverAppEnabled) {
             $availability = $this->assignmentService->getEnhancedDriverAvailability(
                 $driver->id,
                 $fromDate,
@@ -5091,10 +5092,10 @@ class BookingFlowService
                 'experience_years' => $driver->experience_years,
                 'availability_status' => $availability['availability_status'],
                 'is_available' => $availability['availability_status'] === 'available',
-                'is_online' => $driver->is_online ?? false,
-                'last_active_at' => $driver->last_active_at?->toIso8601String(),
-                'current_latitude' => $driver->current_latitude,
-                'current_longitude' => $driver->current_longitude,
+                'is_online' => $driverAppEnabled && ($driver->is_online ?? false),
+                'last_active_at' => $driverAppEnabled ? $driver->last_active_at?->toIso8601String() : null,
+                'current_latitude' => $driverAppEnabled ? $driver->current_latitude : null,
+                'current_longitude' => $driverAppEnabled ? $driver->current_longitude : null,
                 'availability_percentage' => $this->calculateAvailabilityPercentage($availability['conflicts'], $fromDate, $toDate),
                 'conflicts' => $availability['conflicts'],
                 'schedule_conflicts' => [],

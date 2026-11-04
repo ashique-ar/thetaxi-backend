@@ -8,6 +8,7 @@ use Illuminate\Database\QueryException;
 use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
+use Illuminate\Support\Facades\Schema;
 use Illuminate\Validation\Validator;
 use Carbon\Carbon;
 
@@ -74,6 +75,7 @@ class WebsiteSettingsService
         'driver_mobile_latest_version',
         'driver_mobile_mandatory_update',
         'driver_mobile_update_message',
+        'driver_mobile_app_enabled',
         'ssl_force',
         'security_headers_enabled',
         'content_security_policy',
@@ -1213,9 +1215,18 @@ class WebsiteSettingsService
             'driver_mobile_latest_version',
             'driver_mobile_mandatory_update',
             'driver_mobile_update_message',
+            'driver_mobile_app_enabled',
         ];
 
-        return $this->getMultiple($types);
+        $settings = $this->getMultiple($types);
+        $settings['driver_mobile_app_enabled'] = $this->isDriverMobileAppEnabled();
+
+        return $settings;
+    }
+
+    public function isDriverMobileAppEnabled(): bool
+    {
+        return filter_var($this->getMultiple(['driver_mobile_app_enabled'])['driver_mobile_app_enabled'] ?? true, FILTER_VALIDATE_BOOL);
     }
 
     /**
@@ -1232,7 +1243,20 @@ class WebsiteSettingsService
             'feature_respond_io_enabled',
             'feature_3cx_enabled',
             'feature_driver_management_enabled',
-        ]);
+        ]) + [
+            'feature_tour_booking_enabled' => Schema::hasColumn('service_types', 'tour_booking_enabled')
+                && \App\Models\Service\ServiceType::query()
+                ->where('is_active', true)
+                ->where('pricing_basis', 'vehicle_class')
+                ->where('tour_booking_enabled', true)
+                ->exists(),
+            'feature_customer_tour_booking_enabled' => Schema::hasColumn('service_types', 'tour_booking_enabled')
+                && \App\Models\Service\ServiceType::publicContext()
+                    ->where('is_active', true)
+                    ->where('pricing_basis', 'vehicle_class')
+                    ->where('tour_booking_enabled', true)
+                    ->exists(),
+        ];
     }
 
     /**

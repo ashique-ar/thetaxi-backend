@@ -576,6 +576,10 @@ class MobileAssignmentService
      */
     public function getDriversWithStatus(): Collection
     {
+        if (!app(\App\Services\WebsiteSettingsService::class)->isDriverMobileAppEnabled()) {
+            return collect();
+        }
+
         return Driver::with(['activeSession'])
             ->get()
             ->map(function (Driver $driver) {

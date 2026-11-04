@@ -34,6 +34,7 @@ class BusinessSetting extends BaseModel
 
     public const INSTALLATION_WIDE_WEBSITE_KEYS = [
         ...self::INSTALLATION_WIDE_WORKFLOW_KEYS,
+        'driver_mobile_app_enabled',
         'corporate_booking_notification_email',
         'default_country_code',
     ];

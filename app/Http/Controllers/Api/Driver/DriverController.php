@@ -84,6 +84,7 @@ class DriverController extends Controller
 
     public function listSummary(Request $request): JsonResponse
     {
+        $appEnabled = $this->websiteSettingsService->isDriverMobileAppEnabled();
         $query = $this->driverListQuery($request);
         $soon = now()->addDays(30)->toDateString();
         $summary = $query->selectRaw(
@@ -97,8 +98,8 @@ class DriverController extends Controller
 
         return response()->json(['status' => 'success', 'data' => [
             'total' => (int) $summary->total,
-            'available' => (int) $summary->available,
-            'online' => (int) $summary->online,
+            'available' => $appEnabled ? (int) $summary->available : 0,
+            'online' => $appEnabled ? (int) $summary->online : 0,
             'active' => (int) $summary->active,
             'license_attention' => (int) $summary->license_attention,
         ]]);
@@ -353,6 +354,10 @@ class DriverController extends Controller
 
     public function show(Driver $driver): JsonResponse
     {
+        if (!$this->websiteSettingsService->isDriverMobileAppEnabled()) {
+            $driver->setAttribute('current_latitude', null);
+            $driver->setAttribute('current_longitude', null);
+        }
         $driver->load(['user', 'country', 'state', 'licenseType', 'paymentMethod', 'licenseRenewals', 'devices', 'documents', 'profilePhotoDocument', 'defaultVehicle.documents', 'defaultVehicle.make', 'defaultVehicle.model', 'defaultVehicle.group']);
         return response()->json([
             'status' => 'success',
@@ -551,6 +556,7 @@ class DriverController extends Controller
      */
     public function status(Driver $driver): JsonResponse
     {
+        $appEnabled = $this->websiteSettingsService->isDriverMobileAppEnabled();
         $driver->load(['activeSession', 'devices']);
         $currentDevice = $driver->devices->firstWhere('device_uuid', $driver->current_device_uuid)
             ?? $driver->devices->sortByDesc('last_active_at')->first();
@@ -559,15 +565,15 @@ class DriverController extends Controller
             'status' => 'success',
             'data' => [
                 'driver_id' => $driver->id,
-                'is_online' => $driver->is_online,
-                'last_active_at' => $driver->last_active_at?->toIso8601String(),
-                'current_latitude' => $driver->current_latitude ? (float) $driver->current_latitude : null,
-                'current_longitude' => $driver->current_longitude ? (float) $driver->current_longitude : null,
-                'current_device_uuid' => $driver->current_device_uuid,
-                'current_device' => $currentDevice
+                'is_online' => $appEnabled && $driver->is_online,
+                'last_active_at' => $appEnabled ? $driver->last_active_at?->toIso8601String() : null,
+                'current_latitude' => $appEnabled && $driver->current_latitude ? (float) $driver->current_latitude : null,
+                'current_longitude' => $appEnabled && $driver->current_longitude ? (float) $driver->current_longitude : null,
+                'current_device_uuid' => $appEnabled ? $driver->current_device_uuid : null,
+                'current_device' => $appEnabled && $currentDevice
                     ? new \App\Http\Resources\Driver\DriverDeviceResource($currentDevice)
                     : null,
-                'current_session' => $driver->activeSession 
+                'current_session' => $appEnabled && $driver->activeSession
                     ? new DriverSessionResource($driver->activeSession) 
                     : null,
             ]
@@ -818,6 +824,10 @@ class DriverController extends Controller
             ]);
         }
 
+        if (!$this->websiteSettingsService->isDriverMobileAppEnabled()) {
+            $activity = $activity->reject(fn (array $item): bool => in_array($item['source'] ?? '', ['session', 'mobile_diagnostic'], true));
+        }
+
         $sorted = $activity
             ->sortByDesc(fn(array $item) => $item['occurred_at'] ?? '')
             ->values();
@@ -846,6 +856,12 @@ class DriverController extends Controller
      */
     public function sessions(Request $request, Driver $driver): JsonResponse
     {
+        if (!$this->websiteSettingsService->isDriverMobileAppEnabled()) {
+            return response()->json(['status' => 'success', 'data' => [], 'meta' => [
+                'current_page' => 1, 'last_page' => 1, 'per_page' => 15, 'total' => 0,
+            ]]);
+        }
+
         $query = $driver->sessions()
             ->with(['device' => fn($deviceQuery) => $deviceQuery->where('driver_id', $driver->id)])
             ->orderBy('start_time', 'desc');
@@ -897,6 +913,12 @@ class DriverController extends Controller
             ], 404);
         }
 
+        if (!$this->websiteSettingsService->isDriverMobileAppEnabled()) {
+            return response()->json(['status' => 'success', 'data' => [
+                'session' => null, 'route_points' => [], 'point_count' => 0,
+            ]]);
+        }
+
         $session->loadMissing(['device' => fn($deviceQuery) => $deviceQuery->where('driver_id', $driver->id)]);
         
         $routePoints = $session->routePoints()
@@ -924,6 +946,13 @@ class DriverController extends Controller
             'date' => ['nullable', 'date'],
             'timezone' => ['nullable', 'timezone'],
         ]);
+
+        if (!$this->websiteSettingsService->isDriverMobileAppEnabled()) {
+            return response()->json(['status' => 'success', 'data' => [
+                'tracking_enabled' => false, 'sessions' => [], 'assignments' => [],
+                'segments' => [], 'markers' => [], 'route_points' => [],
+            ]]);
+        }
 
         $timezone = $validated['timezone'] ?? config('app.timezone');
         $targetDate = isset($validated['date'])
@@ -1245,7 +1274,9 @@ class DriverController extends Controller
 
         $totalDrivers = Driver::count();
         $activeDrivers = Driver::where('is_active', true)->count();
-        $availableDrivers = Driver::where('availability_status', 'available')->count();
+        $availableDrivers = $this->websiteSettingsService->isDriverMobileAppEnabled()
+            ? Driver::where('availability_status', 'available')->count()
+            : 0;
         $offDutyDrivers = Driver::whereIn('availability_status', ['off_duty', 'unavailable'])->count();
         $activeAssignments = DriverAssignment::whereIn('trip_phase', $this->activeTripPhases())
             ->where('status', '!=', 'cancelled')
@@ -1309,6 +1340,12 @@ class DriverController extends Controller
      */
     public function locations(Request $request): JsonResponse
     {
+        if (!$this->websiteSettingsService->isDriverMobileAppEnabled()) {
+            return response()->json(['status' => 'success', 'data' => [], 'meta' => [
+                'total_online' => 0, 'timestamp' => now()->toIso8601String(),
+            ]]);
+        }
+
         $query = Driver::query()
             ->select([
                 'id', 'user_id', 'code', 'current_latitude', 'current_longitude',
@@ -1397,6 +1434,12 @@ class DriverController extends Controller
      */
     public function devices(Request $request, Driver $driver): JsonResponse
     {
+        if (!$this->websiteSettingsService->isDriverMobileAppEnabled()) {
+            return response()->json(['status' => 'success', 'data' => [], 'meta' => [
+                'total' => 0, 'active' => 0, 'inactive' => 0,
+            ]]);
+        }
+
         $query = $driver->devices()->orderBy('last_active_at', 'desc');
         
         // Optional filter by active status - only if explicitly set (not 'all')

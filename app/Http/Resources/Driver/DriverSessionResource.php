@@ -21,6 +21,8 @@ class DriverSessionResource extends JsonResource
      */
     public function toArray($request): array
     {
+        $appEnabled = app(\App\Services\WebsiteSettingsService::class)->isDriverMobileAppEnabled();
+
         return [
             'id' => $this->id,
             'driver_id' => $this->driver_id,
@@ -28,11 +30,11 @@ class DriverSessionResource extends JsonResource
             'status' => $this->status,
             'start_time' => $this->start_time?->toIso8601String(),
             'end_time' => $this->end_time?->toIso8601String(),
-            'start_latitude' => $this->start_latitude,
-            'start_longitude' => $this->start_longitude,
-            'end_latitude' => $this->end_latitude,
-            'end_longitude' => $this->end_longitude,
-            'total_distance_km' => $this->total_distance_km,
+            'start_latitude' => $appEnabled ? $this->start_latitude : null,
+            'start_longitude' => $appEnabled ? $this->start_longitude : null,
+            'end_latitude' => $appEnabled ? $this->end_latitude : null,
+            'end_longitude' => $appEnabled ? $this->end_longitude : null,
+            'total_distance_km' => $appEnabled ? $this->total_distance_km : null,
             'assignment_id' => $this->assignment_id,
             'metadata' => $this->metadata,
             'device' => $this->whenLoaded('device', function () {

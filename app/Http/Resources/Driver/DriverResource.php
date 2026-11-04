@@ -15,8 +15,9 @@ class DriverResource extends JsonResource
     public function toArray($request)
     {
         $viewer = $request->user();
+        $appEnabled = app(\App\Services\WebsiteSettingsService::class)->isDriverMobileAppEnabled();
         $fullName = trim(($this->user?->first_name ?? '') . ' ' . ($this->user?->last_name ?? ''));
-        $status = $this->availability_status ?: ($this->is_online ? 'available' : 'off_duty');
+        $status = $appEnabled ? ($this->availability_status ?: ($this->is_online ? 'available' : 'off_duty')) : 'off_duty';
         $activeAssignment = $this->resource->relationLoaded('realtimeStatusAssignments')
             ? $this->realtimeStatusAssignments->first()
             : $this->assignments()
@@ -80,21 +81,21 @@ class DriverResource extends JsonResource
             'termination_date' => $this->termination_date,
             'is_active' => $this->is_active,
             // Real-time status fields
-            'is_online' => $this->is_online ?? false,
-            'last_active_at' => $this->last_active_at,
-            'current_latitude' => $this->current_latitude,
-            'current_longitude' => $this->current_longitude,
-            'current_device_uuid' => $this->current_device_uuid,
-            'current_device' => $currentDevice ? new DriverDeviceResource($currentDevice) : null,
+            'is_online' => $appEnabled && ($this->is_online ?? false),
+            'last_active_at' => $appEnabled ? $this->last_active_at : null,
+            'current_latitude' => $appEnabled ? $this->current_latitude : null,
+            'current_longitude' => $appEnabled ? $this->current_longitude : null,
+            'current_device_uuid' => $appEnabled ? $this->current_device_uuid : null,
+            'current_device' => $appEnabled && $currentDevice ? new DriverDeviceResource($currentDevice) : null,
             // Availability status
-            'availability_status' => $this->availability_status,
+            'availability_status' => $appEnabled ? $this->availability_status : null,
             'current_status' => [
                 'status' => $status,
                 'updated_at' => $this->last_active_at,
                 'booking_id' => $activeAssignment?->booking_id,
                 'location' => [
-                    'latitude' => $this->current_latitude !== null ? (float) $this->current_latitude : null,
-                    'longitude' => $this->current_longitude !== null ? (float) $this->current_longitude : null,
+                    'latitude' => $appEnabled && $this->current_latitude !== null ? (float) $this->current_latitude : null,
+                    'longitude' => $appEnabled && $this->current_longitude !== null ? (float) $this->current_longitude : null,
                 ],
             ],
             'current_booking_id' => $activeAssignment?->booking_id,

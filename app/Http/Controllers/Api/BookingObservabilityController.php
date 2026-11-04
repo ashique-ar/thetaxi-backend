@@ -7,6 +7,7 @@ use App\Models\Booking\Booking;
 use App\Models\AuditLog;
 use App\Services\BookingObservabilityService;
 use App\Services\BookingOperationsHealthMonitor;
+use App\Services\WebsiteSettingsService;
 use App\Services\Driver\RouteProviderGateway;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
@@ -19,6 +20,7 @@ class BookingObservabilityController extends Controller
         private readonly BookingObservabilityService $observability,
         private readonly BookingOperationsHealthMonitor $healthMonitor,
         private readonly RouteProviderGateway $routeProviderGateway,
+        private readonly WebsiteSettingsService $settingsService,
     ) {}
 
     public function trace(Request $request, Booking $booking): JsonResponse
@@ -40,6 +42,35 @@ class BookingObservabilityController extends Controller
     public function trackingSummary(Request $request, Booking $booking): JsonResponse
     {
         $itemId = $this->validatedItemId($request, $booking, true);
+        if (!$this->settingsService->isDriverMobileAppEnabled()) {
+            return response()->json(['status' => 'success', 'data' => [
+                'booking_id' => (string) $booking->id,
+                'booking_item_id' => $itemId,
+                'assignment_id' => null,
+                'driver_id' => null,
+                'tracking_enabled' => false,
+                'enabled' => false,
+                'is_online' => false,
+                'freshness' => 'never_reported',
+                'last_reported_at' => null,
+                'active_position' => null,
+                'trip_phase' => null,
+                'total_points' => 0,
+                'route_truncated' => false,
+                'has_replay' => false,
+                'distance_evidence' => [
+                    'classification' => 'unavailable', 'source' => 'driver_route_points',
+                    'confidence' => 'none', 'recorded_distance_km' => null,
+                    'coverage_status' => 'not_recorded', 'distance_trustworthy' => false,
+                    'recorded_point_count' => 0, 'accepted_point_count' => 0,
+                    'rejected_point_count' => 0, 'gap_count' => 0, 'longest_gap_seconds' => 0,
+                    'first_valid_point_at' => null, 'last_valid_point_at' => null,
+                    'calculation_version' => 'contiguous-v2', 'warnings' => [], 'pricing_effect' => 'none',
+                ],
+                'pricing_effect' => 'none',
+                'generated_at' => now()->utc()->toIso8601String(),
+            ]]);
+        }
         $data = $this->observability->trackingSummary($booking, $itemId);
         $data['tracking_health'] = $this->healthMonitor->latestDriverTrackingHealth(
             isset($data['assignment_id']) ? (string) $data['assignment_id'] : null
@@ -54,6 +85,12 @@ class BookingObservabilityController extends Controller
             'dashboard_scope' => ['nullable', 'in:standard'],
         ]);
         $limit = max(1, min((int) $request->query('limit', 100), 200));
+        if (!$this->settingsService->isDriverMobileAppEnabled()) {
+            return response()->json(['status' => 'success', 'data' => [
+                'tracking_enabled' => false, 'items' => [], 'total' => 0,
+                'with_position' => 0, 'generated_at' => now()->utc()->toIso8601String(),
+            ]]);
+        }
         return response()->json([
             'status' => 'success',
             'data' => $this->observability->activeTrips($limit, $validated['dashboard_scope'] ?? null),
@@ -63,6 +100,32 @@ class BookingObservabilityController extends Controller
     public function routeReplay(Request $request, Booking $booking): JsonResponse
     {
         $itemId = $this->validatedItemId($request, $booking, true);
+        if (!$this->settingsService->isDriverMobileAppEnabled()) {
+            return response()->json(['status' => 'success', 'data' => [
+                'booking_id' => (string) $booking->id,
+                'booking_item_id' => $itemId,
+                'assignment_id' => null,
+                'assignment_count' => 0,
+                'segments' => [],
+                'handoffs' => [],
+                'total_points' => 0,
+                'returned_points' => 0,
+                'truncated' => false,
+                'quality' => [
+                    'scope' => 'returned_page', 'gap_threshold_seconds' => 0,
+                    'gap_count' => 0, 'invalid_coordinate_count' => 0,
+                    'inaccurate_point_count' => 0, 'implausible_speed_count' => 0,
+                    'longest_gap_seconds' => 0, 'operational_distance_km' => 0,
+                ],
+                'pricing_effect' => 'none',
+                'governance' => [
+                    'retention_status' => 'not_configured', 'retention_days' => null,
+                    'export_max_points' => 0, 'can_export' => false,
+                ],
+                'next_cursor' => null,
+                'generated_at' => now()->utc()->toIso8601String(),
+            ]]);
+        }
         $limit = max(20, min((int) $request->query('limit', 500), 1000));
         $data = $this->observability->routeReplay($booking, $itemId, $request->query('cursor'), $limit);
         $data['governance']['can_export'] = (bool) $request->user()?->can('bookings.tracking_export')
@@ -105,6 +168,7 @@ class BookingObservabilityController extends Controller
 
     public function exportRouteReplay(Request $request, Booking $booking): StreamedResponse
     {
+        abort_unless($this->settingsService->isDriverMobileAppEnabled(), 404);
         $itemId = $this->validatedItemId($request, $booking, true);
         abort_unless(config('booking_observability.route_retention_days'), 409, 'Route export is disabled until a retention policy is configured.');
         $limit = max(1, (int) config('booking_observability.route_export_max_points', 10000));

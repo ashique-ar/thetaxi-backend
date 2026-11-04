@@ -229,14 +229,25 @@ trait BookingCorporateTrait
         if (!empty($validated['selected_id'])) {
             $query->whereKey($validated['selected_id']);
         } elseif (!empty($validated['search'])) {
-            $search = '%' . trim($validated['search']) . '%';
-            $query->where(function ($query) use ($search) {
+            $term = trim($validated['search']);
+            $search = '%' . $term . '%';
+            $nameParts = preg_split('/\s+/', $term, -1, PREG_SPLIT_NO_EMPTY);
+            $query->where(function ($query) use ($search, $nameParts) {
                 $query->where('employee_code', 'like', $search)
-                    ->orWhereHas('user', fn ($userQuery) => $userQuery
-                        ->where('first_name', 'like', $search)
-                        ->orWhere('last_name', 'like', $search)
-                        ->orWhere('email', 'like', $search)
-                        ->orWhere('phone', 'like', $search))
+                    ->orWhereHas('user', function ($userQuery) use ($search, $nameParts) {
+                        $userQuery->where('first_name', 'like', $search)
+                            ->orWhere('last_name', 'like', $search)
+                            ->orWhere('email', 'like', $search)
+                            ->orWhere('phone', 'like', $search)
+                            ->orWhere(function ($nameQuery) use ($nameParts) {
+                                foreach ($nameParts as $part) {
+                                    $nameQuery->where(function ($partQuery) use ($part) {
+                                        $partQuery->where('first_name', 'like', '%' . $part . '%')
+                                            ->orWhere('last_name', 'like', '%' . $part . '%');
+                                    });
+                                }
+                            });
+                    })
                     ->orWhereHas('department', fn ($departmentQuery) => $departmentQuery->where('name', 'like', $search))
                     ->orWhereHas('division', fn ($divisionQuery) => $divisionQuery->where('name', 'like', $search));
             });

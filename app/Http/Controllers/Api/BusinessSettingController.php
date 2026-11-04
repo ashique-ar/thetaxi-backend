@@ -94,6 +94,7 @@ class BusinessSettingController extends Controller
             'driver_mobile_latest_version',
             'driver_mobile_mandatory_update',
             'driver_mobile_update_message',
+            'driver_mobile_app_enabled',
         ],
         'security' => [
             'ssl_force',
@@ -253,6 +254,11 @@ class BusinessSettingController extends Controller
         $settings = $category === 'booking'
             ? $this->normalizeBookingWorkflowSettings($request->input('settings', []))
             : $request->input('settings', []);
+        if (array_key_exists('driver_mobile_app_enabled', $settings)) {
+            Validator::make(['enabled' => $settings['driver_mobile_app_enabled']], [
+                'enabled' => ['required', 'boolean'],
+            ])->validate();
+        }
         if (array_key_exists('feature_hr_attendance_ingestion_enabled', $settings)) {
             $this->attendanceActivation->assertCanEnable(
                 $request->user(), 'feature_hr_attendance_ingestion_enabled', $settings['feature_hr_attendance_ingestion_enabled'],

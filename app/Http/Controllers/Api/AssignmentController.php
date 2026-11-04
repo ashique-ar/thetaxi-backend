@@ -54,6 +54,7 @@ class AssignmentController extends Controller
                 $request->query('include_tracking', true),
                 FILTER_VALIDATE_BOOLEAN
             );
+            $includeTracking = $includeTracking && app(\App\Services\WebsiteSettingsService::class)->isDriverMobileAppEnabled();
             $includeAccountSummary = filter_var(
                 $request->query('include_account_summary', true),
                 FILTER_VALIDATE_BOOLEAN
@@ -201,7 +202,9 @@ class AssignmentController extends Controller
                 $driverAssignments,
                 $selectedBookingItem?->id
             );
-            $bookingDevice = $this->resolveBookingDeviceSnapshot($tripAssignment, $selectedDriver);
+            $bookingDevice = $includeTracking
+                ? $this->resolveBookingDeviceSnapshot($tripAssignment, $selectedDriver)
+                : null;
             $trackingPayload = $this->buildTrackingPayload(
                 $tripAssignment,
                 $selectedDriver,
@@ -982,15 +985,15 @@ class AssignmentController extends Controller
                     $selectedDriver->user?->first_name . ' ' . $selectedDriver->user?->last_name
                 ))
                 : null,
-            'is_online' => (bool) ($selectedDriver->is_online ?? false),
-            'last_active_at' => $selectedDriver?->last_active_at?->toIso8601String(),
+            'is_online' => $includeTracking && (bool) ($selectedDriver->is_online ?? false),
+            'last_active_at' => $includeTracking ? $selectedDriver?->last_active_at?->toIso8601String() : null,
             'latitude' => $selectedDriver && $selectedDriver->current_latitude !== null
-                ? (float) $selectedDriver->current_latitude
+                && $includeTracking ? (float) $selectedDriver->current_latitude
                 : null,
             'longitude' => $selectedDriver && $selectedDriver->current_longitude !== null
-                ? (float) $selectedDriver->current_longitude
+                && $includeTracking ? (float) $selectedDriver->current_longitude
                 : null,
-            'has_location' => $selectedDriver
+            'has_location' => $includeTracking && $selectedDriver
                 ? ($selectedDriver->current_latitude !== null && $selectedDriver->current_longitude !== null)
                 : false,
         ];
@@ -1062,8 +1065,8 @@ class AssignmentController extends Controller
                 'actual_start' => $this->toUtcIsoTimestamp($tripAssignment->actual_start),
                 'actual_end' => $this->toUtcIsoTimestamp($tripAssignment->actual_end),
                 'trip_started_at' => $this->toUtcIsoTimestamp($tripAssignment->trip_started_at),
-                'trip_start_latitude' => $tripAssignment->trip_start_latitude !== null ? (float) $tripAssignment->trip_start_latitude : null,
-                'trip_start_longitude' => $tripAssignment->trip_start_longitude !== null ? (float) $tripAssignment->trip_start_longitude : null,
+                'trip_start_latitude' => $includeTracking && $tripAssignment->trip_start_latitude !== null ? (float) $tripAssignment->trip_start_latitude : null,
+                'trip_start_longitude' => $includeTracking && $tripAssignment->trip_start_longitude !== null ? (float) $tripAssignment->trip_start_longitude : null,
                 'trip_completed_at' => $this->toUtcIsoTimestamp($tripAssignment->trip_completed_at),
                 'pickup_arrived_at' => $this->toUtcIsoTimestamp($tripAssignment->pickup_arrived_at),
                 'total_distance_km' => $tripAssignment->total_distance_km !== null
@@ -1072,35 +1075,35 @@ class AssignmentController extends Controller
                 'total_waiting_time_seconds' => $tripAssignment->total_waiting_time_seconds !== null
                     ? (int) $tripAssignment->total_waiting_time_seconds
                     : null,
-                'pickup_arrival_latitude' => $tripAssignment->pickup_arrival_latitude !== null
+                'pickup_arrival_latitude' => $includeTracking && $tripAssignment->pickup_arrival_latitude !== null
                     ? (float) $tripAssignment->pickup_arrival_latitude
                     : null,
-                'pickup_arrival_longitude' => $tripAssignment->pickup_arrival_longitude !== null
+                'pickup_arrival_longitude' => $includeTracking && $tripAssignment->pickup_arrival_longitude !== null
                     ? (float) $tripAssignment->pickup_arrival_longitude
                     : null,
-                'final_latitude' => $tripAssignment->final_latitude !== null
+                'final_latitude' => $includeTracking && $tripAssignment->final_latitude !== null
                     ? (float) $tripAssignment->final_latitude
                     : null,
-                'final_longitude' => $tripAssignment->final_longitude !== null
+                'final_longitude' => $includeTracking && $tripAssignment->final_longitude !== null
                     ? (float) $tripAssignment->final_longitude
                     : null,
-                'stops' => $this->mapPersistedAssignmentStops($tripAssignment),
-                'events' => $this->buildAssignmentEventTimeline(
+                'stops' => $includeTracking ? $this->mapPersistedAssignmentStops($tripAssignment) : [],
+                'events' => $includeTracking ? $this->buildAssignmentEventTimeline(
                     $tripAssignment,
                     $tripAssignment->bookingItem ?? $selectedBookingItem
-                ),
+                ) : [],
             ];
             $operationalRecords['assignment'] = [
                 'accepted_at' => $this->toUtcIsoTimestamp($tripAssignment->confirmed_at),
                 'arrived_at_pickup_at' => $this->toUtcIsoTimestamp($tripAssignment->pickup_arrived_at),
                 'trip_started_at' => $this->toUtcIsoTimestamp($tripAssignment->trip_started_at ?? $tripAssignment->actual_start),
-                'trip_start_latitude' => $tripAssignment->trip_start_latitude !== null ? (float) $tripAssignment->trip_start_latitude : null,
-                'trip_start_longitude' => $tripAssignment->trip_start_longitude !== null ? (float) $tripAssignment->trip_start_longitude : null,
+                'trip_start_latitude' => $includeTracking && $tripAssignment->trip_start_latitude !== null ? (float) $tripAssignment->trip_start_latitude : null,
+                'trip_start_longitude' => $includeTracking && $tripAssignment->trip_start_longitude !== null ? (float) $tripAssignment->trip_start_longitude : null,
                 'trip_completed_at' => $this->toUtcIsoTimestamp($tripAssignment->trip_completed_at ?? $tripAssignment->actual_end),
-                'pickup_arrival_latitude' => $tripAssignment->pickup_arrival_latitude !== null ? (float) $tripAssignment->pickup_arrival_latitude : null,
-                'pickup_arrival_longitude' => $tripAssignment->pickup_arrival_longitude !== null ? (float) $tripAssignment->pickup_arrival_longitude : null,
-                'final_latitude' => $tripAssignment->final_latitude !== null ? (float) $tripAssignment->final_latitude : null,
-                'final_longitude' => $tripAssignment->final_longitude !== null ? (float) $tripAssignment->final_longitude : null,
+                'pickup_arrival_latitude' => $includeTracking && $tripAssignment->pickup_arrival_latitude !== null ? (float) $tripAssignment->pickup_arrival_latitude : null,
+                'pickup_arrival_longitude' => $includeTracking && $tripAssignment->pickup_arrival_longitude !== null ? (float) $tripAssignment->pickup_arrival_longitude : null,
+                'final_latitude' => $includeTracking && $tripAssignment->final_latitude !== null ? (float) $tripAssignment->final_latitude : null,
+                'final_longitude' => $includeTracking && $tripAssignment->final_longitude !== null ? (float) $tripAssignment->final_longitude : null,
                 'source' => 'driver_assignment',
             ];
 
