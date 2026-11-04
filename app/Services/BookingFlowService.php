@@ -897,7 +897,8 @@ class BookingFlowService
         $orderedAdditionalStops = $this->extractOrderedAdditionalStopsFromParams($params);
         $customerId = $params['customer_id'] ?? null;
         $excludeBookingId = $params['exclude_booking_id'] ?? null; // For edit mode
-        $bypassPublicAvailability = $isPublic && !$this->publicWebsiteAvailabilityEnforced();
+        $availabilityEnforced = $this->publicWebsiteAvailabilityEnforced();
+        $bypassPublicAvailability = $isPublic && !$availabilityEnforced;
 
         // New filtering and pagination parameters
         $search = trim((string) (
@@ -1374,7 +1375,7 @@ class BookingFlowService
                 'is_inquiry_only' => $isInquiryOnly,
                 'service_requires_inquiry' => $serviceTypeRequiresInquiry,
                 'availability_status' => $this->determineGroupAvailabilityStatus($availableCount, $totalCount, $conflictCount),
-                'availability_enforced' => !$bypassPublicAvailability,
+                'availability_enforced' => $availabilityEnforced,
                 'concurrent_bookings_possible' => $vehicleAnalysis['concurrent_possible'],
                 'override_options_available' => $vehicleAnalysis['override_available'],
                 // Add new vehicle group fields
@@ -2308,15 +2309,11 @@ class BookingFlowService
      */
     public function getAvailableDrivers(array $params): array
     {
-        $vehicleGroupId = $params['vehicle_group_id'];
         $fromDate = Carbon::parse($params['from_date']);
         $toDate = Carbon::parse($params['to_date']);
         $fromTime = $params['from_time'];
         $toTime = $params['to_time'];
         $excludeBookingId = $params['exclude_booking_id'] ?? null; // For edit mode
-
-        $vehicleGroup = VehicleGroup::findOrFail($vehicleGroupId);
-        // $requiredLicenseTypes = $vehicleGroup->required_license_types ?? ['standard'];
 
         // Get ALL drivers instead of filtering out conflicted ones
         // We'll determine availability status for each driver individually
@@ -2531,7 +2528,7 @@ class BookingFlowService
             'has_conflicts' => count($conflicts) > 0,
             'conflicts' => $conflicts,
             'driver_status' => $driver->status,
-            'recommendations' => $this->generateDriverConflictRecommendations($conflicts, $driverId, $params),
+            'recommendations' => [],
         ];
     }
 
@@ -4527,29 +4524,6 @@ class BookingFlowService
                     'type' => 'alternative_vehicles',
                     'message' => 'Consider these alternative vehicles in the same group',
                     'alternatives' => array_slice($alternatives, 0, 3),
-                ];
-            }
-        }
-
-        return $recommendations;
-    }
-
-    private function generateDriverConflictRecommendations(array $conflicts, string $driverId, array $params): array
-    {
-        $recommendations = [];
-
-        if (!empty($conflicts)) {
-            // Find alternative drivers
-            $alternatives = $this->getAvailableDrivers($params);
-            $alternatives = array_filter($alternatives, function ($driver) use ($driverId) {
-                return $driver['id'] !== $driverId;
-            });
-
-            if (!empty($alternatives)) {
-                $recommendations[] = [
-                    'type' => 'alternative_drivers',
-                    'message' => 'Consider these alternative drivers',
-                    'alternatives' => array_slice(array_values($alternatives), 0, 3),
                 ];
             }
         }

@@ -249,6 +249,14 @@ trait BookingAvailabilityTrait
 
     public function checkVehicleConflicts(Request $request, string $vehicleId): JsonResponse
     {
+        if (! $this->bookingFlowService->publicWebsiteAvailabilityEnforced()) {
+            return response()->json([
+                'status' => 'success',
+                'data' => ['has_conflicts' => false, 'conflicts' => [], 'vehicle_status' => null, 'recommendations' => []],
+                'message' => 'Availability enforcement is disabled',
+            ]);
+        }
+
         $request->validate([
             'service_type' => 'required|string',
             'from_date' => 'required|date',
@@ -278,8 +286,15 @@ trait BookingAvailabilityTrait
 
     public function checkDriverConflicts(Request $request, string $driverId): JsonResponse
     {
+        if (! $this->bookingFlowService->publicWebsiteAvailabilityEnforced()) {
+            return response()->json([
+                'status' => 'success',
+                'data' => ['has_conflicts' => false, 'conflicts' => [], 'driver_status' => null, 'recommendations' => []],
+                'message' => 'Availability enforcement is disabled',
+            ]);
+        }
+
         $request->validate([
-            'vehicle_group_id' => 'required|uuid|exists:vehicle_groups,id',
             'from_date' => 'required|date',
             'to_date' => 'nullable|date',
             'from_time' => 'required|string',

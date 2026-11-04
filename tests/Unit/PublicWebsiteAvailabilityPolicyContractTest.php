@@ -46,11 +46,22 @@ class PublicWebsiteAvailabilityPolicyContractTest extends TestCase
         self::assertStringContainsString("'public_booking_enforce_vehicle_availability'", $settings);
         self::assertStringContainsString('$bypassPublicAvailability = $isPublic && !$this->publicWebsiteAvailabilityEnforced();', $flow);
         self::assertStringNotContainsString("// public: hide groups without available vehicles", $flow);
-        self::assertStringContainsString("'availability_enforced' => !\$bypassPublicAvailability", $flow);
+        self::assertStringContainsString("'availability_enforced' => \$availabilityEnforced", $flow);
         self::assertStringContainsString('->getPublicVehicleGroupAvailability($pricingParams)', $cart);
         self::assertStringContainsString("\$paymentType !== 'quotation'", $checkout);
         self::assertStringContainsString("get('public_booking_enforce_vehicle_availability', true)", $card);
         self::assertStringContainsString('public_booking_enforce_vehicle_availability: [true]', $portal);
         self::assertStringContainsString('formControlName="public_booking_enforce_vehicle_availability"', $portalView);
+    }
+
+    public function test_conflict_checks_are_skipped_when_website_availability_enforcement_is_disabled(): void
+    {
+        $availability = file_get_contents(dirname(__DIR__, 2) . '/app/Http/Controllers/Api/Booking/Traits/BookingAvailabilityTrait.php');
+        $vehicle = \Illuminate\Support\Str::between($availability, 'public function checkVehicleConflicts(', 'public function checkDriverConflicts(');
+        $driver = \Illuminate\Support\Str::between($availability, 'public function checkDriverConflicts(', 'public function getAvailableAddons(');
+
+        self::assertStringContainsString('if (! $this->bookingFlowService->publicWebsiteAvailabilityEnforced())', $vehicle);
+        self::assertStringContainsString('if (! $this->bookingFlowService->publicWebsiteAvailabilityEnforced())', $driver);
+        self::assertStringNotContainsString("'exists:vehicle_groups,id'", $driver);
     }
 }

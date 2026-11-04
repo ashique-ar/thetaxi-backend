@@ -80,6 +80,26 @@ it('uses authoritative vehicle enforcement consistently in group and specific av
         ->toContain("['available', 'available_concurrent']");
 });
 
+it('keeps final driver conflict checks from launching an all-driver recommendation scan', function () {
+    $source = file_get_contents(dirname(__DIR__, 2) . '/app/Services/BookingFlowService.php');
+    $check = Str::between(
+        $source,
+        'public function checkDriverConflicts(',
+        'private function whereBookingItemOverlaps('
+    );
+    $available = Str::between(
+        $source,
+        'public function getAvailableDrivers(',
+        'public function checkVehicleConflicts('
+    );
+
+    expect($check)
+        ->toContain("'recommendations' => []")
+        ->not->toContain('generateDriverConflictRecommendations')
+        ->and($available)
+        ->not->toContain('VehicleGroup::findOrFail');
+});
+
 it('returns validation and missing-booking responses without converting them to server errors', function () {
     $submission = file_get_contents(dirname(__DIR__, 2) . '/app/Http/Controllers/Api/Booking/Traits/BookingSubmissionTrait.php');
     $assignment = file_get_contents(dirname(__DIR__, 2) . '/app/Http/Controllers/Api/AssignmentController.php');
