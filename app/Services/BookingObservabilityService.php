@@ -20,6 +20,7 @@ use App\Models\Invoice;
 use App\Services\Driver\RouteEvidenceService;
 use Carbon\Carbon;
 use Illuminate\Support\Collection;
+use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\DB;
 
 class BookingObservabilityService
@@ -183,8 +184,13 @@ class BookingObservabilityService
     {
         $bookingItem = $booking->bookingItems()->whereKey($bookingItemId)->first();
         $assignment = $this->assignmentForItem($booking, $bookingItemId);
-        $latest = $assignment ? $this->routeQuery($assignment)->latest('recorded_at')->first() : null;
-        $totalPoints = $assignment ? $this->routeQuery($assignment)->count() : 0;
+        $routeQuery = $assignment ? $this->routeQuery($assignment) : null;
+        $latest = $routeQuery
+            ? (clone $routeQuery)->latest('recorded_at')->first([
+                'id', 'recorded_at', 'latitude', 'longitude', 'accuracy', 'speed', 'heading',
+            ])
+            : null;
+        $totalPoints = $routeQuery ? (clone $routeQuery)->count() : 0;
         $lastReportedAt = $latest?->recorded_at?->utc();
         $driver = $assignment?->driver;
         $trackingIncidents = $assignment
@@ -208,11 +214,7 @@ class BookingObservabilityService
                 ])->all()
             : [];
         $distanceEvidence = $assignment
-            ? $this->routeEvidence->calculate(
-                $assignment->routePoints()->orderBy('recorded_at')->orderBy('id')->get(),
-                $assignment->trip_started_at?->copy()->utc(),
-                ($assignment->trip_completed_at ?? $assignment->actual_end ?? now('UTC'))->copy()->utc()
-            )
+            ? $this->trackingDistanceEvidence($assignment, $latest?->id, $totalPoints)
             : $this->routeEvidence->calculate(collect(), null, null);
 
         return [
@@ -414,6 +416,43 @@ class BookingObservabilityService
                 });
             }
         });
+    }
+
+    private function trackingDistanceEvidence(DriverAssignment $assignment, ?string $latestPointId, int $totalPoints): array
+    {
+        $startedAt = $assignment->trip_started_at?->copy()->utc();
+        $endedAt = ($assignment->trip_completed_at ?? $assignment->actual_end)?->copy()->utc();
+        $asOf = now('UTC')->startOfSecond();
+        $cacheKey = 'booking-tracking-route-evidence:v1:'.sha1(implode('|', [
+            (string) $assignment->id,
+            $startedAt?->toIso8601String() ?? '',
+            $endedAt?->toIso8601String() ?? 'active',
+            (string) ($latestPointId ?? ''),
+            (string) $totalPoints,
+            (string) $asOf->timestamp,
+        ]));
+        $cache = Cache::store('file');
+        $calculate = fn () => $this->routeEvidence->calculate(
+            $assignment->routePoints()
+                ->orderBy('recorded_at')
+                ->orderBy('id')
+                ->cursor(['id', 'latitude', 'longitude', 'accuracy', 'recorded_at']),
+            $startedAt,
+            $endedAt ?? $asOf
+        );
+
+        // shortcut: exact-second keys only coalesce concurrent viewers; use shared cache if the app spans hosts.
+        if (is_array($cached = $cache->get($cacheKey))) {
+            return $cached;
+        }
+
+        try {
+            return $cache->lock($cacheKey.':lock', 30)->block(3, fn () => $cache->remember($cacheKey, 10, $calculate));
+        } catch (\Illuminate\Contracts\Cache\LockTimeoutException) {
+            $cached = $cache->get($cacheKey);
+
+            return is_array($cached) ? $cached : $calculate();
+        }
     }
 
     private function routeQueryForAssignments(Collection $assignments): array

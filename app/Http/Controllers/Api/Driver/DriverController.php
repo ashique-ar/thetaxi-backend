@@ -1310,6 +1310,10 @@ class DriverController extends Controller
     public function locations(Request $request): JsonResponse
     {
         $query = Driver::query()
+            ->select([
+                'id', 'user_id', 'code', 'current_latitude', 'current_longitude',
+                'is_online', 'last_active_at', 'current_device_uuid',
+            ])
             ->where('is_online', true)
             ->whereNotNull('current_latitude')
             ->whereNotNull('current_longitude');

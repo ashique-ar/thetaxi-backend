@@ -9892,15 +9892,28 @@ class BookingFlowService
                 'booking.responsibleUser:id,first_name,last_name',
                 'booking.bookingChannel:id,name',
                 'booking.vehicleAssignments' => function ($q) {
-                    $q->where('status', '!=', 'cancelled')
+                    $q->select([
+                        'id', 'booking_id', 'vehicle_id', 'status', 'assignment_type',
+                        'overlap_type', 'requires_approval', 'manually_confirmed',
+                        'assigned_from', 'assigned_to', 'created_at',
+                    ])
+                        ->where('status', '!=', 'cancelled')
                         ->orderBy('created_at', 'desc');
                 },
-                'booking.vehicleAssignments.vehicle',
                 'booking.driverAssignments' => function ($q) {
-                    $q->where('status', '!=', 'cancelled')
+                    $columns = [
+                        'id', 'booking_id', 'driver_id', 'status', 'assignment_type',
+                        'overlap_type', 'requires_approval', 'manually_confirmed',
+                        'assigned_from', 'assigned_to', 'trip_started_at',
+                        'trip_completed_at', 'actual_end', 'created_at',
+                    ];
+                    if (self::bookingListDriverAssignmentItemColumnExists()) {
+                        $columns[] = 'booking_item_id';
+                    }
+                    $q->select($columns)
+                        ->where('status', '!=', 'cancelled')
                         ->orderBy('created_at', 'desc');
                 },
-                'booking.driverAssignments.driver.user:id,first_name,last_name,email,phone',
                 'booking.dispatch:id,booking_id,dispatch_status',
                 'booking.qc:id,booking_id,qc_status',
                 'booking.dispatches',
@@ -10687,7 +10700,6 @@ class BookingFlowService
         }
 
         $vehicleAssignmentRows = $matchingVehicleAssignments
-            ->sortByDesc(fn($assignment) => optional($assignment->created_at)->getTimestamp() ?? 0)
             ->take(1)
             ->map(function ($assignment) {
                 return [
@@ -10705,7 +10717,6 @@ class BookingFlowService
             ->toArray();
 
         $driverAssignmentRows = $matchingDriverAssignments
-            ->sortByDesc(fn($assignment) => optional($assignment->created_at)->getTimestamp() ?? 0)
             ->take(1)
             ->map(function ($assignment) {
                 return [
@@ -10820,7 +10831,6 @@ class BookingFlowService
             $distanceAssignment = $matchingDriverAssignments
                 ->where('booking_item_id', (string) $item->id)
                 ->where('driver_id', (string) $item->driver_id)
-                ->sortByDesc(fn($assignment) => optional($assignment->created_at)->getTimestamp() ?? 0)
                 ->first();
             if ($distanceAssignment?->trip_started_at) {
                 $tripStartedAt = $distanceAssignment->trip_started_at->copy()->utc();
