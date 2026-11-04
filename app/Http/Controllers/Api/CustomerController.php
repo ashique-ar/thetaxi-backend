@@ -260,15 +260,19 @@ class CustomerController extends Controller
 
         $email = strtolower(trim($data['email']));
 
-        $customerQuery = Customer::with('user')
+        $customer = Customer::with('user')
             ->whereHas('user', fn ($query) => $query->whereRaw('LOWER(email) = ?', [$email]))
-            ->when(!empty($data['except_customer_id']), fn ($query) => $query->where('id', '!=', $data['except_customer_id']));
-        $customer = $customerQuery->first();
+            ->when(!empty($data['except_customer_id']), fn ($query) => $query->where('id', '!=', $data['except_customer_id']))
+            ->first();
+        $hasCustomerContext = User::whereRaw('LOWER(email) = ?', [$email])
+            ->whereHas('contexts', fn ($query) => $query->where('context_type', 'customer')->where('is_active', true))
+            ->when(!empty($data['except_customer_id']), fn ($query) => $query->whereDoesntHave('customer', fn ($customerQuery) => $customerQuery->where('id', $data['except_customer_id'])))
+            ->exists();
 
         return response()->json([
             'status' => 'success',
             'data' => [
-                'exists' => (bool) $customer,
+                'exists' => (bool) $customer || $hasCustomerContext,
                 'customer' => $customer ? new CustomerResource($customer) : null,
             ],
         ]);
