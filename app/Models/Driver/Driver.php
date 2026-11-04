@@ -16,6 +16,7 @@ use Illuminate\Database\Eloquent\Relations\HasMany;
 use Illuminate\Database\Eloquent\Relations\HasManyThrough;
 use Illuminate\Database\Eloquent\Relations\HasOne;
 use Illuminate\Database\Eloquent\Relations\MorphOne;
+use Spatie\Activitylog\Support\LogOptions;
 
 /**
  * Driver Model
@@ -65,6 +66,20 @@ class Driver extends BaseModel
     protected static function booted(): void
     {
         static::creating(fn (Driver $driver) => $driver->code ??= app(\App\Services\BusinessCodeGenerator::class)->generate('driver'));
+    }
+
+    public function getActivitylogOptions(): LogOptions
+    {
+        // GPS samples are retained in route_points; keep telemetry out of the per-change audit log.
+        $telemetry = ['current_latitude', 'current_longitude', 'last_active_at', 'updated_user_id'];
+
+        return LogOptions::defaults()
+            ->logFillable()
+            ->logOnlyDirty()
+            ->dontLogEmptyChanges()
+            ->logExcept($telemetry)
+            ->dontLogIfAttributesChangedOnly([...$telemetry, 'updated_at', 'created_at'])
+            ->useLogName('Driver');
     }
 
 
