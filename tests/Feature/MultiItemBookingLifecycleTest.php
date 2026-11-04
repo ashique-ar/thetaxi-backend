@@ -271,6 +271,23 @@ beforeEach(function () {
         $table->unique(['booking_id', 'booking_item_id']);
     });
 
+    Schema::create('booking_activities', function (Blueprint $table) {
+        $table->uuid('id')->primary();
+        $table->uuid('booking_id')->nullable();
+        $table->uuid('booking_item_id')->nullable();
+        $table->string('event_key');
+        $table->string('channel')->default('internal');
+        $table->string('result_status');
+        $table->string('source')->default('booking_lifecycle');
+        $table->string('title');
+        $table->text('detail')->nullable();
+        $table->string('idempotency_key')->unique();
+        $table->json('meta')->nullable();
+        $table->timestamp('event_at');
+        $table->timestamps();
+        $table->softDeletes();
+    });
+
     Schema::create('booking_qc_repair_items', function (Blueprint $table) {
         $table->uuid('id')->primary();
         $table->uuid('qc_id');
@@ -310,6 +327,11 @@ beforeEach(function () {
         'assignment_enable_maintenance_stage' => 'false',
         default => $default,
     });
+    $settings->shouldReceive('getMultiple')->andReturnUsing(fn (array $keys) => collect($keys)->mapWithKeys(fn (string $key) => [$key => match ($key) {
+        'feature_vehicle_return_management_enabled' => 'true',
+        'assignment_enable_qc_stage', 'assignment_enable_maintenance_stage' => 'false',
+        default => null,
+    }])->all());
 
     $this->bookingFlowService = Mockery::mock(BookingFlowService::class);
     $this->currencyService = Mockery::mock(CurrencyService::class);
@@ -611,6 +633,12 @@ it('owns QC and repairs per item and blocks aggregate completion until every ite
         'assignment_enable_maintenance_stage' => 'false',
         default => $default,
     });
+    $settings->shouldReceive('getMultiple')->andReturnUsing(fn (array $keys) => collect($keys)->mapWithKeys(fn (string $key) => [$key => match ($key) {
+        'feature_vehicle_return_management_enabled' => 'true',
+        'assignment_enable_qc_stage' => 'true',
+        'assignment_enable_maintenance_stage' => 'false',
+        default => null,
+    }])->all());
     $lifecycle = new BookingLifecycleService(
         Mockery::mock(AssignmentService::class),
         Mockery::mock(BookingFlowService::class),
@@ -650,6 +678,8 @@ it('owns QC and repairs per item and blocks aggregate completion until every ite
     $firstQc = $lifecycle->completeQCInspection($this->booking->id, [
         'cleanliness_rating' => 5,
         'repair_required' => false,
+        'requires_maintenance' => true,
+        'next_maintenance_due' => now()->addWeek()->toDateString(),
     ], $first->id);
     $firstQcRetry = $lifecycle->completeQCInspection($this->booking->id, [
         'cleanliness_rating' => 1,
@@ -662,7 +692,9 @@ it('owns QC and repairs per item and blocks aggregate completion until every ite
     $lifecycle->completeBooking($this->booking->id, [], $first->id);
     expect($first->fresh()->completed_at)->not->toBeNull()
         ->and($second->fresh()->completed_at)->toBeNull()
-        ->and($this->booking->fresh()->status)->toBe('confirmed');
+        ->and($this->booking->fresh()->status)->toBe('confirmed')
+        ->and(DB::table('booking_activities')->where('idempotency_key', 'post-trip-maintenance:'.$first->id)->value('result_status'))->toBe('pending')
+        ->and(Vehicle::findOrFail($first->vehicle_id)->availability_status)->toBe(VehicleAvailabilityStatus::UNAVAILABLE_MAINTENANCE->value);
 
     $lifecycle->processReturn($this->booking->id, [
         'booking_item_id' => $second->id,

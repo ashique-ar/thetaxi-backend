@@ -32,7 +32,7 @@ class WaitingTimeService
         $recentPoints = $assignment->routePoints()
             ->orderBy('recorded_at', 'desc')
             ->limit(30)
-            ->get()
+            ->get(['id', 'recorded_at', 'speed', 'latitude', 'longitude'])
             ->sortBy('recorded_at')
             ->values();
 
@@ -42,10 +42,9 @@ class WaitingTimeService
 
         $latestPoint = $recentPoints->last();
         $isStationary = ($latestPoint->speed ?? 0) < self::SPEED_THRESHOLD_KMH;
-
         $openRecord = WaitingTimeRecord::where('assignment_id', $assignment->id)
             ->whereNull('end_time')
-            ->first();
+            ->first(['id', 'assignment_id', 'start_time', 'end_time']);
         $previousPoint = $recentPoints->count() > 1 ? $recentPoints[$recentPoints->count() - 2] : null;
         $latestGapSeconds = $previousPoint
             ? (int) Carbon::parse($previousPoint->recorded_at)
@@ -57,10 +56,10 @@ class WaitingTimeService
             $openRecord = null;
         }
 
-        if ($isStationary) {
+        if ($isStationary && !$openRecord) {
             $stationaryPeriod = $this->detectStationaryPeriod($recentPoints);
 
-            if ($stationaryPeriod && !$openRecord) {
+            if ($stationaryPeriod) {
                 // Create new waiting record
                 WaitingTimeRecord::create([
                     'assignment_id' => $assignment->id,

@@ -24,7 +24,9 @@ class VehicleMaintenanceRecordController extends Controller
     public function index(Request $request)
     {
         return VehicleMaintenanceRecordResource::collection(
-            VehicleMaintenanceRecord::paginate($request->per_page ?? 15)
+            VehicleMaintenanceRecord::query()
+                ->when($request->filled('vehicle_id'), fn ($query) => $query->where('vehicle_id', $request->input('vehicle_id')))
+                ->paginate($request->per_page ?? 15)
         );
     }
 

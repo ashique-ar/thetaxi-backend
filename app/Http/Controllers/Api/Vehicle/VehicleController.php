@@ -7,6 +7,7 @@ use App\Http\Controllers\Controller;
 use App\Models\Corporate\Corporate;
 use App\Models\Booking\Booking;
 use App\Models\Booking\BookingItem;
+use App\Models\Booking\BookingActivity;
 use App\Models\DriverAssignment;
 use App\Models\Service\ServiceType;
 use App\Models\Vehicle\Vehicle;
@@ -1029,34 +1030,48 @@ class VehicleController extends Controller
             'notes' => 'nullable|string'
         ]);
 
-        $schedule = VehicleMaintenanceSchedule::findOrFail($scheduleId);
+        return DB::transaction(function () use ($request, $scheduleId): JsonResponse {
+            $schedule = VehicleMaintenanceSchedule::query()->lockForUpdate()->findOrFail($scheduleId);
+            abort_unless($schedule->status !== 'completed', 409, 'This maintenance schedule is already complete.');
 
-        $recordData = [
-            'vehicle_id' => $schedule->vehicle_id,
-            'schedule_id' => $schedule->id,
-            'performed_date' => $request->completion_date,
-            'cost' => $request->cost,
-            'currency' => strtoupper((string) $request->currency),
-            'status' => 'completed',
-            'notes' => $request->notes,
-        ];
+            $recordData = [
+                'vehicle_id' => $schedule->vehicle_id,
+                'schedule_id' => $schedule->id,
+                'performed_date' => $request->completion_date,
+                'cost' => $request->cost,
+                'currency' => strtoupper((string) $request->currency),
+                'status' => 'completed',
+                'notes' => $request->notes,
+            ];
 
-        if (Schema::hasColumn('vehicle_maintenance_records', 'maintenance_type_id') && isset($schedule->maintenance_type_id)) {
-            $recordData['maintenance_type_id'] = $schedule->maintenance_type_id;
-        }
+            if (Schema::hasColumn('vehicle_maintenance_records', 'maintenance_type_id') && isset($schedule->maintenance_type_id)) {
+                $recordData['maintenance_type_id'] = $schedule->maintenance_type_id;
+            }
 
-        // Create maintenance record
-        $record = VehicleMaintenanceRecord::create($recordData);
-
-        // Update schedule status
-        if (Schema::hasColumn('vehicle_maintenance_schedules', 'status')) {
+            $record = VehicleMaintenanceRecord::create($recordData);
             $schedule->update(['status' => 'completed']);
-        }
 
-        return response()->json([
-            'status' => 'success',
-            'data' => $record->load(['vehicle', 'schedule'])
-        ]);
+            if ($schedule->booking_id) {
+                $maintenanceTaskKey = 'post-trip-maintenance:' . ($schedule->booking_item_id ?: $schedule->booking_id);
+                $pendingTask = BookingActivity::query()
+                    ->where('idempotency_key', $maintenanceTaskKey)
+                    ->where('result_status', 'pending')
+                    ->exists();
+                if ($pendingTask) {
+                    app(\App\Services\BookingLifecycleService::class)->completePostTripMaintenance(
+                        $schedule->booking_id,
+                        $schedule->booking_item_id,
+                        $request->input('notes') ?: 'Scheduled QC maintenance completed.',
+                        (string) $request->user()->id
+                    );
+                }
+            }
+
+            return response()->json([
+                'status' => 'success',
+                'data' => $record->load(['vehicle', 'schedule'])
+            ]);
+        });
     }
 
     /**

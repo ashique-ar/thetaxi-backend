@@ -3652,7 +3652,23 @@ class BookingLifecycleService
         }
         if ($activity?->result_status === 'completed') return;
 
-        if (!($this->getLifecycleWorkflowSettings($booking, $bookingItem)['enable_maintenance_stage'] ?? false)) {
+        $maintenanceStageEnabled = (bool) ($this->getLifecycleWorkflowSettings($booking, $bookingItem)['enable_maintenance_stage'] ?? false);
+        $qcMaintenanceRequired = BookingQC::query()
+            ->where('booking_id', $booking->id)
+            ->where('requires_maintenance', true)
+            ->where(function ($query) use ($booking, $bookingItem): void {
+                if ($bookingItem?->id) {
+                    $query->where('booking_item_id', $bookingItem->id);
+                    if ($booking->bookingItems()->count() <= 1) {
+                        $query->orWhereNull('booking_item_id');
+                    }
+                } else {
+                    $query->whereNull('booking_item_id');
+                }
+            })
+            ->exists();
+
+        if (!$maintenanceStageEnabled && !$qcMaintenanceRequired) {
             if (in_array((string) $vehicle->availability_status, [
                 VehicleAvailabilityStatus::ON_HIRE->value,
                 VehicleAvailabilityStatus::UNAVAILABLE_QC->value,
@@ -5032,6 +5048,8 @@ class BookingLifecycleService
         return [
             'id' => $qc->id,
             'booking_id' => $booking->id,
+            'booking_item_id' => $qc->booking_item_id,
+            'vehicle_id' => $qc->vehicle_id,
             'selected_booking_item_id' => $context['booking_item_id'],
             'selected_trip_number' => $context['trip_number'],
             'status' => $qc->qc_status?->value,
@@ -5072,6 +5090,13 @@ class BookingLifecycleService
             'maintenance_info' => [
                 'requires_maintenance' => $qc->requires_maintenance,
                 'next_maintenance_due' => $qc->next_maintenance_due,
+                'scheduled_follow_up' => Schema::hasTable('vehicle_maintenance_schedules')
+                    && Schema::hasColumn('vehicle_maintenance_schedules', 'booking_qc_id')
+                    ? DB::table('vehicle_maintenance_schedules')
+                        ->where('booking_qc_id', $qc->id)
+                        ->whereNull('deleted_at')
+                        ->first(['id', 'status', 'next_due_date'])
+                    : null,
             ],
             'created_at' => $qc->created_at,
             'updated_at' => $qc->updated_at,

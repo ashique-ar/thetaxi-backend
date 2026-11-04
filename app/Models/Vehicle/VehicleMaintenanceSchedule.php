@@ -3,6 +3,7 @@
 namespace App\Models\Vehicle;
 
 use App\Models\BaseModel;
+use App\Models\Booking\Booking;
 use App\Traits\UUID;
 use App\Models\User;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
@@ -49,6 +50,11 @@ class VehicleMaintenanceSchedule extends BaseModel
         'interval_km',
         'interval_days',
         'next_due_date',
+        'status',
+        'notes',
+        'booking_id',
+        'booking_item_id',
+        'booking_qc_id',
         'created_user_id',
         'updated_user_id',
     ];
@@ -71,6 +77,11 @@ class VehicleMaintenanceSchedule extends BaseModel
     public function vehicle(): BelongsTo
     {
         return $this->belongsTo(Vehicle::class);
+    }
+
+    public function booking(): BelongsTo
+    {
+        return $this->belongsTo(Booking::class);
     }
 
     /**

@@ -16,6 +16,12 @@ class VehicleMaintenanceScheduleResource extends JsonResource
             'interval_km'   => $this->interval_km,
             'interval_days' => $this->interval_days,
             'next_due_date' => $this->next_due_date,
+            'status'        => $this->status,
+            'notes'         => $this->notes,
+            'booking_id'    => $this->booking_id,
+            'booking_item_id' => $this->booking_item_id,
+            'booking_qc_id' => $this->booking_qc_id,
+            'booking_number' => $this->whenLoaded('booking', fn () => $this->booking?->booking_number),
             'created_at'    => $this->created_at,
             'updated_at'    => $this->updated_at,
         ];
