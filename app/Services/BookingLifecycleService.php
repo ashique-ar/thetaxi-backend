@@ -148,6 +148,29 @@ class BookingLifecycleService
      */
     private function resolveItemDispatch(Booking $booking, array $context, bool $lock = false): ?BookingDispatch
     {
+        if (!$lock && $booking->relationLoaded('dispatches')) {
+            $dispatches = $booking->dispatches;
+            $bookingItemId = $context['booking_item_id'] ?? null;
+            $itemDispatch = $bookingItemId
+                ? $dispatches->first(fn (BookingDispatch $dispatch) => (string) $dispatch->booking_item_id === (string) $bookingItemId)
+                : null;
+            if ($itemDispatch) {
+                return $itemDispatch;
+            }
+
+            $legacyDispatch = $dispatches->first(fn (BookingDispatch $dispatch) => $dispatch->booking_item_id === null);
+            if ($booking->bookingItems->count() <= 1) {
+                return $legacyDispatch;
+            }
+            if ($legacyDispatch) {
+                throw new \DomainException(
+                    'A legacy booking-level dispatch cannot be assigned automatically to a multi-item booking. Select or create the item dispatch explicitly.'
+                );
+            }
+
+            return null;
+        }
+
         $query = BookingDispatch::query()
             ->where('booking_id', $booking->id)
             ->whereNull('deleted_at');
@@ -186,6 +209,29 @@ class BookingLifecycleService
      */
     private function resolveItemQc(Booking $booking, array $context, bool $lock = false): ?BookingQC
     {
+        if (!$lock && $booking->relationLoaded('qcs')) {
+            $qcs = $booking->qcs;
+            $bookingItemId = $context['booking_item_id'] ?? null;
+            $itemQc = $bookingItemId
+                ? $qcs->first(fn (BookingQC $qc) => (string) $qc->booking_item_id === (string) $bookingItemId)
+                : null;
+            if ($itemQc) {
+                return $itemQc;
+            }
+
+            $legacyQc = $qcs->first(fn (BookingQC $qc) => $qc->booking_item_id === null);
+            if ($booking->bookingItems->count() <= 1) {
+                return $legacyQc;
+            }
+            if ($legacyQc) {
+                throw new \DomainException(
+                    'A legacy booking-level QC record cannot be assigned automatically to a multi-item booking.'
+                );
+            }
+
+            return null;
+        }
+
         $query = BookingQC::query()
             ->where('booking_id', $booking->id);
 
@@ -4154,6 +4200,7 @@ class BookingLifecycleService
             'dispatches',
             'qc',
             'qcs',
+            'lifecycleDriverAssignments',
             'bookingItems.serviceType',
             'bookingItems.vehicle',
             'bookingItems.driver.user',
@@ -4174,7 +4221,8 @@ class BookingLifecycleService
         $driverAssignment = $this->latestDriverAssignment(
             (string) $booking->id,
             $context['driver_id'] ? (string) $context['driver_id'] : null,
-            $context['booking_item_id'] ? (string) $context['booking_item_id'] : null
+            $context['booking_item_id'] ? (string) $context['booking_item_id'] : null,
+            $booking
         );
 
         [$allowedActions, $blockingReasons] = $this->resolveAllowedLifecycleActions(
@@ -4344,8 +4392,19 @@ class BookingLifecycleService
         return $booking->approval_status ?: (($booking->status ?? null) === 'pending_approval' ? 'pending' : 'required');
     }
 
-    private function latestDriverAssignment(string $bookingId, ?string $driverId = null, ?string $bookingItemId = null): ?DriverAssignment
+    private function latestDriverAssignment(string $bookingId, ?string $driverId = null, ?string $bookingItemId = null, ?Booking $booking = null): ?DriverAssignment
     {
+        if ($booking?->relationLoaded('lifecycleDriverAssignments')) {
+            $hasBookingItemColumn = Schema::hasColumn('driver_assignments', 'booking_item_id');
+
+            return $booking->lifecycleDriverAssignments
+                ->filter(fn (DriverAssignment $assignment) => (!$driverId || (string) $assignment->driver_id === $driverId)
+                    && (!$bookingItemId || !$hasBookingItemColumn
+                        || (string) $assignment->booking_item_id === $bookingItemId))
+                ->sortByDesc('updated_at')
+                ->first();
+        }
+
         return DriverAssignment::where('booking_id', $bookingId)
             ->when($driverId, fn ($query) => $query->where('driver_id', $driverId))
             ->when($bookingItemId && Schema::hasColumn('driver_assignments', 'booking_item_id'), fn ($query) => $query->where('booking_item_id', $bookingItemId))

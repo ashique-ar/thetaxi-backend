@@ -9901,6 +9901,15 @@ class BookingFlowService
                 'booking.driverAssignments.driver.user:id,first_name,last_name,email,phone',
                 'booking.dispatch:id,booking_id,dispatch_status',
                 'booking.qc:id,booking_id,qc_status',
+                'booking.dispatches',
+                'booking.qcs',
+                'booking.lifecycleDriverAssignments' => function ($q) {
+                    $columns = ['id', 'booking_id', 'driver_id', 'updated_at', 'trip_phase'];
+                    if (Schema::hasColumn('driver_assignments', 'booking_item_id')) {
+                        $columns[] = 'booking_item_id';
+                    }
+                    $q->select($columns);
+                },
                 'booking.bookingItems' => function ($q) {
                     $q->select([
                         'id',
@@ -10087,11 +10096,14 @@ class BookingFlowService
         }
 
         if (!empty($filters['date_from'])) {
-            $query->whereDate('booking_items.from_date', '>=', $filters['date_from']);
+            // Avoid casting the indexed from_date timestamp to a date on PostgreSQL.
+            $dateFrom = Carbon::parse($filters['date_from'])->toDateString();
+            $query->where('booking_items.from_date', '>=', $dateFrom);
         }
 
         if (!empty($filters['date_to'])) {
-            $query->whereDate('booking_items.to_date', '<=', $filters['date_to']);
+            $dateTo = Carbon::parse($filters['date_to'])->startOfDay()->addDay()->toDateString();
+            $query->where('booking_items.to_date', '<', $dateTo);
         }
 
         $requiresApproval = $this->parseBooleanFilter($filters['requires_approval'] ?? null);
@@ -12303,8 +12315,10 @@ class BookingFlowService
         $baseQuery = clone $query;
         $baseQuery->reorder();
 
-        $totalAmount = (clone $baseQuery)->sum('booking_items.total_price');
-        $averageAmount = (clone $baseQuery)->avg('booking_items.total_price');
+        $amounts = (clone $baseQuery)
+            ->toBase()
+            ->selectRaw('SUM(booking_items.total_price) AS total_amount, AVG(booking_items.total_price) AS average_amount')
+            ->first();
 
         $statusCounts = (clone $baseQuery)
             ->selectRaw('booking_items.status, count(*) as count')
@@ -12327,8 +12341,8 @@ class BookingFlowService
             ->toArray();
 
         return [
-            'total_amount' => (float) $totalAmount,
-            'average_amount' => (float) ($averageAmount ?? 0),
+            'total_amount' => (float) ($amounts->total_amount ?? 0),
+            'average_amount' => (float) ($amounts->average_amount ?? 0),
             'status_counts' => $statusCounts,
             'service_type_counts' => $serviceTypeCounts,
             'booking_status_counts' => $bookingStatusCounts,

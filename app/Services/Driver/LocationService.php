@@ -58,8 +58,8 @@ class LocationService
                 : $now;
 
             // Check for active trip tracking session
-            $assignmentId = $this->getActiveAssignmentId($driver);
-            $assignment = $assignmentId ? DriverAssignment::find($assignmentId) : null;
+            $assignment = $this->getActiveAssignment($driver);
+            $assignmentId = $assignment?->id;
             $reason = $this->recoveryRejectionReason(
                 $recordedAt,
                 $locationData,
@@ -98,7 +98,6 @@ class LocationService
 
             // Trigger waiting time analysis during in_progress phase (non-blocking)
             if ($assignmentId && $this->waitingTimeService) {
-                $assignment = DriverAssignment::find($assignmentId);
                 if ($assignment && $assignment->trip_phase === TripPhase::IN_PROGRESS) {
                     try {
                         $this->waitingTimeService->analyzeRoutePoints($assignment);
@@ -118,7 +117,7 @@ class LocationService
     }
 
     /**
-     * Get the active assignment ID for trip-specific route point linking.
+     * Get the active assignment for trip-specific route point linking.
      * Returns null if no trip tracking session is active.
      *
      * Uses the same activeTripPhase scope + most-recently-updated ordering
@@ -131,12 +130,13 @@ class LocationService
      *         a data-integrity state where guessing which one owns this point
      *         would silently risk misattributing it.
      */
-    private function getActiveAssignmentId(Driver $driver): ?string
+    private function getActiveAssignment(Driver $driver): ?DriverAssignment
     {
         $candidates = DriverAssignment::where('driver_id', $driver->id)
             ->activeTripPhase()
             ->orderByDesc('updated_at')
-            ->get(['id']);
+            ->limit(2)
+            ->get(['id', 'trip_phase', 'confirmed_at', 'trip_completed_at', 'actual_end']);
 
         if ($candidates->count() > 1) {
             Log::warning('Driver has multiple concurrent active-trip assignments; rejecting location update', [
@@ -147,7 +147,7 @@ class LocationService
             throw new \RuntimeException('LOCATION_ASSIGNMENT_AMBIGUOUS');
         }
 
-        return $candidates->first()?->id;
+        return $candidates->first();
     }
 
     /**
@@ -250,8 +250,8 @@ class LocationService
             throw new \Exception('No active session');
         }
 
-        $activeAssignmentId = $this->getActiveAssignmentId($driver);
-        $activeAssignment = $activeAssignmentId ? DriverAssignment::find($activeAssignmentId) : null;
+        $activeAssignment = $this->getActiveAssignment($driver);
+        $activeAssignmentId = $activeAssignment?->id;
         $outcomes = [];
         $normalizedLocations = collect($locations)->map(function (array $locationData, int $index) use (
             $session, $activeAssignment, $activeAssignmentId, &$outcomes
@@ -323,6 +323,7 @@ class LocationService
         $savedCount = 0;
         $duplicateCount = 0;
         $latestSavedPoint = null;
+        $routePointRows = [];
 
         DB::transaction(function () use (
             $driver,
@@ -333,7 +334,8 @@ class LocationService
             &$savedCount,
             &$duplicateCount,
             &$latestSavedPoint,
-            &$outcomes
+            &$outcomes,
+            &$routePointRows
         ) {
             $now = Carbon::now('UTC');
 
@@ -348,7 +350,8 @@ class LocationService
 
                 $payloadSeenKeys[$dedupeKey] = true;
 
-                $routePoint = RoutePoint::create([
+                $routePointRow = [
+                    'id' => (new RoutePoint())->newUniqueId(),
                     'session_id' => $session->id,
                     'assignment_id' => $locationData['assignment_id'],
                     'latitude' => $locationData['latitude'],
@@ -357,13 +360,20 @@ class LocationService
                     'speed' => $locationData['speed'],
                     'heading' => $locationData['heading'],
                     'accuracy' => $locationData['accuracy'],
-                    ...(isset($locationData['sensor_stationary']) ? ['sensor_stationary' => $locationData['sensor_stationary']] : []),
+                    'sensor_stationary' => $locationData['sensor_stationary'] ?? null,
                     'recorded_at' => $locationData['recorded_at'],
-                ]);
+                ];
+                $routePointRows[] = $routePointRow;
 
                 $savedCount++;
-                $latestSavedPoint = $routePoint;
+                $latestSavedPoint = new RoutePoint($routePointRow);
                 $outcomes[$locationData['index']] = ['index' => $locationData['index'], 'status' => 'accepted', 'reason' => 'accepted'];
+            }
+
+            // shortcut: SQLite batches cap at 80 rows (11 fields each) under its 999 bind limit; raise only when supported versions guarantee a higher limit.
+            $chunkSize = in_array(DB::getDriverName(), ['pgsql', 'mysql', 'mariadb'], true) ? 500 : 80;
+            foreach (array_chunk($routePointRows, $chunkSize) as $rows) {
+                RoutePoint::query()->insert($rows);
             }
 
             if ($latestSavedPoint) {

@@ -287,6 +287,11 @@ class Driver extends BaseModel
         return $this->assignments()->active();
     }
 
+    public function realtimeStatusAssignments()
+    {
+        return $this->assignments();
+    }
+
     /**
      * Get current assignment (active within current time)
      */

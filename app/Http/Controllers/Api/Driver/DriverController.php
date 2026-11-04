@@ -1142,7 +1142,22 @@ class DriverController extends Controller
     public function realTimeStatus(Request $request): JsonResponse
     {
         $drivers = Driver::query()
-            ->with(['user', 'licenseType', 'paymentMethod', 'defaultVehicle'])
+            ->with([
+                'user',
+                'licenseType',
+                'paymentMethod',
+                'defaultVehicle',
+                'realtimeStatusAssignments' => function ($query) {
+                    $query->select(['id', 'driver_id', 'booking_id', 'trip_phase', 'assigned_from'])
+                        ->with('booking:id,booking_number,status')
+                        ->whereIn('trip_phase', ['active', 'confirmed', 'accepted', 'pickup_arrived', 'in_progress'])
+                        ->where('status', '!=', 'cancelled')
+                        ->whereHas('booking', fn ($bookingQuery) => $bookingQuery
+                            ->whereNotIn('status', ['completed', 'cancelled', 'inquiry_cancelled']))
+                        ->latest('assigned_from')
+                        ->limit(1);
+                },
+            ])
             ->withCount(['assignments as total_trips' => function ($query) {
                 $query->where('trip_phase', 'completed');
             }])

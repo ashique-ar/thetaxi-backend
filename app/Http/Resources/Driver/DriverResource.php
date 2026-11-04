@@ -17,15 +17,17 @@ class DriverResource extends JsonResource
         $viewer = $request->user();
         $fullName = trim(($this->user?->first_name ?? '') . ' ' . ($this->user?->last_name ?? ''));
         $status = $this->availability_status ?: ($this->is_online ? 'available' : 'off_duty');
-        $activeAssignment = $this->assignments()
-            ->with('booking:id,booking_number')
-            ->whereIn('trip_phase', ['active', 'confirmed', 'accepted', 'pickup_arrived', 'in_progress'])
-            ->where('status', '!=', 'cancelled')
-            ->whereHas('booking', function ($query) {
-                $query->whereNotIn('status', ['completed', 'cancelled', 'inquiry_cancelled']);
-            })
-            ->latest('assigned_from')
-            ->first();
+        $activeAssignment = $this->resource->relationLoaded('realtimeStatusAssignments')
+            ? $this->realtimeStatusAssignments->first()
+            : $this->assignments()
+                ->with('booking:id,booking_number')
+                ->whereIn('trip_phase', ['active', 'confirmed', 'accepted', 'pickup_arrived', 'in_progress'])
+                ->where('status', '!=', 'cancelled')
+                ->whereHas('booking', function ($query) {
+                    $query->whereNotIn('status', ['completed', 'cancelled', 'inquiry_cancelled']);
+                })
+                ->latest('assigned_from')
+                ->first();
         $driverDocuments = $this->relationLoaded('documents') ? $this->documents : collect();
         $profilePhoto = $this->relationLoaded('profilePhotoDocument') ? $this->profilePhotoDocument : null;
         $vehicle = $this->relationLoaded('defaultVehicle') ? $this->defaultVehicle : null;

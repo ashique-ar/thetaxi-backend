@@ -757,6 +757,11 @@ class Booking extends BaseModel
         return $this->hasMany(\App\Models\DriverAssignment::class);
     }
 
+    public function lifecycleDriverAssignments()
+    {
+        return $this->hasMany(\App\Models\DriverAssignment::class);
+    }
+
     /**
      * Get all assignments (both vehicle and driver) for this booking
      */
