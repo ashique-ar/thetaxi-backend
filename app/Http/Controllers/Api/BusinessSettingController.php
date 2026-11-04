@@ -76,6 +76,7 @@ class BusinessSettingController extends Controller
             'feature_respond_io_enabled',
             'feature_3cx_enabled',
             'feature_driver_management_enabled',
+            'tour_ai_itinerary_enabled',
             'driver_form_public_enabled',
             'assignment_enable_qc_stage',
             'assignment_enable_maintenance_stage',
@@ -190,6 +191,7 @@ class BusinessSettingController extends Controller
                 'assignment_enable_qc_stage' => ['sometimes', 'boolean'],
                 'assignment_enable_maintenance_stage' => ['sometimes', 'boolean'],
                 'booking_signed_agreement_required' => ['sometimes', 'boolean'],
+                'tour_ai_itinerary_enabled' => ['sometimes', 'boolean'],
             ]);
             if ($timingValidator->fails()) {
                 return response()->json([
