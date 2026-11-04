@@ -12413,24 +12413,26 @@ class BookingFlowService
 
     private function rememberBookingListSummary(string $cacheKey, callable $calculate): array
     {
-        // shortcut: booking summary counters may be 5 seconds stale; increase only if operations accepts slower refreshes.
-        $cached = Cache::get($cacheKey);
-        if (is_array($cached)) {
-            return $cached;
-        }
-
-        $remember = fn (): array => Cache::remember($cacheKey, now()->addSeconds(5), $calculate);
+        // shortcut: summary counters can be 30 seconds stale; reduce only if operations needs faster counter refreshes.
         // shortcut: lock-table availability is cached per PHP worker; restart workers after cache schema changes.
         $lockTable = config('cache.stores.database.lock_table') ?: 'cache_locks';
         if (! (self::$bookingListCacheLocksAvailable ??= Schema::hasTable($lockTable))) {
-            return $remember();
+            return Cache::remember($cacheKey, now()->addSeconds(5), $calculate);
+        }
+
+        $flexible = fn (): array => Cache::flexible($cacheKey, [5, 30], $calculate, ['seconds' => 30]);
+        if (is_array(Cache::get($cacheKey))) {
+            return $flexible();
         }
 
         try {
-            return Cache::lock($cacheKey.':lock', 30)->block(5, function () use ($cacheKey, $calculate): array {
-                return Cache::remember($cacheKey, now()->addSeconds(5), $calculate);
-            });
+            return Cache::lock($cacheKey.':lock', 30)->block(5, $flexible);
         } catch (\Illuminate\Contracts\Cache\LockTimeoutException) {
+            $cached = Cache::get($cacheKey);
+            if (is_array($cached)) {
+                return $flexible();
+            }
+
             return $calculate();
         }
     }

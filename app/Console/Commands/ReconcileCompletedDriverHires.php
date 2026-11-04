@@ -18,6 +18,7 @@ class ReconcileCompletedDriverHires extends Command
     {
         $limit = max(1, (int) $this->option('limit'));
         $assignments = DriverAssignment::query()
+            ->with(['booking.bookingItems', 'booking.dispatches', 'booking.qcs'])
             ->where('trip_phase', TripPhase::COMPLETED->value)
             ->whereNotNull('trip_completed_at')
             ->where(function ($query) {
@@ -34,15 +35,22 @@ class ReconcileCompletedDriverHires extends Command
             })
             ->orderBy('trip_completed_at')
             ->limit($limit)
-            ->get(['id']);
+            ->get();
 
         $completed = 0;
         $skipped = 0;
         $errors = 0;
+        $processedBookingIds = [];
 
         foreach ($assignments as $assignment) {
             try {
-                $service->reconcileCompletedDriverAssignment((string) $assignment->id)
+                $bookingId = (string) $assignment->booking_id;
+                if (isset($processedBookingIds[$bookingId])) {
+                    $assignment->unsetRelation('booking');
+                }
+                $processedBookingIds[$bookingId] = true;
+
+                $service->reconcileCompletedDriverAssignment($assignment)
                     ? $completed++
                     : $skipped++;
             } catch (\Throwable $exception) {

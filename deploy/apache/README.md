@@ -16,6 +16,10 @@ Adjust the paths below if your server uses a different PHP version or install lo
 - Keep a copy of the current configuration files so you can roll back (see step 4).
 - Have `sudo` access on the server.
 
+## Queue worker ownership
+
+Run either a dedicated queue service or the scheduler-managed worker, not both. This deployment uses the `thetaxi-queue.service` systemd unit, so set `SCHEDULED_QUEUE_WORKER_ENABLED=false` in `.env`; enable it only on hosts without a dedicated worker. After changing it, rebuild Laravel's config cache with `php artisan optimize` and confirm `php artisan schedule:list` no longer includes `queue:work`.
+
 ## Deployment steps
 
 1. **Build the Laravel caches.** Run this from the application directory, as the web server user:

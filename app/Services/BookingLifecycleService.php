@@ -1482,11 +1482,13 @@ class BookingLifecycleService
      * Reconcile a persisted driver completion through the canonical booking-item
      * completion path. This repairs legacy rows without completing sibling items.
      */
-    public function reconcileCompletedDriverAssignment(string $assignmentId): bool
+    public function reconcileCompletedDriverAssignment(DriverAssignment|string $assignment): bool
     {
-        $assignment = DriverAssignment::query()
-            ->with(['booking.bookingItems', 'booking.dispatches'])
-            ->findOrFail($assignmentId);
+        $assignment = $assignment instanceof DriverAssignment
+            ? $assignment->loadMissing(['booking.bookingItems', 'booking.dispatches', 'booking.qcs'])
+            : DriverAssignment::query()
+                ->with(['booking.bookingItems', 'booking.dispatches', 'booking.qcs'])
+                ->findOrFail($assignment);
 
         if ($assignment->trip_phase?->value !== TripPhase::COMPLETED->value
             || !$assignment->trip_completed_at
