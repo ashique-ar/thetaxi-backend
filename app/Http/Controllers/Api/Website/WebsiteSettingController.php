@@ -71,6 +71,7 @@ class WebsiteSettingController extends Controller
     public function store(CreateWebsiteSettingRequest $request): JsonResponse
     {
         $data = $request->validated();
+        $this->validateBookingLookupSetting($data['type'], $data['value'] ?? null);
         $this->validateInstallationWorkflowSetting($data['type'], $data['value'] ?? null);
         $this->validateCheckoutVerificationResendDelay($data['type'], $data['value'] ?? null);
         $this->attendanceActivation->assertCanEnable($request->user(), $data['type'], $data['value'] ?? null);
@@ -100,6 +101,10 @@ class WebsiteSettingController extends Controller
     public function update(UpdateWebsiteSettingRequest $request, WebsiteSetting $websiteSetting): JsonResponse
     {
         $data = $request->validated();
+        $this->validateBookingLookupSetting(
+            $data['type'] ?? (string) $websiteSetting->type,
+            array_key_exists('value', $data) ? $data['value'] : $websiteSetting->value,
+        );
         $this->validateInstallationWorkflowSetting(
             $data['type'] ?? (string) $websiteSetting->type,
             array_key_exists('value', $data) ? $data['value'] : $websiteSetting->value,
@@ -153,6 +158,7 @@ class WebsiteSettingController extends Controller
 
         $type = "{$section}.{$key}";
         $value = array_key_exists('setting_value', $data) ? $data['setting_value'] : ($data['value'] ?? null);
+        $this->validateBookingLookupSetting($type, $value);
         $this->validateCheckoutVerificationResendDelay($type, $value);
         $this->attendanceActivation->assertCanEnable($request->user(), $type, $value);
         $setting = WebsiteSetting::updateOrCreate(
@@ -211,6 +217,7 @@ class WebsiteSettingController extends Controller
 
         $settings = $this->normalizeBookingWorkflowSettingList($request->settings);
         foreach ($settings as $settingData) {
+            $this->validateBookingLookupSetting($settingData['type'], $settingData['value'] ?? null);
             $this->validateInstallationWorkflowSetting($settingData['type'], $settingData['value'] ?? null);
             $this->validateCheckoutVerificationResendDelay($settingData['type'], $settingData['value'] ?? null);
             $this->attendanceActivation->assertCanEnable($request->user(), $settingData['type'], $settingData['value'] ?? null);
@@ -454,6 +461,7 @@ class WebsiteSettingController extends Controller
                 ? $this->normalizeBookingWorkflowSettings($request->settings)
                 : $request->settings;
             foreach ($settings as $type => $value) {
+                $this->validateBookingLookupSetting((string) $type, $value);
                 $this->validateInstallationWorkflowSetting((string) $type, $value);
             }
 
@@ -505,6 +513,15 @@ class WebsiteSettingController extends Controller
                 'message' => $e->getMessage()
             ], 400);
         }
+    }
+
+    private function validateBookingLookupSetting(string $type, mixed $value): void
+    {
+        if ($type !== 'checkout_returning_customer_lookup_enabled') {
+            return;
+        }
+
+        Validator::make(['value' => $value], ['value' => ['required', 'boolean']])->validate();
     }
 
     /**
