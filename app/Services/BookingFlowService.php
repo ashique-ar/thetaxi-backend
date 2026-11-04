@@ -13219,11 +13219,14 @@ class BookingFlowService
         $addonsTotal = 0;
         $addonsTotalWithoutCustomizations = 0;
         $baseCurrency = $this->currencyService->getBookingBaseCurrency();
+        $addonRecords = VehicleAddon::whereIn(
+            'id',
+            collect($selectedAddons)->pluck('id')->filter()->unique()->all()
+        )->get()->keyBy('id');
 
         foreach ($selectedAddons as $selectedAddon) {
             try {
-                // Get addon details from database
-                $addon = VehicleAddon::find($selectedAddon['id']);
+                $addon = $addonRecords->get($selectedAddon['id'] ?? null);
                 if (!$addon) {
                     continue;
                 }

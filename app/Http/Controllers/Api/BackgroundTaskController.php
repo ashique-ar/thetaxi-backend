@@ -14,10 +14,14 @@ class BackgroundTaskController extends Controller
         $tasks = DB::table('system_background_tasks')
             ->where('user_id', $request->user()->getAuthIdentifier())
             ->latest()->limit(30)->get();
+        $campaignIds = $tasks->where('type', 'sms_campaign_launch')->pluck('related_id')->filter()->unique();
+        $campaigns = $campaignIds->isEmpty()
+            ? collect()
+            : DB::table('sms_campaigns')->whereIn('id', $campaignIds)->get()->keyBy('id');
 
         foreach ($tasks as $task) {
             if ($task->type !== 'sms_campaign_launch') continue;
-            $campaign = DB::table('sms_campaigns')->where('id', $task->related_id)->first();
+            $campaign = $campaigns->get($task->related_id);
             if (!$campaign) {
                 $task->status = 'failed';
                 $task->error = 'Campaign is no longer available.';
