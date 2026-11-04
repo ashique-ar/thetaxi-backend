@@ -61,6 +61,9 @@ use Spatie\Activitylog\Models\Activity;
 
 class BookingFlowService
 {
+    private static ?bool $bookingListCacheLocksAvailable = null;
+    private static ?bool $bookingListDriverAssignmentItemColumnExists = null;
+
     private const CANONICAL_SUBMIT_AS_ALIASES = [
         'from_date' => ['from_date', 'pickup_date', 'date'],
         'from_time' => ['from_time', 'pickup_time', 'time'],
@@ -9905,7 +9908,7 @@ class BookingFlowService
                 'booking.qcs',
                 'booking.lifecycleDriverAssignments' => function ($q) {
                     $columns = ['id', 'booking_id', 'driver_id', 'updated_at', 'trip_phase'];
-                    if (Schema::hasColumn('driver_assignments', 'booking_item_id')) {
+                    if (self::bookingListDriverAssignmentItemColumnExists()) {
                         $columns[] = 'booking_item_id';
                     }
                     $q->select($columns);
@@ -9934,6 +9937,9 @@ class BookingFlowService
                         ->orderBy('from_time')
                         ->orderBy('created_at');
                 },
+                'booking.bookingItems.serviceType',
+                'booking.bookingItems.vehicle',
+                'booking.bookingItems.driver.user',
                 'serviceType:id,name,tour_booking_enabled',
                 'vehicleClass:id,name',
                 'vehicle',
@@ -10271,9 +10277,14 @@ class BookingFlowService
 
         $perPage = max(1, min((int) ($filters['per_page'] ?? 15), 100));
         $paginated = $query->paginate($perPage);
+        $lifecycleService = app(BookingLifecycleService::class);
 
         $listItems = collect($paginated->items())
-            ->map(fn(BookingItem $bookingItem) => $this->mapBookingListItem($bookingItem, !empty($filters['driver_id'])))
+            ->map(fn(BookingItem $bookingItem) => $this->mapBookingListItem(
+                $bookingItem,
+                !empty($filters['driver_id']),
+                $lifecycleService
+            ))
             ->values()
             ->all();
 
@@ -10356,15 +10367,15 @@ class BookingFlowService
             ->all();
     }
 
-    private function applyOperationsQueueFilter($query, ?string $queue): void
+    private function applyOperationsQueueFilter($query, ?string $queue, ?array $eligibleOwnerIds = null): void
     {
         if (empty($queue)) {
             return;
         }
 
         match ($queue) {
-            'needs_responsible_owner', 'needs_responsible_owner_past_target' => $query->whereHas('booking', function ($bookingQuery) use ($queue) {
-                    $eligibleOwners = app(BookingResponsibilityService::class)->eligibleEmployees()->pluck('id')->map(fn($id) => (string) $id)->all();
+            'needs_responsible_owner', 'needs_responsible_owner_past_target' => $query->whereHas('booking', function ($bookingQuery) use ($queue, $eligibleOwnerIds) {
+                    $eligibleOwners = $eligibleOwnerIds ?? app(BookingResponsibilityService::class)->eligibleEmployees()->pluck('id')->map(fn($id) => (string) $id)->all();
                     $bookingQuery->whereIn('status', array_merge(['inquiry', 'inquiry_qualified'], BookingLifecycleStatus::activeOperationalValues()))
                     ->where(fn($ownerQuery) => $ownerQuery->whereNull('bookings.responsible_user_id')->orWhereNotIn('bookings.responsible_user_id', $eligibleOwners));
                     if ($queue === 'needs_responsible_owner_past_target') {
@@ -10631,7 +10642,11 @@ class BookingFlowService
         ];
     }
 
-    private function mapBookingListItem(BookingItem $item, bool $includeMobileTripDistance = false): array
+    private function mapBookingListItem(
+        BookingItem $item,
+        bool $includeMobileTripDistance,
+        BookingLifecycleService $lifecycleService
+    ): array
     {
         $booking = $item->booking;
         $customer = $booking?->customer;
@@ -10729,7 +10744,7 @@ class BookingFlowService
             $approvalTriggerLabels = ['Manager approval required'];
         }
         $lifecycleContract = $booking
-            ? app(BookingLifecycleService::class)->getLifecycleContract($booking, (string) $item->id)
+            ? $lifecycleService->getLifecycleContract($booking, (string) $item->id)
             : null;
 
         $bookingItems = collect($booking?->bookingItems ?? [])
@@ -12314,45 +12329,61 @@ class BookingFlowService
     {
         $baseQuery = clone $query;
         $baseQuery->reorder();
+        $queueBaseQuery ??= clone $baseQuery;
+        $summarySql = $baseQuery->toBase();
+        $queueSql = (clone $queueBaseQuery)->reorder()->toBase();
+        $cacheKey = 'booking-list-summary:v1:'.hash('sha256', implode('|', [
+            $summarySql->toSql(),
+            serialize($summarySql->getBindings()),
+            $queueSql->toSql(),
+            serialize($queueSql->getBindings()),
+        ]));
 
-        $amounts = (clone $baseQuery)
-            ->toBase()
-            ->selectRaw('SUM(booking_items.total_price) AS total_amount, AVG(booking_items.total_price) AS average_amount')
-            ->first();
+        return $this->rememberBookingListSummary($cacheKey, function () use ($baseQuery, $queueBaseQuery): array {
+            $amounts = (clone $baseQuery)
+                ->toBase()
+                ->selectRaw('SUM(booking_items.total_price) AS total_amount, AVG(booking_items.total_price) AS average_amount')
+                ->first();
 
-        $statusCounts = (clone $baseQuery)
-            ->selectRaw('booking_items.status, count(*) as count')
-            ->groupBy('booking_items.status')
-            ->pluck('count', 'booking_items.status')
-            ->toArray();
+            $statusCounts = (clone $baseQuery)
+                ->selectRaw('booking_items.status, count(*) as count')
+                ->groupBy('booking_items.status')
+                ->pluck('count', 'booking_items.status')
+                ->toArray();
 
-        $serviceTypeCounts = (clone $baseQuery)
-            ->whereNotNull('booking_items.service_type_id')
-            ->selectRaw('booking_items.service_type_id, count(*) as count')
-            ->groupBy('booking_items.service_type_id')
-            ->pluck('count', 'booking_items.service_type_id')
-            ->toArray();
+            $serviceTypeCounts = (clone $baseQuery)
+                ->whereNotNull('booking_items.service_type_id')
+                ->selectRaw('booking_items.service_type_id, count(*) as count')
+                ->groupBy('booking_items.service_type_id')
+                ->pluck('count', 'booking_items.service_type_id')
+                ->toArray();
 
-        $bookingStatusCounts = (clone $baseQuery)
-            ->join('bookings', 'bookings.id', '=', 'booking_items.booking_id')
-            ->selectRaw('bookings.status, count(*) as count')
-            ->groupBy('bookings.status')
-            ->pluck('count', 'bookings.status')
-            ->toArray();
+            $bookingStatusCounts = (clone $baseQuery)
+                ->join('bookings', 'bookings.id', '=', 'booking_items.booking_id')
+                ->selectRaw('bookings.status, count(*) as count')
+                ->groupBy('bookings.status')
+                ->pluck('count', 'bookings.status')
+                ->toArray();
 
-        return [
-            'total_amount' => (float) ($amounts->total_amount ?? 0),
-            'average_amount' => (float) ($amounts->average_amount ?? 0),
-            'status_counts' => $statusCounts,
-            'service_type_counts' => $serviceTypeCounts,
-            'booking_status_counts' => $bookingStatusCounts,
-            'queue_counts' => $this->getBookingQueueCounts($queueBaseQuery ?? $baseQuery),
-        ];
+            return [
+                'total_amount' => (float) ($amounts->total_amount ?? 0),
+                'average_amount' => (float) ($amounts->average_amount ?? 0),
+                'status_counts' => $statusCounts,
+                'service_type_counts' => $serviceTypeCounts,
+                'booking_status_counts' => $bookingStatusCounts,
+                'queue_counts' => $this->getBookingQueueCounts($queueBaseQuery),
+            ];
+        });
     }
 
     private function getBookingQueueCounts($query): array
     {
         $counts = [];
+        $eligibleOwnerIds = app(BookingResponsibilityService::class)
+            ->eligibleEmployees()
+            ->pluck('id')
+            ->map(fn ($id) => (string) $id)
+            ->all();
         foreach ([
             'needs_responsible_owner',
             'needs_responsible_owner_past_target',
@@ -12371,13 +12402,37 @@ class BookingFlowService
         ] as $queue) {
             $queueQuery = clone $query;
             $queueQuery->reorder();
-            $this->applyOperationsQueueFilter($queueQuery, $queue);
+            $this->applyOperationsQueueFilter($queueQuery, $queue, $eligibleOwnerIds);
             $counts[$queue] = in_array($queue, ['needs_responsible_owner', 'needs_responsible_owner_past_target', 'payment_confirmation_pending'], true)
                 ? $queueQuery->distinct()->count('booking_items.booking_id')
                 : $queueQuery->count('booking_items.id');
         }
 
         return $counts;
+    }
+
+    private function rememberBookingListSummary(string $cacheKey, callable $calculate): array
+    {
+        // shortcut: booking summary counters may be 5 seconds stale; increase only if operations accepts slower refreshes.
+        $cached = Cache::get($cacheKey);
+        if (is_array($cached)) {
+            return $cached;
+        }
+
+        $remember = fn (): array => Cache::remember($cacheKey, now()->addSeconds(5), $calculate);
+        // shortcut: lock-table availability is cached per PHP worker; restart workers after cache schema changes.
+        $lockTable = config('cache.stores.database.lock_table') ?: 'cache_locks';
+        if (! (self::$bookingListCacheLocksAvailable ??= Schema::hasTable($lockTable))) {
+            return $remember();
+        }
+
+        try {
+            return Cache::lock($cacheKey.':lock', 30)->block(5, function () use ($cacheKey, $calculate): array {
+                return Cache::remember($cacheKey, now()->addSeconds(5), $calculate);
+            });
+        } catch (\Illuminate\Contracts\Cache\LockTimeoutException) {
+            return $calculate();
+        }
     }
 
     private function businessLocalDayUtcRange(): array
@@ -12392,6 +12447,12 @@ class BookingFlowService
         $start = Carbon::now($timezone)->startOfDay();
 
         return [$start->copy()->utc(), $start->copy()->addDay()->utc()];
+    }
+
+    private static function bookingListDriverAssignmentItemColumnExists(): bool
+    {
+        // shortcut: cached per PHP worker; restart workers after migrations that change this column.
+        return self::$bookingListDriverAssignmentItemColumnExists ??= Schema::hasColumn('driver_assignments', 'booking_item_id');
     }
 
     /**

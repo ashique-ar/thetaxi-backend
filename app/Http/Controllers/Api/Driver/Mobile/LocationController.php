@@ -254,14 +254,16 @@ class LocationController extends Controller
                 $driver,
                 $request->validated()['locations']
             );
-            Log::info('Buffered driver locations processed', [
-                'correlation_id' => $correlationId,
-                'driver_id' => $driver->id,
-                'accepted_count' => $result['accepted_count'],
-                'duplicate_count' => $result['duplicate_count'],
-                'quarantined_count' => $result['quarantined_count'],
-                'retryable_count' => $result['retryable_count'],
-            ]);
+            if ($result['quarantined_count'] > 0 || $result['retryable_count'] > 0) {
+                Log::warning('Buffered driver locations need attention', [
+                    'correlation_id' => $correlationId,
+                    'driver_id' => $driver->id,
+                    'accepted_count' => $result['accepted_count'],
+                    'duplicate_count' => $result['duplicate_count'],
+                    'quarantined_count' => $result['quarantined_count'],
+                    'retryable_count' => $result['retryable_count'],
+                ]);
+            }
 
             return response()->json([
                 'status' => 'success',

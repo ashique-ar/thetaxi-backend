@@ -10,6 +10,7 @@ use App\Models\DriverAssignment;
 use Carbon\Carbon;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
+use Illuminate\Support\Str;
 
 /**
  * Location Service
@@ -252,9 +253,10 @@ class LocationService
 
         $activeAssignment = $this->getActiveAssignment($driver);
         $activeAssignmentId = $activeAssignment?->id;
+        $validationCutoff = Carbon::now('UTC')->addMinutes(5);
         $outcomes = [];
         $normalizedLocations = collect($locations)->map(function (array $locationData, int $index) use (
-            $session, $activeAssignment, $activeAssignmentId, &$outcomes
+            $session, $activeAssignment, $activeAssignmentId, $validationCutoff, &$outcomes
         ) {
             $recordedAt = Carbon::parse($locationData['recorded_at'])->utc();
             $claimedSessionId = $locationData['session_id'] ?? $locationData['tracking_session_id'] ?? null;
@@ -265,7 +267,8 @@ class LocationService
                 $claimedSessionId,
                 $claimedAssignmentId,
                 $session,
-                $activeAssignment
+                $activeAssignment,
+                $validationCutoff
             );
             if ($reason) {
                 $outcomes[$index] = ['index' => $index, 'status' => 'quarantined', 'reason' => $reason];
@@ -322,68 +325,58 @@ class LocationService
         $payloadSeenKeys = [];
         $savedCount = 0;
         $duplicateCount = 0;
-        $latestSavedPoint = null;
+        $latestSavedPointRow = null;
         $routePointRows = [];
 
-        DB::transaction(function () use (
-            $driver,
-            $session,
-            $normalizedLocations,
-            $existingKeys,
-            &$payloadSeenKeys,
-            &$savedCount,
-            &$duplicateCount,
-            &$latestSavedPoint,
-            &$outcomes,
-            &$routePointRows
-        ) {
-            $now = Carbon::now('UTC');
+        foreach ($normalizedLocations as $locationData) {
+            $dedupeKey = $locationData['dedupe_key'];
 
-            foreach ($normalizedLocations as $locationData) {
-                $dedupeKey = $locationData['dedupe_key'];
+            if (isset($payloadSeenKeys[$dedupeKey]) || $existingKeys->has($dedupeKey)) {
+                $duplicateCount++;
+                $outcomes[$locationData['index']] = ['index' => $locationData['index'], 'status' => 'duplicate', 'reason' => 'duplicate'];
+                continue;
+            }
 
-                if (isset($payloadSeenKeys[$dedupeKey]) || $existingKeys->has($dedupeKey)) {
-                    $duplicateCount++;
-                    $outcomes[$locationData['index']] = ['index' => $locationData['index'], 'status' => 'duplicate', 'reason' => 'duplicate'];
-                    continue;
+            $payloadSeenKeys[$dedupeKey] = true;
+
+            $routePointRow = [
+                'id' => (string) Str::uuid7(),
+                'session_id' => $session->id,
+                'assignment_id' => $locationData['assignment_id'],
+                'latitude' => $locationData['latitude'],
+                'longitude' => $locationData['longitude'],
+                'altitude' => $locationData['altitude'],
+                'speed' => $locationData['speed'],
+                'heading' => $locationData['heading'],
+                'accuracy' => $locationData['accuracy'],
+                'sensor_stationary' => $locationData['sensor_stationary'] ?? null,
+                'recorded_at' => $locationData['recorded_at'],
+            ];
+            $routePointRows[] = $routePointRow;
+            $latestSavedPointRow = $routePointRow;
+
+            $savedCount++;
+            $outcomes[$locationData['index']] = ['index' => $locationData['index'], 'status' => 'accepted', 'reason' => 'accepted'];
+        }
+
+        if ($routePointRows) {
+            DB::transaction(function () use ($driver, $latestSavedPointRow, $routePointRows) {
+                $now = Carbon::now('UTC');
+                // shortcut: SQLite batches cap at 80 rows (11 fields each) under its 999 bind limit; raise only when supported versions guarantee a higher limit.
+                $chunkSize = in_array(DB::getDriverName(), ['pgsql', 'mysql', 'mariadb'], true) ? 500 : 80;
+                foreach (array_chunk($routePointRows, $chunkSize) as $rows) {
+                    RoutePoint::query()->insert($rows);
                 }
 
-                $payloadSeenKeys[$dedupeKey] = true;
-
-                $routePointRow = [
-                    'id' => (new RoutePoint())->newUniqueId(),
-                    'session_id' => $session->id,
-                    'assignment_id' => $locationData['assignment_id'],
-                    'latitude' => $locationData['latitude'],
-                    'longitude' => $locationData['longitude'],
-                    'altitude' => $locationData['altitude'],
-                    'speed' => $locationData['speed'],
-                    'heading' => $locationData['heading'],
-                    'accuracy' => $locationData['accuracy'],
-                    'sensor_stationary' => $locationData['sensor_stationary'] ?? null,
-                    'recorded_at' => $locationData['recorded_at'],
-                ];
-                $routePointRows[] = $routePointRow;
-
-                $savedCount++;
-                $latestSavedPoint = new RoutePoint($routePointRow);
-                $outcomes[$locationData['index']] = ['index' => $locationData['index'], 'status' => 'accepted', 'reason' => 'accepted'];
-            }
-
-            // shortcut: SQLite batches cap at 80 rows (11 fields each) under its 999 bind limit; raise only when supported versions guarantee a higher limit.
-            $chunkSize = in_array(DB::getDriverName(), ['pgsql', 'mysql', 'mariadb'], true) ? 500 : 80;
-            foreach (array_chunk($routePointRows, $chunkSize) as $rows) {
-                RoutePoint::query()->insert($rows);
-            }
-
-            if ($latestSavedPoint) {
                 $driver->update([
-                    'current_latitude' => $latestSavedPoint->latitude,
-                    'current_longitude' => $latestSavedPoint->longitude,
+                    'current_latitude' => $latestSavedPointRow['latitude'],
+                    'current_longitude' => $latestSavedPointRow['longitude'],
                     'last_active_at' => $now,
                 ]);
-            }
-        });
+            });
+        }
+
+        $latestSavedPoint = $latestSavedPointRow ? new RoutePoint($latestSavedPointRow) : null;
 
         return [
             'saved_count' => $savedCount,
@@ -403,7 +396,8 @@ class LocationService
         ?string $claimedSessionId,
         ?string $claimedAssignmentId,
         DriverSession $session,
-        ?DriverAssignment $assignment
+        ?DriverAssignment $assignment,
+        ?Carbon $validationCutoff = null
     ): ?string {
         if ($claimedSessionId && (string) $claimedSessionId !== (string) $session->id) {
             return 'session_context_mismatch';
@@ -411,7 +405,7 @@ class LocationService
         if ($claimedAssignmentId && (!$assignment || (string) $claimedAssignmentId !== (string) $assignment->id)) {
             return 'assignment_context_mismatch';
         }
-        if ($recordedAt->gt(Carbon::now('UTC')->addMinutes(5))) return 'timestamp_in_future';
+        if ($recordedAt->gt($validationCutoff ?? Carbon::now('UTC')->addMinutes(5))) return 'timestamp_in_future';
         if ($session->start_time && $recordedAt->lt($session->start_time)) return 'outside_session_window';
         if ($session->end_time && $recordedAt->gt($session->end_time)) return 'outside_session_window';
         $assignmentStartedAt = $assignment?->confirmed_at;

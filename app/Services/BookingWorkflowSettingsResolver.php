@@ -7,6 +7,8 @@ use Illuminate\Support\Facades\Schema;
 
 class BookingWorkflowSettingsResolver
 {
+    private ?array $resolvedBusinessDefaults = null;
+
     public function __construct(private readonly WebsiteSettingsService $websiteSettings)
     {
     }
@@ -164,17 +166,21 @@ class BookingWorkflowSettingsResolver
 
     private function businessDefaults(): array
     {
-        $enableReturn = $this->enabled('feature_vehicle_return_management_enabled');
-        return [
-            'enable_return_stage' => $enableReturn,
-            'enable_qc_stage' => $this->enabled('assignment_enable_qc_stage') && $enableReturn,
-            'enable_maintenance_stage' => $this->enabled('assignment_enable_maintenance_stage'),
-            'require_signed_agreement' => $this->enabled('booking_signed_agreement_required', true),
-            'require_driver_license' => false,
-            'require_customer_identity_document' => false,
-            'require_booking_approval' => false,
-            'require_handover_checklist' => false,
-        ];
+        if ($this->resolvedBusinessDefaults === null) {
+            $enableReturn = $this->enabled('feature_vehicle_return_management_enabled');
+            $this->resolvedBusinessDefaults = [
+                'enable_return_stage' => $enableReturn,
+                'enable_qc_stage' => $this->enabled('assignment_enable_qc_stage') && $enableReturn,
+                'enable_maintenance_stage' => $this->enabled('assignment_enable_maintenance_stage'),
+                'require_signed_agreement' => $this->enabled('booking_signed_agreement_required', true),
+                'require_driver_license' => false,
+                'require_customer_identity_document' => false,
+                'require_booking_approval' => false,
+                'require_handover_checklist' => false,
+            ];
+        }
+
+        return $this->resolvedBusinessDefaults;
     }
 
     private function enabled(string $key, bool $default = false): bool

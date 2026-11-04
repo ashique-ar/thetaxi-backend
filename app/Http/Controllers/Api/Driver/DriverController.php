@@ -72,12 +72,21 @@ class DriverController extends Controller
     {
         $query = $this->driverListQuery($request);
         $soon = now()->addDays(30)->toDateString();
+        $summary = $query->selectRaw(
+            'COUNT(*) as total,
+            SUM(CASE WHEN availability_status = ? OR (availability_status IS NULL AND is_online = ?) THEN 1 ELSE 0 END) as available,
+            SUM(CASE WHEN is_online = ? THEN 1 ELSE 0 END) as online,
+            SUM(CASE WHEN EXISTS (SELECT 1 FROM users WHERE users.id = drivers.user_id AND users.is_active = ? AND users.deleted_at IS NULL) THEN 1 ELSE 0 END) as active,
+            SUM(CASE WHEN license_no IS NULL OR license_expiry IS NULL OR DATE(license_expiry) <= ? THEN 1 ELSE 0 END) as license_attention',
+            ['available', true, true, true, $soon]
+        )->first();
+
         return response()->json(['status' => 'success', 'data' => [
-            'total' => (clone $query)->count(),
-            'available' => (clone $query)->where(fn ($q) => $q->where('availability_status', 'available')->orWhere(fn ($fallback) => $fallback->whereNull('availability_status')->where('is_online', true)))->count(),
-            'online' => (clone $query)->where('is_online', true)->count(),
-            'active' => (clone $query)->whereHas('user', fn ($q) => $q->where('is_active', true))->count(),
-            'license_attention' => (clone $query)->where(fn ($q) => $q->whereNull('license_no')->orWhereNull('license_expiry')->orWhereDate('license_expiry', '<=', $soon))->count(),
+            'total' => (int) $summary->total,
+            'available' => (int) $summary->available,
+            'online' => (int) $summary->online,
+            'active' => (int) $summary->active,
+            'license_attention' => (int) $summary->license_attention,
         ]]);
     }
 
@@ -1295,24 +1304,24 @@ class DriverController extends Controller
         
         $drivers = $query->with([
             'user:id,first_name,last_name',
-            'devices' => fn ($deviceQuery) => $deviceQuery->where('is_active', true),
-            'activeSession',
+            'devices' => fn ($deviceQuery) => $deviceQuery
+                ->select(['id', 'driver_id', 'device_uuid', 'platform', 'app_version', 'last_active_at'])
+                ->where('is_active', true),
+            'activeSession' => fn ($sessionQuery) => $sessionQuery
+                ->select(['id', 'driver_id', 'status', 'start_time']),
+            'realtimeStatusAssignments' => fn ($assignmentQuery) => $assignmentQuery
+                ->select(['id', 'driver_id', 'booking_id', 'booking_item_id', 'trip_phase', 'updated_at'])
+                ->with('booking:id,booking_number')
+                ->where('status', 'active')
+                ->where(fn ($phaseQuery) => $phaseQuery
+                    ->whereNull('trip_phase')
+                    ->orWhereNotIn('trip_phase', ['completed', 'declined']))
+                ->latest('updated_at')
+                ->limit(1),
         ])->get();
-        $activeAssignments = DriverAssignment::query()
-            ->with('booking:id,booking_number')
-            ->whereIn('driver_id', $drivers->pluck('id'))
-            ->where('status', 'active')
-            ->where(function ($assignmentQuery) {
-                $assignmentQuery->whereNull('trip_phase')
-                    ->orWhereNotIn('trip_phase', ['completed', 'declined']);
-            })
-            ->latest('updated_at')
-            ->get()
-            ->unique('driver_id')
-            ->keyBy('driver_id');
         
-        $locations = $drivers->map(function ($driver) use ($activeAssignments) {
-            $assignment = $activeAssignments->get($driver->id);
+        $locations = $drivers->map(function ($driver) {
+            $assignment = $driver->realtimeStatusAssignments->first();
             $currentDevice = $driver->devices->firstWhere('device_uuid', $driver->current_device_uuid);
             $activeSession = $driver->activeSession;
             return [

@@ -46,6 +46,8 @@ use Carbon\Carbon;
  */
 class BookingLifecycleService
 {
+    private static ?bool $driverAssignmentHasBookingItemId = null;
+
     protected AssignmentService $assignmentService;
     protected BookingFlowService $bookingFlowService;
     protected CurrencyService $currencyService;
@@ -1684,7 +1686,7 @@ class BookingLifecycleService
                 && DriverAssignment::query()
                     ->where('booking_id', $booking->id)
                     ->when(
-                        $bookingItem?->id && Schema::hasColumn('driver_assignments', 'booking_item_id'),
+                        $bookingItem?->id && self::driverAssignmentHasBookingItemId(),
                         fn ($query) => $query->where('booking_item_id', $bookingItem->id)
                     )
                     ->where('trip_phase', TripPhase::COMPLETED->value)
@@ -4356,11 +4358,20 @@ class BookingLifecycleService
 
     private function hasPendingAssignmentApproval(Booking $booking, ?BookingItem $bookingItem): bool
     {
-        $vehiclePending = VehicleAssignment::query()->where('booking_id', $booking->id)->where('requires_approval', true)
-            ->whereIn('status', ['pending', 'pending_approval'])->exists();
-        $driverPending = DriverAssignment::query()->where('booking_id', $booking->id)
-            ->when($bookingItem && Schema::hasColumn('driver_assignments', 'booking_item_id'), fn ($query) => $query->where('booking_item_id', $bookingItem->id))
-            ->where('requires_approval', true)->whereIn('status', ['pending', 'pending_approval'])->exists();
+        $pendingStatuses = ['pending', 'pending_approval'];
+        $vehiclePending = $booking->relationLoaded('vehicleAssignments')
+            ? $booking->vehicleAssignments->contains(fn ($assignment) => $assignment->requires_approval
+                && in_array((string) $assignment->status, $pendingStatuses, true))
+            : VehicleAssignment::query()->where('booking_id', $booking->id)->where('requires_approval', true)
+                ->whereIn('status', $pendingStatuses)->exists();
+        $driverPending = $booking->relationLoaded('driverAssignments')
+            ? $booking->driverAssignments->contains(fn ($assignment) => $assignment->requires_approval
+                && in_array((string) $assignment->status, $pendingStatuses, true)
+                && (!$bookingItem || !self::driverAssignmentHasBookingItemId()
+                    || (string) $assignment->booking_item_id === (string) $bookingItem->id))
+            : DriverAssignment::query()->where('booking_id', $booking->id)
+                ->when($bookingItem && self::driverAssignmentHasBookingItemId(), fn ($query) => $query->where('booking_item_id', $bookingItem->id))
+                ->where('requires_approval', true)->whereIn('status', $pendingStatuses)->exists();
 
         return $vehiclePending || $driverPending;
     }
@@ -4395,7 +4406,7 @@ class BookingLifecycleService
     private function latestDriverAssignment(string $bookingId, ?string $driverId = null, ?string $bookingItemId = null, ?Booking $booking = null): ?DriverAssignment
     {
         if ($booking?->relationLoaded('lifecycleDriverAssignments')) {
-            $hasBookingItemColumn = Schema::hasColumn('driver_assignments', 'booking_item_id');
+            $hasBookingItemColumn = self::driverAssignmentHasBookingItemId();
 
             return $booking->lifecycleDriverAssignments
                 ->filter(fn (DriverAssignment $assignment) => (!$driverId || (string) $assignment->driver_id === $driverId)
@@ -4407,9 +4418,15 @@ class BookingLifecycleService
 
         return DriverAssignment::where('booking_id', $bookingId)
             ->when($driverId, fn ($query) => $query->where('driver_id', $driverId))
-            ->when($bookingItemId && Schema::hasColumn('driver_assignments', 'booking_item_id'), fn ($query) => $query->where('booking_item_id', $bookingItemId))
+            ->when($bookingItemId && self::driverAssignmentHasBookingItemId(), fn ($query) => $query->where('booking_item_id', $bookingItemId))
             ->orderByDesc('updated_at')
             ->first();
+    }
+
+    private static function driverAssignmentHasBookingItemId(): bool
+    {
+        // shortcut: cached per PHP worker; restart workers after migrations that change this column.
+        return self::$driverAssignmentHasBookingItemId ??= Schema::hasColumn('driver_assignments', 'booking_item_id');
     }
 
     private function resolveAllowedLifecycleActions(
