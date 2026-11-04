@@ -38,3 +38,11 @@ it('allows both booking creators and editors to recheck assignments', function (
     expect(substr_count($routes, "permission:bookings.create|bookings.update"))
         ->toBeGreaterThanOrEqual(4);
 });
+
+it('returns the effective agreement requirement after applying the current business setting', function () {
+    $controller = file_get_contents(app_path('Http/Controllers/Api/AssignmentController.php'));
+
+    expect($controller)
+        ->toContain('BookingWorkflowSettingsResolver::class')
+        ->toContain("['require_signed_agreement']");
+});
