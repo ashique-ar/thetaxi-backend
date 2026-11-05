@@ -32,6 +32,17 @@ it('projects and searches corporate and selected employee identity in the canoni
         ->toContain("'corporate_employee_id' => \$booking->employee?->id")
         ->toContain('$customerName = $employeeName !== \'\' ? "{$employeeName} ({$corporateName})" : $corporateName;');
 
+    $employeeNormalization = Str::between($source, 'public function normalizeCorporateEmployeeReferences(', 'public function isValidBookingEmployeeId(');
+    expect($employeeNormalization)
+        ->toContain("->whereKey(trim(\$corporateEmployeeId))")
+        ->toContain("->where('user_id', trim(\$corporateEmployeeId))")
+        ->toContain("\$params['employee_id'] = (string) \$employee->user_id");
+
+    $customerResolution = Str::between($source, 'private function resolveBookingCustomerId(', 'private function ensureCustomerForUser(');
+    expect($customerResolution)
+        ->toContain("if (\$isCorporateBooking && is_string(\$employeeUserId)")
+        ->toContain('return $this->ensureCustomerForUser($employeeUserId);');
+
     expect($template)
         ->toContain('placeholder="Booking number, invoice, customer, reference..."')
         ->not->toContain('Booking ID');
@@ -39,9 +50,11 @@ it('projects and searches corporate and selected employee identity in the canoni
     $staffTs = file_get_contents(base_path('../portal-thetaxi/src/app/modules/booking/components/booking-list/booking-list.component.ts'));
     expect($staffTs)
         ->toContain('getCustomerDisplayName(booking: BookingListItem): string')
-        ->toContain('corporateDetails.corporate_employee_id')
         ->toContain('return `${employeeName} (${corporateName})`')
         ->toContain('getCorporateEmployeeLabel(booking: BookingListItem): string | null');
+
+    $staffCreateTs = file_get_contents(base_path('../portal-thetaxi/src/app/modules/booking/components/staff-booking-create/staff-booking-create.component.ts'));
+    expect($staffCreateTs)->toContain('corporateDetails.corporate_employee_id');
 
     $corporateService = file_get_contents(app_path('Services/CorporateBookingService.php'));
     expect($corporateService)
