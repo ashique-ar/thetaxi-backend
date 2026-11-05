@@ -29,6 +29,7 @@ it('projects and searches corporate and selected employee identity in the canoni
 
     expect($source)
         ->toContain("filled(\$booking->corporate_account_id)")
+        ->toContain("'corporate_employee_id' => \$booking->employee?->id")
         ->toContain('$customerName = $employeeName !== \'\' ? "{$employeeName} ({$corporateName})" : $corporateName;');
 
     expect($template)
@@ -38,6 +39,7 @@ it('projects and searches corporate and selected employee identity in the canoni
     $staffTs = file_get_contents(base_path('../portal-thetaxi/src/app/modules/booking/components/booking-list/booking-list.component.ts'));
     expect($staffTs)
         ->toContain('getCustomerDisplayName(booking: BookingListItem): string')
+        ->toContain('corporateDetails.corporate_employee_id')
         ->toContain('return `${employeeName} (${corporateName})`')
         ->toContain('getCorporateEmployeeLabel(booking: BookingListItem): string | null');
 

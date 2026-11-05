@@ -276,6 +276,33 @@ class BookingFlowService
             $employeeId = $corporateEmployeeId;
         }
 
+        if (is_string($corporateEmployeeId) && trim($corporateEmployeeId) !== '') {
+            $employeeQuery = CorporateEmployee::query()
+                ->whereHas('user')
+                ->when(
+                    !empty($params['corporate_account_id'] ?? $params['corporate_id'] ?? null),
+                    fn ($query) => $query->where(
+                        'corporate_id',
+                        $params['corporate_account_id'] ?? $params['corporate_id']
+                    )
+                );
+            $employee = (clone $employeeQuery)
+                ->whereKey(trim($corporateEmployeeId))
+                ->first();
+            $employee ??= $employeeQuery->where('user_id', trim($corporateEmployeeId))->first();
+
+            if (!$employee) {
+                throw ValidationException::withMessages([
+                    'corporate_employee_id' => 'The selected employee does not belong to this Corporate account.',
+                ]);
+            }
+
+            $params['corporate_employee_id'] = (string) $employee->id;
+            $params['employee_id'] = (string) $employee->user_id;
+
+            return $params;
+        }
+
         if (!is_string($employeeId) || trim($employeeId) === '') {
             return $params;
         }
@@ -9041,6 +9068,7 @@ class BookingFlowService
     {
         $booking = Booking::with([
             'customer.user',
+            'employee.user',
             'vehicle.vehicleGroup',
             'driver.user',
             'serviceType',
@@ -9290,6 +9318,7 @@ class BookingFlowService
                 'corporate_account_id' => $booking->corporate_account_id ? (string) $booking->corporate_account_id : null,
                 'corporate_name' => $booking->corporateAccount?->name ?? null,
                 'employee_id' => $booking->employee_id ? (string) $booking->employee_id : null,
+                'corporate_employee_id' => $booking->employee?->id ? (string) $booking->employee->id : null,
                 'employee_name' => $booking->employee
                     ? trim(($booking->employee->user?->first_name ?? '') . ' ' . ($booking->employee->user?->last_name ?? ''))
                     : null,
@@ -11589,6 +11618,7 @@ class BookingFlowService
                 'id' => (string) $booking->corporate_account_id,
                 'name' => $booking->corporateAccount?->name ?? null,
                 'employee_id' => $booking->employee_id ? (string) $booking->employee_id : null,
+                'corporate_employee_id' => $booking->employee?->id ? (string) $booking->employee->id : null,
                 'department' => $booking->corporateDepartment?->name ?? null,
                 'department_id' => $booking->corporate_department_id ? (string) $booking->corporate_department_id : null,
                 'division' => $booking->corporateDivision?->name ?? null,
@@ -14220,6 +14250,13 @@ class BookingFlowService
 
     private function resolveBookingCustomerId(array $params, ?Booking $booking = null): ?string
     {
+        $isCorporateBooking = filter_var($params['is_corporate_booking'] ?? false, FILTER_VALIDATE_BOOL);
+        $employeeUserId = $params['employee_id'] ?? null;
+
+        if ($isCorporateBooking && is_string($employeeUserId) && trim($employeeUserId) !== '') {
+            return $this->ensureCustomerForUser($employeeUserId);
+        }
+
         $candidate = $params['customer_id'] ?? null;
 
         if (is_array($candidate)) {
@@ -14235,13 +14272,6 @@ class BookingFlowService
             throw ValidationException::withMessages([
                 'customer_id' => 'Select a customer in this installation.',
             ]);
-        }
-
-        $isCorporateBooking = filter_var($params['is_corporate_booking'] ?? false, FILTER_VALIDATE_BOOL);
-        $employeeUserId = $params['employee_id'] ?? null;
-
-        if ($isCorporateBooking && is_string($employeeUserId) && trim($employeeUserId) !== '') {
-            return $this->ensureCustomerForUser($employeeUserId);
         }
 
         // Corporate drafts can legitimately be saved before a passenger is
