@@ -10673,9 +10673,9 @@ class BookingFlowService
         $customerUser = $customer?->user;
         $employeeUser = $booking?->employeeUser ?: $booking?->employee?->user;
         $bookingSource = $this->resolveBookingListSource($booking);
-        if ($bookingSource === 'corporate' && !$employeeUser) {
-            $employeeUser = $customerUser;
-        }
+        $corporateContact = $bookingSource === 'corporate'
+            ? $this->extractCorporateContactFromWorkflowData($booking)
+            : null;
 
         $itemVehicle = $item->vehicle;
         $itemDriver = $item->driver;
@@ -10901,16 +10901,16 @@ class BookingFlowService
             'vehicle_class_id' => $item->vehicle_class_id ? (string) $item->vehicle_class_id : null,
             'vehicle_class_name' => $item->vehicleClass?->name,
             'customer' => [
-                'id' => (string) ($customer?->id ?? ''),
+                'id' => (string) ($bookingSource === 'corporate' && !$employeeUser ? '' : ($customer?->id ?? '')),
                 'code' => $customer?->code,
                 'name' => $customerName,
-                'email' => $bookingSource === 'corporate' ? ($employeeUser?->email ?? $customerUser?->email) : $customerUser?->email,
-                'phone' => $bookingSource === 'corporate' ? ($employeeUser?->phone ?? $customerUser?->phone) : $customerUser?->phone,
+                'email' => $bookingSource === 'corporate' ? ($employeeUser?->email ?? $corporateContact['email'] ?? null) : $customerUser?->email,
+                'phone' => $bookingSource === 'corporate' ? ($employeeUser?->phone ?? $corporateContact['phone'] ?? null) : $customerUser?->phone,
                 'user' => [
                     'first_name' => $bookingSource === 'corporate' ? null : $customerUser?->first_name,
                     'last_name' => $bookingSource === 'corporate' ? null : $customerUser?->last_name,
-                    'email' => $bookingSource === 'corporate' ? ($employeeUser?->email ?? $customerUser?->email) : $customerUser?->email,
-                    'phone' => $bookingSource === 'corporate' ? ($employeeUser?->phone ?? $customerUser?->phone) : $customerUser?->phone,
+                    'email' => $bookingSource === 'corporate' ? ($employeeUser?->email ?? $corporateContact['email'] ?? null) : $customerUser?->email,
+                    'phone' => $bookingSource === 'corporate' ? ($employeeUser?->phone ?? $corporateContact['phone'] ?? null) : $customerUser?->phone,
                 ],
             ],
             'corporate' => $bookingSource === 'corporate' ? [
@@ -10926,6 +10926,7 @@ class BookingFlowService
                 'email' => $employeeUser?->email,
                 'phone' => $employeeUser?->phone,
             ] : null,
+            'corporate_contact' => $corporateContact,
             'vehicle' => $itemVehicle ? [
                 'id' => (string) $itemVehicle->id,
                 'name' => $itemVehicle->name ?? $itemVehicle->title,

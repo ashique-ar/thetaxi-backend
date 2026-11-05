@@ -17,10 +17,13 @@ it('projects and searches corporate and selected employee identity in the canoni
         ->not->toContain("orWhere('booking_items.booking_id', 'like'")
         ->and($mapper)
         ->toContain("if (\$bookingSource === 'corporate')")
+        ->not->toContain("if (\$bookingSource === 'corporate' && !\$employeeUser)")
         ->toContain("\$booking?->corporateAccount?->name")
         ->toContain("'tour_booking_enabled' => (bool) \$itemServiceType->tour_booking_enabled")
         ->toContain("'corporate' => \$bookingSource === 'corporate'")
         ->toContain("'employee' => \$bookingSource === 'corporate' && \$employeeUser")
+        ->toContain("'corporate_contact' => \$corporateContact")
+        ->toContain("\$this->extractCorporateContactFromWorkflowData(\$booking)")
         ->toContain("'email' => \$employeeUser?->email")
         ->toContain("'phone' => \$employeeUser?->phone");
 

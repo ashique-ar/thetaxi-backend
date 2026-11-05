@@ -51,7 +51,7 @@ class CustomerController extends Controller
     public function index(Request $request): AnonymousResourceCollection
     {
         $request->validate([
-            'booking_lookup' => ['nullable', 'boolean'],
+            'booking_lookup' => ['nullable', 'in:true,false,1,0'],
             'owner_status' => ['nullable', 'in:assigned,unassigned'],
             'owner_staff_id' => ['nullable', 'uuid'],
             'possible_phone_match' => ['nullable', 'boolean'],
