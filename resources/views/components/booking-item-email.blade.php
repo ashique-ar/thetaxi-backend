@@ -695,7 +695,13 @@
                         <div style="margin-top: 4px;">
                             {{ data_get($tourDay, 'start_location.name', 'Start') }}
                             @foreach ($tourDay['stops'] ?? [] as $tourStop)
-                                → {{ $tourStop['name'] ?? 'Selected stop' }}@if (!empty($tourStop['estimated_arrival'])) (~{{ $tourStop['estimated_arrival'] }})@endif@if (!empty($tourStop['visit_duration_minutes'])) ({{ $tourStop['visit_duration_minutes'] }} min)@endif
+                                → {{ $tourStop['name'] ?? 'Selected stop' }}
+                                @if (!empty($tourStop['estimated_arrival']))
+                                    (~{{ $tourStop['estimated_arrival'] }})
+                                @endif
+                                @if (!empty($tourStop['visit_duration_minutes']))
+                                    ({{ $tourStop['visit_duration_minutes'] }} min)
+                                @endif
                             @endforeach
                             → {{ data_get($tourDay, 'end_location.name', 'End') }}
                         </div>

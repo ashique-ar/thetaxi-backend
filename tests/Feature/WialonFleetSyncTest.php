@@ -7,11 +7,28 @@ use App\Services\WialonService;
 use Illuminate\Database\Schema\Blueprint;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Http;
+use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Facades\Schema;
 use Tests\TestCase;
 
 class WialonFleetSyncTest extends TestCase
 {
+    public function test_scheduler_command_logs_database_failures_and_returns_failure(): void
+    {
+        DB::shouldReceive('table')
+            ->once()
+            ->with('wialon_installation_settings')
+            ->andThrow(new \RuntimeException('database unavailable'));
+        Log::shouldReceive('error')
+            ->once()
+            ->with('Installation GPS fleet synchronization failed', [
+                'exception' => \RuntimeException::class,
+                'message' => 'database unavailable',
+            ]);
+
+        $this->artisan('gps:sync-fleet')->assertFailed();
+    }
+
     public function test_sync_imports_a_unit_once_and_preserves_later_portal_mileage(): void
     {
         Schema::create('wialon_installation_settings', function (Blueprint $table) {

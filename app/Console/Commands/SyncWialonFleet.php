@@ -4,6 +4,7 @@ namespace App\Console\Commands;
 
 use App\Services\WialonService;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Log;
 use Illuminate\Console\Command;
 
 class SyncWialonFleet extends Command
@@ -13,15 +14,19 @@ class SyncWialonFleet extends Command
 
     public function handle(WialonService $wialon): int
     {
-        $integration = DB::table('wialon_installation_settings')->where('id', 'installation')->first();
-        if (! $integration || ! $integration->enabled) return self::SUCCESS;
-
         try {
+            $integration = DB::table('wialon_installation_settings')->where('id', 'installation')->first();
+            if (! $integration || ! $integration->enabled) return self::SUCCESS;
+
             $synced = $wialon->syncVehicles();
             $this->info("Installation GPS: {$synced} vehicle(s) synchronized.");
             return self::SUCCESS;
         } catch (\Throwable $error) {
             $this->error("Installation GPS: {$error->getMessage()}");
+            Log::error('Installation GPS fleet synchronization failed', [
+                'exception' => $error::class,
+                'message' => $error->getMessage(),
+            ]);
             return self::FAILURE;
         }
     }
