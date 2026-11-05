@@ -61,19 +61,8 @@ class CustomerService
                     ]);
                 }
 
-                if (!$user->is_guest && !$user->hasRole('customer')) {
-                    throw ValidationException::withMessages([
-                        'email' => ['This email belongs to a non-customer account. Use a customer account to book online.'],
-                    ]);
-                }
-
                 $savedCustomer = Customer::withTrashed()->where('user_id', $user->id)->first();
                 $mergedCustomer = $this->customerForUser($user);
-                if ($this->hasActiveStaffContext($user) && ! $mergedCustomer) {
-                    throw ValidationException::withMessages([
-                        'email' => ['Employee accounts cannot be registered as customer accounts from checkout. Use a customer account or a different email address.'],
-                    ]);
-                }
                 if ($savedCustomer?->trashed() && ! $mergedCustomer) {
                     throw ValidationException::withMessages([
                         'email' => ['This customer profile is inactive. Please contact the business before booking with this email.'],
@@ -185,12 +174,6 @@ class CustomerService
                 return $this->updateCustomerProfile($customer, $data)->load('user');
             }
 
-            if ($this->hasActiveStaffContext($user) || (! $user->is_guest && ! $user->hasRole('customer'))) {
-                throw ValidationException::withMessages([
-                    'email' => ['Employee accounts cannot be registered as customer accounts from checkout. Use a customer account or a different email address.'],
-                ]);
-            }
-
             return $this->createCustomerForUser($user, $data);
         }
 
@@ -214,12 +197,6 @@ class CustomerService
                 if (!$customer->user || $customer->user->trashed() || !$customer->user->is_active) {
                     throw ValidationException::withMessages([
                         'email' => ['This account is inactive. Please contact the business before booking with this email.'],
-                    ]);
-                }
-
-                if (!$customer->user->is_guest && !$customer->user->hasRole('customer')) {
-                    throw ValidationException::withMessages([
-                        'email' => ['This email belongs to a non-customer account. Use a customer account to book online.'],
                     ]);
                 }
 
@@ -261,9 +238,6 @@ class CustomerService
 
             if (! $phoneCustomer->user || $phoneCustomer->user->trashed() || ! $phoneCustomer->user->is_active) {
                 throw ValidationException::withMessages(['phone' => ['This customer profile is inactive. Please contact the business before booking with this number.']]);
-            }
-            if (! $phoneCustomer->user->is_guest && ! $phoneCustomer->user->hasRole('customer')) {
-                throw ValidationException::withMessages(['phone' => ['This mobile number belongs to a non-customer account. Please contact the business or use a different number.']]);
             }
             return $mobileVerified
                 ? $this->updateCustomerProfile($phoneCustomer, $data)->load('user')
@@ -430,12 +404,6 @@ class CustomerService
             'updated_user_id' => Auth::id() ?? $user->id,
         ]);
         $context->save();
-    }
-
-    private function hasActiveStaffContext(User $user): bool
-    {
-        return DB::table('user_contexts')->where('user_id', $user->id)
-            ->where('context_type', 'staff')->where('is_active', true)->whereNull('deleted_at')->exists();
     }
 
     private function findUserByEmail(string $email, bool $lock = false): ?User

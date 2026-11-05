@@ -452,8 +452,7 @@ class CheckoutController extends Controller
     {
         return (bool) ($customer?->user
             && $customer->user->is_active
-            && ! $customer->user->trashed()
-            && ($customer->user->is_guest || $customer->user->hasRole('customer')));
+            && ! $customer->user->trashed());
     }
 
     /**
