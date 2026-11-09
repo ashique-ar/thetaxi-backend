@@ -6,7 +6,8 @@ beforeEach(function () {
     $this->checkout = file_get_contents($root . '/resources/views/checkout.blade.php')
         . file_get_contents($root . '/resources/views/checkout/themes/billing.blade.php')
         . file_get_contents($root . '/resources/views/checkout/themes/customer.blade.php')
-        . file_get_contents($root . '/resources/views/checkout/themes/payment-options.blade.php');
+        . file_get_contents($root . '/resources/views/checkout/themes/payment-options.blade.php')
+        . file_get_contents($root . '/resources/views/checkout/themes/layout.blade.php');
     $this->cartItem = file_get_contents($root . '/resources/views/checkout/themes/cart-item.blade.php');
     $this->cartSummary = file_get_contents($root . '/resources/views/checkout/themes/order-summary.blade.php');
     $this->success = file_get_contents($root . '/resources/views/checkout/success.blade.php');

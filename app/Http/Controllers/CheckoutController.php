@@ -626,7 +626,7 @@ class CheckoutController extends Controller
         $checkoutDefaultCountryName = $countries->first(fn ($country) => strtolower((string) $country->code) === $checkoutDefaultCountry)?->name
             ?? 'Sri Lanka';
 
-        return view('checkout', compact(
+        return view('checkout.v2.page', compact(
             'cart',
             'cartData',
             'paymentType',

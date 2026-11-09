@@ -11,8 +11,6 @@
     <!-- Popup Page Identifier for Popup Display Engine -->
     <div data-popup-page="checkout"></div>
 
-    @include('checkout.themes.' . (get_active_theme() === 'default' ? 'theme-01' : get_active_theme()) . '-header')
-
     @php
         // Cart data is passed from controller
         $cart = $cartData['items'] ?? [];
@@ -21,7 +19,6 @@
         $currencySymbol = $cartData['currency_symbol'] ?? getCurrencySymbol();
         $displayCurrency = $cartData['currency'] ?? getSelectedCurrency();
 
-        $paymentType = request()->get('type', 'full');
         $subtotal = $totals['subtotal'] ?? 0;
         $serviceFee = $totals['service_fee'] ?? 0;
         $addonCharges = $totals['addon_charges'] ?? 0;
@@ -81,118 +78,7 @@
         $paymentAmount = floor(max(0, $paymentAmount));
     @endphp
 
-    <!-- Checkout Page Start-->
-    <div class="checkout-page {{ theme_class('checkout-workflow') }}" id="checkoutContentStart">
-        <div class="container">
-            @if (empty($cart))
-                <div class="alert alert-warning text-center">
-                    <h4>Your cart is empty!</h4>
-                    <p>Please add some vehicles to your cart before proceeding to checkout.</p>
-                    <a href="{{ route('search') }}" class="primary-btn1 mt-3">Browse Vehicles</a>
-                </div>
-            @else
-                @php
-                    $canBookAsNewCustomer = $guestBookingEnabled || Auth::check();
-                    $showCheckoutDetails = (!$customerLookupEnabled && $canBookAsNewCustomer)
-                        || !empty($verifiedCheckoutCustomer) || !empty($tourCheckoutCustomer) || old('email') || old('first_name');
-                @endphp
-                @include('checkout.themes.customer')
-                @if ($canBookAsNewCustomer || Auth::check() || $customerLookupEnabled)
-                <div class="row g-lg-4 gy-4" id="checkout-details-layout" @if (!$showCheckoutDetails || ($customerLookupEnabled && !$verifiedCheckoutCustomer && !old('first_name') && !old('email'))) hidden @endif>
-                        <div class="col-lg-7">
-                            <form id="checkout-form" method="POST" action="{{ route('checkout.process') }}">
-                                @csrf
-                            @if ($errors->any() || session('error'))
-                                <div class="alert alert-danger" role="alert">
-                                    @if (session('error'))
-                                        <div>{{ session('error') }}</div>
-                                    @endif
-                                    @foreach ($errors->all() as $message)
-                                        <div>{{ $message }}</div>
-                                    @endforeach
-                                </div>
-                            @endif
-                            @include('checkout.themes.billing')
-                            </form>
-                        </div>
-
-                        <div class="col-lg-5">
-                            <div class="checkout-sidebar-stack">
-                                @include('checkout.themes.order-summary')
-                                @include('checkout.themes.payment-options')
-
-                                            <div class="alert alert-warning mb-3" id="payment-contact-requirement" role="status" hidden>
-                                                Enter both a valid email address and mobile number to continue checkout.
-                                            </div>
-
-                                            <!-- Payment Type Alert -->
-                                            <div class="alert alert-info mb-4" id="payment-type-alert">
-                                                <div id="alert-content">
-                                                    @switch($paymentType)
-                                                        @case('advance')
-                                                            <h6><i class="bi bi-info-circle"></i> Advance Payment
-                                                                (<span data-advance-percentage>{{ $advanceActualPercentage }}</span>%)</h6>
-                                                            <p class="mb-0">You are paying <span data-advance-percentage>{{ $advanceActualPercentage }}</span>%
-                                                                advance. The remaining amount will be collected at the time
-                                                                of vehicle pickup.</p>
-                                                        @break
-
-                                                        @case('checkin')
-                                                            <h6><i class="bi bi-cash-coin"></i> {{ $tourOnlyCheckout ? 'Pay later' : 'Pay on Check-in' }}</h6>
-                                                            <p class="mb-0">{{ $tourOnlyCheckout ? 'No payment is required now. The full amount is due according to your Tour booking terms.' : 'No payment is required now. You will pay the full amount when you check-in to collect the vehicle.' }}</p>
-                                                        @break
-
-                                                        @case('quotation')
-                                                            <h6><i class="bi bi-file-text"></i> Request Quotation</h6>
-                                                            <p class="mb-0">You are requesting a quotation. Our team will
-                                                                contact you with detailed pricing and booking information.</p>
-                                                        @break
-
-                                                        @default
-                                                            <h6><i class="bi bi-credit-card"></i> Full Payment</h6>
-                                                            <p class="mb-0">You are making full payment for your booking.</p>
-                                                    @endswitch
-                                                </div>
-                                            </div>
-
-                                            <!-- Hidden payment method field - set automatically based on payment type -->
-                                            <input type="hidden" name="payment_method" id="payment_method_field"
-                                                value="" form="checkout-form">
-
-                                            <button type="submit" class="primary-btn1 w-100" id="checkout-submit-btn"
-                                                form="checkout-form">
-                                                <span>
-                                                    @if ($paymentType === 'quotation')
-                                                        Submit Quotation Request
-                                                    @elseif ($paymentType === 'checkin')
-                                                        Confirm Booking - {{ $tourOnlyCheckout ? 'Pay Later' : 'Pay on Check-in' }}
-                                                    @else
-                                                        Complete Booking -
-                                                        <small class="currency-symbol">{{ $currencySymbol }}</small>
-                                                        {{ number_format(floor(max(0, $paymentAmount)), 0) }}
-                                                    @endif
-                                                    <svg width="10" height="10" viewBox="0 0 10 10"
-                                                        xmlns="http://www.w3.org/2000/svg">
-                                                        <path
-                                                            d="M9.73535 1.14746C9.57033 1.97255 9.32924 3.26406 9.24902 4.66797C9.16817 6.08312 9.25559 7.5453 9.70214 8.73633C9.84754 9.12406 9.65129 9.55659 9.26367 9.70215C8.9001 9.83849 8.4969 9.67455 8.32812 9.33398L8.29785 9.26367L8.19921 8.98438C7.73487 7.5758 7.67054 5.98959 7.75097 4.58203C7.77875 4.09598 7.82525 3.62422 7.87988 3.17969L1.53027 9.53027C1.23738 9.82317 0.762615 9.82317 0.469722 9.53027C0.176829 9.23738 0.176829 8.76262 0.469722 8.46973L6.83593 2.10254C6.3319 2.16472 5.79596 2.21841 5.25 2.24902C3.8302 2.32862 2.2474 2.26906 0.958003 1.79102L0.704097 1.68945L0.635738 1.65527C0.303274 1.47099 0.157578 1.06102 0.310542 0.704102C0.463655 0.347333 0.860941 0.170391 1.22363 0.28418L1.29589 0.310547L1.48828 0.387695C2.47399 0.751207 3.79966 0.827571 5.16601 0.750977C6.60111 0.670504 7.97842 0.428235 8.86132 0.262695L9.95312 0.0585938L9.73535 1.14746Z">
-                                                        </path>
-                                                    </svg>
-                                                </span>
-                                            </button>
-                            </div>
-                                        </div>
-                                    </div>
-                                </div>
-                            </div>
-                        </div>
-                    </div>
-                @elseif (!$customerLookupEnabled)
-                    <div class="alert alert-info" role="status">Guest bookings are currently unavailable. Please sign in to continue.</div>
-                @endif
-            @endif
-        </div>
-    </div>
-    <!--Checkout Page End-->
+    @include('checkout.themes.' . (get_active_theme() === 'default' ? 'theme-01' : get_active_theme()))
 
     @include('checkout.themes.popups')
 @endsection
@@ -1102,12 +988,11 @@
     <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/intl-tel-input@17/build/css/intlTelInput.css">
     <!-- Select2 CSS for searchable country dropdown -->
     <link href="https://cdn.jsdelivr.net/npm/select2@4.1.0-rc.0/dist/css/select2.min.css" rel="stylesheet" />
-    <link rel="stylesheet"
-        href="{{ assetVersion(theme_asset('checkout_stylesheet') ?? 'assets/css/checkout-theme-01.css') }}">
     <link rel="stylesheet" href="{{ assetVersion('assets/css/checkout-redesign-header.css') }}">
     <link rel="stylesheet" href="{{ assetVersion('assets/css/checkout-redesign-popups.css') }}">
     <link rel="stylesheet" href="{{ assetVersion('assets/css/checkout-redesign-billing.css') }}">
     <link rel="stylesheet" href="{{ assetVersion('assets/css/checkout-redesign-summary.css') }}">
+    <link rel="stylesheet" href="{{ assetVersion('assets/css/checkout-redesign-layout.css') }}">
 @endpush
 
 @push('scripts')
@@ -2296,6 +2181,11 @@
             const checkoutEmailField = document.getElementById('checkout-email-field');
             const returningPanel = document.getElementById('returning-customer-panel');
             const detailsLayout = document.getElementById('checkout-details-layout');
+            const paymentLayout = document.getElementById('checkout-payment-layout');
+            const setCheckoutDetailsVisible = visible => {
+                if (detailsLayout) detailsLayout.hidden = !visible;
+                if (paymentLayout) paymentLayout.hidden = !visible;
+            };
             const lookupChannelInputs = document.querySelectorAll('input[name="checkout_lookup_channel"]');
             const lookupEmailField = document.getElementById('customer-lookup-email-field');
             const lookupMobileField = document.getElementById('customer-lookup-mobile-field');
@@ -2324,7 +2214,7 @@
                     input.closest('label')?.classList.toggle('border-primary', input.checked);
                 });
                 if (returningPanel) returningPanel.hidden = hasVerifiedCustomer || selected !== 'returning';
-                if (detailsLayout) detailsLayout.hidden = !hasVerifiedCustomer && selected !== 'new';
+                setCheckoutDetailsVisible(hasVerifiedCustomer || selected === 'new');
             };
             const showMessage = (message, success = false) => {
                 if (!status) return;
@@ -2340,7 +2230,7 @@
             const showBookingForm = () => {
                 hasVerifiedCustomer = true;
                 if (returningPanel) returningPanel.hidden = true;
-                if (detailsLayout) detailsLayout.hidden = false;
+                setCheckoutDetailsVisible(true);
             };
             const selectedCustomerKind = () => document.querySelector('input[name="checkout_customer_kind"]:checked')?.value;
             const syncPaymentContactRequirement = () => {

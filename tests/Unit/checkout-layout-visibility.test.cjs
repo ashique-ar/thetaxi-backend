@@ -1,0 +1,17 @@
+const assert = require('node:assert/strict');
+const fs = require('node:fs');
+const vm = require('node:vm');
+const source = fs.readFileSync('resources/views/checkout.blade.php', 'utf8');
+const start = source.indexOf('const setCheckoutDetailsVisible = visible => {');
+const end = source.indexOf('\n            };', start);
+assert(start !== -1 && end > start);
+const detailsLayout = { hidden: true };
+const paymentLayout = { hidden: true };
+const setVisible = vm.runInNewContext(source.slice(start, end + '\n            };'.length) + '\nsetCheckoutDetailsVisible;', { detailsLayout, paymentLayout });
+setVisible(true);
+assert.equal(detailsLayout.hidden, false);
+assert.equal(paymentLayout.hidden, false);
+setVisible(false);
+assert.equal(detailsLayout.hidden, true);
+assert.equal(paymentLayout.hidden, true);
+console.log('Customer verification keeps billing and payment visibility in sync.');

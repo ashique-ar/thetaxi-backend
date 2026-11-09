@@ -5,7 +5,8 @@
     "scripts": {
         "build": "vite build",
         "dev": "vite",
-        "docs:driver-api": "node scripts/sync-driver-api-docs.js"
+        "docs:driver-api": "node scripts/sync-driver-api-docs.js",
+        "build:checkout-v2": "npx --yes tailwindcss@3.4.17 --config resources/checkout-v2.tailwind.config.cjs --input resources/css/checkout-v2.css --output public/assets/css/checkout-v2.css --minify && node scripts/checkout-v2-important.cjs"
     },
     "devDependencies": {
         "@tailwindcss/vite": "^4.0.0",

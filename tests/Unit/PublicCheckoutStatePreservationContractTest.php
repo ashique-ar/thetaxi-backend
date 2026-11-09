@@ -17,9 +17,11 @@ class PublicCheckoutStatePreservationContractTest extends TestCase
             $controller
         );
         $this->assertStringContainsString(
-            'if (!in_array($paymentType, $allowedPaymentTypes, true))',
+            'if (! in_array($paymentType, $allowedPaymentTypes, true))',
             $controller
         );
+        $checkout = file_get_contents(dirname(__DIR__, 2) . '/resources/views/checkout.blade.php');
+        $this->assertStringNotContainsString("\$paymentType = request()->get('type'", $checkout);
     }
 
     public function test_browser_back_restores_the_checkout_controls(): void
@@ -65,7 +67,8 @@ class PublicCheckoutStatePreservationContractTest extends TestCase
     {
         $root = dirname(__DIR__, 2);
         $controller = file_get_contents($root . '/app/Http/Controllers/CheckoutController.php');
-        $checkout = file_get_contents($root . '/resources/views/checkout.blade.php');
+        $checkout = file_get_contents($root . '/resources/views/checkout.blade.php')
+            . file_get_contents($root . '/resources/views/checkout/themes/layout.blade.php');
 
         $this->assertSame(2, substr_count($controller, '$this->getCheckoutServiceTerms($cart)'));
         $this->assertStringContainsString("data_get(\$item, 'service_type_data.id')", $controller);
