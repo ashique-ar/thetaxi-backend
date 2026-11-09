@@ -1,4 +1,4 @@
-#checkout-v2, #checkout-v2-overlays { --checkout-accent: var(--primary-color1, #BF2629); --checkout-accent-hover: color-mix(in srgb, var(--checkout-accent) 85%, black); --checkout-accent-soft: color-mix(in srgb, var(--checkout-accent) 8%, white); --checkout-accent-border: color-mix(in srgb, var(--checkout-accent) 28%, white); font-family: Inter, system-ui, sans-serif; color: #1e293b; }
+#checkout-v2, #checkout-v2-overlays { --checkout-accent: var(--primary-color1, #BF2629); --checkout-accent-hover: color-mix(in srgb, var(--checkout-accent) 85%, black); --checkout-accent-soft: color-mix(in srgb, var(--checkout-accent) 8%, white); --checkout-accent-border: color-mix(in srgb, var(--checkout-accent) 28%, white); font-family: Inter, system-ui, sans-serif; font-size: 16px; line-height: 1.5; color: #1e293b; }
 #checkout-v2 *, #checkout-v2-overlays * { box-sizing: border-box; }
 #checkout-v2 [hidden], #checkout-v2-overlays [hidden] { display: none !important; }
 #checkout-v2 input:not([type=checkbox]):not([type=radio]):not([type=hidden]), #checkout-v2 select, #checkout-v2 textarea { border-width: 1px !important; border-style: solid !important; background-color: #fff !important; line-height: 1.5; }
@@ -37,6 +37,7 @@
 #checkout-v2, #checkout-v2-overlays { --tw-gradient-from-position: ; --tw-gradient-via-position: ; --tw-gradient-to-position: ; }
 #checkout-v2 :where(h1,h2,h3,h4,h5,h6,p,ol,ul,fieldset), #checkout-v2-overlays :where(h1,h2,h3,h4,h5,h6,p,ol,ul,fieldset) { margin: 0; padding: 0; }
 #checkout-v2 :where(h1,h2,h3,h4,h5,h6,p,span,strong,small,label,button,input,select,textarea,li), #checkout-v2-overlays :where(h1,h2,h3,h4,h5,h6,p,span,strong,small,label,button,input,select,textarea,li) { font-family: Inter, system-ui, sans-serif !important; }
+#checkout-v2 :where(span,strong,small,label,li) { font-size: inherit !important; }
 #checkout-v2 :where(button), #checkout-v2-overlays :where(button) { border: 0; padding: 0; background: transparent; font: inherit; cursor: pointer; }
 #checkout-v2 :where(a), #checkout-v2-overlays :where(a) { text-decoration: none; }
 #checkout-v2 .select2-container--default .select2-selection--single { height: 42px; border: 1px solid #e2e8f0; border-radius: .75rem; }

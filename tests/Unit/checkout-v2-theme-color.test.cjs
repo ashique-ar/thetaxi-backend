@@ -8,6 +8,9 @@ assert.match(css, /checkout-addon-apply[^}]*background:\s*var\(--checkout-accent
 assert.match(css, /v2-km-slider[^}]*accent-color:\s*var\(--checkout-accent\)/);
 assert.match(config, /'checkout-accent':\s*'var\(--checkout-accent\)'/);
 assert.match(generated, /\.bg-checkout-accent\{background-color:var\(--checkout-accent\)\s*!important\}/);
+assert.doesNotMatch(generated, /-?(?:\d+\.?\d*|\.\d+)rem\b/);
+assert.match(css, /#checkout-v2, #checkout-v2-overlays\s*\{[^}]*font-size:\s*16px/);
+assert.match(css, /#checkout-v2 \.v2-progress :where\(li,span\)\s*\{\s*font-size:\s*inherit\s*!important/);
 for (const view of ['header-01', 'header-04', 'customer', 'payment-options', 'actions', 'popups']) {
     assert.match(fs.readFileSync(`resources/views/checkout/v2/${view}.blade.php`, 'utf8'), /checkout-accent/);
 }
