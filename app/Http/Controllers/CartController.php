@@ -166,6 +166,14 @@ class CartController extends Controller
     {
         try {
             $input = $request->all();
+            $searchContextId = data_get($input, 'search_data.search_context_id') ?? $input['search_context_id'] ?? null;
+            $searchParams = $searchContextId
+                ? session("public_search_contexts.{$searchContextId}.search_params")
+                : null;
+            if (is_array($searchParams)) {
+                $input['pickup_date'] = $searchParams['from_date'] ?? $input['pickup_date'] ?? null;
+                $input['return_date'] = $searchParams['to_date'] ?? $input['return_date'] ?? null;
+            }
             $input['pickup_date'] = $this->normalizeDateInput($input['pickup_date'] ?? null);
             $input['from_date'] = $this->normalizeDateInput($input['from_date'] ?? null);
             $input['return_date'] = $this->normalizeDateInput($input['return_date'] ?? null);
