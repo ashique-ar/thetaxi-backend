@@ -266,7 +266,9 @@ body.theme-theme-03.theme-page-rate-chart .rate-chart-container { padding: var(-
 body.theme-theme-03.theme-page-rate-chart :where(.rate-table-wrapper, .rate-chart-card, .mobile-rate-card, .table-responsive) { border-radius: 0 !important; background: #fffdf8 !important; box-shadow: 14px 14px 0 var(--t3-stone) !important; }
 body.theme-theme-03.theme-page-rate-chart table thead { border-bottom: 5px solid var(--t3-accent); background: var(--t3-ink) !important; color: var(--t3-text-on-dark); }
 body.theme-theme-03:is(.theme-page-checkout, .theme-page-checkout-success, .theme-page-checkout-payment-resume, .theme-page-booking-status) .t3-site-main { background: var(--t3-paper); }
-body.theme-theme-03.theme-page-checkout :where(.checkout-section, .checkout-page, .checkout-form-wrapper) { margin: 0 !important; padding-block: var(--t3-section-space); }
+body.theme-theme-03.theme-page-checkout .checkout-section { margin: 0 !important; padding: 0 !important; }
+body.theme-theme-03.theme-page-checkout .checkout-page { margin: 0 !important; padding: clamp(24px, 3vw, 40px) 0 !important; }
+body.theme-theme-03.theme-page-checkout .checkout-form-wrapper { margin: 0 !important; padding: 0 !important; }
 body.theme-theme-03.theme-page-checkout :where(.checkout-form-wrapper, .checkout-form, .checkout-addon-panel) { border-radius: 0 !important; background: #fffdf8 !important; box-shadow: 14px 14px 0 var(--t3-stone) !important; }
 body.theme-theme-03.theme-page-checkout :where(.order-summary, .cart-summary, .checkout-summary) { border-radius: 0 !important; background: var(--t3-ink) !important; color: var(--t3-text-on-dark) !important; }
 body.theme-theme-03:is(.theme-page-checkout-success, .theme-page-checkout-payment-resume) .checkout-success { margin: 0 !important; padding: var(--t3-section-space) 0; }

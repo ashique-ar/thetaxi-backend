@@ -10,7 +10,7 @@ body.theme-theme-04 .checkout-success {
     color: var(--t4-text);
 }
 
-body.theme-theme-04 .checkout-workflow--theme-04 > .container > .row > .col-lg-5 { display: flex; min-width: 0; flex-direction: column; gap: 24px; }
+body.theme-theme-04 .checkout-workflow--theme-04 > .container > .row > .col-lg-5 { display: flex; min-width: 0; flex-direction: column; gap: 16px; }
 body.theme-theme-04 .t4-checkout-booking { min-width: 0; }
 body.theme-theme-04 .t4-checkout-booking .t4-booking-panel { min-height: 0; margin: 0; padding: 0; background: transparent; }
 body.theme-theme-04 .t4-checkout-booking .t4-booking-panel > .container { width: 100%; max-width: none; padding: 0; }
@@ -18,8 +18,8 @@ body.theme-theme-04 .t4-checkout-booking .t4-booking-panel__card { width: 100%; 
 
 body.theme-theme-04 .checkout-workflow--theme-04 { padding: var(--t4-section) 0; background: var(--t4-surface-soft); }
 body.theme-theme-04 .checkout-workflow--theme-04 .checkout-form-wrapper { overflow: hidden; border: 1px solid var(--t4-line); border-radius: 10px; background: #fff; box-shadow: none; }
-body.theme-theme-04 .checkout-workflow--theme-04 .checkout-form-title { padding: 22px 26px; border-bottom: 4px solid var(--t4-accent); background: #fff; }
-body.theme-theme-04 .checkout-workflow--theme-04 .checkout-form { padding: clamp(22px, 4vw, 36px); }
+body.theme-theme-04 .checkout-workflow--theme-04 .checkout-form-title { padding: 18px 22px; border-bottom: 3px solid var(--t4-accent); background: #fff; }
+body.theme-theme-04 .checkout-workflow--theme-04 .checkout-form { padding: 22px; }
 body.theme-theme-04 .checkout-workflow--theme-04 :where(.checkout-customer-choice, .checkout-returning-panel) { border-color: var(--t4-line); border-radius: 10px; background: #fff; box-shadow: var(--t4-shadow); }
 body.theme-theme-04 .checkout-workflow--theme-04 :where(.checkout-customer-choice, .checkout-returning-panel) .checkout-form-title { padding: 20px 24px 16px; border-bottom: 1px solid var(--t4-line); background: #fff; }
 body.theme-theme-04 .checkout-workflow--theme-04 .checkout-returning-panel .checkout-form { padding: 22px 24px 24px; }
@@ -42,7 +42,7 @@ body.theme-theme-04 .checkout-workflow--theme-04 .checkout-cart-item .item-total
 body.theme-theme-04 .checkout-workflow--theme-04 .checkout-item-toggle { min-height: 44px; }
 body.theme-theme-04 .checkout-workflow--theme-04 :where(.checkout-addon-header, .checkout-extra-km-header, .promo-code-checkout-wrapper) { padding: 14px; border: 1px solid var(--t4-line); border-radius: 7px; background: var(--t4-surface-soft); }
 body.theme-theme-04 .checkout-workflow--theme-04 :where(.checkout-selected-addon-row, .checkout-extra-km-panel, .return-trip-breakdown) { border-radius: 7px !important; background: #fff !important; }
-body.theme-theme-04 .checkout-workflow--theme-04 .pricing-area { padding-top: 20px; border-top: 3px solid var(--t4-text); }
+body.theme-theme-04 .checkout-workflow--theme-04 .pricing-area { padding-top: 14px; border-top: 2px solid var(--t4-text); }
 body.theme-theme-04 .checkout-workflow--theme-04 .total-row { padding-top: 16px; border-top: 2px solid var(--t4-accent); }
 body.theme-theme-04 .checkout-workflow--theme-04 :where(.checkout-remove-item-btn, .checkout-clear-cart-btn, .apply-promo-checkout-btn, .checkout-toggle-addons, .checkout-toggle-extra-km) { min-height: 44px; border-radius: 6px; }
 body.theme-theme-04 .checkout-workflow--theme-04 :where(input, select, textarea, .select2-selection) { max-width: 100%; }
