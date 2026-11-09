@@ -2,11 +2,10 @@
 
 namespace Database\Seeders;
 
-use App\Models\Service\ServiceType;
-use App\Models\User;
 use Illuminate\Database\Seeder;
 use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Schema;
 use Illuminate\Support\Str;
 
 class TaxiMeterServiceTypeSeeder extends Seeder
@@ -63,13 +62,16 @@ class TaxiMeterServiceTypeSeeder extends Seeder
 
         DB::transaction(function () use ($fields, $actorId): void {
             $serviceTypes = [];
-            foreach (['portal', 'corporate'] as $context) {
-                $existing = DB::table('service_types')
-                    ->where('code', 'taxi_meter')
-                    ->where('context', $context)
-                    ->where('owner_type', '')
-                    ->where('owner_id', '')
-                    ->first();
+            foreach (['website', 'corporate'] as $context) {
+                $serviceTypeScope = ['code' => 'taxi_meter', 'context' => $context];
+                if (Schema::hasColumn('service_types', 'owner_type')) {
+                    $serviceTypeScope['owner_type'] = '';
+                }
+                if (Schema::hasColumn('service_types', 'owner_id')) {
+                    $serviceTypeScope['owner_id'] = '';
+                }
+
+                $existing = DB::table('service_types')->where($serviceTypeScope)->first();
                 $id = $existing->id ?? (string) Str::uuid();
                 $existingConfig = json_decode((string) ($existing->form_config ?? ''), true) ?: [];
                 $formConfig = array_merge($existingConfig, [
@@ -80,7 +82,7 @@ class TaxiMeterServiceTypeSeeder extends Seeder
                 ]);
 
                 DB::table('service_types')->updateOrInsert(
-                    ['code' => 'taxi_meter', 'context' => $context, 'owner_type' => '', 'owner_id' => ''],
+                    $serviceTypeScope,
                     [
                         'id' => $id,
                         'name' => 'Taxi Meter',
@@ -110,8 +112,7 @@ class TaxiMeterServiceTypeSeeder extends Seeder
                     ]
                 );
                 $serviceTypeId = (string) DB::table('service_types')
-                    ->where('code', 'taxi_meter')->where('context', $context)
-                    ->where('owner_type', '')->where('owner_id', '')->value('id');
+                    ->where($serviceTypeScope)->value('id');
                 $serviceTypes[$context] = $serviceTypeId;
 
                 $definition = DB::table('vehicle_pricing_calculation_definitions')
