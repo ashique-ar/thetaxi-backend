@@ -1,0 +1,1228 @@
+<!doctype html>
+<html lang="en">
+    <head>
+        <meta charset="utf-8" />
+        <meta content="width=device-width, initial-scale=1.0" name="viewport" />
+        <title>
+            Checkout | The Taxi - Airport Transfers &amp; Private Hires Sri
+            Lanka
+        </title>
+        <!-- Tailwind CSS v3 CDN with forms & container queries -->
+        <script src="https://cdn.tailwindcss.com?plugins=forms,container-queries"></script>
+        <!-- Tailwind Configuration for The Taxi Brand Colors -->
+        <script>
+            tailwind.config = {
+                theme: {
+                    extend: {
+                        colors: {
+                            brand: {
+                                red: "#C5221F",
+                                redHover: "#AB1B19",
+                                redLight: "#FDF2F2",
+                                dark: "#121316",
+                                charcoal: "#1F242D",
+                                surface: "#F8FAFC",
+                            },
+                        },
+                        fontFamily: {
+                            sans: [
+                                "Inter",
+                                "system-ui",
+                                "-apple-system",
+                                "Segoe UI",
+                                "Roboto",
+                                "sans-serif",
+                            ],
+                        },
+                    },
+                },
+            };
+        </script>
+        <!-- Google Fonts: Inter -->
+        <link href="https://fonts.googleapis.com" rel="preconnect" />
+        <link
+            crossorigin=""
+            href="https://fonts.gstatic.com"
+            rel="preconnect"
+        />
+        <link
+            href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&amp;display=swap"
+            rel="stylesheet"
+        />
+        <style data-purpose="custom-scroll-and-badges">
+            /* Subtle custom scrollbar for policy boxes */
+            .custom-scroll::-webkit-scrollbar {
+                width: 5px;
+            }
+            .custom-scroll::-webkit-scrollbar-track {
+                background: #f1f5f9;
+                border-radius: 4px;
+            }
+            .custom-scroll::-webkit-scrollbar-thumb {
+                background: #cbd5e1;
+                border-radius: 4px;
+            }
+            .custom-scroll::-webkit-scrollbar-thumb:hover {
+                background: #94a3b8;
+            }
+        </style>
+    </head>
+    <body
+        class="bg-[#F6F8FA] text-slate-800 font-sans antialiased min-h-screen flex flex-col"
+    >
+        <!-- BEGIN: CheckoutHeroBanner -->
+        <section
+            class="bg-gradient-to-b from-slate-900 via-slate-800 to-slate-900 text-white py-9 border-b border-slate-700/60"
+            data-purpose="page-hero"
+        >
+            <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
+                <div
+                    class="flex flex-col md:flex-row md:items-center md:justify-between gap-6"
+                >
+                    <div>
+                        <!-- Breadcrumbs -->
+                        <nav
+                            class="flex items-center space-x-2 text-xs text-slate-400 mb-2"
+                        >
+                            <a
+                                class="hover:text-white transition-colors"
+                                href="#"
+                                >Home</a
+                            >
+                            <span class="">•</span>
+                            <span class="text-brand-red font-medium"
+                                >Checkout</span
+                            >
+                        </nav>
+                        <h1
+                            class="text-3xl md:text-4xl font-extrabold tracking-tight"
+                        >
+                            Express Checkout
+                        </h1>
+                        <p class="text-slate-300 text-sm mt-1">
+                            Review your transfer details and secure your
+                            confirmed reservation.
+                        </p>
+                    </div>
+                    <!-- 3-Step Modern Checkout Stepper -->
+                    <div
+                        class="bg-slate-800/80 backdrop-blur border border-slate-700 rounded-xl px-5 py-3.5 shadow-lg flex items-center space-x-3 text-xs"
+                    >
+                        <!-- Step 1 -->
+                        <div class="flex items-center space-x-2">
+                            <span
+                                class="w-6 h-6 rounded-full bg-emerald-500/20 text-emerald-400 flex items-center justify-center font-bold text-xs"
+                                >✓</span
+                            >
+                            <span
+                                class="text-slate-300 font-medium hidden sm:inline"
+                                >Vehicles</span
+                            >
+                        </div>
+                        <span class="text-slate-600">→</span>
+                        <!-- Step 2 -->
+                        <div class="flex items-center space-x-2">
+                            <span
+                                class="w-6 h-6 rounded-full bg-emerald-500/20 text-emerald-400 flex items-center justify-center font-bold text-xs"
+                                >✓</span
+                            >
+                            <span
+                                class="text-slate-300 font-medium hidden sm:inline"
+                                >Add-ons</span
+                            >
+                        </div>
+                        <span class="text-slate-600">→</span>
+                        <!-- Step 3 (Active) -->
+                        <div
+                            class="flex items-center space-x-2 bg-brand-red text-white px-3 py-1.5 rounded-lg shadow-sm font-semibold"
+                        >
+                            <span
+                                class="w-5 h-5 rounded-full bg-white text-brand-red flex items-center justify-center font-black text-xs"
+                                >3</span
+                            >
+                            <span class="">Passenger &amp; Payment</span>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </section>
+        <!-- END: CheckoutHeroBanner -->
+        <!-- BEGIN: MainCheckoutLayout -->
+        <main
+            class="flex-grow max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8 w-full"
+            data-purpose="checkout-container"
+        >
+            <div class="grid grid-cols-1 lg:grid-cols-12 gap-8 items-start">
+                <!-- ================= LEFT COLUMN: BILLING & PASSENGER DETAILS (7 Cols) ================= -->
+                <div class="lg:col-span-7 space-y-6">
+                    <!-- Seamless Booking Notice Card -->
+                    <div
+                        class="bg-gradient-to-r from-red-50/70 to-slate-50 border border-red-100 rounded-2xl p-5 shadow-xs flex items-start gap-4"
+                    >
+                        <div
+                            class="w-10 h-10 rounded-xl bg-brand-red text-white flex-shrink-0 flex items-center justify-center shadow-xs"
+                        >
+                            <svg
+                                class="w-5 h-5"
+                                fill="none"
+                                stroke="currentColor"
+                                viewBox="0 0 24 24"
+                            >
+                                <path
+                                    d="M16 7a4 4 0 11-8 0 4 4 0 018 0zM12 14a7 7 0 00-7 7h14a7 7 0 00-7-7z"
+                                    stroke-linecap="round"
+                                    stroke-linejoin="round"
+                                    stroke-width="2"
+                                ></path>
+                            </svg>
+                        </div>
+                        <div class="flex-grow">
+                            <div class="flex items-center justify-between">
+                                <h3 class="text-base font-bold text-slate-900">
+                                    Guest Checkout
+                                </h3>
+                                <a
+                                    class="text-xs font-semibold text-brand-red hover:underline"
+                                    href="#"
+                                    >Existing member? Sign in</a
+                                >
+                            </div>
+                            <p
+                                class="text-xs text-slate-600 mt-1 leading-relaxed"
+                            >
+                                You can book instantly without an account. If
+                                your email is already on file, we'll
+                                automatically associate this ride with your
+                                profile without changing your saved details.
+                            </p>
+                        </div>
+                    </div>
+                    <!-- Passenger & Billing Information Form Card -->
+                    <div
+                        class="bg-white rounded-2xl border border-slate-200/90 shadow-sm p-6 sm:p-7"
+                        data-purpose="billing-information-form"
+                    >
+                        <div
+                            class="flex items-center justify-between pb-4 border-b border-slate-100 mb-6"
+                        >
+                            <div>
+                                <h2
+                                    class="text-lg font-bold text-slate-900 flex items-center gap-2"
+                                >
+                                    <span class=""
+                                        >Billing &amp; Lead Passenger</span
+                                    >
+                                </h2>
+                                <p class="text-xs text-slate-500 mt-0.5">
+                                    The primary driver or voucher recipient
+                                </p>
+                            </div>
+                            <span
+                                class="inline-flex items-center text-[11px] font-semibold text-slate-600 bg-slate-100 px-2.5 py-1 rounded-full"
+                            >
+                                * Required fields
+                            </span>
+                        </div>
+                        <form
+                            class="space-y-4"
+                            onsubmit="event.preventDefault()"
+                        >
+                            <!-- First & Last Name -->
+                            <div class="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                                <div>
+                                    <label
+                                        class="block text-xs font-semibold text-slate-700 mb-1.5"
+                                        for="firstName"
+                                        >First Name
+                                        <span class="text-brand-red"
+                                            >*</span
+                                        ></label
+                                    >
+                                    <input
+                                        class="w-full text-sm rounded-lg border-slate-300 focus:border-brand-red focus:ring-brand-red transition shadow-xs"
+                                        id="firstName"
+                                        placeholder="e.g. John"
+                                        required=""
+                                        type="text"
+                                        value="Kasun"
+                                    />
+                                </div>
+                                <div>
+                                    <label
+                                        class="block text-xs font-semibold text-slate-700 mb-1.5"
+                                        for="lastName"
+                                        >Last Name
+                                        <span class="text-brand-red"
+                                            >*</span
+                                        ></label
+                                    >
+                                    <input
+                                        class="w-full text-sm rounded-lg border-slate-300 focus:border-brand-red focus:ring-brand-red transition shadow-xs"
+                                        id="lastName"
+                                        placeholder="e.g. Doe"
+                                        required=""
+                                        type="text"
+                                        value="Perera"
+                                    />
+                                </div>
+                            </div>
+                            <!-- Mobile Phone & Email Address -->
+                            <div class="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                                <!-- Mobile Phone with Sri Lanka +94 prefix -->
+                                <div>
+                                    <label
+                                        class="block text-xs font-semibold text-slate-700 mb-1.5"
+                                        for="mobileNumber"
+                                        >Mobile Number (WhatsApp)
+                                        <span class="text-brand-red"
+                                            >*</span
+                                        ></label
+                                    >
+                                    <div
+                                        class="relative flex rounded-lg shadow-xs"
+                                    >
+                                        <div
+                                            class="inline-flex items-center px-3 border border-r-0 border-slate-300 bg-slate-50 text-slate-700 text-xs font-medium rounded-l-lg space-x-1.5"
+                                        >
+                                            <!-- Sri Lankan Flag Icon -->
+                                            <span
+                                                aria-label="Sri Lanka Flag"
+                                                class="text-base"
+                                                role="img"
+                                                >🇱🇰</span
+                                            >
+                                            <span class="">+94</span>
+                                        </div>
+                                        <input
+                                            class="w-full text-sm rounded-r-lg border-slate-300 focus:border-brand-red focus:ring-brand-red transition"
+                                            id="mobileNumber"
+                                            placeholder="77 123 4567"
+                                            required=""
+                                            type="tel"
+                                            value="77 217 0000"
+                                        />
+                                    </div>
+                                    <p class="text-[11px] text-slate-400 mt-1">
+                                        Driver will send live coordinates via
+                                        WhatsApp.
+                                    </p>
+                                </div>
+                                <!-- Email Address -->
+                                <div>
+                                    <div
+                                        class="flex items-center justify-between mb-1.5"
+                                    >
+                                        <label
+                                            class="block text-xs font-semibold text-slate-700"
+                                            for="emailAddress"
+                                            >Email Address
+                                            <span class="text-brand-red"
+                                                >*</span
+                                            ></label
+                                        >
+                                        <span
+                                            class="text-[10px] text-emerald-600 font-medium flex items-center"
+                                            >Instant E-Ticket</span
+                                        >
+                                    </div>
+                                    <input
+                                        class="w-full text-sm rounded-lg border-slate-300 focus:border-brand-red focus:ring-brand-red transition shadow-xs"
+                                        id="emailAddress"
+                                        placeholder="name@domain.com"
+                                        required=""
+                                        type="email"
+                                        value="kasun.perera@example.com"
+                                    />
+                                    <p class="text-[11px] text-slate-400 mt-1">
+                                        Booking confirmation will be sent here.
+                                    </p>
+                                </div>
+                            </div>
+                            <!-- Street Address & City -->
+                            <div class="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                                <div>
+                                    <label
+                                        class="block text-xs font-semibold text-slate-700 mb-1.5"
+                                        for="streetAddress"
+                                        >Street Address
+                                        <span class="text-brand-red"
+                                            >*</span
+                                        ></label
+                                    >
+                                    <input
+                                        class="w-full text-sm rounded-lg border-slate-300 focus:border-brand-red focus:ring-brand-red transition shadow-xs"
+                                        id="streetAddress"
+                                        placeholder="Flat, Street, Area"
+                                        required=""
+                                        type="text"
+                                        value="181/C, Gothami Gardens"
+                                    />
+                                </div>
+                                <div>
+                                    <label
+                                        class="block text-xs font-semibold text-slate-700 mb-1.5"
+                                        for="cityName"
+                                        >City
+                                        <span class="text-brand-red"
+                                            >*</span
+                                        ></label
+                                    >
+                                    <input
+                                        class="w-full text-sm rounded-lg border-slate-300 focus:border-brand-red focus:ring-brand-red transition shadow-xs"
+                                        id="cityName"
+                                        placeholder="City or Town"
+                                        required=""
+                                        type="text"
+                                        value="Rajagiriya"
+                                    />
+                                </div>
+                            </div>
+                            <!-- Country & National ID / Passport -->
+                            <div class="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                                <div>
+                                    <label
+                                        class="block text-xs font-semibold text-slate-700 mb-1.5"
+                                        for="countrySelect"
+                                        >Country / Territory
+                                        <span class="text-brand-red"
+                                            >*</span
+                                        ></label
+                                    >
+                                    <select
+                                        class="w-full text-sm rounded-lg border-slate-300 focus:border-brand-red focus:ring-brand-red transition shadow-xs"
+                                        id="countrySelect"
+                                    >
+                                        <option selected="" value="LK">
+                                            Sri Lanka (+94)
+                                        </option>
+                                        <option value="UK">
+                                            United Kingdom (+44)
+                                        </option>
+                                        <option value="US">
+                                            United States (+1)
+                                        </option>
+                                        <option value="AU">
+                                            Australia (+61)
+                                        </option>
+                                        <option value="DE">
+                                            Germany (+49)
+                                        </option>
+                                        <option value="SG">
+                                            Singapore (+65)
+                                        </option>
+                                    </select>
+                                </div>
+                                <div>
+                                    <label
+                                        class="block text-xs font-semibold text-slate-700 mb-1.5"
+                                        for="idPassport"
+                                        >National ID or Passport
+                                        <span class="text-slate-400 font-normal"
+                                            >(Optional)</span
+                                        ></label
+                                    >
+                                    <input
+                                        class="w-full text-sm rounded-lg border-slate-300 focus:border-brand-red focus:ring-brand-red transition shadow-xs"
+                                        id="idPassport"
+                                        placeholder="NIC or Passport number"
+                                        type="text"
+                                    />
+                                </div>
+                            </div>
+                            <!-- Airport Flight Tracking Note -->
+                            <div class="mt-4 pt-2">
+                                <label
+                                    class="block text-xs font-semibold text-slate-700 mb-1.5 flex items-center justify-between"
+                                    for="flightNotes"
+                                >
+                                    <span class=""
+                                        >Flight Details &amp; Special
+                                        Instructions
+                                        <span class="text-slate-400 font-normal"
+                                            >(Optional)</span
+                                        ></span
+                                    >
+                                    <span
+                                        class="text-[11px] text-brand-red font-medium"
+                                        >Free Flight Delay Monitoring</span
+                                    >
+                                </label>
+                                <textarea
+                                    class="w-full text-sm rounded-lg border-slate-300 focus:border-brand-red focus:ring-brand-red transition shadow-xs"
+                                    id="flightNotes"
+                                    placeholder="E.g., Flight UL 504 landing at 14:30. Driver please wait at Exit Gate 2 with passenger name sign."
+                                    rows="2"
+                                ></textarea>
+                            </div>
+                        </form>
+                    </div>
+                    <!-- Applicable Terms & Conditions Box -->
+                    <div
+                        class="bg-white rounded-2xl border border-slate-200/90 shadow-sm p-6 sm:p-7"
+                        data-purpose="terms-and-policies"
+                    >
+                        <div
+                            class="flex items-center justify-between pb-3 border-b border-slate-100 mb-4"
+                        >
+                            <h3
+                                class="text-base font-bold text-slate-900 flex items-center gap-2"
+                            >
+                                <svg
+                                    class="w-5 h-5 text-slate-500"
+                                    fill="none"
+                                    stroke="currentColor"
+                                    viewBox="0 0 24 24"
+                                >
+                                    <path
+                                        d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"
+                                        stroke-linecap="round"
+                                        stroke-linejoin="round"
+                                        stroke-width="2"
+                                    ></path>
+                                </svg>
+                                Applicable Terms &amp; Conditions
+                            </h3>
+                            <span class="text-xs text-slate-400"
+                                >Guaranteed Service</span
+                            >
+                        </div>
+                        <!-- Policy Box: Scrollable & Structured -->
+                        <div
+                            class="space-y-4 max-h-64 overflow-y-auto custom-scroll pr-2 text-xs text-slate-600"
+                        >
+                            <!-- Airport Transfer Terms -->
+                            <div
+                                class="p-3.5 bg-slate-50 rounded-xl border border-slate-200/80"
+                            >
+                                <div
+                                    class="flex items-center justify-between mb-1.5 font-bold text-slate-900"
+                                >
+                                    <span class="flex items-center gap-1.5">
+                                        <span
+                                            class="w-2 h-2 rounded-full bg-brand-red"
+                                        ></span>
+                                        Terms &amp; Conditions — Airport
+                                        Transfers
+                                    </span>
+                                    <span
+                                        class="text-[10px] uppercase bg-slate-200 text-slate-700 px-2 py-0.5 rounded font-bold"
+                                        >Standard</span
+                                    >
+                                </div>
+                                <ul
+                                    class="list-disc list-inside space-y-1 text-slate-600 mt-2"
+                                >
+                                    <li class="">
+                                        Rates are inclusive of certified
+                                        chauffeur, fuel, highway expressway
+                                        tolls, and parking tickets.
+                                    </li>
+                                    <li class="">
+                                        Responsible, professional &amp;
+                                        well-mannered English-speaking tourist
+                                        drivers.
+                                    </li>
+                                    <li class="">
+                                        Complimentary 60 minutes free waiting
+                                        time from confirmed flight touchdown.
+                                    </li>
+                                    <li class="">
+                                        Instant cancellation available up to 12
+                                        hours before scheduled pickup.
+                                    </li>
+                                </ul>
+                            </div>
+                            <!-- Day Rental Terms -->
+                            <div
+                                class="p-3.5 bg-slate-50 rounded-xl border border-slate-200/80"
+                            >
+                                <div
+                                    class="flex items-center justify-between mb-1.5 font-bold text-slate-900"
+                                >
+                                    <span class="flex items-center gap-1.5">
+                                        <span
+                                            class="w-2 h-2 rounded-full bg-slate-700"
+                                        ></span>
+                                        Terms &amp; Conditions — Day Hire &amp;
+                                        Islandwide Tours
+                                    </span>
+                                    <span
+                                        class="text-[10px] uppercase bg-slate-200 text-slate-700 px-2 py-0.5 rounded font-bold"
+                                        >Comprehensive</span
+                                    >
+                                </div>
+                                <ul
+                                    class="list-disc list-inside space-y-1 text-slate-600 mt-2"
+                                >
+                                    <li class="">
+                                        Rates include Chauffeur &amp; Fuel.
+                                        Air-conditioned late-model sedans.
+                                    </li>
+                                    <li class="">
+                                        All vehicles are fully passenger-insured
+                                        with Sri Lanka Tourist Board compliance.
+                                    </li>
+                                    <li class="">
+                                        In case of breakdown, a substitute
+                                        vehicle will be provided island-wide
+                                        24/7 within 60-90 mins.
+                                    </li>
+                                    <li class="">
+                                        Driver accommodation &amp; meals are
+                                        handled by our company when outstation.
+                                    </li>
+                                </ul>
+                            </div>
+                        </div>
+                        <!-- Interactive Agreement Checkbox -->
+                        <div class="mt-5 pt-4 border-t border-slate-100">
+                            <label
+                                class="relative flex items-start gap-3 p-3.5 bg-red-50/60 hover:bg-red-50 border border-brand-red/30 rounded-xl cursor-pointer transition"
+                            >
+                                <input
+                                    checked=""
+                                    class="mt-0.5 w-4 h-4 rounded text-brand-red focus:ring-brand-red border-slate-300"
+                                    id="termsAgree"
+                                    type="checkbox"
+                                />
+                                <span
+                                    class="text-xs text-slate-800 leading-normal"
+                                >
+                                    <strong class="font-bold text-slate-900"
+                                        >I agree to the above Terms &amp;
+                                        Conditions and Cancellation
+                                        Policy.</strong
+                                    >
+                                    <span
+                                        class="block text-slate-500 text-[11px] mt-0.5"
+                                        >Required before placing your booking.
+                                        Your reservation is protected by our
+                                        passenger guarantee.</span
+                                    >
+                                </span>
+                            </label>
+                        </div>
+                        <!-- Preferences Checkboxes -->
+                        <div class="mt-4 space-y-2 pt-2 text-xs text-slate-600">
+                            <label
+                                class="flex items-center gap-2.5 cursor-pointer"
+                            >
+                                <input
+                                    checked=""
+                                    class="w-4 h-4 rounded text-brand-red focus:ring-brand-red border-slate-300"
+                                    type="checkbox"
+                                />
+                                <span class=""
+                                    >Save my information securely for future
+                                    1-click bookings</span
+                                >
+                            </label>
+                            <label
+                                class="flex items-center gap-2.5 cursor-pointer"
+                            >
+                                <input
+                                    checked=""
+                                    class="w-4 h-4 rounded text-brand-red focus:ring-brand-red border-slate-300"
+                                    type="checkbox"
+                                />
+                                <span class=""
+                                    >Receive instant driver arrival updates and
+                                    live GPS tracking via WhatsApp &amp;
+                                    SMS</span
+                                >
+                            </label>
+                        </div>
+                    </div>
+                </div>
+                <!-- ================= RIGHT COLUMN: ORDER SUMMARY & PAYMENT (5 Cols) ================= -->
+                <div class="lg:col-span-5 space-y-6 lg:sticky lg:top-24">
+                    <!-- Summary Card -->
+                    <div
+                        class="bg-white rounded-2xl border border-slate-200/90 shadow-sm p-6"
+                        data-purpose="order-summary-box"
+                    >
+                        <div
+                            class="flex items-center justify-between pb-4 border-b border-slate-100"
+                        >
+                            <div>
+                                <h2 class="text-lg font-bold text-slate-900">
+                                    Order Summary
+                                </h2>
+                                <span
+                                    class="text-xs font-semibold text-brand-red bg-red-50 px-2 py-0.5 rounded-full"
+                                    >2 Vehicles Reserved</span
+                                >
+                            </div>
+                            <button
+                                class="inline-flex items-center text-xs font-semibold text-slate-500 hover:text-brand-red transition-colors gap-1"
+                                type="button"
+                            >
+                                <svg
+                                    class="w-3.5 h-3.5"
+                                    fill="none"
+                                    stroke="currentColor"
+                                    viewBox="0 0 24 24"
+                                >
+                                    <path
+                                        d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16"
+                                        stroke-linecap="round"
+                                        stroke-linejoin="round"
+                                        stroke-width="2"
+                                    ></path>
+                                </svg>
+                                Clear Cart
+                            </button>
+                        </div>
+                        <!-- Vehicle Item 1: Airport Transfers -->
+                        <div
+                            class="py-4 border-b border-slate-100 space-y-3"
+                            data-purpose="vehicle-item-1"
+                        >
+                            <div class="flex items-start justify-between gap-3">
+                                <div class="flex items-start gap-3">
+                                    <!-- Vehicle Thumbnail -->
+                                    <div
+                                        class="w-16 h-12 bg-slate-100 border border-slate-200 rounded-lg flex items-center justify-center p-1 flex-shrink-0"
+                                    >
+                                        <svg
+                                            class="w-10 h-7 text-slate-600"
+                                            fill="currentColor"
+                                            viewBox="0 0 24 24"
+                                        >
+                                            <path
+                                                d="M18.92 6.01C18.72 5.42 18.16 5 17.5 5h-11c-.66 0-1.21.42-1.42 1.01L3 12v8c0 .55.45 1 1 1h1c.55 0 1-.45 1-1v-1h12v1c0 .55.45 1 1 1h1c.55 0 1-.45 1-1v-8l-2.08-5.99zM6.85 7h10.29l1.04 3H5.81l1.04-3zM19 17H5v-4.66l.12-.34h13.77l.11.34V17z"
+                                            ></path>
+                                            <circle
+                                                cx="7.5"
+                                                cy="14.5"
+                                                r="1.5"
+                                            ></circle>
+                                            <circle
+                                                cx="16.5"
+                                                cy="14.5"
+                                                r="1.5"
+                                            ></circle>
+                                        </svg>
+                                    </div>
+                                    <div>
+                                        <div class="flex items-center gap-2">
+                                            <h3
+                                                class="text-sm font-bold text-slate-900 leading-tight"
+                                            >
+                                                Toyota Axio Economy
+                                            </h3>
+                                            <span
+                                                class="text-[10px] font-bold px-2 py-0.5 rounded-full bg-red-100 text-brand-red flex items-center gap-1"
+                                            >
+                                                <svg
+                                                    class="w-2.5 h-2.5"
+                                                    fill="currentColor"
+                                                    viewBox="0 0 20 20"
+                                                >
+                                                    <path
+                                                        d="M10.894 2.553a1 1 0 00-1.788 0l-7 14a1 1 0 001.169 1.409l5-1.429A1 1 0 009 15.571V11a1 1 0 112 0v4.571a1 1 0 00.725.962l5 1.428a1 1 0 001.17-1.408l-7-14z"
+                                                    ></path>
+                                                </svg>
+                                                Airport Transfers
+                                            </span>
+                                        </div>
+                                        <p
+                                            class="text-xs text-slate-500 mt-1 flex items-center gap-1"
+                                        >
+                                            <svg
+                                                class="w-3.5 h-3.5 text-slate-400"
+                                                fill="none"
+                                                stroke="currentColor"
+                                                viewBox="0 0 24 24"
+                                            >
+                                                <path
+                                                    d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z"
+                                                    stroke-linecap="round"
+                                                    stroke-linejoin="round"
+                                                    stroke-width="2"
+                                                ></path>
+                                            </svg>
+                                            Nov 09, 2026 • One-way
+                                        </p>
+                                    </div>
+                                </div>
+                                <!-- Price & Discount -->
+                                <div class="text-right flex-shrink-0">
+                                    <span
+                                        class="inline-block text-[10px] font-bold px-1.5 py-0.5 bg-emerald-100 text-emerald-800 rounded"
+                                        >20% OFF</span
+                                    >
+                                    <div
+                                        class="text-xs text-slate-400 line-through"
+                                    >
+                                        LKR 8,677
+                                    </div>
+                                    <div
+                                        class="text-sm font-extrabold text-slate-900"
+                                    >
+                                        LKR 6,942
+                                    </div>
+                                </div>
+                            </div>
+                            <!-- Route Details Pill -->
+                            <div
+                                class="bg-slate-50 rounded-xl p-3 text-xs space-y-1.5 border border-slate-100"
+                            >
+                                <div
+                                    class="flex items-center gap-2 text-slate-700"
+                                >
+                                    <span
+                                        class="w-2.5 h-2.5 rounded-full bg-emerald-500 flex-shrink-0"
+                                    ></span>
+                                    <span
+                                        class="font-medium text-slate-500 w-14"
+                                        >Pickup:</span
+                                    >
+                                    <span
+                                        class="font-semibold text-slate-800 truncate"
+                                        >Bandaranaike Intl Airport (BIA)</span
+                                    >
+                                </div>
+                                <div
+                                    class="flex items-center gap-2 text-slate-700"
+                                >
+                                    <span
+                                        class="w-2.5 h-2.5 rounded-full bg-brand-red flex-shrink-0"
+                                    ></span>
+                                    <span
+                                        class="font-medium text-slate-500 w-14"
+                                        >Dropoff:</span
+                                    >
+                                    <span
+                                        class="font-semibold text-slate-800 truncate"
+                                        >Colombo City Hotel / Residence</span
+                                    >
+                                </div>
+                            </div>
+                            <!-- Add-ons selected bar -->
+                            <div
+                                class="flex items-center justify-between text-xs px-3 py-2 bg-slate-100/70 rounded-lg"
+                            >
+                                <span class="text-slate-600 font-medium"
+                                    >Add-on:
+                                    <strong>Child Safety Seat</strong> (+LKR
+                                    1,250)</span
+                                >
+                                <button
+                                    class="text-brand-red hover:underline font-bold"
+                                >
+                                    Manage
+                                </button>
+                            </div>
+                            <div class="flex justify-end">
+                                <button
+                                    class="text-[11px] font-semibold text-slate-400 hover:text-brand-red flex items-center gap-1 transition"
+                                >
+                                    <svg
+                                        class="w-3 h-3"
+                                        fill="none"
+                                        stroke="currentColor"
+                                        viewBox="0 0 24 24"
+                                    >
+                                        <path
+                                            d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16"
+                                            stroke-linecap="round"
+                                            stroke-linejoin="round"
+                                            stroke-width="2"
+                                        ></path>
+                                    </svg>
+                                    Remove Item
+                                </button>
+                            </div>
+                        </div>
+                        <!-- Vehicle Item 2: Day Rental -->
+                        <div
+                            class="py-4 border-b border-slate-100 space-y-3"
+                            data-purpose="vehicle-item-2"
+                        >
+                            <div class="flex items-start justify-between gap-3">
+                                <div class="flex items-start gap-3">
+                                    <div
+                                        class="w-16 h-12 bg-slate-100 border border-slate-200 rounded-lg flex items-center justify-center p-1 flex-shrink-0"
+                                    >
+                                        <svg
+                                            class="w-10 h-7 text-slate-600"
+                                            fill="currentColor"
+                                            viewBox="0 0 24 24"
+                                        >
+                                            <path
+                                                d="M18.92 6.01C18.72 5.42 18.16 5 17.5 5h-11c-.66 0-1.21.42-1.42 1.01L3 12v8c0 .55.45 1 1 1h1c.55 0 1-.45 1-1v-1h12v1c0 .55.45 1 1 1h1c.55 0 1-.45 1-1v-8l-2.08-5.99zM6.85 7h10.29l1.04 3H5.81l1.04-3zM19 17H5v-4.66l.12-.34h13.77l.11.34V17z"
+                                            ></path>
+                                            <circle
+                                                cx="7.5"
+                                                cy="14.5"
+                                                r="1.5"
+                                            ></circle>
+                                            <circle
+                                                cx="16.5"
+                                                cy="14.5"
+                                                r="1.5"
+                                            ></circle>
+                                        </svg>
+                                    </div>
+                                    <div>
+                                        <div class="flex items-center gap-2">
+                                            <h3
+                                                class="text-sm font-bold text-slate-900 leading-tight"
+                                            >
+                                                Toyota Axio Economy
+                                            </h3>
+                                            <span
+                                                class="text-[10px] font-bold px-2 py-0.5 rounded-full bg-slate-100 text-slate-800 flex items-center gap-1"
+                                                >Day Rental</span
+                                            >
+                                        </div>
+                                        <p
+                                            class="text-xs text-slate-500 mt-1 flex items-center gap-1"
+                                        >
+                                            <svg
+                                                class="w-3.5 h-3.5 text-slate-400"
+                                                fill="none"
+                                                stroke="currentColor"
+                                                viewBox="0 0 24 24"
+                                            >
+                                                <path
+                                                    d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z"
+                                                    stroke-linecap="round"
+                                                    stroke-linejoin="round"
+                                                    stroke-width="2"
+                                                ></path>
+                                            </svg>
+                                            Nov 09, 2026 - Nov 11, 2026 (3 Days)
+                                        </p>
+                                    </div>
+                                </div>
+                                <!-- Price -->
+                                <div class="text-right flex-shrink-0">
+                                    <div
+                                        class="text-sm font-extrabold text-slate-900"
+                                    >
+                                        LKR 48,000
+                                    </div>
+                                    <div
+                                        class="text-[11px] text-slate-400 font-medium"
+                                    >
+                                        LKR 16,000 / day
+                                    </div>
+                                </div>
+                            </div>
+                            <!-- Route Details Pill -->
+                            <div
+                                class="bg-slate-50 rounded-xl p-3 text-xs space-y-1.5 border border-slate-100"
+                            >
+                                <div
+                                    class="flex items-center gap-2 text-slate-700"
+                                >
+                                    <span
+                                        class="w-2.5 h-2.5 rounded-full bg-emerald-500 flex-shrink-0"
+                                    ></span>
+                                    <span
+                                        class="font-medium text-slate-500 w-14"
+                                        >Pickup:</span
+                                    >
+                                    <span class="font-semibold text-slate-800"
+                                        >Galle Fort / Unawatuna</span
+                                    >
+                                </div>
+                                <div
+                                    class="flex items-center gap-2 text-slate-700"
+                                >
+                                    <span
+                                        class="w-2.5 h-2.5 rounded-full bg-brand-red flex-shrink-0"
+                                    ></span>
+                                    <span
+                                        class="font-medium text-slate-500 w-14"
+                                        >Dropoff:</span
+                                    >
+                                    <span class="font-semibold text-slate-800"
+                                        >Galle (Same location)</span
+                                    >
+                                </div>
+                            </div>
+                            <div class="flex justify-end">
+                                <button
+                                    class="text-[11px] font-semibold text-slate-400 hover:text-brand-red flex items-center gap-1 transition"
+                                >
+                                    <svg
+                                        class="w-3 h-3"
+                                        fill="none"
+                                        stroke="currentColor"
+                                        viewBox="0 0 24 24"
+                                    >
+                                        <path
+                                            d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16"
+                                            stroke-linecap="round"
+                                            stroke-linejoin="round"
+                                            stroke-width="2"
+                                        ></path>
+                                    </svg>
+                                    Remove Item
+                                </button>
+                            </div>
+                        </div>
+                        <!-- Promo Code Input Group -->
+                        <div class="py-4 border-b border-slate-100">
+                            <label
+                                class="block text-xs font-semibold text-slate-700 mb-1.5"
+                                for="promoCode"
+                                >Have a Promo or Corporate Voucher?</label
+                            >
+                            <div class="flex gap-2">
+                                <input
+                                    class="flex-grow text-xs rounded-lg border-slate-300 focus:border-brand-red focus:ring-brand-red uppercase"
+                                    id="promoCode"
+                                    placeholder="Enter coupon code"
+                                    type="text"
+                                />
+                                <button
+                                    class="bg-slate-900 text-white hover:bg-slate-800 text-xs font-bold px-4 py-2 rounded-lg transition"
+                                    type="button"
+                                >
+                                    Apply
+                                </button>
+                            </div>
+                        </div>
+                        <!-- Calculation Breakdown -->
+                        <div
+                            class="py-4 space-y-2.5 text-xs text-slate-600 border-b border-slate-100"
+                        >
+                            <div class="flex justify-between">
+                                <span class=""
+                                    >Subtotal Vehicles (2 items)</span
+                                >
+                                <span class="font-semibold text-slate-900"
+                                    >LKR 54,942</span
+                                >
+                            </div>
+                            <div class="flex justify-between">
+                                <span class=""
+                                    >Selected Add-ons (Baby Seat)</span
+                                >
+                                <span class="font-semibold text-slate-900"
+                                    >LKR 1,250</span
+                                >
+                            </div>
+                            <div
+                                class="flex justify-between text-emerald-600 font-medium"
+                            >
+                                <span class="">Promotional Discount Saved</span>
+                                <span class="">- LKR 1,735</span>
+                            </div>
+                            <div class="flex justify-between">
+                                <span class=""
+                                    >Tolls &amp; Fuel Surcharges</span
+                                >
+                                <span class="text-emerald-600 font-medium"
+                                    >Included</span
+                                >
+                            </div>
+                            <div
+                                class="flex justify-between pt-2 border-t border-slate-100 text-sm font-black text-slate-900"
+                            >
+                                <span class="text-base">Total Amount</span>
+                                <span class="text-lg text-brand-red"
+                                    >LKR 56,192</span
+                                >
+                            </div>
+                        </div>
+                        <!-- Payment Options (Segmented Choice Cards) -->
+                        <div
+                            class="pt-5"
+                            data-purpose="payment-selection-methods"
+                        >
+                            <h3
+                                class="text-xs font-bold uppercase tracking-wider text-slate-500 mb-3"
+                            >
+                                Select Payment Option
+                            </h3>
+                            <div class="space-y-2.5">
+                                <!-- Option 1: Pay Full Amount -->
+                                <label
+                                    class="relative flex items-center p-3 rounded-xl border-2 border-brand-red bg-red-50/40 cursor-pointer shadow-xs"
+                                >
+                                    <input
+                                        checked=""
+                                        class="w-4 h-4 text-brand-red focus:ring-brand-red border-slate-300"
+                                        name="paymentType"
+                                        type="radio"
+                                        value="full"
+                                    />
+                                    <div class="ml-3 flex-grow">
+                                        <div
+                                            class="flex items-center justify-between"
+                                        >
+                                            <span
+                                                class="text-xs font-bold text-slate-900"
+                                                >Pay Full Amount</span
+                                            >
+                                            <span
+                                                class="text-xs font-black text-brand-red"
+                                                >LKR 56,192</span
+                                            >
+                                        </div>
+                                        <p
+                                            class="text-[11px] text-slate-500 mt-0.5"
+                                        >
+                                            Instant booking confirmation with
+                                            zero balance due.
+                                        </p>
+                                    </div>
+                                </label>
+                                <!-- Option 2: Pay 10% Advance -->
+                                <label
+                                    class="relative flex items-center p-3 rounded-xl border border-slate-200 hover:border-slate-300 bg-white cursor-pointer transition"
+                                >
+                                    <input
+                                        class="w-4 h-4 text-brand-red focus:ring-brand-red border-slate-300"
+                                        name="paymentType"
+                                        type="radio"
+                                        value="advance"
+                                    />
+                                    <div class="ml-3 flex-grow">
+                                        <div
+                                            class="flex items-center justify-between"
+                                        >
+                                            <span
+                                                class="text-xs font-bold text-slate-900"
+                                                >Pay 10% Advance</span
+                                            >
+                                            <span
+                                                class="text-xs font-bold text-slate-900"
+                                                >Now: LKR 5,619</span
+                                            >
+                                        </div>
+                                        <p
+                                            class="text-[11px] text-slate-500 mt-0.5"
+                                        >
+                                            Pay remaining LKR 50,573 directly to
+                                            chauffeur upon pickup.
+                                        </p>
+                                    </div>
+                                </label>
+                                <!-- Option 3: Official Quotation -->
+                                <label
+                                    class="relative flex items-center p-3 rounded-xl border border-slate-200 hover:border-slate-300 bg-white cursor-pointer transition"
+                                >
+                                    <input
+                                        class="w-4 h-4 text-brand-red focus:ring-brand-red border-slate-300"
+                                        name="paymentType"
+                                        type="radio"
+                                        value="quotation"
+                                    />
+                                    <div class="ml-3 flex-grow">
+                                        <div
+                                            class="flex items-center justify-between"
+                                        >
+                                            <span
+                                                class="text-xs font-bold text-slate-900"
+                                                >Request Official
+                                                Quotation</span
+                                            >
+                                            <span
+                                                class="text-[10px] font-bold px-2 py-0.5 rounded bg-slate-100 text-slate-700"
+                                                >No payment now</span
+                                            >
+                                        </div>
+                                        <p
+                                            class="text-[11px] text-slate-500 mt-0.5"
+                                        >
+                                            For corporate procurement and
+                                            reimbursement invoicing.
+                                        </p>
+                                    </div>
+                                </label>
+                            </div>
+                        </div>
+                        <!-- Checkout Notice Alert -->
+                        <div
+                            class="mt-4 p-3 bg-amber-50 rounded-xl border border-amber-200/80 flex items-center gap-2.5 text-xs text-amber-900"
+                        >
+                            <svg
+                                class="w-4 h-4 text-amber-600 flex-shrink-0"
+                                fill="currentColor"
+                                viewBox="0 0 20 20"
+                            >
+                                <path
+                                    clip-rule="evenodd"
+                                    d="M18 10a8 8 0 11-16 0 8 8 0 0116 0zm-7-4a1 1 0 11-2 0 1 1 0 012 0zM9 9a1 1 0 000 2v3a1 1 0 001 1h1a1 1 0 100-2v-3a1 1 0 00-1-1H9z"
+                                    fill-rule="evenodd"
+                                ></path>
+                            </svg>
+                            <span class=""
+                                >Your selected vehicles are reserved for the
+                                next <strong>14:59 minutes</strong>.</span
+                            >
+                        </div>
+                        <!-- Primary CTA Button -->
+                        <div class="mt-5">
+                            <button
+                                class="w-full bg-brand-red hover:bg-brand-redHover active:scale-[0.99] text-white py-4 px-6 rounded-xl font-extrabold text-sm sm:text-base flex items-center justify-center gap-2 shadow-lg shadow-red-600/25 transition duration-150 group"
+                                type="button"
+                            >
+                                <span class=""
+                                    >COMPLETE BOOKING — LKR 56,192</span
+                                >
+                                <svg
+                                    class="w-5 h-5 group-hover:translate-x-1 transition-transform"
+                                    fill="none"
+                                    stroke="currentColor"
+                                    viewBox="0 0 24 24"
+                                >
+                                    <path
+                                        d="M14 5l7 7m0 0l-7 7m7-7H3"
+                                        stroke-linecap="round"
+                                        stroke-linejoin="round"
+                                        stroke-width="2.5"
+                                    ></path>
+                                </svg>
+                            </button>
+                        </div>
+                        <!-- Security Badges -->
+                        <div
+                            class="mt-4 pt-3 flex flex-wrap items-center justify-center gap-4 text-[11px] text-slate-400"
+                        >
+                            <div class="flex items-center gap-1">
+                                <svg
+                                    class="w-3.5 h-3.5 text-emerald-500"
+                                    fill="currentColor"
+                                    viewBox="0 0 20 20"
+                                >
+                                    <path
+                                        clip-rule="evenodd"
+                                        d="M2.166 4.999A11.954 11.954 0 0010 1.944 11.954 11.954 0 0017.834 5c.11.65.166 1.32.166 2.001 0 5.225-3.34 9.67-8 11.317C5.34 16.67 2 12.225 2 7c0-.682.057-1.35.166-2.001zm11.541 3.708a1 1 0 00-1.414-1.414L9 10.586 7.707 9.293a1 1 0 00-1.414 1.414l2 2a1 1 0 001.414 0l4-4z"
+                                        fill-rule="evenodd"
+                                    ></path>
+                                </svg>
+                                <span class="">256-Bit SSL Encrypted</span>
+                            </div>
+                            <span class="">•</span>
+                            <span class="">Visa / Master / Amex</span>
+                            <span class="">•</span>
+                            <span class="">No Hidden Surcharges</span>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </main>
+        <!-- END: MainCheckoutLayout -->
+        <!-- Floating Call / WhatsApp Support Button for Mobile & Desktop -->
+        <a
+            aria-label="Live Dispatch Assistance"
+            class="fixed bottom-6 right-6 w-14 h-14 bg-brand-red hover:bg-brand-redHover text-white rounded-full flex items-center justify-center shadow-2xl transition hover:scale-110 z-40"
+            href="https://wa.me/94772170000"
+            rel="noopener noreferrer"
+            target="_blank"
+        >
+            <svg class="w-7 h-7" fill="currentColor" viewBox="0 0 20 20">
+                <path
+                    d="M2 3a1 1 0 011-1h2.153a1 1 0 01.986.836l.74 4.435a1 1 0 01-.54 1.06l-1.548.773a11.037 11.037 0 006.105 6.105l.774-1.548a1 1 0 011.059-.54l4.435.74a1 1 0 01.836.986V17a1 1 0 01-1 1h-2C7.82 18 2 12.18 2 5V3z"
+                ></path>
+            </svg>
+        </a>
+    </body>
+</html>

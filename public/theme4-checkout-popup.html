@@ -1,0 +1,847 @@
+<!doctype html>
+<html lang="en">
+    <head>
+        <meta charset="utf-8" />
+        <meta content="width=device-width, initial-scale=1.0" name="viewport" />
+        <title>
+            The Taxi Checkout — Add-ons &amp; Extra Distance
+        </title>
+        <!-- Tailwind CSS CDN with forms and container queries plugins -->
+        <script src="https://cdn.tailwindcss.com?plugins=forms,container-queries"></script>
+        <!-- Font Awesome 6 Icons -->
+        <link
+            href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css"
+            rel="stylesheet"
+        />
+        <!-- Google Fonts: Inter -->
+        <link href="https://fonts.googleapis.com" rel="preconnect" />
+        <link
+            crossorigin=""
+            href="https://fonts.gstatic.com"
+            rel="preconnect"
+        />
+        <link
+            href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&amp;display=swap"
+            rel="stylesheet"
+        />
+        <script>
+            tailwind.config = {
+                theme: {
+                    extend: {
+                        fontFamily: {
+                            sans: ['"Plus Jakarta Sans"', "sans-serif"],
+                        },
+                        colors: {
+                            brand: {
+                                50: "#fff1f2",
+                                100: "#ffe4e6",
+                                500: "#f43f5e",
+                                600: "#e11d48",
+                                700: "#be123c",
+                                800: "#9f1239",
+                                900: "#881337",
+                            },
+                        },
+                        boxShadow: {
+                            modal: "0 25px 50px -12px rgba(15, 23, 42, 0.25), 0 0 0 1px rgba(226, 232, 240, 0.8)",
+                        },
+                    },
+                },
+            };
+        </script>
+        <!-- BEGIN: CustomStyles -->
+        <style data-purpose="custom-scrollbar">
+            /* Subtle custom scrollbar for modal item list */
+            .custom-scrollbar::-webkit-scrollbar {
+                width: 6px;
+            }
+            .custom-scrollbar::-webkit-scrollbar-track {
+                background: #f8fafc;
+            }
+            .custom-scrollbar::-webkit-scrollbar-thumb {
+                background: #cbd5e1;
+                border-radius: 9999px;
+            }
+            .custom-scrollbar::-webkit-scrollbar-thumb:hover {
+                background: #94a3b8;
+            }
+        </style>
+        <style data-purpose="animations">
+            .badge-pulse {
+                animation: subtle-pulse 2s cubic-bezier(0.4, 0, 0.6, 1) infinite;
+            }
+            @keyframes subtle-pulse {
+                0%,
+                100% {
+                    opacity: 1;
+                }
+                50% {
+                    opacity: 0.75;
+                }
+            }
+        </style>
+        <!-- END: CustomStyles -->
+    </head>
+    <body
+        class="bg-slate-900 text-slate-800 min-h-screen font-sans antialiased relative selection:bg-brand-500 selection:text-white pb-16"
+    >
+        <!-- BEGIN: BlurredCheckoutBackground -->
+        <!-- Contextual mock background representing checkout page -->
+        <div
+            aria-hidden="true"
+            class="fixed inset-0 pointer-events-none opacity-20 filter blur-sm bg-gradient-to-br from-slate-950 via-slate-900 to-rose-950 z-0"
+        >
+            <div class="max-w-7xl mx-auto px-4 pt-10">
+                <div class="grid grid-cols-12 gap-8">
+                    <div class="col-span-8 space-y-6">
+                        <div
+                            class="h-44 bg-slate-800 rounded-2xl border border-slate-700"
+                        ></div>
+                        <div
+                            class="h-96 bg-slate-800 rounded-2xl border border-slate-700"
+                        ></div>
+                    </div>
+                    <div
+                        class="col-span-4 h-[600px] bg-slate-800 rounded-2xl border border-slate-700"
+                    ></div>
+                </div>
+            </div>
+        </div>
+        <!-- END: BlurredCheckoutBackground -->
+        <!-- BEGIN: ModalsContainer -->
+        <main class="relative z-10 max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
+            <!-- Checkout Dialog Heading -->
+            <div
+                class="mb-8 text-center sm:text-left flex flex-col sm:flex-row sm:items-center justify-between gap-4 border-b border-slate-800 pb-5"
+            >
+                <div>
+                    <h1
+                        class="text-2xl sm:text-3xl font-extrabold text-white tracking-tight"
+                    >
+                        Manage booking add-ons
+                    </h1>
+                    <p class="text-slate-400 text-sm mt-1">
+                        Choose optional extras for your booking and review the updated total.
+                    </p>
+                </div>
+                <div
+                    class="flex items-center justify-center sm:justify-end gap-2 text-xs text-slate-300 bg-slate-800/80 px-3.5 py-2 rounded-lg border border-slate-700/60"
+                >
+                    <i class="fa-solid fa-layer-group text-brand-500"></i>
+                    <span class="">Checkout options</span>
+                </div>
+            </div>
+            <!-- Checkout Dialogs -->
+            <div class="grid grid-cols-1 lg:grid-cols-12 gap-8 items-start">
+                <!-- ========================================================= -->
+                <!-- MODAL 1: MANAGE FLEET ADD-ONS DIALOG (7 COLS)              -->
+                <!-- ========================================================= -->
+                <!-- BEGIN: ManageAddOnsModal -->
+                <section
+                    class="lg:col-span-7 bg-white rounded-2xl shadow-modal overflow-hidden border border-slate-200 transition-all hover:shadow-2xl flex flex-col"
+                    data-purpose="manage-addons-modal"
+                >
+                    <!-- Modal Header -->
+                    <div
+                        class="px-6 py-5 border-b border-slate-100 bg-white sticky top-0 z-20 flex items-start justify-between"
+                    >
+                        <div class="space-y-1">
+                            <div class="flex items-center gap-2.5">
+                                <div
+                                    class="w-8 h-8 rounded-lg bg-rose-50 text-brand-600 flex items-center justify-center"
+                                >
+                                    <i
+                                        class="fa-solid fa-puzzle-piece text-sm"
+                                    ></i>
+                                </div>
+                                <div>
+                                    <h2
+                                        class="text-xl font-bold text-slate-900 tracking-tight"
+                                    >
+                                        Manage Add-ons
+                                    </h2>
+                                    <div class="flex items-center gap-2 mt-0.5">
+                                        <span
+                                            class="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-xs font-semibold bg-slate-100 text-slate-700 border border-slate-200"
+                                        >
+                                            <i
+                                                class="fa-solid fa-car text-[10px] text-slate-500"
+                                            ></i>
+                                            Suzuki Wagon R
+                                        </span>
+                                        <span
+                                            class="text-xs text-slate-400 font-medium"
+                                            >• Self Drive (3 Days)</span
+                                        >
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                        <!-- Close Modal Icon Button -->
+                        <button
+                            aria-label="Close dialog"
+                            class="w-8 h-8 rounded-lg text-slate-400 hover:text-slate-700 hover:bg-slate-100 flex items-center justify-center transition-colors"
+                            type="button"
+                        >
+                            <i class="fa-solid fa-xmark text-lg"></i>
+                        </button>
+                    </div>
+                    <!-- Add-ons Scrollable Content Area -->
+                    <div
+                        class="p-6 space-y-4 max-h-[580px] overflow-y-auto custom-scrollbar bg-slate-50/50"
+                    >
+                        <!-- Add-on Card 1: Baby Car Seat (Already Added State) -->
+                        <div
+                            class="p-4 rounded-xl bg-white border-2 border-brand-500/80 shadow-sm transition-all relative overflow-hidden"
+                            data-purpose="addon-card-baby-seat"
+                        >
+                            <div
+                                class="absolute top-0 right-0 w-12 h-12 overflow-hidden pointer-events-none"
+                            >
+                                <div
+                                    class="bg-brand-600 text-[10px] font-bold text-white text-center py-0.5 transform rotate-45 translate-x-3 translate-y-1 w-16 shadow"
+                                >
+                                    ACTIVE
+                                </div>
+                            </div>
+                            <div class="flex items-start gap-4">
+                                <div
+                                    class="w-11 h-11 rounded-xl bg-rose-50 border border-rose-100 flex-shrink-0 flex items-center justify-center text-brand-600"
+                                >
+                                    <i
+                                        class="fa-solid fa-baby-carriage text-lg"
+                                    ></i>
+                                </div>
+                                <div class="flex-grow pr-6">
+                                    <div class="flex items-center gap-2">
+                                        <h3
+                                            class="font-bold text-slate-900 text-base"
+                                        >
+                                            Baby Car Seat
+                                        </h3>
+                                        <span
+                                            class="text-[11px] font-medium bg-emerald-50 text-emerald-700 px-2 py-0.5 rounded border border-emerald-200/60"
+                                            >ECE R44/04</span
+                                        >
+                                    </div>
+                                    <p
+                                        class="text-xs text-slate-500 mt-1 leading-relaxed"
+                                    >
+                                        Certified multi-stage rear &amp;
+                                        forward-facing safety seat suitable for
+                                        infants under 2 years (0-13kg).
+                                    </p>
+                                    <div
+                                        class="mt-2.5 flex items-baseline gap-1.5"
+                                    >
+                                        <span
+                                            class="text-base font-extrabold text-slate-900"
+                                            >LKR 1,250</span
+                                        >
+                                        <span
+                                            class="text-xs text-slate-500 font-medium"
+                                            >/ day (LKR 3,750 total)</span
+                                        >
+                                    </div>
+                                </div>
+                                <!-- Quantity Selector Stepper -->
+                                <div class="flex-shrink-0 self-center">
+                                    <div
+                                        class="flex items-center bg-slate-50 border border-slate-200 rounded-lg p-1 shadow-inner"
+                                    >
+                                        <button
+                                            aria-label="Decrease baby seats"
+                                            class="w-8 h-8 rounded-md bg-white text-slate-700 hover:bg-slate-100 hover:text-brand-600 border border-slate-200 flex items-center justify-center font-bold text-sm transition-all shadow-sm"
+                                            type="button"
+                                        >
+                                            <i
+                                                class="fa-solid fa-minus text-xs"
+                                            ></i>
+                                        </button>
+                                        <span
+                                            class="w-9 text-center font-bold text-slate-900 text-sm"
+                                            >1</span
+                                        >
+                                        <button
+                                            aria-label="Increase baby seats"
+                                            class="w-8 h-8 rounded-md bg-white text-slate-700 hover:bg-slate-100 hover:text-brand-600 border border-slate-200 flex items-center justify-center font-bold text-sm transition-all shadow-sm"
+                                            type="button"
+                                        >
+                                            <i
+                                                class="fa-solid fa-plus text-xs"
+                                            ></i>
+                                        </button>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                        <!-- Add-on Card 2: Collision Damage Waiver (CDW) - Recommended -->
+                        <div
+                            class="p-4 rounded-xl bg-white border border-slate-200 hover:border-slate-300 shadow-sm transition-all"
+                            data-purpose="addon-card-cdw"
+                        >
+                            <div class="flex items-start gap-4">
+                                <div
+                                    class="w-11 h-11 rounded-xl bg-amber-50 border border-amber-100 flex-shrink-0 flex items-center justify-center text-amber-600"
+                                >
+                                    <i
+                                        class="fa-solid fa-shield-halved text-lg"
+                                    ></i>
+                                </div>
+                                <div class="flex-grow">
+                                    <div
+                                        class="flex flex-wrap items-center gap-2"
+                                    >
+                                        <h3
+                                            class="font-bold text-slate-900 text-base"
+                                        >
+                                            Collision Damage Waiver (CDW)
+                                        </h3>
+                                        <span
+                                            class="inline-flex items-center gap-1 text-[10px] font-extrabold uppercase px-2 py-0.5 rounded-full bg-amber-100 text-amber-900 border border-amber-300/80"
+                                        >
+                                            <i
+                                                class="fa-solid fa-star text-[9px] text-amber-500"
+                                            ></i>
+                                            Recommended
+                                        </span>
+                                    </div>
+                                    <p
+                                        class="text-xs text-slate-500 mt-1 leading-relaxed"
+                                    >
+                                        Zero excess liability protection for
+                                        self-drive rentals; protects against
+                                        accidental damages during rental slab.
+                                    </p>
+                                    <div
+                                        class="mt-2.5 flex items-baseline gap-1.5"
+                                    >
+                                        <span
+                                            class="text-base font-extrabold text-slate-900"
+                                            >LKR 95,000</span
+                                        >
+                                        <span
+                                            class="text-xs text-slate-500 font-medium"
+                                            >/ 10-day slab package</span
+                                        >
+                                    </div>
+                                </div>
+                                <!-- Action Button -->
+                                <div class="flex-shrink-0 self-center">
+                                    <button
+                                        class="px-4 py-2 rounded-lg border-2 border-brand-600 text-brand-600 hover:bg-brand-600 hover:text-white font-bold text-xs tracking-wide transition-all shadow-sm flex items-center gap-1.5"
+                                        type="button"
+                                    >
+                                        <i
+                                            class="fa-solid fa-plus text-[10px]"
+                                        ></i>
+                                        Add
+                                    </button>
+                                </div>
+                            </div>
+                        </div>
+                        <!-- Add-on Card 3: 4G Wi-Fi Dongle -->
+                        <div
+                            class="p-4 rounded-xl bg-white border-2 border-brand-500/80 shadow-sm transition-all relative overflow-hidden"
+                            data-purpose="addon-card-wifi"
+                        >
+                            <div
+                                class="absolute top-0 right-0 w-12 h-12 overflow-hidden pointer-events-none"
+                            >
+                                <div
+                                    class="bg-brand-600 text-[10px] font-bold text-white text-center py-0.5 transform rotate-45 translate-x-3 translate-y-1 w-16 shadow"
+                                >
+                                    ACTIVE
+                                </div>
+                            </div>
+                            <div class="flex items-start gap-4">
+                                <div
+                                    class="w-11 h-11 rounded-xl bg-slate-100 border border-slate-200 flex-shrink-0 flex items-center justify-center text-slate-700"
+                                >
+                                    <i class="fa-solid fa-wifi text-lg"></i>
+                                </div>
+                                <div class="flex-grow pr-6">
+                                    <div class="flex items-center gap-2">
+                                        <h3
+                                            class="font-bold text-slate-900 text-base"
+                                        >
+                                            4G LTE Wi-Fi Dongle
+                                        </h3>
+                                        <span
+                                            class="text-[11px] font-medium bg-slate-100 text-slate-700 px-2 py-0.5 rounded border border-slate-200"
+                                            >Unlimited Data</span
+                                        >
+                                    </div>
+                                    <p
+                                        class="text-xs text-slate-500 mt-1 leading-relaxed"
+                                    >
+                                        Pocket-sized Dialog 4G router. Connect
+                                        up to 8 devices simultaneously anywhere
+                                        across Sri Lanka.
+                                    </p>
+                                    <div
+                                        class="mt-2.5 flex items-baseline gap-1.5"
+                                    >
+                                        <span
+                                            class="text-base font-extrabold text-slate-900"
+                                            >LKR 450</span
+                                        >
+                                        <span
+                                            class="text-xs text-slate-500 font-medium"
+                                            >/ day (LKR 1,350 total)</span
+                                        >
+                                    </div>
+                                </div>
+                                <!-- Quantity Selector Stepper -->
+                                <div class="flex-shrink-0 self-center">
+                                    <div
+                                        class="flex items-center bg-slate-50 border border-slate-200 rounded-lg p-1 shadow-inner"
+                                    >
+                                        <button
+                                            aria-label="Decrease wifi devices"
+                                            class="w-8 h-8 rounded-md bg-white text-slate-700 hover:bg-slate-100 hover:text-brand-600 border border-slate-200 flex items-center justify-center font-bold text-sm transition-all shadow-sm"
+                                            type="button"
+                                        >
+                                            <i
+                                                class="fa-solid fa-minus text-xs"
+                                            ></i>
+                                        </button>
+                                        <span
+                                            class="w-9 text-center font-bold text-slate-900 text-sm"
+                                            >1</span
+                                        >
+                                        <button
+                                            aria-label="Increase wifi devices"
+                                            class="w-8 h-8 rounded-md bg-white text-slate-700 hover:bg-slate-100 hover:text-brand-600 border border-slate-200 flex items-center justify-center font-bold text-sm transition-all shadow-sm"
+                                            type="button"
+                                        >
+                                            <i
+                                                class="fa-solid fa-plus text-xs"
+                                            ></i>
+                                        </button>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                        <!-- Add-on Card 4: GPS Navigation System -->
+                        <div
+                            class="p-4 rounded-xl bg-white border border-slate-200 hover:border-slate-300 shadow-sm transition-all"
+                            data-purpose="addon-card-gps"
+                        >
+                            <div class="flex items-start gap-4">
+                                <div
+                                    class="w-11 h-11 rounded-xl bg-slate-100 border border-slate-200 flex-shrink-0 flex items-center justify-center text-slate-700"
+                                >
+                                    <i
+                                        class="fa-solid fa-location-crosshairs text-lg"
+                                    ></i>
+                                </div>
+                                <div class="flex-grow">
+                                    <div class="flex items-center gap-2">
+                                        <h3
+                                            class="font-bold text-slate-900 text-base"
+                                        >
+                                            Garmin GPS Navigation
+                                        </h3>
+                                        <span
+                                            class="text-[11px] font-medium bg-slate-100 text-slate-600 px-2 py-0.5 rounded border border-slate-200"
+                                            >Pre-loaded</span
+                                        >
+                                    </div>
+                                    <p
+                                        class="text-xs text-slate-500 mt-1 leading-relaxed"
+                                    >
+                                        Turn-by-turn voice guidance unit with
+                                        offline maps for rural hill country
+                                        routes and remote attractions.
+                                    </p>
+                                    <div
+                                        class="mt-2.5 flex items-baseline gap-1.5"
+                                    >
+                                        <span
+                                            class="text-base font-extrabold text-slate-900"
+                                            >LKR 650</span
+                                        >
+                                        <span
+                                            class="text-xs text-slate-500 font-medium"
+                                            >/ day</span
+                                        >
+                                    </div>
+                                </div>
+                                <!-- Action Button -->
+                                <div class="flex-shrink-0 self-center">
+                                    <button
+                                        class="px-4 py-2 rounded-lg border-2 border-brand-600 text-brand-600 hover:bg-brand-600 hover:text-white font-bold text-xs tracking-wide transition-all shadow-sm flex items-center gap-1.5"
+                                        type="button"
+                                    >
+                                        <i
+                                            class="fa-solid fa-plus text-[10px]"
+                                        ></i>
+                                        Add
+                                    </button>
+                                </div>
+                            </div>
+                        </div>
+                        <!-- Add-on Card 5: Additional Authorized Driver -->
+                        <div
+                            class="p-4 rounded-xl bg-white border border-slate-200 hover:border-slate-300 shadow-sm transition-all"
+                            data-purpose="addon-card-driver"
+                        >
+                            <div class="flex items-start gap-4">
+                                <div
+                                    class="w-11 h-11 rounded-xl bg-emerald-50 border border-emerald-100 flex-shrink-0 flex items-center justify-center text-emerald-600"
+                                >
+                                    <i class="fa-solid fa-id-card text-lg"></i>
+                                </div>
+                                <div class="flex-grow">
+                                    <div class="flex items-center gap-2">
+                                        <h3
+                                            class="font-bold text-slate-900 text-base"
+                                        >
+                                            Additional Authorized Driver
+                                        </h3>
+                                    </div>
+                                    <p
+                                        class="text-xs text-slate-500 mt-1 leading-relaxed"
+                                    >
+                                        Register a 2nd driver on insurance
+                                        policy to legally alternate driving
+                                        during long journeys.
+                                    </p>
+                                    <div
+                                        class="mt-2.5 flex items-baseline gap-1.5"
+                                    >
+                                        <span
+                                            class="text-base font-extrabold text-slate-900"
+                                            >LKR 800</span
+                                        >
+                                        <span
+                                            class="text-xs text-slate-500 font-medium"
+                                            >/ day</span
+                                        >
+                                    </div>
+                                </div>
+                                <!-- Action Button -->
+                                <div class="flex-shrink-0 self-center">
+                                    <button
+                                        class="px-4 py-2 rounded-lg border-2 border-brand-600 text-brand-600 hover:bg-brand-600 hover:text-white font-bold text-xs tracking-wide transition-all shadow-sm flex items-center gap-1.5"
+                                        type="button"
+                                    >
+                                        <i
+                                            class="fa-solid fa-plus text-[10px]"
+                                        ></i>
+                                        Add
+                                    </button>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                    <!-- Modal Footer with Calculated Total & Confirmation -->
+                    <div
+                        class="p-5 border-t border-slate-200 bg-white flex flex-col sm:flex-row items-center justify-between gap-4 sticky bottom-0 z-20"
+                    >
+                        <div
+                            class="flex items-center justify-between sm:justify-start w-full sm:w-auto gap-4"
+                        >
+                            <div>
+                                <span
+                                    class="text-xs uppercase tracking-wider text-slate-500 font-bold block"
+                                    >Selected Add-ons (2 items)</span
+                                >
+                                <div class="flex items-baseline gap-2">
+                                    <span
+                                        class="text-xl font-extrabold text-slate-900"
+                                        >+ LKR 5,100</span
+                                    >
+                                    <span
+                                        class="text-xs font-semibold text-emerald-600"
+                                        >(3-day total)</span
+                                    >
+                                </div>
+                            </div>
+                            <button
+                                class="text-xs font-semibold text-slate-400 hover:text-rose-600 underline underline-offset-4 transition-colors"
+                                type="button"
+                            >
+                                Reset All
+                            </button>
+                        </div>
+                        <div class="flex items-center gap-3 w-full sm:w-auto">
+                            <button
+                                class="w-1/2 sm:w-auto px-5 py-2.5 rounded-xl border border-slate-300 font-bold text-xs text-slate-700 hover:bg-slate-100 transition-colors"
+                                type="button"
+                            >
+                                Dismiss
+                            </button>
+                            <button
+                                class="w-1/2 sm:w-auto px-6 py-2.5 rounded-xl bg-brand-600 hover:bg-brand-700 active:bg-brand-800 text-white font-bold text-xs tracking-wide shadow-md shadow-brand-600/30 transition-all flex items-center justify-center gap-2"
+                                type="button"
+                            >
+                                <span class="">Apply Add-ons</span>
+                                <i class="fa-solid fa-check text-xs"></i>
+                            </button>
+                        </div>
+                    </div>
+                </section>
+                <!-- END: ManageAddOnsModal -->
+                <!-- ========================================================= -->
+                <!-- MODAL 2: EXTRA KILOMETERS (KM) CALCULATOR MODAL (5 COLS)  -->
+                <!-- ========================================================= -->
+                <!-- BEGIN: ExtraKmModal -->
+                <section
+                    class="lg:col-span-5 bg-white rounded-2xl shadow-modal overflow-hidden border border-slate-200 flex flex-col"
+                    data-purpose="extra-km-calculator-modal"
+                >
+                    <!-- Header -->
+                    <div
+                        class="px-6 py-5 border-b border-slate-100 bg-white flex items-start justify-between"
+                    >
+                        <div class="flex items-center gap-2.5">
+                            <div
+                                class="w-8 h-8 rounded-lg bg-rose-50 text-brand-600 flex items-center justify-center"
+                            >
+                                <i class="fa-solid fa-gauge-high text-sm"></i>
+                            </div>
+                            <div>
+                                <h2
+                                    class="text-xl font-bold text-slate-900 tracking-tight"
+                                >
+                                    Extra Kilometers
+                                </h2>
+                                <p class="text-xs text-slate-400 font-medium">
+                                    Pre-purchase mileage &amp; avoid on-drop
+                                    penalties
+                                </p>
+                            </div>
+                        </div>
+                        <button
+                            aria-label="Close dialog"
+                            class="w-8 h-8 rounded-lg text-slate-400 hover:text-slate-700 hover:bg-slate-100 flex items-center justify-center transition-colors"
+                            type="button"
+                        >
+                            <i class="fa-solid fa-xmark text-lg"></i>
+                        </button>
+                    </div>
+                    <!-- Body Content & Calculator Controls -->
+                    <div class="p-6 space-y-6 bg-slate-50/50">
+                        <!-- Standard Allowance Context Box -->
+                        <div
+                            class="p-3.5 bg-slate-100/90 rounded-xl border border-slate-200/80 flex items-center justify-between text-xs"
+                        >
+                            <div class="flex items-center gap-2.5">
+                                <i
+                                    class="fa-solid fa-circle-info text-slate-500 text-sm"
+                                ></i>
+                                <div>
+                                    <span class="text-slate-600 font-medium"
+                                        >Base rental includes:</span
+                                    >
+                                    <span class="font-bold text-slate-800 ml-1"
+                                        >100 km / day (300 km total)</span
+                                    >
+                                </div>
+                            </div>
+                            <span
+                                class="font-bold text-brand-600 bg-rose-50 px-2 py-0.5 rounded border border-rose-200"
+                            >
+                                LKR 95 / km
+                            </span>
+                        </div>
+                        <!-- Quick Preset Chips -->
+                        <div>
+                            <label
+                                class="block text-xs font-bold uppercase tracking-wider text-slate-500 mb-2"
+                            >
+                                Popular Kilometer Bundles
+                            </label>
+                            <div class="grid grid-cols-2 gap-2.5">
+                                <!-- Preset 1 -->
+                                <button
+                                    class="px-3 py-2.5 rounded-xl border border-slate-200 bg-white hover:border-brand-500 text-left transition-all group flex flex-col justify-between"
+                                    type="button"
+                                >
+                                    <span
+                                        class="font-bold text-slate-800 text-sm group-hover:text-brand-600"
+                                        >+50 km</span
+                                    >
+                                    <span class="text-[11px] text-slate-400"
+                                        >LKR 4,750</span
+                                    >
+                                </button>
+                                <!-- Preset 2: Selected -->
+                                <button
+                                    class="px-3 py-2.5 rounded-xl border-2 border-brand-600 bg-rose-50/40 text-left transition-all relative flex flex-col justify-between shadow-sm"
+                                    type="button"
+                                >
+                                    <span
+                                        class="font-bold text-brand-600 text-sm flex items-center justify-between"
+                                    >
+                                        +150 km
+                                        <i
+                                            class="fa-solid fa-circle-check text-brand-600 text-xs"
+                                        ></i>
+                                    </span>
+                                    <span
+                                        class="text-[11px] font-semibold text-slate-600"
+                                        >LKR 14,250</span
+                                    >
+                                </button>
+                                <!-- Preset 3: With Discount -->
+                                <button
+                                    class="px-3 py-2.5 rounded-xl border border-slate-200 bg-white hover:border-brand-500 text-left transition-all group relative flex flex-col justify-between"
+                                    type="button"
+                                >
+                                    <span
+                                        class="absolute -top-2 right-2 bg-emerald-600 text-white text-[9px] font-extrabold px-1.5 py-0.2 rounded-full uppercase shadow"
+                                        >Save 5%</span
+                                    >
+                                    <span
+                                        class="font-bold text-slate-800 text-sm group-hover:text-brand-600"
+                                        >+300 km</span
+                                    >
+                                    <span
+                                        class="text-[11px] text-slate-400 line-through"
+                                        >LKR 28,500</span
+                                    >
+                                </button>
+                                <!-- Preset 4: With Discount -->
+                                <button
+                                    class="px-3 py-2.5 rounded-xl border border-slate-200 bg-white hover:border-brand-500 text-left transition-all group relative flex flex-col justify-between"
+                                    type="button"
+                                >
+                                    <span
+                                        class="absolute -top-2 right-2 bg-emerald-600 text-white text-[9px] font-extrabold px-1.5 py-0.2 rounded-full uppercase shadow"
+                                        >Save 10%</span
+                                    >
+                                    <span
+                                        class="font-bold text-slate-800 text-sm group-hover:text-brand-600"
+                                        >+500 km</span
+                                    >
+                                    <span
+                                        class="text-[11px] text-slate-400 line-through"
+                                        >LKR 47,500</span
+                                    >
+                                </button>
+                            </div>
+                        </div>
+                        <!-- Custom Input & Slider -->
+                        <div
+                            class="space-y-3 bg-white p-4 rounded-xl border border-slate-200 shadow-sm"
+                        >
+                            <div class="flex items-center justify-between">
+                                <label
+                                    class="text-xs font-bold text-slate-700"
+                                    for="custom-km-input"
+                                >
+                                    Custom Extra Distance
+                                </label>
+                                <span
+                                    class="text-[11px] font-semibold text-slate-500"
+                                    >Unit: Kilometers</span
+                                >
+                            </div>
+                            <!-- Number Input Box -->
+                            <div class="relative rounded-lg shadow-sm">
+                                <input
+                                    class="block w-full rounded-lg border-slate-300 pr-14 pl-4 text-base font-bold text-slate-900 focus:border-brand-600 focus:ring-brand-600 sm:text-sm"
+                                    id="custom-km-input"
+                                    min="0"
+                                    name="custom-km-input"
+                                    step="10"
+                                    type="number"
+                                    value="150"
+                                />
+                                <div
+                                    class="pointer-events-none absolute inset-y-0 right-0 flex items-center pr-3"
+                                >
+                                    <span
+                                        class="text-xs font-bold text-slate-400 uppercase"
+                                        >KM</span
+                                    >
+                                </div>
+                            </div>
+                            <!-- Interactive Range Slider -->
+                            <input
+                                class="w-full h-1.5 bg-slate-200 rounded-lg appearance-none cursor-pointer accent-brand-600"
+                                max="600"
+                                min="0"
+                                step="10"
+                                type="range"
+                                value="150"
+                            />
+                            <div
+                                class="flex justify-between text-[10px] text-slate-400 font-semibold px-0.5"
+                            >
+                                <span class="">0 km</span>
+                                <span class="">150 km</span>
+                                <span class="">300 km</span>
+                                <span class="">450 km</span>
+                                <span class="">600+ km</span>
+                            </div>
+                        </div>
+                        <!-- Distance Route Recommendation Guide -->
+                        <div
+                            class="flex items-center gap-3 p-3 bg-rose-50/60 rounded-xl border border-rose-100 text-slate-700"
+                        >
+                            <div
+                                class="w-8 h-8 rounded-lg bg-white text-brand-600 shadow-sm flex items-center justify-center flex-shrink-0"
+                            >
+                                <i
+                                    class="fa-solid fa-map-location-dot text-sm"
+                                ></i>
+                            </div>
+                            <div class="text-xs">
+                                <span class="font-bold text-slate-900"
+                                    >+150 km Trip Coverage:</span
+                                >
+                                <p class="text-slate-500 text-[11px] mt-0.5">
+                                    Ideal for Colombo to Kandy round-trip or
+                                    Colombo to Galle Expressway travel.
+                                </p>
+                            </div>
+                        </div>
+                        <!-- Transparent Formula Breakdown -->
+                        <div
+                            class="border-t border-slate-200 pt-3 text-xs space-y-1.5"
+                        >
+                            <div class="flex justify-between text-slate-500">
+                                <span class="">Base Rate per km:</span>
+                                <span class="">LKR 95.00</span>
+                            </div>
+                            <div class="flex justify-between text-slate-500">
+                                <span class="">Calculation:</span>
+                                <span class="">150 km × LKR 95.00</span>
+                            </div>
+                            <div
+                                class="flex justify-between font-bold text-slate-800 text-sm pt-1 border-t border-dashed border-slate-200"
+                            >
+                                <span class="">Subtotal Extra Mileage:</span>
+                                <span class="text-brand-600">LKR 14,250</span>
+                            </div>
+                        </div>
+                    </div>
+                    <!-- Footer Actions -->
+                    <div
+                        class="p-5 border-t border-slate-200 bg-white flex items-center justify-end gap-3 sticky bottom-0"
+                    >
+                        <button
+                            class="px-4 py-2.5 rounded-xl border border-slate-300 font-bold text-xs text-slate-700 hover:bg-slate-100 transition-colors"
+                            type="button"
+                        >
+                            Cancel
+                        </button>
+                        <button
+                            class="px-5 py-2.5 rounded-xl bg-brand-600 hover:bg-brand-700 active:bg-brand-800 text-white font-bold text-xs tracking-wide shadow-md shadow-brand-600/30 transition-all flex items-center gap-2"
+                            type="button"
+                        >
+                            <span class="">Apply Extra KM</span>
+                            <i class="fa-solid fa-arrow-right text-xs"></i>
+                        </button>
+                    </div>
+                </section>
+                <!-- END: ExtraKmModal -->
+            </div>
+            </main>
+        <!-- END: ModalsContainer -->
+    </body>
+</html>
