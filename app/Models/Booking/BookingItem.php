@@ -166,6 +166,7 @@ class BookingItem extends BaseModel
             'customer_identity_document_required' => $effective['require_customer_identity_document'],
             'booking_approval_required' => $effective['require_booking_approval'],
             'handover_checklist_required' => $effective['require_handover_checklist'],
+            'requires_refundable_deposit' => (bool) $serviceType->requires_refundable_deposit,
             'service_deposit_mode' => $serviceType->deposit_mode ?: 'none',
             'service_deposit_value' => (float) ($serviceType->deposit_value ?? 0),
         ]);

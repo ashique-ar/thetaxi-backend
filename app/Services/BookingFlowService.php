@@ -1380,6 +1380,7 @@ class BookingFlowService
                 'category' => $deferAvailabilityAnalysis ? null : $group->category,
                 'description' => $group->description,
                 'thumbnail' => $group->thumbnail,
+                'images' => $group->images ?? [],
                 'features' => $group->features ?? [],
                 'available_count' => $availableCount,
                 'total_count' => $totalCount,
@@ -1481,6 +1482,7 @@ class BookingFlowService
                 $entry['name'] = $group->name;
                 $entry['description'] = $group->description;
                 $entry['thumbnail'] = $group->thumbnail;
+                $entry['images'] = $group->images ?? [];
                 $entry['features'] = $group->features ?? [];
                 $entry['category'] = $group->category;
                 $entry['make'] = $group->make;
@@ -2657,6 +2659,8 @@ class BookingFlowService
         $selectedCurrency = $this->currencyService->getSelectedCurrency();
 
         $data = $addons->map(function ($addon) use ($selectedCurrency) {
+            $isDynamicPriced = is_string(data_get($addon->integration_settings, 'dynamic_pricing.formula'))
+                && trim((string) data_get($addon->integration_settings, 'dynamic_pricing.formula')) !== '';
             $priceLkr = (float) ($addon->amount ?? 0);
             $converted = $this->currencyService->convertFromLKR($priceLkr, $selectedCurrency);
 
@@ -2668,13 +2672,15 @@ class BookingFlowService
                 'billing_type' => $addon->billing_type, // 'fixed', 'per_day', 'per_hour', 'percentage'
                 'price' => (float) $converted,
                 'original_price' => (float) $priceLkr, // original LKR for comparison
+                'is_dynamic_priced' => $isDynamicPriced,
+                'pricing_formula' => $isDynamicPriced ? data_get($addon->integration_settings, 'dynamic_pricing.formula') : null,
                 'currency' => $selectedCurrency,
                 'is_required' => $addon->is_required ?? false,
                 'max_quantity' => $addon->max_quantity ?? 1,
                 'dependencies' => $addon->dependencies ?? [],
                 'conflicts_with' => $addon->conflicts_with ?? [],
                 'image_url' => $addon->image_url,
-                'allows_custom_pricing' => true, // Allow custom pricing for all addons
+                'allows_custom_pricing' => !$isDynamicPriced,
             ];
         })->toArray();
 
@@ -7108,7 +7114,18 @@ class BookingFlowService
             $params['selected_addons'] ?? [],
             $params['vehicle_group_id'],
             $duration,
-            $params
+            array_merge($params, [
+                'addon_pricing_scope' => array_merge(
+                    (array) ($basePricingResult['calculation_metadata']['resolved_variables']
+                        ?? $basePricingResult['resolved_variables']
+                        ?? []),
+                    [
+                        'duration_days' => $duration['days'],
+                        'duration_hours' => $duration['hours'],
+                        'duration_minutes' => $duration['minutes'],
+                    ]
+                ),
+            ])
         );
 
         // Apply currency conversion if needed
@@ -13362,8 +13379,37 @@ class BookingFlowService
                     continue;
                 }
 
+                $dynamicPricing = data_get($addon->integration_settings, 'dynamic_pricing');
+                $formula = is_array($dynamicPricing) ? ($dynamicPricing['formula'] ?? null) : null;
+                $dynamicUnitPrice = null;
+                $isDynamicPriced = is_string($formula) && trim($formula) !== '';
+                if ($isDynamicPriced) {
+                    $serviceType = $this->resolveCalculationServiceType(
+                        $params['service_type_id'] ?? $params['service_type'] ?? null,
+                        $params
+                    );
+                    $requiredServiceType = $dynamicPricing['service_type'] ?? null;
+                    if ($requiredServiceType && strtolower((string) $requiredServiceType) === 'self_drive'
+                        && !ServiceType::isSelfDriveType($serviceType?->type)) {
+                        throw new \DomainException("Dynamic add-on {$addon->name} is only valid for self-drive bookings.");
+                    }
+
+                    $formulaVariables = array_filter(
+                        (array) ($params['addon_pricing_scope'] ?? []),
+                        static fn ($value) => is_numeric($value)
+                    );
+                    if (($dynamicPricing['slab_scope'] ?? null) === 'first_day') {
+                        $formulaVariables['slab_rate'] = $this->resolveFirstApplicableSelfDriveSlabRate($params);
+                    }
+                    $dynamicUnitPrice = (new VehiclePricingCalculationDefinition())
+                        ->evaluateAddonFormula($formula, $formulaVariables);
+                    if (!is_numeric($dynamicUnitPrice) || $dynamicUnitPrice < 0) {
+                        throw new \DomainException("Dynamic add-on {$addon->name} produced an invalid price.");
+                    }
+                }
+
                 $quantity = $selectedAddon['quantity'] ?? 1;
-                $customPrice = $selectedAddon['custom_price'] ?? null;
+                $customPrice = $dynamicUnitPrice ?? ($selectedAddon['custom_price'] ?? null);
                 $priceWithoutCustomizations = 0;
                 if ($customPrice !== $addon->amount) {
                     $unitPrice = $addon->amount;
@@ -13432,6 +13478,10 @@ class BookingFlowService
                         break;
                 }
 
+                if ($isDynamicPriced) {
+                    $priceWithoutCustomizations = $totalPrice;
+                }
+
                 $addonData = [
                     'id' => $addon->id,
                     'name' => $addon->name,
@@ -13441,8 +13491,8 @@ class BookingFlowService
                     'duration_info' => $durationInfo,
                     'multiplier' => $multiplier,
                     'total_price' => $totalPrice,
-                    'is_custom_price' => !is_null($customPrice) || !is_null($customizationId),
-                    'original_price' => $addon->amount,
+                    'is_custom_price' => !$isDynamicPriced && (!is_null($customPrice) || !is_null($customizationId)),
+                    'original_price' => $dynamicUnitPrice ?? $addon->amount,
                     'price_without_customizations' => $priceWithoutCustomizations,
                     'customization_id' => $customizationId,
                     'calculation_detail' => $multiplier > 1
@@ -13466,6 +13516,48 @@ class BookingFlowService
             'addons_total' => $addonsTotal,
             'addons_total_without_customizations' => $addonsTotalWithoutCustomizations,
         ];
+    }
+
+    private function resolveFirstApplicableSelfDriveSlabRate(array $params): float
+    {
+        $serviceType = $this->resolveCalculationServiceType(
+            $params['service_type_id'] ?? $params['service_type'] ?? null,
+            $params
+        );
+        if (!ServiceType::isSelfDriveType($serviceType?->type)) {
+            throw new \DomainException('The first-day slab rate is only available for self-drive services.');
+        }
+
+        $slabQuery = VehiclePricingSlabDefinition::query()
+            ->where('service_type_id', $serviceType->id)
+            ->where('is_active', true)
+            ->whereNotNull('min_days')
+            ->where('min_days', '<=', 1)
+            ->where(function ($query) {
+                $query->whereNull('max_days')->orWhere('max_days', '>=', 1);
+            })
+            ->orderBy('min_days')
+            ->orderBy('sort_order');
+        $packageId = $params['service_package_id'] ?? $params['package_id'] ?? null;
+        $slabQuery->where('service_package_id', $packageId);
+        $slab = $slabQuery->first();
+        if (!$slab) {
+            throw new \DomainException('No active first-day slab is configured for this self-drive service.');
+        }
+
+        $rateQuery = VehicleGroupPricing::query()
+            ->where('vehicle_group_id', $params['vehicle_group_id'])
+            ->where('slab_definition_id', $slab->id)
+            ->where('is_active', true)
+            ->forOwner($params['owner_type'] ?? null, $params['owner_id'] ?? null)
+            ->orderByRaw('CASE WHEN owner_type IS NULL THEN 1 ELSE 0 END')
+            ->orderByDesc('priority');
+        $rate = $rateQuery->value('rate');
+        if (!is_numeric($rate) || (float) $rate <= 0) {
+            throw new \DomainException('No first-day slab rate is configured for this self-drive vehicle group and pricing scope.');
+        }
+
+        return (float) $rate;
     }
 
     /**

@@ -250,3 +250,4 @@
         </tr>
     @endif
 </table>
+<x-booking-refundable-deposit :booking="$booking" :currency="$currency" />

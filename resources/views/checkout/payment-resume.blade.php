@@ -14,9 +14,9 @@
         $amountDue = $paymentData['amount_due'];
         $quotedItems = $context['booking_items'] ?? [];
         $selectedItemIds = $paymentData['revision_item_ids'] ?? array_column($quotedItems, 'id');
-        $hasTours = collect($quotedItems)->contains(fn ($item) => !empty($item['is_tour']));
+        $hasTours = collect($quotedItems)->contains(fn($item) => !empty($item['is_tour']));
         $canEditVehicles = count($quotedItems) > 0
-            && collect($quotedItems)->every(fn ($item) => !empty($item['id']))
+            && collect($quotedItems)->every(fn($item) => !empty($item['id']))
             && !$hasTours;
         $hasRevisedSelection = !empty($paymentData['revision_item_ids']) && count($paymentData['revision_item_ids']) < count($quotedItems);
         $currencySymbol = getCurrencySymbol($context['pricing']['currency'] ?? 'LKR');
@@ -75,249 +75,274 @@
                         <!-- Vehicle Wise Trip Details Section -->
                         <div class="section">
                             <h2 class="section-title">
-                                <span class="icon">{{ $hasTours ? '🗺️' : '🚗' }}</span> {{ $hasTours ? 'Trip and Tour Details' : 'Vehicle Wise Trip Details' }}
+                                <span class="icon">{{ $hasTours ? '🗺️' : '🚗' }}</span>
+                                {{ $hasTours ? 'Trip and Tour Details' : 'Vehicle Wise Trip Details' }}
                             </h2>
                             @if ($canEditVehicles)
-                            <p style="color:#555;">Choose the vehicles you want to keep. Your original quotation is preserved.</p>
-                            <form method="POST" action="{{ route('checkout.payment-resume.vehicles', ['token' => $token]) }}">
-                                @csrf
+                                <p style="color:#555;">Choose the vehicles you want to keep. Your original quotation is preserved.
+                                </p>
+                                <form method="POST" action="{{ route('checkout.payment-resume.vehicles', ['token' => $token]) }}">
+                                    @csrf
                             @endif
-                            @if (!empty($context['booking_items']))
-                                @foreach ($context['booking_items'] as $index => $item)
-                                    @php
-                                        // Get vehicle group images if available from context
-                                        $vehicleGroupImages = $item['vehicle_group_images'] ?? [];
-                                        $defaultImage = null;
-                                        if (!empty($vehicleGroupImages)) {
-                                            $defaultImage = is_array($vehicleGroupImages[0])
-                                                ? $vehicleGroupImages[0]['url'] ??
+                                @if (!empty($context['booking_items']))
+                                    @foreach ($context['booking_items'] as $index => $item)
+                                        @php
+                                            // Get vehicle group images if available from context
+                                            $vehicleGroupImages = $item['vehicle_group_images'] ?? [];
+                                            $defaultImage = null;
+                                            if (!empty($vehicleGroupImages)) {
+                                                $defaultImage = is_array($vehicleGroupImages[0])
+                                                    ? $vehicleGroupImages[0]['url'] ??
                                                     ($vehicleGroupImages[0]['path'] ?? null)
-                                                : $vehicleGroupImages[0];
-                                        }
+                                                    : $vehicleGroupImages[0];
+                                            }
 
-                                        // Process addons data consistently
-                                        $itemAddons = $item['addons'] ?? [];
-                                        $addonsList = [];
-                                        if (is_array($itemAddons)) {
-                                            foreach ($itemAddons as $addon) {
-                                                $addonName =
-                                                    $addon['name'] ??
-                                                    ($addon['label'] ?? ($addon['addon_name'] ?? 'Unknown Add-on'));
-                                                $addonQty = max(1, (int) ($addon['quantity'] ?? ($addon['qty'] ?? 1)));
-                                                $addonRate =
-                                                    (float) ($addon['rate'] ??
-                                                        ($addon['unit_price'] ??
-                                                            ($addon['price'] ?? ($addon['amount'] ?? 0))));
-                                                $addonTotal =
-                                                    (float) ($addon['total_price'] ??
-                                                        ($addon['total'] ??
-                                                            ($addon['calculated_amount'] ??
-                                                                ($addon['amount'] ?? $addonRate * $addonQty))));
+                                            // Process addons data consistently
+                                            $itemAddons = $item['addons'] ?? [];
+                                            $addonsList = [];
+                                            if (is_array($itemAddons)) {
+                                                foreach ($itemAddons as $addon) {
+                                                    $addonName =
+                                                        $addon['name'] ??
+                                                        ($addon['label'] ?? ($addon['addon_name'] ?? 'Unknown Add-on'));
+                                                    $addonQty = max(1, (int) ($addon['quantity'] ?? ($addon['qty'] ?? 1)));
+                                                    $addonRate =
+                                                        (float) ($addon['rate'] ??
+                                                            ($addon['unit_price'] ??
+                                                                ($addon['price'] ?? ($addon['amount'] ?? 0))));
+                                                    $addonTotal =
+                                                        (float) ($addon['total_price'] ??
+                                                            ($addon['total'] ??
+                                                                ($addon['calculated_amount'] ??
+                                                                    ($addon['amount'] ?? $addonRate * $addonQty))));
 
-                                                if ($addonName && ($addonTotal > 0 || $addonRate > 0)) {
-                                                    $addonsList[] = [
-                                                        'name' => $addonName,
-                                                        'qty' => $addonQty,
-                                                        'rate' => $addonRate,
-                                                        'total' => $addonTotal,
-                                                    ];
+                                                    if ($addonName && ($addonTotal > 0 || $addonRate > 0)) {
+                                                        $addonsList[] = [
+                                                            'name' => $addonName,
+                                                            'qty' => $addonQty,
+                                                            'rate' => $addonRate,
+                                                            'total' => $addonTotal,
+                                                        ];
+                                                    }
                                                 }
                                             }
-                                        }
 
-                                        // Check for extra kilometers
-                                        $extraKilometers = $item['extra_kilometers'] ?? ($item['extra_km'] ?? 0);
-                                        $extraKmRate = $item['extra_km_rate'] ?? ($item['km_rate'] ?? 0);
-                                        $extraKmTotal = $item['extra_km_total'] ?? $extraKilometers * $extraKmRate;
-                                        $addonsTotal = array_sum(array_map(
-                                            fn ($addon) => (float) ($addon['total'] ?? 0),
-                                            $addonsList,
-                                        ));
-                                        $baseItemTotal = (float) ($item['total_price'] ?? 0);
-                                        $itemGrandTotal = $baseItemTotal + (float) $addonsTotal + (float) $extraKmTotal;
-                                        $baseTotalKm = $item['display_base_total_km'] ?? ($item['base_total_km'] ?? null);
-                                        $totalKmWithExtra = $item['total_km_with_extra'] ?? (
-                                            $baseTotalKm !== null ? (float) $baseTotalKm + (float) $extraKilometers : null
-                                        );
-                                    @endphp
-                                    <div class="booking-item-email">
-                                        @if ($canEditVehicles)<label style="display:flex;align-items:center;gap:8px;margin-bottom:14px;color:#333;font-weight:600;">
-                                            <input type="checkbox" name="item_ids[]" value="{{ $item['id'] ?? '' }}" {{ in_array((string) ($item['id'] ?? ''), array_map('strval', $selectedItemIds), true) ? 'checked' : '' }}>
-                                            Keep this vehicle
-                                        </label>@endif
-                                        <div
-                                            style="display: flex; align-items: flex-start; gap: 15px; margin-bottom: 5px;">
-                                            @if ($defaultImage)
-                                                <div style="flex-shrink: 0;">
-                                                    <img src="{{ asset($defaultImage) }}" alt="{{ $item['vehicle_group'] }}"
-                                                        style="width: 120px; height: 80px; object-fit: cover; border-radius: 6px; border: 1px solid #ddd;">
-                                                </div>
-                                            @endif
-                                            <div style="flex: 1;">
-                                                <div class="vehicle-header">
-                                                    <h3>{{ !empty($item['is_tour']) ? 'Tour itinerary' : 'Vehicle ' . ($index + 1) . ': ' . ($item['vehicle_group'] ?? 'N/A') }}</h3>
-                                                    <span class="service-type-badge">{{ $item['service_type'] }}</span>
-                                                </div>
-                                                @if (!empty($item['is_tour']) && !empty($item['vehicle_class_name']))
-                                                    <p><strong>Purchased class:</strong> {{ $item['vehicle_class_name'] }}</p>
-                                                @endif
-                                            </div>
-                                        </div>
-
-                                        @if (!empty($item['is_tour']) && !empty($item['tour_days']))
-                                            <div class="tour-itinerary-summary" style="margin:14px 0;padding:14px;border:1px solid #dbeafe;border-radius:8px;background:#eff6ff;">
-                                                @foreach ($item['tour_days'] as $tourDay)
-                                                    <div style="margin-bottom:10px;">
-                                                        <strong>Day {{ $tourDay['day_number'] ?? $loop->iteration }} · {{ $tourDay['service_date'] ?? '' }}</strong>
-                                                        <ol style="margin:6px 0 0;padding-left:22px;">
-                                                            @foreach (($tourDay['stops'] ?? []) as $tourStop)
-                                                                <li>{{ $tourStop['name'] ?? 'Tour stop' }}@if (!empty($tourStop['visit_duration_minutes'])) · {{ $tourStop['visit_duration_minutes'] }} min @endif</li>
-                                                            @endforeach
-                                                        </ol>
-                                                    </div>
-                                                @endforeach
-                                                @if (!empty($item['activity_entry_note']))
-                                                    <p role="note" style="margin:8px 0 0;">{{ $item['activity_entry_note'] }}</p>
-                                                @endif
-                                            </div>
-                                        @endif
-
-                                        <div class="trip-details">
-                                            <div class="location-info">
-                                                <div class="pickup-info">
-                                                    <span class="location-label">Pickup:</span>
-                                                    <span class="location-details">
-                                                        <strong style="color: #BF2629; background: #fef2f2; padding: 2px 6px; border-radius: 4px; display: inline-block; margin-bottom: 3px;">
-                                                            📅 {{ \Carbon\Carbon::parse($item['from_date'])->format('M d, Y') }} at {{ $item['from_time'] ?? '00:00' }}
-                                                        </strong>
-                                                        <br>{{ formatLocationName($item['pickup_location'] ?? 'N/A') }}
-                                                    </span>
-                                                </div>
-                                                <div class="dropoff-info">
-                                                    <span class="location-label">Return:</span>
-                                                    <span class="location-details">
-                                                        {{ \Carbon\Carbon::parse($item['to_date'])->format('M d, Y') }}
-                                                        at
-                                                        {{ $item['to_time'] ?? '00:00' }}
-                                                        <br>{{ formatLocationName($item['dropoff_location'] ?? 'N/A') }}
-                                                    </span>
-                                                </div>
-                                            </div>
-                                            <div class="duration-info">
-                                                <span class="duration-badge">{{ $item['duration_days'] ?? 'N/A' }}
-                                                    Days</span>
-                                            </div>
-                                        </div>
-
-                                        @php
-                                            $oneWayPrice = $item['one_way_price'] ?? null;
-                                            $returnPrice = $item['return_price'] ?? null;
-                                            $returnDiscount = $item['return_discount_percentage'] ?? 0;
+                                            // Check for extra kilometers
+                                            $extraKilometers = $item['extra_kilometers'] ?? ($item['extra_km'] ?? 0);
+                                            $extraKmRate = $item['extra_km_rate'] ?? ($item['km_rate'] ?? 0);
+                                            $extraKmTotal = $item['extra_km_total'] ?? $extraKilometers * $extraKmRate;
+                                            $addonsTotal = array_sum(array_map(
+                                                fn($addon) => (float) ($addon['total'] ?? 0),
+                                                $addonsList,
+                                            ));
+                                            $baseItemTotal = (float) ($item['total_price'] ?? 0);
+                                            $itemGrandTotal = $baseItemTotal + (float) $addonsTotal + (float) $extraKmTotal;
+                                            $baseTotalKm = $item['display_base_total_km'] ?? ($item['base_total_km'] ?? null);
+                                            $totalKmWithExtra = $item['total_km_with_extra'] ?? (
+                                                $baseTotalKm !== null ? (float) $baseTotalKm + (float) $extraKilometers : null
+                                            );
                                         @endphp
-
-                                        @if (!empty($oneWayPrice) || !empty($returnPrice))
-                                            <div class="return-pricing" style="margin-top:12px; padding-top:10px; border-top:1px solid #eee;">
-                                                <div style="display:flex; justify-content:space-between; padding:4px 0;">
-                                                    <div>Outbound Trip</div>
-                                                    <div>{{ $currencySymbol }} {{ number_format(floor(max(0, (float) ($oneWayPrice ?? 0))), 0) }}</div>
-                                                </div>
-                                                <div style="display:flex; justify-content:space-between; padding:4px 0;">
-                                                    <div>Return Trip @if(!empty($returnDiscount) && $returnDiscount > 0) <small class="text-success">({{ $returnDiscount }}% off)</small>@endif</div>
-                                                    <div>{{ $currencySymbol }} {{ number_format(floor(max(0, (float) ($returnPrice ?? 0))), 0) }}</div>
-                                                </div>
-                                                <div style="display:flex; justify-content:space-between; font-weight:700; padding-top:6px; border-top:1px dashed #eee; margin-top:6px;">
-                                                    <div>Combined</div>
-                                                    <div>{{ $currencySymbol }} {{ number_format(floor(max(0, (float) (($oneWayPrice ?? 0) + ($returnPrice ?? 0)))), 0) }}</div>
-                                                </div>
-                                            </div>
-                                        @endif
-
-                                        {{-- Selected Addons & Extra KM for context items (arrays) --}}
-                                        @if (!empty($addonsList))
-                                            <div class="addons-section"
-                                                style="margin-top: 15px; padding-top: 15px; border-top: 1px solid #eee;">
-                                                <h4 style="margin: 0 0 10px 0; color: #333; font-size: 14px;">Selected
-                                                    Add-ons:</h4>
-                                                @foreach ($addonsList as $addon)
-                                                    <div
-                                                        style="display: flex; justify-content: space-between; align-items: center; padding: 5px 0; border-bottom: 1px solid #f0f0f0;">
-                                                        <span>
-                                                            <strong>{{ $addon['name'] }}</strong>
-                                                            <small style="color: #777; margin-left: 4px;">
-                                                                (Qty: {{ $addon['qty'] }}@if ($addon['rate'] > 0)
-                                                                    ×
-                                                                    {{ $currencySymbol }} {{ number_format(floor(max(0, $addon['rate'])), 0) }}
-                                                                @elseif($addon['total'] > 0 && $addon['qty'] > 0)
-                                                                    - Avg:
-                                                                    {{ $currencySymbol }} {{ number_format(floor(max(0, $addon['total'] / $addon['qty'])), 0) }}
-                                                                @endif)
-                                                            </small>
-                                                        </span>
-                                                        <span
-                                                            style="color: #BF2629; font-weight: 600;">{{ $currencySymbol }} {{ number_format(floor(max(0, $addon['total'])), 0) }}</span>
+                                        <div class="booking-item-email">
+                                            @if ($canEditVehicles)<label
+                                                style="display:flex;align-items:center;gap:8px;margin-bottom:14px;color:#333;font-weight:600;">
+                                                <input type="checkbox" name="item_ids[]" value="{{ $item['id'] ?? '' }}" {{ in_array((string) ($item['id'] ?? ''), array_map('strval', $selectedItemIds), true) ? 'checked' : '' }}>
+                                                Keep this vehicle
+                                            </label>@endif
+                                            <div style="display: flex; align-items: flex-start; gap: 15px; margin-bottom: 5px;">
+                                                @if ($defaultImage)
+                                                    <div style="flex-shrink: 0;">
+                                                        <img src="{{ asset($defaultImage) }}" alt="{{ $item['vehicle_group'] }}"
+                                                            style="width: 120px; height: 80px; object-fit: cover; border-radius: 6px; border: 1px solid #ddd;">
                                                     </div>
-                                                @endforeach
-                                            </div>
-                                        @endif
-
-                                        @if ($extraKilometers > 0)
-                                            <div class="extra-km-section"
-                                                style="margin-top: 15px; padding-top: 15px; border-top: 1px solid #eee;">
-                                                <h4 style="margin: 0 0 10px 0; color: #333; font-size: 14px;">Extra
-                                                    Kilometers:</h4>
-                                                <div
-                                                    style="display: flex; justify-content: space-between; align-items: center; padding: 5px 0;">
-                                                    <span>
-                                                        <strong>{{ number_format($extraKilometers) }} km</strong>
-                                                        @if ($extraKmRate > 0)
-                                                            <small style="color: #777;"> @
-                                                                {{ $currencySymbol }} {{ number_format(floor(max(0, $extraKmRate)), 0) }}/km</small>
-                                                        @endif
-                                                    </span>
-                                                    @if ($extraKmTotal > 0)
-                                                        <span
-                                                            style="color: #BF2629; font-weight: 600;">{{ $currencySymbol }} {{ number_format(floor(max(0, $extraKmTotal)), 0) }}</span>
+                                                @endif
+                                                <div style="flex: 1;">
+                                                    <div class="vehicle-header">
+                                                        <h3>{{ !empty($item['is_tour']) ? 'Tour itinerary' : 'Vehicle ' . ($index + 1) . ': ' . ($item['vehicle_group'] ?? 'N/A') }}
+                                                        </h3>
+                                                        <span class="service-type-badge">{{ $item['service_type'] }}</span>
+                                                    </div>
+                                                    @if (!empty($item['is_tour']) && !empty($item['vehicle_class_name']))
+                                                        <p><strong>Purchased class:</strong> {{ $item['vehicle_class_name'] }}</p>
                                                     @endif
                                                 </div>
                                             </div>
-                                        @endif
-                                        @if ($extraKilometers > 0 && $baseTotalKm !== null)
-                                            <div class="total-km-section"
-                                                style="margin-top: 12px; padding-top: 12px; border-top: 1px solid #eee;">
-                                                <div style="display: flex; justify-content: space-between; align-items: center; padding: 5px 0;">
-                                                    <span><strong>Total KM</strong></span>
-                                                    <span>
-                                                        {{ number_format((float) $baseTotalKm, 1) }} km
-                                                        @if ($extraKilometers > 0 && $totalKmWithExtra !== null)
-                                                            <small style="color: #777;">+ {{ number_format((float) $extraKilometers, 0) }} km extra =
-                                                                {{ number_format((float) $totalKmWithExtra, 1) }} km</small>
-                                                        @endif
-                                                    </span>
+
+                                            @if (!empty($item['is_tour']) && !empty($item['tour_days']))
+                                                <div class="tour-itinerary-summary"
+                                                    style="margin:14px 0;padding:14px;border:1px solid #dbeafe;border-radius:8px;background:#eff6ff;">
+                                                    @foreach ($item['tour_days'] as $tourDay)
+                                                        <div style="margin-bottom:10px;">
+                                                            <strong>Day {{ $tourDay['day_number'] ?? $loop->iteration }} ·
+                                                                {{ $tourDay['service_date'] ?? '' }}</strong>
+                                                            <ol style="margin:6px 0 0;padding-left:22px;">
+                                                                @foreach (($tourDay['stops'] ?? []) as $tourStop)
+                                                                    <li>{{ $tourStop['name'] ?? 'Tour stop' }}@if (!empty($tourStop['visit_duration_minutes']))
+                                                                    · {{ $tourStop['visit_duration_minutes'] }} min @endif</li>
+                                                                @endforeach
+                                                            </ol>
+                                                        </div>
+                                                    @endforeach
+                                                    @if (!empty($item['activity_entry_note']))
+                                                        <p role="note" style="margin:8px 0 0;">{{ $item['activity_entry_note'] }}</p>
+                                                    @endif
+                                                </div>
+                                            @endif
+
+                                            <div class="trip-details">
+                                                <div class="location-info">
+                                                    <div class="pickup-info">
+                                                        <span class="location-label">Pickup:</span>
+                                                        <span class="location-details">
+                                                            <strong
+                                                                style="color: #BF2629; background: #fef2f2; padding: 2px 6px; border-radius: 4px; display: inline-block; margin-bottom: 3px;">
+                                                                📅 {{ \Carbon\Carbon::parse($item['from_date'])->format('M d, Y') }} at
+                                                                {{ $item['from_time'] ?? '00:00' }}
+                                                            </strong>
+                                                            <br>{{ formatLocationName($item['pickup_location'] ?? 'N/A') }}
+                                                        </span>
+                                                    </div>
+                                                    <div class="dropoff-info">
+                                                        <span class="location-label">Return:</span>
+                                                        <span class="location-details">
+                                                            {{ \Carbon\Carbon::parse($item['to_date'])->format('M d, Y') }}
+                                                            at
+                                                            {{ $item['to_time'] ?? '00:00' }}
+                                                            <br>{{ formatLocationName($item['dropoff_location'] ?? 'N/A') }}
+                                                        </span>
+                                                    </div>
+                                                </div>
+                                                <div class="duration-info">
+                                                    <span class="duration-badge">{{ $item['duration_days'] ?? 'N/A' }}
+                                                        Days</span>
                                                 </div>
                                             </div>
-                                        @endif
-                                        <div class="item-total-section"
-                                            style="margin-top: 14px; padding: 12px; border: 1px solid #fecaca; border-radius: 8px; background: #fef2f2;">
-                                            <div style="display: flex; justify-content: space-between; align-items: center; padding: 5px 0;">
-                                                <span><strong>Base fare</strong></span>
-                                                <span>{{ $currencySymbol }} {{ number_format(floor(max(0, $baseItemTotal)), 0) }}</span>
-                                            </div>
-                                            <div style="display: flex; justify-content: space-between; align-items: center; padding: 8px 0 2px; margin-top: 6px; border-top: 1px solid #fecaca; color: #7f1d1d; font-size: 18px; font-weight: 800;">
-                                                <span>Booking item total</span>
-                                                <span>{{ $currencySymbol }} {{ number_format(floor(max(0, $itemGrandTotal)), 0) }}</span>
-                                            </div>
-                                            @if ($addonsTotal > 0 || $extraKmTotal > 0)
-                                                <small style="display:block; color:#7f1d1d; margin-top:4px;">Includes add-ons and extra kilometers</small>
+
+                                            @php
+                                                $oneWayPrice = $item['one_way_price'] ?? null;
+                                                $returnPrice = $item['return_price'] ?? null;
+                                                $returnDiscount = $item['return_discount_percentage'] ?? 0;
+                                            @endphp
+
+                                            @if (!empty($oneWayPrice) || !empty($returnPrice))
+                                                <div class="return-pricing"
+                                                    style="margin-top:12px; padding-top:10px; border-top:1px solid #eee;">
+                                                    <div style="display:flex; justify-content:space-between; padding:4px 0;">
+                                                        <div>Outbound Trip</div>
+                                                        <div>{{ $currencySymbol }}
+                                                            {{ number_format(floor(max(0, (float) ($oneWayPrice ?? 0))), 0) }}</div>
+                                                    </div>
+                                                    <div style="display:flex; justify-content:space-between; padding:4px 0;">
+                                                        <div>Return Trip @if(!empty($returnDiscount) && $returnDiscount > 0) <small
+                                                        class="text-success">({{ $returnDiscount }}% off)</small>@endif</div>
+                                                        <div>{{ $currencySymbol }}
+                                                            {{ number_format(floor(max(0, (float) ($returnPrice ?? 0))), 0) }}</div>
+                                                    </div>
+                                                    <div
+                                                        style="display:flex; justify-content:space-between; font-weight:700; padding-top:6px; border-top:1px dashed #eee; margin-top:6px;">
+                                                        <div>Combined</div>
+                                                        <div>{{ $currencySymbol }}
+                                                            {{ number_format(floor(max(0, (float) (($oneWayPrice ?? 0) + ($returnPrice ?? 0)))), 0) }}
+                                                        </div>
+                                                    </div>
+                                                </div>
                                             @endif
+
+                                            {{-- Selected Addons & Extra KM for context items (arrays) --}}
+                                            @if (!empty($addonsList))
+                                                <div class="addons-section"
+                                                    style="margin-top: 15px; padding-top: 15px; border-top: 1px solid #eee;">
+                                                    <h4 style="margin: 0 0 10px 0; color: #333; font-size: 14px;">Selected
+                                                        Add-ons:</h4>
+                                                    @foreach ($addonsList as $addon)
+                                                        <div
+                                                            style="display: flex; justify-content: space-between; align-items: center; padding: 5px 0; border-bottom: 1px solid #f0f0f0;">
+                                                            <span>
+                                                                <strong>{{ $addon['name'] }}</strong>
+                                                                <small style="color: #777; margin-left: 4px;">
+                                                                    (Qty: {{ $addon['qty'] }}@if ($addon['rate'] > 0)
+                                                                        ×
+                                                                        {{ $currencySymbol }} {{ number_format(floor(max(0, $addon['rate'])), 0) }}
+                                                                    @elseif($addon['total'] > 0 && $addon['qty'] > 0)
+                                                                        - Avg:
+                                                                        {{ $currencySymbol }}
+                                                                        {{ number_format(floor(max(0, $addon['total'] / $addon['qty'])), 0) }}
+                                                                    @endif)
+                                                                </small>
+                                                            </span>
+                                                            <span style="color: #BF2629; font-weight: 600;">{{ $currencySymbol }}
+                                                                {{ number_format(floor(max(0, $addon['total'])), 0) }}</span>
+                                                        </div>
+                                                    @endforeach
+                                                </div>
+                                            @endif
+
+                                            @if ($extraKilometers > 0)
+                                                <div class="extra-km-section"
+                                                    style="margin-top: 15px; padding-top: 15px; border-top: 1px solid #eee;">
+                                                    <h4 style="margin: 0 0 10px 0; color: #333; font-size: 14px;">Extra
+                                                        Kilometers:</h4>
+                                                    <div
+                                                        style="display: flex; justify-content: space-between; align-items: center; padding: 5px 0;">
+                                                        <span>
+                                                            <strong>{{ number_format($extraKilometers) }} km</strong>
+                                                            @if ($extraKmRate > 0)
+                                                                <small style="color: #777;"> @
+                                                                    {{ $currencySymbol }}
+                                                                    {{ number_format(floor(max(0, $extraKmRate)), 0) }}/km</small>
+                                                            @endif
+                                                        </span>
+                                                        @if ($extraKmTotal > 0)
+                                                            <span style="color: #BF2629; font-weight: 600;">{{ $currencySymbol }}
+                                                                {{ number_format(floor(max(0, $extraKmTotal)), 0) }}</span>
+                                                        @endif
+                                                    </div>
+                                                </div>
+                                            @endif
+                                            @if ($extraKilometers > 0 && $baseTotalKm !== null)
+                                                <div class="total-km-section"
+                                                    style="margin-top: 12px; padding-top: 12px; border-top: 1px solid #eee;">
+                                                    <div
+                                                        style="display: flex; justify-content: space-between; align-items: center; padding: 5px 0;">
+                                                        <span><strong>Total KM</strong></span>
+                                                        <span>
+                                                            {{ number_format((float) $baseTotalKm, 1) }} km
+                                                            @if ($extraKilometers > 0 && $totalKmWithExtra !== null)
+                                                                <small style="color: #777;">+ {{ number_format((float) $extraKilometers, 0) }}
+                                                                    km extra =
+                                                                    {{ number_format((float) $totalKmWithExtra, 1) }} km</small>
+                                                            @endif
+                                                        </span>
+                                                    </div>
+                                                </div>
+                                            @endif
+                                            <div class="item-total-section"
+                                                style="margin-top: 14px; padding: 12px; border: 1px solid #fecaca; border-radius: 8px; background: #fef2f2;">
+                                                <div
+                                                    style="display: flex; justify-content: space-between; align-items: center; padding: 5px 0;">
+                                                    <span><strong>Base fare</strong></span>
+                                                    <span>{{ $currencySymbol }}
+                                                        {{ number_format(floor(max(0, $baseItemTotal)), 0) }}</span>
+                                                </div>
+                                                <div
+                                                    style="display: flex; justify-content: space-between; align-items: center; padding: 8px 0 2px; margin-top: 6px; border-top: 1px solid #fecaca; color: #7f1d1d; font-size: 18px; font-weight: 800;">
+                                                    <span>Booking item total</span>
+                                                    <span>{{ $currencySymbol }}
+                                                        {{ number_format(floor(max(0, $itemGrandTotal)), 0) }}</span>
+                                                </div>
+                                                @if ($addonsTotal > 0 || $extraKmTotal > 0)
+                                                    <small style="display:block; color:#7f1d1d; margin-top:4px;">Includes add-ons and extra
+                                                        kilometers</small>
+                                                @endif
+                                            </div>
                                         </div>
-                                    </div>
-                                @endforeach
-                            @endif
-                            @if ($canEditVehicles)
-                            <button type="submit" class="btn btn-secondary" style="margin:12px 0;">Update vehicle selection</button>
-                            </form>
-                            @else
-                            <p style="color:#777;">To change this older quotation, please contact our booking team.</p>
+                                    @endforeach
+                                @endif
+                                @if ($canEditVehicles)
+                                        <button type="submit" class="btn btn-secondary" style="margin:12px 0;">Update vehicle
+                                            selection</button>
+                                    </form>
+                                @else
+                                <p style="color:#777;">To change this older quotation, please contact our booking team.</p>
                             @endif
                         </div>
 
@@ -365,89 +390,110 @@
                             @if ($hasRevisedSelection)
                                 <h2 class="section-title">Updated booking summary</h2>
                                 <table class="info-table">
-                                    <tr><td>Original quotation total</td><td>{{ $currencySymbol }} {{ number_format((float) ($context['pricing']['total_estimated'] ?? 0), 2) }}</td></tr>
-                                    <tr><td>Revised booking total</td><td><strong>{{ $currencySymbol }} {{ number_format((float) ($paymentData['revision_total'] ?? 0), 2) }}</strong></td></tr>
-                                    <tr style="background:#fef3c7"><td><strong>Amount due today</strong></td><td><strong>{{ $currencySymbol }} {{ number_format((float) $amountDue, 2) }}</strong></td></tr>
+                                    <tr>
+                                        <td>Original quotation total</td>
+                                        <td>{{ $currencySymbol }}
+                                            {{ number_format((float) ($context['pricing']['total_estimated'] ?? 0), 2) }}</td>
+                                    </tr>
+                                    <tr>
+                                        <td>Revised booking total</td>
+                                        <td><strong>{{ $currencySymbol }}
+                                                {{ number_format((float) ($paymentData['revision_total'] ?? 0), 2) }}</strong></td>
+                                    </tr>
+                                    <tr style="background:#fef3c7">
+                                        <td><strong>Amount due today</strong></td>
+                                        <td><strong>{{ $currencySymbol }} {{ number_format((float) $amountDue, 2) }}</strong></td>
+                                    </tr>
                                 </table>
                             @else
-                            <h2 class="section-title">
-                                <span class="icon">💳</span> Payment Summary
-                            </h2>
-                            <table class="info-table">
-                                <tr>
-                                    <td>Subtotal</td>
-                                    <td>{{ $currencySymbol }}
-                                        {{ number_format(floor(max(0, $context['pricing']['base_amount'])), 0) }}
-                                    </td>
-                                </tr>
-                                @if (($context['pricing']['addon_charges'] ?? 0) > 0)
+                                <h2 class="section-title">
+                                    <span class="icon">💳</span> Payment Summary
+                                </h2>
+                                <table class="info-table">
                                     <tr>
-                                        <td>Add-on Charges</td>
+                                        <td>Subtotal</td>
                                         <td>{{ $currencySymbol }}
-                                            {{ number_format(floor(max(0, $context['pricing']['addon_charges'])), 0) }}</td>
-                                    </tr>
-                                @endif
-                                @if (($context['pricing']['extra_km_charges'] ?? 0) > 0)
-                                    <tr>
-                                        <td>Extra KM Charges</td>
-                                        <td>{{ $currencySymbol }}
-                                            {{ number_format(floor(max(0, $context['pricing']['extra_km_charges'])), 0) }}</td>
-                                    </tr>
-                                @endif
-                                @if ($context['pricing']['service_fee'] > 0)
-                                    <tr>
-                                        <td>Service Fee</td>
-                                        <td>{{ $currencySymbol }}
-                                            {{ number_format(floor(max(0, $context['pricing']['service_fee'])), 0) }}</td>
-                                    </tr>
-                                @endif
-                                @if ($context['pricing']['tax_amount'] > 0)
-                                    <tr>
-                                        <td>Tax</td>
-                                        <td>{{ $currencySymbol }}
-                                            {{ number_format(floor(max(0, $context['pricing']['tax_amount'])), 0) }}</td>
-                                    </tr>
-                                @endif
-                                @if (($context['pricing']['vat_amount'] ?? 0) > 0)
-                                    <tr>
-                                        <td>VAT</td>
-                                        <td>{{ $currencySymbol }}
-                                            {{ number_format(floor(max(0, $context['pricing']['vat_amount'])), 0) }}</td>
-                                    </tr>
-                                @endif
-                                @if ($context['pricing']['discount_amount'] > 0)
-                                    <tr style="color: #16a34a;">
-                                        <td>Discount</td>
-                                        <td>-{{ $currencySymbol }}
-                                            {{ number_format(floor(max(0, $context['pricing']['discount_amount'])), 0) }}</td>
-                                    </tr>
-                                @endif
-                                <tr class="price-total" style="border-top: 2px solid #BF2629; border-bottom: 2px solid #BF2629;">
-                                    <td>Total Booking Amount</td>
-                                    <td style="font-size: 22px; font-weight: 900;">{{ $currencySymbol }}
-                                        {{ number_format(floor(max(0, $context['pricing']['total_estimated'])), 0) }}</td>
-                                </tr>
-                                @if ($context['pricing']['amount_paid'] > 0)
-                                    <tr style="background: #eff6ff;">
-                                        <td><strong>Amount Already Paid</strong></td>
-                                        <td><strong>{{ $currencySymbol }}
-                                                {{ number_format(floor(max(0, $context['pricing']['amount_paid'])), 0) }}</strong>
+                                            {{ number_format(floor(max(0, $context['pricing']['base_amount'])), 0) }}
                                         </td>
                                     </tr>
-                                @endif
-                                <tr style="background: #fef3c7; border-top: 1px solid #f59e0b;">
-                                    <td><strong>Amount Due Today</strong></td>
-                                    <td><strong style="font-size: 18px;">{{ $currencySymbol }} {{ number_format(floor(max(0, $amountDue)), 0) }}</strong></td>
-                                </tr>
-                                <tr>
-                                    <td>Payment Status</td>
-                                    <td>
-                                        <span class="status-badge status-{{ $paymentStatus }}">
-                                            {{ $paymentStatusLabel }}
-                                        </span>
-                                    </td>
-                                </tr>
-                            </table>
+                                    @if (($context['pricing']['addon_charges'] ?? 0) > 0)
+                                        <tr>
+                                            <td>Add-on Charges</td>
+                                            <td>{{ $currencySymbol }}
+                                                {{ number_format(floor(max(0, $context['pricing']['addon_charges'])), 0) }}
+                                            </td>
+                                        </tr>
+                                    @endif
+                                    @if (($context['pricing']['extra_km_charges'] ?? 0) > 0)
+                                        <tr>
+                                            <td>Extra KM Charges</td>
+                                            <td>{{ $currencySymbol }}
+                                                {{ number_format(floor(max(0, $context['pricing']['extra_km_charges'])), 0) }}
+                                            </td>
+                                        </tr>
+                                    @endif
+                                    @if ($context['pricing']['service_fee'] > 0)
+                                        <tr>
+                                            <td>Service Fee</td>
+                                            <td>{{ $currencySymbol }}
+                                                {{ number_format(floor(max(0, $context['pricing']['service_fee'])), 0) }}
+                                            </td>
+                                        </tr>
+                                    @endif
+                                    @if ($context['pricing']['tax_amount'] > 0)
+                                        <tr>
+                                            <td>Tax</td>
+                                            <td>{{ $currencySymbol }}
+                                                {{ number_format(floor(max(0, $context['pricing']['tax_amount'])), 0) }}
+                                            </td>
+                                        </tr>
+                                    @endif
+                                    @if (($context['pricing']['vat_amount'] ?? 0) > 0)
+                                        <tr>
+                                            <td>VAT</td>
+                                            <td>{{ $currencySymbol }}
+                                                {{ number_format(floor(max(0, $context['pricing']['vat_amount'])), 0) }}
+                                            </td>
+                                        </tr>
+                                    @endif
+                                    @if ($context['pricing']['discount_amount'] > 0)
+                                        <tr style="color: #16a34a;">
+                                            <td>Discount</td>
+                                            <td>-{{ $currencySymbol }}
+                                                {{ number_format(floor(max(0, $context['pricing']['discount_amount'])), 0) }}
+                                            </td>
+                                        </tr>
+                                    @endif
+                                    <tr class="price-total"
+                                        style="border-top: 2px solid #BF2629; border-bottom: 2px solid #BF2629;">
+                                        <td>Total Booking Amount</td>
+                                        <td style="font-size: 22px; font-weight: 900;">{{ $currencySymbol }}
+                                            {{ number_format(floor(max(0, $context['pricing']['total_estimated'])), 0) }}
+                                        </td>
+                                    </tr>
+                                    @if ($context['pricing']['amount_paid'] > 0)
+                                        <tr style="background: #eff6ff;">
+                                            <td><strong>Amount Already Paid</strong></td>
+                                            <td><strong>{{ $currencySymbol }}
+                                                    {{ number_format(floor(max(0, $context['pricing']['amount_paid'])), 0) }}</strong>
+                                            </td>
+                                        </tr>
+                                    @endif
+                                    <tr style="background: #fef3c7; border-top: 1px solid #f59e0b;">
+                                        <td><strong>Amount Due Today</strong></td>
+                                        <td><strong style="font-size: 18px;">{{ $currencySymbol }}
+                                                {{ number_format(floor(max(0, $amountDue)), 0) }}</strong></td>
+                                    </tr>
+                                    <tr>
+                                        <td>Payment Status</td>
+                                        <td>
+                                            <span class="status-badge status-{{ $paymentStatus }}">
+                                                {{ $paymentStatusLabel }}
+                                            </span>
+                                        </td>
+                                    </tr>
+                                </table>
+                                <x-booking-refundable-deposit :booking="$booking" :currency="($context['pricing']['currency'] ?? 'LKR')" />
                             @endif
                         </div>
 
@@ -462,23 +508,24 @@
                             <div class="highlight-box warning">
                                 @if ($paymentProcessing)
                                     <h3>⌛ Payment confirmation in progress</h3>
-                                    <p>Your payment request is being checked. Please do not submit another payment. Refresh this page after a few moments to check the result.</p>
+                                    <p>Your payment request is being checked. Please do not submit another payment. Refresh this
+                                        page after a few moments to check the result.</p>
                                 @else
-                                <h3>⏳ Payment Required to Confirm Booking</h3>
-                                <p>Your booking is currently
-                                    <strong>{{ ucfirst(str_replace('_', ' ', $context['payment_status'])) }}</strong>.
-                                    Complete your payment now to secure your reservation.
-                                </p>
+                                    <h3>⏳ Payment Required to Confirm Booking</h3>
+                                    <p>Your booking is currently
+                                        <strong>{{ ucfirst(str_replace('_', ' ', $context['payment_status'])) }}</strong>.
+                                        Complete your payment now to secure your reservation.
+                                    </p>
 
-                                <div class="payment-benefits">
-                                    <p style="margin-bottom: 8px;"><strong>Why pay now?</strong></p>
-                                    <ul>
-                                        <li>Instant booking confirmation</li>
-                                        <li>Vehicle and driver assignment</li>
-                                        <li>24/7 customer support access</li>
-                                        <li>Secure payment processing</li>
-                                    </ul>
-                                </div>
+                                    <div class="payment-benefits">
+                                        <p style="margin-bottom: 8px;"><strong>Why pay now?</strong></p>
+                                        <ul>
+                                            <li>Instant booking confirmation</li>
+                                            <li>Vehicle and driver assignment</li>
+                                            <li>24/7 customer support access</li>
+                                            <li>Secure payment processing</li>
+                                        </ul>
+                                    </div>
                                 @endif
                             </div>
 
@@ -493,13 +540,15 @@
                                 <!-- Payment CTA -->
                                 <div class="btn-container" style="margin: 30px 0;">
                                     @if ($paymentProcessing)
-                                        <p role="status" style="text-align:center;color:#6b7280;font-weight:600;">Payment confirmation is in progress. Do not try to pay again.</p>
+                                        <p role="status" style="text-align:center;color:#6b7280;font-weight:600;">Payment
+                                            confirmation is in progress. Do not try to pay again.</p>
                                     @elseif ($amountDue > 0)
                                         <button type="submit" class="btn submit-btn">
                                             Pay {{ $currencySymbol }} {{ number_format(floor($amountDue), 0) }}
                                         </button>
                                     @else
-                                        <p style="text-align:center;color:#16803c;font-weight:600;">No payment is due for this booking.</p>
+                                        <p style="text-align:center;color:#16803c;font-weight:600;">No payment is due for this
+                                            booking.</p>
                                     @endif
                                     <p style="text-align: center; color: #717171; font-size: 13px; margin: 10px 0;">
                                         <span style="color: #28a745;">✓ Secure SSL Encryption</span> •
@@ -522,35 +571,37 @@
                                     @if($supportPhone)
                                         <tr>
                                             <td>Phone</td>
-                                            <td><a href="tel:{{ $supportPhoneTel }}" style="color: #BF2629; text-decoration: none;">{{ $supportPhone }}</a></td>
+                                            <td><a href="tel:{{ $supportPhoneTel }}"
+                                                    style="color: #BF2629; text-decoration: none;">{{ $supportPhone }}</a></td>
                                         </tr>
                                     @endif
+                                <tr>
+                                    <td>Email</td>
+                                    <td><a href="mailto:{{ $supportEmail }}"
+                                            style="color: #BF2629; text-decoration: none;">{{ $supportEmail }}</a>
+                                    </td>
+                                </tr>
+                                <tr>
+                                    <td>Website</td>
+                                    <td><a href="{{ $supportWebsite }}"
+                                            style="color: #BF2629; text-decoration: none;">{{ $supportWebsite }}</a>
+                                    </td>
+                                </tr>
+                                @if($supportWhatsapp)
                                     <tr>
-                                        <td>Email</td>
-                                        <td><a href="mailto:{{ $supportEmail }}"
-                                                style="color: #BF2629; text-decoration: none;">{{ $supportEmail }}</a>
-                                        </td>
+                                        <td>WhatsApp</td>
+                                        <td><a href="https://wa.me/{{ $supportWhatsappUrl }}"
+                                                style="color: #BF2629; text-decoration: none;">{{ $supportWhatsapp }}</a></td>
                                     </tr>
-                                    <tr>
-                                        <td>Website</td>
-                                        <td><a href="{{ $supportWebsite }}"
-                                                style="color: #BF2629; text-decoration: none;">{{ $supportWebsite }}</a>
-                                        </td>
-                                    </tr>
-                                    @if($supportWhatsapp)
-                                        <tr>
-                                            <td>WhatsApp</td>
-                                            <td><a href="https://wa.me/{{ $supportWhatsappUrl }}"
-                                                    style="color: #BF2629; text-decoration: none;">{{ $supportWhatsapp }}</a></td>
-                                        </tr>
-                                    @endif
+                                @endif
                             </table>
                             <p style="text-align: center; color: #717171; margin-top: 15px; font-size: 13px;">Our
                                 customer
                                 support team is available 24/7 to assist you.</p>
                             @if($supportPhone)
                                 <div style="text-align: center; margin-top: 15px;">
-                                    <a href="tel:{{ $supportPhoneTel }}" class="btn" style="background-color: #BF2629; color: #ffffff; border-radius: 20px; font-weight: 600; padding: 10px 24px; display: inline-flex; align-items: center; gap: 8px; text-decoration: none;">
+                                    <a href="tel:{{ $supportPhoneTel }}" class="btn"
+                                        style="background-color: #BF2629; color: #ffffff; border-radius: 20px; font-weight: 600; padding: 10px 24px; display: inline-flex; align-items: center; gap: 8px; text-decoration: none;">
                                         <i class="bi bi-telephone-fill"></i> Call 24/7 Support: {{ $supportPhone }}
                                     </a>
                                 </div>
@@ -563,7 +614,9 @@
                         </div>
 
                         <p style="text-align: center; color: #555; font-size: 15px;">Thank you for choosing
-                            {{ ($settings['company_name'] ?? $settings['brand_name'] ?? $settings['site_name'] ?? 'Company') }}. We look forward to serving you!</p>
+                            {{ ($settings['company_name'] ?? $settings['brand_name'] ?? $settings['site_name'] ?? 'Company') }}.
+                            We look forward to serving you!
+                        </p>
                     @endif
                 </div>
             </div>
@@ -942,22 +995,22 @@
 
 @push('scripts')
     <script>
-        $(document).ready(function() {
+        $(document).ready(function () {
             // Copy booking reference to clipboard on click
-            $('.reference-number').on('click', function() {
+            $('.reference-number').on('click', function () {
                 const referenceNumber = $(this).text().trim();
 
                 if (navigator.clipboard) {
-                    navigator.clipboard.writeText(referenceNumber).then(function() {
+                    navigator.clipboard.writeText(referenceNumber).then(function () {
                         // Show temporary tooltip
                         const $ref = $('.reference-number');
                         const originalText = $ref.text();
                         $ref.html('<i class="bi bi-check-circle-fill text-success"></i> Copied!');
 
-                        setTimeout(function() {
+                        setTimeout(function () {
                             $ref.text(originalText);
                         }, 2000);
-                    }).catch(function(err) {
+                    }).catch(function (err) {
                         console.error('Failed to copy:', err);
                     });
                 }
@@ -967,7 +1020,7 @@
             $('.reference-number').css('cursor', 'pointer').attr('title', 'Click to copy reference number');
 
             // Form submission handler
-            $('#payment-resume-form').on('submit', function(e) {
+            $('#payment-resume-form').on('submit', function (e) {
                 const submitBtn = $(this).find('button[type="submit"]');
                 const originalText = submitBtn.html();
 

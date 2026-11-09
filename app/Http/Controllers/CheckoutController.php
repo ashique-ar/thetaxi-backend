@@ -520,7 +520,8 @@ class CheckoutController extends Controller
             $cartModel = $this->cartService->getOrCreateCart();
             $this->syncTourCartItem($cartModel);
             $cartData = $this->cartService->toArray($cartModel);
-            $cart = $cartData['items'] ?? [];
+            $cart = $this->attachVehicleDepositDetails($cartData['items'] ?? []);
+            $cartData['items'] = $cart;
 
             if (empty($cart)) {
                 return redirect()->route('home')->with('error', 'Your cart is empty.');
@@ -945,7 +946,7 @@ class CheckoutController extends Controller
         // Persist the exact currency snapshot shown to the customer. The cart is
         // stored in LKR, while toArray() converts every customer-facing amount.
         $cartData = $this->cartService->toArray($cartModel);
-        $cart = $cartData['items'] ?? [];
+        $cart = $this->attachVehicleDepositDetails($cartData['items'] ?? []);
         $bookingCurrency = $cartData['currency'] ?? $this->currencyService->getSelectedCurrency();
 
         // Re-check dynamic Terms & Conditions acceptance based on cart service types
@@ -1242,6 +1243,8 @@ class CheckoutController extends Controller
                     'return_discount_percentage' => $item['return_discount_percentage'] ?? null,
                     'return_pickup_location' => $item['return_pickup_location'] ?? ($item['dropoff_location'] ?? null),
                     'return_dropoff_location' => $item['return_dropoff_location'] ?? ($item['pickup_location'] ?? null),
+                    'refundable_deposit_lkr' => (float) ($item['refundable_deposit_lkr'] ?? 0),
+                    'requires_refundable_deposit' => (bool) ($item['requires_refundable_deposit'] ?? false),
                 ];
 
                 if (!empty($item['is_tour'])) {
@@ -1298,6 +1301,7 @@ class CheckoutController extends Controller
                     'duration_days' => $durationDays,
                     'duration_hours' => 0,
                     'service_type_id' => $serviceTypeId,
+                    'is_self_driven' => (bool) ($item['is_self_driven'] ?? false),
                     'unit_price' => $unitPrice,
                     'total_price' => $totalPrice,
                     'quantity' => $durationQuantity,  // Stores duration in days for vehicle rentals
@@ -2568,6 +2572,7 @@ class CheckoutController extends Controller
             if (!$booking) {
                 return redirect()->route('home')->with('error', 'Booking not found.');
             }
+            $booking->loadMissing(['bookingItems.serviceType', 'bookingItems.vehicleGroup']);
             if ($booking->payment_status === 'paid') {
                 return redirect()->route('checkout.success', [
                     'type' => 'payment',
@@ -3039,7 +3044,7 @@ class CheckoutController extends Controller
                 if (! $quote->isValid()) {
                     return redirect()->route('home')->with('error', 'This quotation has expired or is no longer valid. Please contact our team.');
                 }
-                $booking = Booking::query()->with(['customer.user', 'bookingItems.serviceType'])->find($quote->booking_id);
+                $booking = Booking::query()->with(['customer.user', 'bookingItems.serviceType', 'bookingItems.vehicleGroup'])->find($quote->booking_id);
                 $quotation = data_get($quote->booking_context, 'quotation', []);
                 if (! $booking || (string) $booking->status !== (string) config('booking.status.quotation_requested')) {
                     return redirect()->route('home')->with('error', 'This quotation is no longer awaiting acceptance. Please contact our team.');
@@ -3101,7 +3106,7 @@ class CheckoutController extends Controller
                 return redirect()->route('home')->with('error', 'This quotation has no valid saved total. Please contact our team to review it.');
             }
 
-            $quotationBooking->loadMissing(['customer.user', 'bookingItems.serviceType']);
+            $quotationBooking->loadMissing(['customer.user', 'bookingItems.serviceType', 'bookingItems.vehicleGroup']);
             $snapshot = BookingLinkHelper::quotationSnapshot($quotationBooking);
             $terms = \App\Services\PendingPaymentManager::quotationTermsSnapshot($quotationBooking);
             $termsHash = hash('sha256', \App\Support\Foundation\CanonicalJson::encode($terms));
@@ -3308,6 +3313,25 @@ class CheckoutController extends Controller
             'received_via' => 'company',
             'notes' => 'Canonically recorded from verified WebXPay settlement.',
         ], Auth::id());
+    }
+
+    private function attachVehicleDepositDetails(array $cart): array
+    {
+        $groupIds = collect($cart)->pluck('vehicle_group_id')->filter()->unique();
+        $deposits = VehicleGroup::query()->whereIn('id', $groupIds)->pluck('refundable_deposit', 'id');
+        $currency = $this->currencyService->getSelectedCurrency();
+
+        foreach ($cart as &$item) {
+            $item['is_self_driven'] = ServiceType::isSelfDriveType(data_get($item, 'service_type_data.type'))
+                || ServiceType::isSelfDriveType($item['service_type'] ?? null);
+            $item['requires_refundable_deposit'] = (bool) data_get($item, 'service_type_data.requires_refundable_deposit', false);
+            $deposit = $item['requires_refundable_deposit'] ? (float) ($deposits[$item['vehicle_group_id'] ?? ''] ?? 0) : 0;
+            $item['refundable_deposit_lkr'] = max(0, $deposit);
+            $item['refundable_deposit'] = $this->currencyService->convertFromLKR($item['refundable_deposit_lkr'], $currency);
+        }
+        unset($item);
+
+        return $cart;
     }
 
     /**

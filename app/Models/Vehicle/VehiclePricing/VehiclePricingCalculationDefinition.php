@@ -1149,6 +1149,11 @@ class VehiclePricingCalculationDefinition extends Model
         }
     }
 
+    public function evaluateAddonFormula(string $formula, array $variables): ?float
+    {
+        return $this->evaluateFormulaWithVariables($formula, $variables);
+    }
+
     private function substituteFormulaVariables(string $formula, array $variables): string
     {
         return preg_replace_callback(

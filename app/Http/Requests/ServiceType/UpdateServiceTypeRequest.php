@@ -61,7 +61,8 @@ class UpdateServiceTypeRequest extends FormRequest
             'terms' => ['sometimes', 'nullable', 'string'],
             'minimum_km' => ['sometimes', 'nullable'],
             'default_payment_arrangement'=>['sometimes','nullable','in:cash_to_driver,online,advance_then_balance,deposit_then_balance,pay_at_end,account_credit,monthly_invoice,complimentary'],
-            'deposit_mode'=>['sometimes','nullable','in:none,fixed,percentage'],'deposit_value'=>['sometimes','nullable','numeric','min:0'],'settlement_due_days'=>['sometimes','nullable','integer','min:0','max:365'],
+            'requires_refundable_deposit' => ['sometimes', 'boolean'],
+            'settlement_due_days'=>['sometimes','nullable','integer','min:0','max:365'],
         ];
     }
 
@@ -99,12 +100,6 @@ class UpdateServiceTypeRequest extends FormRequest
             if (filter_var($config['customer_identity_document_required'] ?? false, FILTER_VALIDATE_BOOLEAN)
                 && ! ServiceType::isSelfDriveType($this->input('type', $this->route('service_type')?->type)) ) {
                 $validator->errors()->add('workflow_config.customer_identity_document_required', 'A customer identity document requirement can only be used for self-drive services.');
-            }
-            $serviceType = $this->route('service_type');
-            $depositMode = $this->input('deposit_mode', $serviceType?->deposit_mode);
-            $depositValue = $this->input('deposit_value', $serviceType?->deposit_value);
-            if ($depositMode === 'percentage' && is_numeric($depositValue) && (float) $depositValue > 100) {
-                $validator->errors()->add('deposit_value', 'A service deposit percentage cannot be greater than 100%.');
             }
         });
     }

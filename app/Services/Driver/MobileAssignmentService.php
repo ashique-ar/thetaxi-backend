@@ -5,6 +5,7 @@ namespace App\Services\Driver;
 use App\Enums\TripPhase;
 use App\Events\AssignmentStatusChanged;
 use App\Models\Driver\Driver;
+use App\Models\Driver\DriverAssignmentNotification;
 use App\Models\Driver\DriverSession;
 use App\Models\DriverAssignment;
 use App\Models\Booking\BookingItem;
@@ -12,6 +13,7 @@ use App\Services\BookingPaymentPolicy;
 use Carbon\Carbon;
 use Illuminate\Contracts\Pagination\LengthAwarePaginator;
 use Illuminate\Database\Eloquent\Builder;
+use Illuminate\Database\Eloquent\Collection as EloquentCollection;
 use Illuminate\Support\Collection;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
@@ -45,7 +47,6 @@ class MobileAssignmentService
                 'booking.corporateAccount',
                 'bookingItem',
                 'bookingItem.serviceType',
-                'bookingItem.vehicle.owner',
                 'bookingItem.vehicle.group',
             ]);
     }
@@ -168,15 +169,16 @@ class MobileAssignmentService
     /**
      * Return the driver's operational trip without allowing a completed parent
      * booking to leak back through heartbeat or status responses.
+     * Keep this frequent read column-limited and read-only; assignment listing
+     * and current-assignment sync handle stale-row repair separately.
      */
     public function getActiveTripAssignment(Driver $driver): ?DriverAssignment
     {
-        $this->reconcileCompletedBookingAssignments($driver);
-
-        return $this->baseAssignmentQuery($driver)
+        return DriverAssignment::query()
+            ->where('driver_id', $driver->id)
             ->activeTripPhase()
             ->orderByDesc('updated_at')
-            ->first();
+            ->first(['id', 'driver_id', 'trip_phase', 'updated_at']);
     }
 
     public function getPendingAssignments(Driver $driver): Collection
@@ -680,12 +682,16 @@ class MobileAssignmentService
         $pricingVisible = app(BookingPaymentPolicy::class)->driverCanViewPricing($booking);
         $fareAmount = $pricingVisible ? $this->resolveFareAmount($assignment) : null;
         $pricingMetrics = $this->buildPricingMetrics($bookingItem, $assignment);
-        $notification = Schema::hasTable('driver_assignment_notifications')
-            ? \App\Models\Driver\DriverAssignmentNotification::query()
+        if ($assignment->relationLoaded('mobileDriverNotification')) {
+            $notification = $assignment->getRelation('mobileDriverNotification');
+        } else {
+            $notification = Schema::hasTable('driver_assignment_notifications')
+                ? DriverAssignmentNotification::query()
                 ->where('assignment_id', $assignment->id)
                 ->where('driver_id', $assignment->driver_id)
                 ->first(['id', 'acknowledged_at', 'acknowledgement_source'])
-            : null;
+                : null;
+        }
 
         // Driver responses are an explicit projection. Never serialize loaded booking,
         // pricing, tracking, approval, or internal assignment relations implicitly.
@@ -850,12 +856,25 @@ class MobileAssignmentService
 
     public function mapAssignmentsForMobile(iterable $assignments): array
     {
-        $result = [];
-        foreach ($assignments as $assignment) {
-            $result[] = $this->buildAssignmentPayload($assignment);
+        $models = new EloquentCollection(collect($assignments)->all());
+        $models->loadMissing('stops');
+        if ($models->isNotEmpty() && Schema::hasTable('driver_assignment_notifications')) {
+            $notifications = DriverAssignmentNotification::query()
+                ->where('driver_id', $models->first()->driver_id)
+                ->whereIn('assignment_id', $models->modelKeys())
+                ->get(['id', 'assignment_id', 'driver_id', 'acknowledged_at', 'acknowledgement_source'])
+                ->keyBy('assignment_id');
+            foreach ($models as $assignment) {
+                $assignment->setRelation(
+                    'mobileDriverNotification',
+                    $notifications->get($assignment->id),
+                );
+            }
         }
 
-        return $result;
+        return $models->map(fn (DriverAssignment $assignment) =>
+            $this->buildAssignmentPayload($assignment)
+        )->all();
     }
 
     public function getEarningsSummary(Driver $driver): array

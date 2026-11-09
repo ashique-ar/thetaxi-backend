@@ -1334,6 +1334,7 @@ class BookingController extends Controller
         // fail if the service type is configured outside the public context.
         $serviceType = null;
         $serviceFeatures = [];
+        $showVehicleRefundableDeposit = false;
         $serviceTypeValue = $searchParams['service_type_id'] ?? ($searchParams['service_type'] ?? null);
         if ($serviceTypeValue !== null) {
             $serviceModel = $this->resolveServiceType((string) $serviceTypeValue);
@@ -1341,8 +1342,7 @@ class BookingController extends Controller
                 $serviceModel = $this->resolveServiceType((string) $searchParams['service_type_code']);
             }
             $serviceType = $serviceModel?->code ?? ($searchParams['service_type_code'] ?? 'point_to_point');
-            $showVehicleRefundableDeposit = !$serviceModel
-                || ($serviceModel->deposit_mode !== 'none' && (float) $serviceModel->deposit_value > 0);
+            $showVehicleRefundableDeposit = (bool) $serviceModel?->requires_refundable_deposit;
             $serviceFeatures = $serviceModel?->form_config['service_features'] ?? [];
             $serviceFeatures = is_array($serviceFeatures)
                 ? array_values(array_filter($serviceFeatures, static fn ($feature) => is_string($feature) && trim($feature) !== ''))

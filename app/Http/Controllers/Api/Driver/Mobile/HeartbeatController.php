@@ -58,9 +58,6 @@ class HeartbeatController extends Controller
             // Update heartbeat timestamp
             $this->sessionService->updateHeartbeat($driver);
 
-            // Refresh driver to get updated timestamp
-            $driver->refresh();
-
             // Check for active trip
             $activeAssignment = $this->assignmentService->getActiveTripAssignment($driver);
 

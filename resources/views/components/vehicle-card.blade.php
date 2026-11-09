@@ -9,6 +9,7 @@
     'isRecommended' => false,
     'showBookNow' => false,
     'showViewDetails' => true,
+    'showImageGallery' => false,
 ])
 
 @php
@@ -24,6 +25,16 @@
         }
     }
     $mainImage = $thumb ? s3_asset($thumb) : asset('assets/img/default-vehicle.jpg');
+    $galleryImages = collect($vehicle['images'] ?? [])
+        ->map(fn ($image) => is_array($image) ? ($image['path'] ?? null) : $image)
+        ->filter(fn ($image) => is_string($image) && $image !== '')
+        ->map(fn ($image) => s3_asset($image))
+        ->unique()
+        ->values();
+    if (!$thumb && $galleryImages->isNotEmpty()) {
+        $mainImage = $galleryImages->first();
+    }
+    $galleryImages = $galleryImages->prepend($mainImage)->unique()->values();
 
     // Determine if this vehicle is quotation-only
     $isQuotationOnly = $vehicle['quotation_only'] ?? false;
@@ -124,6 +135,13 @@
     <div class="vehicle-image-container">
         <img src="{{ $mainImage }}" alt="{{ $vehicle['name'] ?? 'Unknown Vehicle' }}" class="vehicle-img"
             loading="lazy">
+
+        @if ($showImageGallery && $galleryImages->isNotEmpty())
+            <button type="button" class="vehicle-gallery-trigger" data-images="{{ $galleryImages->toJson() }}"
+                data-title="{{ $vehicle['name'] ?? 'Vehicle' }}" aria-label="View photos of {{ $vehicle['name'] ?? 'vehicle' }}">
+                <i class="bi bi-images" aria-hidden="true"></i> View photos
+            </button>
+        @endif
 
         @if ($showPublicPrice && $hasDiscount && $discountPercentage > 0)
             <span class="discount-badge">
@@ -369,7 +387,7 @@
 
         <!-- Vehicle Amenities & Additional Info -->
         <div class="vehicle-card-amenities-slot">
-            @if ($showPublicPrice && ($vehicle['show_vehicle_refundable_deposit'] ?? true) && isset($vehicle['refundable_deposit']))
+            @if ($showPublicPrice && ($vehicle['show_vehicle_refundable_deposit'] ?? false) && isset($vehicle['refundable_deposit']))
                 <div class="vehicle-amenities">
                     @if (isset($vehicle['refundable_deposit']) && $vehicle['refundable_deposit'] > 0)
                         <span class="amenity-badge">
@@ -560,6 +578,44 @@
         </div>
     </div>
 </div>
+
+@if ($showImageGallery)
+    @once('vehicle-gallery-modal')
+        <div class="modal fade" id="vehicleGalleryModal" tabindex="-1" aria-labelledby="vehicleGalleryTitle" aria-hidden="true">
+            <div class="modal-dialog modal-dialog-centered modal-lg">
+                <div class="modal-content bg-dark text-white">
+                    <div class="modal-header border-0">
+                        <h5 class="modal-title" id="vehicleGalleryTitle"></h5>
+                        <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal" aria-label="Close"></button>
+                    </div>
+                    <div class="modal-body pt-0">
+                        <div class="vehicle-gallery-stage">
+                            <button type="button" class="vehicle-gallery-nav vehicle-gallery-prev" aria-label="Previous photo"><i class="bi bi-chevron-left"></i></button>
+                            <img class="vehicle-gallery-image" alt="">
+                            <button type="button" class="vehicle-gallery-nav vehicle-gallery-next" aria-label="Next photo"><i class="bi bi-chevron-right"></i></button>
+                        </div>
+                        <div class="vehicle-gallery-count text-center mt-2" aria-live="polite"></div>
+                    </div>
+                </div>
+            </div>
+        </div>
+        @push('styles')
+            <style>
+                .vehicle-gallery-trigger{position:absolute;right:12px;bottom:12px;z-index:3;border:0;border-radius:20px;padding:7px 11px;background:#fff;color:#222;font-size:12px;font-weight:600;box-shadow:0 2px 8px #0003;opacity:.96;cursor:pointer}
+                .vehicle-gallery-stage{position:relative;display:flex;align-items:center;justify-content:center;min-height:280px}
+                .vehicle-gallery-image{max-width:100%;max-height:70vh;object-fit:contain}
+                .vehicle-gallery-nav{position:absolute;top:50%;transform:translateY(-50%);z-index:1;border:0;border-radius:50%;width:42px;height:42px;background:#ffffffd9;color:#222;font-size:20px}
+                .vehicle-gallery-prev{left:8px}.vehicle-gallery-next{right:8px}
+                .vehicle-gallery-trigger:hover,.vehicle-gallery-trigger:focus-visible{background:#f1f1f1;transform:scale(1.04)}
+            </style>
+        @endpush
+        @push('scripts')
+            <script>
+                (()=>{const modal=document.getElementById('vehicleGalleryModal'),img=modal.querySelector('.vehicle-gallery-image'),title=modal.querySelector('#vehicleGalleryTitle'),count=modal.querySelector('.vehicle-gallery-count');let images=[],index=0;const show=()=>{img.src=images[index];img.alt=`${title.textContent} photo ${index+1}`;count.textContent=`${index+1} / ${images.length}`};document.addEventListener('click',e=>{const trigger=e.target.closest('.vehicle-gallery-trigger');if(trigger){images=JSON.parse(trigger.dataset.images);index=0;title.textContent=trigger.dataset.title;show();bootstrap.Modal.getOrCreateInstance(modal).show()}});modal.querySelector('.vehicle-gallery-prev').addEventListener('click',()=>{index=(index+images.length-1)%images.length;show()});modal.querySelector('.vehicle-gallery-next').addEventListener('click',()=>{index=(index+1)%images.length;show()})})();
+            </script>
+        @endpush
+    @endonce
+@endif
 
 @once
     @push('styles')

@@ -2019,6 +2019,7 @@
             // Get PHP variables from blade
             const currencySymbol = '{{ $currencySymbol }}';
             let checkoutTotal = {{ $total }};
+            const pickupDepositTotal = {{ (float) collect($cart)->sum(fn ($item) => (float) ($item['refundable_deposit'] ?? 0)) }};
             const advancePercentage = {{ $advancePercentage }};
             const advanceMinAmount = {{ $advanceMinAmount }};
             const paymentTermsGroups = $('.payment-terms-group');
@@ -2288,6 +2289,7 @@
 
                 const totals = cart.totals;
                 checkoutTotal = Math.max(0, Number(totals.total) || 0);
+                $('[data-summary-field="pickup_total"]').text(formatCheckoutAmount(checkoutTotal + pickupDepositTotal));
                 const normalFields = [
                     'subtotal',
                     'addon_charges',

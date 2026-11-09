@@ -582,10 +582,12 @@ class TripTrackingService
             return collect();
         }
 
-        if ($assignment->stops()->exists()) {
-            $stops = $assignment->stops()->get();
+        $stops = $assignment->relationLoaded('stops')
+            ? $assignment->getRelation('stops')
+            : $assignment->stops()->get();
+        if ($stops->isNotEmpty()) {
             $this->backfillStopIdentifiers($assignment, $stops);
-            return $assignment->stops()->get();
+            return $stops;
         }
 
         $assignment->loadMissing('bookingItem');

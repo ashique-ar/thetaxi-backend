@@ -47,14 +47,13 @@ class GenerateSitemapAndPing extends Command
             return 1;
         }
 
-        $autoPing = filter_var($this->settings->get('sitemap_auto_ping', true), FILTER_VALIDATE_BOOLEAN);
+        $autoPing = filter_var($this->settings->get('sitemap_auto_ping', false), FILTER_VALIDATE_BOOLEAN);
         if (!$autoPing) {
             $this->info('Sitemap auto-ping disabled in settings.');
             return 0;
         }
 
-        // Use secure + www-prefixed default endpoints (safer against redirects and preferred by engines)
-        $endpointsRaw = $this->settings->get('sitemap_ping_urls', "https://www.google.com/ping?sitemap={sitemap_url}\nhttps://www.bing.com/webmaster/ping.aspx?siteMap={sitemap_url}");
+        $endpointsRaw = $this->settings->get('sitemap_ping_urls', '');
 
         $endpoints = preg_split('/\r?\n/', trim((string) $endpointsRaw)) ?: [];
 
@@ -63,6 +62,15 @@ class GenerateSitemapAndPing extends Command
         foreach ($endpoints as $endpoint) {
             $endpoint = trim($endpoint);
             if (empty($endpoint)) {
+                continue;
+            }
+
+            $parsedEndpoint = parse_url($endpoint);
+            $host = strtolower($parsedEndpoint['host'] ?? '');
+            $path = strtolower($parsedEndpoint['path'] ?? '');
+            if ((in_array($host, ['google.com', 'www.google.com'], true) && $path === '/ping')
+                || (in_array($host, ['bing.com', 'www.bing.com'], true) && $path === '/webmaster/ping.aspx')) {
+                $this->warn("Skipping retired sitemap ping endpoint: {$endpoint}");
                 continue;
             }
 

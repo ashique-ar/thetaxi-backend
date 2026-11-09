@@ -64,13 +64,13 @@ it('runs sitemap command and pings search engines', function () {
     $settingsService = app(\App\Services\WebsiteSettingsService::class);
     $settingsService->set('sitemap_auto_generate', true);
     $settingsService->set('sitemap_auto_ping', true);
-    $settingsService->set('sitemap_ping_urls', "http://www.google.com/ping?sitemap={sitemap_url}");
+    $settingsService->set('sitemap_ping_urls', "https://search.example.test/sitemap?url={sitemap_url}");
 
     Artisan::call('sitemap:generate-and-ping');
 
-    // Assert an HTTP call was made to the Google ping endpoint
+    // Assert an HTTP call was made to the configured custom endpoint
     Http::assertSent(function ($request) {
-        return str_contains($request->url(), 'www.google.com/ping');
+        return str_contains($request->url(), 'search.example.test/sitemap');
     });
 });
 
@@ -81,7 +81,7 @@ it('sends a notification email when ping attempts fail and notification enabled'
     $settingsService = app(\App\Services\WebsiteSettingsService::class);
     $settingsService->set('sitemap_auto_generate', true);
     $settingsService->set('sitemap_auto_ping', true);
-    $settingsService->set('sitemap_ping_urls', "http://www.google.com/ping?sitemap={sitemap_url}");
+    $settingsService->set('sitemap_ping_urls', "https://search.example.test/sitemap?url={sitemap_url}");
 
     // Set notification options
     $settingsService->set('sitemap_failure_notify', true);
@@ -109,10 +109,23 @@ it('retries ping on 4xx and succeeds on alternate', function () {
     $settingsService = app(\App\Services\WebsiteSettingsService::class);
     $settingsService->set('sitemap_auto_generate', true);
     $settingsService->set('sitemap_auto_ping', true);
-    $settingsService->set('sitemap_ping_urls', "http://www.google.com/ping?sitemap={sitemap_url}");
+    $settingsService->set('sitemap_ping_urls', "https://search.example.test/sitemap?url={sitemap_url}");
 
     Artisan::call('sitemap:generate-and-ping');
 
     // Ensure it attempted at least the initial and retry call
     Http::assertSentCount(2);
+});
+
+it('skips retired Google and Bing sitemap ping endpoints', function () {
+    Http::fake();
+
+    $settingsService = app(\App\Services\WebsiteSettingsService::class);
+    $settingsService->set('sitemap_auto_generate', true);
+    $settingsService->set('sitemap_auto_ping', true);
+    $settingsService->set('sitemap_ping_urls', "https://www.google.com/ping?sitemap={sitemap_url}\nhttps://www.bing.com/webmaster/ping.aspx?siteMap={sitemap_url}");
+
+    Artisan::call('sitemap:generate-and-ping');
+
+    Http::assertNothingSent();
 });

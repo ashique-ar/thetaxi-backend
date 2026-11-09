@@ -1,6 +1,7 @@
 @php
-    $hasTourItem = collect($cart)->contains(fn ($item) => !empty($item['is_tour']));
-    $hasNonTourItem = collect($cart)->contains(fn ($item) => empty($item['is_tour']));
+    $hasTourItem = collect($cart)->contains(fn($item) => !empty($item['is_tour']));
+    $hasNonTourItem = collect($cart)->contains(fn($item) => empty($item['is_tour']));
+    $pickupDepositTotal = collect($cart)->sum(fn($item) => (float) ($item['refundable_deposit'] ?? 0));
 @endphp
 <div class="checkout-form-wrapper">
     <div class="checkout-form-title">
@@ -75,8 +76,7 @@
                                 {{ $taxLabel }}
                                 ({{ $taxPercentageLabel }}%)
                                 <div class="order-info">
-                                    <span class="checkout-summary-amount"
-                                        data-summary-field="tax">{{ $currencySymbol }}
+                                    <span class="checkout-summary-amount" data-summary-field="tax">{{ $currencySymbol }}
                                         {{ number_format(floor(max(0, $tax)), 0) }}</span>
                                 </div>
                             </li>
@@ -86,8 +86,7 @@
                                 {{ $vatLabel }}
                                 ({{ $vatPercentageLabel }}%)
                                 <div class="order-info">
-                                    <span class="checkout-summary-amount"
-                                        data-summary-field="vat">{{ $currencySymbol }}
+                                    <span class="checkout-summary-amount" data-summary-field="vat">{{ $currencySymbol }}
                                         {{ number_format(floor(max(0, $vat)), 0) }}</span>
                                 </div>
                             </li>
@@ -139,7 +138,8 @@
                             style="{{ $discount > 0 ? '' : 'display: none;' }}">
                             <strong class="text-success"><i class="bi bi-tag-fill"></i> Discount</strong>
                             <div class="order-info text-success">
-                                <span class="checkout-summary-amount" data-summary-field="coupon_discount">-{{ $currencySymbol }}
+                                <span class="checkout-summary-amount"
+                                    data-summary-field="coupon_discount">-{{ $currencySymbol }}
                                     {{ number_format(floor(max(0, $discount)), 0) }}</span>
                             </div>
                         </li>
@@ -151,6 +151,19 @@
                             <strong class="checkout-summary-amount" data-summary-field="total">{{ $currencySymbol }}
                                 {{ number_format(floor(max(0, $total)), 0) }}</strong>
                         </li>
+                        @if ($pickupDepositTotal > 0)
+                            <li>
+                                <div><strong>Refundable deposit at vehicle collection</strong><small>Required by this
+                                        service; paid when you collect the vehicle</small></div>
+                                <strong>{{ $currencySymbol }} {{ number_format(floor($pickupDepositTotal), 0) }}</strong>
+                            </li>
+                            <li class="total-row">
+                                <div><strong>Booking total including refundable deposit</strong><small>The refundable
+                                        deposit is not charged in today’s checkout payment</small></div>
+                                <strong data-summary-field="pickup_total">{{ $currencySymbol }}
+                                    {{ number_format(floor(max(0, $total + $pickupDepositTotal)), 0) }}</strong>
+                            </li>
+                        @endif
                         @if ($paymentType !== 'full')
                             <li class="payment-amount-row">
                                 <strong>

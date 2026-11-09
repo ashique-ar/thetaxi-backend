@@ -41,7 +41,9 @@
                 </div>
                 <div class="text-md-end">
                     <p class="text-muted mb-1">Offer revision {{ $revisionNumber }}</p>
-                    <p class="mb-0">Valid until {{ \Illuminate\Support\Carbon::parse($expiresAt)->timezone(config('app.timezone'))->format('M j, Y g:i A') }}</p>
+                    <p class="mb-0">Valid until
+                        {{ \Illuminate\Support\Carbon::parse($expiresAt)->timezone(config('app.timezone'))->format('M j, Y g:i A') }}
+                    </p>
                 </div>
             </div>
 
@@ -58,11 +60,13 @@
                         <div>{{ $item['vehicle_group_name'] }}</div>
                     @endif
                     <div class="text-muted">{{ !empty($item['is_self_driven']) ? 'Self-drive' : 'With driver' }}</div>
-                    <div>{{ $item['from_date'] ?? 'Date not set' }} {{ $item['from_time'] ?? '' }} – {{ $item['to_date'] ?? '' }} {{ $item['to_time'] ?? '' }}</div>
+                    <div>{{ $item['from_date'] ?? 'Date not set' }} {{ $item['from_time'] ?? '' }} –
+                        {{ $item['to_date'] ?? '' }} {{ $item['to_time'] ?? '' }}</div>
                     @if ($pickup || $dropoff)
                         <div class="text-muted">{{ $pickup ?: 'Pickup not set' }} → {{ $dropoff ?: 'Drop-off not set' }}</div>
                     @endif
-                    <div class="text-muted">{{ $item['quantity'] ?? 1 }} × {{ number_format((float) ($item['unit_price'] ?? 0), 2) }} {{ $currency }}</div>
+                    <div class="text-muted">{{ $item['quantity'] ?? 1 }} ×
+                        {{ number_format((float) ($item['unit_price'] ?? 0), 2) }} {{ $currency }}</div>
                     <div class="fw-semibold">{{ number_format((float) ($item['total_price'] ?? 0), 2) }} {{ $currency }}</div>
                 </div>
             @empty
@@ -81,6 +85,7 @@
             <div class="d-flex justify-content-between mt-2">
                 <span>Due after acceptance</span><strong>{{ number_format($amountDue, 2) }} {{ $currency }}</strong>
             </div>
+            <x-booking-refundable-deposit :booking="$booking" :currency="$currency" />
         </section>
 
         <section class="card p-4 mb-4">
@@ -101,9 +106,11 @@
             <input type="hidden" name="terms_hash" value="{{ $termsHash }}">
             <label class="d-flex align-items-start gap-2 mb-3">
                 <input type="checkbox" name="accept_terms" value="1" required style="margin-top: 5px;">
-                <span>I have reviewed this quotation and the terms above. I accept this offer and understand that I will continue to payment.</span>
+                <span>I have reviewed this quotation and the terms above. I accept this offer and understand that I will
+                    continue to payment.</span>
             </label>
-            @error('accept_terms') <p class="text-danger">{{ $message }}</p> @enderror
+            @error('accept_terms')
+            <p class="text-danger">{{ $message }}</p> @enderror
             <button type="submit" class="btn btn-primary">Accept quotation and continue</button>
         </form>
     </main>
