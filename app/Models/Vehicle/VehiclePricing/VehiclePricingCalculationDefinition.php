@@ -1759,9 +1759,9 @@ class VehiclePricingCalculationDefinition extends Model
                         'type' => 'km_range_pricing',
                         'distance_type' => $distanceType,
                         'distance' => $distance,
-                        'name' => $rule['rule_info']['name'] ?? 'KM Range Pricing',
+                        'name' => ucfirst(str_replace('_', ' ', $distanceType)) . ' — ' . ($rule['rule_info']['name'] ?? 'KM Range Pricing'),
                         'amount' => $adjustmentAmount,
-                        'calculation' => $rule['calculation_details'] ?? null,
+                        'calculation' => $rule['calculation_details']['calculation'] ?? $rule['calculation_details'] ?? null,
                         'is_discount' => $adjustmentAmount < 0,
                     ];
                     $totalKmAdjustment += $adjustmentAmount;
@@ -1771,15 +1771,6 @@ class VehiclePricingCalculationDefinition extends Model
             }
         }
 
-        if ($totalKmAdjustment !== 0.0) {
-            $adjustments[] = [
-                'type' => 'km_range_pricing_summary',
-                'name' => 'KM Range Adjustment',
-                'amount' => $totalKmAdjustment,
-                'calculation' => 'Applied configured KM rules separately to eligible distance legs.',
-                'is_discount' => $totalKmAdjustment < 0,
-            ];
-        }
 
         $kmChargeAmount = $this->calculateResolvedKmChargeComponent($resolvedVariables);
         if ($kmChargeAmount > 0) {
