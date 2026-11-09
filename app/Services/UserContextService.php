@@ -19,22 +19,11 @@ use Spatie\Permission\PermissionRegistrar;
 
 class UserContextService
 {
-    private const INTERNAL_PERMISSION_HINTS = [
-        'dashboard.view',
-        'users.view',
-        'bookings.view',
-        'vehicles.view',
-        'customers.view',
-        'drivers.view',
-        'staff.view',
-        'agents.view',
-        'reports.view',
-        'corporates.view',
-    ];
-
     private const ROLE_CONTEXT_MAP = [
         'customer' => ['customer'],
         'driver' => ['driver'],
+        'admin' => ['staff'],
+        'super-admin' => ['staff'],
         'staff' => ['staff'],
         'staff-operations' => ['staff'],
         'accountant' => ['staff'],
@@ -233,7 +222,7 @@ class UserContextService
             ];
         }
 
-        if (($user->hasRole(['staff', 'admin']) || in_array('staff', $inactiveContextTypes, true)) && !in_array('staff', $activeContextTypes, true) && (!$inactiveStaffContext || !$this->staffContextRequiresRehire($inactiveStaffContext))) {
+        if (($user->hasRole(['staff', 'admin', 'super-admin']) || in_array('staff', $inactiveContextTypes, true)) && !in_array('staff', $activeContextTypes, true) && (!$inactiveStaffContext || !$this->staffContextRequiresRehire($inactiveStaffContext))) {
             $contexts[] = [
                 'value' => 'staff',
                 'label' => 'Staff',

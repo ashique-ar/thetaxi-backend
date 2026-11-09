@@ -12,7 +12,7 @@ use Spatie\Permission\Models\Role;
 class StaffRoleContextSeeder extends Seeder
 {
     private const ROLES = [
-        'accountant', 'admin-mkt', 'data-entry', 'driver-coordinator', 'fleet-manager', 'staff-operations',
+        'accountant', 'admin', 'admin-mkt', 'data-entry', 'driver-coordinator', 'fleet-manager', 'staff-operations', 'super-admin',
         'hr-integration-adapter', 'hr-manager', 'hr-notification-adapter', 'hr-officer',
         'hr-safety-integration-adapter', 'management', 'rep-marketing', 'sales-manager',
         'salesperson', 'sub-admin',

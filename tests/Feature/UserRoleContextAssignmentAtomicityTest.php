@@ -65,6 +65,7 @@ it('reuses one Staff context when role context synchronization repeats', functio
         ->and(DB::table('user_contexts')->where('user_id', $target->id)->where('context_type', 'staff')->where('is_active', true)->count())->toBe(1);
 });
 
+
 it('keeps direct role grants when their context is deactivated and removes context-only roles', function () {
     [$admin] = hr_seed_admin_actor();
     $target = User::factory()->create();
