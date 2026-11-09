@@ -1306,8 +1306,41 @@ class MobileAssignmentService
     private function mapPackageForMobile(array $metadata, $bookingItem = null): ?array
     {
         $packageId = $metadata['service_package_id'] ?? $metadata['package_id'] ?? null;
-        if (!$packageId) {
+        $meterPackage = is_array($metadata['taxi_meter_package'] ?? null)
+            ? $metadata['taxi_meter_package']
+            : null;
+        if (!$packageId && !$meterPackage) {
             return null;
+        }
+
+        if ($meterPackage) {
+            $includedKm = (float) ($meterPackage['included_km'] ?? 0);
+            $includedHours = (float) ($meterPackage['included_hours'] ?? 0);
+            return [
+                'id' => null,
+                'name' => match ($meterPackage['package_kind'] ?? null) {
+                    'distance' => 'Kilometer Package',
+                    'hourly' => 'Hourly Package',
+                    'combined' => 'Hours + Kilometers',
+                    default => 'Open Meter',
+                },
+                'code' => 'taxi_meter_' . ($meterPackage['package_kind'] ?? 'open_meter'),
+                'description' => null,
+                'included_km_per_day' => null,
+                'included_km_per_package' => $includedKm > 0 ? $includedKm : null,
+                'included_km_total' => $includedKm > 0 ? $includedKm : null,
+                'included_hours' => $includedHours,
+                'included_minutes' => (int) round($includedHours * 60),
+                'rate_type' => 'meter',
+                'charges_extra_hours' => (float) ($meterPackage['extra_per_hour'] ?? 0) > 0,
+                'charges_extra_km' => (float) ($meterPackage['extra_per_km'] ?? 0) > 0,
+                'fixed_price' => (float) ($meterPackage['fixed_price'] ?? 0),
+                'extra_per_km' => (float) ($meterPackage['extra_per_km'] ?? 0),
+                'extra_per_hour' => (float) ($meterPackage['extra_per_hour'] ?? 0),
+                'meter_package_kind' => $meterPackage['package_kind'] ?? 'open_meter',
+                'currency' => $bookingItem?->currency,
+                'snapshot' => true,
+            ];
         }
 
         $snapshot = is_array($metadata['package_info'] ?? null) ? $metadata['package_info'] : null;

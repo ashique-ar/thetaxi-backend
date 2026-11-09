@@ -14,6 +14,7 @@ use App\Models\Vehicle\VehiclePricing\VehiclePricingCalculationDefinition;
 use App\Models\Vehicle\VehiclePricing\BookingPriceAdjustmentHistory;
 use App\Models\Vehicle\VehiclePricing\PriceAdjustment;
 use App\Models\Vehicle\Vehicle;
+use App\Models\Service\ServiceType;
 use App\Models\Finance\FinancialSettlementItem;
 use App\Services\Driver\NotificationTriggerService;
 use App\Services\Pricing\FinalPricingTelemetryResolver;
@@ -2655,6 +2656,26 @@ class BookingLifecycleService
             ];
         }
 
+        $isTaxiMeter = $bookingItem->serviceType?->code === 'taxi_meter'
+            || ServiceType::query()->whereKey($bookingItem->service_type_id)->value('code') === 'taxi_meter';
+        $taxiMeterPackage = is_array($metadata['taxi_meter_package'] ?? null)
+            ? $metadata['taxi_meter_package']
+            : null;
+        if ($isTaxiMeter && $taxiMeterPackage) {
+            $params = array_merge($params, [
+                'meter_fixed_price' => ((float) ($taxiMeterPackage['fixed_price'] ?? 0)) / $currencyContext['exchange_rate'],
+                'meter_included_km' => $taxiMeterPackage['included_km'] ?? 0,
+                'meter_included_hours' => $taxiMeterPackage['included_hours'] ?? 0,
+                'meter_extra_per_km' => ((float) ($taxiMeterPackage['extra_per_km'] ?? 0)) / $currencyContext['exchange_rate'],
+                'meter_extra_per_hour' => ((float) ($taxiMeterPackage['extra_per_hour'] ?? 0)) / $currencyContext['exchange_rate'],
+                'meter_actual_km' => $distanceKm !== null ? (float) $distanceKm : 0,
+                'meter_actual_hours' => max(0, $durationMinutes) / 60,
+            ]);
+            if ($distanceKm === null || !$hasDurationSource) {
+                $params['mode'] = 'meter_telemetry_missing';
+            }
+        }
+
         $params = app(PricingContextPolicyService::class)->normalizeCalculationParams($params);
 
         if (data_get($bookingItem->metadata, 'tour_itinerary_id')) {
@@ -2904,6 +2925,24 @@ class BookingLifecycleService
                 $currencyContext
             ),
         ];
+        if ($isTaxiMeter && $taxiMeterPackage && $definitionId) {
+            $kmOver = max(0, (float) $params['meter_actual_km'] - (float) $taxiMeterPackage['included_km']);
+            $hoursOver = max(0, (float) $params['meter_actual_hours'] - (float) $taxiMeterPackage['included_hours']);
+            $audit['meter_breakdown'] = [
+                'package_kind' => $taxiMeterPackage['package_kind'],
+                'fixed_price' => (float) $taxiMeterPackage['fixed_price'],
+                'actual_km' => $distanceKm !== null ? round((float) $distanceKm, 2) : null,
+                'included_km' => (float) $taxiMeterPackage['included_km'],
+                'extra_km' => round($kmOver, 2),
+                'extra_km_charge' => $this->currencyService->roundAmount($kmOver * (float) $taxiMeterPackage['extra_per_km'], $currencyContext['booking_currency']),
+                'actual_hours' => $hasDurationSource ? round($durationMinutes / 60, 4) : null,
+                'included_hours' => (float) $taxiMeterPackage['included_hours'],
+                'extra_hours' => round($hoursOver, 4),
+                'extra_hour_charge' => $this->currencyService->roundAmount($hoursOver * (float) $taxiMeterPackage['extra_per_hour'], $currencyContext['booking_currency']),
+                'total' => $finalBase,
+                'currency' => $currencyContext['booking_currency'],
+            ];
+        }
 
         $this->commitPriceAdjustmentUsage(
             $booking,

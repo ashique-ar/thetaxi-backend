@@ -23,6 +23,7 @@ class UpdateCompanyRequest extends FormRequest
             'country_id' => ['sometimes', 'nullable', 'exists:countries,id'],
             'state_id' => ['sometimes', 'nullable', 'exists:states,id'],
             'city' => ['sometimes', 'nullable', 'string'],
+            'is_garage' => ['sometimes', 'boolean'],
             'is_active' => ['sometimes', 'nullable', 'boolean'],
         ];
     }

@@ -1487,8 +1487,8 @@ class VehiclePricingCalculationDefinitionController extends Controller
                 ['name' => 'package_included_km', 'type' => 'distance', 'description' => 'Distance included by the selected service package', 'is_required' => false, 'default_value' => 0, 'category' => 'distance'],
                 ['name' => 'package_included_hours', 'type' => 'duration', 'description' => 'Hours included by the selected service package', 'is_required' => false, 'default_value' => 0, 'category' => 'duration'],
                 ['name' => 'package_has_hour_limit', 'type' => 'number', 'description' => 'Selected package hour-limit flag (1 when extra hours apply, otherwise 0)', 'is_required' => false, 'default_value' => 0, 'category' => 'duration'],
-                ['name' => 'delivery_distance', 'type' => 'distance', 'description' => 'Vehicle delivery distance in KM', 'is_required' => false, 'default_value' => 0, 'category' => 'distance'],
-                ['name' => 'pickup_distance', 'type' => 'distance', 'description' => 'Vehicle pickup distance in KM (return distance)', 'is_required' => false, 'default_value' => 0, 'category' => 'distance'],
+                ['name' => 'delivery_distance', 'type' => 'distance', 'description' => 'Drop-off to garage distance in KM', 'is_required' => false, 'default_value' => 0, 'category' => 'distance'],
+                ['name' => 'pickup_distance', 'type' => 'distance', 'description' => 'Garage to pickup distance in KM', 'is_required' => false, 'default_value' => 0, 'category' => 'distance'],
                 ['name' => 'extra_km', 'type' => 'distance', 'description' => 'Extra KM beyond package/daily limit', 'is_required' => false, 'default_value' => 0, 'category' => 'distance'],
                 ['name' => 'extra_hours', 'type' => 'duration', 'description' => 'Extra hours beyond package limit', 'is_required' => false, 'default_value' => 0, 'category' => 'duration'],
                 ['name' => 'extra_minutes', 'type' => 'duration', 'description' => 'Extra minutes beyond package limit', 'is_required' => false, 'default_value' => 0, 'category' => 'duration']

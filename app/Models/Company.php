@@ -48,6 +48,7 @@ class Company extends BaseModel
         'state_id',
         'city',
         'is_active',
+        'is_garage',
         'created_user_id',
         'updated_user_id'
     ];
@@ -61,6 +62,7 @@ class Company extends BaseModel
         'latitude' => 'decimal:8',
         'longitude' => 'decimal:8',
         'is_active' => 'boolean',
+        'is_garage' => 'boolean',
     ];
 
     // Relations

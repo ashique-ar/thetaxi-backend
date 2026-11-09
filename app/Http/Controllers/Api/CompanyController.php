@@ -8,6 +8,8 @@ use App\Http\Requests\Company\CreateCompanyRequest;
 use App\Http\Requests\Company\UpdateCompanyRequest;
 use App\Http\Resources\Company\CompanyResource;
 use Illuminate\Http\Request;
+use Illuminate\Support\Facades\DB;
+use Illuminate\Validation\ValidationException;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Resources\Json\AnonymousResourceCollection;
 
@@ -97,7 +99,15 @@ class CompanyController extends Controller
     {
         $data = $request->validated();
         $data['created_user_id'] = $request->user()->id;
-        $company = Company::create($data);
+        $company = DB::transaction(function () use ($data) {
+            $garage = (bool) ($data['is_garage'] ?? false);
+            if ($garage && (!(bool) ($data['is_active'] ?? true) || !isset($data['latitude'], $data['longitude']))) {
+                throw ValidationException::withMessages(['is_garage' => 'The default garage must be active and have a map location.']);
+            }
+            if ($garage) Company::query()->where('is_garage', true)->update(['is_garage' => false]);
+            $company = Company::create($data);
+            return $company;
+        });
 
         return response()->json([
             'status' => 'success',
@@ -118,8 +128,15 @@ class CompanyController extends Controller
     {
         $data = $request->validated();
         $data['updated_user_id'] = $request->user()->id;
-        $company->update($data);
-        $company = $company->fresh();
+        $company = DB::transaction(function () use ($company, $data) {
+            $company->fill($data);
+            if ($company->is_garage && (!$company->is_active || $company->latitude === null || $company->longitude === null)) {
+                throw ValidationException::withMessages(['is_garage' => 'The default garage must be active and have a map location.']);
+            }
+            if ($company->is_garage) Company::query()->where('id', '<>', $company->id)->where('is_garage', true)->update(['is_garage' => false]);
+            $company->save();
+            return $company->fresh();
+        });
 
         return response()->json([
             'status' => 'success',

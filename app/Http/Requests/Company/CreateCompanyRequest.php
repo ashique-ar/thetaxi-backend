@@ -23,6 +23,7 @@ class CreateCompanyRequest extends FormRequest
             'country_id' => ['nullable', 'exists:countries,id'],
             'state_id' => ['nullable', 'exists:states,id'],
             'city' => ['nullable', 'string'],
+            'is_garage' => ['sometimes', 'boolean'],
             'is_active' => ['nullable', 'boolean'],
         ];
     }

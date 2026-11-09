@@ -249,6 +249,67 @@ class BookingFlowService
         return $params;
     }
 
+    private function normalizeTaxiMeterBookingItems(array $params): array
+    {
+        if (is_array($params['booking_items'] ?? null)) {
+            foreach ($params['booking_items'] as $index => $item) {
+                if (is_array($item)) {
+                    $params['booking_items'][$index] = $this->normalizeTaxiMeterItem($item);
+                }
+            }
+            return $params;
+        }
+
+        $serviceTypeId = $params['service_type_id'] ?? $params['service_type'] ?? null;
+        $serviceType = $serviceTypeId ? ServiceType::find($serviceTypeId) : null;
+        if ($serviceType?->code !== 'taxi_meter') {
+            return $params;
+        }
+
+        $item = $this->normalizeTaxiMeterItem([
+            'service_type_id' => $serviceTypeId,
+            'metadata' => is_array($params['metadata'] ?? null) ? $params['metadata'] : [],
+        ] + $params);
+        $params['metadata'] = $item['metadata'];
+        foreach (['meter_package_kind', 'meter_included_km', 'meter_included_hours', 'meter_fixed_price', 'meter_extra_per_km', 'meter_extra_per_hour'] as $key) {
+            $params[$key] = $item['metadata'][$key];
+        }
+        return $params;
+    }
+
+    private function normalizeTaxiMeterItem(array $item): array
+    {
+        $serviceTypeId = $item['service_type_id'] ?? $item['service_type'] ?? null;
+        $serviceType = $serviceTypeId ? ServiceType::find($serviceTypeId) : null;
+        if ($serviceType?->code !== 'taxi_meter') {
+            return $item;
+        }
+
+        $metadata = is_array($item['metadata'] ?? null) ? $item['metadata'] : [];
+        $package = is_array($metadata['taxi_meter_package'] ?? null) ? $metadata['taxi_meter_package'] : [];
+        $package = app(TaxiMeterPricingService::class)->normalize([
+            'meter_package_kind' => $package['package_kind'] ?? $metadata['meter_package_kind'] ?? $item['meter_package_kind'] ?? null,
+            'meter_included_km' => $package['included_km'] ?? $metadata['meter_included_km'] ?? $item['meter_included_km'] ?? null,
+            'meter_included_hours' => $package['included_hours'] ?? $metadata['meter_included_hours'] ?? $item['meter_included_hours'] ?? null,
+            'meter_fixed_price' => $package['fixed_price'] ?? $metadata['meter_fixed_price'] ?? $item['meter_fixed_price'] ?? null,
+            'meter_extra_per_km' => $package['extra_per_km'] ?? $metadata['meter_extra_per_km'] ?? $item['meter_extra_per_km'] ?? null,
+            'meter_extra_per_hour' => $package['extra_per_hour'] ?? $metadata['meter_extra_per_hour'] ?? $item['meter_extra_per_hour'] ?? null,
+        ]);
+        $metadata = array_merge($metadata, [
+            'trip_mode' => 'open_package',
+            'taxi_meter_package' => $package,
+            'meter_package_kind' => $package['package_kind'],
+            'meter_included_km' => $package['included_km'],
+            'meter_included_hours' => $package['included_hours'],
+            'meter_fixed_price' => $package['fixed_price'],
+            'meter_extra_per_km' => $package['extra_per_km'],
+            'meter_extra_per_hour' => $package['extra_per_hour'],
+        ]);
+
+        $item['metadata'] = $metadata;
+        return $item;
+    }
+
     public function normalizeCorporateEmployeeReferences(array $params): array
     {
         $employeeId = $params['employee_id'] ?? null;
@@ -3434,6 +3495,7 @@ class BookingFlowService
         $this->assertGroupPricedBookingPath($params);
         $this->assertCanOverrideTripPrices($params);
         $params = $this->sanitizeCorporateRequestPayload($params);
+        $params = $this->normalizeTaxiMeterBookingItems($params);
         $params = $this->normalizeCorporateEmployeeReferences($params);
         $params = $this->validateAndPricePromoDiscounts($params);
 
@@ -5669,6 +5731,11 @@ class BookingFlowService
                 $params['contractual_distance_calculation'] = $calculationInputs;
             }
             $transformed = $this->transformCalculationResult($calculationResult, $params, $mode, $servicePackageInfo);
+            foreach (['pickup_distance', 'delivery_distance', 'total_distance'] as $distanceKey) {
+                if (array_key_exists($distanceKey, $calculationInputs)) {
+                    $transformed['distance_details'][$distanceKey] = $calculationInputs[$distanceKey];
+                }
+            }
             $transformed['calculation_metadata']['candidate_failures'] = collect($candidateFailures)
                 ->map(fn(array $failure) => [
                     'definition_id' => $failure['definition_id'] ?? null,
@@ -6075,6 +6142,10 @@ class BookingFlowService
                 throw new \RuntimeException(
                     'Verified journey distance is required before route pricing can be calculated.'
                 );
+            }
+
+            if ($distanceCalculations['garage_distance_failed'] ?? false) {
+                throw new \DomainException('Garage distances could not be calculated. Set an active default garage with a map location and check route availability.');
             }
 
             // Apply minimum KM rule: if journey distance is below minimum, use minimum for pricing
@@ -6958,6 +7029,26 @@ class BookingFlowService
                 'selected_addons' => $itemAddons,
             ]);
 
+            $itemServiceType = $this->resolveCalculationServiceType(
+                $item['service_type_id'] ?? $item['service_type'] ?? null,
+                $itemParams
+            );
+            if ($itemServiceType?->code === 'taxi_meter') {
+                $meterPackage = is_array($itemMetadata['taxi_meter_package'] ?? null)
+                    ? $itemMetadata['taxi_meter_package']
+                    : [];
+                $itemParams = array_merge($itemParams, [
+                    'meter_package_kind' => $meterPackage['package_kind'] ?? $itemMetadata['meter_package_kind'] ?? null,
+                    'meter_included_km' => $meterPackage['included_km'] ?? $itemMetadata['meter_included_km'] ?? null,
+                    'meter_included_hours' => $meterPackage['included_hours'] ?? $itemMetadata['meter_included_hours'] ?? null,
+                    'meter_fixed_price' => $meterPackage['fixed_price'] ?? $itemMetadata['meter_fixed_price'] ?? null,
+                    'meter_extra_per_km' => $meterPackage['extra_per_km'] ?? $itemMetadata['meter_extra_per_km'] ?? null,
+                    'meter_extra_per_hour' => $meterPackage['extra_per_hour'] ?? $itemMetadata['meter_extra_per_hour'] ?? null,
+                    'meter_actual_km' => 0,
+                    'meter_actual_hours' => 0,
+                ]);
+            }
+
             if ($classPricedItem) {
                 $serviceType = $this->resolveCalculationServiceType($itemParams['service_type_id'] ?? null, $itemParams);
                 if ($serviceType?->pricing_basis !== 'vehicle_class') {
@@ -7055,6 +7146,22 @@ class BookingFlowService
         // Ensure we have a vehicle_group_id for single group calculation
         if (empty($params['vehicle_group_id']) && !empty($params['vehicle_groups'])) {
             $params['vehicle_group_id'] = $params['vehicle_groups'][0]['id'];
+        }
+
+        $serviceType = $this->resolveCalculationServiceType(
+            $params['service_type_id'] ?? $params['service_type'] ?? null,
+            $params
+        );
+        if ($serviceType?->code === 'taxi_meter' && strtoupper($targetCurrency) !== strtoupper($baseCurrency)) {
+            foreach (['meter_fixed_price', 'meter_extra_per_km', 'meter_extra_per_hour'] as $rateField) {
+                if (is_numeric($params[$rateField] ?? null)) {
+                    $params[$rateField] = $this->currencyService->convert(
+                        (float) $params[$rateField],
+                        $targetCurrency,
+                        $baseCurrency
+                    );
+                }
+            }
         }
 
         // === SESSION-SCOPED DESIGN: PREVIEW vs PERSIST ===
@@ -7743,18 +7850,28 @@ class BookingFlowService
 
         $journeyDistance = $journeyData['distance_km'];
         $journeyDuration = $journeyData['duration_seconds'];
+        $pickupLeg = $deliveryLeg = ['distance_km' => 0.0, 'duration_seconds' => 0];
+        if ($includeGarageDistance) {
+            $garage = Company::query()->where('is_garage', true)->where('is_active', true)->first();
+            $garagePoint = $garage && $garage->latitude !== null && $garage->longitude !== null
+                ? ['latitude' => (float) $garage->latitude, 'longitude' => (float) $garage->longitude]
+                : null;
+            $pickupLeg = $garagePoint ? $this->calculateDistance($garagePoint, $routePoints[0]) : null;
+            $deliveryLeg = $garagePoint ? $this->calculateDistance($routePoints[array_key_last($routePoints)], $garagePoint) : null;
+        }
+        $garageDistanceFailed = $pickupLeg === null || $deliveryLeg === null;
         $result = [
-            'pickup_distance' => 0.0,
-            'delivery_distance' => 0.0,
+            'pickup_distance' => $pickupLeg === null ? null : round((float) $pickupLeg['distance_km'], 2),
+            'delivery_distance' => $deliveryLeg === null ? null : round((float) $deliveryLeg['distance_km'], 2),
             'journey_distance' => round($journeyDistance, 2),
             'journey_duration_seconds' => $journeyDuration,
             'additional_stops_count' => max(0, count($routePoints) - 2),
-            'total_distance' => round($journeyDistance, 2),
-            'total_duration_seconds' => $journeyDuration,
+            'total_distance' => $garageDistanceFailed ? null : round($journeyDistance + round((float) $pickupLeg['distance_km'], 2) + round((float) $deliveryLeg['distance_km'], 2), 2),
+            'total_duration_seconds' => $garageDistanceFailed ? null : $journeyDuration + $pickupLeg['duration_seconds'] + $deliveryLeg['duration_seconds'],
             'calculation_possible' => true,
             'service_type_used' => $serviceType,
             'include_garage_distance' => $includeGarageDistance,
-            'garage_distance_failed' => true,
+            'garage_distance_failed' => $garageDistanceFailed,
         ];
         $this->routeDistanceCache[$cacheKey] = $result;
 
