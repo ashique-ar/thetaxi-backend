@@ -610,6 +610,7 @@
                 .vehicle-gallery-stage{position:relative;display:grid;place-items:center;width:100vw;height:100dvh;overflow:hidden;background:radial-gradient(ellipse at center,#ffffff18 0%,#dce6f018 38%,#11182766 100%);backdrop-filter:blur(22px) saturate(135%);-webkit-backdrop-filter:blur(22px) saturate(135%)}
                 .vehicle-gallery-image{display:block;width:auto;height:auto;max-width:100vw;max-height:100dvh;object-fit:contain}
                 .vehicle-gallery-title,.vehicle-gallery-count,.vehicle-gallery-close,.vehicle-gallery-nav{position:absolute;z-index:1;color:#fff;background:#171a1dcc;border:1px solid #ffffff55;backdrop-filter:blur(14px);-webkit-backdrop-filter:blur(14px);box-shadow:0 4px 18px #0004}
+                body.theme-theme-04 #vehicleGalleryModal :is(.vehicle-gallery-title,.vehicle-gallery-count,.vehicle-gallery-close,.vehicle-gallery-nav){color:#fff}
                 .vehicle-gallery-title{top:14px;right:58px;margin:0;padding:9px 14px;border-radius:18px;font-size:15px}
                 .vehicle-gallery-close{top:14px;right:14px;display:grid;place-items:center;width:36px;height:36px;border-radius:50%}
                 .vehicle-gallery-nav{top:50%;transform:translateY(-50%);display:grid;place-items:center;width:44px;height:44px;border-radius:50%;font-size:20px}
