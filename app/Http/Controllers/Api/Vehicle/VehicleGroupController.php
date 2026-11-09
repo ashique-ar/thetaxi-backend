@@ -53,8 +53,10 @@ class VehicleGroupController extends Controller
             $q->select([
                 'id', 'grade_id', 'make_id', 'model_id', 'transmission_id',
                 'fuel_type_id', 'category_id', 'class_id', 'name', 'description',
-                'specs', 'thumbnail', 'is_active', 'passengers_count',
-                'hand_luggages', 'air_conditioning', 'refundable_deposit',
+                'seo_slug', 'seo_title', 'seo_description', 'seo_target_terms',
+                'seo_og_image', 'service_seo', 'specs', 'images', 'thumbnail',
+                'is_active', 'is_featured', 'passengers_count', 'hand_luggages',
+                'air_conditioning', 'no_of_doors', 'refundable_deposit',
                 'created_at', 'updated_at',
             ]);
         }
