@@ -152,7 +152,7 @@ class TaxiMeterServiceTypeSeeder extends Seeder
             $legacyConfig = json_decode((string) ($existingFormConfig->config ?? ''), true) ?: [];
             DB::table('service_form_configs')->updateOrInsert(
                 ['service_code' => 'taxi_meter'],
-                ['config' => json_encode(array_merge($legacyConfig, ['fields' => array_replace($fields, is_array($legacyConfig['fields'] ?? null) ? $legacyConfig['fields'] : [])])), 'is_active' => true, 'created_at' => $existingFormConfig->created_at ?? now(), 'updated_at' => now()]
+                ['id' => $existingFormConfig->id ?? (string) Str::uuid(), 'config' => json_encode(array_merge($legacyConfig, ['fields' => array_replace($fields, is_array($legacyConfig['fields'] ?? null) ? $legacyConfig['fields'] : [])])), 'is_active' => true, 'created_at' => $existingFormConfig->created_at ?? now(), 'updated_at' => now()]
             );
 
             $now = now();
