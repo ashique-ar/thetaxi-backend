@@ -6103,6 +6103,25 @@ class BookingFlowService
             && !($calculationRequirements['disable_distance_estimate'] ?? false);
 
         if (
+            !$routeDistanceRequired && $inputs['include_garage_distance']
+            && is_array($params['pickup_location'] ?? null) && is_array($params['dropoff_location'] ?? null)
+            && $this->isLocationPayloadUsable($params['pickup_location'])
+            && $this->isLocationPayloadUsable($params['dropoff_location'])
+            && !isset($params['journey_distance'])
+        ) {
+            [$pickupLeg, $deliveryLeg] = $this->calculateGarageLegs(
+                $this->normalizeLocationInput($params['pickup_location']),
+                $this->normalizeLocationInput($params['dropoff_location'])
+            );
+            if ($pickupLeg === null || $deliveryLeg === null) {
+                throw new \DomainException('Garage distances could not be calculated. Set an active default garage with a map location and check route availability.');
+            }
+            $inputs['pickup_distance'] = round((float) $pickupLeg['distance_km'], 2);
+            $inputs['delivery_distance'] = round((float) $deliveryLeg['distance_km'], 2);
+            $inputs['total_distance'] = round((float) ($inputs['journey_distance'] ?? 0) + $inputs['pickup_distance'] + $inputs['delivery_distance'], 2);
+        }
+
+        if (
             $routeDistanceRequired
             && is_array($params['pickup_location'] ?? null)
             && is_array($params['dropoff_location'] ?? null)
@@ -7776,6 +7795,20 @@ class BookingFlowService
         }
     }
 
+    private function calculateGarageLegs(array $pickup, array $dropoff): array
+    {
+        $garage = Company::query()->where('is_garage', true)->where('is_active', true)->first();
+        if (!$garage || $garage->latitude === null || $garage->longitude === null) {
+            return [null, null];
+        }
+        $point = ['latitude' => (float) $garage->latitude, 'longitude' => (float) $garage->longitude];
+        $key = 'garage:' . md5(json_encode([$point, $pickup, $dropoff]));
+        return $this->routeDistanceCache[$key] ??= [
+            $this->calculateDistance($point, $pickup),
+            $this->calculateDistance($dropoff, $point),
+        ];
+    }
+
     private function calculateRouteDistances(
         $pickupLocation,
         $dropoffLocation,
@@ -7850,15 +7883,9 @@ class BookingFlowService
 
         $journeyDistance = $journeyData['distance_km'];
         $journeyDuration = $journeyData['duration_seconds'];
-        $pickupLeg = $deliveryLeg = ['distance_km' => 0.0, 'duration_seconds' => 0];
-        if ($includeGarageDistance) {
-            $garage = Company::query()->where('is_garage', true)->where('is_active', true)->first();
-            $garagePoint = $garage && $garage->latitude !== null && $garage->longitude !== null
-                ? ['latitude' => (float) $garage->latitude, 'longitude' => (float) $garage->longitude]
-                : null;
-            $pickupLeg = $garagePoint ? $this->calculateDistance($garagePoint, $routePoints[0]) : null;
-            $deliveryLeg = $garagePoint ? $this->calculateDistance($routePoints[array_key_last($routePoints)], $garagePoint) : null;
-        }
+        [$pickupLeg, $deliveryLeg] = $includeGarageDistance
+            ? $this->calculateGarageLegs($routePoints[0], $routePoints[array_key_last($routePoints)])
+            : [['distance_km' => 0.0, 'duration_seconds' => 0], ['distance_km' => 0.0, 'duration_seconds' => 0]];
         $garageDistanceFailed = $pickupLeg === null || $deliveryLeg === null;
         $result = [
             'pickup_distance' => $pickupLeg === null ? null : round((float) $pickupLeg['distance_km'], 2),

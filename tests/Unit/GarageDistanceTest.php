@@ -107,3 +107,25 @@ it('preserves a garage selected using the temporary table', function () {
     expect((bool) DB::table('companies')->where('id', 'garage')->value('is_garage'))->toBeTrue()
         ->and(Schema::hasTable('garage_location'))->toBeFalse();
 });
+
+it('supplies garage legs to day-priced self-drive calculation inputs', function () {
+    DB::table('companies')->insert(['id' => 'garage', 'name' => 'Garage', 'latitude' => 6, 'longitude' => 79, 'is_active' => true, 'is_garage' => true]);
+    $serviceType = new \App\Models\Service\ServiceType(['code' => 'self_drive', 'pricing_mode' => 'day', 'minimum_km' => 0]);
+    $serviceType->id = '10000000-0000-4000-8000-000000000001';
+    request()->attributes->set('booking_flow.calculation_service_types', ['id:'.$serviceType->id => $serviceType]);
+    $service = Mockery::mock(BookingFlowService::class)->makePartial();
+    $service->shouldReceive('getDynamicCalculationRequirements')->once()->andReturn(['trip_mode' => 'fixed_route', 'disable_distance_estimate' => false]);
+    (new ReflectionProperty(BookingFlowService::class, 'includeGarageDistanceForPricing'))->setValue($service, true);
+    $maps = Mockery::mock(GoogleMapsService::class);
+    $maps->shouldReceive('distanceAndDuration')->once()->with(['latitude' => 6.0, 'longitude' => 79.0], ['latitude' => 7, 'longitude' => 80])->andReturn(['distance_km' => 5, 'duration_seconds' => 50]);
+    $maps->shouldReceive('distanceAndDuration')->once()->with(['latitude' => 8, 'longitude' => 81], ['latitude' => 6.0, 'longitude' => 79.0])->andReturn(['distance_km' => 8, 'duration_seconds' => 80]);
+    app()->instance(GoogleMapsService::class, $maps);
+    $inputs = (new ReflectionMethod(BookingFlowService::class, 'prepareCalculationInputs'))->invoke($service, [
+        'service_type_id' => $serviceType->id,
+        'pickup_location' => ['latitude' => 7, 'longitude' => 80],
+        'dropoff_location' => ['latitude' => 8, 'longitude' => 81],
+        'is_self_driven' => true,
+    ]);
+    expect($inputs['pickup_distance'])->toBe(5.0)->and($inputs['delivery_distance'])->toBe(8.0)
+        ->and($inputs['total_distance'])->toBe(13.0)->and($inputs)->not->toHaveKey('journey_distance');
+});
