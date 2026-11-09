@@ -48,10 +48,14 @@ class SelfDriveCdwAddonSeeder extends Seeder
             ]
         );
 
-        if (data_get($addon->integration_settings, 'dynamic_pricing.formula') === 'first_day_slab_rate * 10') {
+        if (!is_array($addon->integration_settings)
+            || data_get($addon->integration_settings, 'dynamic_pricing.formula') !== 'slab_rate * max(10, duration_days)'
+            || data_get($addon->integration_settings, 'dynamic_pricing.slab_scope') !== 'first_day') {
             $settings = $addon->integration_settings;
-            $settings['dynamic_pricing'] = array_merge($settings['dynamic_pricing'], [
+            $settings = is_array($settings) ? $settings : [];
+            $settings['dynamic_pricing'] = array_merge((array) ($settings['dynamic_pricing'] ?? []), [
                 'formula' => 'slab_rate * max(10, duration_days)',
+                'service_type' => 'self_drive',
                 'slab_scope' => 'first_day',
             ]);
             $addon->update(['integration_settings' => $settings]);

@@ -5,7 +5,10 @@ namespace App\Services;
 use App\Models\Cart;
 use App\Models\User;
 use App\Models\Vehicle\VehicleAddon;
+use App\Models\Service\ServiceType;
 use App\Models\Vehicle\VehiclePricing\VehiclePricingSlabDefinition;
+use App\Models\Vehicle\VehiclePricing\VehicleGroupPricing;
+use App\Models\Vehicle\VehiclePricing\VehiclePricingCalculationDefinition;
 use App\Models\Website\WebsiteSetting;
 use App\Services\CurrencyService;
 use App\Services\PromoCodeService;
@@ -13,6 +16,7 @@ use Illuminate\Support\Facades\Log;
 
 class CartService
 {
+    private ?string $lastAddonError = null;
     protected CurrencyService $currencyService;
     protected PromoCodeService $promoCodeService;
 
@@ -688,10 +692,12 @@ class CartService
      */
     public function addAddon(Cart $cart, string $cartKey, string $addonId, int $qty = 1): bool
     {
+        $this->lastAddonError = null;
         try {
             $items = $cart->items ?? [];
 
             if (!isset($items[$cartKey])) {
+                $this->lastAddonError = 'Cart item not found.';
                 return false;
             }
 
@@ -707,6 +713,11 @@ class CartService
                 || !$this->isAddonEligibleForItem($addon, $items[$cartKey])
                 || !$this->isAddonQuantityAllowed($addon, $qty)
             ) {
+                $this->lastAddonError = !$addon
+                    ? 'The selected add-on no longer exists.'
+                    : (!$this->isAddonEligibleForItem($addon, $items[$cartKey])
+                        ? 'This add-on is not available for the selected service.'
+                        : 'The selected add-on quantity is outside its allowed range.');
                 return false;
             }
 
@@ -732,6 +743,7 @@ class CartService
 
             return true;
         } catch (\Exception $e) {
+            $this->lastAddonError = $e->getMessage();
             \Illuminate\Support\Facades\Log::error('Error adding addon to cart', [
                 'error' => $e->getMessage(),
                 'cart_key' => $cartKey,
@@ -749,8 +761,12 @@ class CartService
         try {
             $items = $cart->items ?? [];
 
-            if (!isset($items[$cartKey]['addons'][$addonId])) {
+            if (!isset($items[$cartKey])) {
+                $this->lastAddonError = 'Cart item not found.';
                 return false;
+            }
+            if (!isset($items[$cartKey]['addons'][$addonId])) {
+                return true;
             }
 
             unset($items[$cartKey]['addons'][$addonId]);
@@ -780,10 +796,12 @@ class CartService
      */
     public function updateAddonQty(Cart $cart, string $cartKey, string $addonId, int $qty): bool
     {
+        $this->lastAddonError = null;
         try {
             $items = $cart->items ?? [];
 
             if (!isset($items[$cartKey]['addons'][$addonId])) {
+                $this->lastAddonError = 'The add-on is not attached to this cart item.';
                 return false;
             }
 
@@ -797,6 +815,11 @@ class CartService
                 || !$this->isAddonEligibleForItem($addon, $items[$cartKey])
                 || !$this->isAddonQuantityAllowed($addon, $qty)
             ) {
+                $this->lastAddonError = !$addon
+                    ? 'The selected add-on no longer exists.'
+                    : (!$this->isAddonEligibleForItem($addon, $items[$cartKey])
+                        ? 'This add-on is not available for the selected service.'
+                        : 'The selected add-on quantity is outside its allowed range.');
                 return false;
             }
 
@@ -812,6 +835,7 @@ class CartService
 
             return true;
         } catch (\Exception $e) {
+            $this->lastAddonError = $e->getMessage();
             \Illuminate\Support\Facades\Log::error('Error updating addon qty in cart', [
                 'error' => $e->getMessage(),
                 'cart_key' => $cartKey,
@@ -820,6 +844,11 @@ class CartService
             ]);
             return false;
         }
+    }
+
+    public function lastAddonError(): ?string
+    {
+        return $this->lastAddonError;
     }
 
     /**
@@ -839,7 +868,7 @@ class CartService
     /**
      * Get all available addons for a service type
      */
-    public function getAvailableAddons(?string $serviceTypeId = null): array
+    public function getAvailableAddons(?string $serviceTypeId = null, ?array $cartItem = null): array
     {
         $query = VehicleAddon::query()->available();
 
@@ -853,11 +882,15 @@ class CartService
         $selectedCurrency = $this->currencyService->getSelectedCurrency();
 
         $addons = $query
-            ->select('id', 'name', 'description', 'thumbnail', 'amount', 'rate_type', 'min_qty', 'max_qty', 'tags')
+            ->select('id', 'name', 'description', 'thumbnail', 'amount', 'rate_type', 'min_qty', 'max_qty', 'tags', 'integration_settings')
             ->orderBy('name')
             ->get()
-            ->map(function ($addon) use ($selectedCurrency) {
-                $amountLkr = (float) ($addon->amount ?? 0);
+            ->map(function ($addon) use ($selectedCurrency, $cartItem) {
+                $formula = data_get($addon->integration_settings, 'dynamic_pricing.formula');
+                $dynamic = is_string($formula) && trim($formula) !== '';
+                $amountLkr = $dynamic && $cartItem
+                    ? $this->calculateAddonAmount($addon, 1, $cartItem)
+                    : (float) ($addon->amount ?? 0);
                 $converted = $addon->rate_type === 'percentage'
                     ? $amountLkr
                     : $this->currencyService->convertFromLKR($amountLkr, $selectedCurrency);
@@ -868,6 +901,8 @@ class CartService
                     'thumbnail' => $addon->thumbnail,
                     'amount' => (float) $converted,
                     'amount_lkr' => $amountLkr,
+                    'is_dynamic_priced' => $dynamic,
+                    'pricing_formula' => $dynamic ? $formula : null,
                     'rate_type' => $addon->rate_type,
                     'min_qty' => $addon->min_qty,
                     'max_qty' => $addon->max_qty,
@@ -915,6 +950,55 @@ class CartService
      */
     protected function calculateAddonAmount(\App\Models\Vehicle\VehicleAddon $addon, int $qty, array $item): float
     {
+        $dynamicPricing = data_get($addon->integration_settings, 'dynamic_pricing');
+        $formula = is_array($dynamicPricing) ? ($dynamicPricing['formula'] ?? null) : null;
+        if (is_string($formula) && trim($formula) !== '') {
+            $serviceType = data_get($item, 'service_type_data.type', $item['service_type'] ?? null);
+            $requiredType = $dynamicPricing['service_type'] ?? null;
+            if ($requiredType === 'self_drive' && !ServiceType::isSelfDriveType($serviceType)) {
+                throw new \DomainException('CDW is available only for self-drive rentals.');
+            }
+
+            $variables = [
+                'duration_days' => max(1, (int) ($item['days'] ?? 1)),
+                'slab_rate' => (float) $addon->amount,
+            ];
+            if (($dynamicPricing['slab_scope'] ?? null) === 'first_day') {
+                $serviceTypeId = data_get($item, 'service_type_data.id');
+                $groupId = $item['vehicle_group_id'] ?? null;
+                if (!$serviceTypeId || !$groupId) {
+                    throw new \DomainException('CDW requires a service type and vehicle group.');
+                }
+                $slab = VehiclePricingSlabDefinition::query()
+                    ->where('service_type_id', $serviceTypeId)
+                    ->where('service_package_id', $item['service_package_id'] ?? null)
+                    ->where('is_active', true)
+                    ->where('min_days', '<=', 1)
+                    ->where(fn ($query) => $query->whereNull('max_days')->orWhere('max_days', '>=', 1))
+                    ->orderBy('min_days')
+                    ->orderBy('sort_order')
+                    ->first();
+                $rate = $slab ? VehicleGroupPricing::query()
+                    ->where('vehicle_group_id', $groupId)
+                    ->where('slab_definition_id', $slab->id)
+                    ->where('is_active', true)
+                    ->whereNull('owner_type')
+                    ->whereNull('owner_id')
+                    ->orderByDesc('priority')
+                    ->value('rate') : null;
+                if (!is_numeric($rate) || (float) $rate <= 0) {
+                    throw new \DomainException('CDW has no configured first-day rate for this vehicle.');
+                }
+                $variables['slab_rate'] = (float) $rate;
+            }
+
+            $price = (new VehiclePricingCalculationDefinition())->evaluateAddonFormula($formula, $variables);
+            if (!is_numeric($price) || !is_finite((float) $price) || $price < 0) {
+                throw new \DomainException('The add-on formula did not produce a valid price.');
+            }
+            return round((float) $price * $qty, 2);
+        }
+
         if ($addon->rate_type === 'percentage') {
             $serviceType = $item['service_type'] ?? '';
             $isPackage = ($item['is_package'] ?? false) || in_array($serviceType, ['wedding_hire', 'airport_transfers']);

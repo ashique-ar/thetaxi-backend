@@ -977,7 +977,7 @@ class CartController extends Controller
                 ]);
             }
 
-            $addons = $this->cartService->getAvailableAddons($serviceTypeId);
+            $addons = $this->cartService->getAvailableAddons($serviceTypeId, $cartKey ? $cartItem : null);
 
             return response()->json([
                 'success' => true,
@@ -1160,7 +1160,7 @@ class CartController extends Controller
             if (!$success) {
                 return response()->json([
                     'success' => false,
-                    'message' => 'Failed to update addon quantity'
+                    'message' => $this->cartService->lastAddonError() ?? 'Failed to update addon quantity'
                 ], 400);
             }
 
@@ -1221,7 +1221,7 @@ class CartController extends Controller
 
                     if (!$success) {
                         $anyFailures = true;
-                        $errors[] = "Failed to update addon {$addonId} for item {$cartKey}";
+                        $errors[] = ($this->cartService->lastAddonError() ?? 'Failed to update add-on') . " (item {$cartKey})";
                     }
                 } catch (\Exception $e) {
                     $anyFailures = true;
