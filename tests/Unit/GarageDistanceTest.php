@@ -55,6 +55,7 @@ it('does not invent garage distances when none is configured and skips them when
     $missing = garageRoute(true);
     $disabled = garageRoute(false);
     expect($missing['garage_distance_failed'])->toBeTrue()->and($missing['total_distance'])->toBeNull()
+        ->and($missing['garage_distance_error'])->toContain('No active default garage')
         ->and($disabled['garage_distance_failed'])->toBeFalse()->and($disabled['total_distance'])->toBe(20.0);
 });
 

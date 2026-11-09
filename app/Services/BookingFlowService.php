@@ -6109,12 +6109,12 @@ class BookingFlowService
             && $this->isLocationPayloadUsable($params['dropoff_location'])
             && !isset($params['journey_distance'])
         ) {
-            [$pickupLeg, $deliveryLeg] = $this->calculateGarageLegs(
+            [$pickupLeg, $deliveryLeg, $garageDistanceError] = $this->calculateGarageLegs(
                 $this->normalizeLocationInput($params['pickup_location']),
                 $this->normalizeLocationInput($params['dropoff_location'])
             );
             if ($pickupLeg === null || $deliveryLeg === null) {
-                throw new \DomainException('Garage distances could not be calculated. Set an active default garage with a map location and check route availability.');
+                throw new \DomainException($garageDistanceError);
             }
             $inputs['pickup_distance'] = round((float) $pickupLeg['distance_km'], 2);
             $inputs['delivery_distance'] = round((float) $deliveryLeg['distance_km'], 2);
@@ -6164,7 +6164,7 @@ class BookingFlowService
             }
 
             if ($distanceCalculations['garage_distance_failed'] ?? false) {
-                throw new \DomainException('Garage distances could not be calculated. Set an active default garage with a map location and check route availability.');
+                throw new \DomainException($distanceCalculations['garage_distance_error'] ?? 'Garage route distances could not be calculated. Check Google Routes API access and location coordinates.');
             }
 
             // Apply minimum KM rule: if journey distance is below minimum, use minimum for pricing
@@ -7798,15 +7798,21 @@ class BookingFlowService
     private function calculateGarageLegs(array $pickup, array $dropoff): array
     {
         $garage = Company::query()->where('is_garage', true)->where('is_active', true)->first();
-        if (!$garage || $garage->latitude === null || $garage->longitude === null) {
-            return [null, null];
+        if (!$garage) {
+            return [null, null, 'No active default garage is configured. Mark an active company location as the default garage.'];
+        }
+        if ($garage->latitude === null || $garage->longitude === null) {
+            return [null, null, 'The default garage has no map coordinates. Add its latitude and longitude in company locations.'];
         }
         $point = ['latitude' => (float) $garage->latitude, 'longitude' => (float) $garage->longitude];
         $key = 'garage:' . md5(json_encode([$point, $pickup, $dropoff]));
-        return $this->routeDistanceCache[$key] ??= [
+        $legs = $this->routeDistanceCache[$key] ??= [
             $this->calculateDistance($point, $pickup),
             $this->calculateDistance($dropoff, $point),
         ];
+        return [...$legs, $legs[0] === null || $legs[1] === null
+            ? 'Google Routes API could not calculate one or both garage legs. Check Routes API access and the garage, pickup, and drop-off coordinates.'
+            : null];
     }
 
     private function calculateRouteDistances(
@@ -7883,9 +7889,9 @@ class BookingFlowService
 
         $journeyDistance = $journeyData['distance_km'];
         $journeyDuration = $journeyData['duration_seconds'];
-        [$pickupLeg, $deliveryLeg] = $includeGarageDistance
+        [$pickupLeg, $deliveryLeg, $garageDistanceError] = $includeGarageDistance
             ? $this->calculateGarageLegs($routePoints[0], $routePoints[array_key_last($routePoints)])
-            : [['distance_km' => 0.0, 'duration_seconds' => 0], ['distance_km' => 0.0, 'duration_seconds' => 0]];
+            : [['distance_km' => 0.0, 'duration_seconds' => 0], ['distance_km' => 0.0, 'duration_seconds' => 0], null];
         $garageDistanceFailed = $pickupLeg === null || $deliveryLeg === null;
         $result = [
             'pickup_distance' => $pickupLeg === null ? null : round((float) $pickupLeg['distance_km'], 2),
@@ -7899,6 +7905,7 @@ class BookingFlowService
             'service_type_used' => $serviceType,
             'include_garage_distance' => $includeGarageDistance,
             'garage_distance_failed' => $garageDistanceFailed,
+            'garage_distance_error' => $garageDistanceError,
         ];
         $this->routeDistanceCache[$cacheKey] = $result;
 

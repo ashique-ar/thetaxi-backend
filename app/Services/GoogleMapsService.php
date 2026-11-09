@@ -151,7 +151,12 @@ class GoogleMapsService
             return false;
         }
 
-        return (float) $a[1] === (float) $b[1] && (float) $a[2] === (float) $b[2];
+        $latitudeDelta = deg2rad((float) $a[1] - (float) $b[1]);
+        $longitudeDelta = deg2rad((float) $a[2] - (float) $b[2]);
+        $meanLatitude = deg2rad(((float) $a[1] + (float) $b[1]) / 2);
+        $distanceMeters = 6371000 * hypot($latitudeDelta, cos($meanLatitude) * $longitudeDelta);
+
+        return $distanceMeters <= 1;
     }
 
     /** Normalize different location inputs into what Google accepts */
