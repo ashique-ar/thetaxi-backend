@@ -139,8 +139,9 @@
         @if ($showImageGallery && $galleryImages->isNotEmpty())
             <button type="button" class="vehicle-gallery-trigger" data-images="{{ $galleryImages->toJson() }}"
                 data-title="{{ $vehicle['name'] ?? 'Vehicle' }}" aria-label="View photos of {{ $vehicle['name'] ?? 'vehicle' }}">
-                <i class="bi bi-images" aria-hidden="true"></i> View photos
+                <i class="bi bi-images" aria-hidden="true"></i>
             </button>
+            <div class="vehicle-gallery-hint" aria-hidden="true">Click to view images</div>
         @endif
 
         @if ($showPublicPrice && $hasDiscount && $discountPercentage > 0)
@@ -583,35 +584,41 @@
     @once('vehicle-gallery-modal')
         <div class="modal fade" id="vehicleGalleryModal" tabindex="-1" aria-labelledby="vehicleGalleryTitle" aria-hidden="true">
             <div class="modal-dialog modal-dialog-centered modal-lg">
-                <div class="modal-content bg-dark text-white">
-                    <div class="modal-header border-0">
-                        <h5 class="modal-title" id="vehicleGalleryTitle"></h5>
-                        <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal" aria-label="Close"></button>
-                    </div>
-                    <div class="modal-body pt-0">
+                <div class="modal-content vehicle-gallery-content">
+                    <div class="modal-body p-0">
                         <div class="vehicle-gallery-stage">
+                            <h5 class="vehicle-gallery-title" id="vehicleGalleryTitle"></h5>
+                            <button type="button" class="vehicle-gallery-close" data-bs-dismiss="modal" aria-label="Close"><i class="bi bi-x-lg"></i></button>
                             <button type="button" class="vehicle-gallery-nav vehicle-gallery-prev" aria-label="Previous photo"><i class="bi bi-chevron-left"></i></button>
                             <img class="vehicle-gallery-image" alt="">
                             <button type="button" class="vehicle-gallery-nav vehicle-gallery-next" aria-label="Next photo"><i class="bi bi-chevron-right"></i></button>
+                            <div class="vehicle-gallery-count" aria-live="polite"></div>
                         </div>
-                        <div class="vehicle-gallery-count text-center mt-2" aria-live="polite"></div>
                     </div>
                 </div>
             </div>
         </div>
         @push('styles')
             <style>
-                .vehicle-gallery-trigger{position:absolute;right:12px;bottom:12px;z-index:3;border:0;border-radius:20px;padding:7px 11px;background:#fff;color:#222;font-size:12px;font-weight:600;box-shadow:0 2px 8px #0003;opacity:.96;cursor:pointer}
-                .vehicle-gallery-stage{position:relative;display:flex;align-items:center;justify-content:center;min-height:280px}
-                .vehicle-gallery-image{max-width:100%;max-height:70vh;object-fit:contain}
-                .vehicle-gallery-nav{position:absolute;top:50%;transform:translateY(-50%);z-index:1;border:0;border-radius:50%;width:42px;height:42px;background:#ffffffd9;color:#222;font-size:20px}
-                .vehicle-gallery-prev{left:8px}.vehicle-gallery-next{right:8px}
-                .vehicle-gallery-trigger:hover,.vehicle-gallery-trigger:focus-visible{background:#f1f1f1;transform:scale(1.04)}
+                .vehicle-gallery-trigger{position:absolute;right:12px;bottom:12px;z-index:3;display:grid;place-items:center;width:40px;height:40px;border:0;border-radius:50%;background:#ffffffed;color:#222;font-size:17px;box-shadow:0 2px 8px #0004;cursor:pointer}
+                .vehicle-gallery-hint{position:absolute;inset:0;z-index:2;display:grid;place-items:center;background:#0008;color:#fff;font-size:14px;font-weight:700;opacity:0;pointer-events:none;transition:opacity .15s}
+                .vehicle-image-container:hover .vehicle-gallery-hint,.vehicle-image-container:focus-within .vehicle-gallery-hint{opacity:1}
+                .vehicle-gallery-content{background:transparent;border:0;box-shadow:none}
+                #vehicleGalleryModal .modal-dialog{width:calc(100vw - 24px);max-width:1000px;margin:12px auto}
+                .vehicle-gallery-stage{position:relative;display:grid;place-items:center;width:min(100%,1000px);height:min(88vh,760px);margin:auto}
+                .vehicle-gallery-image{display:block;max-width:100%;max-height:100%;object-fit:contain;border-radius:10px}
+                .vehicle-gallery-title,.vehicle-gallery-count,.vehicle-gallery-close,.vehicle-gallery-nav{position:absolute;z-index:1;color:#fff;background:#ffffff24;border:1px solid #ffffff45;backdrop-filter:blur(14px);-webkit-backdrop-filter:blur(14px);box-shadow:0 4px 18px #0002}
+                .vehicle-gallery-title{top:14px;right:58px;margin:0;padding:9px 14px;border-radius:18px;font-size:15px}
+                .vehicle-gallery-close{top:14px;right:14px;display:grid;place-items:center;width:36px;height:36px;border-radius:50%}
+                .vehicle-gallery-nav{top:50%;transform:translateY(-50%);display:grid;place-items:center;width:44px;height:44px;border-radius:50%;font-size:20px}
+                .vehicle-gallery-prev{left:14px}.vehicle-gallery-next{right:14px}
+                .vehicle-gallery-count{bottom:14px;padding:6px 12px;border-radius:18px;font-size:13px}
+                @media(max-width:575px){.vehicle-gallery-stage{height:88vh}.vehicle-gallery-nav{width:38px;height:38px}.vehicle-gallery-prev{left:6px}.vehicle-gallery-next{right:6px}}
             </style>
         @endpush
         @push('scripts')
             <script>
-                (()=>{const modal=document.getElementById('vehicleGalleryModal'),img=modal.querySelector('.vehicle-gallery-image'),title=modal.querySelector('#vehicleGalleryTitle'),count=modal.querySelector('.vehicle-gallery-count');let images=[],index=0;const show=()=>{img.src=images[index];img.alt=`${title.textContent} photo ${index+1}`;count.textContent=`${index+1} / ${images.length}`};document.addEventListener('click',e=>{const trigger=e.target.closest('.vehicle-gallery-trigger');if(trigger){images=JSON.parse(trigger.dataset.images);index=0;title.textContent=trigger.dataset.title;show();bootstrap.Modal.getOrCreateInstance(modal).show()}});modal.querySelector('.vehicle-gallery-prev').addEventListener('click',()=>{index=(index+images.length-1)%images.length;show()});modal.querySelector('.vehicle-gallery-next').addEventListener('click',()=>{index=(index+1)%images.length;show()})})();
+                (()=>{const modal=document.getElementById('vehicleGalleryModal'),img=modal.querySelector('.vehicle-gallery-image'),title=modal.querySelector('#vehicleGalleryTitle'),count=modal.querySelector('.vehicle-gallery-count');let images=[],index=0;const show=()=>{img.src=images[index];img.alt=`${title.textContent} photo ${index+1}`;count.textContent=`${index+1} / ${images.length}`};document.addEventListener('click',e=>{const trigger=e.target.closest('.vehicle-gallery-trigger')||e.target.closest('.vehicle-image-container')?.querySelector('.vehicle-gallery-trigger');if(trigger){images=JSON.parse(trigger.dataset.images);index=0;title.textContent=trigger.dataset.title;show();bootstrap.Modal.getOrCreateInstance(modal).show()}});modal.querySelector('.vehicle-gallery-prev').addEventListener('click',()=>{index=(index+images.length-1)%images.length;show()});modal.querySelector('.vehicle-gallery-next').addEventListener('click',()=>{index=(index+1)%images.length;show()})})();
             </script>
         @endpush
     @endonce
