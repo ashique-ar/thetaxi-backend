@@ -463,7 +463,7 @@
             function renderCheckoutAddons(cartKey, addons, selectedAddons) {
                 const panel = $('#checkoutAddonModalPanel');
                 const selected = selectedAddonMap(selectedAddons);
-                let selectedCount = 0;
+                const safeCartKey = checkoutEscapeHtml(cartKey).replace(/"/g, '&quot;').replace(/'/g, '&#39;');
 
                 if (!Array.isArray(addons) || addons.length === 0) {
                     panel.html('<div class="checkout-addon-empty">No add-ons available for this item.</div>');
@@ -472,47 +472,67 @@
                 }
 
                 const html = addons.map(function(addon) {
-                    const qty = selected[addon.id] || 0;
-                    if (qty > 0) {
-                        selectedCount++;
-                    }
-                    const isChildSeat = addon.is_child_seat === true;
-                    const maxQty = Number(addon.max_qty || 999);
+                    const qty = Number(selected[addon.id] || 0);
+                    const configuredMax = Number(addon.max_qty);
+                    const maxQty = Number.isInteger(configuredMax) && configuredMax > 0 ? configuredMax : 999;
+                    const safeId = checkoutEscapeHtml(addon.id).replace(/"/g, '&quot;').replace(/'/g, '&#39;');
+                    const safeName = checkoutEscapeHtml(addon.name || 'Add-on');
+                    const safeNameAttr = safeName.replace(/"/g, '&quot;').replace(/'/g, '&#39;');
+                    const icon = addon.is_child_seat === true ? 'bi-shield-check' : 'bi-stars';
                     return `
-                        <div class="checkout-addon-card" data-addon-id="${addon.id}">
+                        <div class="checkout-addon-card ${qty > 0 ? 'is-selected' : ''}" data-addon-id="${safeId}">
+                            ${qty > 0 ? '<span class="v2-addon-active">Selected</span>' : ''}
+                            <div class="v2-addon-icon" aria-hidden="true"><i class="bi ${icon}"></i></div>
                             <div class="checkout-addon-info">
-                                <strong>${checkoutEscapeHtml(addon.name)}${isChildSeat ? ' · Child seat' : ''}</strong>
+                                <strong>${safeName}</strong>
                                 <small>${checkoutEscapeHtml(addon.description || 'Add-on')}</small>
-                                <small>${checkoutAddonAmount(addon)}</small>
+                                <span class="v2-addon-price">${checkoutAddonAmount(addon)}</span>
                             </div>
                             <div class="checkout-addon-actions">
-                                <div class="checkout-addon-qty">
-                                    <input type="number" min="0" max="${maxQty}" value="${qty}" data-selected-qty="${qty}"
-                                        data-addon-id="${addon.id}" data-cart-key="${cartKey}">
+                                <div class="checkout-addon-qty" ${qty > 0 ? '' : 'hidden'}>
+                                    <button type="button" class="v2-addon-step" data-step="-1" aria-label="Decrease ${safeNameAttr} quantity">−</button>
+                                    <input type="number" min="0" max="${maxQty}" step="1" value="${qty}" data-selected-qty="${qty}"
+                                        data-addon-id="${safeId}" data-cart-key="${safeCartKey}" aria-label="${safeNameAttr} quantity">
+                                    <button type="button" class="v2-addon-step" data-step="1" aria-label="Increase ${safeNameAttr} quantity">+</button>
                                 </div>
-                                <button type="button" class="checkout-addon-apply"
-                                    data-addon-id="${addon.id}" data-cart-key="${cartKey}">
-                                    ${qty > 0 ? 'Update' : 'Add'}
-                                </button>
-                                ${qty > 0 ? `<button type="button" class="checkout-addon-remove"
-                                    data-addon-id="${addon.id}" data-cart-key="${cartKey}">Remove</button>` : ''}
+                                <button type="button" class="checkout-addon-apply" data-addon-id="${safeId}" data-cart-key="${safeCartKey}">${qty > 0 ? 'Update' : '+ Add'}</button>
+                                ${qty > 0 ? `<button type="button" class="checkout-addon-remove" data-addon-id="${safeId}" data-cart-key="${safeCartKey}">Remove</button>` : ''}
                             </div>
-                        </div>
-                    `;
+                        </div>`;
                 }).join('');
 
                 panel.html(html + `
                     <div class="checkout-addon-bulk">
-                        <button type="button" class="checkout-addon-update-all" data-cart-key="${cartKey}">
-                            Apply all add-on quantities
-                        </button>
-                    </div>
-                `);
+                        <button type="button" class="checkout-addon-update-all" data-cart-key="${safeCartKey}">Apply all add-on quantities</button>
+                    </div>`);
                 renderSelectedAddonSummary(cartKey, selectedAddons);
             }
 
+            function checkoutAddonQuantity(input) {
+                const qty = Number(input.value);
+                if (input.value === '' || !Number.isInteger(qty) || qty < 0 || qty > Number(input.max)) {
+                    input.setCustomValidity('Enter a whole number between 0 and ' + input.max + '.');
+                    input.reportValidity();
+                    return null;
+                }
+                input.setCustomValidity('');
+                return qty;
+            }
+
+            $(document).on('input', '.checkout-addon-qty input', function() {
+                this.setCustomValidity('');
+            });
+
+            $(document).on('click', '.v2-addon-step', function() {
+                const input = $(this).closest('.checkout-addon-qty').find('input')[0];
+                const next = Math.max(0, Math.min(Number(input.max), (Number(input.value) || 0) + Number($(this).data('step'))));
+                input.value = next;
+                input.setCustomValidity('');
+            });
+
             function mutateCheckoutAddon(url, data, button) {
                 button.prop('disabled', true);
+                $('#checkoutAddonModalStatus').prop('hidden', true).text('');
 
                 $.ajax({
                     url: url,
@@ -522,8 +542,12 @@
                     }, data),
                     success: function(response) {
                         if (!response.success) {
-                            showCheckoutPromoError(response.message || 'Unable to update add-on');
+                            $('#checkoutAddonModalStatus').text(response.message || 'Unable to update add-on').prop('hidden', false);
                             button.prop('disabled', false);
+                            if (response.cart) {
+                                updateCheckoutCartTotals(response.cart);
+                                loadCheckoutAddons(data.cart_key, $('#checkoutAddonModalPanel').data('service-type'), true);
+                            }
                             return;
                         }
 
@@ -532,7 +556,7 @@
                         loadCheckoutAddons(data.cart_key, panel.data('service-type'), true);
                     },
                     error: function(xhr) {
-                        showCheckoutPromoError(xhr.responseJSON?.message || 'Unable to update add-on');
+                        $('#checkoutAddonModalStatus').text(xhr.responseJSON?.message || 'Unable to update add-on').prop('hidden', false);
                         button.prop('disabled', false);
                     }
                 });
@@ -543,6 +567,7 @@
                 const cartKey = button.data('cart-key');
                 const serviceType = button.data('service-type');
                 $('.checkout-addon-modal-vehicle').text(button.data('vehicle-name') || 'Selected vehicle');
+                $('#checkoutAddonModalStatus').prop('hidden', true).text('');
                 // Keep the dialog above Bootstrap's backdrop outside isolated theme wrappers.
                 $('#checkout-v2-overlays').appendTo(document.body);
                 bootstrap.Modal.getOrCreateInstance(document.getElementById('checkoutAddonModal')).show();
@@ -562,8 +587,10 @@
                 const cartKey = button.data('cart-key');
                 const addonId = button.data('addon-id');
                 const input = $('.checkout-addon-qty input[data-cart-key="' + cartKey + '"][data-addon-id="' + addonId + '"]');
-                const qty = Number(input.val() || 0);
                 const selectedQty = Number(input.data('selected-qty') || 0);
+                if (!selectedQty && Number(input.val()) === 0) input.val(1);
+                const qty = checkoutAddonQuantity(input[0]);
+                if (qty === null) return;
 
                 if (qty <= 0) {
                     mutateCheckoutAddon('{{ route('cart.addon.remove') }}', {
@@ -591,15 +618,15 @@
             $(document).on('click', '.checkout-addon-update-all', function() {
                 const button = $(this);
                 const cartKey = button.data('cart-key');
-                const updates = $('.checkout-addon-qty input[data-cart-key="' + cartKey + '"]').map(function() {
-                    return {
-                        cart_key: cartKey,
-                        addon_id: $(this).data('addon-id'),
-                        qty: Number($(this).val() || 0)
-                    };
+                const inputs = $('.checkout-addon-qty input[data-cart-key="' + cartKey + '"]');
+                let invalid = false;
+                const updates = inputs.map(function() {
+                    const qty = checkoutAddonQuantity(this);
+                    if (qty === null) { invalid = true; return null; }
+                    return { cart_key: cartKey, addon_id: $(this).data('addon-id'), qty: qty };
                 }).get();
 
-                if (!updates.length) {
+                if (invalid || !updates.length) {
                     return;
                 }
 

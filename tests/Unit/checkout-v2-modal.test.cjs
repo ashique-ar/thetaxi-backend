@@ -16,6 +16,7 @@ vm.runInNewContext(source.slice(start, end), {
         if (target === document) return { on: (event, selector, handler) => { click = handler; } };
         if (target === button) return button;
         if (target === '.checkout-addon-modal-vehicle') return { text: value => { vehicle = value; } };
+        if (target === '#checkoutAddonModalStatus') return { prop() { return this; }, text() { return this; } };
         if (target === '#checkout-v2-overlays') return { appendTo: parent => { overlay.parentNode = parent; } };
         throw new Error('Unexpected selector: ' + target);
     },
