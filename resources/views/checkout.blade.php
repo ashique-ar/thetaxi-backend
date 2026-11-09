@@ -11,20 +11,7 @@
     <!-- Popup Page Identifier for Popup Display Engine -->
     <div data-popup-page="checkout"></div>
 
-    <!-- Breadcrumb section -->
-    <div class="breadcrumb-section"
-        style="background-image:linear-gradient(rgba(0, 0, 0, 0.3), rgba(0, 0, 0, 0.3)), url({{ asset('assets/img/innerpages/breadcrumb-bg.jpg') }});">
-        <div class="container banner-content">
-            <div class="">
-                <h1>Checkout</h1>
-                <ul class="breadcrumb-list">
-                    <li><a href="{{ route('home') }}">Home</a></li>
-                    <li>Checkout</li>
-                </ul>
-            </div>
-        </div>
-    </div>
-    <!-- End Breadcrumb section -->
+    @include('checkout.themes.' . (get_active_theme() === 'default' ? 'theme-01' : get_active_theme()) . '-header')
 
     @php
         // Cart data is passed from controller
@@ -109,69 +96,7 @@
                     $showCheckoutDetails = (!$customerLookupEnabled && $canBookAsNewCustomer)
                         || !empty($verifiedCheckoutCustomer) || !empty($tourCheckoutCustomer) || old('email') || old('first_name');
                 @endphp
-                @if ($customerLookupEnabled)
-                    <div id="checkout-customer-choice" class="checkout-form-wrapper checkout-customer-choice mb-3" aria-labelledby="checkout-customer-choice-title">
-                        <div class="checkout-form-title">
-                            <div>
-                                <h4 id="checkout-customer-choice-title">Who is booking?</h4>
-                                <p class="text-muted mb-0">Choose the option that fits you. The right fields will appear below.</p>
-                            </div>
-                        </div>
-                        <div id="checkout-customer-options" class="checkout-customer-options mt-4" role="radiogroup" aria-labelledby="checkout-customer-choice-title">
-                            @if ($canBookAsNewCustomer)
-                                <label class="checkout-customer-option">
-                                    <input type="radio" name="checkout_customer_kind" value="new" @checked(old('first_name') || (!$verifiedCheckoutCustomer && $showCheckoutDetails))>
-                                    <span class="checkout-customer-option-copy"><strong>I’m a new customer</strong><small>Enter your contact and booking details below.</small></span>
-                                </label>
-                            @endif
-                            <label class="checkout-customer-option">
-                                <input type="radio" name="checkout_customer_kind" value="returning" @checked($verifiedCheckoutCustomer || !$canBookAsNewCustomer)>
-                                <span class="checkout-customer-option-copy"><strong>I’ve booked with you before</strong><small>Verify your email or mobile to load saved details.</small></span>
-                            </label>
-                        </div>
-                    </div>
-                    <div id="returning-customer-panel" class="checkout-form-wrapper checkout-returning-panel mb-3" aria-labelledby="returning-customer-title" @if ($verifiedCheckoutCustomer || ($canBookAsNewCustomer && !$showCheckoutDetails)) hidden @endif>
-                        <div class="checkout-form-title">
-                            <h4 id="returning-customer-title">Find your saved details</h4>
-                            <p class="small text-muted mb-0">Enter the email or mobile number used for an earlier booking. We’ll send a code before showing your details. @if (!$canBookAsNewCustomer) New customers need to sign in to book. @endif</p>
-                        </div>
-                        <div class="checkout-form">
-                            <fieldset class="mb-3 border-0 p-0">
-                                <legend class="fs-6 fw-semibold mb-2">Choose how we should send your code</legend>
-                                <div class="checkout-customer-options checkout-channel-options" role="radiogroup" aria-label="Choose email or mobile verification">
-                                    <label class="checkout-customer-option">
-                                        <input type="radio" name="checkout_lookup_channel" value="email" checked>
-                                        <span class="checkout-customer-option-copy"><strong>Email</strong><small>Get a code in your inbox.</small></span>
-                                    </label>
-                                    <label class="checkout-customer-option">
-                                        <input type="radio" name="checkout_lookup_channel" value="mobile">
-                                        <span class="checkout-customer-option-copy"><strong>Mobile</strong><small>Get a text message on your phone.</small></span>
-                                    </label>
-                                </div>
-                            </fieldset>
-                            <div class="row checkout-lookup-fields">
-                                <div id="customer-lookup-email-field" class="col-md-6 mb-3">
-                                    <label for="customer-lookup-email">Email address</label>
-                                    <input type="email" id="customer-lookup-email" class="form-control" autocomplete="email" placeholder="you@example.com">
-                                </div>
-                                <div id="customer-lookup-mobile-field" class="col-md-6 mb-3" hidden>
-                                    <label for="customer-lookup-mobile">Mobile number</label>
-                                    <input type="tel" id="customer-lookup-mobile" class="form-control" autocomplete="tel" placeholder="Enter mobile number">
-                                    <div id="customer-lookup-mobile-error" class="small text-danger mt-1" role="status" aria-live="polite"></div>
-                                </div>
-                            </div>
-                            <button type="button" id="send-customer-code" class="primary-btn1">Send code</button>
-                            <div id="customer-email-code-panel" class="mt-3" hidden>
-                                <label for="customer-email-code">Enter the 6-digit code</label>
-                                <div class="d-flex gap-2">
-                                    <input id="customer-email-code" type="text" inputmode="numeric" autocomplete="one-time-code" maxlength="6" class="form-control" aria-describedby="customer-email-code-status">
-                                    <button type="button" id="verify-customer-email-code" class="primary-btn1">Verify code</button>
-                                </div>
-                            </div>
-                            <div id="customer-email-code-status" class="small mt-2" role="status" aria-live="polite"></div>
-                        </div>
-                    </div>
-                @endif
+                @include('checkout.themes.customer')
                 @if ($canBookAsNewCustomer || Auth::check() || $customerLookupEnabled)
                 <div class="row g-lg-4 gy-4" id="checkout-details-layout" @if (!$showCheckoutDetails || ($customerLookupEnabled && !$verifiedCheckoutCustomer && !old('first_name') && !old('email'))) hidden @endif>
                         <div class="col-lg-7">
@@ -187,415 +112,14 @@
                                     @endforeach
                                 </div>
                             @endif
-                            <div class="checkout-form-wrapper">
-                                <div class="checkout-form-title">
-                                    <h4>Billing Information</h4>
-                                    @if (!$customerLookupEnabled && $guestBookingEnabled)
-                                        <p class="small text-muted mb-0">You can book as a guest. If your email or mobile is already on file, we’ll use that customer record without changing its saved details.</p>
-                                    @endif
-                                    @if ($verifiedCheckoutCustomer)
-                                        <button type="button" id="reset-customer-details" class="btn btn-link btn-sm px-0">Use different details</button>
-                                    @else
-                                        <button type="button" id="reset-customer-details" class="btn btn-link btn-sm px-0" hidden>Use different details</button>
-                                    @endif
-                                    <p id="verified-customer-status" class="small text-success mb-0" hidden>Saved details loaded. Check them and update anything that has changed.</p>
-                                </div>
-                                <div class="checkout-form">
-                                    <div class="row">
-                                        <div class="col-md-6">
-                                            <div class="form-inner two mb-25">
-                                                <label>First Name*</label>
-                                                <input type="text" name="first_name" placeholder="Enter your first name"
-                                                    required value="{{ old('first_name', $tourCheckoutCustomer?->user?->first_name) }}">
-                                                @error('first_name')
-                                                    <span class="text-danger">{{ $message }}</span>
-                                                @enderror
-                                            </div>
-                                        </div>
-                                        <div class="col-md-6">
-                                            <div class="form-inner two mb-25">
-                                                <label>Last Name*</label>
-                                                <input type="text" name="last_name" placeholder="Enter your last name"
-                                                    value="{{ old('last_name', $tourCheckoutCustomer?->user?->last_name) }}">
-                                                @error('last_name')
-                                                    <span class="text-danger">{{ $message }}</span>
-                                                @enderror
-                                            </div>
-                                        </div>
-                                        <div class="col-md-6" id="checkout-phone-field">
-                                            <div class="form-inner two mb-25">
-                                                <label>Mobile Number<span class="checkout-contact-required">*</span></label>
-                                                <input type="tel" id="phone-input" name="phone"
-                                                    placeholder="Mobile number" autocomplete="tel"
-                                                    required
-                                                    value="{{ old('phone', Auth::user()?->phone ?? $tourCheckoutCustomer?->user?->phone) }}" style="padding-left: 48px;">
-                                                <div id="phone-error" class="text-danger mt-2" style="display: none;">
-                                                </div>
-                                                <div id="phone-valid" class="text-success small mt-1"
-                                                    style="display: none;"></div>
-                                                <!-- Hidden fields for additional phone data -->
-                                                <input type="hidden" id="phone-country-code" name="phone_country_code"
-                                                    value="{{ old('phone_country_code') }}">
-                                                <input type="hidden" id="phone-international" name="phone_international"
-                                                    value="{{ old('phone_international') }}">
-                                                @error('phone')
-                                                    <span class="text-danger">{{ $message }}</span>
-                                                @enderror
-                                            </div>
-                                        </div>
-                                        <div class="col-md-6" id="checkout-email-field">
-                                            <div class="form-inner two mb-25">
-                                                <label>Email Address<span class="checkout-contact-required">*</span></label>
-                                                <input type="email" name="email" placeholder="Enter email address"
-                                                    required
-                                                    value="{{ old('email', Auth::user()?->email ?? $tourCheckoutCustomer?->user?->email) }}">
-                                                @error('email')
-                                                    <span class="text-danger">{{ $message }}</span>
-                                                @enderror
-                                            </div>
-                                        </div>
-                                        <div class="col-md-6">
-                                            <div class="form-inner two mb-25">
-                                                <label>Street Address*</label>
-                                                <input type="text" name="address" placeholder="Enter street address"
-                                                    required value="{{ old('address') }}">
-                                                @error('address')
-                                                    <span class="text-danger">{{ $message }}</span>
-                                                @enderror
-                                            </div>
-                                        </div>
-                                        <div class="col-md-6">
-                                            <div class="form-inner two mb-25">
-                                                <label>City*</label>
-                                                <input type="text" name="city" placeholder="Enter city" required
-                                                    value="{{ old('city') }}">
-                                                @error('city')
-                                                    <span class="text-danger">{{ $message }}</span>
-                                                @enderror
-                                            </div>
-                                        </div>
-                                        <div class="col-md-6">
-                                            <div class="form-inner two mb-25">
-                                                <label>Country*</label>
-                                                <select id="country-select" name="country" required class="no-nice">
-                                                    <option value="">Select Country</option>
-                                                    @foreach ($countries as $country)
-                                                        <option value="{{ $country->name }}"
-                                                            {{ old('country', $checkoutDefaultCountryName) === $country->name ? 'selected' : '' }}>
-                                                            {{ $country->name }}
-                                                            @if ($country->callcode)
-                                                                (+{{ $country->callcode }})
-                                                            @endif
-                                                        </option>
-                                                    @endforeach
-                                                </select>
-                                                @error('country')
-                                                    <span class="text-danger">{{ $message }}</span>
-                                                @enderror
-                                            </div>
-                                        </div>
-                                        <div class="col-md-6">
-                                            <div class="form-inner two mb-25">
-                                                <label>National ID / Passport</label>
-                                                <input type="text" name="identification"
-                                                    placeholder="ID/Passport number (optional)"
-                                                    value="{{ old('identification') }}">
-                                                @error('identification')
-                                                    <span class="text-danger">{{ $message }}</span>
-                                                @enderror
-                                            </div>
-                                        </div>
-                                        @if ($hasAirportTransfer)
-                                        <div class="col-md-12">
-                                            <div class="form-section-divider">
-                                                <h6>Flight Details (Optional)</h6>
-                                                <p class="text-muted">If arriving by flight, provide details for airport
-                                                    pickup</p>
-                                            </div>
-                                        </div>
-                                        <div class="col-md-6">
-                                            <div class="form-inner two mb-25">
-                                                <label>Airline</label>
-                                                <input type="text" name="flight_airline"
-                                                    placeholder="e.g., Sri Lankan Airlines"
-                                                    value="{{ old('flight_airline') }}">
-                                            </div>
-                                        </div>
-                                        <div class="col-md-6">
-                                            <div class="form-inner two mb-25">
-                                                <label>Flight Number</label>
-                                                <input type="text" name="flight_number" placeholder="e.g., UL123"
-                                                    value="{{ old('flight_number') }}">
-                                            </div>
-                                        </div>
-                                        <div class="col-md-6">
-                                            <div class="form-inner two mb-25">
-                                                <label>Arrival Date</label>
-                                                <input type="date" name="flight_arrival_date"
-                                                    value="{{ old('flight_arrival_date') }}">
-                                            </div>
-                                        </div>
-                                        <div class="col-md-6">
-                                            <div class="form-inner two mb-25">
-                                                <label>Arrival Time</label>
-                                                <input type="time" name="flight_arrival_time"
-                                                    value="{{ old('flight_arrival_time') }}">
-                                            </div>
-                                        </div>
-                                        @endif
-                                        <div class="col-md-12">
-                                            <div class="form-inner two mb-25">
-                                                <label for="checkoutAdditionalNotes">Anything else we should know? <span class="text-muted">(optional)</span></label>
-                                                <textarea id="checkoutAdditionalNotes" name="additional_notes" maxlength="1000" placeholder="Anything you'd like us to know about your booking...">{{ old('additional_notes', old('special_notes')) }}</textarea>
-                                            </div>
-                                        </div>
-
-                                        @php
-                                            // Build a deduplicated map of applicable terms with metadata
-                                            $uniqueTerms = [];
-
-                                            // Terms grouped by service
-                                            foreach ($termsByService as $service => $terms) {
-                                                foreach ($terms as $tc) {
-                                                    if (!isset($uniqueTerms[$tc->id])) {
-                                                        $uniqueTerms[$tc->id] = [
-                                                            'term' => $tc,
-                                                            'services' => [],
-                                                            'payment_types' => [],
-                                                        ];
-                                                    }
-                                                    $uniqueTerms[$tc->id]['services'][] = ucfirst(
-                                                        str_replace('_', ' ', $service),
-                                                    );
-                                                }
-                                            }
-
-                                            // Merge payment-type terms, record which payment types each term applies to
-                                            foreach ($termsByPaymentType as $ptype => $terms) {
-                                                foreach ($terms as $tc) {
-                                                    if (!isset($uniqueTerms[$tc->id])) {
-                                                        $uniqueTerms[$tc->id] = [
-                                                            'term' => $tc,
-                                                            'services' => [],
-                                                            'payment_types' => [],
-                                                        ];
-                                                    }
-                                                    $uniqueTerms[$tc->id]['payment_types'][] = $ptype;
-                                                }
-                                            }
-
-                                            // Convert service and payment type arrays to unique lists
-                                            foreach ($uniqueTerms as $id => $meta) {
-                                                $uniqueTerms[$id]['services'] = array_values(
-                                                    array_unique($meta['services']),
-                                                );
-                                                $uniqueTerms[$id]['payment_types'] = array_values(
-                                                    array_unique($meta['payment_types']),
-                                                );
-                                            }
-                                        @endphp
-
-                                        @if (!empty($uniqueTerms))
-                                            <div class="col-md-12">
-                                                <div class="terms-conditions-section">
-                                                    <h6>Applicable Terms & Conditions</h6>
-                                                    <div class="terms-content">
-                                                        @foreach ($uniqueTerms as $meta)
-                                                            @php
-                                                                $tc = $meta['term'];
-                                                                $services = $meta['services'];
-                                                                $pTypes = $meta['payment_types'];
-                                                            @endphp
-                                                            <div class="term-item mb-3"
-                                                                data-payment-types="{{ implode(',', $pTypes) }}"
-                                                                data-term-id="{{ $tc->id }}"
-                                                                data-term-version="{{ $tc->version }}">
-                                                                <div class="term-header">
-                                                                    <div class="term-meta">
-                                                                        <strong>{{ $tc->title }}</strong>
-                                                                        @if (!empty($services))
-                                                                            <small class="text-muted"> — Applies to:
-                                                                                {{ implode(', ', $services) }}</small>
-                                                                        @endif
-                                                                        @if (!empty($pTypes))
-                                                                            <small class="text-muted">
-                                                                                <em>(Payment-specific:
-                                                                                    {{ implode(', ', $pTypes) }})</em></small>
-                                                                        @endif
-                                                                    </div>
-                                                                    <button type="button" class="term-toggle"
-                                                                        aria-expanded="true">Hide</button>
-                                                                </div>
-                                                                <div class="term-body mt-2">
-                                                                    {!! $tc->content !!}
-                                                                </div>
-                                                            </div>
-                                                        @endforeach
-                                                    </div>
-
-                                                    <div class="terms-accept-all-container mt-3" id="termsAcceptancePanel">
-                                                        <div class="form-check terms-accept-check">
-                                                            <input class="form-check-input" type="checkbox"
-                                                                id="accept_all_terms" aria-describedby="termsAcceptHelp">
-                                                            <label class="form-check-label" for="accept_all_terms">
-                                                                <span class="terms-accept-title">I agree to the above
-                                                                    <strong>Terms & Conditions</strong></span>
-                                                                <span class="terms-accept-copy" id="termsAcceptHelp">
-                                                                    Required before placing your booking.
-                                                                </span>
-                                                            </label>
-                                                        </div>
-                                                        <div class="terms-accept-error" id="termsAcceptError" role="alert">
-                                                            Please tick this box to continue with your booking.
-                                                        </div>
-                                                        <div id="termsAcceptedHiddenInputs"></div>
-                                                    </div>
-
-                                                </div>
-                                            </div>
-
-                                        @endif
-
-                                        <div class="col-md-12 mt-3 pt-3 border-top">
-                                            <div class="form-inner2">
-                                                <p class="text-muted small mb-2">Optional preferences</p>
-                                                <div class="form-check">
-                                                    <input class="form-check-input" type="checkbox" name="save_info"
-                                                        value="1" id="saveInfo"
-                                                        {{ old('save_info') ? 'checked' : '' }}>
-                                                    <label class="form-check-label" for="saveInfo">
-                                                        Save my information for future bookings
-                                                    </label>
-                                                </div>
-                                            </div>
-                                        </div>
-
-                                        <!-- Marketing Consent Checkbox -->
-                                        <div class="col-md-12">
-                                            <div class="form-inner2">
-                                                <div class="form-check">
-                                                    <input class="form-check-input" type="checkbox" name="marketing_consent"
-                                                        value="1" id="marketingConsent"
-                                                        {{ old('marketing_consent') ? 'checked' : '' }}>
-                                                    <label class="form-check-label" for="marketingConsent">
-                                                        I would like to receive marketing communications, special offers, and promotional emails. 
-                                                        You can unsubscribe at any time.
-                                                    </label>
-                                                </div>
-                                            </div>
-                                        </div>
-
-                                    </div>
-                                </div>
-                            </div>
+                            @include('checkout.themes.billing')
                             </form>
                         </div>
 
                         <div class="col-lg-5">
                             <div class="checkout-sidebar-stack">
-                                @include('checkout.partials.cart-summary')
-                                            <!-- Payment Type Selection Section -->
-                                            <div class="payment-type-selection mb-4">
-                                                <div class="card">
-                                                    <div class="card-header">
-                                                        <h6 class="mb-0"><i class="bi bi-credit-card"></i> Payment
-                                                            Option
-                                                        </h6>
-                                                    </div>
-                                                    <div class="card-body">
-                                                        <div class="row g-3">
-                                                            @if ($paymentMethods->has('online'))
-                                                            <div class="col-6">
-                                                                <div class="payment-option">
-                                                                    <input type="radio" name="payment_type"
-                                                                        value="full" id="payment_full"
-                                                                        form="checkout-form"
-                                                                        {{ $paymentType === 'full' ? 'checked' : '' }}
-                                                                        class="payment-radio">
-                                                                    <label for="payment_full" class="payment-label">
-                                                                        <div class="payment-card">
-                                                                            <i
-                                                                                class="bi bi-credit-card-fill text-success"></i>
-                                                                            <h6>Pay Full Amount</h6>
-                                                                            <p class="mb-0">Complete payment now</p>
-                                                                            <small class="text-muted">Total:
-                                                                                {{ $currencySymbol }}
-                                                                                {{ number_format(floor(max(0, $total)), 0) }}</small>
-                                                                        </div>
-                                                                    </label>
-                                                                </div>
-                                                            </div>
-                                                            @endif
-                                                            @if ($advancePaymentEnabled)
-                                                                <div class="col-6">
-                                                                    <div class="payment-option">
-                                                                        <input type="radio" name="payment_type"
-                                                                            value="advance" id="payment_advance"
-                                                                            form="checkout-form"
-                                                                            {{ $paymentType === 'advance' ? 'checked' : '' }}
-                                                                            class="payment-radio">
-                                                                        <label for="payment_advance"
-                                                                            class="payment-label">
-                                                                            <div class="payment-card">
-                                                                                <i
-                                                                                    class="bi bi-credit-card text-warning"></i>
-                                                                                <h6>Pay <span data-advance-percentage>{{ $advanceActualPercentage }}</span>% Advance
-                                                                                </h6>
-                                                                                <p class="mb-0">{{ $tourOnlyCheckout ? 'Pay the balance later' : 'Pay remaining on pickup' }}
-                                                                                </p>
-                                                                                <small class="text-muted">Now:
-                                                                                    {{ $currencySymbol }}
-                                                                                    <span data-advance-payment-amount>{{ number_format(floor(max(0, $advancePaymentAmount)), 0) }}</span></small>
-                                                                            </div>
-                                                                        </label>
-                                                                    </div>
-                                                                </div>
-                                                            @endif
-                                                            @if ($offlinePaymentEnabled)
-                                                                <div class="col-6">
-                                                                    <div class="payment-option">
-                                                                        <input type="radio" name="payment_type"
-                                                                            value="checkin" id="payment_checkin"
-                                                                            form="checkout-form"
-                                                                            {{ $paymentType === 'checkin' ? 'checked' : '' }}
-                                                                            class="payment-radio">
-                                                                        <label for="payment_checkin"
-                                                                            class="payment-label">
-                                                                            <div class="payment-card">
-                                                                                <i
-                                                                                    class="bi bi-cash-coin text-primary"></i>
-                                                                                <h6>{{ $tourOnlyCheckout ? 'Pay later' : 'Pay on Check-in' }}</h6>
-                                                                                <p class="mb-0">{{ $tourOnlyCheckout ? 'No payment is due now' : 'Pay when you collect' }}</p>
-                                                                                <small class="text-muted">Due:
-                                                                                    {{ $currencySymbol }}
-                                                                                    {{ number_format(floor(max(0, $total)), 0) }}</small>
-                                                                            </div>
-                                                                        </label>
-                                                                    </div>
-                                                                </div>
-                                                            @endif
-                                                            <div class="col-6">
-                                                                <div class="payment-option">
-                                                                    <input type="radio" name="payment_type"
-                                                                        value="quotation" id="payment_quotation"
-                                                                        form="checkout-form"
-                                                                        {{ $paymentType === 'quotation' ? 'checked' : '' }}
-                                                                        class="payment-radio">
-                                                                    <label for="payment_quotation" class="payment-label">
-                                                                        <div class="payment-card">
-                                                                            <i class="bi bi-file-text text-info"></i>
-                                                                            <h6>Request Quotation</h6>
-                                                                            <p class="mb-0">Get detailed pricing</p>
-                                                                            <small class="text-muted">No payment
-                                                                                now</small>
-                                                                        </div>
-                                                                    </label>
-                                                                </div>
-                                                            </div>
-                                                        </div>
-                                                    </div>
-                                                </div>
-                                            </div>
+                                @include('checkout.themes.order-summary')
+                                @include('checkout.themes.payment-options')
 
                                             <div class="alert alert-warning mb-3" id="payment-contact-requirement" role="status" hidden>
                                                 Enter both a valid email address and mobile number to continue checkout.
@@ -670,26 +194,7 @@
     </div>
     <!--Checkout Page End-->
 
-    <div class="modal fade checkout-addon-modal" id="checkoutAddonModal" tabindex="-1"
-        aria-labelledby="checkoutAddonModalLabel" aria-hidden="true">
-        <div class="modal-dialog modal-dialog-centered modal-dialog-scrollable">
-            <div class="modal-content">
-                <div class="modal-header">
-                    <div>
-                        <h5 class="modal-title" id="checkoutAddonModalLabel">Manage add-ons</h5>
-                        <small class="checkout-addon-modal-vehicle"></small>
-                    </div>
-                    <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
-                </div>
-                <div class="modal-body">
-                    <div class="checkout-addon-panel" id="checkoutAddonModalPanel"></div>
-                </div>
-                <div class="modal-footer">
-                    <button type="button" class="checkout-addon-modal-done" data-bs-dismiss="modal">Done</button>
-                </div>
-            </div>
-        </div>
-    </div>
+    @include('checkout.themes.popups')
 @endsection
 
 @push('styles')
@@ -936,221 +441,13 @@
             display: none !important;
         }
 
-        .checkout-form-wrapper,
-        .checkout-page .order-sum-area,
-        .checkout-page .inquiry-form {
-            border: 1px solid rgba(15, 23, 42, 0.08);
-            border-radius: 8px;
-            background: rgba(255, 255, 255, 0.96);
-            box-shadow: 0 20px 50px rgba(15, 23, 42, 0.08);
-        }
-
-        .checkout-form-wrapper {
-            padding: 26px;
-        }
-
-        .checkout-customer-option {
-            display: flex;
-            align-items: flex-start;
-            gap: 12px;
-            min-height: 76px;
-            padding: 14px 16px;
-            border: 1px solid #dbe3ef;
-            border-radius: 10px;
-            background: #fff;
-            cursor: pointer;
-            transition: border-color .18s ease, box-shadow .18s ease, background-color .18s ease;
-        }
-
-        .checkout-customer-options {
-            display: grid;
-            grid-template-columns: repeat(2, minmax(0, 1fr));
-            gap: 12px;
-        }
-
-        .checkout-channel-options {
-            grid-template-columns: repeat(2, minmax(0, 1fr));
-        }
-
-        .checkout-customer-option input[type="radio"] {
-            flex: 0 0 auto;
-            width: 18px;
-            height: 18px;
-            margin: 3px 0 0;
-            accent-color: var(--primary-color1, #BF2629);
-        }
-
-        .checkout-customer-option-copy {
-            display: grid;
-            gap: 5px;
-        }
-
-        .checkout-customer-option-copy strong {
-            color: #111827;
-            font-size: 16px;
-            font-weight: 750;
-            line-height: 1.35;
-        }
-
-        .checkout-customer-option-copy small {
-            color: #64748b;
-            font-size: 13px;
-            line-height: 1.5;
-        }
-
-        .checkout-customer-option:hover {
-            border-color: var(--primary-color1, #BF2629);
-            box-shadow: 0 10px 26px rgba(15, 23, 42, .08);
-        }
-
-        .checkout-customer-option:has(input:checked) {
-            border-color: var(--primary-color1, #BF2629);
-            background: color-mix(in srgb, var(--primary-color1, #BF2629) 5%, #fff);
-            box-shadow: inset 0 0 0 1px var(--primary-color1, #BF2629), 0 10px 26px rgba(15, 23, 42, .06);
-        }
-
-        .checkout-customer-option:focus-within {
-            outline: 3px solid color-mix(in srgb, var(--primary-color1, #BF2629) 30%, transparent);
-            outline-offset: 2px;
-        }
-
-        .checkout-returning-panel .checkout-form-title,
-        .checkout-customer-choice .checkout-form-title {
-            margin-bottom: 20px;
-        }
-
-        body[class] .checkout-page .checkout-customer-choice,
-        body[class] .checkout-page .checkout-returning-panel {
-            padding: 0;
-        }
-
-        body[class] .checkout-page .checkout-customer-choice .checkout-form-title {
-            margin-bottom: 0;
-            padding: 24px 24px 16px;
-        }
-
-        body[class] .checkout-page .checkout-customer-choice .checkout-customer-options {
-            margin: 0 !important;
-            padding: 0 24px 24px;
-        }
-
-        body[class] .checkout-page .checkout-returning-panel .checkout-form-title {
-            display: grid;
-            align-items: start;
-            justify-content: normal;
-            gap: 8px;
-            margin-bottom: 0;
-            padding: 24px 24px 16px;
-        }
-
-        body[class] .checkout-page .checkout-returning-panel .checkout-form {
-            padding: 0 24px 24px;
-        }
-
-        body[class] .checkout-page #checkout-details-layout {
-            --bs-gutter-y: 20px;
-        }
-
-        .checkout-customer-choice .checkout-form-title {
-            margin-bottom: 16px;
-        }
-
-        .checkout-customer-choice .checkout-customer-options {
-            margin-top: 0 !important;
-            gap: 12px;
-        }
-
-        .checkout-returning-panel fieldset {
-            margin-bottom: 16px !important;
-        }
-
-        .checkout-returning-panel .form-control {
-            min-height: 50px;
-            border-radius: 10px;
-        }
-
-        .checkout-returning-panel .checkout-lookup-fields {
-            max-width: 780px;
-        }
-
-        .checkout-returning-panel .checkout-form > button {
-            min-height: 44px;
-            padding-inline: 22px;
-        }
-
-        .checkout-returning-panel #customer-email-code-status {
-            max-width: 780px;
-        }
-
+        body[class] .checkout-page #checkout-details-layout { --bs-gutter-y: 20px; }
         .checkout-page :where(input, select, textarea, button, a):focus-visible {
             outline: 3px solid color-mix(in srgb, var(--primary-color1, #BF2629) 48%, white);
             outline-offset: 2px;
         }
-
-        .checkout-returning-panel #customer-email-code-panel {
-            max-width: 540px;
-            padding: 18px;
-            border: 1px solid #e2e8f0;
-            border-radius: 12px;
-            background: #f8fafc;
-        }
-
-        .checkout-returning-panel #customer-email-code-panel .d-flex {
-            align-items: stretch;
-            gap: 12px !important;
-        }
-
         @media (max-width: 767.98px) {
             .checkout-page { padding: 32px 0 52px; }
-            .checkout-form-wrapper { padding: 20px; }
-            .checkout-customer-options,
-            .checkout-channel-options { grid-template-columns: minmax(0, 1fr); gap: 10px; }
-            .checkout-customer-option { min-height: 68px; padding: 13px 14px; }
-            body[class] .checkout-page .checkout-customer-choice .checkout-form-title,
-            body[class] .checkout-page .checkout-returning-panel .checkout-form-title { padding: 18px 18px 14px; }
-            body[class] .checkout-page .checkout-customer-choice .checkout-customer-options { padding: 0 18px 18px; }
-            body[class] .checkout-page .checkout-returning-panel .checkout-form { padding: 0 18px 18px; }
-            .checkout-returning-panel #customer-email-code-panel .d-flex { flex-direction: column; }
-            .checkout-returning-panel .checkout-lookup-fields { max-width: none; }
-        }
-
-        .checkout-form-title {
-            padding-bottom: 16px;
-            border-bottom: 1px solid #e5e7eb;
-            display: flex;
-            align-items: center;
-            justify-content: space-between;
-            gap: 12px;
-        }
-
-        .checkout-form-title h4 {
-            margin: 0;
-            color: #111827;
-            font-weight: 800;
-        }
-
-        .checkout-form .form-inner label {
-            margin-bottom: 8px;
-            color: #334155;
-            font-weight: 700;
-        }
-
-        .checkout-form .form-inner input,
-        .checkout-form .form-inner select,
-        .checkout-form .form-inner textarea {
-            border: 1px solid #dbe3ef;
-            border-radius: 8px;
-            background: #fff;
-            min-height: 48px;
-            transition: border-color 0.2s ease, box-shadow 0.2s ease;
-        }
-
-        .checkout-form .form-inner input:focus,
-        .checkout-form .form-inner select:focus,
-        .checkout-form .form-inner textarea:focus {
-            border-color: var(--primary-color1, #BF2629);
-            box-shadow: 0 0 0 4px rgba(191, 38, 41, 0.1);
-            outline: none;
         }
 
         .checkout-sidebar-stack {
@@ -1158,194 +455,8 @@
             display: block;
         }
 
-        .checkout-sidebar-stack .order-sum-area {
-            position: static;
-            top: auto;
-        }
-
-        .checkout-page .order-sum-area {
-            padding: 24px;
-        }
-
-        .checkout-page .order-sum-area h4,
-        .checkout-page .order-sum-area h5,
-        .checkout-page .order-sum-area h6 {
-            color: #111827;
-            font-weight: 800;
-        }
-
-        /* Payment type selection styles */
-        .payment-type-selection .payment-option {
-            position: relative;
-        }
-
-        .payment-radio {
-            display: none;
-        }
-
-        .payment-label {
-            cursor: pointer;
-            display: block;
-            margin: 0;
-        }
-
-        .payment-card {
-            border: 1px solid #dbe3ef;
-            border-radius: 8px;
-            padding: 20px;
-            text-align: center;
-            transition: all 0.3s ease;
-            background: white;
-            min-height: 154px;
-        }
-
-        .payment-card:hover {
-            border-color: var(--primary-color1);
-            transform: translateY(-2px);
-            box-shadow: 0 16px 34px rgba(15, 23, 42, 0.1);
-        }
-
-        .payment-radio:checked+.payment-label .payment-card {
-            border-color: var(--primary-color1);
-            background: linear-gradient(180deg, rgba(191, 38, 41, 0.08), rgba(191, 38, 41, 0.02));
-            box-shadow: inset 0 0 0 1px rgba(191, 38, 41, 0.12), 0 16px 34px rgba(191, 38, 41, 0.1);
-        }
-
-        .payment-card i {
-            font-size: 2rem;
-            margin-bottom: 10px;
-            display: block;
-        }
-
-        .payment-card h6 {
-            margin: 10px 0 5px 0;
-            font-weight: 600;
-            color: #333;
-        }
-
-        .payment-card p {
-            font-size: 14px;
-            color: #666;
-            margin-bottom: 5px;
-        }
-
-        .payment-card small {
-            font-weight: 500;
-        }
-
-        /* Existing payment option styles */
-        .payment-option ul {
-            display: flex;
-            gap: 15px;
-            list-style: none;
-            padding: 0;
-            margin: 15px 0;
-        }
-
-        .payment-option li {
-            flex: 1;
-            position: relative;
-            border: 2px solid #ddd;
-            border-radius: 8px;
-            overflow: hidden;
-            cursor: pointer;
-            transition: all 0.3s ease;
-        }
-
-        .payment-option li:hover {
-            border-color: var(--primary-color1);
-        }
-
-        .payment-option li.active {
-            border-color: var(--primary-color1);
-            background-color: #f8f9fa;
-        }
-
-        .payment-option li input[type="radio"] {
-            display: none;
-        }
-
-        .payment-option li label {
-            display: block;
-            padding: 15px;
-            text-align: center;
-            cursor: pointer;
-            margin: 0;
-        }
-
-        .payment-option li label img {
-            max-height: 30px;
-            max-width: 100%;
-        }
-
-        .payment-option li .checked {
-            position: absolute;
-            top: 5px;
-            right: 5px;
-            background: var(--primary-color1);
-            color: white;
-            border-radius: 50%;
-            width: 20px;
-            height: 20px;
-            display: flex;
-            align-items: center;
-            justify-content: center;
-            font-size: 12px;
-            opacity: 0;
-            transition: opacity 0.3s ease;
-        }
-
-        .payment-option li.active .checked {
-            opacity: 1;
-        }
-
-        .cart-footer .pricing-area ul li {
-            display: flex;
-            justify-content: space-between;
-            align-items: center;
-            padding: 12px 0;
-            border-bottom: 1px solid #eee;
-        }
-
-        .cart-footer .pricing-area ul li.total-row {
-            border-top: 2px solid #ddd;
-            margin-top: 10px;
-            padding-top: 15px;
-            font-size: 18px;
-        }
-
-        .cart-footer .pricing-area ul li.payment-amount-row {
-            background: #f8f9fa;
-            padding: 15px;
-            margin: 15px -20px 0;
-            border-radius: 8px;
-            border: none;
-        }
-
-        @media (max-width: 991px) {
-            .checkout-sidebar-stack {
-                position: static;
-                display: block;
-            }
-
-            .checkout-page .order-sum-area {
-                position: static;
-            }
-        }
-
         @media (max-width: 575px) {
-            .checkout-page {
-                padding: 36px 0 56px;
-            }
-
-            .checkout-form-wrapper,
-            .checkout-page .order-sum-area {
-                padding: 18px;
-            }
-
-            .payment-card {
-                min-height: 0;
-            }
+            .checkout-page { padding: 36px 0 56px; }
         }
 
         .single-item .item-area {
@@ -1972,9 +1083,6 @@
         }
 
         .checkout-page .row > *,
-        .checkout-form-wrapper,
-        .checkout-form,
-        .checkout-page .order-sum-area,
         .checkout-page .single-item,
         .checkout-page .item-area,
         .checkout-page .main-item,
@@ -1996,7 +1104,10 @@
     <link href="https://cdn.jsdelivr.net/npm/select2@4.1.0-rc.0/dist/css/select2.min.css" rel="stylesheet" />
     <link rel="stylesheet"
         href="{{ assetVersion(theme_asset('checkout_stylesheet') ?? 'assets/css/checkout-theme-01.css') }}">
-    <link rel="stylesheet" href="{{ assetVersion('assets/css/checkout-item-summary.css') }}">
+    <link rel="stylesheet" href="{{ assetVersion('assets/css/checkout-redesign-header.css') }}">
+    <link rel="stylesheet" href="{{ assetVersion('assets/css/checkout-redesign-popups.css') }}">
+    <link rel="stylesheet" href="{{ assetVersion('assets/css/checkout-redesign-billing.css') }}">
+    <link rel="stylesheet" href="{{ assetVersion('assets/css/checkout-redesign-summary.css') }}">
 @endpush
 
 @push('scripts')
@@ -2651,7 +1762,7 @@
                     },
                     error: function() {
                         wrapper.show().removeClass('checkout-option-pending');
-                        panel.show().html(`
+                        panel.html(`
                             <div class="checkout-extra-km-error">
                                 Unable to load extra KM options.
                                 <button type="button" class="checkout-option-retry checkout-extra-km-load-retry"
@@ -2718,10 +1829,20 @@
             }
 
             $(document).on('click', '.checkout-toggle-extra-km', function() {
-                const cartKey = $(this).data('cart-key');
+                const button = $(this);
+                const cartKey = button.data('cart-key');
                 const panel = $('.checkout-extra-km-panel[data-cart-key="' + cartKey + '"]');
-                panel.slideToggle(150);
+                $('#checkoutExtraKmModalPanel').append(panel.show());
+                $('.checkout-extra-km-modal-vehicle').text(button.data('vehicle-name') || 'Selected vehicle');
+                $('#checkoutExtraKmModal').appendTo(document.body);
+                bootstrap.Modal.getOrCreateInstance(document.getElementById('checkoutExtraKmModal')).show();
                 loadCheckoutExtraKm(cartKey, false);
+            });
+
+            $('#checkoutExtraKmModal').on('hidden.bs.modal', function() {
+                const panel = $(this).find('.checkout-extra-km-panel');
+                const cartKey = panel.data('cart-key');
+                $('.checkout-item-extra-km[data-cart-key="' + cartKey + '"]').append(panel.hide());
             });
 
             $(document).on('click', '.checkout-extra-km-load-retry', function() {

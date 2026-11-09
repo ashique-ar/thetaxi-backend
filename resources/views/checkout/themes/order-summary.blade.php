@@ -3,15 +3,15 @@
     $hasNonTourItem = collect($cart)->contains(fn($item) => empty($item['is_tour']));
     $pickupDepositTotal = collect($cart)->sum(fn($item) => (float) ($item['refundable_deposit'] ?? 0));
 @endphp
-<div class="checkout-form-wrapper">
-    <div class="checkout-form-title">
-        <div class="checkout-summary-heading">
+<div class="reservation-summary">
+    <div class="reservation-summary__header">
+        <div class="reservation-summary__heading">
             <div>
                 <h4>Order Summary</h4>
                 <span>{{ count($cart) }}
                     {{ $hasTourItem ? (count($cart) === 1 ? 'booking item' : 'booking items') : (count($cart) === 1 ? 'vehicle' : 'vehicles') }}</span>
             </div>
-            <div class="checkout-heading-total">
+            <div class="reservation-summary__heading-total">
                 <small>Total Amount</small>
                 <strong data-summary-field="total">{{ $currencySymbol }}
                     {{ number_format(floor(max(0, $total)), 0) }}</strong>
@@ -22,22 +22,22 @@
             <span>Clear</span>
         </button>
     </div>
-    <div class="order-sum-area">
-        <div class="cart-menu">
-            <div class="cart-body">
+    <div class="reservation-summary__body">
+        <div class="reservation-summary__content">
+            <div class="reservation-summary__items">
                 @include('checkout.partials.cart-items')
             </div>
 
-            <div class="cart-footer">
-                <div class="pricing-area mb-40">
-                    <div class="checkout-pricing-heading">
+            <div class="reservation-summary__footer">
+                <div class="reservation-pricing">
+                    <div class="reservation-pricing__heading">
                         <span>Price details</span>
                         <small>All charges shown below</small>
                     </div>
                     <ul>
                         <li>
                             <strong>Subtotal</strong>
-                            <strong class="checkout-summary-amount" data-summary-field="subtotal">{{ $currencySymbol }}
+                            <strong class="reservation-pricing__amount" data-summary-field="subtotal">{{ $currencySymbol }}
                                 {{ number_format(floor(max(0, $subtotal)), 0) }}</strong>
                         </li>
                         @php
@@ -47,7 +47,7 @@
                         <li data-summary-row="addon_charges" style="{{ $addonCharges > 0 ? '' : 'display: none;' }}">
                             Add-on Charges
                             <div class="order-info text-success">
-                                <span class="checkout-summary-amount"
+                                <span class="reservation-pricing__amount"
                                     data-summary-field="addon_charges">{{ $currencySymbol }}
                                     {{ number_format(floor(max(0, $addonCharges)), 0) }}</span>
                             </div>
@@ -56,7 +56,7 @@
                             style="{{ $extraKmCharges > 0 ? '' : 'display: none;' }}">
                             Extra KM Charges
                             <div class="order-info text-info">
-                                <span class="checkout-summary-amount"
+                                <span class="reservation-pricing__amount"
                                     data-summary-field="extra_km_charges">{{ $currencySymbol }}
                                     {{ number_format(floor(max(0, $extraKmCharges)), 0) }}</span>
                             </div>
@@ -65,7 +65,7 @@
                             <li data-summary-row="service_fee">
                                 Service Fee
                                 <div class="order-info">
-                                    <span class="checkout-summary-amount"
+                                    <span class="reservation-pricing__amount"
                                         data-summary-field="service_fee">{{ $currencySymbol }}
                                         {{ number_format(floor(max(0, $serviceFee)), 0) }}</span>
                                 </div>
@@ -76,7 +76,7 @@
                                 {{ $taxLabel }}
                                 ({{ $taxPercentageLabel }}%)
                                 <div class="order-info">
-                                    <span class="checkout-summary-amount" data-summary-field="tax">{{ $currencySymbol }}
+                                    <span class="reservation-pricing__amount" data-summary-field="tax">{{ $currencySymbol }}
                                         {{ number_format(floor(max(0, $tax)), 0) }}</span>
                                 </div>
                             </li>
@@ -86,7 +86,7 @@
                                 {{ $vatLabel }}
                                 ({{ $vatPercentageLabel }}%)
                                 <div class="order-info">
-                                    <span class="checkout-summary-amount" data-summary-field="vat">{{ $currencySymbol }}
+                                    <span class="reservation-pricing__amount" data-summary-field="vat">{{ $currencySymbol }}
                                         {{ number_format(floor(max(0, $vat)), 0) }}</span>
                                 </div>
                             </li>
@@ -138,17 +138,17 @@
                             style="{{ $discount > 0 ? '' : 'display: none;' }}">
                             <strong class="text-success"><i class="bi bi-tag-fill"></i> Discount</strong>
                             <div class="order-info text-success">
-                                <span class="checkout-summary-amount"
+                                <span class="reservation-pricing__amount"
                                     data-summary-field="coupon_discount">-{{ $currencySymbol }}
                                     {{ number_format(floor(max(0, $discount)), 0) }}</span>
                             </div>
                         </li>
-                        <li class="total-row">
+                        <li class="reservation-pricing__total">
                             <div>
                                 <strong>Total Amount</strong>
                                 <small>Includes selected add-ons{{ $hasNonTourItem ? ' and extra KM' : '' }}</small>
                             </div>
-                            <strong class="checkout-summary-amount" data-summary-field="total">{{ $currencySymbol }}
+                            <strong class="reservation-pricing__amount" data-summary-field="total">{{ $currencySymbol }}
                                 {{ number_format(floor(max(0, $total)), 0) }}</strong>
                         </li>
                         @if ($pickupDepositTotal > 0)
@@ -157,7 +157,7 @@
                                         service; paid when you collect the vehicle</small></div>
                                 <strong>{{ $currencySymbol }} {{ number_format(floor($pickupDepositTotal), 0) }}</strong>
                             </li>
-                            <li class="total-row">
+                            <li class="reservation-pricing__total">
                                 <div><strong>Booking total including refundable deposit</strong><small>The refundable
                                         deposit is not charged in today’s checkout payment</small></div>
                                 <strong data-summary-field="pickup_total">{{ $currencySymbol }}
@@ -165,7 +165,7 @@
                             </li>
                         @endif
                         @if ($paymentType !== 'full')
-                            <li class="payment-amount-row">
+                            <li class="reservation-pricing__payment">
                                 <strong>
                                     @if ($paymentType === 'advance')
                                         Amount to Pay

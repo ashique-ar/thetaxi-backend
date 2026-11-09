@@ -63,27 +63,17 @@ class BookingDistancePresentationTest extends TestCase
     public function test_cart_search_and_confirmation_consumers_use_the_service_check(): void
     {
         $checkout = file_get_contents(resource_path('views/checkout.blade.php'));
-        $itemView = file_get_contents(resource_path('views/checkout/partials/cart-item.blade.php'));
-        $this->assertStringContainsString('assets/css/checkout-item-summary.css', $checkout);
-        $summaryStyles = file_get_contents(public_path('assets/css/checkout-item-summary.css'));
-        $this->assertStringContainsString('body[class] .checkout-page', $summaryStyles);
-        $this->assertStringNotContainsString('body.theme-theme-04', $summaryStyles);
-        $this->assertStringContainsString('body.theme-default .checkout-page .checkout-item-addons', $summaryStyles);
-        $this->assertStringContainsString('@container (max-width: 520px)', $summaryStyles);
-        $this->assertStringContainsString('.checkout-cart-item.is-collapsed .item-total { grid-column: 1; grid-row: 2; display: flex', $summaryStyles);
-        $this->assertStringContainsString('.checkout-cart-item.is-collapsed .item-img { width: 56px !important; min-width: 56px !important;', $summaryStyles);
-        $this->assertStringContainsString('content > :not(.vehicle-rate):not(.vehicle-title):not(.trip-meta)', file_get_contents(public_path('assets/css/checkout-theme-01.css')));
-        $this->assertStringContainsString('container-type: inline-size', $summaryStyles);
-        $this->assertStringNotContainsString('vw', $summaryStyles);
+        $itemView = file_get_contents(resource_path('views/checkout/themes/cart-item.blade.php'));
+        $this->assertStringContainsString('assets/css/checkout-redesign-summary.css', $checkout);
+        $summaryStyles = file_get_contents(public_path('assets/css/checkout-redesign-summary.css'));
+        $this->assertStringContainsString('.reservation-item__layout', $summaryStyles);
+        $this->assertStringContainsString('@media (max-width: 400px)', $summaryStyles);
         $this->assertStringContainsString('class="checkout-item-route-details"', $itemView);
         $this->assertStringContainsString('class="checkout-item-toolbar"', $itemView);
         $this->assertStringContainsString("item.find('> .checkout-item-toolbar > .checkout-item-toggle')", $checkout);
-        $this->assertStringContainsString(':not(.trip-meta)', $summaryStyles);
-        $this->assertStringContainsString('.checkout-cart-item.is-collapsed .checkout-item-route-details { display: block', $summaryStyles);
-        $this->assertStringContainsString('.checkout-cart-item.is-collapsed .item-total { grid-column: 2; grid-row: 1; display: block', $summaryStyles);
-        foreach (['cart', 'search'] as $view) {
-            $this->assertStringContainsString('@if (!isServiceDurationBased(', file_get_contents(resource_path("views/{$view}.blade.php")));
-        }
+        $this->assertStringContainsString('.reservation-item.is-collapsed .checkout-item-route-details', $summaryStyles);
+        $this->assertStringContainsString("redirect()->route('checkout')", file_get_contents(base_path('routes/web.php')));
+        $this->assertStringContainsString('@if (!isServiceDurationBased(', file_get_contents(resource_path('views/search.blade.php')));
         $searchView = file_get_contents(resource_path('views/search.blade.php'));
         $this->assertStringNotContainsString('$search->serviceType', $searchView);
         $this->assertStringContainsString("data_get(\$search, 'pricing_mode')", $searchView);
@@ -119,7 +109,7 @@ class BookingDistancePresentationTest extends TestCase
             'distance_details' => $distance,
         ];
         $checkout = Blade::render(
-            "@foreach (\$cart as \$key => \$item) @include('checkout.partials.cart-item') @endforeach",
+            "@foreach (\$cart as \$key => \$item) @include('checkout.themes.cart-item') @endforeach",
             ['cart' => [$cartItem], 'currencySymbol' => 'LKR'],
         );
 

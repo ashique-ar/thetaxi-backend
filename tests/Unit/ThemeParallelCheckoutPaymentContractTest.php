@@ -3,9 +3,12 @@
 beforeEach(function () {
     $root = dirname(__DIR__, 2);
     $this->root = $root;
-    $this->checkout = file_get_contents($root . '/resources/views/checkout.blade.php');
-    $this->cartItem = file_get_contents($root . '/resources/views/checkout/partials/cart-item.blade.php');
-    $this->cartSummary = file_get_contents($root . '/resources/views/checkout/partials/cart-summary.blade.php');
+    $this->checkout = file_get_contents($root . '/resources/views/checkout.blade.php')
+        . file_get_contents($root . '/resources/views/checkout/themes/billing.blade.php')
+        . file_get_contents($root . '/resources/views/checkout/themes/customer.blade.php')
+        . file_get_contents($root . '/resources/views/checkout/themes/payment-options.blade.php');
+    $this->cartItem = file_get_contents($root . '/resources/views/checkout/themes/cart-item.blade.php');
+    $this->cartSummary = file_get_contents($root . '/resources/views/checkout/themes/order-summary.blade.php');
     $this->success = file_get_contents($root . '/resources/views/checkout/success.blade.php');
     $this->resume = file_get_contents($root . '/resources/views/checkout/payment-resume.blade.php');
     $this->callback = file_get_contents($root . '/resources/views/checkout/callback-error.blade.php');
@@ -40,7 +43,7 @@ it('places the existing dynamic Theme 04 booking form beside checkout', function
         ->toContain("@unless (is_theme('theme-04'))")
         ->toContain($themeBooking)
         ->toContain('form="checkout-form"')
-        ->and(strpos($this->checkout, $themeBooking))->toBeLessThan(strpos($this->checkout, "@include('checkout.partials.cart-summary')"));
+        ->and(strpos($this->checkout, $themeBooking))->toBeLessThan(strpos($this->checkout, "@include('checkout.themes.order-summary')"));
 
     expect($this->theme04Checkout)
         ->toContain('.col-lg-5 { display: flex; min-width: 0; flex-direction: column; gap: 24px; }')

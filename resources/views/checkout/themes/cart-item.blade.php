@@ -27,7 +27,7 @@
                                                         $checkoutServiceCode = data_get($item, 'service_type_data.code', $item['service_type'] ?? null);
                                                         $isDayService = isServiceDurationBased($checkoutServiceCode, data_get($item, 'service_type_data.pricing_mode'));
                                                     @endphp
-                                                    <li class="single-item checkout-cart-item {{ $loop->first ? 'is-expanded' : 'is-collapsed' }}"
+                                                    <li class="reservation-item checkout-cart-item {{ $loop->first ? 'is-expanded' : 'is-collapsed' }}"
                                                         data-cart-key="{{ $key }}">
                                                         <div class="checkout-item-toolbar">
                                                             <button type="button" class="checkout-item-toggle"
@@ -37,9 +37,9 @@
                                                                 <i class="bi bi-chevron-down" aria-hidden="true"></i>
                                                             </button>
                                                         </div>
-                                                        <div class="item-area">
-                                                            <div class="main-item">
-                                                                <div class="item-img">
+                                                        <div class="reservation-item__layout">
+                                                            <div class="reservation-item__main">
+                                                                <div class="reservation-item__image">
                                                                     @if (isset($item['image']) && $item['image'])
                                                                         <img src="{{ s3_asset($item['image']) }}"
                                                                             alt="{{ $item['name'] ?? 'Vehicle' }}">
@@ -48,8 +48,8 @@
                                                                             alt="{{ $item['name'] ?? 'Vehicle' }}">
                                                                     @endif
                                                                 </div>
-                                                                <div class="content-and-quantity">
-                                                                    <div class="content">
+                                                                <div class="reservation-item__description">
+                                                                    <div class="reservation-item__content">
                                                                         @php
                                                                             $serviceType =
                                                                                 $item['service_type'] ?? null;
@@ -59,8 +59,7 @@
                                                                             );
                                                                         @endphp
                                                                         <h6 class="vehicle-title">
-                                                                            <a
-                                                                                href="#">{{ $item['name'] ?? '' }}</a>
+                                                                            <span>{{ $item['name'] ?? '' }}</span>
                                                                             <span class="service-type-badge"><i class="{{ !empty($item['is_tour']) ? 'bi bi-map-fill' : 'bi bi-car-front-fill' }}" aria-hidden="true"></i> {{ !empty($item['is_tour']) ? 'Tour' : data_get($item, 'service_type_data.name', $item['service_type'] ?? 'Service') }}</span>
                                                                         </h6>
                                                                         <p class="trip-meta"><small>
@@ -300,7 +299,7 @@
                                                                             </div>
                                                                         @endif
                                                             </div>
-                                                            <div class="item-total">
+                                                            <div class="reservation-item__price">
                                                                 @php
                                                                     // Return trip pricing variables
                                                                     $isReturnTrip = $item['is_return_trip'] ?? false;
@@ -421,7 +420,7 @@
                                                                     <small>Selected: <span class="checkout-extra-km-count">{{ number_format($currentExtraKm, 0) }}</span> km</small>
                                                                 </div>
                                                                 <button type="button" class="checkout-toggle-extra-km"
-                                                                    data-cart-key="{{ $key }}">
+                                                                    data-cart-key="{{ $key }}" data-vehicle-name="{{ $item['name'] ?? 'Selected vehicle' }}">
                                                                     Manage
                                                                 </button>
                                                             </div>

@@ -53,7 +53,8 @@ class PublicCheckoutStatePreservationContractTest extends TestCase
             dirname($projectRoot)
                 . '/portal-thetaxi/src/app/modules/admin/system/settings/website-settings-enhanced.component.ts'
         );
-        $checkout = file_get_contents($projectRoot . '/resources/views/checkout.blade.php');
+        $checkout = file_get_contents($projectRoot . '/resources/views/checkout.blade.php')
+            . file_get_contents($projectRoot . '/resources/views/checkout/themes/payment-options.blade.php');
 
         $this->assertStringContainsString("'advance_payment_enabled'", $portalSettings);
         $this->assertStringContainsString('name="payment_type"', $checkout);
