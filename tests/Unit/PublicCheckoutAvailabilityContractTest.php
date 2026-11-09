@@ -7,6 +7,18 @@ use PHPUnit\Framework\TestCase;
 
 class PublicCheckoutAvailabilityContractTest extends TestCase
 {
+    protected function setUp(): void
+    {
+        parent::setUp();
+        \Carbon\Carbon::setTestNow('2026-07-01 00:00:00');
+    }
+
+    protected function tearDown(): void
+    {
+        \Carbon\Carbon::setTestNow();
+        parent::tearDown();
+    }
+
     public function test_persisted_cart_items_are_rechecked_with_canonical_identifiers(): void
     {
         $service = $this->service([

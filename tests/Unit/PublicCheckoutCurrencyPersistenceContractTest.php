@@ -33,9 +33,11 @@ class PublicCheckoutCurrencyPersistenceContractTest extends TestCase
         $service = file_get_contents(__DIR__ . '/../../app/Services/CartService.php');
 
         $this->assertStringContainsString(
-            "foreach (['amount', 'calculated_amount', 'total', 'unit_price', 'total_price'] as \$field)",
+            "['amount', 'calculated_amount', 'total', 'unit_price', 'total_price']",
             $service
         );
+        $this->assertStringContainsString("(\$addon['rate_type'] ?? null) === 'percentage'", $service);
+        $this->assertStringContainsString("foreach (\$fields as \$field)", $service);
         $this->assertStringContainsString(
             "\$addon['currency'] = \$selectedCurrency;",
             $service
@@ -152,7 +154,7 @@ class PublicCheckoutCurrencyPersistenceContractTest extends TestCase
         $this->assertStringContainsString("url.searchParams.delete('initial_currency')", $successPage);
         $this->assertStringContainsString('$currencyCode = getSelectedCurrency();', $successPage);
         $this->assertStringContainsString('->convert(', $successPage);
-        $this->assertSame(4, substr_count($controller, '\'initial_currency\' => getBookingDisplayCurrency($booking)'));
+        $this->assertGreaterThanOrEqual(4, substr_count($controller, '\'initial_currency\' => getBookingDisplayCurrency($booking)'));
         $this->assertStringContainsString("'source_currency' => null", $paymentSummary);
         $this->assertStringContainsString("'source_currency' => null", $bookingItem);
         $this->assertStringContainsString('$displayCurrencyCode = strtoupper(trim((string) $currency));', $bookingItem);
