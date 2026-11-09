@@ -65,7 +65,7 @@ it('preserves optional fallback behavior and existing theme partials', function 
 
 it('registers isolated Theme 03 asset entry points without a runtime framework CDN', function () {
     $layout = file_get_contents(resource_path('views/layouts/app.blade.php'));
-    $checkout = file_get_contents(resource_path('views/checkout.blade.php'));
+    $checkout = file_get_contents(resource_path('views/checkout/v2/page.blade.php'));
     $themeStyles = file_get_contents(public_path('assets/css/themes/theme-03/theme-03.css'));
 
     expect(config('website_themes.themes.theme-03.stylesheet'))
@@ -78,7 +78,7 @@ it('registers isolated Theme 03 asset entry points without a runtime framework C
         ->and($layout)->toContain("assetVersion(theme_asset('stylesheet'))")
         ->and($layout)->toContain("@if (theme_asset('script'))")
         ->and($layout)->toContain("assetVersion(theme_asset('script'))")
-        ->and($checkout)->toContain("theme_asset('checkout_stylesheet')")
+        ->and($checkout)->toContain('assets/css/checkout-v2.css')
         ->and($themeStyles)->toContain('body.theme-theme-03')
         ->and($themeStyles)->not->toContain('cdn.tailwindcss.com');
 });

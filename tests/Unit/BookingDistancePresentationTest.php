@@ -62,16 +62,16 @@ class BookingDistancePresentationTest extends TestCase
 
     public function test_cart_search_and_confirmation_consumers_use_the_service_check(): void
     {
-        $checkout = file_get_contents(resource_path('views/checkout.blade.php'));
-        $itemView = file_get_contents(resource_path('views/checkout/themes/cart-item.blade.php'));
-        $this->assertStringContainsString('assets/css/checkout-redesign-summary.css', $checkout);
-        $summaryStyles = file_get_contents(public_path('assets/css/checkout-redesign-summary.css'));
-        $this->assertStringContainsString('.reservation-item__layout', $summaryStyles);
-        $this->assertStringContainsString('@media (max-width: 400px)', $summaryStyles);
-        $this->assertStringContainsString('class="checkout-item-route-details"', $itemView);
-        $this->assertStringContainsString('class="checkout-item-toolbar"', $itemView);
+        $checkout = file_get_contents(resource_path('views/checkout/v2/behavior.blade.php'));
+        $itemView = file_get_contents(resource_path('views/checkout/v2/cart-item.blade.php'));
+        $this->assertStringContainsString('assets/css/checkout-v2.css', file_get_contents(resource_path('views/checkout/v2/page.blade.php')));
+        $summaryStyles = file_get_contents(public_path('assets/css/checkout-v2.css'));
+        $this->assertStringContainsString('#checkout-v2', $summaryStyles);
+        $this->assertStringContainsString('checkout-cart-item.is-collapsed', $summaryStyles);
+        $this->assertStringContainsString('class="v2-item-details', $itemView);
+        $this->assertStringContainsString('checkout-item-toolbar', $itemView);
         $this->assertStringContainsString("item.find('> .checkout-item-toolbar > .checkout-item-toggle')", $checkout);
-        $this->assertStringContainsString('.reservation-item.is-collapsed .checkout-item-route-details', $summaryStyles);
+        $this->assertStringContainsString('checkout-cart-item.is-collapsed', $summaryStyles);
         $this->assertStringContainsString("redirect()->route('checkout')", file_get_contents(base_path('routes/web.php')));
         $this->assertStringContainsString('@if (!isServiceDurationBased(', file_get_contents(resource_path('views/search.blade.php')));
         $searchView = file_get_contents(resource_path('views/search.blade.php'));
@@ -109,7 +109,7 @@ class BookingDistancePresentationTest extends TestCase
             'distance_details' => $distance,
         ];
         $checkout = Blade::render(
-            "@foreach (\$cart as \$key => \$item) @include('checkout.themes.cart-item') @endforeach",
+            "@foreach (\$cart as \$key => \$item) @include('checkout.v2.cart-item') @endforeach",
             ['cart' => [$cartItem], 'currencySymbol' => 'LKR'],
         );
 

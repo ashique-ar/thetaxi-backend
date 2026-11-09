@@ -20,14 +20,14 @@ class PublicCheckoutStatePreservationContractTest extends TestCase
             'if (! in_array($paymentType, $allowedPaymentTypes, true))',
             $controller
         );
-        $checkout = file_get_contents(dirname(__DIR__, 2) . '/resources/views/checkout.blade.php');
+        $checkout = file_get_contents(dirname(__DIR__, 2) . '/resources/views/checkout/v2/behavior.blade.php');
         $this->assertStringNotContainsString("\$paymentType = request()->get('type'", $checkout);
     }
 
     public function test_browser_back_restores_the_checkout_controls(): void
     {
         $checkout = file_get_contents(
-            dirname(__DIR__, 2) . '/resources/views/checkout.blade.php'
+            dirname(__DIR__, 2) . '/resources/views/checkout/v2/behavior.blade.php'
         );
 
         $this->assertStringContainsString(
@@ -55,8 +55,8 @@ class PublicCheckoutStatePreservationContractTest extends TestCase
             dirname($projectRoot)
                 . '/portal-thetaxi/src/app/modules/admin/system/settings/website-settings-enhanced.component.ts'
         );
-        $checkout = file_get_contents($projectRoot . '/resources/views/checkout.blade.php')
-            . file_get_contents($projectRoot . '/resources/views/checkout/themes/payment-options.blade.php');
+        $checkout = file_get_contents($projectRoot . '/resources/views/checkout/v2/behavior.blade.php')
+            . file_get_contents($projectRoot . '/resources/views/checkout/v2/payment-options.blade.php');
 
         $this->assertStringContainsString("'advance_payment_enabled'", $portalSettings);
         $this->assertStringContainsString('name="payment_type"', $checkout);
@@ -67,8 +67,8 @@ class PublicCheckoutStatePreservationContractTest extends TestCase
     {
         $root = dirname(__DIR__, 2);
         $controller = file_get_contents($root . '/app/Http/Controllers/CheckoutController.php');
-        $checkout = file_get_contents($root . '/resources/views/checkout.blade.php')
-            . file_get_contents($root . '/resources/views/checkout/themes/layout.blade.php');
+        $checkout = file_get_contents($root . '/resources/views/checkout/v2/behavior.blade.php')
+            . file_get_contents($root . '/resources/views/checkout/v2/layout.blade.php');
 
         $this->assertSame(2, substr_count($controller, '$this->getCheckoutServiceTerms($cart)'));
         $this->assertStringContainsString("data_get(\$item, 'service_type_data.id')", $controller);

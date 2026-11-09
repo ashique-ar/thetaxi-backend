@@ -1,7 +1,7 @@
 const assert = require('node:assert/strict');
 const fs = require('node:fs');
 const vm = require('node:vm');
-const source = fs.readFileSync('resources/views/checkout.blade.php', 'utf8');
+const source = fs.readFileSync('resources/views/checkout/v2/behavior.blade.php', 'utf8');
 const start = source.indexOf('const setCheckoutDetailsVisible = visible => {');
 const end = source.indexOf('\n            };', start);
 assert(start !== -1 && end > start);

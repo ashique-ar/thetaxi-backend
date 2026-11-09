@@ -187,26 +187,13 @@ class CustomerService
                     return $this->updateCustomerProfile($customer, $data)->load('user');
                 }
 
-                $emailVerified = $this->checkoutEmailIsVerified($data['customer_email']);
-                if (!$emailVerified && !$allowUnverifiedExistingCustomer) {
-                    throw ValidationException::withMessages([
-                        'email' => ['This email is already linked to a customer. Choose “Use email” above to load your saved details.'],
-                    ]);
-                }
-
                 if (!$customer->user || $customer->user->trashed() || !$customer->user->is_active) {
                     throw ValidationException::withMessages([
                         'email' => ['This account is inactive. Please contact the business before booking with this email.'],
                     ]);
                 }
 
-                if (!$emailVerified) {
-                    $submittedPhone = PhoneNumberMatch::normalized((string) ($data['customer_phone'] ?? ''), $data['phone_country_code'] ?? null);
-                    $savedPhone = PhoneNumberMatch::normalized((string) ($customer->user->phone ?? ''), $data['phone_country_code'] ?? null);
-                    if ($submittedPhone !== '' && $savedPhone !== '' && $submittedPhone !== $savedPhone) {
-                        throw ValidationException::withMessages(['phone' => ['Use the mobile number saved with this email, or choose Returning customer and verify your details.']]);
-                    }
-
+                if (!$this->checkoutEmailIsVerified($data['customer_email'])) {
                     return $customer->load('user');
                 }
 

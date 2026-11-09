@@ -58,7 +58,7 @@ class PublicCheckoutOptionRetryContractTest extends TestCase
     private function checkoutSource(): string
     {
         return file_get_contents(
-            dirname(__DIR__, 2) . '/resources/views/checkout.blade.php'
+            dirname(__DIR__, 2) . '/resources/views/checkout/v2/behavior.blade.php'
         );
     }
 }

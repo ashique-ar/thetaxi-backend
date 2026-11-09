@@ -651,26 +651,31 @@
                 const panel = $('.checkout-extra-km-panel[data-cart-key="' + cartKey + '"]');
                 const rate = Number(data.rate?.rate || 0);
                 const currentKm = Number(data.current_extra_km?.km || 0);
-                const total = currentKm * rate;
-
+                const safeCartKey = checkoutEscapeHtml(cartKey).replace(/"/g, '&quot;').replace(/'/g, '&#39;');
+                const presets = [50, 150, 300, 500];
                 panel.data('rate', rate);
                 panel.html(`
-                    <div class="checkout-extra-km-rate">
-                        Rate: <strong>${formatCheckoutAmount(rate)}</strong> per km
+                    <div class="v2-km-rate">Rate: <strong>${formatCheckoutAmount(rate)}</strong> per km</div>
+                    <div class="v2-km-title">Popular kilometer bundles</div>
+                    <div class="v2-km-presets">${presets.map(km => `
+                        <button type="button" class="v2-km-preset" data-km="${km}" aria-pressed="${currentKm === km}">
+                            <strong>+${km} km</strong><small>${formatCheckoutAmount(km * rate)}</small>
+                        </button>`).join('')}
                     </div>
-                    <div class="checkout-extra-km-input">
-                        <label for="checkout-extra-km-${cartKey}">Extra kilometers</label>
-                        <input type="number" id="checkout-extra-km-${cartKey}" class="checkout-extra-km-value"
-                            min="0" max="10000" step="1" value="${currentKm}" data-cart-key="${cartKey}">
+                    <div class="v2-km-custom">
+                        <label for="checkout-extra-km-${safeCartKey}">Custom Extra Distance <span>Unit: Kilometers</span></label>
+                        <input type="number" id="checkout-extra-km-${safeCartKey}" class="checkout-extra-km-value"
+                            min="0" max="10000" step="1" value="${currentKm}" data-cart-key="${safeCartKey}">
+                        <input type="range" class="v2-km-slider" min="0" max="${Math.max(600, currentKm)}" step="1" value="${currentKm}" aria-label="Extra kilometers">
+                        <div class="v2-km-slider-labels"><span>0 km</span><span class="v2-km-slider-max">${Math.max(600, currentKm)} km</span></div>
                     </div>
-                    <div class="checkout-extra-km-total">
-                        Total: <strong class="checkout-extra-km-total-value">${formatCheckoutAmount(total)}</strong>
+                    <div class="v2-km-breakdown"><div><span>Base rate per km</span><strong>${formatCheckoutAmount(rate)}</strong></div>
+                        <div><span>Calculation</span><span><span class="v2-km-count">${currentKm}</span> km × ${formatCheckoutAmount(rate)}</span></div>
+                        <div><strong>Subtotal extra mileage</strong><strong class="checkout-extra-km-total-value">${formatCheckoutAmount(currentKm * rate)}</strong></div>
                     </div>
                     <div class="checkout-extra-km-actions">
-                        <button type="button" class="checkout-extra-km-apply" data-cart-key="${cartKey}">
-                            Apply
-                        </button>
-                        ${currentKm > 0 ? `<button type="button" class="checkout-extra-km-remove" data-cart-key="${cartKey}">Remove</button>` : ''}
+                        <button type="button" class="checkout-extra-km-apply" data-cart-key="${safeCartKey}">Apply Extra KM</button>
+                        ${currentKm > 0 ? `<button type="button" class="checkout-extra-km-remove" data-cart-key="${safeCartKey}">Remove</button>` : ''}
                     </div>
                 `);
                 $('.checkout-item-extra-km[data-cart-key="' + cartKey + '"] .checkout-extra-km-count').text(currentKm.toLocaleString('en-US'));
@@ -723,19 +728,45 @@
                 loadCheckoutExtraKm($(this).data('cart-key'), true);
             });
 
+            function updateExtraKmPreview(panel, value) {
+                const km = Math.max(0, Math.min(10000, Number(value) || 0));
+                const slider = panel.find('.v2-km-slider');
+                const max = Math.max(600, km);
+                slider.attr('max', max).val(km);
+                panel.find('.v2-km-slider-max').text(max.toLocaleString('en-US') + ' km');
+                panel.find('.v2-km-count').text(km.toLocaleString('en-US'));
+                panel.find('.checkout-extra-km-total-value').text(formatCheckoutAmount(km * Number(panel.data('rate') || 0)));
+                panel.find('.v2-km-preset').each(function() {
+                    $(this).attr('aria-pressed', Number($(this).data('km')) === km ? 'true' : 'false');
+                });
+            }
+
             $(document).on('input', '.checkout-extra-km-value', function() {
-                const input = $(this);
-                const cartKey = input.data('cart-key');
-                const panel = $('.checkout-extra-km-panel[data-cart-key="' + cartKey + '"]');
-                const rate = Number(panel.data('rate') || 0);
-                const km = Number(input.val() || 0);
-                panel.find('.checkout-extra-km-total-value').text(formatCheckoutAmount(km * rate));
+                this.setCustomValidity('');
+                updateExtraKmPreview($(this).closest('.checkout-extra-km-panel'), this.value);
+            });
+
+            $(document).on('input', '.v2-km-slider', function() {
+                const panel = $(this).closest('.checkout-extra-km-panel');
+                panel.find('.checkout-extra-km-value').val(this.value).trigger('input');
+            });
+
+            $(document).on('click', '.v2-km-preset', function() {
+                const panel = $(this).closest('.checkout-extra-km-panel');
+                panel.find('.checkout-extra-km-value').val($(this).data('km')).trigger('input');
             });
 
             $(document).on('click', '.checkout-extra-km-apply', function() {
                 const button = $(this);
                 const cartKey = button.data('cart-key');
-                const km = Number($('.checkout-extra-km-value[data-cart-key="' + cartKey + '"]').val() || 0);
+                const input = $('.checkout-extra-km-value[data-cart-key="' + cartKey + '"]')[0];
+                const km = Number(input.value);
+                if (!input.value || !Number.isInteger(km) || km < 0 || km > 10000) {
+                    input.setCustomValidity('Enter a whole number between 0 and 10,000.');
+                    input.reportValidity();
+                    return;
+                }
+                input.setCustomValidity('');
 
                 mutateCheckoutExtraKm('{{ route('cart.extra-km.add') }}', {
                     cart_key: cartKey,

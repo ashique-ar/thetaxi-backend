@@ -3,13 +3,9 @@
 beforeEach(function () {
     $root = dirname(__DIR__, 2);
     $this->root = $root;
-    $this->checkout = file_get_contents($root . '/resources/views/checkout.blade.php')
-        . file_get_contents($root . '/resources/views/checkout/themes/billing.blade.php')
-        . file_get_contents($root . '/resources/views/checkout/themes/customer.blade.php')
-        . file_get_contents($root . '/resources/views/checkout/themes/payment-options.blade.php')
-        . file_get_contents($root . '/resources/views/checkout/themes/layout.blade.php');
-    $this->cartItem = file_get_contents($root . '/resources/views/checkout/themes/cart-item.blade.php');
-    $this->cartSummary = file_get_contents($root . '/resources/views/checkout/themes/order-summary.blade.php');
+    $this->checkout = implode('', array_map('file_get_contents', glob($root . '/resources/views/checkout/v2/*.blade.php')));
+    $this->cartItem = file_get_contents($root . '/resources/views/checkout/v2/cart-item.blade.php');
+    $this->cartSummary = file_get_contents($root . '/resources/views/checkout/v2/order-summary.blade.php');
     $this->success = file_get_contents($root . '/resources/views/checkout/success.blade.php');
     $this->resume = file_get_contents($root . '/resources/views/checkout/payment-resume.blade.php');
     $this->callback = file_get_contents($root . '/resources/views/checkout/callback-error.blade.php');
@@ -25,7 +21,7 @@ beforeEach(function () {
 
 it('keeps checkout fields, submission and empty-cart behavior shared', function () {
     expect($this->checkout)
-        ->toContain("theme_class('checkout-workflow')")
+        ->toContain('id="checkout-v2"')
         ->toContain("route('checkout.process')")
         ->toContain('id="checkout-form"')
         ->toContain('name="phone_country_code"')
@@ -37,21 +33,12 @@ it('keeps checkout fields, submission and empty-cart behavior shared', function 
         ->toContain('Browse Vehicles');
 });
 
-it('places the existing dynamic Theme 04 booking form beside checkout', function () {
-    $themeBooking = "@include('partials.themes.theme-04.booking-form', ['embedded' => true])";
-
-    expect($this->checkout)
-        ->toContain("@unless (is_theme('theme-04'))")
-        ->toContain($themeBooking)
-        ->toContain('form="checkout-form"')
-        ->and(strpos($this->checkout, $themeBooking))->toBeLessThan(strpos($this->checkout, "@include('checkout.themes.order-summary')"));
-
-    expect($this->theme04Checkout)
-        ->toContain('.col-lg-5 { display: flex; min-width: 0; flex-direction: column; gap: 24px; }')
-        ->toContain('.t4-checkout-booking .t4-booking-panel__card { width: 100%; }')
-        ->toContain('grid-template-columns: 64px minmax(0, 1fr) !important')
-        ->toContain('width: auto !important; min-width: 0;')
-        ->toContain('.checkout-cart-item .item-total { min-width: 88px; }');
+it('uses the theme 04 design for both themes 03 and 04', function () {
+    foreach (['03', '04'] as $theme) {
+        expect(file_get_contents($this->root . "/resources/views/checkout/v2/theme-{$theme}.blade.php"))
+            ->toContain("'checkoutDesign' => '04'");
+    }
+    expect($this->checkout)->toContain('form="checkout-form"', "@include('checkout.v2.order-summary')");
 });
 
 it('preserves cart item, addon, extra-km, promotion and payment-selection hooks', function () {
@@ -62,7 +49,7 @@ it('preserves cart item, addon, extra-km, promotion and payment-selection hooks'
         ->toContain('checkout-toggle-addons')
         ->toContain('checkout-item-extra-km')
         ->toContain('checkout-toggle-extra-km')
-        ->toContain('return-trip-breakdown');
+        ->toContain("\$item['return_price']");
 
     expect($this->cartSummary)
         ->toContain('data-summary-field="subtotal"')
@@ -132,20 +119,9 @@ it('preserves callback, WebXPay and booking-status security contracts', function
         ->toContain('role="progressbar"');
 });
 
-it('gives both themes complete transactional and mobile presentation ownership', function () {
-    foreach (['03' => $this->theme03Checkout, '04' => $this->theme04Checkout] as $theme => $css) {
-        expect($css)
-            ->toContain(".checkout-workflow--theme-{$theme}")
-            ->toContain('.checkout-sidebar-stack { position: sticky;')
-            ->toContain('.checkout-cart-item')
-            ->toContain('.checkout-item-addons')
-            ->toContain('.checkout-item-extra-km')
-            ->toContain('.promo-code-checkout-wrapper')
-            ->toContain('.payment-option')
-            ->toContain('@media (max-width: 991px)')
-            ->toContain('.checkout-sidebar-stack { position: static; }')
-            ->toContain('min-height: 44px');
-    }
+it('keeps checkout styles scoped while retaining transactional page themes', function () {
+    $checkoutCss = file_get_contents($this->root . '/public/assets/css/checkout-v2.css');
+    expect($checkoutCss)->toContain('#checkout-v2', '#checkout-v2-overlays');
 
     foreach (['03' => $this->theme03Pages, '04' => $this->theme04Pages] as $theme => $css) {
         expect($css)

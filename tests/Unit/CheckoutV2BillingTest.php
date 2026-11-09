@@ -102,15 +102,16 @@ it('assembles a v2 checkout with the form, summary and dialogs', function () {
 
 it('renders the full v2 page and pushes its behavior and scoped stylesheet', function () {
     $this->app['events']->forget('composing: *');
-    view()->getFinder()->prependLocation(base_path('tests/fixtures/checkout-v2'));
+    view()->getFinder()->prependLocation(base_path('tests/Fixtures/checkout-v2'));
     view()->getFinder()->flush();
     $this->app['events']->forget('composing: partials.header');
     $this->mock(\App\Services\WebsiteSettingsService::class, fn ($mock) => $mock->shouldReceive('get')->andReturn('default')->byDefault());
     $this->mock(\App\Services\CurrencyService::class, fn ($mock) => $mock->shouldReceive('isValidCurrency')->with('LKR')->andReturn(true)->byDefault());
+    $lookupEnabled = getenv('CHECKOUT_V2_LOOKUP') === '1';
     $item = ['name' => 'Test vehicle', 'service_type' => 'self_drive', 'service_type_data' => ['pricing_mode' => 'day'], 'pickup_date' => '2026-10-14', 'return_date' => '2026-10-14', 'total_price' => 5000];
     $html = view('checkout.v2.page', [
         'settings' => [], 'cartData' => ['items' => ['a' => $item], 'totals' => ['subtotal' => 5000, 'total' => 5000], 'currency_symbol' => 'LKR', 'currency' => 'LKR'],
-        'guestBookingEnabled' => true, 'customerLookupEnabled' => false, 'verifiedCheckoutCustomer' => null, 'tourCheckoutCustomer' => null,
+        'guestBookingEnabled' => true, 'customerLookupEnabled' => $lookupEnabled, 'verifiedCheckoutCustomer' => null, 'tourCheckoutCustomer' => null,
         'hasAirportTransfer' => false, 'countries' => collect(), 'checkoutDefaultCountryName' => 'Sri Lanka', 'termsByService' => [], 'termsByPaymentType' => [],
         'paymentMethods' => collect(['online' => true]), 'advancePaymentEnabled' => true, 'offlinePaymentEnabled' => false,
         'paymentType' => 'full', 'advancePercentage' => 50, 'advanceMinAmount' => 0, 'errors' => new ViewErrorBag(),

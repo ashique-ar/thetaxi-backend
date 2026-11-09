@@ -42,3 +42,20 @@
 #checkout-v2 .select2-container--default .select2-selection--single .select2-selection__rendered { padding-left: .875rem; line-height: 40px; color: #1e293b; }
 #checkout-v2 .select2-container--default .select2-selection--single .select2-selection__arrow { height: 40px; }
 #checkout-v2 :where(ol,ul), #checkout-v2-overlays :where(ol,ul) { list-style: none; }
+#checkout-v2-overlays .v2-km-rate { margin-bottom: 1.25rem; padding: .875rem; border: 1px solid #e2e8f0; border-radius: .75rem; background: #f1f5f9; color: #475569; font-size: .75rem; }
+#checkout-v2-overlays .v2-km-rate strong { color: #b91c1c; }
+#checkout-v2-overlays .v2-km-title { margin-bottom: .5rem; color: #64748b; font-size: .75rem; font-weight: 700; text-transform: uppercase; letter-spacing: .04em; }
+#checkout-v2-overlays .v2-km-presets { display: grid; grid-template-columns: repeat(2,minmax(0,1fr)); gap: .625rem; margin-bottom: 1.25rem; }
+#checkout-v2-overlays .v2-km-preset { display: flex; flex-direction: column; gap: .25rem; min-height: 58px; padding: .625rem .75rem; border: 1px solid #e2e8f0; border-radius: .75rem; background: #fff; color: #1e293b; text-align: left; }
+#checkout-v2-overlays .v2-km-preset strong { font-size: .875rem; }
+#checkout-v2-overlays .v2-km-preset small { color: #64748b; font-size: .6875rem; }
+#checkout-v2-overlays .v2-km-preset[aria-pressed=true] { border-color: #dc2626; background: #fff1f2; box-shadow: inset 0 0 0 1px #dc2626; color: #b91c1c; }
+#checkout-v2-overlays .v2-km-custom { display: grid; gap: .75rem; padding: 1rem; border: 1px solid #e2e8f0; border-radius: .75rem; background: #fff; }
+#checkout-v2-overlays .v2-km-custom label { display: flex; flex-wrap: wrap; justify-content: space-between; gap: .5rem; color: #334155; font-size: .75rem; font-weight: 700; }
+#checkout-v2-overlays .v2-km-custom label span, #checkout-v2-overlays .v2-km-slider-labels { color: #64748b; font-size: .6875rem; font-weight: 500; }
+#checkout-v2-overlays .v2-km-slider { width: 100%; accent-color: #dc2626; }
+#checkout-v2-overlays .v2-km-slider-labels { display: flex; justify-content: space-between; }
+#checkout-v2-overlays .v2-km-breakdown { display: grid; gap: .5rem; margin: 1.25rem 0; padding-top: .75rem; border-top: 1px solid #e2e8f0; color: #64748b; font-size: .75rem; }
+#checkout-v2-overlays .v2-km-breakdown > div { display: flex; flex-wrap: wrap; justify-content: space-between; gap: .5rem; }
+#checkout-v2-overlays .v2-km-breakdown > div:last-child { padding-top: .5rem; border-top: 1px dashed #e2e8f0; color: #0f172a; }
+#checkout-v2-overlays .checkout-extra-km-total-value { color: #b91c1c; }
