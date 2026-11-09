@@ -53,6 +53,7 @@
                 method: 'POST',
                 data: {
                     _token: '{{ csrf_token() }}',
+                    search_context_id: item.search_context_id,
                     vehicle_group_id: item.group_id,
                     name: item.group_name,
                     pickup_date: item.from_date,
@@ -192,7 +193,8 @@
             if (window.bookingSearchData) {
                 return {
                     search_id: searchId,
-                    ...window.bookingSearchData
+                    ...window.bookingSearchData,
+                    search_context_id: $btn.data('search-context-id') || window.bookingSearchData.search_context_id
                 };
             }
             
@@ -202,6 +204,7 @@
             // Fallback: return minimal data (server will use search_id to get full data)
             return {
                 search_id: searchId,
+                search_context_id: $btn.data('search-context-id') || '',
                 from_date: $btn.data('from-date') || '',
                 to_date: $btn.data('to-date') || '',
                 from_time: $btn.data('from-time') || '',
