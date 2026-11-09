@@ -10,7 +10,7 @@
     @include('checkout.v2.header-' . $checkoutDesign)
     <main id="checkoutContentStart" class="mx-auto w-full max-w-7xl px-4 py-8 sm:px-6 lg:px-8">
         @if (empty($cart))
-            <div class="rounded-2xl border border-amber-200 bg-amber-50 p-6 text-center" role="status"><h2 class="text-lg font-bold text-slate-900">Your cart is empty!</h2><p class="mt-2 text-sm text-slate-600">Please add some vehicles to your cart before proceeding to checkout.</p><a href="{{ route('search') }}" class="mt-4 inline-block rounded-xl bg-red-600 px-5 py-3 text-sm font-bold text-white">Browse Vehicles</a></div>
+            <div class="rounded-2xl border border-amber-200 bg-amber-50 p-6 text-center" role="status"><h2 class="text-lg font-bold text-slate-900">Your cart is empty!</h2><p class="mt-2 text-sm text-slate-600">Please add some vehicles to your cart before proceeding to checkout.</p><a href="{{ route('search') }}" class="mt-4 inline-block rounded-xl bg-checkout-accent px-5 py-3 text-sm font-bold text-white">Browse Vehicles</a></div>
         @else
             <div class="grid grid-cols-1 items-start gap-8 lg:grid-cols-12">
                 <div class="space-y-6 lg:col-span-7">

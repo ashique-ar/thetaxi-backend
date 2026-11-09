@@ -36,15 +36,15 @@
             <img class="h-full w-full object-cover" src="{{ !empty($item['image']) ? s3_asset($item['image']) : asset('assets/img/innerpages/cart-img1.png') }}" alt="{{ $item['name'] ?? 'Vehicle' }}">
         </div>
         <div class="min-w-0 flex-1">
-            <div class="flex flex-wrap items-start justify-between gap-2"><h3 class="text-sm font-bold text-slate-900">{{ $item['name'] ?? 'Vehicle' }}</h3><strong class="text-xs font-bold text-red-700">{{ $currencySymbol }} {{ number_format(floor(max(0, $itemTotal)), 0) }}</strong></div>
-            <div class="mt-1 flex flex-wrap items-center gap-2"><span class="rounded-md bg-red-100 px-2 py-0.5 text-[10px] font-semibold text-red-700">{{ !empty($item['is_tour']) ? 'Tour' : data_get($item, 'service_type_data.name', $serviceType ?? 'Service') }}</span><span class="text-xs text-slate-500">{{ $durationLabel }}</span></div>
+            <div class="flex flex-wrap items-start justify-between gap-2"><h3 class="text-sm font-bold text-slate-900">{{ $item['name'] ?? 'Vehicle' }}</h3><strong class="text-xs font-bold text-checkout-accent">{{ $currencySymbol }} {{ number_format(floor(max(0, $itemTotal)), 0) }}</strong></div>
+            <div class="mt-1 flex flex-wrap items-center gap-2"><span class="rounded-md bg-checkout-accent-soft px-2 py-0.5 text-[10px] font-semibold text-checkout-accent">{{ !empty($item['is_tour']) ? 'Tour' : data_get($item, 'service_type_data.name', $serviceType ?? 'Service') }}</span><span class="text-xs text-slate-500">{{ $durationLabel }}</span></div>
             <p class="mt-1 text-xs text-slate-500">{{ $pickupDate ? $pickupDate->format('M d, Y') : 'Date N/A' }} @if (!empty($item['pickup_time'])) · {{ $item['pickup_time'] }} @endif @if ($returnDate) – {{ $returnDate->format('M d, Y') }} @endif</p>
             @if ($hasItemDiscount && $itemOriginalAmount > $itemTotal)<p class="mt-1 text-xs text-emerald-700"><del class="text-slate-400">{{ $currencySymbol }} {{ number_format(floor(max(0, $itemOriginalAmount)), 0) }}</del> · {{ round($item['discount_percentage'] ?? 0) }}% off @if (($item['discount_amount'] ?? 0) > 0) · Save {{ $currencySymbol }} {{ number_format(floor(max(0, $item['discount_amount'])), 0) }} @endif</p>@endif
         </div>
     </div>
     <div class="checkout-item-toolbar mt-3 flex items-center justify-between gap-3">
         <button type="button" class="checkout-item-toggle text-xs font-semibold text-slate-600" aria-expanded="true" title="Hide booking details"><span class="checkout-item-toggle-label">Less</span> <i class="bi bi-chevron-down" aria-hidden="true"></i></button>
-        <button type="button" class="checkout-remove-item-btn text-xs font-semibold text-red-700" data-cart-key="{{ $key }}" aria-label="Remove {{ $item['name'] ?? 'item' }}"><i class="bi bi-trash" aria-hidden="true"></i> Remove</button>
+        <button type="button" class="checkout-remove-item-btn text-xs font-semibold text-checkout-accent" data-cart-key="{{ $key }}" aria-label="Remove {{ $item['name'] ?? 'item' }}"><i class="bi bi-trash" aria-hidden="true"></i> Remove</button>
     </div>
     <div class="v2-item-details mt-3 rounded-xl bg-slate-50 p-3 text-xs text-slate-600">
         <p><strong class="text-slate-900">Pickup:</strong> {{ formatLocationName($pickupLoc, 'N/A') }}</p>
@@ -62,12 +62,12 @@
         @endif
     </div>
     <div class="v2-item-details checkout-item-addons {{ count($selectedAddons) ? '' : 'checkout-option-pending' }} mt-3" data-cart-key="{{ $key }}" data-service-type="{{ $serviceType ?? '' }}">
-        <div class="flex items-center justify-between gap-3"><div><strong class="block text-xs text-slate-900">Add-ons</strong><small class="text-xs text-slate-500">Selected: <span class="checkout-addon-count">{{ count($selectedAddons) }}</span></small></div><button type="button" class="checkout-toggle-addons text-xs font-semibold text-red-700" data-cart-key="{{ $key }}" data-service-type="{{ $serviceType ?? '' }}" data-vehicle-name="{{ $item['name'] ?? 'Vehicle' }}">Manage</button></div>
+        <div class="flex items-center justify-between gap-3"><div><strong class="block text-xs text-slate-900">Add-ons</strong><small class="text-xs text-slate-500">Selected: <span class="checkout-addon-count">{{ count($selectedAddons) }}</span></small></div><button type="button" class="checkout-toggle-addons text-xs font-semibold text-checkout-accent" data-cart-key="{{ $key }}" data-service-type="{{ $serviceType ?? '' }}" data-vehicle-name="{{ $item['name'] ?? 'Vehicle' }}">Manage</button></div>
         <div class="checkout-selected-addons mt-2 text-xs text-slate-500">@forelse ($selectedAddons as $addon)<div class="checkout-selected-addon-row" data-addon-id="{{ $addon['id'] ?? '' }}"><strong>{{ $addon['name'] ?? 'Add-on' }}</strong> · Qty: {{ max(1, (int) ($addon['qty'] ?? 1)) }} · {{ $currencySymbol }} {{ number_format(max(0, (float) ($addon['calculated_amount'] ?? 0)), $displayCurrency === 'LKR' ? 0 : 2) }}</div>@empty<div class="checkout-no-addons">No add-ons selected</div>@endforelse</div>
     </div>
     @if (empty($item['is_tour']))
         <div class="v2-item-details checkout-item-extra-km {{ $currentExtraKm > 0 ? '' : 'checkout-option-pending' }} mt-3" data-cart-key="{{ $key }}">
-            <div class="flex items-center justify-between gap-3"><div><strong class="block text-xs text-slate-900">Extra distance</strong><small class="text-xs text-slate-500">Selected: <span class="checkout-extra-km-count">{{ number_format($currentExtraKm, 0) }}</span> km</small></div><button type="button" class="checkout-toggle-extra-km text-xs font-semibold text-red-700" data-cart-key="{{ $key }}" data-vehicle-name="{{ $item['name'] ?? 'Vehicle' }}">Manage</button></div>
+            <div class="flex items-center justify-between gap-3"><div><strong class="block text-xs text-slate-900">Extra distance</strong><small class="text-xs text-slate-500">Selected: <span class="checkout-extra-km-count">{{ number_format($currentExtraKm, 0) }}</span> km</small></div><button type="button" class="checkout-toggle-extra-km text-xs font-semibold text-checkout-accent" data-cart-key="{{ $key }}" data-vehicle-name="{{ $item['name'] ?? 'Vehicle' }}">Manage</button></div>
             <div class="checkout-extra-km-panel" data-cart-key="{{ $key }}" style="display:none"></div>
         </div>
     @endif

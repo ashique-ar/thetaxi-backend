@@ -105,7 +105,10 @@ it('renders the full v2 page and pushes its behavior and scoped stylesheet', fun
     view()->getFinder()->prependLocation(base_path('tests/Fixtures/checkout-v2'));
     view()->getFinder()->flush();
     $this->app['events']->forget('composing: partials.header');
-    $this->mock(\App\Services\WebsiteSettingsService::class, fn ($mock) => $mock->shouldReceive('get')->andReturn('default')->byDefault());
+    $this->app['events']->forget('composing: partials.themes.*.header');
+    $theme = getenv('CHECKOUT_V2_THEME') ?: 'default';
+    config(['website_themes.themes.theme-03.released' => true, 'website_themes.themes.theme-04.released' => true]);
+    $this->mock(\App\Services\WebsiteSettingsService::class, fn ($mock) => $mock->shouldReceive('get')->andReturn($theme)->byDefault());
     $this->mock(\App\Services\CurrencyService::class, fn ($mock) => $mock->shouldReceive('isValidCurrency')->with('LKR')->andReturn(true)->byDefault());
     $lookupEnabled = getenv('CHECKOUT_V2_LOOKUP') === '1';
     $item = ['name' => 'Test vehicle', 'service_type' => 'self_drive', 'service_type_data' => ['pricing_mode' => 'day'], 'pickup_date' => '2026-10-14', 'return_date' => '2026-10-14', 'total_price' => 5000];

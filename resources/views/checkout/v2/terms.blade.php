@@ -30,14 +30,14 @@
                             @if ($meta['services']) <small class="block text-slate-500">Applies to: {{ implode(', ', $meta['services']) }}</small> @endif
                             @if ($meta['payment_types']) <small class="block text-slate-500">Payment-specific: {{ implode(', ', $meta['payment_types']) }}</small> @endif
                         </div>
-                        <button type="button" class="term-toggle shrink-0 font-semibold text-red-700" aria-expanded="true">Hide</button>
+                        <button type="button" class="term-toggle shrink-0 font-semibold text-checkout-accent" aria-expanded="true">Hide</button>
                     </div>
                     <div class="term-body mt-2 overflow-hidden break-words">{!! $term->content !!}</div>
                 </div>
             @endforeach
         </div>
         <div id="termsAcceptancePanel" class="mt-4 rounded-xl border border-slate-200 p-3">
-            <label for="accept_all_terms" class="flex items-start gap-3 text-xs text-slate-700"><input id="accept_all_terms" type="checkbox" aria-describedby="termsAcceptHelp" class="rounded border-slate-300 text-red-600 focus:ring-red-500"><span>I agree to the above <strong>Terms &amp; Conditions</strong><span id="termsAcceptHelp" class="mt-1 block text-slate-500">Required before placing your booking.</span></span></label>
+            <label for="accept_all_terms" class="flex items-start gap-3 text-xs text-slate-700"><input id="accept_all_terms" type="checkbox" aria-describedby="termsAcceptHelp" class="rounded border-slate-300 text-checkout-accent focus:ring-checkout-accent"><span>I agree to the above <strong>Terms &amp; Conditions</strong><span id="termsAcceptHelp" class="mt-1 block text-slate-500">Required before placing your booking.</span></span></label>
             <div id="termsAcceptError" class="terms-accept-error mt-2 text-xs text-red-600" role="alert">Please tick this box to continue with your booking.</div>
             <div id="termsAcceptedHiddenInputs"></div>
         </div>

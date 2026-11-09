@@ -11,6 +11,6 @@
             @endswitch
         </div></div>
         <input type="hidden" name="payment_method" id="payment_method_field" value="" form="checkout-form">
-        <button type="submit" id="checkout-submit-btn" form="checkout-form" class="flex w-full items-center justify-center rounded-xl bg-red-600 px-5 py-3.5 text-sm font-bold text-white shadow-sm hover:bg-red-700"><span>@if ($paymentType === 'quotation') Submit Quotation Request @elseif ($paymentType === 'checkin') Confirm Booking - {{ $tourOnlyCheckout ? 'Pay Later' : 'Pay on Check-in' }} @else Complete Booking - <small class="currency-symbol">{{ $currencySymbol }}</small> {{ number_format(floor(max(0, $paymentAmount)), 0) }} @endif</span></button>
+        <button type="submit" id="checkout-submit-btn" form="checkout-form" class="flex w-full items-center justify-center rounded-xl bg-checkout-accent px-5 py-3.5 text-sm font-bold text-white shadow-sm hover:bg-checkout-accent-hover"><span>@if ($paymentType === 'quotation') Submit Quotation Request @elseif ($paymentType === 'checkin') Confirm Booking - {{ $tourOnlyCheckout ? 'Pay Later' : 'Pay on Check-in' }} @else Complete Booking - <small class="currency-symbol">{{ $currencySymbol }}</small> {{ number_format(floor(max(0, $paymentAmount)), 0) }} @endif</span></button>
     </div>
 </div>
