@@ -1,4 +1,13 @@
-<section class="border-t border-slate-200 bg-gradient-to-r from-slate-50 via-white to-slate-50 py-3" aria-label="Booking progress">
-    <ol class="v2-progress mx-auto flex max-w-7xl items-center justify-center gap-1 px-2 text-[10px] font-semibold sm:gap-8 sm:px-4 sm:text-xs"><li class="flex shrink-0 items-center gap-1 whitespace-nowrap text-emerald-600 sm:gap-2"><span class="flex h-5 w-5 items-center justify-center rounded-full bg-emerald-100 font-bold">✓</span><span class="hidden sm:inline">1. Select Vehicle</span><span class="sm:hidden">Vehicle</span></li><li aria-hidden="true" class="text-slate-300">―</li><li class="flex shrink-0 items-center gap-1 whitespace-nowrap text-emerald-600 sm:gap-2"><span class="flex h-5 w-5 items-center justify-center rounded-full bg-emerald-100 font-bold">✓</span><span class="hidden sm:inline">2. Packages &amp; Add-ons</span><span class="sm:hidden">Add-ons</span></li><li aria-hidden="true" class="text-slate-300">―</li><li class="flex shrink-0 items-center gap-1 whitespace-nowrap font-bold text-checkout-accent sm:gap-2" aria-current="step"><span class="flex h-5 w-5 items-center justify-center rounded-full bg-checkout-accent font-bold text-white">3</span><span>Review &amp; Checkout</span></li></ol>
-</section>
-<div class="mx-auto max-w-7xl px-4 pt-8 sm:px-6 lg:px-8 lg:pt-10"><div class="flex flex-col gap-4 md:flex-row md:items-center md:justify-between"><div><nav class="mb-2 flex items-center gap-2 text-xs text-slate-500" aria-label="Breadcrumb"><a href="{{ route('home') }}" class="hover:text-slate-800">Home</a><span aria-hidden="true">/</span><span aria-current="page" class="font-medium text-checkout-accent">Checkout</span></nav><h1 class="text-2xl font-extrabold tracking-tight text-slate-900 sm:text-3xl">Finalize Your Reservation</h1><p class="mt-1 text-sm text-slate-500">Review your vehicles, enter customer details and choose your preferred payment method.</p></div><div class="flex items-center gap-3 self-start rounded-xl border border-slate-200/80 bg-white px-4 py-2.5 shadow-sm md:self-auto"><span class="flex h-9 w-9 items-center justify-center rounded-lg bg-emerald-50 text-emerald-600"><i class="bi bi-shield-lock" aria-hidden="true"></i></span><strong class="text-xs font-bold text-slate-800">Secure Checkout</strong></div></div></div>
+<div class="mx-auto max-w-7xl px-4 pt-8 sm:px-6 lg:px-8 lg:pt-10">
+    <div class="flex flex-col gap-4 md:flex-row md:items-center md:justify-between">
+        <div>
+            <nav class="mb-2 flex items-center gap-2 text-xs text-slate-500" aria-label="Breadcrumb"><a
+                    href="{{ route('home') }}" class="hover:text-slate-800">Home</a><span
+                    aria-hidden="true">/</span><span aria-current="page"
+                    class="font-medium text-checkout-accent">Checkout</span></nav>
+            <h1 class="text-2xl font-extrabold tracking-tight text-slate-900 sm:text-3xl">Finalize Your Reservation</h1>
+            <p class="mt-1 text-sm text-slate-500">Review your vehicles, enter customer details and choose your
+                preferred payment method.</p>
+        </div>
+    </div>
+</div>
