@@ -25,6 +25,8 @@ use Carbon\Carbon;
 class ReportsController extends Controller
 {
     private const CACHE_TTL = 300; // 5 minutes
+    private bool $reportVehicleIdsResolved = false;
+    private ?array $reportVehicleIds = null;
 
     public function __construct()
     {
@@ -1156,7 +1158,7 @@ class ReportsController extends Controller
         $user = request()->user();
         if (!$user || $user->can('bookings.view-all')) return;
 
-        if ($user->hasRole('agent')) {
+        if ($user->hasRole('agent') || $user->agent_id) {
             $user->agent_id
                 ? $query->where("{$table}.agent_id", $user->agent_id)
                 : $query->whereRaw('1 = 0');
@@ -1603,12 +1605,14 @@ class ReportsController extends Controller
 
     private function visibleVehicleIds(): ?array
     {
+        if ($this->reportVehicleIdsResolved) return $this->reportVehicleIds;
+        $this->reportVehicleIdsResolved = true;
         if (request()->user()?->can('bookings.view-all')) return null;
 
         $query = DB::table('booking_items')->join('bookings', 'bookings.id', '=', 'booking_items.booking_id')
             ->whereNotNull('booking_items.vehicle_id');
         $this->applyReportBookingScope($query);
-        return $query->distinct()->pluck('booking_items.vehicle_id')->all();
+        return $this->reportVehicleIds = $query->distinct()->pluck('booking_items.vehicle_id')->all();
     }
 
     private function getPerformanceByCategory(array $filters): array

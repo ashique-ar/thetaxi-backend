@@ -263,6 +263,7 @@ class VehiclePricingCalculationDefinition extends Model
                 'pickup_distance' => 0,
                 'delivery_distance' => 0,
             ];
+            $built['distance_charge_rates'] = $adjustmentResults['distance_charge_rates'] ?? [];
             $built['service_package_info'] = $servicePackageInfo;
             $built['district_info'] = $districtInfo;
 
@@ -334,40 +335,33 @@ class VehiclePricingCalculationDefinition extends Model
             ];
         }
 
-        $totalDeliveryCharge = 0;
+        $distanceChargeTotals = $adjustmentResults['distance_charge_totals'] ?? [];
+        $rangePricedLegs = array_column(
+            array_filter($adjustmentResults['adjustments'] ?? [], fn (array $item): bool => ($item['type'] ?? null) === 'km_range_pricing'),
+            'distance_type'
+        );
         // Enhanced distance-based charges with detailed breakdown
         foreach (['delivery_distance', 'pickup_distance'] as $distanceType) {
-            $distance = $resolvedVariables[$distanceType] ?? 0;
-            //vehicle_delivery_rate_per_km
-            $rateVar = str_replace('_distance', '_rate_per_km', $distanceType);
-            $rateVar = "vehicle_{$rateVar}";
+            $distance = (float) ($resolvedVariables[$distanceType] ?? 0);
+            [$rate, , $rateVariables] = $this->kmRangeRatesForDistance($distanceType, $resolvedVariables);
+            $amount = (float) ($distanceChargeTotals[$distanceType] ?? ($distance * $rate));
+            $totalDeliveryCharge += $amount;
 
-            $rate = $resolvedVariables[$rateVar] ?? 0;
-
-            if ($distance > 0 && $rate > 0) {
-                $amount = $distance * $rate;
+            if ($distance > 0 && $amount > 0 && !in_array($distanceType, $rangePricedLegs, true)) {
                 $serviceTypeLabel = $distanceType === 'pickup_distance' ? 'Vehicle Pickup' : 'Vehicle Delivery';
-                $totalDeliveryCharge += $distance * $rate;
                 $breakdown[] = [
                     'component' => $distanceType,
                     'description' => $serviceTypeLabel,
                     'amount' => $amount,
-                    'calculation' => "{$distance} km × LKR {$rate}",
+                    'calculation' => "{$distance} km × LKR {$rate}/km" . ($rateVariables ? ' (' . implode(', ', $rateVariables) . ')' : ''),
                     'details' => [
                         'distance_km' => $distance,
                         'rate_per_km' => $rate,
+                        'rate_variables' => $rateVariables,
                         'category' => 'company_logistics',
                         'type' => str_replace('_distance', '', $distanceType)
                     ]
                 ];
-            } elseif ($distance > 0 && $rate == 0) {
-                // Log when distance exists but no rate is found
-                Log::warning("Distance found but no rate available", [
-                    'distance_type' => $distanceType,
-                    'distance' => $distance,
-                    'rate_variable' => $rateVar,
-                    'resolved_variables' => array_keys($resolvedVariables)
-                ]);
             }
         }
 
@@ -1743,6 +1737,7 @@ class VehiclePricingCalculationDefinition extends Model
             'pickup_distance' => 0.0,
             'delivery_distance' => 0.0,
         ];
+        $distanceChargeRates = [];
         $distanceLegs = [
             'journey_distance' => $totalDistance,
         ];
@@ -1760,7 +1755,7 @@ class VehiclePricingCalculationDefinition extends Model
                 continue;
             }
 
-            [$baseRatePerKm, $alreadyPricedRatePerKm] = $this->kmRangeRatesForDistance($distanceType, $resolvedVariables);
+            [$baseRatePerKm, $alreadyPricedRatePerKm, $rateVariables] = $this->kmRangeRatesForDistance($distanceType, $resolvedVariables);
 
             $kmRangeResult = KmRangePricingRule::calculateBestPricing(
                 $distance,
@@ -1781,6 +1776,10 @@ class VehiclePricingCalculationDefinition extends Model
                     max(0, $distance * $alreadyPricedRatePerKm + (float) ($kmRangeResult['total_adjustment'] ?? 0)),
                     2
                 );
+                $distanceChargeRates[$distanceType] = [
+                    'rate_per_km' => $baseRatePerKm,
+                    'variables' => $rateVariables,
+                ];
             }
 
             foreach ($kmRangeResult['rules_applied'] ?? [] as $rule) {
@@ -1823,6 +1822,7 @@ class VehiclePricingCalculationDefinition extends Model
             'original_amount' => $baseAmount,
             'adjustments' => $adjustments,
             'distance_charge_totals' => $distanceChargeTotals,
+            'distance_charge_rates' => $distanceChargeRates ?? [],
             'total_adjustment' => $currentAmount - $baseAmount,
             'total_discount' => $totalDiscount,
             'total_increase' => $totalIncrease,
@@ -1843,6 +1843,7 @@ class VehiclePricingCalculationDefinition extends Model
         };
         $baseRate = 0.0;
         $rateFoundInFormula = false;
+        $rateVariables = [];
         foreach ($distanceNames as $distanceName) {
             $distanceToken = preg_quote($distanceName, '/');
             $pattern = '/\{?([A-Za-z_][A-Za-z0-9_]*)\}?\s*\*\s*\{?' . $distanceToken . '\}?|\{?' . $distanceToken . '\}?\s*\*\s*\{?([A-Za-z_][A-Za-z0-9_]*)\}?/i';
@@ -1854,6 +1855,7 @@ class VehiclePricingCalculationDefinition extends Model
                 if (is_numeric($resolvedVariables[$rateName] ?? null)) {
                     $baseRate += max(0, (float) $resolvedVariables[$rateName]);
                     $rateFoundInFormula = true;
+                    $rateVariables[] = $rateName;
                 }
             }
         }
@@ -1867,12 +1869,13 @@ class VehiclePricingCalculationDefinition extends Model
             foreach ($rateNames as $rateName) {
                 if (is_numeric($resolvedVariables[$rateName] ?? null)) {
                     $baseRate = max(0, (float) $resolvedVariables[$rateName]);
+                    $rateVariables[] = $rateName;
                     break;
                 }
             }
         }
 
-        return [$baseRate, $rateFoundInFormula ? $baseRate : 0.0];
+        return [$baseRate, $rateFoundInFormula ? $baseRate : 0.0, array_values(array_unique($rateVariables))];
     }
 
     private function formulaReferencesVariable(string $variableName): bool
