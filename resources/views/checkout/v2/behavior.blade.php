@@ -125,6 +125,7 @@
             function restoreCheckoutInteractiveState() {
                 $('#checkout-submit-btn').prop('disabled', false);
                 $('input[name="payment_type"]:checked').trigger('change');
+                window.dispatchEvent(new Event('checkout:restored'));
             }
 
             // Apply the selected payment type on first render and whenever the
@@ -1298,6 +1299,7 @@
                 if (countryCode) countryCode.disabled = false;
                 syncPaymentContactRequirement();
             };
+            window.addEventListener('checkout:restored', syncPaymentContactRequirement);
             const renderCooldown = () => {
                 if (!sendCodeButton) return;
                 const remaining = Math.max(0, Math.ceil((cooldownUntil[activeChannel] - Date.now()) / 1000));

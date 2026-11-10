@@ -14,4 +14,6 @@ assert.match(css, /#checkout-v2 \.v2-progress :where\(li,span\)\s*\{\s*font-size
 for (const view of ['header-01', 'header-04', 'customer', 'payment-options', 'actions', 'popups']) {
     assert.match(fs.readFileSync(`resources/views/checkout/v2/${view}.blade.php`, 'utf8'), /checkout-accent/);
 }
+const darkHeader = fs.readFileSync('resources/views/checkout/v2/header-01.blade.php', 'utf8');
+assert.match(darkHeader, /shrink-0 items-center gap-1\.5 whitespace-nowrap/);
 console.log('Checkout and popup accents follow the active theme primary color.');

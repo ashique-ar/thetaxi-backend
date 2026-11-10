@@ -111,11 +111,17 @@ it('renders the full v2 page and pushes its behavior and scoped stylesheet', fun
     $this->mock(\App\Services\WebsiteSettingsService::class, fn ($mock) => $mock->shouldReceive('get')->andReturn($theme)->byDefault());
     $this->mock(\App\Services\CurrencyService::class, fn ($mock) => $mock->shouldReceive('isValidCurrency')->with('LKR')->andReturn(true)->byDefault());
     $lookupEnabled = getenv('CHECKOUT_V2_LOOKUP') === '1';
+    $termFixture = getenv('CHECKOUT_V2_TERMS') === '1';
+    $serviceTerm = (object) ['id' => 1, 'version' => 1, 'title' => 'Service terms', 'content' => '<p>Service policy</p>'];
+    $fullTerm = (object) ['id' => 2, 'version' => 1, 'title' => 'Full payment terms', 'content' => '<p>Full policy</p>'];
+    $advanceTerm = (object) ['id' => 3, 'version' => 1, 'title' => 'Advance terms', 'content' => '<p>Advance policy</p>'];
     $item = ['name' => 'Test vehicle', 'service_type' => 'self_drive', 'service_type_data' => ['pricing_mode' => 'day'], 'pickup_date' => '2026-10-14', 'return_date' => '2026-10-14', 'total_price' => 5000];
     $html = view('checkout.v2.page', [
         'settings' => [], 'cartData' => ['items' => ['a' => $item], 'totals' => ['subtotal' => 5000, 'total' => 5000], 'currency_symbol' => 'LKR', 'currency' => 'LKR'],
         'guestBookingEnabled' => true, 'customerLookupEnabled' => $lookupEnabled, 'verifiedCheckoutCustomer' => null, 'tourCheckoutCustomer' => null,
-        'hasAirportTransfer' => false, 'countries' => collect(), 'checkoutDefaultCountryName' => 'Sri Lanka', 'termsByService' => [], 'termsByPaymentType' => [],
+        'hasAirportTransfer' => false, 'countries' => collect(), 'checkoutDefaultCountryName' => 'Sri Lanka',
+        'termsByService' => $termFixture ? ['self_drive' => [$serviceTerm]] : [],
+        'termsByPaymentType' => $termFixture ? ['full' => [$fullTerm], 'advance' => [$advanceTerm]] : [],
         'paymentMethods' => collect(['online' => true]), 'advancePaymentEnabled' => true, 'offlinePaymentEnabled' => false,
         'paymentType' => 'full', 'advancePercentage' => 50, 'advanceMinAmount' => 0, 'errors' => new ViewErrorBag(),
         'checkoutDefaultCountry' => 'lk', 'verificationResendAfter' => 60,
