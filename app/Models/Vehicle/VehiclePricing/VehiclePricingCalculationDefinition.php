@@ -1772,10 +1772,10 @@ class VehiclePricingCalculationDefinition extends Model
             );
 
             if (array_key_exists($distanceType, $distanceChargeTotals)) {
-                $distanceChargeTotals[$distanceType] = round(
-                    max(0, $distance * $alreadyPricedRatePerKm + (float) ($kmRangeResult['total_adjustment'] ?? 0)),
-                    2
-                );
+                $rangeCharges = array_column($kmRangeResult['rules_applied'] ?? [], 'charged_amount');
+                $distanceChargeTotals[$distanceType] = round($rangeCharges
+                    ? array_sum(array_map('floatval', $rangeCharges))
+                    : max(0, $distance * $alreadyPricedRatePerKm), 2);
                 $distanceChargeRates[$distanceType] = [
                     'rate_per_km' => $baseRatePerKm,
                     'variables' => $rateVariables,
