@@ -1,7 +1,7 @@
 <section class="rounded-2xl border border-slate-200/80 bg-white p-6 shadow-sm" data-purpose="billing-information-card">
     <div class="mb-5 flex items-center justify-between gap-4 border-b border-slate-100 pb-4">
         <div>
-            <h2 class="flex items-center gap-2 text-lg font-bold text-slate-900"><span class="flex h-6 w-6 items-center justify-center rounded-md bg-slate-900 text-xs font-bold text-white">2</span>Billing &amp; Driver Information</h2>
+            <h2 class="flex items-center gap-2 text-lg font-bold text-slate-900"><span class="flex h-6 w-6 items-center justify-center rounded-md bg-slate-900 text-xs font-bold text-white">2</span>Billing &amp; Customer Information</h2>
             <p class="mt-0.5 text-xs text-slate-500">Required for your booking and contact details</p>
         </div>
         <span class="whitespace-nowrap text-xs font-medium text-checkout-accent">* Required</span>
