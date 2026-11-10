@@ -58,7 +58,7 @@ class ReportsController extends Controller
                     ->groupBy('currency')->orderBy('currency')->get(),
             'total_customers'  => $this->allCustomers()->where('created_at', '>=', TimezoneService::userDateStartUtc($filters['date_from']))
                     ->where('created_at', '<', $this->exclusiveDateEnd($filters['date_to']))->count(),
-            'total_vehicles'   => Vehicle::withInactive()->count(),
+            'total_vehicles'   => $this->visibleVehicles()->count(),
                 'booking_trends'   => $this->getBookingTrends($filters),
                 'revenue_trends'   => $this->getRevenueTrends($filters),
             ];
@@ -240,6 +240,7 @@ class ReportsController extends Controller
         $analytics = [
             'total_customers'     => $this->allCustomers()->count(),
             'active_customers'    => $this->allCustomers()->whereHas('bookings', function ($q) use ($filters) {
+                $this->applyReportBookingScope($q);
                 if (isset($filters['date_from'])) {
                     $q->where('created_at', '>=', TimezoneService::userDateStartUtc($filters['date_from']));
                 }
@@ -281,9 +282,9 @@ class ReportsController extends Controller
         $filters = $this->parseFilters($request);
 
         $analytics = [
-            'total_vehicles'          => Vehicle::withInactive()->count(),
-            'active_vehicles'         => Vehicle::where('is_active', true)->count(),
-            'maintenance_vehicles'    => Vehicle::withInactive()->where('availability_status', 'unavailable_maintenance')->count(),
+            'total_vehicles'          => $this->visibleVehicles()->count(),
+            'active_vehicles'         => $this->visibleVehicles()->where('is_active', true)->count(),
+            'maintenance_vehicles'    => $this->visibleVehicles()->where('availability_status', 'unavailable_maintenance')->count(),
             'fleet_metrics'           => $this->getFleetMetrics($filters),
             'performance_by_category' => $this->getPerformanceByCategory($filters),
             'maintenance_metrics'     => $this->getMaintenanceMetrics($filters),
@@ -506,8 +507,8 @@ class ReportsController extends Controller
             ->leftJoin('users as report_customer_users', 'customers.user_id', '=', 'report_customer_users.id')
             ->select('customers.*')
             ->with('user')
-            ->withCount('bookings')
-            ->withMax('bookings', 'created_at')
+            ->withCount(['bookings' => fn ($query) => $this->applyReportBookingScope($query)])
+            ->withMax(['bookings as bookings_max_created_at' => fn ($query) => $this->applyReportBookingScope($query)], 'created_at')
             ->when(!empty($filters['date_from']), fn ($q) => $q->where('customers.created_at', '>=', TimezoneService::userDateStartUtc($filters['date_from'])))
             ->when(!empty($filters['date_to']), fn ($q) => $q->where('customers.created_at', '<', $this->exclusiveDateEnd($filters['date_to'])))
             ->when(!empty($filters['search']), function ($q) use ($filters) {
@@ -530,6 +531,7 @@ class ReportsController extends Controller
             ->when(!empty($filters['date_to']), fn ($q) => $q->where('created_at', '<', $this->exclusiveDateEnd($filters['date_to'])));
         $spend = DB::table('bookings')->joinSub($cohort, 'report_customers', 'report_customers.id', '=', 'bookings.customer_id')
             ->where('bookings.status', 'completed');
+        $this->applyReportBookingScope($spend);
         $spend = $spend
             ->selectRaw("COALESCE(NULLIF(UPPER(bookings.currency), ''), 'LKR') as currency, COUNT(DISTINCT bookings.customer_id) as customers, SUM(COALESCE(bookings.total_actual, 0)) as spent")
             ->groupBy('currency')->orderBy('currency')->get()
@@ -546,6 +548,7 @@ class ReportsController extends Controller
         $spend = DB::table('bookings')
             ->whereIn('customer_id', $customers->pluck('id'))
             ->where('status', 'completed');
+        $this->applyReportBookingScope($spend);
         $spend = $spend
             ->selectRaw("customer_id, COALESCE(NULLIF(UPPER(currency), ''), 'LKR') as currency, SUM(COALESCE(total_actual, 0)) as total_spent")
             ->groupBy('customer_id', 'currency')
@@ -591,7 +594,7 @@ class ReportsController extends Controller
         ]);
         $direction = $pagination['sort_direction'] ?? 'asc';
         $sortBy = $pagination['vehicle_sort_by'] ?? 'registration_number';
-        $vehicles = Vehicle::withInactive()->with('group')
+        $vehicles = $this->visibleVehicles()->with('group')
             ->when(!empty($filters['vehicle_id']), fn ($query) => $query->whereKey($filters['vehicle_id']))
             ->when(!empty($filters['search']), function ($query) use ($filters) {
                 $search = '%' . mb_strtolower($filters['search']) . '%';
@@ -650,7 +653,7 @@ class ReportsController extends Controller
                 'last_page' => $vehicles->lastPage(),
                 'to' => $vehicles->lastItem(),
                 'total' => $vehicles->total(),
-                'summary' => ['total_vehicles' => Vehicle::withInactive()->when(!empty($filters['vehicle_id']), fn ($query) => $query->whereKey($filters['vehicle_id']))->count(), 'trips' => (int) $summaryByCurrency->sum('trips'), 'revenue_by_currency' => $summaryByCurrency, 'comparison' => $comparison],
+                'summary' => ['total_vehicles' => $this->visibleVehicles()->when(!empty($filters['vehicle_id']), fn ($query) => $query->whereKey($filters['vehicle_id']))->count(), 'trips' => (int) $summaryByCurrency->sum('trips'), 'revenue_by_currency' => $summaryByCurrency, 'comparison' => $comparison],
             ],
         ]);
     }
@@ -760,8 +763,11 @@ class ReportsController extends Controller
             ->map(fn ($row) => ['currency' => (string) $row->currency, 'completed_cost' => (float) $row->completed_cost])->values();
         $byStatus = DB::query()->fromSub($summaryRows, 'maintenance_rows')
             ->selectRaw('status, currency, COUNT(*) as records, SUM(COALESCE(cost, 0)) as total_cost')->groupBy('status', 'currency')->orderBy('status')->orderBy('currency')->get();
-        $overdueSchedules = DB::table('vehicle_maintenance_schedules')->whereNull('deleted_at')
-            ->whereNotNull('next_due_date')->whereDate('next_due_date', '<', Carbon::today(TimezoneService::getUserTimezone())->toDateString())->count();
+        $overdueSchedulesQuery = DB::table('vehicle_maintenance_schedules')->whereNull('deleted_at')
+            ->whereNotNull('next_due_date')->whereDate('next_due_date', '<', Carbon::today(TimezoneService::getUserTimezone())->toDateString());
+        $visibleVehicleIds = $this->visibleVehicleIds();
+        if ($visibleVehicleIds !== null) $overdueSchedulesQuery->whereIn('vehicle_id', $visibleVehicleIds);
+        $overdueSchedules = $overdueSchedulesQuery->count();
         $comparison = null;
         if (isset($comparisonDates['compare_date_from'], $comparisonDates['compare_date_to'])) {
             $comparisonFilters = [...$filters, 'date_from' => $comparisonDates['compare_date_from'], 'date_to' => $comparisonDates['compare_date_to']];
@@ -810,6 +816,8 @@ class ReportsController extends Controller
             ->groupBy('drivers.id', 'users.first_name', 'users.last_name')
             ->groupByRaw("COALESCE(NULLIF(UPPER(booking_items.currency), ''), NULLIF(UPPER(bookings.currency), ''), 'LKR')");
 
+        $this->applyReportBookingScope($query);
+
         return $query;
     }
 
@@ -817,7 +825,7 @@ class ReportsController extends Controller
     {
         $metrics = $this->vehicleReportMetrics($filters)->get()->groupBy(fn ($row) => (string) $row->vehicle_id);
 
-        return Vehicle::with('group')
+        return $this->visibleVehicles()->with('group')
             ->when(!empty($filters['vehicle_id']), fn ($query) => $query->whereKey($filters['vehicle_id']))
             ->orderBy('title')
             ->get()
@@ -850,6 +858,8 @@ class ReportsController extends Controller
             ->selectRaw("booking_items.vehicle_id, COALESCE(NULLIF(UPPER(booking_items.currency), ''), NULLIF(UPPER(bookings.currency), ''), 'LKR') as currency, COUNT(*) as trip_count, SUM(CASE WHEN booking_items.status = 'completed' THEN COALESCE(booking_items.total_price, 0) ELSE 0 END) as completed_revenue")
             ->groupBy('booking_items.vehicle_id')
             ->groupByRaw("COALESCE(NULLIF(UPPER(booking_items.currency), ''), NULLIF(UPPER(bookings.currency), ''), 'LKR')");
+
+        $this->applyReportBookingScope($query);
 
         return $query;
     }
@@ -893,6 +903,7 @@ class ReportsController extends Controller
         ]);
         $query = BookingGeneratedReport::query()
             ->with('createdBy')
+            ->when(!$request->user()->can('reports.view-all'), fn ($query) => $query->where('created_user_id', $request->user()->id))
             ->when(! empty($pagination['report_type']), fn ($query) => $query->where('report_type', $pagination['report_type']))
             ->when(! empty($pagination['search']), fn ($query) => $query->whereRaw('LOWER(name) LIKE ?', ['%' . mb_strtolower($pagination['search']) . '%']))
             ->latest();
@@ -984,6 +995,7 @@ class ReportsController extends Controller
 
     public function downloadGeneratedReport(Request $request, BookingGeneratedReport $report): Response
     {
+        abort_unless($request->user()->can('reports.view-all') || (string) $report->created_user_id === (string) $request->user()->id, 403);
         if ($report->file_path) {
             if (!Storage::disk('local')->exists($report->file_path)) {
                 abort(404, 'Generated report file is missing');
@@ -1019,6 +1031,7 @@ class ReportsController extends Controller
 
     public function deleteGeneratedReport(Request $request, BookingGeneratedReport $report): JsonResponse
     {
+        abort_unless($request->user()->can('reports.view-all') || (string) $report->created_user_id === (string) $request->user()->id, 403);
         if (!$report->delete()) {
             return response()->json(['status' => 'error', 'message' => 'Report could not be removed'], 500);
         }
@@ -1090,6 +1103,7 @@ class ReportsController extends Controller
 
     private function applyFilters($query, array $filters, string $dateColumn = 'bookings.created_at'): void
     {
+        $this->applyReportBookingScope($query);
         $dateColumn = $dateColumn === 'bookings.completed_at'
             ? 'COALESCE(bookings.completed_at, bookings.created_at)'
             : $dateColumn;
@@ -1135,6 +1149,31 @@ class ReportsController extends Controller
                     break;
             }
         }
+    }
+
+    private function applyReportBookingScope($query, string $table = 'bookings'): void
+    {
+        $user = request()->user();
+        if (!$user || $user->can('bookings.view-all')) return;
+
+        if ($user->hasRole('agent')) {
+            $user->agent_id
+                ? $query->where("{$table}.agent_id", $user->agent_id)
+                : $query->whereRaw('1 = 0');
+            return;
+        }
+
+        if ($user->can('staff.view-team') || $user->can('staff.view-all')) {
+            $staffUserIds = app(\App\Services\StaffAccessService::class)
+                ->scope(\App\Models\Staff::query()->select('staff.user_id'), $user)
+                ->whereNotNull('staff.user_id')->select('staff.user_id');
+            $query->whereIn("{$table}.responsible_user_id", $staffUserIds);
+            return;
+        }
+
+        $user->can('bookings.view')
+            ? $query->where("{$table}.responsible_user_id", $user->id)
+            : $query->whereRaw('1 = 0');
     }
 
     private function applyBookingSearch($query, string $term): void
@@ -1442,9 +1481,11 @@ class ReportsController extends Controller
             ->select('id', 'name')
             ->whereHas('customers', function ($q) use ($filters) {
                 $q->withInactive();
+                $q->whereHas('bookings', fn ($bookings) => $this->applyReportBookingScope($bookings));
             })
             ->withCount(['customers' => function ($q) use ($filters) {
                 $q->withInactive();
+                $q->whereHas('bookings', fn ($bookings) => $this->applyReportBookingScope($bookings));
             }])
             ->orderByDesc('customers_count')
             ->limit(10)
@@ -1469,7 +1510,7 @@ class ReportsController extends Controller
 
     private function getLoyaltyMetrics(array $filters): array
     {
-        $query = CustomerLoyaltyPoint::query();
+        $query = CustomerLoyaltyPoint::query()->whereIn('customer_id', $this->allCustomers()->select('customers.id'));
 
         return [
             'total_enrolled'         => $query->count(),
@@ -1489,6 +1530,7 @@ class ReportsController extends Controller
         $completedBookings = Booking::where('status', 'completed')
             ->selectRaw('customer_id, COUNT(*) as booking_count')
             ->groupBy('customer_id');
+        $this->applyReportBookingScope($completedBookings);
 
         if (!empty($filters['date_from'])) {
             $completedBookings->whereRaw('COALESCE(bookings.completed_at, bookings.created_at) >= ?', [TimezoneService::userDateStartUtc($filters['date_from'])]);
@@ -1516,8 +1558,8 @@ class ReportsController extends Controller
 
     private function getFleetMetrics(array $filters): array
     {
-        $totalVehicles  = Vehicle::withInactive()->count();
-        $totalActive    = Vehicle::where('is_active', true)->count();
+        $totalVehicles  = $this->visibleVehicles()->count();
+        $totalActive    = $this->visibleVehicles()->where('is_active', true)->count();
 
         // Utilisation: vehicles with at least 1 completed booking in the period
         $usedVehicleIds = DB::table('booking_items')
@@ -1530,6 +1572,7 @@ class ReportsController extends Controller
             ->whereNotNull('booking_items.from_date')
             ->whereNotNull('booking_items.vehicle_id')
             ->distinct();
+        $this->applyReportBookingScope($usedVehicleIds);
         $usedVehicleIds = $usedVehicleIds->pluck('booking_items.vehicle_id');
 
         $utilisationRate = $totalActive > 0
@@ -1539,14 +1582,33 @@ class ReportsController extends Controller
         return [
             'total'            => $totalVehicles,
             'active'           => $totalActive,
-            'in_maintenance'   => Vehicle::withInactive()->where('availability_status', 'unavailable_maintenance')->count(),
+            'in_maintenance'   => $this->visibleVehicles()->where('availability_status', 'unavailable_maintenance')->count(),
             'utilisation_rate' => $utilisationRate,
         ];
     }
 
     private function allCustomers()
     {
-        return Customer::withInactive();
+        $query = Customer::withInactive();
+        if (request()->user()?->can('customers.view-all')) return $query;
+
+        return $query->whereHas('bookings', fn ($bookings) => $this->applyReportBookingScope($bookings));
+    }
+
+    private function visibleVehicles()
+    {
+        $vehicleIds = $this->visibleVehicleIds();
+        return Vehicle::withInactive()->when($vehicleIds !== null, fn ($query) => $query->whereIn('vehicles.id', $vehicleIds));
+    }
+
+    private function visibleVehicleIds(): ?array
+    {
+        if (request()->user()?->can('bookings.view-all')) return null;
+
+        $query = DB::table('booking_items')->join('bookings', 'bookings.id', '=', 'booking_items.booking_id')
+            ->whereNotNull('booking_items.vehicle_id');
+        $this->applyReportBookingScope($query);
+        return $query->distinct()->pluck('booking_items.vehicle_id')->all();
     }
 
     private function getPerformanceByCategory(array $filters): array
@@ -1563,6 +1625,8 @@ class ReportsController extends Controller
             ->groupBy('vehicle_groups.id', 'vehicle_groups.name')
             ->orderByDesc('bookings');
 
+        $this->applyReportBookingScope($query);
+
         return $query->get()->toArray();
     }
 
@@ -1572,10 +1636,12 @@ class ReportsController extends Controller
             return [];
         }
 
+        $vehicleIds = $this->visibleVehicleIds();
         return DB::table('vehicle_maintenance_records as vmr')
             ->join('vehicles as v', 'v.id', '=', 'vmr.vehicle_id')
             ->selectRaw("vmr.status, COALESCE(NULLIF(UPPER(vmr.currency), ''), '" . strtoupper((string) config('booking.base_currency', 'LKR')) . "') as currency, COUNT(*) as count, SUM(COALESCE(vmr.cost, 0)) as total_cost")
             ->whereNull('vmr.deleted_at')
+            ->when($vehicleIds !== null, fn ($q) => $q->whereIn('vmr.vehicle_id', $vehicleIds))
             ->when(!empty($filters['date_from']), fn ($q) => $q->whereDate('vmr.performed_date', '>=', $filters['date_from']))
             ->when(!empty($filters['date_to']),   fn ($q) => $q->whereDate('vmr.performed_date', '<=', $filters['date_to']))
             ->groupBy('vmr.status', 'currency')
@@ -1585,11 +1651,13 @@ class ReportsController extends Controller
 
     private function maintenanceReportQuery(array $filters)
     {
+        $vehicleIds = $this->visibleVehicleIds();
         return DB::table('vehicle_maintenance_records as vmr')
             ->join('vehicles as v', 'v.id', '=', 'vmr.vehicle_id')
             ->leftJoin('vehicle_groups as vg', 'vg.id', '=', 'v.vehicle_group_id')
             ->leftJoin('vehicle_maintenance_schedules as vms', 'vms.id', '=', 'vmr.schedule_id')
             ->whereNull('vmr.deleted_at')
+            ->when($vehicleIds !== null, fn ($q) => $q->whereIn('vmr.vehicle_id', $vehicleIds))
             ->when(!empty($filters['date_from']), fn ($q) => $q->whereDate('vmr.performed_date', '>=', $filters['date_from']))
             ->when(!empty($filters['date_to']), fn ($q) => $q->whereDate('vmr.performed_date', '<=', $filters['date_to']))
             ->when(!empty($filters['vehicle_id']), fn ($q) => $q->where('vmr.vehicle_id', $filters['vehicle_id']))
@@ -1620,6 +1688,7 @@ class ReportsController extends Controller
         $receipts = DB::table('booking_payment_receipts as r')
             ->join('bookings as b', 'b.id', '=', 'r.booking_id')
             ->whereNull('r.deleted_at')->where('r.received_at', '>=', $from)->where('r.received_at', '<', $to);
+        $this->applyReportBookingScope($receipts, 'b');
         $receipts = $receipts
             ->selectRaw("{$receiptCurrency} as currency, COALESCE(NULLIF(r.payment_purpose, ''), 'other') as purpose, COALESCE(NULLIF(r.finality_status, ''), 'unknown') as status, COUNT(*) as records, SUM(COALESCE(r.source_amount, r.amount)) as source_amount, SUM(CASE WHEN {$receiptCurrency} = 'LKR' THEN COALESCE(r.lkr_amount, r.source_amount, r.amount) ELSE r.lkr_amount END) as lkr_amount, SUM(CASE WHEN {$receiptCurrency} <> 'LKR' AND r.lkr_amount IS NULL THEN 1 ELSE 0 END) as missing_lkr_conversion_count")
             ->groupByRaw("{$receiptCurrency}, COALESCE(NULLIF(r.payment_purpose, ''), 'other'), COALESCE(NULLIF(r.finality_status, ''), 'unknown')")
@@ -1637,6 +1706,7 @@ class ReportsController extends Controller
             ->join('bookings as b', 'b.id', '=', 'a.booking_id')
             ->where('a.impact_dimension', 'cash_receipt')
             ->where('a.adjustment_effective_at', '>=', $from)->where('a.adjustment_effective_at', '<', $to);
+        $this->applyReportBookingScope($adjustments, 'b');
         $adjustments = $adjustments
             ->selectRaw("{$adjustmentCurrency} as currency, COALESCE(NULLIF(r.payment_purpose, ''), 'other') as purpose, a.adjustment_type, a.direction, COUNT(*) as records, SUM(a.source_amount) as source_amount, SUM(CASE WHEN {$adjustmentCurrency} = 'LKR' THEN COALESCE(a.lkr_amount, a.source_amount) ELSE a.lkr_amount END) as lkr_amount, SUM(CASE WHEN {$adjustmentCurrency} <> 'LKR' AND a.lkr_amount IS NULL THEN 1 ELSE 0 END) as missing_lkr_conversion_count")
             ->groupByRaw("{$adjustmentCurrency}, COALESCE(NULLIF(r.payment_purpose, ''), 'other'), a.adjustment_type, a.direction")
@@ -1894,9 +1964,11 @@ class ReportsController extends Controller
         $from = TimezoneService::userDateStartUtc($today->copy()->subDays($period - 1)->toDateString());
         $to = $this->exclusiveDateEnd($today->toDateString());
 
-        $totalBookings    = Booking::where('created_at', '>=', $from)->where('created_at', '<', $to)->count();
-        $completedBookings= Booking::where('created_at', '>=', $from)->where('created_at', '<', $to)->where('status', 'completed')->count();
-        $cancelledBookings= Booking::where('created_at', '>=', $from)->where('created_at', '<', $to)->where('status', 'cancelled')->count();
+        $bookings = Booking::where('created_at', '>=', $from)->where('created_at', '<', $to);
+        $this->applyReportBookingScope($bookings);
+        $totalBookings = (clone $bookings)->count();
+        $completedBookings = (clone $bookings)->where('status', 'completed')->count();
+        $cancelledBookings = (clone $bookings)->where('status', 'cancelled')->count();
         $completionRate   = $totalBookings > 0 ? round($completedBookings / $totalBookings * 100, 1) : 0;
         $cancellationRate = $totalBookings > 0 ? round($cancelledBookings / $totalBookings * 100, 1) : 0;
 

@@ -259,6 +259,10 @@ class VehiclePricingCalculationDefinition extends Model
             ];
             $built['conditions_evaluated'] = $metadata['conditions_evaluated'];
             $built['pricing_adjustments'] = $adjustmentResults['adjustments'];
+            $built['distance_charge_totals'] = $adjustmentResults['distance_charge_totals'] ?? [
+                'pickup_distance' => 0,
+                'delivery_distance' => 0,
+            ];
             $built['service_package_info'] = $servicePackageInfo;
             $built['district_info'] = $districtInfo;
 
@@ -1735,6 +1739,10 @@ class VehiclePricingCalculationDefinition extends Model
         $currentAmount = (float) ($baseAdjustmentResult['final_amount'] ?? $currentAmount);
 
         $totalKmAdjustment = 0.0;
+        $distanceChargeTotals = [
+            'pickup_distance' => 0.0,
+            'delivery_distance' => 0.0,
+        ];
         $distanceLegs = [
             'journey_distance' => $totalDistance,
         ];
@@ -1767,6 +1775,13 @@ class VehiclePricingCalculationDefinition extends Model
                 $baseRatePerKm,
                 $alreadyPricedRatePerKm
             );
+
+            if (array_key_exists($distanceType, $distanceChargeTotals)) {
+                $distanceChargeTotals[$distanceType] = round(
+                    max(0, $distance * $alreadyPricedRatePerKm + (float) ($kmRangeResult['total_adjustment'] ?? 0)),
+                    2
+                );
+            }
 
             foreach ($kmRangeResult['rules_applied'] ?? [] as $rule) {
                 $adjustmentAmount = (float) ($rule['adjustment_amount'] ?? 0);
@@ -1807,6 +1822,7 @@ class VehiclePricingCalculationDefinition extends Model
             'final_amount' => $currentAmount,
             'original_amount' => $baseAmount,
             'adjustments' => $adjustments,
+            'distance_charge_totals' => $distanceChargeTotals,
             'total_adjustment' => $currentAmount - $baseAmount,
             'total_discount' => $totalDiscount,
             'total_increase' => $totalIncrease,

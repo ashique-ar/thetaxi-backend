@@ -6354,6 +6354,10 @@ class BookingFlowService
             'breakdown' => $this->formatPricingBreakdown($breakdown),
             'distance_details' => $distanceDetails,
             'adjustment_details' => $adjustmentDetails,
+            'distance_charge_totals' => $calculationResult['distance_charge_totals'] ?? [
+                'pickup_distance' => 0,
+                'delivery_distance' => 0,
+            ],
             'distance_policy' => $contractual['distance_policy'] ?? null,
             'contractual_route' => $contractual['contractual_route'] ?? null,
             'contractual_movement_charge' => $movementCharge ?: null,
@@ -6376,6 +6380,10 @@ class BookingFlowService
                 'definition_used' => $calculationResult['definition_id'] ?? null,
                 'variables_used' => $calculationResult['variables_used'] ?? [],
                 'resolved_variables' => $calculationResult['resolved_variables'] ?? [],
+                'distance_charge_totals' => $calculationResult['distance_charge_totals'] ?? [
+                    'pickup_distance' => 0,
+                    'delivery_distance' => 0,
+                ],
                 'rate_sources' => $calculationResult['rate_sources'] ?? [],
                 'formula_evaluation' => $calculationResult['formula_evaluation'] ?? null,
                 'conditions_evaluated' => $calculationResult['conditions_evaluated'] ?? [],
