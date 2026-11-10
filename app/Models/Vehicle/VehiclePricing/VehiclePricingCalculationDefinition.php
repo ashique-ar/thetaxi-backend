@@ -1735,40 +1735,38 @@ class VehiclePricingCalculationDefinition extends Model
             $distanceLegs['delivery_distance'] = (float) ($inputs['delivery_distance'] ?? 0);
         }
 
-        if ($vehicleGroupId) {
-            foreach ($distanceLegs as $distanceType => $distance) {
-                if ($distance <= 0) {
-                    continue;
-                }
-
-                $kmRangeResult = KmRangePricingRule::calculateBestPricing(
-                    $distance,
-                    $currentAmount,
-                    $this->service_type_id,
-                    $vehicleGroupId,
-                    null,
-                    $inputs['owner_type'] ?? null,
-                    $inputs['owner_id'] ?? null,
-                    $distanceType,
-                    $inputs['pricing_context'] ?? 'public'
-                );
-
-                foreach ($kmRangeResult['rules_applied'] ?? [] as $rule) {
-                    $adjustmentAmount = (float) ($rule['adjustment_amount'] ?? 0);
-                    $adjustments[] = [
-                        'type' => 'km_range_pricing',
-                        'distance_type' => $distanceType,
-                        'distance' => $distance,
-                        'name' => ucfirst(str_replace('_', ' ', $distanceType)) . ' — ' . ($rule['rule_info']['name'] ?? 'KM Range Pricing'),
-                        'amount' => $adjustmentAmount,
-                        'calculation' => $rule['calculation_details']['calculation'] ?? $rule['calculation_details'] ?? null,
-                        'is_discount' => $adjustmentAmount < 0,
-                    ];
-                    $totalKmAdjustment += $adjustmentAmount;
-                    $currentAmount += $adjustmentAmount;
-                }
-
+        foreach ($distanceLegs as $distanceType => $distance) {
+            if ($distance <= 0) {
+                continue;
             }
+
+            $kmRangeResult = KmRangePricingRule::calculateBestPricing(
+                $distance,
+                $currentAmount,
+                $this->service_type_id,
+                $vehicleGroupId,
+                $pricingStartDate,
+                $inputs['owner_type'] ?? null,
+                $inputs['owner_id'] ?? null,
+                $distanceType,
+                $inputs['pricing_context'] ?? 'public'
+            );
+
+            foreach ($kmRangeResult['rules_applied'] ?? [] as $rule) {
+                $adjustmentAmount = (float) ($rule['adjustment_amount'] ?? 0);
+                $adjustments[] = [
+                    'type' => 'km_range_pricing',
+                    'distance_type' => $distanceType,
+                    'distance' => $distance,
+                    'name' => ucfirst(str_replace('_', ' ', $distanceType)) . ' — ' . ($rule['rule_info']['name'] ?? 'KM Range Pricing'),
+                    'amount' => $adjustmentAmount,
+                    'calculation' => $rule['calculation_details']['calculation'] ?? $rule['calculation_details'] ?? null,
+                    'is_discount' => $adjustmentAmount < 0,
+                ];
+                $totalKmAdjustment += $adjustmentAmount;
+                $currentAmount += $adjustmentAmount;
+            }
+
         }
 
 

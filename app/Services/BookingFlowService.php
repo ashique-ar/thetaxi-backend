@@ -7269,6 +7269,7 @@ class BookingFlowService
         $totalAmountWithoutCustomizations = $subtotalWithoutCustomizations + $addonsTotalWithoutCustomizations;
 
         $approvalTriggers = $this->resolveApprovalTriggers($params, $addonsPricingResult);
+        $appliedPricingAdjustments = data_get($basePricingResult, 'adjustment_details.adjustments', []);
 
         $result = [
             'success' => true,
@@ -7277,8 +7278,8 @@ class BookingFlowService
             'addons_pricing' => $addonsPricingResult,
             'duration' => $duration,
             'applied_customizations' => $appliedCustomizations,
-            'km_range_pricing' => [], // Initialize empty array for km range pricing
-            'price_adjustments' => [], // Initialize empty array for price adjustments
+            'km_range_pricing' => array_values(array_filter($appliedPricingAdjustments, fn (array $adjustment): bool => ($adjustment['type'] ?? null) === 'km_range_pricing')),
+            'price_adjustments' => array_values(array_filter($appliedPricingAdjustments, fn (array $adjustment): bool => ($adjustment['type'] ?? null) === 'price_adjustment')),
             'summary' => [
                 'subtotal' => $subtotal,
                 'addons_total' => $addonsTotal,

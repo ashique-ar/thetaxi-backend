@@ -88,11 +88,9 @@ class KmRangePricingRule extends BaseModel
         $date = $date ?? now();
         
         return $query->where(function (Builder $q) use ($date) {
-            $q->where('effective_from', '<=', $date)
-              ->where(function (Builder $q2) use ($date) {
-                  $q2->whereNull('effective_to')
-                     ->orWhere('effective_to', '>=', $date);
-              });
+            $q->whereNull('effective_from')->orWhere('effective_from', '<=', $date);
+        })->where(function (Builder $q) use ($date) {
+            $q->whereNull('effective_to')->orWhere('effective_to', '>=', $date);
         });
     }
 
