@@ -40,14 +40,18 @@ class ReportsController extends Controller
     public function getDashboardStats(Request $request): JsonResponse
     {
         $filters = $this->parseFilters($request);
-        $cacheKey = 'reports.dashboard.' . md5(json_encode([$filters, TimezoneService::getUserTimezone()]));
+        $comparison = $request->validate([
+            'compare_date_from' => ['sometimes', 'required_with:compare_date_to', 'date_format:Y-m-d'],
+            'compare_date_to' => ['sometimes', 'required_with:compare_date_from', 'date_format:Y-m-d', 'after_or_equal:compare_date_from'],
+        ]);
+        $cacheKey = 'reports.dashboard.' . md5(json_encode([$filters, $comparison, TimezoneService::getUserTimezone()]));
 
-        $stats = Cache::remember($cacheKey, self::CACHE_TTL, function () use ($filters) {
+        $stats = Cache::remember($cacheKey, self::CACHE_TTL, function () use ($filters, $comparison) {
             $bookings = Booking::query();
             $this->applyFilters($bookings, $filters);
             $completedBookings = Booking::query()->where('status', 'completed');
             $this->applyFilters($completedBookings, $filters, 'bookings.completed_at');
-            return [
+            $stats = [
                 'total_bookings'   => (clone $bookings)->count(),
                 'revenue_by_currency' => (clone $completedBookings)
                     ->selectRaw("COALESCE(NULLIF(UPPER(currency), ''), 'LKR') as currency, SUM(COALESCE(total_actual, 0)) as revenue")
@@ -58,6 +62,27 @@ class ReportsController extends Controller
                 'booking_trends'   => $this->getBookingTrends($filters),
                 'revenue_trends'   => $this->getRevenueTrends($filters),
             ];
+
+            if (isset($comparison['compare_date_from'], $comparison['compare_date_to'])) {
+                $comparisonFilters = [...$filters, 'date_from' => $comparison['compare_date_from'], 'date_to' => $comparison['compare_date_to']];
+                $comparisonBookings = Booking::query();
+                $this->applyFilters($comparisonBookings, $comparisonFilters);
+                $completedComparisonBookings = Booking::query()->where('status', 'completed');
+                $this->applyFilters($completedComparisonBookings, $comparisonFilters, 'bookings.completed_at');
+                $total = (clone $comparisonBookings)->count();
+                $completed = (clone $comparisonBookings)->where('status', 'completed')->count();
+                $cancelled = (clone $comparisonBookings)->whereIn('status', ['cancelled', 'inquiry_cancelled'])->count();
+                $stats['comparison'] = [
+                    'total_bookings' => $total,
+                    'completed_bookings' => $completed,
+                    'cancelled_bookings' => $cancelled,
+                    'revenue_by_currency' => (clone $completedComparisonBookings)
+                        ->selectRaw("COALESCE(NULLIF(UPPER(currency), ''), 'LKR') as currency, SUM(COALESCE(total_actual, 0)) as revenue")
+                        ->groupBy('currency')->orderBy('currency')->get(),
+                ];
+            }
+
+            return $stats;
         });
 
         return response()->json(['status' => 'success', 'data' => $stats]);
@@ -325,6 +350,10 @@ class ReportsController extends Controller
             'sort_direction' => ['nullable', 'in:asc,desc'],
         ]);
         $filters = $this->parseFilters($request);
+        $comparisonDates = $request->validate([
+            'compare_date_from' => ['sometimes', 'required_with:compare_date_to', 'date_format:Y-m-d'],
+            'compare_date_to' => ['sometimes', 'required_with:compare_date_from', 'date_format:Y-m-d', 'after_or_equal:compare_date_from'],
+        ]);
         $summaryFilters = $filters;
         unset($summaryFilters['search']);
         $summaryQuery = Booking::query();
@@ -349,6 +378,20 @@ class ReportsController extends Controller
                 'bookings' => (int) $row->bookings,
                 'gross_booking_value' => (float) $row->gross_booking_value,
             ])->values();
+
+        $comparison = null;
+        if (isset($comparisonDates['compare_date_from'], $comparisonDates['compare_date_to'])) {
+            $comparisonFilters = [...$summaryFilters, 'date_from' => $comparisonDates['compare_date_from'], 'date_to' => $comparisonDates['compare_date_to']];
+            $comparisonQuery = Booking::query();
+            $this->applyFilters($comparisonQuery, $comparisonFilters);
+            $comparison = [
+                'total_bookings' => (clone $comparisonQuery)->count(),
+                'by_currency' => (clone $comparisonQuery)
+                    ->selectRaw("COALESCE(NULLIF(UPPER(currency), ''), 'LKR') as currency, COUNT(*) as bookings, SUM(COALESCE(total_actual, 0)) as amount")
+                    ->groupBy('currency')->orderBy('currency')->get()
+                    ->map(fn ($row) => ['currency' => (string) $row->currency, 'bookings' => (int) $row->bookings, 'amount' => (float) $row->amount])->values(),
+            ];
+        }
 
         $sortColumn = match ($page['sort_by'] ?? null) {
             'booking_number' => 'bookings.booking_number',
@@ -396,6 +439,7 @@ class ReportsController extends Controller
                     ])->values(),
                     'by_status' => $byStatus,
                     'by_payment_status' => $byPaymentStatus,
+                    'comparison' => $comparison,
                 ],
             ],
         ]);
@@ -410,6 +454,10 @@ class ReportsController extends Controller
             'sort_direction' => ['nullable', 'in:asc,desc'],
         ]);
         $filters = $this->parseFilters($request);
+        $comparisonDates = $request->validate([
+            'compare_date_from' => ['sometimes', 'required_with:compare_date_to', 'date_format:Y-m-d'],
+            'compare_date_to' => ['sometimes', 'required_with:compare_date_from', 'date_format:Y-m-d', 'after_or_equal:compare_date_from'],
+        ]);
         $query = $this->customerReportQuery($filters);
         $direction = $pagination['sort_direction'] ?? 'desc';
         match ($pagination['customer_sort_by'] ?? null) {
@@ -424,6 +472,14 @@ class ReportsController extends Controller
         $query->orderBy('customers.id');
         $customers = $query->paginate($pagination['per_page'] ?? 25, ['*'], 'page', $pagination['page'] ?? 1);
 
+        $summary = $this->customerReportSummary($filters);
+        if (isset($comparisonDates['compare_date_from'], $comparisonDates['compare_date_to'])) {
+            $previousCohort = $this->allCustomers()
+                ->where('created_at', '>=', TimezoneService::userDateStartUtc($comparisonDates['compare_date_from']))
+                ->where('created_at', '<', $this->exclusiveDateEnd($comparisonDates['compare_date_to']));
+            $summary['comparison'] = ['total_customers' => (clone $previousCohort)->count()];
+        }
+
         return response()->json([
             'status' => 'success',
             'data' => $this->formatCustomerReportRows(collect($customers->items()), $filters),
@@ -434,7 +490,7 @@ class ReportsController extends Controller
                 'per_page' => $customers->perPage(),
                 'to' => $customers->lastItem(),
                 'total' => $customers->total(),
-                'summary' => $this->customerReportSummary($filters),
+                'summary' => $summary,
             ],
         ]);
     }
@@ -529,6 +585,10 @@ class ReportsController extends Controller
             'sort_direction' => ['nullable', 'in:asc,desc'],
         ]);
         $filters = $this->parseFilters($request);
+        $comparisonDates = $request->validate([
+            'compare_date_from' => ['sometimes', 'required_with:compare_date_to', 'date_format:Y-m-d'],
+            'compare_date_to' => ['sometimes', 'required_with:compare_date_from', 'date_format:Y-m-d', 'after_or_equal:compare_date_from'],
+        ]);
         $direction = $pagination['sort_direction'] ?? 'asc';
         $sortBy = $pagination['vehicle_sort_by'] ?? 'registration_number';
         $vehicles = Vehicle::withInactive()->with('group')
@@ -567,9 +627,18 @@ class ReportsController extends Controller
             ]);
         })->values();
         $summaryByCurrency = DB::query()->fromSub($this->vehicleReportMetrics($filters), 'vehicle_report_metrics')
-            ->selectRaw('currency, SUM(completed_revenue) as revenue')
+            ->selectRaw('currency, SUM(trip_count) as trips, SUM(completed_revenue) as revenue')
             ->groupBy('currency')->orderBy('currency')->get()
-            ->map(fn ($row) => ['currency' => (string) $row->currency, 'revenue' => (float) $row->revenue])->values();
+            ->map(fn ($row) => ['currency' => (string) $row->currency, 'trips' => (int) $row->trips, 'revenue' => (float) $row->revenue])->values();
+        $comparison = null;
+        if (isset($comparisonDates['compare_date_from'], $comparisonDates['compare_date_to'])) {
+            $comparisonFilters = [...$filters, 'date_from' => $comparisonDates['compare_date_from'], 'date_to' => $comparisonDates['compare_date_to']];
+            $comparisonByCurrency = DB::query()->fromSub($this->vehicleReportMetrics($comparisonFilters), 'vehicle_report_metrics')
+                ->selectRaw('currency, SUM(trip_count) as trips, SUM(completed_revenue) as revenue')
+                ->groupBy('currency')->orderBy('currency')->get()
+                ->map(fn ($row) => ['currency' => (string) $row->currency, 'trips' => (int) $row->trips, 'revenue' => (float) $row->revenue])->values();
+            $comparison = ['trips' => (int) $comparisonByCurrency->sum('trips'), 'revenue_by_currency' => $comparisonByCurrency];
+        }
 
         return response()->json([
             'status' => 'success',
@@ -581,7 +650,7 @@ class ReportsController extends Controller
                 'last_page' => $vehicles->lastPage(),
                 'to' => $vehicles->lastItem(),
                 'total' => $vehicles->total(),
-                'summary' => ['total_vehicles' => Vehicle::withInactive()->when(!empty($filters['vehicle_id']), fn ($query) => $query->whereKey($filters['vehicle_id']))->count(), 'revenue_by_currency' => $summaryByCurrency],
+                'summary' => ['total_vehicles' => Vehicle::withInactive()->when(!empty($filters['vehicle_id']), fn ($query) => $query->whereKey($filters['vehicle_id']))->count(), 'trips' => (int) $summaryByCurrency->sum('trips'), 'revenue_by_currency' => $summaryByCurrency, 'comparison' => $comparison],
             ],
         ]);
     }
@@ -595,6 +664,10 @@ class ReportsController extends Controller
             'sort_direction' => ['nullable', 'in:asc,desc'],
         ]);
         $filters = $this->parseFilters($request);
+        $comparisonDates = $request->validate([
+            'compare_date_from' => ['sometimes', 'required_with:compare_date_to', 'date_format:Y-m-d'],
+            'compare_date_to' => ['sometimes', 'required_with:compare_date_from', 'date_format:Y-m-d', 'after_or_equal:compare_date_from'],
+        ]);
         $query = $this->driverReportQuery($filters);
         $sortColumn = match ($pagination['driver_sort_by'] ?? null) {
             'currency' => 'currency',
@@ -616,6 +689,20 @@ class ReportsController extends Controller
                 'completed_assignments' => (int) $row->completed_assignments,
                 'completed_revenue' => (float) $row->completed_revenue,
             ])->values();
+        $comparison = null;
+        if (isset($comparisonDates['compare_date_from'], $comparisonDates['compare_date_to'])) {
+            $comparisonFilters = [...$filters, 'date_from' => $comparisonDates['compare_date_from'], 'date_to' => $comparisonDates['compare_date_to']];
+            $comparison = DB::query()->fromSub($this->driverReportQuery($comparisonFilters), 'report_driver_metrics')
+                ->selectRaw('currency, COUNT(DISTINCT driver_id) as drivers, SUM(bookings) as assignments, SUM(completed_bookings) as completed_assignments, SUM(completed_revenue) as completed_revenue')
+                ->groupBy('currency')->orderBy('currency')->get()
+                ->map(fn ($row) => [
+                    'currency' => (string) $row->currency,
+                    'drivers' => (int) $row->drivers,
+                    'assignments' => (int) $row->assignments,
+                    'completed_assignments' => (int) $row->completed_assignments,
+                    'completed_revenue' => (float) $row->completed_revenue,
+                ])->values();
+        }
 
         return response()->json([
             'status' => 'success',
@@ -634,7 +721,7 @@ class ReportsController extends Controller
                 'last_page' => $rows->lastPage(),
                 'to' => $rows->lastItem(),
                 'total' => $rows->total(),
-                'summary' => ['by_currency' => $summary],
+                'summary' => ['by_currency' => $summary, 'comparison' => $comparison === null ? null : ['by_currency' => $comparison]],
             ],
         ]);
     }
@@ -650,6 +737,10 @@ class ReportsController extends Controller
             'payment_status' => ['nullable', 'string', 'max:64'],
         ]);
         $filters = $this->parseFilters($request);
+        $comparisonDates = $request->validate([
+            'compare_date_from' => ['sometimes', 'required_with:compare_date_to', 'date_format:Y-m-d'],
+            'compare_date_to' => ['sometimes', 'required_with:compare_date_from', 'date_format:Y-m-d', 'after_or_equal:compare_date_from'],
+        ]);
         $query = $this->maintenanceReportQuery($filters);
         $sort = match ($options['maintenance_sort_by'] ?? null) {
             'type' => 'maintenance_type',
@@ -669,6 +760,19 @@ class ReportsController extends Controller
             ->map(fn ($row) => ['currency' => (string) $row->currency, 'completed_cost' => (float) $row->completed_cost])->values();
         $byStatus = DB::query()->fromSub($summaryRows, 'maintenance_rows')
             ->selectRaw('status, currency, COUNT(*) as records, SUM(COALESCE(cost, 0)) as total_cost')->groupBy('status', 'currency')->orderBy('status')->orderBy('currency')->get();
+        $overdueSchedules = DB::table('vehicle_maintenance_schedules')->whereNull('deleted_at')
+            ->whereNotNull('next_due_date')->whereDate('next_due_date', '<', Carbon::today(TimezoneService::getUserTimezone())->toDateString())->count();
+        $comparison = null;
+        if (isset($comparisonDates['compare_date_from'], $comparisonDates['compare_date_to'])) {
+            $comparisonFilters = [...$filters, 'date_from' => $comparisonDates['compare_date_from'], 'date_to' => $comparisonDates['compare_date_to']];
+            $previousRows = $this->maintenanceReportQuery($comparisonFilters);
+            $previousTotals = DB::query()->fromSub(clone $previousRows, 'maintenance_rows')->selectRaw('COUNT(*) as records')->first();
+            $previousCost = DB::query()->fromSub(clone $previousRows, 'maintenance_rows')
+                ->selectRaw("currency, SUM(CASE WHEN status = 'completed' THEN COALESCE(cost, 0) ELSE 0 END) as completed_cost")
+                ->groupBy('currency')->orderBy('currency')->get()
+                ->map(fn ($row) => ['currency' => (string) $row->currency, 'completed_cost' => (float) $row->completed_cost])->values();
+            $comparison = ['records' => (int) ($previousTotals->records ?? 0), 'completed_cost_by_currency' => $previousCost];
+        }
 
         return response()->json([
             'status' => 'success',
@@ -678,8 +782,10 @@ class ReportsController extends Controller
                 'last_page' => $rows->lastPage(), 'total' => $rows->total(),
                 'summary' => [
                     'records' => (int) ($totals->records ?? 0),
+                    'overdue_schedules' => $overdueSchedules,
                     'completed_cost_by_currency' => $costByCurrency,
                     'by_status' => $byStatus->map(fn ($row) => ['status' => $row->status, 'currency' => (string) $row->currency, 'records' => (int) $row->records, 'total_cost' => (float) $row->total_cost])->values(),
+                    'comparison' => $comparison,
                 ],
             ],
         ]);
