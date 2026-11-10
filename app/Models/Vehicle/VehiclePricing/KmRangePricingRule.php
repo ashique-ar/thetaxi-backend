@@ -370,8 +370,14 @@ class KmRangePricingRule extends BaseModel
         ?string $ownerType = null,
         ?string $ownerId = null,
         string $distanceType = 'journey_distance',
-        string $pricingContext = 'public'
+        string $pricingContext = 'public',
+        ?float $baseRatePerKm = null,
+        ?float $alreadyPricedRatePerKm = null
     ): array {
+        if ($distance <= 0) {
+            return ['rules_applied' => [], 'total_adjustment' => 0, 'final_amount' => $baseAmount, 'calculation_summary' => 'No distance to price'];
+        }
+
         $applicableRules = static::queryApplicableRules(
             null,
             $serviceTypeId,
@@ -384,91 +390,83 @@ class KmRangePricingRule extends BaseModel
             $distance
         );
 
-        // Fixed rates are marginal: each rule prices only the part of the trip
-        // inside its band. Percentage and flat rules retain whole-trip behavior.
-        $fixedRateRules = $applicableRules->filter(fn (self $rule): bool =>
-            $rule->price_type === 'fixed_rate'
-            && (float) $rule->from_km < $distance
-            && ($rule->to_km === null || (float) $rule->to_km > 0)
-        );
         $appliedRules = [];
         $totalAdjustment = 0.0;
-
-        if ($fixedRateRules->isEmpty()) {
-            $selectedRule = static::getApplicableRules(
-                $distance,
-                $serviceTypeId,
-                $vehicleGroupId,
-                $date,
-                $ownerType,
-                $ownerId,
-                $distanceType,
-                $pricingContext
-            )->first();
-            if (!$selectedRule) {
-                return [
-                    'rules_applied' => [],
-                    'total_adjustment' => 0,
-                    'final_amount' => $baseAmount,
-                    'calculation_summary' => 'No applicable KM-range pricing rules found',
-                ];
-            }
-
-            $result = $selectedRule->calculatePricing($distance, $baseAmount);
-            if ($result['applicable'] ?? false) {
-                $appliedRules[] = $result;
-                $totalAdjustment = (float) $result['adjustment_amount'];
-            }
-        } else {
-            $boundaries = [0.0, $distance];
-            foreach ($fixedRateRules as $rule) {
-                foreach ([(float) $rule->from_km, $rule->to_km === null ? null : (float) $rule->to_km] as $boundary) {
-                    if ($boundary !== null && $boundary > 0 && $boundary < $distance) {
-                        $boundaries[] = $boundary;
-                    }
+        $baseRatePerKm ??= $distance > 0 ? max(0, $baseAmount / $distance) : 0.0;
+        $alreadyPricedRatePerKm ??= $baseRatePerKm;
+        $boundaries = [0.0, $distance];
+        foreach ($applicableRules as $rule) {
+            foreach ([(float) $rule->from_km, $rule->to_km === null ? null : (float) $rule->to_km] as $boundary) {
+                if ($boundary !== null && $boundary > 0 && $boundary < $distance) {
+                    $boundaries[] = $boundary;
                 }
             }
-            sort($boundaries, SORT_NUMERIC);
-            $boundaries = array_values(array_unique($boundaries, SORT_REGULAR));
+        }
+        sort($boundaries, SORT_NUMERIC);
+        $boundaries = array_values(array_unique($boundaries, SORT_REGULAR));
+        $flatRulesApplied = [];
 
-            for ($index = 1; $index < count($boundaries); $index++) {
-                $from = $boundaries[$index - 1];
-                $to = $boundaries[$index];
-                $portion = $to - $from;
-                $midpoint = ($from + $to) / 2;
-                $rule = $fixedRateRules->first(fn (self $candidate): bool =>
-                    $midpoint >= (float) $candidate->from_km
-                    && ($candidate->to_km === null || $midpoint <= (float) $candidate->to_km)
-                );
-                if (!$rule || $portion <= 0) {
-                    continue;
-                }
-
-                $adjustment = $portion * (float) $rule->rate_per_km;
-                $appliedRules[] = [
-                    'applicable' => true,
-                    'adjustment_amount' => $adjustment,
-                    'final_amount' => $baseAmount + $adjustment,
-                    'calculation_details' => [
-                        'type' => 'fixed_rate',
-                        'distance' => $portion,
-                        'distance_from_km' => $from,
-                        'distance_to_km' => $to,
-                        'rate_per_km' => $rule->rate_per_km,
-                        'calculation' => "{$portion} km × {$rule->rate_per_km} = {$adjustment}",
-                    ],
-                    'rule_info' => [
-                        'id' => $rule->id,
-                        'name' => $rule->name,
-                        'scope' => $rule->scope,
-                        'distance_types' => $rule->distance_types,
-                        'applicable_contexts' => $rule->applicable_contexts ?? self::DEFAULT_APPLICABLE_CONTEXTS,
-                        'km_range' => "{$rule->from_km} - " . ($rule->to_km ?? '∞') . ' km',
-                        'priority' => $rule->priority,
-                    ],
-                ];
-                $totalAdjustment += $adjustment;
+        for ($index = 1; $index < count($boundaries); $index++) {
+            $from = $boundaries[$index - 1];
+            $to = $boundaries[$index];
+            $portion = $to - $from;
+            $midpoint = ($from + $to) / 2;
+            $rule = $applicableRules->first(fn (self $candidate): bool =>
+                $midpoint >= (float) $candidate->from_km
+                && ($candidate->to_km === null || $midpoint < (float) $candidate->to_km)
+            );
+            if (!$rule || $portion <= 0) {
+                continue;
             }
+
+            $alreadyPricedAmount = $portion * $alreadyPricedRatePerKm;
+            if ($rule->price_type === 'flat_addition') {
+                if (isset($flatRulesApplied[$rule->id])) continue;
+                $chargedAmount = (float) $rule->flat_amount;
+                $flatRulesApplied[$rule->id] = true;
+                $calculation = "Flat addition in {$rule->from_km}-" . ($rule->to_km ?? '∞') . " km band = {$chargedAmount}";
+            } else {
+                $ratePerKm = $rule->price_type === 'fixed_rate'
+                    ? (float) $rule->rate_per_km
+                    : $baseRatePerKm * (float) $rule->percentage;
+                $chargedAmount = $portion * $ratePerKm;
+                $calculation = $rule->price_type === 'fixed_rate'
+                    ? "{$portion} km × {$ratePerKm}/km = {$chargedAmount}"
+                    : "{$portion} km × {$baseRatePerKm}/km × {$rule->percentage} = {$chargedAmount}";
+            }
+
+            $adjustment = $chargedAmount - $alreadyPricedAmount;
+            if ($alreadyPricedAmount > 0) {
+                $calculation .= "; replaces {$alreadyPricedAmount} base charge; net adjustment {$adjustment}";
+            }
+            $appliedRules[] = [
+                'applicable' => true,
+                'adjustment_amount' => $adjustment,
+                'charged_amount' => $chargedAmount,
+                'final_amount' => $baseAmount + $adjustment,
+                'calculation_details' => [
+                    'type' => $rule->price_type,
+                    'distance' => $portion,
+                    'distance_from_km' => $from,
+                    'distance_to_km' => $to,
+                    'base_rate_per_km' => $baseRatePerKm,
+                    'rate_per_km' => $rule->price_type === 'fixed_rate' ? (float) $rule->rate_per_km : null,
+                    'multiplier' => $rule->price_type === 'percentage_multiplier' ? (float) $rule->percentage : null,
+                    'charged_amount' => $chargedAmount,
+                    'already_priced_amount' => $alreadyPricedAmount,
+                    'calculation' => $calculation,
+                ],
+                'rule_info' => [
+                    'id' => $rule->id,
+                    'name' => $rule->name,
+                    'scope' => $rule->scope,
+                    'distance_types' => $rule->distance_types,
+                    'applicable_contexts' => $rule->applicable_contexts ?? self::DEFAULT_APPLICABLE_CONTEXTS,
+                    'km_range' => "{$rule->from_km} - " . ($rule->to_km ?? '∞') . ' km',
+                    'priority' => $rule->priority,
+                ],
+            ];
+            $totalAdjustment += $adjustment;
         }
 
         return [
