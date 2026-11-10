@@ -59,7 +59,11 @@ class ReportsController extends Controller
                     ->selectRaw("COALESCE(NULLIF(UPPER(currency), ''), 'LKR') as currency, SUM(COALESCE(total_actual, 0)) as revenue")
                     ->groupBy('currency')->orderBy('currency')->get(),
             'total_customers'  => $this->allCustomers()->where('created_at', '>=', TimezoneService::userDateStartUtc($filters['date_from']))
-                    ->where('created_at', '<', $this->exclusiveDateEnd($filters['date_to']))->count(),
+                    ->where('created_at', '<', $this->exclusiveDateEnd($filters['date_to']))
+                    ->whereHas('bookings', function ($bookings) use ($filters) {
+                        $this->applyReportBookingScope($bookings);
+                        $this->applyResponsibleFilters($bookings, $filters);
+                    })->count(),
             'total_vehicles'   => $this->visibleVehicles()->count(),
                 'booking_trends'   => $this->getBookingTrends($filters),
                 'revenue_trends'   => $this->getRevenueTrends($filters),
@@ -240,9 +244,10 @@ class ReportsController extends Controller
         $filters = $this->parseFilters($request);
 
         $analytics = [
-            'total_customers'     => $this->allCustomers()->count(),
-            'active_customers'    => $this->allCustomers()->whereHas('bookings', function ($q) use ($filters) {
+            'total_customers'     => $this->allCustomers($filters)->count(),
+            'active_customers'    => $this->allCustomers($filters)->whereHas('bookings', function ($q) use ($filters) {
                 $this->applyReportBookingScope($q);
+                $this->applyResponsibleFilters($q, $filters);
                 if (isset($filters['date_from'])) {
                     $q->where('created_at', '>=', TimezoneService::userDateStartUtc($filters['date_from']));
                 }
@@ -448,6 +453,54 @@ class ReportsController extends Controller
         ]);
     }
 
+    public function getReportStaffOptions(Request $request): JsonResponse
+    {
+        abort_unless($request->user()->can('staff.view-team') || $request->user()->can('staff.view-all'), 403);
+        $data = $request->validate(['q' => ['nullable', 'string', 'max:100']]);
+        $query = app(\App\Services\StaffAccessService::class)->scope(
+            \App\Models\Staff::query()->select(['id', 'user_id', 'code'])->with('user:id,first_name,last_name')->whereNotNull('user_id'),
+            $request->user()
+        );
+
+        if (!empty($data['q'])) {
+            $term = '%' . mb_strtolower(trim($data['q'])) . '%';
+            $query->where(fn ($staff) => $staff
+                ->whereRaw('LOWER(staff.code) LIKE ?', [$term])
+                ->orWhereHas('user', fn ($user) => $user
+                    ->whereRaw("LOWER(CONCAT_WS(' ', first_name, last_name)) LIKE ?", [$term])));
+        }
+
+        return response()->json([
+            'status' => 'success',
+            'data' => $query->orderBy('code')->limit(50)->get()->map(fn ($staff) => [
+                'id' => (string) $staff->user_id,
+                'name' => trim(($staff->user?->first_name ?? '') . ' ' . ($staff->user?->last_name ?? '')) ?: ($staff->code ?: 'Staff member'),
+                'code' => $staff->code,
+            ])->values(),
+        ]);
+    }
+
+    public function getReportDepartmentOptions(Request $request): JsonResponse
+    {
+        abort_unless($request->user()->can('staff.view-team') || $request->user()->can('staff.view-all'), 403);
+        $data = $request->validate(['q' => ['nullable', 'string', 'max:100']]);
+        $assignments = $this->currentDepartmentAssignments($request->user());
+        $query = DB::table('hr_organization_units')
+            ->whereIn('id', (clone $assignments)->select('assignment.organization_unit_id'))
+            ->where('status', 'active')
+            ->where(fn ($active) => $active->whereNull('effective_until')->orWhereDate('effective_until', '>=', Carbon::today(TimezoneService::getUserTimezone())->toDateString()))
+            ->when(!empty($data['q']), fn ($units) => $units->where(fn ($search) => $search
+                ->whereRaw('LOWER(name) LIKE ?', ['%' . mb_strtolower(trim($data['q'])) . '%'])
+                ->orWhereRaw('LOWER(code) LIKE ?', ['%' . mb_strtolower(trim($data['q'])) . '%'])))
+            ->select(['id', 'name', 'code'])->distinct()->orderBy('name')->limit(50);
+
+        return response()->json(['status' => 'success', 'data' => $query->get()->map(fn ($unit) => [
+            'id' => (string) $unit->id,
+            'name' => $unit->name,
+            'code' => $unit->code,
+        ])->values()]);
+    }
+
     public function getCustomerReports(Request $request): JsonResponse
     {
         $pagination = $request->validate([
@@ -477,7 +530,7 @@ class ReportsController extends Controller
 
         $summary = $this->customerReportSummary($filters);
         if (isset($comparisonDates['compare_date_from'], $comparisonDates['compare_date_to'])) {
-            $previousCohort = $this->allCustomers()
+            $previousCohort = $this->allCustomers($filters)
                 ->where('created_at', '>=', TimezoneService::userDateStartUtc($comparisonDates['compare_date_from']))
                 ->where('created_at', '<', $this->exclusiveDateEnd($comparisonDates['compare_date_to']));
             $summary['comparison'] = ['total_customers' => (clone $previousCohort)->count()];
@@ -505,12 +558,18 @@ class ReportsController extends Controller
 
     private function customerReportQuery(array $filters)
     {
-        return $this->allCustomers()
+        return $this->allCustomers($filters)
             ->leftJoin('users as report_customer_users', 'customers.user_id', '=', 'report_customer_users.id')
             ->select('customers.*')
             ->with('user')
-            ->withCount(['bookings' => fn ($query) => $this->applyReportBookingScope($query)])
-            ->withMax(['bookings as bookings_max_created_at' => fn ($query) => $this->applyReportBookingScope($query)], 'created_at')
+            ->withCount(['bookings' => function ($query) use ($filters) {
+                $this->applyReportBookingScope($query);
+                $this->applyResponsibleFilters($query, $filters);
+            }])
+            ->withMax(['bookings as bookings_max_created_at' => function ($query) use ($filters) {
+                $this->applyReportBookingScope($query);
+                $this->applyResponsibleFilters($query, $filters);
+            }], 'created_at')
             ->when(!empty($filters['date_from']), fn ($q) => $q->where('customers.created_at', '>=', TimezoneService::userDateStartUtc($filters['date_from'])))
             ->when(!empty($filters['date_to']), fn ($q) => $q->where('customers.created_at', '<', $this->exclusiveDateEnd($filters['date_to'])))
             ->when(!empty($filters['search']), function ($q) use ($filters) {
@@ -525,15 +584,16 @@ class ReportsController extends Controller
 
     private function customerReportSummary(array $filters): array
     {
-        $cohort = $this->allCustomers()->select('id')
+        $cohort = $this->allCustomers($filters)->select('id')
             ->when(!empty($filters['date_from']), fn ($q) => $q->where('created_at', '>=', TimezoneService::userDateStartUtc($filters['date_from'])))
             ->when(!empty($filters['date_to']), fn ($q) => $q->where('created_at', '<', $this->exclusiveDateEnd($filters['date_to'])));
-        $customers = $this->allCustomers()
+        $customers = $this->allCustomers($filters)
             ->when(!empty($filters['date_from']), fn ($q) => $q->where('created_at', '>=', TimezoneService::userDateStartUtc($filters['date_from'])))
             ->when(!empty($filters['date_to']), fn ($q) => $q->where('created_at', '<', $this->exclusiveDateEnd($filters['date_to'])));
         $spend = DB::table('bookings')->joinSub($cohort, 'report_customers', 'report_customers.id', '=', 'bookings.customer_id')
             ->where('bookings.status', 'completed');
         $this->applyReportBookingScope($spend);
+        $this->applyResponsibleFilters($spend, $filters);
         $spend = $spend
             ->selectRaw("COALESCE(NULLIF(UPPER(bookings.currency), ''), 'LKR') as currency, COUNT(DISTINCT bookings.customer_id) as customers, SUM(COALESCE(bookings.total_actual, 0)) as spent")
             ->groupBy('currency')->orderBy('currency')->get()
@@ -551,6 +611,7 @@ class ReportsController extends Controller
             ->whereIn('customer_id', $customers->pluck('id'))
             ->where('status', 'completed');
         $this->applyReportBookingScope($spend);
+        $this->applyResponsibleFilters($spend, $filters);
         $spend = $spend
             ->selectRaw("customer_id, COALESCE(NULLIF(UPPER(currency), ''), 'LKR') as currency, SUM(COALESCE(total_actual, 0)) as total_spent")
             ->groupBy('customer_id', 'currency')
@@ -819,6 +880,7 @@ class ReportsController extends Controller
             ->groupByRaw("COALESCE(NULLIF(UPPER(booking_items.currency), ''), NULLIF(UPPER(bookings.currency), ''), 'LKR')");
 
         $this->applyReportBookingScope($query);
+        $this->applyResponsibleFilters($query, $filters, 'bookings');
 
         return $query;
     }
@@ -1063,6 +1125,8 @@ class ReportsController extends Controller
             'vehicle_id' => ['nullable', 'uuid'],
             'customer_id' => ['nullable', 'uuid'],
             'agent_id' => ['nullable', 'uuid'],
+            'staff_user_id' => ['nullable', 'uuid'],
+            'organization_unit_id' => ['nullable', 'uuid'],
             'service_type_id' => ['nullable', 'uuid'],
             'payment_status' => ['nullable', 'string', 'max:64'],
             'maintenance_status' => ['nullable', 'in:completed,pending,cancelled'],
@@ -1088,6 +1152,8 @@ class ReportsController extends Controller
             'customer_id'    => $request->get('customer_id'),
             'booking_status' => $request->get('booking_status'),
             'agent_id'       => $request->get('agent_id'),
+            'staff_user_id'  => $request->get('staff_user_id'),
+            'organization_unit_id' => $request->get('organization_unit_id'),
             'service_type_id' => $request->get('service_type_id'),
             'currency'       => $request->get('currency') ? strtoupper($request->get('currency')) : null,
             'min_amount'     => $request->get('min_amount'),
@@ -1106,6 +1172,7 @@ class ReportsController extends Controller
     private function applyFilters($query, array $filters, string $dateColumn = 'bookings.created_at'): void
     {
         $this->applyReportBookingScope($query);
+        $this->applyResponsibleFilters($query, $filters);
         $dateColumn = $dateColumn === 'bookings.completed_at'
             ? 'COALESCE(bookings.completed_at, bookings.created_at)'
             : $dateColumn;
@@ -1151,6 +1218,41 @@ class ReportsController extends Controller
                     break;
             }
         }
+    }
+
+    private function applyResponsibleFilters($query, array $filters, string $bookingTable = 'bookings'): void
+    {
+        if (!empty($filters['staff_user_id'])) {
+            $query->where("{$bookingTable}.responsible_user_id", $filters['staff_user_id']);
+        }
+        if (!empty($filters['organization_unit_id'])) {
+            $userIds = (clone $this->currentDepartmentAssignments(request()->user()))
+                ->where('assignment.organization_unit_id', $filters['organization_unit_id'])
+                ->select('staff.user_id');
+            $query->whereIn("{$bookingTable}.responsible_user_id", $userIds);
+        }
+    }
+
+    private function currentDepartmentAssignments(\App\Models\User $actor)
+    {
+        $visibleStaff = app(\App\Services\StaffAccessService::class)->scope(
+            \App\Models\Staff::query()->select('staff.id')->whereNotNull('staff.user_id'),
+            $actor
+        );
+        $today = Carbon::today(TimezoneService::getUserTimezone())->toDateString();
+
+        return DB::table('hr_employment_assignments as assignment')
+            ->join('hr_employment_spells as spell', 'spell.id', '=', 'assignment.employment_spell_id')
+            ->join('staff', 'staff.id', '=', 'assignment.staff_id')
+            ->join('hr_organization_units as unit', 'unit.id', '=', 'assignment.organization_unit_id')
+            ->whereIn('assignment.staff_id', $visibleStaff)
+            ->whereNull('assignment.deleted_at')->whereNull('spell.deleted_at')
+            ->where('assignment.assignment_type', 'primary')
+            ->whereDate('assignment.effective_from', '<=', $today)
+            ->where(fn ($active) => $active->whereNull('assignment.effective_until')->orWhereDate('assignment.effective_until', '>=', $today))
+            ->where('spell.status', 'active')->whereNull('spell.terminated_at')
+            ->where('unit.status', 'active')
+            ->where(fn ($active) => $active->whereNull('unit.effective_until')->orWhereDate('unit.effective_until', '>=', $today));
     }
 
     private function applyReportBookingScope($query, string $table = 'bookings'): void
@@ -1456,7 +1558,7 @@ class ReportsController extends Controller
 
     private function getNewCustomers(array $filters): array
     {
-        $query = $this->allCustomers();
+        $query = $this->allCustomers($filters);
         if (!empty($filters['date_from'])) {
             $query->where('created_at', '>=', TimezoneService::userDateStartUtc($filters['date_from']));
         }
@@ -1483,11 +1585,17 @@ class ReportsController extends Controller
             ->select('id', 'name')
             ->whereHas('customers', function ($q) use ($filters) {
                 $q->withInactive();
-                $q->whereHas('bookings', fn ($bookings) => $this->applyReportBookingScope($bookings));
+                $q->whereHas('bookings', function ($bookings) use ($filters) {
+                    $this->applyReportBookingScope($bookings);
+                    $this->applyResponsibleFilters($bookings, $filters);
+                });
             })
             ->withCount(['customers' => function ($q) use ($filters) {
                 $q->withInactive();
-                $q->whereHas('bookings', fn ($bookings) => $this->applyReportBookingScope($bookings));
+                $q->whereHas('bookings', function ($bookings) use ($filters) {
+                    $this->applyReportBookingScope($bookings);
+                    $this->applyResponsibleFilters($bookings, $filters);
+                });
             }])
             ->orderByDesc('customers_count')
             ->limit(10)
@@ -1498,8 +1606,8 @@ class ReportsController extends Controller
             ])
             ->toArray();
 
-        $corporate = $this->allCustomers()->where('type', 'corporate')->count();
-        $individual = $this->allCustomers()->where('type', '!=', 'corporate')->count();
+        $corporate = $this->allCustomers($filters)->where('type', 'corporate')->count();
+        $individual = $this->allCustomers($filters)->where('type', '!=', 'corporate')->count();
 
         return [
             'by_country'  => $byCountry,
@@ -1512,7 +1620,7 @@ class ReportsController extends Controller
 
     private function getLoyaltyMetrics(array $filters): array
     {
-        $query = CustomerLoyaltyPoint::query()->whereIn('customer_id', $this->allCustomers()->select('customers.id'));
+        $query = CustomerLoyaltyPoint::query()->whereIn('customer_id', $this->allCustomers($filters)->select('customers.id'));
 
         return [
             'total_enrolled'         => $query->count(),
@@ -1533,6 +1641,7 @@ class ReportsController extends Controller
             ->selectRaw('customer_id, COUNT(*) as booking_count')
             ->groupBy('customer_id');
         $this->applyReportBookingScope($completedBookings);
+        $this->applyResponsibleFilters($completedBookings, $filters);
 
         if (!empty($filters['date_from'])) {
             $completedBookings->whereRaw('COALESCE(bookings.completed_at, bookings.created_at) >= ?', [TimezoneService::userDateStartUtc($filters['date_from'])]);
@@ -1589,12 +1698,15 @@ class ReportsController extends Controller
         ];
     }
 
-    private function allCustomers()
+    private function allCustomers(array $filters = [])
     {
         $query = Customer::withInactive();
-        if (request()->user()?->can('customers.view-all')) return $query;
+        if (request()->user()?->can('customers.view-all') && empty($filters['staff_user_id']) && empty($filters['organization_unit_id'])) return $query;
 
-        return $query->whereHas('bookings', fn ($bookings) => $this->applyReportBookingScope($bookings));
+        return $query->whereHas('bookings', function ($bookings) use ($filters) {
+            $this->applyReportBookingScope($bookings);
+            $this->applyResponsibleFilters($bookings, $filters);
+        });
     }
 
     private function visibleVehicles()
@@ -1693,6 +1805,7 @@ class ReportsController extends Controller
             ->join('bookings as b', 'b.id', '=', 'r.booking_id')
             ->whereNull('r.deleted_at')->where('r.received_at', '>=', $from)->where('r.received_at', '<', $to);
         $this->applyReportBookingScope($receipts, 'b');
+        $this->applyResponsibleFilters($receipts, $filters, 'b');
         $receipts = $receipts
             ->selectRaw("{$receiptCurrency} as currency, COALESCE(NULLIF(r.payment_purpose, ''), 'other') as purpose, COALESCE(NULLIF(r.finality_status, ''), 'unknown') as status, COUNT(*) as records, SUM(COALESCE(r.source_amount, r.amount)) as source_amount, SUM(CASE WHEN {$receiptCurrency} = 'LKR' THEN COALESCE(r.lkr_amount, r.source_amount, r.amount) ELSE r.lkr_amount END) as lkr_amount, SUM(CASE WHEN {$receiptCurrency} <> 'LKR' AND r.lkr_amount IS NULL THEN 1 ELSE 0 END) as missing_lkr_conversion_count")
             ->groupByRaw("{$receiptCurrency}, COALESCE(NULLIF(r.payment_purpose, ''), 'other'), COALESCE(NULLIF(r.finality_status, ''), 'unknown')")
@@ -1711,6 +1824,7 @@ class ReportsController extends Controller
             ->where('a.impact_dimension', 'cash_receipt')
             ->where('a.adjustment_effective_at', '>=', $from)->where('a.adjustment_effective_at', '<', $to);
         $this->applyReportBookingScope($adjustments, 'b');
+        $this->applyResponsibleFilters($adjustments, $filters, 'b');
         $adjustments = $adjustments
             ->selectRaw("{$adjustmentCurrency} as currency, COALESCE(NULLIF(r.payment_purpose, ''), 'other') as purpose, a.adjustment_type, a.direction, COUNT(*) as records, SUM(a.source_amount) as source_amount, SUM(CASE WHEN {$adjustmentCurrency} = 'LKR' THEN COALESCE(a.lkr_amount, a.source_amount) ELSE a.lkr_amount END) as lkr_amount, SUM(CASE WHEN {$adjustmentCurrency} <> 'LKR' AND a.lkr_amount IS NULL THEN 1 ELSE 0 END) as missing_lkr_conversion_count")
             ->groupByRaw("{$adjustmentCurrency}, COALESCE(NULLIF(r.payment_purpose, ''), 'other'), a.adjustment_type, a.direction")

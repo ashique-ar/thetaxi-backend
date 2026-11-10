@@ -309,6 +309,7 @@ class VehiclePricingCalculationDefinition extends Model
     private function buildCalculationBreakdown(array $resolvedVariables, float $totalAmount, float $totalAmountWithoutCustomizations, ?array $slabInfo, array $kmCalculations, array $adjustmentResults = []): array
     {
         $breakdown = [];
+        $totalDeliveryCharge = 0;
 
         // Base rate breakdown
         if (isset($resolvedVariables['slab_rate']) && $resolvedVariables['slab_rate'] > 0) {

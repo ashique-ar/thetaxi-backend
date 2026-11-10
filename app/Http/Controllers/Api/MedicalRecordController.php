@@ -21,12 +21,14 @@ class MedicalRecordController extends Controller
     {
         $filters = $request->validate([
             'search' => ['nullable', 'string', 'max:120'],
-            'subject_type' => ['nullable', Rule::in(['vehicle', 'staff'])],
+            'subject_type' => ['nullable', Rule::in(['vehicle', 'staff', 'driver'])],
             'subject_id' => ['nullable', 'uuid'],
             'category_id' => ['nullable', 'uuid'],
             'record_type' => ['nullable', 'string', 'max:60'],
             'status' => ['nullable', Rule::in(['active', 'expired', 'suspended', 'revoked', 'superseded', 'cancelled'])],
             'expiring_within_days' => ['nullable', 'integer', 'min:1', 'max:365'],
+            'sort_by' => ['nullable', Rule::in(['issued_date', 'valid_until', 'status'])],
+            'sort_direction' => ['nullable', Rule::in(['asc', 'desc'])],
             'page' => ['nullable', 'integer', 'min:1'],
             'per_page' => ['nullable', 'integer', 'min:1', 'max:50'],
         ]);
@@ -42,14 +44,27 @@ class MedicalRecordController extends Controller
                 $q->where(fn ($match) => $match
                     ->whereRaw('LOWER(title) LIKE ?', [$term])
                     ->orWhereRaw('LOWER(record_number) LIKE ?', [$term])
-                    ->orWhereRaw("LOWER(COALESCE(issuing_authority, '')) LIKE ?", [$term]));
+                    ->orWhereRaw("LOWER(COALESCE(issuing_authority, '')) LIKE ?", [$term])
+                    ->orWhereHas('category', fn ($category) => $category->whereRaw('LOWER(code) LIKE ?', [$term])->orWhereRaw('LOWER(name) LIKE ?', [$term]))
+                    ->orWhere(fn ($subject) => $subject->where('subject_type', 'staff')->whereIn('subject_id', DB::table('staff')->leftJoin('users', 'users.id', '=', 'staff.user_id')->where(fn ($name) => $name
+                        ->whereRaw("LOWER(COALESCE(users.first_name, '')) LIKE ?", [$term])
+                        ->orWhereRaw("LOWER(COALESCE(users.last_name, '')) LIKE ?", [$term])
+                        ->orWhereRaw("LOWER(COALESCE(staff.code, '')) LIKE ?", [$term]))->select('staff.id')))
+                    ->orWhere(fn ($subject) => $subject->where('subject_type', 'driver')->whereIn('subject_id', DB::table('drivers')->leftJoin('users', 'users.id', '=', 'drivers.user_id')->where(fn ($name) => $name
+                        ->whereRaw("LOWER(COALESCE(users.first_name, '')) LIKE ?", [$term])
+                        ->orWhereRaw("LOWER(COALESCE(users.last_name, '')) LIKE ?", [$term])
+                        ->orWhereRaw("LOWER(COALESCE(drivers.code, '')) LIKE ?", [$term]))->select('drivers.id')))
+                    ->orWhere(fn ($subject) => $subject->where('subject_type', 'vehicle')->whereIn('subject_id', DB::table('vehicles')->where(fn ($vehicle) => $vehicle
+                        ->whereRaw("LOWER(COALESCE(registration_no, '')) LIKE ?", [$term])
+                        ->orWhereRaw("LOWER(COALESCE(license_plate, '')) LIKE ?", [$term]))->select('id'))));
             });
 
         if (! empty($filters['record_type'])) {
             $query->whereHas('category', fn ($category) => $category->where('code', $filters['record_type']));
         }
 
-        $page = $query->orderByDesc('created_at')->orderBy('id')->paginate($filters['per_page'] ?? 25);
+        $query->orderBy($filters['sort_by'] ?? 'created_at', $filters['sort_direction'] ?? 'desc')->orderBy('id');
+        $page = $query->paginate($filters['per_page'] ?? 25);
         $page->getCollection()->transform(fn (MedicalRecord $record) => $this->serializeRecord($record));
         $this->auditListView($request);
 
@@ -62,6 +77,33 @@ class MedicalRecordController extends Controller
             ->orderBy('name')->orderBy('id')->get(['id', 'code', 'name', 'description']);
 
         return response()->json(['status' => 'success', 'data' => $categories]);
+    }
+
+    public function reportSummary(Request $request): JsonResponse
+    {
+        $filters = $request->validate([
+            'expiring_within_days' => ['nullable', 'integer', 'in:30,60,90'],
+        ]);
+        $today = today()->toDateString();
+        $windowDays = (int) ($filters['expiring_within_days'] ?? 30);
+        $summary = MedicalRecord::query()
+            ->selectRaw('COUNT(*) as total_records')
+            ->selectRaw('SUM(CASE WHEN status = ? THEN 1 ELSE 0 END) as active_records', ['active'])
+            ->selectRaw('SUM(CASE WHEN valid_until > ? AND valid_until <= ? THEN 1 ELSE 0 END) as expiring_soon', [$today, today()->addDays($windowDays)->toDateString()])
+            ->selectRaw('SUM(CASE WHEN valid_until < ? THEN 1 ELSE 0 END) as expired_records', [$today])
+            ->first();
+
+        activity('hr-sensitive-data')->causedBy($request->user())->event('medical_record_summary_viewed')
+            ->log('medical_record_summary_viewed');
+
+        return response()->json(['status' => 'success', 'data' => [
+            'total_records' => (int) $summary->total_records,
+            'active_records' => (int) $summary->active_records,
+            'expiring_soon' => (int) $summary->expiring_soon,
+            'expired_records' => (int) $summary->expired_records,
+            'as_of_date' => $today,
+            'expiry_window_days' => $windowDays,
+        ]]);
     }
 
     public function store(Request $request): JsonResponse

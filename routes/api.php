@@ -1009,6 +1009,7 @@ Route::middleware(['auth:api'])->group(function () {
 
     Route::prefix('medical-records')->middleware(['ensure.internal', 'business.module:hr'])->group(function () {
         Route::get('/', [MedicalRecordController::class, 'index'])->middleware('permission:hr.medical-records.view');
+        Route::get('report-summary', [MedicalRecordController::class, 'reportSummary'])->middleware('permission:hr.medical-records.view');
         Route::get('categories', [MedicalRecordController::class, 'categories'])->middleware('permission:hr.medical-records.view');
         Route::post('/', [MedicalRecordController::class, 'store'])->middleware('permission:hr.medical-records.manage');
         Route::get('{id}/document/{documentId}', [MedicalRecordController::class, 'downloadDocument'])->whereUuid('id')->whereUuid('documentId')->middleware('permission:hr.medical-records.view');
@@ -2068,6 +2069,10 @@ Route::middleware(['auth:api'])->group(function () {
             ->middleware('permission:reports.view');
         Route::get('/bookings', [ReportsController::class, 'getBookingReports'])
             ->middleware('permission:reports.view');
+        Route::get('/staff-options', [ReportsController::class, 'getReportStaffOptions'])
+            ->middleware('permission:staff.view-team|staff.view-all');
+        Route::get('/department-options', [ReportsController::class, 'getReportDepartmentOptions'])
+            ->middleware('permission:staff.view-team|staff.view-all');
         Route::get('/financial-reports', [ReportsController::class, 'getFinancialReports'])
             ->middleware('permission:reports.view');
         Route::get('/financial', [ReportsController::class, 'getFinancialReports'])
