@@ -632,11 +632,23 @@ class VehiclePricingCalculationDefinition extends Model
      */
     private function calculateKmOverages(array $inputs, ?array $slabInfo, ?array $servicePackageInfo = null): array
     {
-        $distanceSupplied = (array_key_exists('journey_distance', $inputs) && is_numeric($inputs['journey_distance']))
-            || (array_key_exists('total_distance', $inputs) && is_numeric($inputs['total_distance']));
-        $journeyDistance = $distanceSupplied
-            ? (float) ($inputs['journey_distance'] ?? $inputs['total_distance'])
-            : null;
+        $hasJourneyDistance = array_key_exists('journey_distance', $inputs) && is_numeric($inputs['journey_distance']);
+        $hasTotalDistance = array_key_exists('total_distance', $inputs) && is_numeric($inputs['total_distance']);
+        $distanceSupplied = $hasJourneyDistance || $hasTotalDistance;
+        $journeyDistance = $hasJourneyDistance
+            ? (float) $inputs['journey_distance']
+            : ($hasTotalDistance ? (float) $inputs['total_distance'] : null);
+
+        // total_distance can include the two separately-priced garage legs.
+        // Package allowances and extra-km charges apply to the passenger journey only.
+        if (!$hasJourneyDistance && $hasTotalDistance && ($inputs['include_garage_distance'] ?? false)) {
+            $journeyDistance = max(
+                0,
+                $journeyDistance
+                    - max(0, (float) ($inputs['pickup_distance'] ?? 0))
+                    - max(0, (float) ($inputs['delivery_distance'] ?? 0))
+            );
+        }
         $result = [
             'journey_distance' => $journeyDistance,
             'distance_supplied' => $distanceSupplied,
