@@ -64,6 +64,10 @@ class AgreementController extends Controller
     {
         $this->validatedReportFilters($request);
 
+        if ($request->boolean('countOnly')) {
+            return response()->json(['count' => $this->reportQuery($request)->count()]);
+        }
+
         return response()->json([
             'stats' => $this->statsData(),
             'items' => $this->reportQuery($request)->latest()->get(),
@@ -196,6 +200,8 @@ class AgreementController extends Controller
             'reportType' => 'nullable|string|in:summary,expiry',
             'dateFrom' => 'nullable|date',
             'dateTo' => 'nullable|date|after_or_equal:dateFrom',
+            'countOnly' => 'sometimes|boolean',
+            'status' => 'nullable|string|in:active,pending_signature,expired,draft,cancelled',
         ];
         if ($withFormat) {
             $rules['format'] = 'nullable|string|in:pdf,csv';
@@ -209,6 +215,7 @@ class AgreementController extends Controller
         $expiry = $request->input('reportType') === 'expiry';
 
         return Agreement::query()
+            ->when($request->filled('status'), fn ($q) => $q->where('status', $request->input('status')))
             ->when($expiry, fn ($q) => $q->whereNotNull('end_date'))
             ->when($expiry && !$request->filled('dateFrom') && !$request->filled('dateTo'), fn ($q) => $q->whereBetween('end_date', [now(), now()->addDays(90)]))
             ->when($request->filled('dateFrom'), fn ($q) => $expiry
