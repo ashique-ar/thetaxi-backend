@@ -82,6 +82,22 @@ class ServiceFormConfigController extends Controller
 
             $config = $this->buildFormConfig($serviceType);
 
+            // Keep portal booking forms in lockstep with the public Laravel
+            // blades. The blades resolve fields and field mappings through
+            // DynamicServiceConfigurationService; using only the raw effective
+            // service type here can return a different schema (notably for
+            // inherited or context-specific service types).
+            $bookingForm = app(\App\Services\DynamicServiceConfigurationService::class)
+                ->getServiceFormConfiguration($serviceType->code);
+            if (empty($bookingForm['error'])) {
+                $config['fields'] = is_array($bookingForm['fields'] ?? null)
+                    ? $bookingForm['fields']
+                    : ($config['fields'] ?? []);
+                $config['field_mappings'] = is_array($bookingForm['field_mappings'] ?? null)
+                    ? $bookingForm['field_mappings']
+                    : ($config['field_mappings'] ?? []);
+            }
+
             return response()->json([
                 'status' => 'success',
                 'data' => $config,
