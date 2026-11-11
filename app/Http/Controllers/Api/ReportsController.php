@@ -1001,6 +1001,8 @@ class ReportsController extends Controller
             'filters' => ['nullable', 'array'],
             'filters.status' => ['nullable', 'array'],
             'filters.status.*' => ['string', 'in:pending,pending_approval,approved,confirmed,allocated,in_progress,completed,cancelled,inquiry_cancelled'],
+            'filters.staff_user_id' => ['nullable', 'uuid'],
+            'filters.organization_unit_id' => ['nullable', 'uuid'],
             'filters.payment_status' => ['nullable', 'string', 'in:pending,paid,failed,refunded'],
             'filters.vehicle_group' => ['nullable', 'string', 'in:economy,standard,premium,luxury'],
             'filters.maintenance_status' => ['nullable', 'in:completed,pending,cancelled'],
@@ -1331,6 +1333,8 @@ class ReportsController extends Controller
             'payment_status' => $nestedFilters['payment_status'] ?? null,
             'vehicle_group' => $nestedFilters['vehicle_group'] ?? null,
             'maintenance_status' => $nestedFilters['maintenance_status'] ?? null,
+            'staff_user_id' => $nestedFilters['staff_user_id'] ?? null,
+            'organization_unit_id' => $nestedFilters['organization_unit_id'] ?? null,
         ], fn ($value) => $value !== null && $value !== '' && $value !== []);
     }
 
