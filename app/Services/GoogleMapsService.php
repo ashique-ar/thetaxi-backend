@@ -28,7 +28,7 @@ class GoogleMapsService
             'X-Goog-Maps-Solution-ID' => 'gmp_git_agentskills_v1',
         ];
 
-        $configuredReferer = config('services.google.maps_referer') ?: env('GOOGLE_MAPS_REFERER');
+        $configuredReferer = config('services.google.maps_referer');
         if (in_array(strtolower((string)$configuredReferer), ['none', 'false', 'off', 'null'], true)) {
             return $headers;
         }

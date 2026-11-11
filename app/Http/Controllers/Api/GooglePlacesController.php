@@ -17,9 +17,7 @@ class GooglePlacesController extends Controller
     public function __construct()
     {
         $this->googleApiKey = config('services.google.maps_api_key')
-            ?: config('services.google.places_api_key')
-            ?: env('GOOGLE_MAPS_API_KEY')
-            ?: env('GOOGLE_PLACES_API_KEY');
+            ?: config('services.google.places_api_key');
 
         if (!$this->googleApiKey) {
             Log::warning('Google Places API key not configured');
@@ -43,7 +41,7 @@ class GooglePlacesController extends Controller
             return $headers;
         }
 
-        $configuredReferer = config('services.google.maps_referer') ?: env('GOOGLE_MAPS_REFERER');
+        $configuredReferer = config('services.google.maps_referer');
         if (in_array(strtolower((string)$configuredReferer), ['none', 'false', 'off', 'null'], true)) {
             return $headers;
         }

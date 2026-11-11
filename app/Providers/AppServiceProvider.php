@@ -265,7 +265,7 @@ class AppServiceProvider extends ServiceProvider
             'api_path' => 'api/driver',
             'info' => [
                 'title' => 'TheTaxi Driver Mobile API',
-                'version' => env('APP_VERSION', '1.0.0'),
+                'version' => config('app.version') ?: '1.0.0',
                 'description' => 'Authentication, onboarding, profile, availability, tracking, devices, notifications, assignments, trips, and earnings for the driver mobile application.',
             ],
             'ui' => ['title' => 'TheTaxi Driver Mobile API'],
