@@ -6,6 +6,7 @@ use App\Models\Vehicle\Vehicle;
 use App\Services\WialonService;
 use Illuminate\Database\Schema\Blueprint;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\Http;
 use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Facades\Schema;
@@ -13,6 +14,24 @@ use Tests\TestCase;
 
 class WialonFleetSyncTest extends TestCase
 {
+    public function test_rejected_login_pauses_until_the_saved_token_changes(): void
+    {
+        Schema::create('wialon_installation_settings', function (Blueprint $table) {
+            $table->string('id')->primary(); $table->text('token'); $table->boolean('enabled');
+        });
+        DB::table('wialon_installation_settings')->insert(['id' => 'installation', 'token' => encrypt('bad-token'), 'enabled' => true]);
+        Cache::flush();
+        $service = $this->mock(WialonService::class);
+        $service->shouldReceive('syncVehicles')->once()->andThrow(new \RuntimeException('The GPS service rejected token/login (8).'));
+
+        $this->artisan('gps:sync-fleet')->assertFailed();
+        $this->artisan('gps:sync-fleet')->assertSuccessful();
+
+        DB::table('wialon_installation_settings')->where('id', 'installation')->update(['token' => encrypt('new-token')]);
+        $service->shouldReceive('syncVehicles')->once()->andReturn(3);
+        $this->artisan('gps:sync-fleet')->assertSuccessful();
+    }
+
     public function test_scheduler_command_logs_database_failures_and_returns_failure(): void
     {
         DB::shouldReceive('table')

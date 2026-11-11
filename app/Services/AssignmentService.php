@@ -75,11 +75,9 @@ class AssignmentService
      */
     public function getEnhancedDriverAvailability(string $driverId, Carbon $fromDate, Carbon $toDate, ?string $excludeBookingId = null): array
     {
-        $driver = Driver::with([
-            'defaultVehicle', 
-            'assignments.booking.customer',
-            'assignments.booking.vehicle'
-        ])->findOrFail($driverId);
+        // Conflict/current-vehicle checks run their own date-filtered queries; eager-loading
+        // every historical assignment here cost ~40 queries per driver and was never read.
+        $driver = Driver::with(['defaultVehicle', 'user'])->findOrFail($driverId);
 
         $conflicts = $driver->getAssignmentConflicts($fromDate, $toDate, $excludeBookingId);
         $currentVehicle = $driver->getCurrentVehicle();
