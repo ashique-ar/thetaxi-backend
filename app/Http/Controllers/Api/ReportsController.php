@@ -46,9 +46,15 @@ class ReportsController extends Controller
             'compare_date_from' => ['sometimes', 'required_with:compare_date_to', 'date_format:Y-m-d'],
             'compare_date_to' => ['sometimes', 'required_with:compare_date_from', 'date_format:Y-m-d', 'after_or_equal:compare_date_from'],
         ]);
-        $cacheKey = 'reports.dashboard.' . md5(json_encode([$filters, $comparison, TimezoneService::getUserTimezone()]));
+        $actor = $request->user();
+        $permissions = $actor?->getAllPermissions()->pluck('name')->sort()->values()->all() ?? [];
+        $bypassCache = !$actor?->can('bookings.view-all') || !empty($filters['organization_unit_id']);
+        $cacheKey = 'reports.dashboard.' . md5(json_encode([
+            $actor?->getAuthIdentifier(), $permissions, $actor?->agent_id,
+            $filters, $comparison, TimezoneService::getUserTimezone(),
+        ]));
 
-        $stats = Cache::remember($cacheKey, self::CACHE_TTL, function () use ($filters, $comparison) {
+        $loadStats = function () use ($filters, $comparison) {
             $bookings = Booking::query();
             $this->applyFilters($bookings, $filters);
             $completedBookings = Booking::query()->where('status', 'completed');
@@ -89,7 +95,10 @@ class ReportsController extends Controller
             }
 
             return $stats;
-        });
+        };
+
+        // Restricted booking and department scopes must use current assignments on every request.
+        $stats = $bypassCache ? $loadStats() : Cache::remember($cacheKey, self::CACHE_TTL, $loadStats);
 
         return response()->json(['status' => 'success', 'data' => $stats]);
     }

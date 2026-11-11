@@ -42,7 +42,10 @@
     })->all();
     $hasSearchContext = (bool) ($hasSearchContext ?? false);
     $hasRentalDropoffField = collect($sortedFields)->contains(static function ($field, $name) {
-        return str_contains((string) $name, 'dropoff') && ($field['type'] ?? '') === 'location';
+        $submitAs = (string) ($field['submit_as'] ?? '');
+        return ($field['type'] ?? '') === 'location'
+            && (str_contains(strtolower((string) $name), 'dropoff')
+                || str_contains(strtolower($submitAs), 'dropoff'));
     });
     $clientFieldDefaults = [];
     foreach ($sortedFields as $defaultFieldName => $defaultFieldConfig) {
@@ -422,11 +425,11 @@
                 'durationEndField' => $durationEndField,
             ])
 
-            @if(in_array($serviceCode, ['self_drive', 'with_driver'], true)
-                && !$hasRentalDropoffField
+            @if(!$hasRentalDropoffField
                 && $fieldType === 'location'
                 && $locationMode === 'predefined_or_custom'
-                && ($submitAs === 'pickup' || str_contains($fieldName, 'pickup')))
+                && ($matchesConfiguredField($locationMappings['pickup_location'] ?? null, $fieldName, $submitAs)
+                    || preg_match('/pickup|from_location/i', $fieldName . ' ' . $submitAs)))
                 <div class="booking-field custom-location-box {{ $prefix }}-dropoff-box"
                      id="{{ $prefix }}_dropoff_wrapper" style="display: none;">
                     <label class="input-label">{{ $settings['booking_dropoff_label'] ?? 'Drop-off Location' }}</label>
