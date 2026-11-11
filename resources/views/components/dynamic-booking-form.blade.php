@@ -381,9 +381,7 @@
             @php $currentLayoutRow = $configuredRow; @endphp
         @endif
         @php
-            $isRentalService = in_array($serviceTypeModel?->code ?? $serviceCode, ['self_drive', 'with_driver'], true);
-            $isReturnConditional = !$isRentalService
-                && $hasReturnTripToggle && (
+            $isReturnConditional = $hasReturnTripToggle && (
                 in_array($submitAs, ['return_date', 'return_time'], true)
                 || ($field['conditional'] ?? '') === 'is_return_trip'
             );

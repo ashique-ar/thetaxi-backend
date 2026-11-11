@@ -50,10 +50,17 @@ class AttendanceResultController extends Controller
             'to' => ['required', 'date', 'after_or_equal:from'],
             'status' => ['nullable', Rule::in(['present', 'absent', 'incomplete', 'half_day', 'insufficient_hours', 'non_working', 'paid_leave', 'unpaid_leave', 'partial_paid_leave', 'partial_unpaid_leave'])],
             'group_by' => ['required', Rule::in(['work_date', 'status', 'staff'])],
+            'staff_user_id' => ['nullable', 'uuid'],
+            'organization_unit_id' => ['nullable', 'uuid'],
         ]);
         abort_if(CarbonImmutable::parse($data['from'])->diffInDays(CarbonImmutable::parse($data['to'])) > 366, 422, 'Attendance reports are limited to a 367-day range.');
 
-        $staffIds = $access->scope(Staff::query(), $request->user())->select('id');
+        $actor = $request->user();
+        $hasStaffScopePermission = $actor->can('staff.view-team') || $actor->can('staff.view-all');
+        abort_unless($hasStaffScopePermission || (empty($data['staff_user_id']) && empty($data['organization_unit_id'])), 403);
+        $staffQuery = $access->scope(Staff::query(), $actor)
+            ->when($data['staff_user_id'] ?? null, fn ($query, $userId) => $query->where('staff.user_id', $userId));
+        $staffIds = $staffQuery->select('staff.id');
         $latest = DB::table('hr_attendance_daily_results')
             ->selectRaw('staff_id, work_date, max(result_version) as result_version')
             ->whereIn('staff_id', clone $staffIds)
@@ -64,6 +71,17 @@ class AttendanceResultController extends Controller
             ->joinSub($latest, 'latest', fn($join) => $join->on('latest.staff_id', '=', 'result.staff_id')->on('latest.work_date', '=', 'result.work_date')->on('latest.result_version', '=', 'result.result_version'))
             ->join('staff', 'staff.id', '=', 'result.staff_id')
             ->join('users', 'users.id', '=', 'staff.user_id')
+            ->when($data['organization_unit_id'] ?? null, fn ($query, $unitId) => $query->whereExists(function ($assignments) use ($unitId) {
+                $assignments->selectRaw('1')
+                    ->from('hr_employment_assignments as assignment')
+                    ->join('hr_employment_spells as spell', 'spell.id', '=', 'assignment.employment_spell_id')
+                    ->whereColumn('assignment.staff_id', 'result.staff_id')
+                    ->where('assignment.organization_unit_id', $unitId)
+                    ->where('assignment.assignment_type', 'primary')
+                    ->whereNull('assignment.deleted_at')->whereNull('spell.deleted_at')
+                    ->whereColumn('assignment.effective_from', '<=', 'result.work_date')
+                    ->where(fn ($active) => $active->whereNull('assignment.effective_until')->orWhereColumn('assignment.effective_until', '>=', 'result.work_date'));
+            }))
             ->when($data['status'] ?? null, fn($query, $status) => $query->where('result.day_status', $status));
 
         $aggregates = "count(*) as days, count(distinct result.staff_id) as staff_count, sum(case when result.day_status = 'present' then 1 else 0 end) as present_days, sum(case when result.day_status = 'absent' then 1 else 0 end) as absent_days, sum(case when result.day_status in ('incomplete', 'insufficient_hours') then 1 else 0 end) as exception_days, coalesce(sum(result.worked_minutes), 0) as worked_minutes, coalesce(sum(result.late_minutes), 0) as late_minutes, coalesce(sum(result.early_leave_minutes), 0) as early_leave_minutes, coalesce(sum(result.payable_minutes), 0) as payable_minutes";
@@ -107,10 +125,35 @@ class AttendanceResultController extends Controller
                     'to' => $data['to'],
                     'status' => $data['status'] ?? null,
                     'group_by' => $data['group_by'],
+                    'staff_user_id' => $data['staff_user_id'] ?? null,
+                    'organization_unit_id' => $data['organization_unit_id'] ?? null,
                 ],
                 'generated_at' => now()->toIso8601String(),
             ]
         ]);
+    }
+
+    public function departmentOptions(Request $request, StaffAccessService $access): JsonResponse
+    {
+        $actor = $request->user();
+        abort_unless($actor->can('staff.view-team') || $actor->can('staff.view-all'), 403);
+        $data = $request->validate(['q' => ['nullable', 'string', 'max:100']]);
+        $visibleStaff = $access->scope(Staff::query()->select('staff.id'), $actor);
+        $term = trim($data['q'] ?? '');
+
+        $departments = DB::table('hr_organization_units as unit')
+            ->join('hr_employment_assignments as assignment', 'assignment.organization_unit_id', '=', 'unit.id')
+            ->join('hr_employment_spells as spell', 'spell.id', '=', 'assignment.employment_spell_id')
+            ->whereIn('assignment.staff_id', $visibleStaff)
+            ->where('assignment.assignment_type', 'primary')
+            ->whereNull('assignment.deleted_at')->whereNull('spell.deleted_at')
+            ->when($term !== '', fn ($query) => $query->where(fn ($search) => $search
+                ->whereRaw('LOWER(unit.name) LIKE ?', ['%' . mb_strtolower($term) . '%'])
+                ->orWhereRaw('LOWER(unit.code) LIKE ?', ['%' . mb_strtolower($term) . '%'])))
+            ->select(['unit.id', 'unit.name', 'unit.code'])
+            ->distinct()->orderBy('unit.name')->limit(50)->get();
+
+        return response()->json(['status' => 'success', 'data' => $departments]);
     }
 
     public function calculate(Request $request, AttendanceResultService $service, StaffAccessService $access): JsonResponse

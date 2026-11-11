@@ -1048,9 +1048,18 @@ class VehiclePricingCalculationDefinition extends Model
                     return $override;
                 }
                 $rateKey = str_starts_with($varName, 'common_rate_') ? substr($varName, 12) : $varName;
+                $variableConfig = collect($this->variables ?? [])->first(
+                    fn ($variable) => ($variable['name'] ?? null) === $varName
+                        && ($variable['type'] ?? null) === 'common_rate'
+                );
+                $commonRateDefinitionId = $variableConfig['source']
+                    ?? $variableConfig['source_id']
+                    ?? $variableConfig['common_rate_definition_id']
+                    ?? null;
                 // Test/runtime callers may preload trusted Pricing Management
                 // values. Prefer that resolved value instead of querying again.
                 if ($this->serviceType?->pricing_basis !== 'vehicle_class'
+                    && !$commonRateDefinitionId
                     && array_key_exists($rateKey, $inputs) && is_numeric($inputs[$rateKey])) {
                     return (float) $inputs[$rateKey];
                 }
@@ -1409,10 +1418,18 @@ class VehiclePricingCalculationDefinition extends Model
             }
             $ownerType = $inputs['owner_type'] ?? null;
             $ownerId = $inputs['owner_id'] ?? null;
-
+            $variableConfig = collect($this->variables ?? [])->first(
+                fn ($variable) => in_array(($variable['name'] ?? null), [$rateKey, 'common_rate_' . $rateKey], true)
+                    && ($variable['type'] ?? null) === 'common_rate'
+            );
+            $commonRateDefinitionId = $variableConfig['source']
+                ?? $variableConfig['source_id']
+                ?? $variableConfig['common_rate_definition_id']
+                ?? null;
             $cacheKey = hash('sha256', serialize([
                 $this->service_type_id,
                 $rateKey,
+                $commonRateDefinitionId,
                 $targetColumn,
                 (string) $vehicleGroupId,
                 $ownerType,
@@ -1422,11 +1439,13 @@ class VehiclePricingCalculationDefinition extends Model
             if (!array_key_exists($cacheKey, $this->resolvedCommonRatePricingCache)) {
                 // Get vehicle group specific common rate pricing first
                 $this->resolvedCommonRatePricingCache[$cacheKey] = VehicleGroupCommonRatePricing::with('commonRateDefinition')
-                    ->whereHas('commonRateDefinition', function ($query) use ($rateKey) {
-                    $query->where(function ($q) use ($rateKey) {
-                        $q->where('code', $rateKey)
-                            ->orWhere('name', $rateKey);
-                    })
+                    ->whereHas('commonRateDefinition', function ($query) use ($rateKey, $commonRateDefinitionId) {
+                    $query->when($commonRateDefinitionId,
+                        fn ($q) => $q->whereKey($commonRateDefinitionId),
+                        fn ($q) => $q->where(fn ($nameQuery) => $nameQuery
+                            ->where('code', $rateKey)
+                            ->orWhere('name', $rateKey))
+                    )
                         ->where(function ($serviceQuery) {
                             $serviceQuery->where('service_type_id', $this->service_type_id)
                                 ->orWhereNull('service_type_id');

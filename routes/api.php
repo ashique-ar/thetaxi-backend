@@ -1143,6 +1143,7 @@ Route::middleware(['auth:api'])->group(function () {
         Route::post('maintenance-commands/{id}/approve', [HikvisionManagementController::class, 'approveReboot'])->whereUuid('id')->middleware('permission:hr.attendance.maintenance.approve');
         Route::get('results', [AttendanceResultController::class, 'index'])->middleware('permission:hr.attendance.results.view');
         Route::get('reports/summary', [AttendanceResultController::class, 'report'])->middleware('permission:hr.attendance.results.view');
+        Route::get('reports/department-options', [AttendanceResultController::class, 'departmentOptions'])->middleware('permission:hr.attendance.results.view');
         Route::post('results/calculate', [AttendanceResultController::class, 'calculate'])->middleware('permission:hr.attendance.results.calculate');
         Route::get('calendars', [AttendanceResultController::class, 'calendars'])->middleware('permission:hr.attendance.config.manage|hr.attendance.config.approve');
         Route::get('calendars/{calendarId}/days', [AttendanceResultController::class, 'calendarDays'])->whereUuid('calendarId')->middleware('permission:hr.attendance.config.manage|hr.attendance.config.approve');
