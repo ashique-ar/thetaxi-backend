@@ -292,7 +292,9 @@ class UserContextService
             $request?->header('X-Active-Context-Type'),
             $request?->header('X-Active-Context-Id'),
             $request?->header('X-Active-Portal-Profile'),
-            $contexts
+            // Request-time callers only read id/context_type/portal_profile; formatting every
+            // role permission here cost ~300 ms per staff request.
+            $contexts ?? $this->getSelectableContexts($user, false)
         );
     }
 
@@ -971,11 +973,11 @@ class UserContextService
     /**
      * Get selectable contexts for the current user.
      */
-    private function getSelectableContexts(User $user): array
+    private function getSelectableContexts(User $user, bool $withAccess = true): array
     {
         $user->loadMissing([
-            'roles.permissions',
-            'contexts.roles.permissions',
+            $withAccess ? 'roles.permissions' : 'roles',
+            ...($withAccess ? ['contexts.roles.permissions'] : []),
             'contexts.corporateEmployee.user',
             'contexts.corporateEmployee.corporate',
             'contexts.corporateEmployee.department',
@@ -985,15 +987,15 @@ class UserContextService
         $contexts = collect();
 
         if ($this->canAccessInternalPortal($user)) {
-            $contexts->push($this->buildVirtualContextSummary($user, 'internal'));
+            $contexts->push($this->buildVirtualContextSummary($user, 'internal', $withAccess));
         }
 
         if ($this->canAccessAgentPortal($user) && !$user->contexts->where('is_active', true)->contains('context_type', 'agent')) {
-            $contexts->push($this->buildVirtualContextSummary($user, 'agent'));
+            $contexts->push($this->buildVirtualContextSummary($user, 'agent', $withAccess));
         }
 
         foreach ($user->contexts->where('is_active', true) as $userContext) {
-            $summary = $this->buildDatabaseContextSummary($user, $userContext);
+            $summary = $this->buildDatabaseContextSummary($user, $userContext, $withAccess);
 
             if ($summary) {
                 $contexts->push($summary);
@@ -1009,18 +1011,22 @@ class UserContextService
     /**
      * Build a context summary for virtual profiles such as internal.
      */
-    private function buildVirtualContextSummary(User $user, string $contextType): array
+    private function buildVirtualContextSummary(User $user, string $contextType, bool $withAccess = true): array
     {
         $portalProfile = $this->portalProfileForContextType($contextType);
-        $permissionEvaluator = app(PermissionEvaluator::class);
-        $roleModels = $contextType === 'internal'
-            ? $permissionEvaluator->rolesForInternalContext($user)
-            : ($user->roles instanceof Collection ? $user->roles : collect($user->roles));
-        $permissionModels = $contextType === 'internal'
-            ? $permissionEvaluator->permissionsForInternalContext($user)
-            : $user->getAllPermissions();
-        $roles = $this->formatRoleCollection($roleModels);
-        $permissions = $this->formatPermissionCollection($permissionModels);
+        $roles = [];
+        $permissions = [];
+        if ($withAccess) {
+            $permissionEvaluator = app(PermissionEvaluator::class);
+            $roleModels = $contextType === 'internal'
+                ? $permissionEvaluator->rolesForInternalContext($user)
+                : ($user->roles instanceof Collection ? $user->roles : collect($user->roles));
+            $permissionModels = $contextType === 'internal'
+                ? $permissionEvaluator->permissionsForInternalContext($user)
+                : $user->getAllPermissions();
+            $roles = $this->formatRoleCollection($roleModels);
+            $permissions = $this->formatPermissionCollection($permissionModels);
+        }
         $roleNames = collect($roles)->pluck('name');
         $route = $this->routeForPortalProfile($portalProfile);
         if ($portalProfile === 'internal'
@@ -1057,7 +1063,7 @@ class UserContextService
     /**
      * Build a summary for a database-backed UserContext.
      */
-    private function buildDatabaseContextSummary(User $user, UserContext $userContext): ?array
+    private function buildDatabaseContextSummary(User $user, UserContext $userContext, bool $withAccess = true): ?array
     {
         if (!$userContext->is_active) {
             return null;
@@ -1069,8 +1075,8 @@ class UserContextService
             return null;
         }
 
-        $roles = $this->extractContextRoles($userContext);
-        $permissions = $this->extractContextPermissions($user, $userContext);
+        $roles = $withAccess ? $this->extractContextRoles($userContext) : [];
+        $permissions = $withAccess ? $this->extractContextPermissions($user, $userContext) : [];
 
         $label = match ($userContext->context_type) {
             'corporate' => $userContext->corporateEmployee?->corporate?->name ?? 'Corporate Portal',
