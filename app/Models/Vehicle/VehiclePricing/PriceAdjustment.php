@@ -25,6 +25,8 @@ class PriceAdjustment extends BaseModel
         'scope',
         'service_type_id',
         'vehicle_group_id',
+        'service_type_ids',
+        'vehicle_group_ids',
         'owner_type',
         'owner_id',
         'adjustment_type',
@@ -49,6 +51,8 @@ class PriceAdjustment extends BaseModel
         'percentage_change' => 'decimal:4',
         'fixed_amount_change' => 'decimal:2',
         'applicable_contexts' => 'array',
+        'service_type_ids' => 'array',
+        'vehicle_group_ids' => 'array',
         'minimum_booking_amount' => 'decimal:2',
         'maximum_discount_amount' => 'decimal:2',
         'is_active' => 'boolean',
@@ -111,16 +115,22 @@ class PriceAdjustment extends BaseModel
     public function scopeForService(Builder $query, string $serviceTypeId): Builder
     {
         return $query->where(function (Builder $q) use ($serviceTypeId) {
-            $q->whereNull('service_type_id')
-                ->orWhere('service_type_id', $serviceTypeId);
+            $q->where(function (Builder $target) use ($serviceTypeId) {
+                $target->whereNull('service_type_id')->whereNull('service_type_ids')
+                    ->orWhere('service_type_id', $serviceTypeId)
+                    ->orWhereJsonContains('service_type_ids', $serviceTypeId);
+            });
         });
     }
 
     public function scopeForVehicleGroup(Builder $query, string $vehicleGroupId): Builder
     {
         return $query->where(function (Builder $q) use ($vehicleGroupId) {
-            $q->whereNull('vehicle_group_id')
-                ->orWhere('vehicle_group_id', $vehicleGroupId);
+            $q->where(function (Builder $target) use ($vehicleGroupId) {
+                $target->whereNull('vehicle_group_id')->whereNull('vehicle_group_ids')
+                    ->orWhere('vehicle_group_id', $vehicleGroupId)
+                    ->orWhereJsonContains('vehicle_group_ids', $vehicleGroupId);
+            });
         });
     }
 
@@ -341,13 +351,13 @@ class PriceAdjustment extends BaseModel
         if ($serviceTypeId) {
             $query->forService($serviceTypeId);
         } else {
-            $query->whereNull('service_type_id');
+            $query->whereNull('service_type_id')->whereNull('service_type_ids');
         }
 
         if ($vehicleGroupId) {
             $query->forVehicleGroup($vehicleGroupId);
         } else {
-            $query->whereNull('vehicle_group_id');
+            $query->whereNull('vehicle_group_id')->whereNull('vehicle_group_ids');
         }
 
         return $query->orderByPriority()->get();
@@ -491,8 +501,12 @@ class PriceAdjustment extends BaseModel
             'name' => 'required|string|max:255',
             'description' => 'nullable|string',
             'scope' => 'required|in:global,service,vehicle_group',
-            'service_type_id' => 'nullable|uuid|exists:service_types,id|required_if:scope,service',
-            'vehicle_group_id' => 'nullable|uuid|exists:vehicle_groups,id|required_if:scope,vehicle_group',
+            'service_type_id' => 'nullable|uuid|exists:service_types,id',
+            'vehicle_group_id' => 'nullable|uuid|exists:vehicle_groups,id',
+            'service_type_ids' => 'nullable|array|min:1|required_if:scope,service',
+            'service_type_ids.*' => 'uuid|distinct|exists:service_types,id',
+            'vehicle_group_ids' => 'nullable|array|min:1|required_if:scope,vehicle_group',
+            'vehicle_group_ids.*' => 'uuid|distinct|exists:vehicle_groups,id',
             'owner_type' => 'nullable|string|in:corporate',
             'owner_id' => 'nullable|uuid|required_with:owner_type',
             'adjustment_type' => 'required|in:percentage,fixed_amount',

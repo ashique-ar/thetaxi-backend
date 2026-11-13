@@ -1292,7 +1292,7 @@ class CheckoutController extends Controller
                         'lng' => $item['pickup_lng'] ?? null,
                     ]),
                     'dropoff_location' => json_encode([
-                        'address' => $item['dropoff_location'] ?? $item['pickup_location'] ?? '',
+                    'address' => $item['dropoff_location'] ?? '',
                         'city' => $validated['city'] ?? '',
                         'country' => $validated['country'] ?? '',
                         'lat' => $item['dropoff_lat'] ?? $item['pickup_lat'] ?? null,

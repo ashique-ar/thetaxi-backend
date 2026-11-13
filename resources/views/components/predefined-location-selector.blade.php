@@ -2,7 +2,7 @@
 /**
  * Predefined Location Selector Component
  * Custom dropdown that looks identical to the airport select fields.
- * Shows predefined locations + "My Doorstep" option.
+ * Shows configured predefined locations and custom-search options.
  *
  * Props:
  * - $name: Field name (pickup/dropoff)
@@ -27,6 +27,7 @@ $configuredOptions = collect($configuredOptions ?? [])->map(static function ($op
         'latitude' => $option['latitude'] ?? '',
         'longitude' => $option['longitude'] ?? '',
         'location_id' => $option['location_id'] ?? '',
+        'route_mode' => $option['route_mode'] ?? 'shared',
         'action' => $isCustom ? 'custom' : 'configured',
     ];
 })->filter(static fn ($option) => $option['code'] !== '' && $option['name'] !== '')->values();
@@ -39,9 +40,10 @@ $locationOptions = $configuredOptions->isNotEmpty()
             'address' => is_array($location) ? ($location['address'] ?? $location['name']) : ($location->address ?? $location->name),
             'latitude' => is_array($location) ? $location['latitude'] : $location->latitude,
             'longitude' => is_array($location) ? $location['longitude'] : $location->longitude,
+            'route_mode' => 'shared',
             'action' => 'predefined',
         ];
-    })->push(['code' => 'custom', 'name' => 'My Doorstep (Enter Custom Location)', 'address' => '', 'latitude' => '', 'longitude' => '', 'action' => 'custom']);
+    })->push(['code' => 'custom', 'name' => 'Search another location', 'address' => '', 'latitude' => '', 'longitude' => '', 'route_mode' => 'shared', 'action' => 'custom']);
 
 $selectedLocationCode = '';
 $selectedLocationName = '';
@@ -67,7 +69,7 @@ if ($currentValue) {
 if ($isCustom && $currentValue && !$selectedLocationCode) {
     $customOption = $locationOptions->firstWhere('action', 'custom');
     $selectedLocationCode = $customOption['code'] ?? 'custom';
-    $selectedLocationName = $customOption['name'] ?? 'My Doorstep (Enter Custom Location)';
+    $selectedLocationName = $customOption['name'] ?? 'Search another location';
     $selectedLocationAction = 'custom';
 }
 
@@ -103,6 +105,7 @@ $selectedLocationId = $locationOptions->firstWhere('code', $selectedLocationCode
                             data-value="{{ $locCode }}" data-type="{{ $locType }}"
                             data-lat="{{ $locLat }}" data-lng="{{ $locLng }}" data-address="{{ $locAddr }}"
                             data-location-id="{{ $location['location_id'] ?? '' }}"
+                            data-route-mode="{{ $location['route_mode'] ?? 'shared' }}"
                             role="option">{{ $locName }}</li>
                 @endforeach
             </ul>
@@ -132,7 +135,7 @@ $selectedLocationId = $locationOptions->firstWhere('code', $selectedLocationCode
     @enderror
 </div>
 
-<!-- Custom Location Input (shown when "My Doorstep" is selected) -->
+<!-- Custom location input for the configured search option -->
 <div class="booking-field custom-location-box"
      id="{{ $customInputId }}_wrapper"
      style="display: {{ $isCustom && $currentValue ? 'block' : 'none' }};">
@@ -304,7 +307,7 @@ $selectedLocationId = $locationOptions->firstWhere('code', $selectedLocationCode
                 // Dispatch event for parent form to sync dropoff
                 dropdown.dispatchEvent(new CustomEvent('pls-selection', {
                     bubbles: true,
-                    detail: { type: 'predefined', value: value, address: address, lat: lat, lng: lng, fieldName: fieldName }
+                    detail: { type: 'predefined', value: value, address: address, lat: lat, lng: lng, fieldName: fieldName, routeMode: option.dataset.routeMode || 'shared' }
                 }));
 
             } else if (type === 'custom') {
@@ -322,7 +325,7 @@ $selectedLocationId = $locationOptions->firstWhere('code', $selectedLocationCode
                 // Dispatch event for parent form to show dropoff input
                 dropdown.dispatchEvent(new CustomEvent('pls-selection', {
                     bubbles: true,
-                    detail: { type: 'custom', value: '', address: '', lat: '', lng: '', fieldName: fieldName }
+                    detail: { type: 'custom', value: '', address: '', lat: '', lng: '', fieldName: fieldName, routeMode: option.dataset.routeMode || 'shared' }
                 }));
 
             } else {
@@ -336,7 +339,7 @@ $selectedLocationId = $locationOptions->firstWhere('code', $selectedLocationCode
                 // Dispatch event for parent form to clear dropoff
                 dropdown.dispatchEvent(new CustomEvent('pls-selection', {
                     bubbles: true,
-                    detail: { type: 'none', value: '', address: '', lat: '', lng: '', fieldName: fieldName }
+                    detail: { type: 'none', value: '', address: '', lat: '', lng: '', fieldName: fieldName, routeMode: 'shared' }
                 }));
             }
         });

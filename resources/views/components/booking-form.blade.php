@@ -413,7 +413,7 @@
         }
 
         // ============================================================================
-        // DROPOFF LOCATION SYNC (for predefined_or_custom location mode)
+        // Show a second endpoint only when the selected managed option requests separate locations.
         // ============================================================================
         function setupDropoffSync(formId, prefix) {
             var form = document.getElementById(formId);
@@ -427,30 +427,20 @@
             var dropoffLatHidden = document.getElementById(prefix + '_dropoff_lat_hidden');
             var dropoffLngHidden = document.getElementById(prefix + '_dropoff_lng_hidden');
             var dropoffPredefined = document.getElementById(prefix + '_dropoff_predefined');
+            var sourceField = dropoffWrapper?.dataset.sourceField || 'pickup';
 
-            function applyPredefined(address, lat, lng, code) {
-                if (dropoffWrapper) dropoffWrapper.style.display = 'none';
-                if (dropoffInput) { dropoffInput.disabled = true; dropoffInput.required = false; dropoffInput.value = ''; }
-                if (dropoffLat) dropoffLat.disabled = true;
-                if (dropoffLng) dropoffLng.disabled = true;
-                if (dropoffHidden) { dropoffHidden.value = address; dropoffHidden.disabled = false; }
-                if (dropoffLatHidden) { dropoffLatHidden.value = lat; dropoffLatHidden.disabled = false; }
-                if (dropoffLngHidden) { dropoffLngHidden.value = lng; dropoffLngHidden.disabled = false; }
-                if (dropoffPredefined) { dropoffPredefined.value = code; dropoffPredefined.disabled = false; }
-            }
-
-            function applyCustom() {
+            function applySeparateDropoff() {
                 if (dropoffWrapper) dropoffWrapper.style.display = 'block';
                 if (dropoffInput) { dropoffInput.disabled = false; dropoffInput.required = true; }
                 if (dropoffLat) dropoffLat.disabled = false;
                 if (dropoffLng) dropoffLng.disabled = false;
-                if (dropoffHidden) dropoffHidden.disabled = true;
-                if (dropoffLatHidden) dropoffLatHidden.disabled = true;
-                if (dropoffLngHidden) dropoffLngHidden.disabled = true;
+                if (dropoffHidden) { dropoffHidden.value = ''; dropoffHidden.disabled = true; }
+                if (dropoffLatHidden) { dropoffLatHidden.value = ''; dropoffLatHidden.disabled = true; }
+                if (dropoffLngHidden) { dropoffLngHidden.value = ''; dropoffLngHidden.disabled = true; }
                 if (dropoffPredefined) { dropoffPredefined.value = ''; dropoffPredefined.disabled = true; }
             }
 
-            function applyNone() {
+            function applySharedLocation() {
                 if (dropoffWrapper) dropoffWrapper.style.display = 'none';
                 if (dropoffInput) { dropoffInput.disabled = true; dropoffInput.required = false; dropoffInput.value = ''; }
                 if (dropoffLat) dropoffLat.disabled = true;
@@ -463,14 +453,9 @@
 
             form.addEventListener('pls-selection', function(e) {
                 var detail = e.detail;
-                if (detail.fieldName !== 'pickup') return;
-                if (detail.type === 'predefined') {
-                    applyPredefined(detail.address, detail.lat, detail.lng, detail.value);
-                } else if (detail.type === 'custom') {
-                    applyCustom();
-                } else {
-                    applyNone();
-                }
+                if (detail.fieldName !== sourceField) return;
+                if (detail.routeMode === 'separate' && detail.type !== 'none') applySeparateDropoff();
+                else applySharedLocation();
             });
 
             // Restore dropoff state on page load
@@ -481,13 +466,8 @@
                 if (!selectedOption) return;
                 var selType = selectedOption.dataset.type;
                 var selValue = selectedOption.dataset.value;
-                if ((selType === 'predefined' || selType === 'configured') && selValue) {
-                    applyPredefined(selectedOption.dataset.address || '', selectedOption.dataset.lat || '', selectedOption.dataset.lng || '', selValue);
-                } else if (selType === 'custom') {
-                    applyCustom();
-                } else {
-                    applyNone();
-                }
+                if (selectedOption.dataset.routeMode === 'separate' && (selValue || selType === 'custom')) applySeparateDropoff();
+                else applySharedLocation();
             })();
 
             // Initialize Places API (New) autocomplete on dropoff input via backend proxy

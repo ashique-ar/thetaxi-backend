@@ -241,8 +241,9 @@ class DefaultFormConfigService
                     ],
                     [
                         'value' => 'custom',
-                        'label' => 'My Doorstep (Search Google)',
+                        'label' => 'Search for a location',
                         'action' => 'google_search',
+                        'route_mode' => 'separate',
                     ],
                 ],
             ],

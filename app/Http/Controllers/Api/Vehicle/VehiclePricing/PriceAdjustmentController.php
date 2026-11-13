@@ -46,11 +46,26 @@ class PriceAdjustmentController extends Controller
             $payload['scope'] = 'vehicle_group';
         }
 
+        foreach (['service_type', 'vehicle_group'] as $target) {
+            $key = $target . '_ids';
+            $legacyKey = $target . '_id';
+            if (!array_key_exists($key, $payload) && !empty($payload[$legacyKey])) {
+                $payload[$key] = [$payload[$legacyKey]];
+            }
+            if (isset($payload[$key]) && is_array($payload[$key])) {
+                $payload[$key] = array_values(array_unique($payload[$key]));
+            }
+            $payload[$legacyKey] = null;
+        }
+
         if (($payload['scope'] ?? null) === 'global') {
             $payload['service_type_id'] = null;
             $payload['vehicle_group_id'] = null;
+            $payload['service_type_ids'] = null;
+            $payload['vehicle_group_ids'] = null;
         } elseif (($payload['scope'] ?? null) === 'service') {
             $payload['vehicle_group_id'] = null;
+            $payload['vehicle_group_ids'] = null;
         }
 
         return $payload;
@@ -166,11 +181,17 @@ class PriceAdjustmentController extends Controller
             }
 
             if ($request->filled('service_type_id')) {
-                $query->where('service_type_id', $request->service_type_id);
+                $query->where(function (Builder $q) use ($request) {
+                    $q->where('service_type_id', $request->service_type_id)
+                        ->orWhereJsonContains('service_type_ids', $request->service_type_id);
+                });
             }
 
             if ($request->filled('vehicle_group_id')) {
-                $query->where('vehicle_group_id', $request->vehicle_group_id);
+                $query->where(function (Builder $q) use ($request) {
+                    $q->where('vehicle_group_id', $request->vehicle_group_id)
+                        ->orWhereJsonContains('vehicle_group_ids', $request->vehicle_group_id);
+                });
             }
 
             if ($request->filled('owner_type')) {

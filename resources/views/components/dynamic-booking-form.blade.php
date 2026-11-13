@@ -41,7 +41,7 @@
         return sprintf('%06d-%06d', $row, $order);
     })->all();
     $hasSearchContext = (bool) ($hasSearchContext ?? false);
-    $hasRentalDropoffField = collect($sortedFields)->contains(static function ($field, $name) {
+    $hasConfiguredDropoffField = collect($sortedFields)->contains(static function ($field, $name) {
         $submitAs = (string) ($field['submit_as'] ?? '');
         return ($field['type'] ?? '') === 'location'
             && (str_contains(strtolower((string) $name), 'dropoff')
@@ -423,13 +423,14 @@
                 'durationEndField' => $durationEndField,
             ])
 
-            @if(!$hasRentalDropoffField
+            @if(!$hasConfiguredDropoffField
                 && $fieldType === 'location'
                 && $locationMode === 'predefined_or_custom'
+                && collect($field['options'] ?? [])->contains(static fn ($option) => ($option['route_mode'] ?? 'shared') === 'separate')
                 && ($matchesConfiguredField($locationMappings['pickup_location'] ?? null, $fieldName, $submitAs)
                     || preg_match('/pickup|from_location/i', $fieldName . ' ' . $submitAs)))
                 <div class="booking-field custom-location-box {{ $prefix }}-dropoff-box"
-                     id="{{ $prefix }}_dropoff_wrapper" style="display: none;">
+                     id="{{ $prefix }}_dropoff_wrapper" data-source-field="{{ $submitAs }}" style="display: none;">
                     <label class="input-label">{{ $settings['booking_dropoff_label'] ?? 'Drop-off Location' }}</label>
                     <div class="single-search-box location-search-box">
                         @include('components.partials.location-icon')

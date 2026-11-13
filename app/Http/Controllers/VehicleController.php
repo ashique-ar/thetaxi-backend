@@ -552,8 +552,6 @@ class VehicleController extends Controller
         $mappings = $formConfig['field_mappings'] ?? [];
         $dateMappings = data_get($mappings, 'dates', []);
         $locationMappings = data_get($mappings, 'locations', []);
-        $pickupLocationConfigured = false;
-        $dropoffLocationConfigured = false;
 
         foreach ($fields as $fieldName => $field) {
             if (!is_array($field) || !array_key_exists('default', $field) || $field['default'] === '') {
@@ -566,6 +564,8 @@ class VehicleController extends Controller
             $searchData[$submitAs] = $default;
 
             if ($type === 'location') {
+                $defaultOption = collect($field['options'] ?? [])->firstWhere('value', $field['default_option_value'] ?? null);
+                $defaultRouteMode = $defaultOption['route_mode'] ?? 'shared';
                 $isPickup = str_contains((string) $fieldName, 'pickup')
                     || in_array($submitAs, ['pickup', 'pickup_location', $locationMappings['pickup_location'] ?? null], true)
                     || ($locationMappings['pickup_location'] ?? null) === $fieldName;
@@ -577,12 +577,11 @@ class VehicleController extends Controller
                     $searchData['pickup_location'] = $default;
                     $searchData['pickup_lat'] = $field['default_lat'] ?? $searchData['pickup_lat'] ?? null;
                     $searchData['pickup_lng'] = $field['default_lng'] ?? $searchData['pickup_lng'] ?? null;
-                    $pickupLocationConfigured = true;
-                } elseif ($isDropoff) {
+                }
+                if ($isDropoff && $defaultRouteMode !== 'separate') {
                     $searchData['dropoff_location'] = $default;
                     $searchData['dropoff_lat'] = $field['default_lat'] ?? $searchData['dropoff_lat'] ?? null;
                     $searchData['dropoff_lng'] = $field['default_lng'] ?? $searchData['dropoff_lng'] ?? null;
-                    $dropoffLocationConfigured = true;
                 }
             } elseif ($type === 'date') {
                 $isDropoff = str_contains((string) $fieldName, 'dropoff')
@@ -600,12 +599,6 @@ class VehicleController extends Controller
                     || ($dateMappings['to_time'] ?? null) === $fieldName;
                 $searchData[$isDropoff ? 'return_time' : 'pickup_time'] = $default;
             }
-        }
-
-        if ($pickupLocationConfigured && !$dropoffLocationConfigured) {
-            $searchData['dropoff_location'] = $searchData['pickup_location'];
-            $searchData['dropoff_lat'] = $searchData['pickup_lat'] ?? null;
-            $searchData['dropoff_lng'] = $searchData['pickup_lng'] ?? null;
         }
 
         return $searchData;

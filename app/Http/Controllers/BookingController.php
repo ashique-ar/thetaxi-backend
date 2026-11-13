@@ -316,12 +316,6 @@ class BookingController extends Controller
                     'dropoff'
                 );
 
-                if (
-                    empty($params['dropoff_location']['address'])
-                    && (empty($params['dropoff_location']['latitude']) || empty($params['dropoff_location']['longitude']))
-                ) {
-                    $params['dropoff_location'] = $params['pickup_location'];
-                }
                 $params['package_type'] = $requestData['package_type'] ?? 'multi-day';
 
                 // Handle return trip data
@@ -447,13 +441,6 @@ class BookingController extends Controller
                     'dropoff'
                 );
 
-                if (
-                    empty($params['dropoff_location']['address'])
-                    && (empty($params['dropoff_location']['latitude']) || empty($params['dropoff_location']['longitude']))
-                ) {
-                    $params['dropoff_location'] = $params['pickup_location'];
-                }
-
                 $params['package_type'] = $requestData['package_type'] ?? 'multi-day';
                 break;
             case 'with_driver':
@@ -507,13 +494,6 @@ class BookingController extends Controller
                     data_get($fieldMappings, 'locations.dropoff_location'),
                     'dropoff'
                 );
-
-                if (
-                    empty($params['dropoff_location']['address'])
-                    && (empty($params['dropoff_location']['latitude']) || empty($params['dropoff_location']['longitude']))
-                ) {
-                    $params['dropoff_location'] = $params['pickup_location'];
-                }
 
                 $params['package_type'] = $requestData['package_type'] ?? 'multi-day';
                 break;
@@ -619,9 +599,6 @@ class BookingController extends Controller
                 $locationFields[] = ['name' => $fieldName, 'submit_as' => $submitAs, 'is_dropoff' => $isDropoff, 'config' => $config];
             }
         }
-        $hasDropoffLocationField = !empty(data_get($fieldMappings, 'locations.dropoff_location'))
-            || collect($locationFields)->contains(fn ($field) => $field['is_dropoff']);
-
         // --- Resolve dates ---
         $pickupDateRaw = null;
         $dropoffDateRaw = null;
@@ -729,14 +706,15 @@ class BookingController extends Controller
             }
         }
 
-        // Fallback: if dropoff is empty, copy from pickup
-        if (
-            $hasDropoffLocationField
-            &&
-            empty($params['dropoff_location']['address'])
-            && (empty($params['dropoff_location']['latitude']) || empty($params['dropoff_location']['longitude']))
-        ) {
+        $selectedRouteOption = $this->selectedRouteLocationOption($fields, $requestData);
+        $selectedRouteMode = $selectedRouteOption['option']['route_mode'] ?? ($selectedRouteOption ? 'shared' : null);
+        if ($selectedRouteMode === 'shared') {
             $params['dropoff_location'] = $params['pickup_location'];
+        } elseif ($selectedRouteMode === 'separate') {
+            $mappedDropoff = data_get($fieldMappings, 'locations.dropoff_location');
+            if (!$mappedDropoff || $mappedDropoff === $selectedRouteOption['field_name']) {
+                $params['dropoff_location'] = $this->formatLocation($requestData, 'dropoff');
+            }
         }
 
         // Pass through any extra fields that don't map to standard params
@@ -815,12 +793,37 @@ class BookingController extends Controller
             });
         }
 
+        $locationFields = array_keys(array_filter(
+            $fields,
+            static fn ($config) => is_array($config) && ($config['type'] ?? null) === 'location'
+        ));
+        if (count($locationFields) === 1) {
+            $fieldMappings['locations']['pickup_location'] ??= $locationFields[0];
+            $fieldMappings['locations']['dropoff_location'] ??= $locationFields[0];
+        }
+
         return [
             'fields' => $fields,
             'field_mappings' => $fieldMappings,
             'uses_dropoff_time' => (bool) ($serviceType->uses_dropoff_time ?? true),
             'allow_return_trip' => (bool) ($serviceType->allow_return_trip ?? false),
         ];
+    }
+
+    private function selectedRouteLocationOption(array $fields, array $data): ?array
+    {
+        foreach ($fields as $fieldName => $field) {
+            if (($field['type'] ?? null) !== 'location') continue;
+            $submitAs = (string) ($field['submit_as'] ?? $fieldName);
+            $selectedValue = $data[$submitAs . '_type'] ?? $data[$submitAs . '_predefined'] ?? null;
+            foreach ($field['options'] ?? [] as $option) {
+                if (is_array($option) && (string) ($option['value'] ?? '') === (string) $selectedValue) {
+                    return ['field_name' => $fieldName, 'option' => $option];
+                }
+            }
+        }
+
+        return null;
     }
 
     /**

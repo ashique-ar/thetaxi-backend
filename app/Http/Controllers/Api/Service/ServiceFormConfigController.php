@@ -585,6 +585,15 @@ class ServiceFormConfigController extends Controller
             }
         }
 
+        $locationFields = array_keys(array_filter(
+            $fields,
+            static fn ($field) => is_array($field) && ($field['type'] ?? null) === 'location'
+        ));
+        if (count($locationFields) === 1) {
+            $derived['locations']['pickup_location'] ??= $locationFields[0];
+            $derived['locations']['dropoff_location'] ??= $locationFields[0];
+        }
+
         return $derived;
     }
 
@@ -902,6 +911,7 @@ class ServiceFormConfigController extends Controller
                 'form_config.*.options.*.value' => 'required|string',
                 'form_config.*.options.*.label' => 'required|string',
                 'form_config.*.options.*.action' => 'nullable|in:fixed_location,google_search',
+                'form_config.*.options.*.route_mode' => 'nullable|in:shared,separate',
                 'form_config.*.options.*.location_source' => 'nullable|in:configured,saved_location',
                 'form_config.*.options.*.location_id' => 'nullable|uuid|exists:companies,id',
                 'form_config.*.options.*.address' => 'nullable|string|max:500',

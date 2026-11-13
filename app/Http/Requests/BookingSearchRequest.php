@@ -27,7 +27,7 @@ class BookingSearchRequest extends FormRequest
         $serviceType = $data['service_type'] ?? null;
         if (!empty($serviceType)) {
             try {
-                [$configuredFields] = $this->resolveServiceFormConfig((string) $serviceType);
+                [$configuredFields, , , , $fieldMappings] = $this->resolveServiceFormConfig((string) $serviceType);
                 foreach ($configuredFields as $fieldName => $config) {
                     if (!is_array($config)) {
                         continue;
@@ -79,6 +79,29 @@ class BookingSearchRequest extends FormRequest
                             }
                         }
                     }
+                }
+
+                $selectedRouteOption = $this->selectedLocationRouteOption($configuredFields, $data);
+                $locationMappings = $fieldMappings['locations'] ?? [];
+                $pickupField = $locationMappings['pickup_location'] ?? null;
+                $dropoffField = $locationMappings['dropoff_location'] ?? null;
+                if ($selectedRouteOption) {
+                    $sourceField = $selectedRouteOption['field_name'];
+                    $sourceSubmitAs = $configuredFields[$sourceField]['submit_as'] ?? $sourceField;
+                    $this->copyLocationIdentity($data, (string) $sourceSubmitAs, 'pickup');
+                    if (($selectedRouteOption['option']['route_mode'] ?? 'shared') === 'separate') {
+                        if ($dropoffField && $dropoffField !== $sourceField && isset($configuredFields[$dropoffField])) {
+                            $dropoffSubmitAs = $configuredFields[$dropoffField]['submit_as'] ?? $dropoffField;
+                            $this->copyLocationIdentity($data, (string) $dropoffSubmitAs, 'dropoff');
+                        }
+                    } else {
+                        $this->copyLocationIdentity($data, (string) $sourceSubmitAs, 'dropoff');
+                    }
+                } elseif ($pickupField && $dropoffField) {
+                    $pickupSubmitAs = $configuredFields[$pickupField]['submit_as'] ?? $pickupField;
+                    $dropoffSubmitAs = $configuredFields[$dropoffField]['submit_as'] ?? $dropoffField;
+                    $this->copyLocationIdentity($data, (string) $pickupSubmitAs, 'pickup');
+                    $this->copyLocationIdentity($data, (string) $dropoffSubmitAs, 'dropoff');
                 }
             } catch (\Throwable $exception) {
                 Log::warning('Failed to apply configured booking search defaults', [
@@ -163,31 +186,6 @@ class BookingSearchRequest extends FormRequest
                 $data['rental_mode'] = $serviceType;
             }
 
-            // If a predefined dropoff code is provided, resolve its address/coords
-            if (!empty($data['dropoff_predefined'])) {
-                try {
-                    $predefinedDropoff = \App\Models\PredefinedLocation::where('code', $data['dropoff_predefined'])
-                        ->where('is_active', true)
-                        ->first();
-                    if ($predefinedDropoff) {
-                        $data['dropoff'] = $data['dropoff'] ?? ($predefinedDropoff->address ?? $predefinedDropoff->name);
-                        $data['dropoff_lat'] = $data['dropoff_lat'] ?? (string) $predefinedDropoff->latitude;
-                        $data['dropoff_lng'] = $data['dropoff_lng'] ?? (string) $predefinedDropoff->longitude;
-                    }
-                } catch (\Exception $e) {
-                    Log::warning('Failed to resolve predefined dropoff location', [
-                        'code' => $data['dropoff_predefined'],
-                        'error' => $e->getMessage()
-                    ]);
-                }
-            }
-
-            // Fallback: if dropoff is still empty, copy from pickup
-            if (!$isOpenPackageRequest && empty($data['dropoff']) && !empty($data['pickup'])) {
-                $data['dropoff'] = $data['pickup'];
-                $data['dropoff_lat'] = $data['dropoff_lat'] ?? ($data['pickup_lat'] ?? null);
-                $data['dropoff_lng'] = $data['dropoff_lng'] ?? ($data['pickup_lng'] ?? null);
-            }
         }
 
         if ($serviceType === 'wedding_hire') {
@@ -541,9 +539,14 @@ class BookingSearchRequest extends FormRequest
         $rules['package_type'] = $rules['package_type'] ?? 'nullable|string';
         $rules['trip_mode'] = $rules['trip_mode'] ?? 'nullable|string|in:fixed_route,open_package';
 
-        // Allow dropoff fields for self_drive/with_driver even if not in config
-        if (in_array($serviceCode, ['self_drive', 'with_driver'])) {
-            $rules['dropoff'] = $rules['dropoff'] ?? 'nullable|string|max:255';
+        [$fields] = $this->resolveServiceFormConfig($serviceCode);
+        $selectedRouteOption = $this->selectedLocationRouteOption($fields, $this->all());
+        if (($selectedRouteOption['option']['route_mode'] ?? null) === 'separate') {
+            $rules['dropoff'] = 'required|string|max:255';
+            $rules['dropoff_lat'] = 'required|numeric|between:-90,90';
+            $rules['dropoff_lng'] = 'required|numeric|between:-180,180';
+        } elseif ($selectedRouteOption) {
+            $rules['dropoff'] = 'nullable|string|max:255';
             $rules['dropoff_lat'] = $rules['dropoff_lat'] ?? 'nullable|numeric|between:-90,90';
             $rules['dropoff_lng'] = $rules['dropoff_lng'] ?? 'nullable|numeric|between:-180,180';
             $rules['dropoff_predefined'] = $rules['dropoff_predefined'] ?? 'nullable|string';
@@ -557,6 +560,33 @@ class BookingSearchRequest extends FormRequest
         }
 
         return $rules;
+    }
+
+    private function selectedLocationRouteOption(array $fields, array $data): ?array
+    {
+        foreach ($fields as $fieldName => $field) {
+            if (($field['type'] ?? null) !== 'location') continue;
+            $submitAs = (string) ($field['submit_as'] ?? $fieldName);
+            $selectedValue = $data[$submitAs . '_type'] ?? $data[$submitAs . '_predefined'] ?? null;
+            foreach ($field['options'] ?? [] as $option) {
+                if (is_array($option) && (string) ($option['value'] ?? '') === (string) $selectedValue) {
+                    return ['field_name' => $fieldName, 'option' => $option];
+                }
+            }
+        }
+
+        return null;
+    }
+
+    private function copyLocationIdentity(array &$data, string $source, string $target): void
+    {
+        if ($source === '' || $this->isBlankSearchValue($data[$source] ?? null)) return;
+        $data[$target] = $data[$source];
+        foreach (['lat', 'lng'] as $coordinate) {
+            if (isset($data[$source . '_' . $coordinate])) {
+                $data[$target . '_' . $coordinate] = $data[$source . '_' . $coordinate];
+            }
+        }
     }
 
     /**
@@ -964,6 +994,14 @@ class BookingSearchRequest extends FormRequest
         $fieldMappings = is_array($resolvedPublicConfig['field_mappings'] ?? null)
             ? $resolvedPublicConfig['field_mappings']
             : [];
+        $locationFields = array_keys(array_filter(
+            $fields,
+            static fn ($field) => is_array($field) && ($field['type'] ?? null) === 'location'
+        ));
+        if (count($locationFields) === 1) {
+            $fieldMappings['locations']['pickup_location'] ??= $locationFields[0];
+            $fieldMappings['locations']['dropoff_location'] ??= $locationFields[0];
+        }
 
         $pricingServiceType = $serviceType
             ? ServiceType::publicContext()->where('code', $serviceType->code)->first()
