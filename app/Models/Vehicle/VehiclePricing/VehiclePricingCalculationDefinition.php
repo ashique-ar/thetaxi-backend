@@ -954,19 +954,16 @@ class VehiclePricingCalculationDefinition extends Model
 
             $isDeliveryRate = $varType === 'common_rate'
                 && preg_match('/deliver(?:y)?_rate/i', $varName);
-            $deliveryRateWaivedForGarageSetting = !($inputs['include_garage_distance'] ?? false);
-            $deliveryRateWaivedForSavedLocation = $inputs['delivery_location_is_saved_location'] ?? false;
+            $deliveryRateWaivedForDefaultGarage = $inputs['delivery_location_is_default_garage'] ?? false;
 
-            if ($isDeliveryRate && ($deliveryRateWaivedForGarageSetting || $deliveryRateWaivedForSavedLocation)) {
+            if ($isDeliveryRate && $deliveryRateWaivedForDefaultGarage) {
                 $value = 0;
                 $rateKey = str_starts_with($varName, 'common_rate_')
                     ? substr($varName, 12)
                     : $varName;
                 if (isset($this->resolvedRateSources[$rateKey])) {
                     $this->resolvedRateSources[$rateKey]['resolved_value'] = 0;
-                    $this->resolvedRateSources[$rateKey]['waived_reason'] = $deliveryRateWaivedForGarageSetting
-                        ? 'Garage-to-garage pricing is disabled.'
-                        : 'Delivery location is a saved location.';
+                    $this->resolvedRateSources[$rateKey]['waived_reason'] = 'Delivery location is the default garage.';
                 }
             }
 
@@ -1822,11 +1819,9 @@ class VehiclePricingCalculationDefinition extends Model
         $appendComponentResult($totalAdjustmentResult, 'total_price');
         $currentAmount = (float) ($totalAdjustmentResult['final_amount'] ?? $currentAmount);
 
-        // Merge KM range totals into the final display totals
-        $kmDiscount = $totalKmAdjustment < 0 ? abs($totalKmAdjustment) : 0;
+        // KM range repricing changes the fare; only configured price adjustments are discounts.
         $kmIncrease = $totalKmAdjustment > 0 ? $totalKmAdjustment : 0;
 
-        $totalDiscount += $kmDiscount;
         $totalIncrease += $kmIncrease;
         $hasDiscount = $totalDiscount > 0;
         $hasIncrease = $totalIncrease > 0;

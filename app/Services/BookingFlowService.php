@@ -4799,6 +4799,16 @@ class BookingFlowService
             ->contains(fn(Company $company): bool => $this->matchesSavedLocation($location, $company));
     }
 
+    private function isDefaultGarageLocation(array $location): bool
+    {
+        $garage = Company::query()
+            ->where('is_garage', true)
+            ->where('is_active', true)
+            ->first(['latitude', 'longitude']);
+
+        return $garage !== null && $this->matchesSavedLocation($location, $garage);
+    }
+
     /**
      * Extract latitude from location array with multiple key formats
      */
@@ -6012,7 +6022,7 @@ class BookingFlowService
         $deliveryLocation = $isWithDriver && $this->isValidLocationArray($dropoffLocation)
             ? $dropoffLocation
             : ($params['pickup_location'] ?? []);
-        $inputs['delivery_location_is_saved_location'] = $this->isConfiguredSavedLocation(
+        $inputs['delivery_location_is_default_garage'] = $this->isDefaultGarageLocation(
             $this->normalizeLocationInput($deliveryLocation)
         );
         $pickupLocationForWaiver = $this->normalizeLocationInput($params['pickup_location'] ?? []);
