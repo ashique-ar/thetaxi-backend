@@ -196,6 +196,7 @@ class AssignmentController extends Controller
                     'ASSIGNMENT_SUPERSEDED',
                     'ASSIGNMENT_EXPIRED',
                     'ASSIGNMENT_WAITING_FOR_EARLIER_ASSIGNMENT',
+                    'UPDATE_REQUIRED',
                 ],
                 true
             ) ? 409 : 400;
@@ -205,6 +206,7 @@ class AssignmentController extends Controller
                 'ASSIGNMENT_SUPERSEDED' => 'This assignment has been replaced. Refresh assignments.',
                 'ASSIGNMENT_EXPIRED' => 'This assignment has expired.',
                 'ASSIGNMENT_WAITING_FOR_EARLIER_ASSIGNMENT' => 'Accept the earlier assignment first.',
+                'UPDATE_REQUIRED' => 'Update the driver app to the minimum supported version before accepting another assignment.',
                 default => $code,
             };
 

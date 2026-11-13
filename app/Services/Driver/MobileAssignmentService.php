@@ -368,6 +368,19 @@ class MobileAssignmentService
                 throw new \InvalidArgumentException('ASSIGNMENT_INVALID_STATE');
             }
 
+            $device = \App\Models\Driver\DriverDevice::query()
+                ->where('driver_id', $driver->id)
+                ->when($driver->current_device_uuid, fn ($query) => $query->where('device_uuid', $driver->current_device_uuid))
+                ->where('is_active', true)
+                ->orderByDesc('last_active_at')
+                ->lockForUpdate()
+                ->first();
+            $minimumBuild = (int) config('driver_mobile_release.platforms.'.strtolower((string) $device?->platform).'.minimum_supported_build', 0);
+            $anyMinimumBuild = collect(config('driver_mobile_release.platforms', []))->contains(fn ($platform) => (int) ($platform['minimum_supported_build'] ?? 0) > 0);
+            if ($anyMinimumBuild && (!$device || !is_numeric($device->app_build) || $minimumBuild === 0 || (int) $device->app_build < $minimumBuild)) {
+                throw new \InvalidArgumentException('UPDATE_REQUIRED');
+            }
+
             $this->assertAssignmentStillCurrent($assignment);
             $this->assertAssignmentIsNextForDriver($driver, $assignment);
             $now = Carbon::now('UTC');

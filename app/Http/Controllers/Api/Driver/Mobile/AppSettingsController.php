@@ -31,8 +31,17 @@ class AppSettingsController extends Controller
         $publishedReleases = config('driver_mobile_release.published_releases', []);
         $mandatoryUpdate = $this->toBoolean($settings['driver_mobile_mandatory_update'] ?? false);
         $currentVersion = trim($validated['version']);
-        $updateRequired = version_compare($this->normalizeVersion($currentVersion), $this->normalizeVersion($latestVersion), '<');
-        $mandatoryUpdateRequired = $mandatoryUpdate && $updateRequired;
+        $platform = strtolower((string) ($validated['platform'] ?? ''));
+        $policy = config("driver_mobile_release.platforms.$platform", []);
+        $currentBuild = $validated['build_number'] ?? null;
+        $latestBuild = (int) ($policy['latest_build'] ?? 0);
+        $minimumBuild = (int) ($policy['minimum_supported_build'] ?? 0);
+        $updateRequired = version_compare($this->normalizeVersion($currentVersion), $this->normalizeVersion($latestVersion), '<')
+            || ($currentBuild !== null && $latestBuild > 0 && $currentBuild < $latestBuild);
+        $belowMinimum = $currentBuild !== null && $minimumBuild > 0 && $currentBuild < $minimumBuild;
+        $mandatoryUpdateRequired = $belowMinimum || ($mandatoryUpdate && $updateRequired);
+        $releaseNotes = config('driver_mobile_release.release_notes');
+        $message = $settings['driver_mobile_update_message'] ?: $releaseNotes ?: 'A new driver app version is available. Please update to continue.';
 
         return response()->json([
             'status' => 'success',
@@ -41,6 +50,10 @@ class AppSettingsController extends Controller
                 'latest_version' => $latestVersion,
                 'update_required' => $updateRequired,
                 'current_build_number' => $validated['build_number'] ?? null,
+                'latest_build' => $latestBuild ?: null,
+                'minimum_supported_build' => $minimumBuild ?: null,
+                'update_url' => str_starts_with((string) ($policy['update_url'] ?? ''), 'https://') ? $policy['update_url'] : null,
+                'release_notes' => $releaseNotes,
                 'mandatory_update' => $mandatoryUpdateRequired,
                 'can_continue' => !$mandatoryUpdateRequired,
                 'release_policy' => [
@@ -48,7 +61,7 @@ class AppSettingsController extends Controller
                     'advertised_release_published' => in_array($configuredLatestVersion, $publishedReleases, true),
                     'mandatory_release_validated' => (bool) config('driver_mobile_release.mandatory_release_validated', false),
                 ],
-                'message' => $settings['driver_mobile_update_message'] ?: 'A new driver app version is available. Please update to continue.',
+                'message' => $message,
             ],
         ]);
     }
