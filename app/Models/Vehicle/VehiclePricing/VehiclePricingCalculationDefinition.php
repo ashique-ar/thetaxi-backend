@@ -1825,10 +1825,11 @@ class VehiclePricingCalculationDefinition extends Model
         $totalIncrease += $kmIncrease;
         $hasDiscount = $totalDiscount > 0;
         $hasIncrease = $totalIncrease > 0;
+        $discountComparisonAmount = $currentAmount + $totalDiscount;
 
         return [
             'final_amount' => $currentAmount,
-            'original_amount' => $baseAmount,
+            'original_amount' => $discountComparisonAmount,
             'adjustments' => $adjustments,
             'distance_charge_totals' => $distanceChargeTotals,
             'distance_charge_rates' => $distanceChargeRates ?? [],
@@ -1838,8 +1839,8 @@ class VehiclePricingCalculationDefinition extends Model
             'has_discount' => $hasDiscount,
             'has_increase' => $hasIncrease,
             'savings_display' => $hasDiscount ? 'LKR ' . number_format(floor(max(0, $totalDiscount)), 0) : null,
-            'discount_percentage' => $hasDiscount && $baseAmount > 0
-                ? round(($totalDiscount / $baseAmount) * 100, 1)
+            'discount_percentage' => $hasDiscount && $discountComparisonAmount > 0
+                ? round(($totalDiscount / $discountComparisonAmount) * 100, 1)
                 : 0,
         ];
     }
