@@ -469,6 +469,45 @@ class KmRangePricingRule extends BaseModel
             $totalAdjustment += $adjustment;
         }
 
+        $mergedRules = [];
+        foreach ($appliedRules as $appliedRule) {
+            $lastIndex = array_key_last($mergedRules);
+            $lastRule = $lastIndex === null ? null : $mergedRules[$lastIndex];
+            $lastDetails = $lastRule['calculation_details'] ?? [];
+            $details = $appliedRule['calculation_details'];
+            $canMerge = $lastRule
+                && ($appliedRule['rule_info']['id'] ?? null) === ($lastRule['rule_info']['id'] ?? null)
+                && ($details['type'] ?? null) !== 'flat_addition'
+                && abs((float) ($lastDetails['distance_to_km'] ?? 0) - (float) ($details['distance_from_km'] ?? 0)) < 0.000001;
+
+            if (!$canMerge) {
+                $mergedRules[] = $appliedRule;
+                continue;
+            }
+
+            $previous = &$mergedRules[$lastIndex];
+            $previousDetails = &$previous['calculation_details'];
+            $previous['adjustment_amount'] += $appliedRule['adjustment_amount'];
+            $previous['charged_amount'] += $appliedRule['charged_amount'];
+            $previous['final_amount'] = $baseAmount + $previous['adjustment_amount'];
+            $previousDetails['distance'] += $details['distance'];
+            $previousDetails['distance_to_km'] = $details['distance_to_km'];
+            $previousDetails['charged_amount'] += $details['charged_amount'];
+            $previousDetails['already_priced_amount'] += $details['already_priced_amount'];
+            $distance = $previousDetails['distance'];
+            $chargedAmount = $previousDetails['charged_amount'];
+            $calculation = ($details['type'] === 'fixed_rate')
+                ? "{$distance} km × {$details['rate_per_km']}/km = {$chargedAmount}"
+                : "{$distance} km × {$details['base_rate_per_km']}/km × {$details['multiplier']} = {$chargedAmount}";
+            if ($previousDetails['already_priced_amount'] > 0) {
+                $calculation .= '; replaces ' . $previousDetails['already_priced_amount']
+                    . ' base charge; net adjustment ' . $previous['adjustment_amount'];
+            }
+            $previousDetails['calculation'] = $calculation;
+            unset($previous, $previousDetails);
+        }
+        $appliedRules = $mergedRules;
+
         return [
             'rules_applied' => $appliedRules,
             'total_adjustment' => $totalAdjustment,
