@@ -5929,6 +5929,7 @@ class BookingFlowService
             'actual_distance',
             'delivery_distance',
             'pickup_distance',
+            'accepted_to_pickup_distance',
             'extra_km',
             'extra_hours',
             'extra_minutes',
@@ -6345,6 +6346,12 @@ class BookingFlowService
                 'total_distance' => $contractual['total_distance'],
             ];
         }
+        $resolvedVariables = $calculationResult['resolved_variables']
+            ?? data_get($calculationResult, 'calculation_metadata.resolved_variables', []);
+        $resolvedVariables = is_array($resolvedVariables) ? $resolvedVariables : [];
+        if (is_numeric($resolvedVariables['accepted_to_pickup_distance'] ?? null)) {
+            $distanceDetails['accepted_to_pickup_distance'] = (float) $resolvedVariables['accepted_to_pickup_distance'];
+        }
 
         // Build standard pricing structure
         $result = [
@@ -6354,10 +6361,7 @@ class BookingFlowService
             'breakdown' => $this->formatPricingBreakdown($breakdown),
             'distance_details' => $distanceDetails,
             'adjustment_details' => $adjustmentDetails,
-            'distance_charge_totals' => $calculationResult['distance_charge_totals'] ?? [
-                'pickup_distance' => 0,
-                'delivery_distance' => 0,
-            ],
+            'distance_charge_totals' => $calculationResult['distance_charge_totals'] ?? [],
             'distance_charge_rates' => $calculationResult['distance_charge_rates'] ?? [],
             'distance_policy' => $contractual['distance_policy'] ?? null,
             'contractual_route' => $contractual['contractual_route'] ?? null,
@@ -6381,10 +6385,7 @@ class BookingFlowService
                 'definition_used' => $calculationResult['definition_id'] ?? null,
                 'variables_used' => $calculationResult['variables_used'] ?? [],
                 'resolved_variables' => $calculationResult['resolved_variables'] ?? [],
-                'distance_charge_totals' => $calculationResult['distance_charge_totals'] ?? [
-                    'pickup_distance' => 0,
-                    'delivery_distance' => 0,
-                ],
+                'distance_charge_totals' => $calculationResult['distance_charge_totals'] ?? [],
                 'distance_charge_rates' => $calculationResult['distance_charge_rates'] ?? [],
                 'rate_sources' => $calculationResult['rate_sources'] ?? [],
                 'formula_evaluation' => $calculationResult['formula_evaluation'] ?? null,

@@ -25,6 +25,19 @@ use Carbon\Carbon;
  */
 class VehiclePricingCalculationDefinition extends Model
 {
+    public static function systemDistanceVariables(): array
+    {
+        return [
+            ['name' => 'journey_distance', 'type' => 'distance', 'description' => 'Contractual journey distance in KM used by pricing', 'is_required' => false, 'default_value' => 0, 'category' => 'distance'],
+            ['name' => 'actual_distance', 'type' => 'distance', 'description' => 'Measured final journey distance in KM when available', 'is_required' => false, 'default_value' => 0, 'category' => 'distance'],
+            ['name' => 'package_included_km', 'type' => 'distance', 'description' => 'Distance included by the selected service package', 'is_required' => false, 'default_value' => 0, 'category' => 'distance'],
+            ['name' => 'delivery_distance', 'type' => 'distance', 'description' => 'Drop-off to garage distance in KM', 'is_required' => false, 'default_value' => 0, 'category' => 'distance'],
+            ['name' => 'pickup_distance', 'type' => 'distance', 'description' => 'Garage to pickup distance in KM', 'is_required' => false, 'default_value' => 0, 'category' => 'distance'],
+            ['name' => 'accepted_to_pickup_distance', 'type' => 'distance', 'description' => 'Driver mobile distance from accepting the booking to arriving at pickup', 'is_required' => false, 'default_value' => 0, 'category' => 'distance'],
+            ['name' => 'extra_km', 'type' => 'distance', 'description' => 'Extra KM beyond package/daily limit', 'is_required' => false, 'default_value' => 0, 'category' => 'distance'],
+        ];
+    }
+
     use HasFactory, HasGlobalPricingDefinitionScope, SoftDeletes;
 
     /** @var array<string, array<string, mixed>> */
@@ -199,7 +212,8 @@ class VehiclePricingCalculationDefinition extends Model
                 $servicePackageInfo,
                 $districtInfo,
                 $kmCalculations,
-                $resolvedVariables
+                $resolvedVariables,
+                $this->kmRangeFormulaRates()
             );
 
             $finalAmount = $adjustmentResults['final_amount'];
@@ -210,7 +224,8 @@ class VehiclePricingCalculationDefinition extends Model
                     $servicePackageInfo,
                     $districtInfo,
                     $kmCalculations,
-                    $resolvedVariablesWithoutCustomizations
+                    $resolvedVariablesWithoutCustomizations,
+                    $this->kmRangeFormulaRates()
                 )['final_amount']
                 : $finalAmount;
 
@@ -259,10 +274,7 @@ class VehiclePricingCalculationDefinition extends Model
             ];
             $built['conditions_evaluated'] = $metadata['conditions_evaluated'];
             $built['pricing_adjustments'] = $adjustmentResults['adjustments'];
-            $built['distance_charge_totals'] = $adjustmentResults['distance_charge_totals'] ?? [
-                'pickup_distance' => 0,
-                'delivery_distance' => 0,
-            ];
+            $built['distance_charge_totals'] = $adjustmentResults['distance_charge_totals'] ?? [];
             $built['distance_charge_rates'] = $adjustmentResults['distance_charge_rates'] ?? [];
             $built['service_package_info'] = $servicePackageInfo;
             $built['district_info'] = $districtInfo;
@@ -309,7 +321,7 @@ class VehiclePricingCalculationDefinition extends Model
     private function buildCalculationBreakdown(array $resolvedVariables, float $totalAmount, float $totalAmountWithoutCustomizations, ?array $slabInfo, array $kmCalculations, array $adjustmentResults = []): array
     {
         $breakdown = [];
-        $totalDeliveryCharge = 0;
+        $totalDistanceCharge = 0;
 
         // Base rate breakdown
         if (isset($resolvedVariables['slab_rate']) && $resolvedVariables['slab_rate'] > 0) {
@@ -341,27 +353,40 @@ class VehiclePricingCalculationDefinition extends Model
             array_filter($adjustmentResults['adjustments'] ?? [], fn (array $item): bool => ($item['type'] ?? null) === 'km_range_pricing'),
             'distance_type'
         );
-        // Enhanced distance-based charges with detailed breakdown
-        foreach (['delivery_distance', 'pickup_distance'] as $distanceType) {
+        $distanceRates = $this->kmRangeFormulaRates();
+        foreach ($distanceRates as $distanceType => $rateNames) {
             $distance = (float) ($resolvedVariables[$distanceType] ?? 0);
-            [$rate, , $rateVariables] = $this->kmRangeRatesForDistance($distanceType, $resolvedVariables);
+            [$rate, , $rateVariables] = $this->kmRangeRatesForDistance($distanceType, $resolvedVariables, $rateNames);
             $amount = (float) ($distanceChargeTotals[$distanceType] ?? ($distance * $rate));
-            $totalDeliveryCharge += $amount;
-
+            $totalDistanceCharge += $amount;
             if ($distance > 0 && $amount > 0 && !in_array($distanceType, $rangePricedLegs, true)) {
-                $serviceTypeLabel = $distanceType === 'pickup_distance' ? 'Vehicle Pickup' : 'Vehicle Delivery';
+                $description = data_get(collect($this->variables ?? [])->firstWhere('name', $distanceType), 'description')
+                    ?? ucfirst(str_replace('_', ' ', $distanceType));
                 $breakdown[] = [
                     'component' => $distanceType,
-                    'description' => $serviceTypeLabel,
+                    'description' => $description,
                     'amount' => $amount,
                     'calculation' => "{$distance} km × LKR {$rate}/km" . ($rateVariables ? ' (' . implode(', ', $rateVariables) . ')' : ''),
-                    'details' => [
-                        'distance_km' => $distance,
-                        'rate_per_km' => $rate,
-                        'rate_variables' => $rateVariables,
-                        'category' => 'company_logistics',
-                        'type' => str_replace('_distance', '', $distanceType)
-                    ]
+                    'details' => ['distance_km' => $distance, 'rate_per_km' => $rate, 'rate_variables' => $rateVariables],
+                ];
+            }
+        }
+
+        foreach (array_unique(array_merge(array_keys($distanceChargeTotals), $rangePricedLegs)) as $distanceType) {
+            if (!in_array($distanceType, $rangePricedLegs, true)) {
+                continue;
+            }
+            $coveredAmount = collect($adjustmentResults['adjustments'] ?? [])
+                ->where('type', 'km_range_pricing')
+                ->where('distance_type', $distanceType)
+                ->sum(fn (array $rule) => (float) ($rule['amount'] ?? 0));
+            $remainingAmount = round((float) ($distanceChargeTotals[$distanceType] ?? 0) - $coveredAmount, 2);
+            if ($remainingAmount > 0) {
+                $breakdown[] = [
+                    'component' => $distanceType . '_base_rate_remainder',
+                    'description' => ucfirst(str_replace('_', ' ', $distanceType)) . ' — uncovered KM range at base rate',
+                    'amount' => $remainingAmount,
+                    'calculation' => 'Base rate applied to distance outside configured KM ranges',
                 ];
             }
         }
@@ -380,36 +405,6 @@ class VehiclePricingCalculationDefinition extends Model
                 ];
             }
         }
-        // Service distance charges (for KM-based services)
-        if (isset($resolvedVariables['service_rate_per_km']) && isset($resolvedVariables['total_distance'])) {
-            $distance = $resolvedVariables['total_distance'];
-            $rate = $resolvedVariables['service_rate_per_km'];
-            if ($distance > 0 && $rate > 0) {
-                $amount = $distance * $rate;
-                $breakdown[] = [
-                    'component' => 'service_distance',
-                    'description' => 'Service distance charges',
-                    'amount' => $amount,
-                    'calculation' => "{$distance} km × LKR {$rate}"
-                ];
-            }
-        }
-
-        // Extra KM charges
-        if ($kmCalculations['extra_km'] > 0 && isset($resolvedVariables['extra_km_rate'])) {
-            $rate = $resolvedVariables['extra_km_rate'];
-            if ($rate > 0) {
-                $amount = $kmCalculations['extra_km'] * $rate;
-                $breakdown[] = [
-                    'component' => 'extra_km',
-                    'description' => 'Extra KM charges',
-                    'amount' => $amount,
-                    'calculation' => "{$kmCalculations['extra_km']} km × LKR {$rate}",
-                    'note' => "Exceeded {$kmCalculations['calculation_type']} limit of {$kmCalculations['allowed_km']} km"
-                ];
-            }
-        }
-
         // Other charges (decoration, waiting, stops, etc.)
         $otherCharges = [
             'decoration_charge' => 'Vehicle decoration',
@@ -499,8 +494,8 @@ class VehiclePricingCalculationDefinition extends Model
             'calculation_success' => true,
             'calculation_summary' => [
                 'base_amount' => $resolvedVariables['slab_rate'] ?? 0,
-                'delivery_pickup_total' => $totalDeliveryCharge,
-                'additional_charges' => $totalAmount - ($resolvedVariables['slab_rate'] ?? 0) - $totalDeliveryCharge,
+                'distance_charges_total' => $totalDistanceCharge,
+                'additional_charges' => $totalAmount - ($resolvedVariables['slab_rate'] ?? 0) - $totalDistanceCharge,
                 'variables_used' => array_keys($resolvedVariables)
             ],
             // Include adjustment details for frontend discount display
@@ -1129,6 +1124,7 @@ class VehiclePricingCalculationDefinition extends Model
     private function evaluateFormulaWithVariables(string $formula, array $variables): ?float
     {
         try {
+            $formula = $this->expandKmRangeChargeFunctions($formula, $variables);
             $validationErrors = self::validateFormulaAgainstVariableNames($formula, array_keys($variables));
             if ($validationErrors !== []) {
                 throw new \InvalidArgumentException(implode(' ', $validationErrors));
@@ -1672,7 +1668,8 @@ class VehiclePricingCalculationDefinition extends Model
         ?array $servicePackageInfo,
         ?array $districtInfo,
         array $kmCalculations,
-        array $resolvedVariables = []
+        array $resolvedVariables = [],
+        array $kmRangeFormulaRates = []
     ): array {
         $adjustments = [];
         $currentAmount = $baseAmount;
@@ -1681,7 +1678,6 @@ class VehiclePricingCalculationDefinition extends Model
 
         [$targetColumn, $targetId] = $this->pricingTarget($inputs);
         $vehicleGroupId = $targetColumn === 'vehicle_group_id' ? $targetId : null;
-        $totalDistance = $kmCalculations['journey_distance'] ?? 0;
         $pricingStartDate = $this->resolvePricingAdjustmentDate($inputs, [
             'from_date',
             'pickup_date',
@@ -1753,21 +1749,17 @@ class VehiclePricingCalculationDefinition extends Model
         $currentAmount = (float) ($baseAdjustmentResult['final_amount'] ?? $currentAmount);
 
         $totalKmAdjustment = 0.0;
-        $distanceChargeTotals = [
-            'pickup_distance' => 0.0,
-            'delivery_distance' => 0.0,
-        ];
+        $distanceChargeTotals = array_fill_keys(array_keys($kmRangeFormulaRates), 0.0);
         $distanceChargeRates = [];
-        $distanceLegs = [
-            'journey_distance' => $totalDistance,
-        ];
-
-        // Pickup and delivery legs are eligible only for a garage-to-garage
-        // calculation. When garage distance is excluded, only the journey
-        // selections on matching rules are evaluated.
-        if ((bool) ($inputs['include_garage_distance'] ?? false)) {
-            $distanceLegs['pickup_distance'] = (float) ($inputs['pickup_distance'] ?? 0);
-            $distanceLegs['delivery_distance'] = (float) ($inputs['delivery_distance'] ?? 0);
+        $distanceLegs = [];
+        foreach ($kmRangeFormulaRates as $distanceName => $rateNames) {
+            $unwaivedRateNames = array_filter($rateNames, function (string $rateName): bool {
+                $rateSourceKey = str_starts_with($rateName, 'common_rate_') ? substr($rateName, 12) : $rateName;
+                return empty($this->resolvedRateSources[$rateSourceKey]['waived_reason']);
+            });
+            if ($unwaivedRateNames !== []) {
+                $distanceLegs[$distanceName] = (float) ($resolvedVariables[$distanceName] ?? 0);
+            }
         }
 
         foreach ($distanceLegs as $distanceType => $distance) {
@@ -1775,7 +1767,11 @@ class VehiclePricingCalculationDefinition extends Model
                 continue;
             }
 
-            [$baseRatePerKm, $alreadyPricedRatePerKm, $rateVariables] = $this->kmRangeRatesForDistance($distanceType, $resolvedVariables);
+            [$baseRatePerKm, $alreadyPricedRatePerKm, $rateVariables] = $this->kmRangeRatesForDistance(
+                $distanceType,
+                $resolvedVariables,
+                $kmRangeFormulaRates[$distanceType] ?? null
+            );
 
             $kmRangeResult = KmRangePricingRule::calculateBestPricing(
                 $distance,
@@ -1791,16 +1787,14 @@ class VehiclePricingCalculationDefinition extends Model
                 $alreadyPricedRatePerKm
             );
 
-            if (array_key_exists($distanceType, $distanceChargeTotals)) {
-                $rangeCharges = array_column($kmRangeResult['rules_applied'] ?? [], 'charged_amount');
-                $distanceChargeTotals[$distanceType] = round($rangeCharges
-                    ? array_sum(array_map('floatval', $rangeCharges))
-                    : max(0, $distance * $alreadyPricedRatePerKm), 2);
-                $distanceChargeRates[$distanceType] = [
-                    'rate_per_km' => $baseRatePerKm,
-                    'variables' => $rateVariables,
-                ];
-            }
+            $distanceChargeTotals[$distanceType] = round(max(
+                0,
+                $distance * $alreadyPricedRatePerKm + (float) ($kmRangeResult['total_adjustment'] ?? 0)
+            ), 2);
+            $distanceChargeRates[$distanceType] = [
+                'rate_per_km' => $baseRatePerKm,
+                'variables' => $rateVariables,
+            ];
 
             foreach ($kmRangeResult['rules_applied'] ?? [] as $rule) {
                 $adjustmentAmount = (float) ($rule['adjustment_amount'] ?? 0);
@@ -1855,47 +1849,18 @@ class VehiclePricingCalculationDefinition extends Model
         ];
     }
 
-    private function kmRangeRatesForDistance(string $distanceType, array $resolvedVariables): array
+    private function kmRangeRatesForDistance(string $distanceType, array $resolvedVariables, ?array $rateNames = null): array
     {
-        $distanceNames = match ($distanceType) {
-            'journey_distance' => ['journey_distance', 'total_distance'],
-            default => [$distanceType],
-        };
         $baseRate = 0.0;
-        $rateFoundInFormula = false;
         $rateVariables = [];
-        foreach ($distanceNames as $distanceName) {
-            $distanceToken = preg_quote($distanceName, '/');
-            $pattern = '/\{?([A-Za-z_][A-Za-z0-9_]*)\}?\s*\*\s*\{?' . $distanceToken . '\}?|\{?' . $distanceToken . '\}?\s*\*\s*\{?([A-Za-z_][A-Za-z0-9_]*)\}?/i';
-            if (!preg_match_all($pattern, (string) $this->formula, $matches, PREG_SET_ORDER)) {
-                continue;
-            }
-            foreach ($matches as $match) {
-                $rateName = $match[1] !== '' ? $match[1] : ($match[2] ?? '');
-                if (is_numeric($resolvedVariables[$rateName] ?? null)) {
-                    $baseRate += max(0, (float) $resolvedVariables[$rateName]);
-                    $rateFoundInFormula = true;
-                    $rateVariables[] = $rateName;
-                }
+        foreach ($rateNames ?? [] as $rateName) {
+            if (is_numeric($resolvedVariables[$rateName] ?? null)) {
+                $baseRate += max(0, (float) $resolvedVariables[$rateName]);
+                $rateVariables[] = $rateName;
             }
         }
 
-        if (!$rateFoundInFormula) {
-            $rateNames = match ($distanceType) {
-                'pickup_distance' => ['vehicle_pickup_rate_per_km', 'pickup_rate_per_km', 'deliver_rate', 'delivery_rate'],
-                'delivery_distance' => ['vehicle_delivery_rate_per_km', 'delivery_rate_per_km', 'deliver_rate', 'delivery_rate'],
-                default => ['journey_rate_per_km', 'service_rate_per_km', 'extra_km_rate', 'distance_rate'],
-            };
-            foreach ($rateNames as $rateName) {
-                if (is_numeric($resolvedVariables[$rateName] ?? null)) {
-                    $baseRate = max(0, (float) $resolvedVariables[$rateName]);
-                    $rateVariables[] = $rateName;
-                    break;
-                }
-            }
-        }
-
-        return [$baseRate, $rateFoundInFormula ? $baseRate : 0.0, array_values(array_unique($rateVariables))];
+        return [$baseRate, $baseRate, array_values(array_unique($rateVariables))];
     }
 
     private function formulaReferencesVariable(string $variableName): bool
@@ -1962,10 +1927,100 @@ class VehiclePricingCalculationDefinition extends Model
             $variableNames[] = $name;
         }
 
+        $typesByName = collect($variables)
+            ->filter(fn ($variable) => is_array($variable) && !empty($variable['name']))
+            ->mapWithKeys(fn (array $variable) => [$variable['name'] => $variable['type'] ?? 'number'])
+            ->all();
+        $functionErrors = self::validateKmRangeChargeFunctions($formula, $typesByName);
+        $formulaForValidation = preg_replace('/\bkm_range_charge\(([^()]*)\)/i', '0', $formula) ?? $formula;
+
         return array_values(array_unique(array_merge(
             $errors,
-            self::validateFormulaAgainstVariableNames($formula, $variableNames)
+            $functionErrors,
+            self::validateFormulaAgainstVariableNames($formulaForValidation, $variableNames)
         )));
+    }
+
+    /** KM ranges remain in Pricing Management; formulas select a distance leg and its common rate. */
+    private static function validateKmRangeChargeFunctions(string $formula, array $typesByName): array
+    {
+        preg_match_all('/\bkm_range_charge\(([^()]*)\)/i', $formula, $matches);
+        $errors = [];
+        $usedDistances = [];
+        foreach ($matches[1] ?? [] as $contents) {
+            $arguments = array_map(static fn (string $argument) => trim($argument, " {}\t\n\r\0\x0B"), explode(',', $contents));
+            if (count($arguments) !== 2
+                || !preg_match('/^[A-Za-z_][A-Za-z0-9_]*$/', $arguments[0] ?? '')
+                || !preg_match('/^[A-Za-z_][A-Za-z0-9_]*$/', $arguments[1] ?? '')) {
+                $errors[] = 'km_range_charge requires a distance variable and a rate variable.';
+                continue;
+            }
+
+            if (($typesByName[$arguments[0]] ?? null) !== 'distance') {
+                $errors[] = 'km_range_charge first argument must be a declared distance variable.';
+            } elseif (isset($usedDistances[$arguments[0]])) {
+                $errors[] = "Distance '{$arguments[0]}' can only be charged once with km_range_charge.";
+            } else {
+                $usedDistances[$arguments[0]] = true;
+            }
+            if (($typesByName[$arguments[1]] ?? null) !== 'common_rate') {
+                $errors[] = 'km_range_charge second argument must be a common rate variable.';
+            }
+        }
+
+        $formulaWithoutFunctions = preg_replace('/\bkm_range_charge\([^()]*\)/i', '', $formula) ?? $formula;
+        foreach (array_keys($usedDistances) as $distanceName) {
+            if (preg_match('/(?:\b' . preg_quote($distanceName, '/') . '\b\s*\*|\*\s*\b' . preg_quote($distanceName, '/') . '\b)/', $formulaWithoutFunctions)) {
+                $errors[] = "Distance '{$distanceName}' cannot use both km_range_charge and a flat per-kilometer formula.";
+            }
+        }
+
+        $withoutValidCalls = preg_replace('/\bkm_range_charge\([^()]*\)/i', '', $formula) ?? $formula;
+        if (preg_match('/\bkm_range_charge\s*\(/i', $withoutValidCalls)) {
+            $errors[] = 'km_range_charge arguments must be variables without nested expressions.';
+        }
+        return $errors;
+    }
+
+    private function expandKmRangeChargeFunctions(string $formula, array $variables): string
+    {
+        return preg_replace_callback(
+            '/\bkm_range_charge\(([^()]*)\)/i',
+            static function (array $match) use ($variables): string {
+                $arguments = array_map(static fn (string $argument) => trim($argument, " {}\t\n\r\0\x0B"), explode(',', $match[1]));
+                if (count($arguments) !== 2
+                    || !is_numeric($variables[$arguments[0]] ?? null)
+                    || !is_numeric($variables[$arguments[1]] ?? null)) {
+                    throw new \InvalidArgumentException('km_range_charge requires a resolved distance and rate variable.');
+                }
+                return '(' . (float) $variables[$arguments[0]] . '*' . (float) $variables[$arguments[1]] . ')';
+            },
+            $formula
+        ) ?? $formula;
+    }
+
+    /** @return array<string, array<int, string>> distance variable => referenced rate variables */
+    private function kmRangeFormulaRates(): array
+    {
+        $rates = [];
+        preg_match_all('/\bkm_range_charge\(\s*\{?([A-Za-z_][A-Za-z0-9_]*)\}?\s*,\s*\{?([A-Za-z_][A-Za-z0-9_]*)\}?\s*\)/i', (string) $this->formula, $calls, PREG_SET_ORDER);
+        foreach ($calls as $call) {
+            $rates[$call[1]][] = $call[2];
+        }
+
+        $variableTypes = collect($this->variables ?? [])->mapWithKeys(fn (array $variable): array => [
+            $variable['name'] ?? '' => strtolower((string) ($variable['type'] ?? '')),
+        ]);
+        preg_match_all('/\{?([A-Za-z_][A-Za-z0-9_]*)\}?\s*\*\s*\{?([A-Za-z_][A-Za-z0-9_]*)\}?/', (string) $this->formula, $products, PREG_SET_ORDER);
+        foreach ($products as $product) {
+            foreach ([[$product[1], $product[2]], [$product[2], $product[1]]] as [$distanceName, $rateName]) {
+                if (($variableTypes[$distanceName] ?? null) === 'distance'
+                    && in_array($variableTypes[$rateName] ?? null, ['common_rate', 'rate'], true)) {
+                    $rates[$distanceName][] = $rateName;
+                }
+            }
+        }
+        return array_map(fn (array $names): array => array_values(array_unique($names)), $rates);
     }
 
     /**
@@ -1987,19 +2042,19 @@ class VehiclePricingCalculationDefinition extends Model
         $originalTokens = $matches[0] ?? [];
 
         if (implode('', $originalTokens) !== $compactFormula) {
-            return ['Formula may contain only declared variables, numbers, min/max, commas, +, -, *, /, and parentheses.'];
+            return ['Formula may contain only declared variables, numbers, supported functions, commas, +, -, *, /, and parentheses.'];
         }
 
         $referencedVariables = collect($originalTokens)
             ->filter(fn (string $token): bool => preg_match('/^(?:\{[A-Za-z_][A-Za-z0-9_]*\}|[A-Za-z_][A-Za-z0-9_]*)$/', $token) === 1)
             ->map(fn (string $token): string => trim($token, '{}'))
-            ->reject(fn (string $name): bool => in_array($name, ['max', 'min'], true))
+            ->reject(fn (string $name): bool => in_array($name, ['max', 'min', 'km_range_charge'], true))
             ->values()
             ->all();
 
         $syntaxFormula = self::normalizeSupportedFunctionsForValidation($compactFormula);
         if ($syntaxFormula === null) {
-            return ['Formula functions must use max(value, value) or min(value, value).'];
+            return ['Formula functions must use max(value, value), min(value, value), or km_range_charge(distance, rate).'];
         }
         preg_match_all(
             '/\{[A-Za-z_][A-Za-z0-9_]*\}|[A-Za-z_][A-Za-z0-9_]*|\d+(?:\.\d+)?|[+\-*\/()]/',
@@ -2059,7 +2114,7 @@ class VehiclePricingCalculationDefinition extends Model
             $previous = $normalized;
             $invalid = false;
             $normalized = preg_replace_callback(
-                '/\b(?:max|min)\(([^()]*)\)/',
+                '/\b(?:max|min|km_range_charge)\(([^()]*)\)/i',
                 static function (array $match) use (&$invalid): string {
                     $arguments = array_map('trim', explode(',', $match[1]));
                     if (count($arguments) !== 2 || in_array('', $arguments, true)) {
@@ -2077,7 +2132,7 @@ class VehiclePricingCalculationDefinition extends Model
             }
         } while ($normalized !== $previous);
 
-        return preg_match('/\b(?:max|min)\s*\(/', $normalized) === 1
+        return preg_match('/\b(?:max|min|km_range_charge)\s*\(/i', $normalized) === 1
             ? null
             : $normalized;
     }

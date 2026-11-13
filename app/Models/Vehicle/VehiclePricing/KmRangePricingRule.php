@@ -271,12 +271,12 @@ class KmRangePricingRule extends BaseModel
         ?Carbon $date = null,
         ?string $ownerType = null,
         ?string $ownerId = null,
-        string $distanceType = 'journey_distance',
+        ?string $distanceType = null,
         string $pricingContext = 'public'
     ): \Illuminate\Database\Eloquent\Collection {
         return static::queryApplicableRules(
             $distance, $serviceTypeId, $vehicleGroupId, $date, $ownerType, $ownerId,
-            $distanceType, $pricingContext
+            $distanceType ?? '', $pricingContext
         );
     }
 
@@ -369,7 +369,7 @@ class KmRangePricingRule extends BaseModel
         ?Carbon $date = null,
         ?string $ownerType = null,
         ?string $ownerId = null,
-        string $distanceType = 'journey_distance',
+        ?string $distanceType = null,
         string $pricingContext = 'public',
         ?float $baseRatePerKm = null,
         ?float $alreadyPricedRatePerKm = null
@@ -385,7 +385,7 @@ class KmRangePricingRule extends BaseModel
             $date,
             $ownerType,
             $ownerId,
-            $distanceType,
+            $distanceType ?? '',
             $pricingContext,
             $distance
         );
@@ -491,7 +491,7 @@ class KmRangePricingRule extends BaseModel
             'service_type_id' => 'nullable|uuid|exists:service_types,id|required_if:scope,service',
             'vehicle_group_id' => 'nullable|uuid|exists:vehicle_groups,id|required_if:scope,vehicle_group',
             'distance_types' => 'sometimes|array|min:1',
-            'distance_types.*' => 'required|string|distinct|in:journey_distance,pickup_distance,delivery_distance',
+            'distance_types.*' => ['required', 'string', 'distinct', 'regex:/^[A-Za-z_][A-Za-z0-9_]*$/'],
             'applicable_contexts' => 'required|array|min:1',
             'applicable_contexts.*' => 'required|string|distinct|in:portal,public,corporate',
             'owner_type' => 'nullable|string|in:corporate',

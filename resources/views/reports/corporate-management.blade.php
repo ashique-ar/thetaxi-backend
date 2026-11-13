@@ -34,6 +34,8 @@
 
 <body>
     <h1>Corporate Management Report</h1>
+    <h2>Report context</h2>
+    <table><tbody>@foreach($payload['export_metadata'] as $label => $value)<tr><th>{{ $label }}</th><td>{{ $value }}</td></tr>@endforeach</tbody></table>
     <p>Travel activity dates: {{ $payload['period']['from'] ?: 'All dates' }} to {{ $payload['period']['to'] ?: 'Present' }}</p>
     <p>Bookings: {{ $payload['operational']['booking_count'] }} | Trips: {{ $payload['operational']['trip_count'] }}
         @if($payload['financial_metrics_visible'])

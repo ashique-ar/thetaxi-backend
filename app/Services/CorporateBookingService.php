@@ -717,6 +717,10 @@ class CorporateBookingService
             $query->where('corporate_department_id', $filters['department_id']);
         }
 
+        if (!empty($filters['employee_id'])) {
+            $query->where('employee_id', $filters['employee_id']);
+        }
+
         if (!empty($filters['division_id'])) {
             $query->where('corporate_division_id', $filters['division_id']);
         }
@@ -1173,6 +1177,22 @@ class CorporateBookingService
             }
             fputcsv($stream, $cells, ',', '"', '');
         }
+
+        fputcsv($stream, [], ',', '"', '');
+        fputcsv($stream, ['# Report metadata', 'Value'], ',', '"', '');
+        fputcsv($stream, ['# Corporate account', $this->csvSafeValue($corporateId)], ',', '"', '');
+        $timezone = TimezoneService::getUserTimezone();
+        fputcsv($stream, ['# Generated at', $this->csvSafeValue(now($timezone)->toIso8601String())], ',', '"', '');
+        fputcsv($stream, ['# Timezone', $this->csvSafeValue($timezone)], ',', '"', '');
+        fputcsv($stream, ['# Travel date from', $this->csvSafeValue($filters['date_from'] ?? 'All dates')], ',', '"', '');
+        fputcsv($stream, ['# Travel date to', $this->csvSafeValue($filters['date_to'] ?? 'Present')], ',', '"', '');
+        foreach (['department_id', 'division_id', 'employee_id', 'status'] as $filter) {
+            if (filled($filters[$filter] ?? null)) {
+                fputcsv($stream, ['# Applied filter: '.$filter, $this->csvSafeValue($filters[$filter])], ',', '"', '');
+            }
+        }
+        fputcsv($stream, ['# Payment fields', $canViewPayments ? 'Included; amount basis is recorded per row' : 'Omitted by permission'], ',', '"', '');
+        fputcsv($stream, ['# Exported booking items', count($items)], ',', '"', '');
 
         rewind($stream);
         $csv = stream_get_contents($stream);

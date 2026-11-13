@@ -4,9 +4,11 @@ namespace App\Http\Controllers\Api\Corporate;
 
 use App\Http\Controllers\Controller;
 use App\Http\Requests\Corporate\CorporateReportFiltersRequest;
+use App\Models\Corporate\CorporateEmployee;
 use App\Services\CorporateBookingService;
 use App\Services\CorporatePortalPermission;
 use Illuminate\Http\JsonResponse;
+use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Storage;
 use Symfony\Component\HttpFoundation\StreamedResponse;
 
@@ -39,6 +41,35 @@ class CorporateReportController extends Controller
                 'total' => $bookings->total(),
                 'last_page' => $bookings->lastPage(),
             ],
+        ]);
+    }
+
+    public function employeeOptions(Request $request): JsonResponse
+    {
+        $filters = $request->validate(['q' => ['nullable', 'string', 'max:100']]);
+        $search = trim((string) ($filters['q'] ?? ''));
+        $employees = CorporateEmployee::query()
+            ->where('corporate_id', $request->corporate_id)
+            ->with('user:id,first_name,last_name,email')
+            ->when($search !== '', fn ($query) => $query->where(function ($query) use ($search): void {
+                $query->where('employee_code', 'like', "%{$search}%")
+                    ->orWhereHas('user', fn ($userQuery) => $userQuery
+                        ->where('first_name', 'like', "%{$search}%")
+                        ->orWhere('last_name', 'like', "%{$search}%")
+                        ->orWhere('email', 'like', "%{$search}%"));
+            }))
+            ->orderBy('created_at')
+            ->limit(25)
+            ->get();
+
+        return response()->json([
+            'status' => 'success',
+            'data' => $employees->map(fn (CorporateEmployee $employee) => [
+                'id' => $employee->user_id,
+                'name' => trim(($employee->user?->first_name ?? '').' '.($employee->user?->last_name ?? '')),
+                'code' => $employee->employee_code,
+                'is_active' => $employee->is_active,
+            ])->values(),
         ]);
     }
 

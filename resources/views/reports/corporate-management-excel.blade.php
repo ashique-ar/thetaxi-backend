@@ -1,4 +1,5 @@
 <html><head><meta charset="utf-8"></head><body>
+<table border="1"><caption>Report context</caption><tbody>@foreach($payload['export_metadata'] as $label => $value)<tr><th>{{ $label }}</th><td>{{ $value }}</td></tr>@endforeach</tbody></table><br>
 <p>Travel date range: {{ $payload['period']['from'] ?: 'All travel dates' }} to {{ $payload['period']['to'] ?: 'Present' }}</p>
 @if($payload['financial_metrics_visible'] && ($payload['operational']['unpriced_trip_count'] ?? 0) > 0)<p>Trips without a saved estimate: {{ $payload['operational']['unpriced_trip_count'] }}</p>@endif
 @if(!empty($payload['financial_periods']))

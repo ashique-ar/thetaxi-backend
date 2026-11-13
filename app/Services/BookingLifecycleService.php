@@ -2344,6 +2344,8 @@ class BookingLifecycleService
 
         $isSelfDriven = (bool) ($context['is_self_driven'] ?? $bookingItem->is_self_driven);
         $assignment = $isSelfDriven ? null : $this->finalPricingDriverAssignment($booking, $bookingItem);
+        $driverMobileEnabled = $this->websiteSettingsService->isDriverMobileAppEnabled();
+        $acceptedToPickupDistanceKm = null;
 
         $hasDriverTelemetry = $assignment && (
             $assignment->trip_started_at
@@ -2687,6 +2689,19 @@ class BookingLifecycleService
             ->where('status', 'active')
             ->get(['id', 'name', 'variables', 'formula', 'conditions']);
 
+        $usesAcceptedToPickupDistance = $activeDefinitions->contains(
+            fn ($definition) => $this->formulaReferencesAny((string) $definition->formula, ['accepted_to_pickup_distance'])
+        );
+        if (!$driverMobileEnabled || $isSelfDriven) {
+            $acceptedToPickupDistanceKm = 0.0;
+            $params['accepted_to_pickup_distance'] = $acceptedToPickupDistanceKm;
+        } elseif ($usesAcceptedToPickupDistance && $assignment) {
+            $acceptedToPickupDistanceKm = $this->measuredAcceptedToPickupDistance($assignment);
+            if ($acceptedToPickupDistanceKm !== null) {
+                $params['accepted_to_pickup_distance'] = $acceptedToPickupDistanceKm;
+            }
+        }
+
         $result = $this->bookingFlowService->calculateDynamicPricing($params);
         $definitionId = data_get($result, 'pricing_scope.calculation_definition_id')
             ?? data_get($result, 'calculation_metadata.definition_used');
@@ -2742,6 +2757,10 @@ class BookingLifecycleService
             'inputs' => [
                 'duration_minutes' => $durationMinutes,
                 'distance_km' => $distanceKm !== null ? round((float) $distanceKm, 2) : null,
+                'accepted_to_pickup_distance' => $acceptedToPickupDistanceKm,
+                'accepted_to_pickup_distance_source' => !$driverMobileEnabled
+                    ? 'driver_mobile_app_disabled'
+                    : ($acceptedToPickupDistanceKm !== null && !$isSelfDriven ? 'driver_route_points' : null),
                 'waiting_minutes' => $waitingMinutes,
                 'pickup_waiting_minutes' => $pickupWaitingMinutes,
                 'hire_waiting_minutes' => $hireWaitingMinutes,
@@ -2836,6 +2855,12 @@ class BookingLifecycleService
 
         $selectedDefinition = $activeDefinitions->firstWhere('id', $definitionId);
         $selectedFormula = (string) ($selectedDefinition?->formula ?? '');
+        $requiresAcceptedToPickupDistance = $this->formulaReferencesAny($selectedFormula, ['accepted_to_pickup_distance']);
+        if ($requiresAcceptedToPickupDistance && $driverMobileEnabled && !$isSelfDriven && $acceptedToPickupDistanceKm === null) {
+            throw new \DomainException(
+                'Accepted-to-pickup mileage is required by the selected pricing definition, but trusted driver mobile GPS coverage is unavailable.'
+            );
+        }
 
         $referencesMeasuredDistance = $this->formulaReferencesAny($selectedFormula, [
             'journey_distance', 'total_distance', 'actual_distance', 'distance_km',
@@ -3204,6 +3229,54 @@ class BookingLifecycleService
         }
 
         return round($mileageIn - $mileageOut, 2);
+    }
+
+    private function measuredAcceptedToPickupDistance(DriverAssignment $assignment): ?float
+    {
+        $acceptedAt = $assignment->confirmed_at;
+        $arrivedAtPickup = $assignment->pickup_arrived_at;
+        if (!$acceptedAt || !$arrivedAtPickup || $arrivedAtPickup->lt($acceptedAt)
+            || !is_numeric($assignment->accept_latitude) || !is_numeric($assignment->accept_longitude)) {
+            return null;
+        }
+
+        $acceptedPosition = new \App\Models\Driver\RoutePoint([
+            'latitude' => $assignment->accept_latitude,
+            'longitude' => $assignment->accept_longitude,
+            'accuracy' => null,
+            'recorded_at' => $acceptedAt,
+        ]);
+        $routePoints = $assignment->routePoints()
+            ->whereBetween('recorded_at', [$acceptedAt, $arrivedAtPickup])
+            ->orderBy('recorded_at')
+            ->orderBy('id')
+            ->cursor(['id', 'latitude', 'longitude', 'accuracy', 'recorded_at']);
+        $points = (function () use ($routePoints, $acceptedPosition, $acceptedAt) {
+            $firstPoint = true;
+            foreach ($routePoints as $point) {
+                if ($firstPoint) {
+                    $firstPoint = false;
+                    if (Carbon::parse($point->recorded_at)->gt($acceptedAt)) {
+                        yield $acceptedPosition;
+                    }
+                }
+                yield $point;
+            }
+        })();
+
+        $evidence = app(\App\Services\Driver\RouteEvidenceService::class)->calculate(
+            $points,
+            $acceptedAt->copy()->utc(),
+            $arrivedAtPickup->copy()->utc()
+        );
+
+        if (!($evidence['pricing_distance_eligible'] ?? false)
+            || !($evidence['distance_trustworthy'] ?? false)
+            || !is_numeric($evidence['pricing_distance_km'] ?? null)) {
+            return null;
+        }
+
+        return round((float) $evidence['pricing_distance_km'], 2);
     }
 
     private function resolvePersistedBookingPricingContext(

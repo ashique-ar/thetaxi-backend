@@ -8,6 +8,8 @@ use Illuminate\Support\Str;
 
 class HrReportRunService
 {
+    public function __construct(private readonly HrDataQualityService $quality) {}
+
     public function queue(object $view, ?object $schedule, string $asOf, string $format, string $userId, string $idempotencyKey): object
     {
         $existing = DB::table('hr_report_runs')->where('idempotency_key', $idempotencyKey)->first();
@@ -20,11 +22,20 @@ class HrReportRunService
         }
 
         $filters = json_decode($view->filter_contract, true) ?: [];
+        $qualitySnapshot = $view->report_kind === 'data_quality' ? $this->quality->summarize() : null;
+        if ($qualitySnapshot) {
+            $qualitySnapshot['source_checksum'] = hash('sha256', json_encode($qualitySnapshot['issues'], JSON_UNESCAPED_SLASHES | JSON_THROW_ON_ERROR));
+        }
+        $filterSnapshot = $qualitySnapshot
+            ? ['filters' => $filters, 'data_quality_snapshot' => $qualitySnapshot]
+            : $filters;
+        $cutoffAt = now();
         $columns = json_decode($view->column_contract, true) ?: [];
         $privacy = [
             'authorization_rechecked_at_generation' => true,
             'minimum_group_suppression_required' => in_array($view->report_kind, ['analytics_snapshots', 'workforce_plans'], true),
             'employee_level_export' => false,
+            'data_quality_summary_frozen_at_queue' => $qualitySnapshot !== null,
         ];
         $request = [
             'view_checksum' => $view->view_checksum,
@@ -33,10 +44,11 @@ class HrReportRunService
             'filters' => $filters,
             'columns' => $columns,
             'privacy' => $privacy,
+            'source_snapshot_checksum' => $qualitySnapshot['source_checksum'] ?? null,
         ];
         $checksum = hash('sha256', json_encode($request, JSON_UNESCAPED_SLASHES | JSON_THROW_ON_ERROR));
 
-        $run = DB::transaction(function () use ($view, $schedule, $asOf, $format, $userId, $idempotencyKey, $filters, $columns, $privacy, $checksum) {
+        $run = DB::transaction(function () use ($view, $schedule, $asOf, $format, $userId, $idempotencyKey, $filterSnapshot, $columns, $privacy, $checksum, $cutoffAt) {
             $jobId = (string) Str::uuid();
             DB::table('domain_transfer_jobs')->insert([
                 'id' => $jobId,
@@ -59,8 +71,8 @@ class HrReportRunService
                 'transfer_job_id' => $jobId,
                 'run_kind' => $schedule ? 'scheduled' : 'manual',
                 'as_of_date' => $asOf,
-                'cutoff_at' => now(),
-                'filter_snapshot' => json_encode($filters, JSON_THROW_ON_ERROR),
+                'cutoff_at' => $cutoffAt,
+                'filter_snapshot' => json_encode($filterSnapshot, JSON_THROW_ON_ERROR),
                 'column_snapshot' => json_encode($columns, JSON_THROW_ON_ERROR),
                 'privacy_snapshot' => json_encode($privacy, JSON_THROW_ON_ERROR),
                 'request_checksum' => $checksum,

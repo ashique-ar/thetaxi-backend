@@ -1961,6 +1961,7 @@ Route::middleware(['auth:api'])->group(function () {
                 Route::post('/', [KmRangePricingController::class, 'store']);
                 Route::get('/service-types', [KmRangePricingController::class, 'getServiceTypes']);
                 Route::get('/vehicle-groups', [KmRangePricingController::class, 'getVehicleGroups']);
+                Route::get('/distance-types', [KmRangePricingController::class, 'getDistanceTypes']);
                 Route::post('/applicable-rules', [KmRangePricingController::class, 'getApplicableRules']);
                 Route::post('/calculate-pricing', [KmRangePricingController::class, 'calculatePricing']);
                 Route::post('/bulk-update-status', [KmRangePricingController::class, 'bulkUpdateStatus']);
@@ -3087,6 +3088,7 @@ Route::middleware(['auth:api'])->group(function () {
         Route::get('audit-logs', [CorporateAuditLogController::class, 'index']);
 
         // Reports
+        Route::get('reports/employee-options', [CorporateReportController::class, 'employeeOptions']);
         Route::get('reports/booking-history', [CorporateReportController::class, 'bookingHistory']);
         Route::get('reports/summary-stats', [CorporateReportController::class, 'summaryStats']);
         Route::get('reports/export', [CorporateReportController::class, 'exportCsv']);

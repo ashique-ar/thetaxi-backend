@@ -3,6 +3,7 @@
 namespace App\Http\Requests\Corporate;
 
 use App\Models\Corporate\CorporateDepartment;
+use App\Models\Corporate\CorporateEmployee;
 use App\Models\Corporate\CorporateDivision;
 use App\Models\Finance\FinancialAccountSettlement;
 use App\Services\TimezoneService;
@@ -33,6 +34,7 @@ class CorporateReportFiltersRequest extends FormRequest
             'status' => ['nullable', 'string', 'max:64'],
             'department_id' => ['nullable', 'uuid'],
             'division_id' => ['nullable', 'uuid'],
+            'employee_id' => ['nullable', 'uuid'],
             'date_from' => ['nullable', 'date_format:Y-m-d'],
             'date_to' => ['nullable', 'date_format:Y-m-d', 'after_or_equal:date_from'],
             'billing_period_id' => ['nullable', 'uuid'],
@@ -48,6 +50,7 @@ class CorporateReportFiltersRequest extends FormRequest
             $data = $validator->getData();
             $departmentId = $data['department_id'] ?? null;
             $divisionId = $data['division_id'] ?? null;
+            $employeeId = $data['employee_id'] ?? null;
             $billingPeriodId = $data['billing_period_id'] ?? null;
 
             if ($departmentId && ! CorporateDepartment::query()
@@ -63,6 +66,13 @@ class CorporateReportFiltersRequest extends FormRequest
                 ->whereKey($divisionId)
                 ->exists()) {
                 $validator->errors()->add('division_id', 'The selected division is not available for this corporate account and department.');
+            }
+
+            if ($employeeId && ! CorporateEmployee::query()
+                ->where('corporate_id', $corporateId)
+                ->where('user_id', $employeeId)
+                ->exists()) {
+                $validator->errors()->add('employee_id', 'The selected employee is not available for this corporate account.');
             }
 
             if ($billingPeriodId && ! FinancialAccountSettlement::query()

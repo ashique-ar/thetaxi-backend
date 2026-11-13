@@ -5,6 +5,7 @@ namespace App\Http\Controllers\Api\Vehicle\VehiclePricing;
 use App\Http\Controllers\Controller;
 use App\Models\Corporate\Corporate;
 use App\Models\Vehicle\VehiclePricing\KmRangePricingRule;
+use App\Models\Vehicle\VehiclePricing\VehiclePricingCalculationDefinition;
 use App\Models\Service\ServiceType;
 use App\Models\Vehicle\VehicleGroup;
 use Illuminate\Http\Request;
@@ -12,13 +13,14 @@ use Illuminate\Http\JsonResponse;
 use Illuminate\Support\Facades\Validator;
 use Illuminate\Support\Facades\Log;
 use Illuminate\Database\Eloquent\Builder;
+use Illuminate\Support\Facades\DB;
 use Carbon\Carbon;
 
 class KmRangePricingController extends Controller
 {
     public function __construct()
     {
-        $this->middleware('permission:km-range-pricing.view')->only(['index', 'show', 'getServiceTypes', 'getVehicleGroups', 'getApplicableRules', 'calculatePricing']);
+        $this->middleware('permission:km-range-pricing.view')->only(['index', 'show', 'getServiceTypes', 'getVehicleGroups', 'getDistanceTypes', 'getApplicableRules', 'calculatePricing']);
         $this->middleware('permission:km-range-pricing.create')->only(['store']);
         $this->middleware('permission:km-range-pricing.edit')->only(['update', 'bulkUpdateStatus', 'toggleStatus']);
         $this->middleware('permission:km-range-pricing.delete')->only(['destroy']);
@@ -36,7 +38,7 @@ class KmRangePricingController extends Controller
             'scope' => 'in:global,service,vehicle_group',
             'service_type_id' => 'uuid|exists:service_types,id',
             'vehicle_group_id' => 'uuid|exists:vehicle_groups,id',
-            'distance_type' => 'in:journey_distance,pickup_distance,delivery_distance',
+            'distance_type' => 'regex:/^[A-Za-z_][A-Za-z0-9_]*$/',
             'pricing_context' => 'nullable|string|in:portal,public,corporate',
             'owner_type' => 'nullable|string|in:corporate',
             'owner_id' => 'nullable|uuid|exists:corporates,id|required_with:owner_type',
@@ -290,7 +292,7 @@ class KmRangePricingController extends Controller
             'distance' => 'required|numeric|min:0',
             'service_type_id' => 'nullable|uuid|exists:service_types,id',
             'vehicle_group_id' => 'nullable|uuid|exists:vehicle_groups,id',
-            'distance_type' => 'sometimes|in:journey_distance,pickup_distance,delivery_distance',
+            'distance_type' => 'required|regex:/^[A-Za-z_][A-Za-z0-9_]*$/',
             'pricing_context' => 'sometimes|string|in:portal,public,corporate',
             'date' => 'nullable|date',
         ]);
@@ -315,7 +317,7 @@ class KmRangePricingController extends Controller
                 $date,
                 null,
                 null,
-                $request->input('distance_type', 'journey_distance'),
+                $request->distance_type,
                 $request->input('pricing_context', 'public')
             );
 
@@ -327,7 +329,7 @@ class KmRangePricingController extends Controller
                     'distance' => $distance,
                     'service_type_id' => $serviceTypeId,
                     'vehicle_group_id' => $vehicleGroupId,
-                    'distance_type' => $request->input('distance_type', 'journey_distance'),
+                    'distance_type' => $request->distance_type,
                     'pricing_context' => $request->input('pricing_context', 'public'),
                     'date' => $date->toISOString(),
                 ]
@@ -354,7 +356,7 @@ class KmRangePricingController extends Controller
             'base_amount' => 'required|numeric|min:0',
             'service_type_id' => 'nullable|uuid|exists:service_types,id',
             'vehicle_group_id' => 'nullable|uuid|exists:vehicle_groups,id',
-            'distance_type' => 'sometimes|in:journey_distance,pickup_distance,delivery_distance',
+            'distance_type' => 'required|regex:/^[A-Za-z_][A-Za-z0-9_]*$/',
             'pricing_context' => 'sometimes|string|in:portal,public,corporate',
             'date' => 'nullable|date',
         ]);
@@ -381,7 +383,7 @@ class KmRangePricingController extends Controller
                 $date,
                 null,
                 null,
-                $request->input('distance_type', 'journey_distance'),
+                $request->distance_type,
                 $request->input('pricing_context', 'public')
             );
 
@@ -393,7 +395,7 @@ class KmRangePricingController extends Controller
                     'base_amount' => $baseAmount,
                     'service_type_id' => $serviceTypeId,
                     'vehicle_group_id' => $vehicleGroupId,
-                    'distance_type' => $request->input('distance_type', 'journey_distance'),
+                    'distance_type' => $request->distance_type,
                     'pricing_context' => $request->input('pricing_context', 'public'),
                     'date' => $date->toISOString(),
                 ]
@@ -470,6 +472,28 @@ class KmRangePricingController extends Controller
                 'error' => $e->getMessage()
             ], 500);
         }
+    }
+
+    public function getDistanceTypes(): JsonResponse
+    {
+        $configured = collect(VehiclePricingCalculationDefinition::systemDistanceVariables())
+            ->merge(VehiclePricingCalculationDefinition::query()
+            ->where('status', 'active')
+            ->whereIn('service_type_id', DB::table('service_types')->select('id')->whereIn('context', ['public', 'portal'])->whereNull('deleted_at'))
+            ->get(['variables'])
+            ->flatMap(fn ($definition) => collect($definition->variables ?? [])
+                ->filter(fn ($variable) => is_array($variable)
+                    && ($variable['type'] ?? null) === 'distance'
+                    && preg_match('/^[A-Za-z_][A-Za-z0-9_]*$/', $variable['name'] ?? ''))
+                ->map(fn ($variable) => [
+                    'id' => $variable['name'],
+                    'name' => $variable['name'],
+                    'description' => $variable['description'] ?? 'Distance used by an active calculation definition',
+                ])))
+            ->unique('id')
+            ->values();
+
+        return response()->json(['data' => $configured]);
     }
 
     /**

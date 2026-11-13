@@ -6,6 +6,7 @@ use App\Http\Controllers\Controller;
 use App\Http\Requests\Corporate\CorporateReportFiltersRequest;
 use App\Services\CorporateManagementAnalyticsService;
 use App\Services\CorporatePortalPermission;
+use App\Services\TimezoneService;
 use Barryvdh\DomPDF\Facade\Pdf;
 use Illuminate\Http\JsonResponse;
 use Symfony\Component\HttpFoundation\Response;
@@ -27,6 +28,7 @@ class CorporateManagementReportController extends Controller
     {
         abort_unless(in_array($format, ['csv', 'xls', 'pdf'], true), 404);
         $payload = $this->payload($request);
+        $payload['export_metadata'] = $this->exportMetadata($request);
         $rows = $this->rows($payload);
         $filename = 'corporate-management-report-'.now()->format('Y-m-d');
 
@@ -46,6 +48,11 @@ class CorporateManagementReportController extends Controller
         return response()->streamDownload(function () use ($rows, $payload) {
             $output = fopen('php://output', 'wb');
             fwrite($output, "\xEF\xBB\xBF");
+            fputcsv($output, $this->safeCsvRow(['Report context', 'Value']));
+            foreach ($payload['export_metadata'] as $label => $value) {
+                fputcsv($output, $this->safeCsvRow([$label, $value]));
+            }
+            fputcsv($output, []);
             fputcsv($output, $this->safeCsvRow([
                 'Travel date range',
                 data_get($payload, 'period.from') ?: 'All travel dates',
@@ -116,6 +123,31 @@ class CorporateManagementReportController extends Controller
     private function payload(CorporateReportFiltersRequest $request): array
     {
         return $this->analytics->report($request->corporate_id, $request->validated(), CorporatePortalPermission::allows($request, 'view_payments'));
+    }
+
+    private function exportMetadata(CorporateReportFiltersRequest $request): array
+    {
+        $filters = $request->validated();
+        $metadata = [
+            'Corporate account' => (string) $request->corporate_id,
+            'Generated at' => now(TimezoneService::getUserTimezone())->toIso8601String(),
+            'Timezone' => TimezoneService::getUserTimezone(),
+            'Travel date from' => $filters['date_from'] ?? 'All dates',
+            'Travel date to' => $filters['date_to'] ?? 'Present',
+        ];
+        foreach (['department_id', 'division_id', 'employee_id', 'status'] as $filter) {
+            if (filled($filters[$filter] ?? null)) {
+                $metadata['Applied filter: '.$filter] = $filters[$filter];
+            }
+        }
+        if (filled($filters['billing_period_id'] ?? null)) {
+            $metadata['Billing period filter'] = $filters['billing_period_id'].' (account-wide billing totals; independent of activity filters)';
+        }
+        $metadata['Financial metrics'] = CorporatePortalPermission::allows($request, 'view_payments')
+            ? 'Included under the viewer payment permission'
+            : 'Omitted under the viewer payment permission';
+
+        return $metadata;
     }
 
     private function safeCsvRow(array $row): array

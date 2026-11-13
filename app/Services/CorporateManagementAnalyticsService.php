@@ -124,6 +124,7 @@ class CorporateManagementAnalyticsService
                 $query->where('corporate_account_id', $corporateId)
                     ->when($filters['department_id'] ?? null, fn ($q, $id) => $q->where('corporate_department_id', $id))
                     ->when($filters['division_id'] ?? null, fn ($q, $id) => $q->where('corporate_division_id', $id))
+                    ->when($filters['employee_id'] ?? null, fn ($q, $id) => $q->where('employee_id', $id))
                     ->when($filters['status'] ?? null, function ($q, $status): void {
                         if ($status === 'pending_approval') {
                             $q->whereIn('status', ['pending', 'pending_approval']);

@@ -681,17 +681,6 @@ class VehiclePricingCalculationDefinitionController extends Controller
             $inputs['number_of_days'] = max(1, (int) ceil((float) $inputs['duration_minutes'] / 1440));
         }
 
-        if (!array_key_exists('total_distance', $inputs)) {
-            $distanceParts = ['journey_distance', 'pickup_distance', 'delivery_distance'];
-            $hasDistancePart = collect($distanceParts)
-                ->contains(fn (string $key) => array_key_exists($key, $inputs) && is_numeric($inputs[$key]));
-
-            if ($hasDistancePart) {
-                $inputs['total_distance'] = collect($distanceParts)
-                    ->sum(fn (string $key) => is_numeric($inputs[$key] ?? null) ? (float) $inputs[$key] : 0.0);
-            }
-        }
-
         $stopCount = $inputs['additional_stops_count']
             ?? $inputs['additional_stops']
             ?? $inputs['stops']
@@ -1046,7 +1035,6 @@ class VehiclePricingCalculationDefinitionController extends Controller
                     'distance_km' => (float) $request->distance_km,
                     'distance' => (float) $request->distance_km,
                     'journey_distance' => (float) $request->distance_km,
-                    'total_distance' => (float) $request->distance_km,
                 ];
             }
             $inputs = $this->prepareTrustedCalculationInputs(
@@ -1481,18 +1469,15 @@ class VehiclePricingCalculationDefinitionController extends Controller
                 ['name' => 'duration_minutes', 'type' => 'duration', 'description' => 'Service duration in minutes', 'is_required' => false, 'default_value' => 0, 'category' => 'duration'],
                 ['name' => 'duration_days', 'type' => 'duration', 'description' => 'Service duration in days', 'is_required' => false, 'default_value' => 0, 'category' => 'duration'],
                 ['name' => 'number_of_days', 'type' => 'duration', 'description' => 'Billable whole-day count derived from exact booking minutes', 'is_required' => false, 'default_value' => 1, 'category' => 'duration'],
-                ['name' => 'total_distance', 'type' => 'distance', 'description' => 'Total service distance in KM', 'is_required' => false, 'default_value' => 0, 'category' => 'distance'],
-                ['name' => 'journey_distance', 'type' => 'distance', 'description' => 'Contractual journey distance in KM used by pricing', 'is_required' => false, 'default_value' => 0, 'category' => 'distance'],
-                ['name' => 'actual_distance', 'type' => 'distance', 'description' => 'Measured final journey distance in KM when available', 'is_required' => false, 'default_value' => 0, 'category' => 'distance'],
-                ['name' => 'package_included_km', 'type' => 'distance', 'description' => 'Distance included by the selected service package', 'is_required' => false, 'default_value' => 0, 'category' => 'distance'],
+                ...VehiclePricingCalculationDefinition::systemDistanceVariables(),
                 ['name' => 'package_included_hours', 'type' => 'duration', 'description' => 'Hours included by the selected service package', 'is_required' => false, 'default_value' => 0, 'category' => 'duration'],
                 ['name' => 'package_has_hour_limit', 'type' => 'number', 'description' => 'Selected package hour-limit flag (1 when extra hours apply, otherwise 0)', 'is_required' => false, 'default_value' => 0, 'category' => 'duration'],
-                ['name' => 'delivery_distance', 'type' => 'distance', 'description' => 'Drop-off to garage distance in KM', 'is_required' => false, 'default_value' => 0, 'category' => 'distance'],
-                ['name' => 'pickup_distance', 'type' => 'distance', 'description' => 'Garage to pickup distance in KM', 'is_required' => false, 'default_value' => 0, 'category' => 'distance'],
-                ['name' => 'extra_km', 'type' => 'distance', 'description' => 'Extra KM beyond package/daily limit', 'is_required' => false, 'default_value' => 0, 'category' => 'distance'],
                 ['name' => 'extra_hours', 'type' => 'duration', 'description' => 'Extra hours beyond package limit', 'is_required' => false, 'default_value' => 0, 'category' => 'duration'],
                 ['name' => 'extra_minutes', 'type' => 'duration', 'description' => 'Extra minutes beyond package limit', 'is_required' => false, 'default_value' => 0, 'category' => 'duration']
             ];
+            if ($serviceType->context === 'corporate') {
+                $coreVariables[] = ['name' => 'total_distance', 'type' => 'distance', 'description' => 'Corporate total billable distance in KM', 'is_required' => false, 'default_value' => 0, 'category' => 'distance'];
+            }
 
             // Special variables (context-dependent)
             $specialVariables = [
@@ -1607,7 +1592,7 @@ class VehiclePricingCalculationDefinitionController extends Controller
                         'Slab rate with pickup' => 'slab_rate + (pickup_distance * pickup_rate_per_km)',
                         'Full calculation' => 'slab_rate + (pickup_distance * pickup_rate_per_km) + (return_distance * return_rate_per_km)',
                         'With discount' => 'slab_rate * (1 - discount_percentage)',
-                        'Hourly with distance' => '(duration_hours * hourly_rate) + (total_distance * distance_rate)',
+                        'Hourly with distance' => '(duration_hours * hourly_rate) + (journey_distance * distance_rate)',
                     ]
                 ]
             ]);
