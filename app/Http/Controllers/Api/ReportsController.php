@@ -378,16 +378,18 @@ class ReportsController extends Controller
         $query = clone $summaryQuery;
         if (!empty($filters['search'])) $this->applyBookingSearch($query, $filters['search']);
 
+        $currencyExpression = "COALESCE(NULLIF(UPPER(currency), ''), 'LKR')";
+        $paymentStatusExpression = "COALESCE(NULLIF(LOWER(payment_status), ''), 'unknown')";
         $byCurrency = (clone $summaryQuery)
-            ->selectRaw("COALESCE(NULLIF(UPPER(currency), ''), 'LKR') as currency, COUNT(*) as bookings, SUM(COALESCE(total_actual, 0)) as amount")
-            ->groupBy('currency')->orderBy('currency')->get();
+            ->selectRaw("{$currencyExpression} as currency, COUNT(*) as bookings, SUM(COALESCE(total_actual, 0)) as amount")
+            ->groupByRaw($currencyExpression)->orderBy('currency')->get();
         $byStatus = (clone $summaryQuery)
             ->selectRaw('status, COUNT(*) as bookings')->groupBy('status')->orderBy('status')->get()
             ->map(fn ($row) => ['status' => $row->status, 'bookings' => (int) $row->bookings])->values();
 
         $byPaymentStatus = (clone $summaryQuery)
-            ->selectRaw("COALESCE(NULLIF(LOWER(payment_status), ''), 'unknown') as status, COALESCE(NULLIF(UPPER(currency), ''), 'LKR') as currency, COUNT(*) as bookings, SUM(COALESCE(total_actual, 0)) as gross_booking_value")
-            ->groupBy('status')->groupByRaw("COALESCE(NULLIF(UPPER(currency), ''), 'LKR')")
+            ->selectRaw("{$paymentStatusExpression} as status, {$currencyExpression} as currency, COUNT(*) as bookings, SUM(COALESCE(total_actual, 0)) as gross_booking_value")
+            ->groupByRaw($paymentStatusExpression)->groupByRaw($currencyExpression)
             ->orderBy('status')->orderBy('currency')->get()
             ->map(fn ($row) => [
                 'status' => (string) $row->status,
@@ -404,8 +406,8 @@ class ReportsController extends Controller
             $comparison = [
                 'total_bookings' => (clone $comparisonQuery)->count(),
                 'by_currency' => (clone $comparisonQuery)
-                    ->selectRaw("COALESCE(NULLIF(UPPER(currency), ''), 'LKR') as currency, COUNT(*) as bookings, SUM(COALESCE(total_actual, 0)) as amount")
-                    ->groupBy('currency')->orderBy('currency')->get()
+                    ->selectRaw("{$currencyExpression} as currency, COUNT(*) as bookings, SUM(COALESCE(total_actual, 0)) as amount")
+                    ->groupByRaw($currencyExpression)->orderBy('currency')->get()
                     ->map(fn ($row) => ['currency' => (string) $row->currency, 'bookings' => (int) $row->bookings, 'amount' => (float) $row->amount])->values(),
             ];
         }
@@ -543,7 +545,11 @@ class ReportsController extends Controller
                 ->where('created_at', '>=', TimezoneService::userDateStartUtc($comparisonDates['compare_date_from']))
                 ->where('created_at', '<', $this->exclusiveDateEnd($comparisonDates['compare_date_to']))
                 ->when(!empty($filters['customer_status']), fn ($q) => $q->where('is_active', $filters['customer_status'] === 'active'));
-            $summary['comparison'] = ['total_customers' => (clone $previousCohort)->count()];
+            $this->applyCustomerActivityFilter($previousCohort, $filters);
+            $summary['comparison'] = [
+                'total_customers' => (clone $previousCohort)->count(),
+                'repeat_customers' => $this->countRepeatCustomers($previousCohort, $filters),
+            ];
         }
 
         return response()->json([
@@ -583,6 +589,7 @@ class ReportsController extends Controller
             ->when(!empty($filters['date_from']), fn ($q) => $q->where('customers.created_at', '>=', TimezoneService::userDateStartUtc($filters['date_from'])))
             ->when(!empty($filters['date_to']), fn ($q) => $q->where('customers.created_at', '<', $this->exclusiveDateEnd($filters['date_to'])))
             ->when(!empty($filters['customer_status']), fn ($q) => $q->where('customers.is_active', $filters['customer_status'] === 'active'))
+            ->when(!empty($filters['customer_activity']), fn ($q) => $this->applyCustomerActivityFilter($q, $filters))
             ->when(!empty($filters['search']), function ($q) use ($filters) {
                 $search = '%' . mb_strtolower($filters['search']) . '%';
                 $q->where(function ($where) use ($search) {
@@ -603,6 +610,8 @@ class ReportsController extends Controller
             ->when(!empty($filters['date_from']), fn ($q) => $q->where('created_at', '>=', TimezoneService::userDateStartUtc($filters['date_from'])))
             ->when(!empty($filters['date_to']), fn ($q) => $q->where('created_at', '<', $this->exclusiveDateEnd($filters['date_to'])))
             ->when(!empty($filters['customer_status']), fn ($q) => $q->where('is_active', $filters['customer_status'] === 'active'));
+        $this->applyCustomerActivityFilter($cohort, $filters);
+        $this->applyCustomerActivityFilter($customers, $filters);
         $spend = DB::table('bookings')->joinSub($cohort, 'report_customers', 'report_customers.id', '=', 'bookings.customer_id')
             ->where('bookings.status', 'completed');
         $this->applyReportBookingScope($spend);
@@ -612,12 +621,40 @@ class ReportsController extends Controller
             ->groupBy('currency')->orderBy('currency')->get()
             ->map(fn ($row) => ['currency' => (string) $row->currency, 'customers' => (int) $row->customers, 'spent' => (float) $row->spent])->values();
         $active = (clone $customers)->where('is_active', true)->count();
+        $repeatCustomers = $this->countRepeatCustomers($customers, $filters);
         $registrationsByMonth = (clone $customers)
             ->selectRaw($this->getDateFormat('month', 'customers.created_at') . ' as month, COUNT(*) as customers')
             ->groupBy('month')->orderBy('month')->get()
             ->map(fn ($row) => ['month' => (string) $row->month, 'customers' => (int) $row->customers])->values();
 
-        return ['total_customers' => (clone $customers)->count(), 'active_customers' => $active, 'spend_by_currency' => $spend, 'registrations_by_month' => $registrationsByMonth];
+        return ['total_customers' => (clone $customers)->count(), 'active_customers' => $active, 'repeat_customers' => $repeatCustomers, 'spend_by_currency' => $spend, 'registrations_by_month' => $registrationsByMonth];
+    }
+
+    private function countRepeatCustomers($customers, array $filters): int
+    {
+        return (clone $customers)->whereHas('bookings', function ($query) use ($filters): void {
+            $this->applyReportBookingScope($query);
+            $this->applyResponsibleFilters($query, $filters);
+        }, '>=', 2)->count();
+    }
+
+    private function applyCustomerActivityFilter($customers, array $filters): void
+    {
+        if (empty($filters['customer_activity'])) return;
+
+        $scopeBookings = function ($query) use ($filters): void {
+            $this->applyReportBookingScope($query);
+            $this->applyResponsibleFilters($query, $filters);
+        };
+        if ($filters['customer_activity'] === 'repeat') {
+            $customers->whereHas('bookings', $scopeBookings, '>=', 2);
+            return;
+        }
+
+        $customers->where(function ($query) use ($scopeBookings): void {
+            $query->whereDoesntHave('bookings', $scopeBookings)
+                ->orWhereHas('bookings', $scopeBookings, '=', 1);
+        });
     }
 
     private function formatCustomerReportRows($customers, array $filters): array
@@ -1151,6 +1188,7 @@ class ReportsController extends Controller
             'vehicle_id' => ['nullable', 'uuid'],
             'customer_id' => ['nullable', 'uuid'],
             'customer_status' => ['nullable', 'in:active,inactive'],
+            'customer_activity' => ['nullable', 'in:repeat,not_repeat'],
             'agent_id' => ['nullable', 'uuid'],
             'staff_user_id' => ['nullable', 'uuid'],
             'organization_unit_id' => ['nullable', 'uuid'],
@@ -2056,8 +2094,9 @@ class ReportsController extends Controller
     {
         $isTurkish = $locale === 'tr';
         $labels = $isTurkish
-            ? ['Report' => 'Rapor', 'Generated at' => 'Oluşturulma zamanı', 'Time zone' => 'Saat dilimi', 'Access scope' => 'Erişim kapsamı', 'Date range' => 'Tarih aralığı', 'Comparison period' => 'Karşılaştırma dönemi', 'Previous-period metrics' => 'Önceki dönem ölçütleri', 'Currency handling' => 'Para birimi işleme', 'Applied filters' => 'Uygulanan filtreler', 'Definition' => 'Tanım', 'Data rows' => 'Veri satırı', 'booking_status' => 'Rezervasyon durumu', 'payment_status' => 'Ödeme durumu', 'staff_user_id' => 'Personel kullanıcı kimliği', 'organization_unit_id' => 'Organizasyon birimi kimliği', 'service_type_id' => 'Hizmet türü kimliği', 'maintenance_status' => 'Bakım durumu', 'search' => 'Arama', 'vehicle_id' => 'Araç kimliği', 'customer_id' => 'Müşteri kimliği', 'agent_id' => 'Acenta kimliği', 'min_amount' => 'En düşük tutar', 'max_amount' => 'En yüksek tutar', 'currency' => 'Para birimi', 'period' => 'Gruplama dönemi']
-            : ['Report' => 'Report', 'Generated at' => 'Generated at', 'Time zone' => 'Time zone', 'Access scope' => 'Access scope', 'Date range' => 'Date range', 'Comparison period' => 'Comparison period', 'Previous-period metrics' => 'Previous-period metrics', 'Currency handling' => 'Currency handling', 'Applied filters' => 'Applied filters', 'Definition' => 'Definition', 'Data rows' => 'Data rows', 'booking_status' => 'Booking status', 'payment_status' => 'Payment status', 'staff_user_id' => 'Staff user ID', 'organization_unit_id' => 'Organization unit ID', 'service_type_id' => 'Service type ID', 'maintenance_status' => 'Maintenance status', 'search' => 'Search', 'vehicle_id' => 'Vehicle ID', 'customer_id' => 'Customer ID', 'agent_id' => 'Agent ID', 'min_amount' => 'Minimum amount', 'max_amount' => 'Maximum amount', 'currency' => 'Currency', 'period' => 'Grouping period'];
+            ? ['Report' => 'Rapor', 'Generated at' => 'Oluşturulma zamanı', 'Time zone' => 'Saat dilimi', 'Access scope' => 'Erişim kapsamı', 'Date range' => 'Tarih aralığı', 'Comparison period' => 'Karşılaştırma dönemi', 'Period comparison' => 'Dönem karşılaştırması', 'Currency handling' => 'Para birimi işleme', 'Applied filters' => 'Uygulanan filtreler', 'Definition' => 'Tanım', 'Data rows' => 'Veri satırı', 'booking_status' => 'Rezervasyon durumu', 'payment_status' => 'Ödeme durumu', 'staff_user_id' => 'Personel kullanıcı kimliği', 'organization_unit_id' => 'Organizasyon birimi kimliği', 'service_type_id' => 'Hizmet türü kimliği', 'maintenance_status' => 'Bakım durumu', 'search' => 'Arama', 'vehicle_id' => 'Araç kimliği', 'customer_id' => 'Müşteri kimliği', 'agent_id' => 'Acenta kimliği', 'min_amount' => 'En düşük tutar', 'max_amount' => 'En yüksek tutar', 'currency' => 'Para birimi', 'period' => 'Gruplama dönemi']
+            : ['Report' => 'Report', 'Generated at' => 'Generated at', 'Time zone' => 'Time zone', 'Access scope' => 'Access scope', 'Date range' => 'Date range', 'Comparison period' => 'Comparison period', 'Period comparison' => 'Period comparison', 'Currency handling' => 'Currency handling', 'Applied filters' => 'Applied filters', 'Definition' => 'Definition', 'Data rows' => 'Data rows', 'booking_status' => 'Booking status', 'payment_status' => 'Payment status', 'staff_user_id' => 'Staff user ID', 'organization_unit_id' => 'Organization unit ID', 'service_type_id' => 'Service type ID', 'maintenance_status' => 'Maintenance status', 'search' => 'Search', 'vehicle_id' => 'Vehicle ID', 'customer_id' => 'Customer ID', 'agent_id' => 'Agent ID', 'min_amount' => 'Minimum amount', 'max_amount' => 'Maximum amount', 'currency' => 'Currency', 'period' => 'Grouping period'];
+        $labels['customer_activity'] = $isTurkish ? 'Müşteri rezervasyon hareketi' : 'Customer booking activity';
         $timezone = TimezoneService::getUserTimezone();
         $generatedAt = Carbon::now($timezone)->toIso8601String();
         $user = request()->user();
@@ -2077,11 +2116,17 @@ class ReportsController extends Controller
             ? (($isTurkish ? 'Filtre: ' : 'Filter: ') . $filters['currency'] . ($isTurkish ? '; kaynak para birimleri ayrı tutulur' : '; source currencies remain separate'))
             : ($isTurkish ? 'Kaynak para birimleri ayrı tutulur; farklı para birimleri toplanmaz' : 'Source currencies remain separate; different currencies are not added together');
         $definitions = $isTurkish
-            ? ['bookings_report' => 'Rezervasyon oluşturulma tarihi; brüt rezervasyon tutarı rezervasyon para biriminde.', 'customers_report' => 'Seçilen dönemde kaydedilen müşteriler; tamamlanan harcama tüm zamanlar içindir ve para birimine göre ayrılır.', 'vehicles_report' => 'Araç hizmet tarihleri booking item tarih aralığına göre; tamamlanan gelir para birimine göre ayrılır.', 'drivers_report' => 'Sürücü atamaları booking item kayıtlarından; tamamlanan gelir para birimine göre ayrılır.', 'maintenance_report' => 'Bakım işlem tarihi ve kaydedilmiş maliyet para birimi.', 'financial_report' => 'Tamamlanma tarihi; tamamlanma tarihi yoksa rezervasyon oluşturulma tarihi. Para birimleri ayrı gösterilir.', 'cash_collections_report' => 'Tahsilat makbuzları alındığı tarih, düzeltmeler etkin tarih ile; kaynak tutar ve kaydedilmiş dönüşüm.', 'custom_report' => 'Seçilen rezervasyon alanları; yetkili rezervasyon kapsamı.']
-            : ['bookings_report' => 'Booking creation date; gross booking value in booking currency.', 'customers_report' => 'Customers registered in the selected period; completed spend is lifetime and separated by currency.', 'vehicles_report' => 'Vehicle activity by booking-item travel dates; completed revenue separated by currency.', 'drivers_report' => 'Driver assignments from booking items; completed revenue separated by currency.', 'maintenance_report' => 'Maintenance performed date and recorded cost currency.', 'financial_report' => 'Completion date, falling back to booking creation date when completion is not recorded; currencies stay separate.', 'cash_collections_report' => 'Receipts by received date and adjustments by effective date; source amounts and recorded conversions.', 'custom_report' => 'Selected booking fields within authorized booking scope.'];
+            ? ['bookings_report' => 'Rezervasyon oluşturulma tarihi; brüt rezervasyon tutarı rezervasyon para biriminde.', 'customers_report' => 'Seçilen dönemde kaydedilen müşteriler; tekrar müşteri, görünür rezervasyon kapsamındaki en az iki rezervasyondur. Tamamlanan harcama tüm zamanlar içindir ve para birimine göre ayrılır.', 'vehicles_report' => 'Araç hizmet tarihleri booking item tarih aralığına göre; tamamlanan gelir para birimine göre ayrılır.', 'drivers_report' => 'Sürücü atamaları booking item kayıtlarından; tamamlanan gelir para birimine göre ayrılır.', 'maintenance_report' => 'Bakım işlem tarihi ve kaydedilmiş maliyet para birimi.', 'financial_report' => 'Tamamlanma tarihi; tamamlanma tarihi yoksa rezervasyon oluşturulma tarihi. Para birimleri ayrı gösterilir.', 'cash_collections_report' => 'Tahsilat makbuzları alındığı tarih, düzeltmeler etkin tarih ile; kaynak tutar ve kaydedilmiş dönüşüm.', 'custom_report' => 'Seçilen rezervasyon alanları; yetkili rezervasyon kapsamı.']
+            : ['bookings_report' => 'Booking creation date; gross booking value in booking currency.', 'customers_report' => 'Customers registered in the selected period; repeat customers have at least two bookings in the visible booking scope. Completed spend is lifetime and separated by currency.', 'vehicles_report' => 'Vehicle activity by booking-item travel dates; completed revenue separated by currency.', 'drivers_report' => 'Driver assignments from booking items; completed revenue separated by currency.', 'maintenance_report' => 'Maintenance performed date and recorded cost currency.', 'financial_report' => 'Completion date, falling back to booking creation date when completion is not recorded; currencies stay separate.', 'cash_collections_report' => 'Receipts by received date and adjustments by effective date; source amounts and recorded conversions.', 'custom_report' => 'Selected booking fields within authorized booking scope.'];
         $ignored = ['locale', 'date_from', 'date_to', 'compare_date_from', 'compare_date_to'];
-        $appliedFilters = collect($filters)->except($ignored)->map(function ($value, $key) use ($labels): string {
-            $displayValue = is_array($value) ? implode(', ', $value) : (string) $value;
+        $appliedFilters = collect($filters)->except($ignored)->map(function ($value, $key) use ($labels, $isTurkish): string {
+            $displayValue = $key === 'customer_activity'
+                ? match ($value) {
+                    'repeat' => $isTurkish ? 'Tekrarlayan müşteriler (2+ rezervasyon)' : 'Repeat customers (2+ bookings)',
+                    'not_repeat' => $isTurkish ? 'Diğer müşteriler (0–1 görünür rezervasyon)' : 'Other customers (0–1 visible booking)',
+                    default => '',
+                }
+                : (is_array($value) ? implode(', ', $value) : (string) $value);
             return ($labels[$key] ?? str_replace('_', ' ', ucfirst($key))) . ': ' . $displayValue;
         })->values()->implode('; ');
         if ($appliedFilters === '') $appliedFilters = $isTurkish ? 'Ek filtre yok' : 'No additional filters';
@@ -2093,7 +2138,7 @@ class ReportsController extends Controller
             [$labels['Access scope'], $scope],
             [$labels['Date range'], $dateRange],
             [$labels['Comparison period'], $comparison],
-            ...($comparisonMetrics === null ? [] : [[$labels['Previous-period metrics'], $comparisonMetrics]]),
+            ...($comparisonMetrics === null ? [] : [[$labels['Period comparison'], $comparisonMetrics]]),
             [$labels['Currency handling'], $currencyHandling],
             [$labels['Applied filters'], $appliedFilters],
             [$labels['Definition'], $definitions[$filename] ?? ($isTurkish ? 'Rapor ölçütleri seçilen filtreleri yansıtır.' : 'Report measures reflect the selected filters.')],
@@ -2104,65 +2149,110 @@ class ReportsController extends Controller
     private function reportComparisonSummary(string $filename, array $filters, bool $isTurkish): ?string
     {
         if (empty($filters['compare_date_from']) || empty($filters['compare_date_to'])) return null;
+        $current = $filters;
         $previous = [...$filters, 'date_from' => $filters['compare_date_from'], 'date_to' => $filters['compare_date_to']];
-        $currencyAmounts = static fn ($rows, string $key): string => collect($rows)->map(fn ($row) => (string) $row->currency . ' ' . number_format((float) $row->{$key}, 2, '.', ','))->implode(', ');
-        $bookingLabel = $isTurkish ? 'Rezervasyon' : 'Bookings';
-        $revenueLabel = $isTurkish ? 'Tamamlanan gelir' : 'Completed revenue';
+        $delta = static function (string $label, float $now, float $prior, bool $turkish, int $precision = 0): string {
+            $difference = $now - $prior;
+            $number = static fn (float $value): string => number_format($value, $precision, '.', ',');
+            $signed = ($difference > 0 ? '+' : '') . $number($difference);
+            $percent = $prior == 0.0 ? ($now == 0.0 ? '0.0%' : ($turkish ? 'yeni' : 'new')) : (($difference > 0 ? '+' : '') . number_format($difference / abs($prior) * 100, 1, '.', ',') . '%');
+            return $label . ': ' . ($turkish ? 'güncel ' : 'current ') . $number($now) . ' / ' . ($turkish ? 'önceki ' : 'prior ') . $number($prior) . ' (Δ ' . $signed . '; ' . $percent . ')';
+        };
+        $currencyDelta = static function ($nowRows, $priorRows, string $field) use ($delta, $isTurkish): string {
+            $now = collect($nowRows)->keyBy('currency');
+            $prior = collect($priorRows)->keyBy('currency');
+            return collect($now->keys())->merge($prior->keys())->unique()->sort()->map(function ($currency) use ($now, $prior, $field, $delta, $isTurkish) {
+                return $delta((string) $currency, (float) ($now[$currency]->{$field} ?? 0), (float) ($prior[$currency]->{$field} ?? 0), $isTurkish, 2);
+            })->implode(', ') ?: ($isTurkish ? 'Para birimi verisi yok' : 'No currency values');
+        };
+        $countLabel = $isTurkish ? 'Kayıt sayısı' : 'Record count';
 
         if ($filename === 'customers_report') {
-            return ($isTurkish ? 'Kayıtlı müşteriler: ' : 'Registered customers: ') . $this->customerReportQuery($previous)->count();
+            $currentCustomers = $this->customerReportQuery($current);
+            $previousCustomers = $this->customerReportQuery($previous);
+            $currentCount = (clone $currentCustomers)->count();
+            $previousCount = (clone $previousCustomers)->count();
+            $currentRepeat = $this->countRepeatCustomers($currentCustomers, $current);
+            $previousRepeat = $this->countRepeatCustomers($previousCustomers, $previous);
+            return $delta($isTurkish ? 'Kayıtlı müşteri' : 'Registered customers', $currentCount, $previousCount, $isTurkish)
+                . '; ' . $delta($isTurkish ? 'Tekrarlayan müşteri' : 'Repeat customers (2+ bookings)', $currentRepeat, $previousRepeat, $isTurkish);
         }
 
         if (in_array($filename, ['bookings_report', 'custom_report'], true)) {
-            $query = Booking::query();
-            $this->applyFilters($query, $previous);
-            $rows = (clone $query)->selectRaw("COALESCE(NULLIF(UPPER(currency), ''), 'LKR') as currency, COUNT(*) as bookings, SUM(COALESCE(total_actual, 0)) as amount")
-                ->groupBy('currency')->orderBy('currency')->get();
-            $count = (int) $rows->sum('bookings');
-            $amounts = $currencyAmounts($rows, 'amount');
-            return $bookingLabel . ': ' . $count . ($filename === 'custom_report' ? '' : '; ' . ($isTurkish ? 'brüt tutar' : 'gross value') . ': ' . ($amounts ?: '—'));
+            $aggregate = function (array $period) {
+                $query = Booking::query();
+                $this->applyFilters($query, $period);
+                return (clone $query)->selectRaw("COALESCE(NULLIF(UPPER(currency), ''), 'LKR') as currency, COUNT(*) as bookings, SUM(COALESCE(total_actual, 0)) as amount")
+                    ->groupBy('currency')->orderBy('currency')->get();
+            };
+            $nowRows = $aggregate($current);
+            $priorRows = $aggregate($previous);
+            $summary = $delta($countLabel, (int) $nowRows->sum('bookings'), (int) $priorRows->sum('bookings'), $isTurkish);
+            return $summary . ($filename === 'custom_report' ? '' : '; ' . $currencyDelta($nowRows, $priorRows, 'amount'));
         }
 
         if ($filename === 'vehicles_report') {
-            $vehicleIds = $this->filteredReportVehicles($previous)->pluck('vehicles.id');
-            $rows = DB::query()->fromSub($this->vehicleReportMetrics($previous, $vehicleIds), 'metrics')
-                ->selectRaw('currency, SUM(trip_count) as trips, SUM(completed_revenue) as revenue')
-                ->groupBy('currency')->orderBy('currency')->get();
-            $trips = (int) $rows->sum('trips');
-            return ($isTurkish ? 'Yolculuklar: ' : 'Trips: ') . $trips . '; ' . $revenueLabel . ': ' . ($currencyAmounts($rows, 'revenue') ?: '—');
+            $aggregate = function (array $period) {
+                $vehicleIds = $this->filteredReportVehicles($period)->pluck('vehicles.id');
+                return DB::query()->fromSub($this->vehicleReportMetrics($period, $vehicleIds), 'metrics')
+                    ->selectRaw('currency, SUM(trip_count) as trips, SUM(completed_revenue) as revenue')
+                    ->groupBy('currency')->orderBy('currency')->get();
+            };
+            $nowRows = $aggregate($current);
+            $priorRows = $aggregate($previous);
+            return $delta($isTurkish ? 'Yolculuklar' : 'Trips', (int) $nowRows->sum('trips'), (int) $priorRows->sum('trips'), $isTurkish) . '; ' . $currencyDelta($nowRows, $priorRows, 'revenue');
         }
 
         if ($filename === 'drivers_report') {
-            $rows = DB::query()->fromSub($this->driverReportQuery($previous), 'drivers')
+            $aggregate = fn (array $period) => DB::query()->fromSub($this->driverReportQuery($period), 'drivers')
                 ->selectRaw('currency, SUM(bookings) as assignments, SUM(completed_bookings) as completed_assignments, SUM(completed_revenue) as revenue')
                 ->groupBy('currency')->orderBy('currency')->get();
-            return ($isTurkish ? 'Sürücü atamaları: ' : 'Driver assignments: ') . (int) $rows->sum('assignments') . '; ' . ($isTurkish ? 'tamamlanan atamalar' : 'completed assignments') . ': ' . (int) $rows->sum('completed_assignments') . '; ' . $revenueLabel . ': ' . ($currencyAmounts($rows, 'revenue') ?: '—');
+            $nowRows = $aggregate($current);
+            $priorRows = $aggregate($previous);
+            return $delta($isTurkish ? 'Sürücü atamaları' : 'Driver assignments', (int) $nowRows->sum('assignments'), (int) $priorRows->sum('assignments'), $isTurkish)
+                . '; ' . $delta($isTurkish ? 'Tamamlanan atamalar' : 'Completed assignments', (int) $nowRows->sum('completed_assignments'), (int) $priorRows->sum('completed_assignments'), $isTurkish)
+                . '; ' . $currencyDelta($nowRows, $priorRows, 'revenue');
         }
 
         if ($filename === 'maintenance_report') {
-            $query = $this->maintenanceReportQuery($previous);
-            $count = (int) DB::query()->fromSub(clone $query, 'maintenance_rows')->count();
-            $rows = DB::query()->fromSub($query, 'maintenance_rows')
-                ->selectRaw("currency, SUM(CASE WHEN status = 'completed' THEN COALESCE(cost, 0) ELSE 0 END) as cost")
-                ->groupBy('currency')->orderBy('currency')->get();
-            return ($isTurkish ? 'Bakım kaydı: ' : 'Maintenance records: ') . $count . '; ' . ($isTurkish ? 'tamamlanan maliyet' : 'Completed cost') . ': ' . ($currencyAmounts($rows, 'cost') ?: '—');
+            $aggregate = function (array $period) {
+                $query = $this->maintenanceReportQuery($period);
+                $count = (int) DB::query()->fromSub(clone $query, 'maintenance_rows')->count();
+                $rows = DB::query()->fromSub($query, 'maintenance_rows')
+                    ->selectRaw("currency, SUM(CASE WHEN status = 'completed' THEN COALESCE(cost, 0) ELSE 0 END) as cost")
+                    ->groupBy('currency')->orderBy('currency')->get();
+                return [$count, $rows];
+            };
+            [$nowCount, $nowRows] = $aggregate($current);
+            [$priorCount, $priorRows] = $aggregate($previous);
+            return $delta($isTurkish ? 'Bakım kayıtları' : 'Maintenance records', $nowCount, $priorCount, $isTurkish) . '; ' . $currencyDelta($nowRows, $priorRows, 'cost');
         }
 
         if ($filename === 'financial_report') {
-            $query = Booking::query()->where('status', 'completed');
-            $this->applyFilters($query, $previous, 'bookings.completed_at');
-            $rows = (clone $query)->selectRaw("COALESCE(NULLIF(UPPER(currency), ''), 'LKR') as currency, COUNT(*) as bookings, SUM(COALESCE(total_actual, 0)) as revenue, SUM(COALESCE(driver_cost, 0)) as driver_cost")
-                ->groupBy('currency')->orderBy('currency')->get();
-            return ($isTurkish ? 'Tamamlanan rezervasyon: ' : 'Completed bookings: ') . (int) $rows->sum('bookings') . '; ' . $revenueLabel . ': ' . ($currencyAmounts($rows, 'revenue') ?: '—') . '; ' . ($isTurkish ? 'sürücü maliyeti' : 'Driver cost') . ': ' . ($currencyAmounts($rows, 'driver_cost') ?: '—');
+            $aggregate = function (array $period) {
+                $query = Booking::query()->where('status', 'completed');
+                $this->applyFilters($query, $period, 'bookings.completed_at');
+                return (clone $query)->selectRaw("COALESCE(NULLIF(UPPER(currency), ''), 'LKR') as currency, COUNT(*) as bookings, SUM(COALESCE(total_actual, 0)) as revenue, SUM(COALESCE(driver_cost, 0)) as driver_cost")
+                    ->groupBy('currency')->orderBy('currency')->get();
+            };
+            $nowRows = $aggregate($current);
+            $priorRows = $aggregate($previous);
+            return $delta($isTurkish ? 'Tamamlanan rezervasyonlar' : 'Completed bookings', (int) $nowRows->sum('bookings'), (int) $priorRows->sum('bookings'), $isTurkish)
+                . '; ' . $currencyDelta($nowRows, $priorRows, 'revenue')
+                . '; ' . $currencyDelta($nowRows, $priorRows, 'driver_cost');
         }
 
         if ($filename === 'cash_collections_report') {
-            $rows = collect($this->cashCollectionRows($previous))->groupBy(fn ($row) => implode('|', [$row['activity_type'], $row['status'], $row['direction'] ?? '', $row['currency']]));
-            return $rows->map(function ($bucket) use ($isTurkish) {
-                $first = $bucket->first();
-                return implode(' ', array_filter([$first['activity_type'], $first['status'], $first['direction'], $first['currency']])) . ': '
-                    . (int) $bucket->sum('records') . ' ' . ($isTurkish ? 'kayıt' : 'records') . ', '
-                    . number_format((float) $bucket->sum('source_amount'), 2, '.', ',');
+            $bucketRows = fn (array $period) => collect($this->cashCollectionRows($period))->groupBy(fn ($row) => implode('|', [$row['activity_type'], $row['status'], $row['purpose'], $row['adjustment_type'] ?? '', $row['direction'] ?? '', $row['currency']]));
+            $nowBuckets = $bucketRows($current);
+            $priorBuckets = $bucketRows($previous);
+            return collect($nowBuckets->keys())->merge($priorBuckets->keys())->unique()->sort()->map(function ($key) use ($nowBuckets, $priorBuckets, $delta, $isTurkish) {
+                $now = $nowBuckets->get($key, collect());
+                $prior = $priorBuckets->get($key, collect());
+                $first = $now->first() ?? $prior->first();
+                $label = implode(' ', array_filter([$first['activity_type'], $first['status'], $first['purpose'], $first['adjustment_type'] ?? '', $first['direction'] ?? '', $first['currency']]));
+                return $label . ': ' . $delta($isTurkish ? 'Kayıt' : 'Records', (int) $now->sum('records'), (int) $prior->sum('records'), $isTurkish)
+                    . ', ' . $delta($first['currency'], (float) $now->sum('source_amount'), (float) $prior->sum('source_amount'), $isTurkish, 2);
             })->implode('; ') ?: ($isTurkish ? 'Kayıt yok' : 'No records');
         }
 

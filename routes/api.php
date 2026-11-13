@@ -3094,6 +3094,7 @@ Route::middleware(['auth:api'])->group(function () {
         Route::get('reports/export', [CorporateReportController::class, 'exportCsv']);
         Route::get('reports/management', [CorporateManagementReportController::class, 'show']);
         Route::get('reports/management/export/{format}', [CorporateManagementReportController::class, 'export'])->whereIn('format', ['csv', 'xls', 'pdf']);
+        Route::get('report-schedules/{schedule}/runs', [CorporateReportScheduleController::class, 'runs'])->whereUuid('schedule');
         Route::apiResource('report-schedules', CorporateReportScheduleController::class)->only(['index', 'store', 'update', 'destroy']);
 
         // Corporate finance projection (finance-permission protected)

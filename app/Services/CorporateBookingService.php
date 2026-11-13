@@ -12,6 +12,7 @@ use App\Models\Corporate\CorporateEmployeeLocation;
 use App\Models\Customer;
 use App\Models\Service\ServicePackage;
 use Illuminate\Contracts\Pagination\LengthAwarePaginator;
+use Illuminate\Support\Carbon;
 use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Storage;
@@ -1029,7 +1030,7 @@ class CorporateBookingService
     /**
      * Get summary statistics for a corporate's bookings.
      */
-    public function getBookingSummaryStats(string $corporateId, array $filters = []): array
+    public function getBookingSummaryStats(string $corporateId, array $filters = [], bool $includeActivityComparison = false): array
     {
         $query = Booking::where('corporate_account_id', $corporateId);
 
@@ -1107,7 +1108,7 @@ class CorporateBookingService
             $financial = ['financial_metrics_visible' => false];
         }
 
-        return [
+        $stats = [
             'total_bookings' => $totalCount,
             'booking_count' => $totalCount,
             'trip_count' => $tripCount,
@@ -1115,6 +1116,7 @@ class CorporateBookingService
             'total_cost' => $singleCurrencyTotal['estimated_value'] ?? (count($currencyTotals) === 0 ? 0.0 : null),
             'estimated_value' => $singleCurrencyTotal['estimated_value'] ?? (count($currencyTotals) === 0 ? 0.0 : null),
             'finalized_value' => $singleCurrencyTotal['finalized_value'] ?? (count($currencyTotals) === 0 ? 0.0 : null),
+            'finalized_trip_count' => $finalizedItems->count(),
             'unpriced_trip_count' => ($filters['can_view_payments'] ?? false) ? $unpricedTripCount : null,
             'finalized_booking_count' => $finalizedBookingCount,
             'unfinalized_booking_count' => max(0, $totalCount - $finalizedBookingCount),
@@ -1124,6 +1126,53 @@ class CorporateBookingService
             'bookings_by_status' => $byStatus,
             'bookings_by_department' => $byDepartment,
             ...$financial,
+        ];
+
+        if ($includeActivityComparison) {
+            $stats['activity_comparison'] = $this->compareBookingActivity($corporateId, $filters, [
+                'booking_count' => $totalCount,
+                'trip_count' => $tripCount,
+                'finalized_trip_count' => $finalizedItems->count(),
+            ]);
+        }
+
+        return $stats;
+    }
+
+    private function compareBookingActivity(string $corporateId, array $filters, array $current): ?array
+    {
+        if (empty($filters['date_from']) || empty($filters['date_to'])) return null;
+
+        $periodStart = Carbon::parse($filters['date_from'])->startOfDay();
+        $periodEnd = Carbon::parse($filters['date_to'])->startOfDay();
+        $periodDays = (int) $periodStart->diffInDays($periodEnd) + 1;
+        $previousEnd = $periodStart->copy()->subDay();
+        $previousStart = $previousEnd->copy()->subDays($periodDays - 1);
+        $previousFilters = [
+            ...$filters,
+            'date_from' => $previousStart->toDateString(),
+            'date_to' => $previousEnd->toDateString(),
+        ];
+        $previousQuery = $this->corporateBookingItemQuery($corporateId);
+        $previousQuery->setEagerLoads([]);
+        $this->applyBookingItemFilters($previousQuery, $previousFilters);
+        $previous = $previousQuery->selectRaw('COUNT(DISTINCT booking_items.booking_id) as booking_count, COUNT(*) as trip_count, SUM(CASE WHEN booking_items.final_priced_at IS NOT NULL THEN 1 ELSE 0 END) as finalized_trip_count')->first();
+
+        $metric = static function (int $current, int $previous): array {
+            $delta = $current - $previous;
+            return [
+                'current' => $current,
+                'previous' => $previous,
+                'delta' => $delta,
+                'percent_change' => $previous === 0 ? ($current === 0 ? 0.0 : null) : round(($delta / $previous) * 100, 1),
+            ];
+        };
+
+        return [
+            'period' => ['date_from' => $previousStart->toDateString(), 'date_to' => $previousEnd->toDateString()],
+            'booking_count' => $metric($current['booking_count'], (int) $previous->booking_count),
+            'trip_count' => $metric($current['trip_count'], (int) $previous->trip_count),
+            'finalized_trip_count' => $metric($current['finalized_trip_count'], (int) $previous->finalized_trip_count),
         ];
     }
 
@@ -1193,6 +1242,18 @@ class CorporateBookingService
         }
         fputcsv($stream, ['# Payment fields', $canViewPayments ? 'Included; amount basis is recorded per row' : 'Omitted by permission'], ',', '"', '');
         fputcsv($stream, ['# Exported booking items', count($items)], ',', '"', '');
+        $comparison = $this->compareBookingActivity($corporateId, $filters, [
+            'booking_count' => $items->pluck('booking_id')->unique()->count(),
+            'trip_count' => $items->count(),
+            'finalized_trip_count' => $items->whereNotNull('final_priced_at')->count(),
+        ]);
+        if ($comparison) {
+            fputcsv($stream, ['# Previous equal-length travel period', $comparison['period']['date_from'], $comparison['period']['date_to']], ',', '"', '');
+            foreach (['Bookings' => 'booking_count', 'Trips' => 'trip_count', 'Finalized trips' => 'finalized_trip_count'] as $label => $key) {
+                $metric = $comparison[$key];
+                fputcsv($stream, ['# Activity comparison: '.$label, 'Current', $metric['current'], 'Previous', $metric['previous'], 'Delta', $metric['delta'], 'Change (%)', $metric['percent_change'] === null ? ($metric['delta'] === 0 ? '0.0%' : 'New activity') : $metric['percent_change'].'%'], ',', '"', '');
+            }
+        }
 
         rewind($stream);
         $csv = stream_get_contents($stream);

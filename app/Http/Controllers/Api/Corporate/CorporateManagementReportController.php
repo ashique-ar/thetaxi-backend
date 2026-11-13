@@ -28,7 +28,7 @@ class CorporateManagementReportController extends Controller
     {
         abort_unless(in_array($format, ['csv', 'xls', 'pdf'], true), 404);
         $payload = $this->payload($request);
-        $payload['export_metadata'] = $this->exportMetadata($request);
+        $payload['export_metadata'] = $this->exportMetadata($request, $payload['activity_comparison'] ?? null);
         $rows = $this->rows($payload);
         $filename = 'corporate-management-report-'.now()->format('Y-m-d');
 
@@ -125,7 +125,7 @@ class CorporateManagementReportController extends Controller
         return $this->analytics->report($request->corporate_id, $request->validated(), CorporatePortalPermission::allows($request, 'view_payments'));
     }
 
-    private function exportMetadata(CorporateReportFiltersRequest $request): array
+    private function exportMetadata(CorporateReportFiltersRequest $request, ?array $comparison = null): array
     {
         $filters = $request->validated();
         $metadata = [
@@ -147,7 +147,39 @@ class CorporateManagementReportController extends Controller
             ? 'Included under the viewer payment permission'
             : 'Omitted under the viewer payment permission';
 
+        if ($comparison) {
+            $metadata['Travel activity comparison period'] = $comparison['period']['date_from'].' to '.$comparison['period']['date_to'].' (preceding equal-length period)';
+            foreach (['booking_count' => 'Booking count change', 'trip_count' => 'Trip count change', 'finalized_trip_count' => 'Finalized trip count change'] as $key => $label) {
+                $metadata[$label] = $this->formatMetricDelta($comparison[$key]);
+            }
+            if (isset($comparison['unpriced_trip_count'])) {
+                $metadata['Unpriced trip count change'] = $this->formatMetricDelta($comparison['unpriced_trip_count']);
+                foreach ($comparison['currency_totals'] as $total) {
+                    $currency = $total['currency'] ?: 'Currency unavailable';
+                    $digits = app(\App\Services\CurrencyService::class)->fractionDigits($total['currency'] ?: 'LKR');
+                    $estimated = $total['estimated_delta'] === null
+                        ? 'Incomplete in one or both periods'
+                        : number_format($total['estimated_delta'], $digits, '.', '').($total['estimated_percent_change'] === null ? ' (new or no prior value)' : ' ('.($total['estimated_percent_change'] > 0 ? '+' : '').number_format($total['estimated_percent_change'], 1, '.', '').'%)');
+                    $metadata[$currency.' estimated-value change'] = $estimated;
+                    $metadata[$currency.' finalized-trip-value change'] = $this->formatMetricDelta($total['finalized_charges'], $digits);
+                }
+            }
+        }
+
         return $metadata;
+    }
+
+    private function formatMetricDelta(array $metric, int $precision = 0): string
+    {
+        $delta = (float) $metric['delta'];
+        $value = ($delta > 0 ? '+' : '').number_format($delta, $precision, '.', ',');
+        $percent = $metric['percent_change'] === null
+            ? ($delta === 0.0 ? '0.0%' : 'new activity')
+            : (($metric['percent_change'] > 0 ? '+' : '').number_format((float) $metric['percent_change'], 1, '.', '').'%');
+
+        return 'Current '.number_format((float) $metric['current'], $precision, '.', ',')
+            .'; previous '.number_format((float) $metric['previous'], $precision, '.', ',')
+            .'; change '.$value.' ('.$percent.')';
     }
 
     private function safeCsvRow(array $row): array

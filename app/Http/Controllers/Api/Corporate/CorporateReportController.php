@@ -80,7 +80,8 @@ class CorporateReportController extends Controller
 
         $stats = $this->bookingService->getBookingSummaryStats(
             $request->corporate_id,
-            $filters
+            $filters,
+            true,
         );
 
         if (! $filters['can_view_payments']) {

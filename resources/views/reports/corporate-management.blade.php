@@ -49,6 +49,31 @@
             @endforeach
         @endif
     </p>
+    @if(!empty($payload['activity_comparison']))
+        @php($comparison = $payload['activity_comparison'])
+        <h2>Travel activity comparison</h2>
+        <p>Selected activity dates compared with the preceding equal-length period: {{ $payload['period']['from'] }} to {{ $payload['period']['to'] }} vs {{ $comparison['period']['date_from'] }} to {{ $comparison['period']['date_to'] }}. Billing-period balances are not compared.</p>
+        <table><thead><tr><th>Measure</th><th>Current</th><th>Previous</th><th>Change</th><th>Change (%)</th></tr></thead><tbody>
+            @foreach(['Bookings' => 'booking_count', 'Trips' => 'trip_count', 'Finalized trips' => 'finalized_trip_count'] as $label => $key)
+                @php($metric = $comparison[$key])
+                <tr><td>{{ $label }}</td><td>{{ number_format($metric['current']) }}</td><td>{{ number_format($metric['previous']) }}</td><td>{{ ($metric['delta'] > 0 ? '+' : '') . number_format($metric['delta']) }}</td><td>{{ $metric['percent_change'] === null ? ($metric['delta'] == 0 ? '0.0%' : 'New activity') : (($metric['percent_change'] > 0 ? '+' : '') . number_format($metric['percent_change'], 1) . '%') }}</td></tr>
+            @endforeach
+            @if(isset($comparison['unpriced_trip_count']))
+                @php($metric = $comparison['unpriced_trip_count'])
+                <tr><td>Unpriced trips</td><td>{{ number_format($metric['current']) }}</td><td>{{ number_format($metric['previous']) }}</td><td>{{ ($metric['delta'] > 0 ? '+' : '') . number_format($metric['delta']) }}</td><td>{{ $metric['percent_change'] === null ? ($metric['delta'] == 0 ? '0.0%' : 'New activity') : (($metric['percent_change'] > 0 ? '+' : '') . number_format($metric['percent_change'], 1) . '%') }}</td></tr>
+            @endif
+        </tbody></table>
+        @if($payload['financial_metrics_visible'])
+            <table><thead><tr><th>Currency</th><th>Measure</th><th>Current</th><th>Previous</th><th>Change</th><th>Change (%)</th></tr></thead><tbody>
+                @foreach($comparison['currency_totals'] as $total)
+                    @php($digits = app(\App\Services\CurrencyService::class)->fractionDigits($total['currency'] ?: 'LKR'))
+                    <tr><td>{{ $total['currency'] ?: 'Currency unavailable' }}</td><td>Estimated value</td><td>{{ $total['current_estimated_value'] === null ? 'Incomplete' : number_format($total['current_estimated_value'], $digits) }}</td><td>{{ $total['previous_estimated_value'] === null ? 'Incomplete' : number_format($total['previous_estimated_value'], $digits) }}</td><td>{{ $total['estimated_delta'] === null ? 'Incomplete in one or both periods' : number_format($total['estimated_delta'], $digits) }}</td><td>{{ $total['estimated_percent_change'] === null ? ($total['estimated_delta'] === null ? 'Unavailable' : 'New or no prior value') : (($total['estimated_percent_change'] > 0 ? '+' : '') . number_format($total['estimated_percent_change'], 1) . '%') }}</td></tr>
+                    @php($metric = $total['finalized_charges'])
+                    <tr><td>{{ $total['currency'] ?: 'Currency unavailable' }}</td><td>Finalized trip value</td><td>{{ number_format($metric['current'], $digits) }}</td><td>{{ number_format($metric['previous'], $digits) }}</td><td>{{ ($metric['delta'] > 0 ? '+' : '') . number_format($metric['delta'], $digits) }}</td><td>{{ $metric['percent_change'] === null ? ($metric['delta'] == 0 ? '0.0%' : 'New activity') : (($metric['percent_change'] > 0 ? '+' : '') . number_format($metric['percent_change'], 1) . '%') }}</td></tr>
+                @endforeach
+            </tbody></table>
+        @endif
+    @endif
     <p>Contractual distance: {{ number_format($payload['distance']['contractual_km'], 3) }} km (pricing) | Operational
         distance: {{ number_format($payload['distance']['operational_km'], 3) }} km (telemetry evidence)</p>
     @if(!empty($payload['financial_periods']))

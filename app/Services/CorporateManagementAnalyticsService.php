@@ -5,6 +5,7 @@ namespace App\Services;
 use App\Models\Booking\BookingItem;
 use App\Models\Finance\CorporateOnlinePaymentAttempt;
 use App\Models\Finance\FinancialAccountSettlement;
+use Carbon\Carbon;
 use Illuminate\Support\Collection;
 
 class CorporateManagementAnalyticsService
@@ -44,6 +45,11 @@ class CorporateManagementAnalyticsService
             ],
             'financial_metrics_visible' => $canViewFinance,
         ];
+
+        if ($comparisonPeriod = $this->previousActivityPeriod($filters)) {
+            $previousItems = $this->items($corporateId, [...$filters, ...$comparisonPeriod], false);
+            $payload['activity_comparison'] = $this->compareActivity($items, $previousItems, $comparisonPeriod, $canViewFinance);
+        }
 
         if ($canViewFinance) {
             $billingPeriodIds = array_values(array_unique(array_filter(array_map('strval', (array) ($filters['billing_period_ids'] ?? [])))));
@@ -117,7 +123,100 @@ class CorporateManagementAnalyticsService
         return $payload;
     }
 
-    private function items(string $corporateId, array $filters): Collection
+    private function previousActivityPeriod(array $filters): ?array
+    {
+        if (empty($filters['date_from']) || empty($filters['date_to'])) {
+            return null;
+        }
+
+        $timezone = TimezoneService::getUserTimezone();
+        $from = Carbon::parse($filters['date_from'], $timezone)->startOfDay();
+        $to = Carbon::parse($filters['date_to'], $timezone)->startOfDay();
+        $days = (int) $from->diffInDays($to) + 1;
+
+        return [
+            'date_from' => $from->copy()->subDays($days)->toDateString(),
+            'date_to' => $from->copy()->subDay()->toDateString(),
+        ];
+    }
+
+    private function compareActivity(Collection $current, Collection $previous, array $period, bool $canViewFinance): array
+    {
+        $measure = static function (int|float $now, int|float $prior): array {
+            $change = $now - $prior;
+            return [
+                'current' => $now,
+                'previous' => $prior,
+                'delta' => $change,
+                'percent_change' => $prior == 0 ? null : round($change / abs($prior) * 100, 1),
+            ];
+        };
+        $snapshot = function (Collection $items) use ($canViewFinance): array {
+            $summary = [
+                'booking_count' => $items->pluck('booking_id')->unique()->count(),
+                'trip_count' => $items->count(),
+                'finalized_trip_count' => $items->whereNotNull('final_priced_at')->count(),
+                'contractual_km' => round((float) $items->sum('contractual_km'), 3),
+                'operational_km' => round((float) $items->sum('operational_km'), 3),
+            ];
+            if ($canViewFinance) {
+                $summary['unpriced_trip_count'] = $items->where('estimate_available', false)->count();
+                $summary['currency_totals'] = $items->groupBy('currency')->map(function (Collection $rows, string $currency): array {
+                    $unpriced = $rows->where('estimate_available', false)->count();
+                    return [
+                        'currency' => $currency,
+                        'estimated_value' => $unpriced ? null : $this->roundCurrencyAmount((float) $rows->sum('estimated_amount'), $currency),
+                        'finalized_charges' => $this->roundCurrencyAmount((float) $rows->whereNotNull('final_priced_at')->sum('final_amount'), $currency),
+                    ];
+                })->keyBy('currency');
+            }
+
+            return $summary;
+        };
+        $now = $snapshot($current);
+        $prior = $snapshot($previous);
+
+        $comparison = [
+            'period' => $period,
+            'booking_count' => $measure($now['booking_count'], $prior['booking_count']),
+            'trip_count' => $measure($now['trip_count'], $prior['trip_count']),
+            'finalized_trip_count' => $measure($now['finalized_trip_count'], $prior['finalized_trip_count']),
+            'contractual_km' => $measure($now['contractual_km'], $prior['contractual_km']),
+            'operational_km' => $measure($now['operational_km'], $prior['operational_km']),
+        ];
+
+        if ($canViewFinance) {
+            $comparison['unpriced_trip_count'] = $measure($now['unpriced_trip_count'], $prior['unpriced_trip_count']);
+            $comparison['currency_totals'] = collect($now['currency_totals']->keys())
+                ->merge($prior['currency_totals']->keys())->unique()->sort()
+                ->map(function (string $currency) use ($now, $prior, $measure): array {
+                    $current = $now['currency_totals']->get($currency);
+                    $previous = $prior['currency_totals']->get($currency);
+                    $currentEstimated = $current === null ? 0.0 : $current['estimated_value'];
+                    $previousEstimated = $previous === null ? 0.0 : $previous['estimated_value'];
+                    $currentFinalized = $current['finalized_charges'] ?? 0.0;
+                    $previousFinalized = $previous['finalized_charges'] ?? 0.0;
+                    $estimatedChange = $currentEstimated !== null && $previousEstimated !== null
+                        ? $this->roundCurrencyAmount($currentEstimated - $previousEstimated, $currency)
+                        : null;
+
+                    return [
+                        'currency' => $currency,
+                        'current_estimated_value' => $currentEstimated,
+                        'previous_estimated_value' => $previousEstimated,
+                        'estimated_delta' => $estimatedChange,
+                        'estimated_percent_change' => $currentEstimated !== null && $previousEstimated !== null && $previousEstimated != 0
+                            ? round(($currentEstimated - $previousEstimated) / abs($previousEstimated) * 100, 1)
+                            : null,
+                        'finalized_charges' => $measure($currentFinalized, $previousFinalized),
+                    ];
+                })->values()->all();
+        }
+
+        return $comparison;
+    }
+
+    private function items(string $corporateId, array $filters, bool $includeDimensions = true): Collection
     {
         return BookingItem::query()
             ->whereHas('booking', function ($query) use ($corporateId, $filters) {
@@ -139,7 +238,7 @@ class CorporateManagementAnalyticsService
             })
             ->when($filters['date_from'] ?? null, fn ($q, $date) => $q->where('from_date', '>=', TimezoneService::userDateStartUtc($date)))
             ->when($filters['date_to'] ?? null, fn ($q, $date) => $q->where('from_date', '<', TimezoneService::userDateEndExclusiveUtc($date)))
-            ->with([
+            ->with($includeDimensions ? [
                 'booking:id,corporate_account_id,corporate_department_id,corporate_division_id,employee_id,status,approval_status,currency',
                 'booking.corporateDepartment:id,name',
                 'booking.corporateDivision:id,name',
@@ -147,13 +246,16 @@ class CorporateManagementAnalyticsService
                 'booking.employee.user:id,first_name,last_name',
                 'serviceType:id,name',
                 'vehicleGroup:id,name',
-            ])
-            ->get([
+            ] : ['booking:id,currency'])
+            ->get($includeDimensions ? [
                 'id', 'booking_id', 'from_date', 'pickup_location', 'dropoff_location',
                 'service_type_id', 'vehicle_group_id', 'currency', 'total_price', 'addons',
                 'pricing_breakdown', 'discounts', 'final_priced_at', 'lifecycle_data', 'metadata', 'status',
+            ] : [
+                'id', 'booking_id', 'currency', 'total_price', 'addons', 'pricing_breakdown',
+                'discounts', 'final_priced_at', 'lifecycle_data', 'metadata',
             ])
-            ->map(function (BookingItem $item) {
+            ->map(function (BookingItem $item) use ($includeDimensions) {
                 $pricing = is_array($item->pricing_breakdown) ? $item->pricing_breakdown : [];
                 $contractual = data_get($pricing, 'contractual_distance.total_billable_distance')
                     ?? data_get($pricing, 'distance.total_billable_distance')
@@ -161,8 +263,20 @@ class CorporateManagementAnalyticsService
                 $operational = data_get($item->lifecycle_data, 'actual_distance_km')
                     ?? data_get($item->metadata, 'actual_distance_km');
 
-                return collect([
+                $metrics = [
                     'booking_id' => $item->booking_id,
+                    'currency' => strtoupper((string) ($item->currency ?: $item->booking?->currency ?: '')),
+                    'final_priced_at' => $item->final_priced_at,
+                    'estimate_available' => $item->final_priced_at !== null || $item->hasEstimatedAmount(),
+                    'estimated_amount' => $item->final_priced_at !== null || $item->hasEstimatedAmount() ? $item->calculateEstimatedTotalValue() : null,
+                    'final_amount' => $item->calculateTotalValue(),
+                    'contractual_km' => (float) ($contractual ?? 0),
+                    'operational_km' => (float) ($operational ?? 0),
+                ];
+                if (! $includeDimensions) return collect($metrics);
+
+                return collect([
+                    ...$metrics,
                     'booking_item_id' => $item->id,
                     'month' => optional($item->from_date)->format('Y-m'),
                     'department' => $item->booking?->corporateDepartment?->name ?: 'Unassigned',
@@ -171,15 +285,8 @@ class CorporateManagementAnalyticsService
                     'service' => $item->serviceType?->name ?: 'Unassigned',
                     'route' => $this->location($item->pickup_location).' -> '.$this->location($item->dropoff_location),
                     'vehicle_group' => $item->vehicleGroup?->name ?: 'Unassigned',
-                    'currency' => strtoupper((string) ($item->currency ?: $item->booking?->currency ?: '')),
                     'booking_status' => $item->booking?->status ?: ($item->status ?: 'unknown'),
                     'approval_result' => $item->booking?->approval_status ?: 'not_required',
-                    'final_priced_at' => $item->final_priced_at,
-                    'estimate_available' => $item->final_priced_at !== null || $item->hasEstimatedAmount(),
-                    'estimated_amount' => $item->final_priced_at !== null || $item->hasEstimatedAmount() ? $item->calculateEstimatedTotalValue() : null,
-                    'final_amount' => $item->calculateTotalValue(),
-                    'contractual_km' => (float) ($contractual ?? 0),
-                    'operational_km' => (float) ($operational ?? 0),
                 ]);
             });
     }
