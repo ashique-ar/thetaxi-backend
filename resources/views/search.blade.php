@@ -1318,6 +1318,14 @@
                     loading = true;
                     spinner.classList.remove('d-none');
                     message.textContent = 'Loading more vehicles…';
+                    const skeletons = Array.from({ length: 3 }, () => {
+                        const column = document.createElement('div');
+                        column.className = 'col-xl-4 col-md-6 vehicle-load-more-skeleton';
+                        column.setAttribute('aria-hidden', 'true');
+                        column.innerHTML = '<div class="vehicle-skeleton-card"><div class="vehicle-skeleton-block vehicle-skeleton-image"></div><div class="vehicle-skeleton-block vehicle-skeleton-line vehicle-skeleton-line--title"></div><div class="vehicle-skeleton-block vehicle-skeleton-line"></div><div class="vehicle-skeleton-block vehicle-skeleton-price"></div><div class="vehicle-skeleton-block vehicle-skeleton-button"></div></div>';
+                        grid.appendChild(column);
+                        return column;
+                    });
                     const requestController = new AbortController();
                     window.vehicleLoadMoreAbortController = requestController;
                     let shouldPrefetchNextPage = false;
@@ -1370,6 +1378,7 @@
                             message.textContent = error.message || 'Could not load vehicles. Scroll to try again.';
                         }
                     } finally {
+                        skeletons.forEach(skeleton => skeleton.remove());
                         spinner.classList.add('d-none');
                         loading = false;
                         if (window.vehicleLoadMoreAbortController === requestController) {
