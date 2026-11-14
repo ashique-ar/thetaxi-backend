@@ -292,7 +292,7 @@
 
             <div class="row g-4 vehicle-search-skeleton d-none" id="vehicleSearchSkeleton" role="status" aria-label="Loading vehicles">
                 @for ($skeleton = 0; $skeleton < min(8, max(1, ($pagination['total'] ?? 8) - count($results['data'] ?? []))); $skeleton++)
-                    <div class="{{ !is_theme('theme-04') ? 'col-lg-3' : '' }} col-md-4 col-sm-6 col-6">
+                    <div class="{{ !is_theme('theme-04') ? 'col-lg-3' : '' }} col-md-4 col-sm-6 col-6 vehicle-card-wrapper vehicle-load-more-skeleton">
                         <div class="vehicle-skeleton-card" aria-hidden="true">
                             <div class="vehicle-skeleton-block vehicle-skeleton-image"></div>
                             <div class="vehicle-skeleton-block vehicle-skeleton-line vehicle-skeleton-line--title"></div>
@@ -1328,7 +1328,7 @@
                         .replace(/\bvehicle-card-wrapper\b/g, '').trim() || 'col-lg-3 col-md-4 col-sm-6 col-6';
                     const skeletons = Array.from({ length: skeletonCount }, () => {
                         const column = document.createElement('div');
-                        column.className = `${cardColumnClasses} vehicle-load-more-skeleton`;
+                        column.className = `${cardColumnClasses} vehicle-card-wrapper vehicle-load-more-skeleton`;
                         column.setAttribute('aria-hidden', 'true');
                         column.innerHTML = '<div class="vehicle-skeleton-card"><div class="vehicle-skeleton-block vehicle-skeleton-image"></div><div class="vehicle-skeleton-block vehicle-skeleton-line vehicle-skeleton-line--title"></div><div class="vehicle-skeleton-block vehicle-skeleton-line"></div><div class="vehicle-skeleton-block vehicle-skeleton-price"></div><div class="vehicle-skeleton-block vehicle-skeleton-button"></div></div>';
                         grid.appendChild(column);
