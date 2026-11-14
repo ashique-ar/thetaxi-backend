@@ -291,8 +291,8 @@
             </div>
 
             <div class="row g-4 vehicle-search-skeleton d-none" id="vehicleSearchSkeleton" role="status" aria-label="Loading vehicles">
-                @for ($skeleton = 0; $skeleton < 6; $skeleton++)
-                    <div class="col-xl-4 col-md-6">
+                @for ($skeleton = 0; $skeleton < min(8, max(1, ($pagination['total'] ?? 8) - count($results['data'] ?? []))); $skeleton++)
+                    <div class="{{ !is_theme('theme-04') ? 'col-lg-3' : '' }} col-md-4 col-sm-6 col-6">
                         <div class="vehicle-skeleton-card" aria-hidden="true">
                             <div class="vehicle-skeleton-block vehicle-skeleton-image"></div>
                             <div class="vehicle-skeleton-block vehicle-skeleton-line vehicle-skeleton-line--title"></div>
@@ -327,6 +327,7 @@
                 @if (($pagination['last_page'] ?? 1) > 1)
                     <div id="vehicleLoadMoreStatus" class="py-4 text-center text-muted" role="status"
                         data-next-page="2" data-last-page="{{ $pagination['last_page'] }}"
+                        data-total="{{ $pagination['total'] ?? '' }}" data-per-page="{{ $pagination['per_page'] ?? 8 }}"
                         data-search-context-id="{{ $search->result_search_context_id ?? '' }}"
                         data-url="{{ route('search.vehicles.page') }}">
                         <span class="vehicle-load-more-spinner spinner-border spinner-border-sm d-none" aria-hidden="true"></span>
@@ -1318,9 +1319,16 @@
                     loading = true;
                     spinner.classList.remove('d-none');
                     message.textContent = 'Loading more vehicles…';
-                    const skeletons = Array.from({ length: 3 }, () => {
+                    const total = Number(loadMoreStatus.dataset.total);
+                    const perPage = Number(loadMoreStatus.dataset.perPage) || 8;
+                    const skeletonCount = Number.isFinite(total) && total > 0
+                        ? Math.max(0, Math.min(perPage, total - ((nextPage - 1) * perPage)))
+                        : perPage;
+                    const cardColumnClasses = grid.querySelector('.vehicle-card-wrapper')?.className
+                        .replace(/\bvehicle-card-wrapper\b/g, '').trim() || 'col-lg-3 col-md-4 col-sm-6 col-6';
+                    const skeletons = Array.from({ length: skeletonCount }, () => {
                         const column = document.createElement('div');
-                        column.className = 'col-xl-4 col-md-6 vehicle-load-more-skeleton';
+                        column.className = `${cardColumnClasses} vehicle-load-more-skeleton`;
                         column.setAttribute('aria-hidden', 'true');
                         column.innerHTML = '<div class="vehicle-skeleton-card"><div class="vehicle-skeleton-block vehicle-skeleton-image"></div><div class="vehicle-skeleton-block vehicle-skeleton-line vehicle-skeleton-line--title"></div><div class="vehicle-skeleton-block vehicle-skeleton-line"></div><div class="vehicle-skeleton-block vehicle-skeleton-price"></div><div class="vehicle-skeleton-block vehicle-skeleton-button"></div></div>';
                         grid.appendChild(column);
@@ -1365,6 +1373,8 @@
                         applyVehicleFilter();
                         loadMoreStatus.dataset.nextPage = String(nextPage + 1);
                         loadMoreStatus.dataset.lastPage = String(payload.pagination?.last_page || lastPage);
+                        loadMoreStatus.dataset.total = String(payload.pagination?.total ?? loadMoreStatus.dataset.total);
+                        loadMoreStatus.dataset.perPage = String(payload.pagination?.per_page ?? perPage);
                         shouldPrefetchNextPage = nextPage < Number(loadMoreStatus.dataset.lastPage);
                         message.textContent = nextPage >= Number(loadMoreStatus.dataset.lastPage)
                             ? 'You’ve reached the end of the vehicles'
