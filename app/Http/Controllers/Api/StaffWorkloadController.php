@@ -21,15 +21,23 @@ class StaffWorkloadController extends Controller
         $data = $request->validate([
             'page' => ['nullable', 'integer', 'min:1'],
             'per_page' => ['nullable', 'integer', 'min:1', 'max:100'],
+            'search' => ['nullable', 'string', 'max:100'],
         ]);
-        $employeesPage = $staffAccess->scope(Staff::query(), $request->user())
+        $employeeQuery = $staffAccess->scope(Staff::query(), $request->user())
             ->join('users', 'users.id', '=', 'staff.user_id')
             ->whereNull('staff.deleted_at')
             ->where(fn ($employment) => $employment->whereNull('staff.employment_ended_at')->orWhere('staff.employment_ended_at', '>', now()))
-            ->whereNull('users.deleted_at')->where('users.is_active', true)
+            ->whereNull('users.deleted_at')->where('users.is_active', true);
+        if (!empty($data['search'])) {
+            $term = '%' . mb_strtolower(trim($data['search'])) . '%';
+            $employeeQuery->where(fn ($query) => $query
+                ->whereRaw("LOWER(CONCAT_WS(' ', users.first_name, users.last_name)) LIKE ?", [$term])
+                ->orWhereRaw("LOWER(COALESCE(staff.code, '')) LIKE ?", [$term]));
+        }
+        $employeesPage = $employeeQuery
             ->orderBy('users.first_name')->orderBy('users.last_name')->orderBy('staff.id')
             ->select(['staff.id as staff_id', 'staff.user_id', 'staff.code', 'users.first_name', 'users.last_name'])
-            ->paginate($data['per_page'] ?? 25);
+            ->paginate($data['per_page'] ?? 25, ['*'], 'page', $data['page'] ?? 1);
         $employees = $employeesPage->getCollection()->map(fn ($employee) => [
             'staff_id' => (string) $employee->staff_id,
             'user_id' => (string) $employee->user_id,

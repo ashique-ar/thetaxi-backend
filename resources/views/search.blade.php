@@ -290,6 +290,20 @@
                 <!-- Vehicle Groups Available Section -->
             </div>
 
+            <div class="row g-4 vehicle-search-skeleton d-none" id="vehicleSearchSkeleton" role="status" aria-label="Loading vehicles">
+                @for ($skeleton = 0; $skeleton < 6; $skeleton++)
+                    <div class="col-xl-4 col-md-6">
+                        <div class="vehicle-skeleton-card" aria-hidden="true">
+                            <div class="vehicle-skeleton-block vehicle-skeleton-image"></div>
+                            <div class="vehicle-skeleton-block vehicle-skeleton-line vehicle-skeleton-line--title"></div>
+                            <div class="vehicle-skeleton-block vehicle-skeleton-line"></div>
+                            <div class="vehicle-skeleton-block vehicle-skeleton-price"></div>
+                            <div class="vehicle-skeleton-block vehicle-skeleton-button"></div>
+                        </div>
+                    </div>
+                @endfor
+            </div>
+
             @if (isset($results['data']) && count($results['data']) > 0)
                 @php
                     // Results are globally sorted by the server before pagination.
@@ -477,6 +491,15 @@
     <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/intl-tel-input@17/build/css/intlTelInput.css">
     <link href="https://cdn.jsdelivr.net/npm/select2@4.1.0-rc.0/dist/css/select2.min.css" rel="stylesheet" />
     <style>
+        .vehicle-skeleton-card { padding: 16px; border: 1px solid #e8e8e8; border-radius: 12px; background: #fff; }
+        .vehicle-skeleton-block { background: linear-gradient(90deg, #eee 25%, #f7f7f7 50%, #eee 75%); background-size: 200% 100%; animation: vehicle-skeleton-shimmer 1.4s ease-in-out infinite; border-radius: 6px; }
+        .vehicle-skeleton-image { height: 190px; margin-bottom: 18px; }
+        .vehicle-skeleton-line { height: 14px; width: 62%; margin: 12px 0; }
+        .vehicle-skeleton-line--title { height: 20px; width: 78%; }
+        .vehicle-skeleton-price { height: 26px; width: 42%; margin-top: 20px; }
+        .vehicle-skeleton-button { height: 42px; margin-top: 16px; }
+        @keyframes vehicle-skeleton-shimmer { to { background-position: -200% 0; } }
+        @media (prefers-reduced-motion: reduce) { .vehicle-skeleton-block { animation: none; } }
         #requestQuotationModal .iti {
             width: 100%;
         }
@@ -1132,6 +1155,15 @@
     <script src="https://cdn.jsdelivr.net/npm/intl-tel-input@17/build/js/intlTelInput.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/select2@4.1.0-rc.0/dist/js/select2.min.js"></script>
     <script>
+        document.addEventListener('submit', function(event) {
+            if (!event.target.matches('.filter-input')) return;
+            const skeleton = document.getElementById('vehicleSearchSkeleton');
+            if (!skeleton) return;
+            skeleton.classList.remove('d-none');
+            document.querySelector('.vehicle-results-grid')?.classList.add('d-none');
+            document.querySelector('.no-results-card')?.classList.add('d-none');
+        }, true);
+
         // Search-specific JavaScript (Requirements: 3.4, 3.5)
         // Cart management functions are now in cart-summary-float and vehicle-card-scripts components
 

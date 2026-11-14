@@ -94,6 +94,7 @@ class AttendanceResultController extends Controller
         };
         $grouped = $groupedQuery->get()->map(static fn (object $row): array => [
             'label' => $row->label,
+            'staff_id' => $data['group_by'] === 'staff' ? (string) $row->key : null,
             'days' => (int) $row->days,
             'staff_count' => (int) $row->staff_count,
             'present_days' => (int) $row->present_days,

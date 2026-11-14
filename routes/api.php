@@ -2061,6 +2061,8 @@ Route::middleware(['auth:api'])->group(function () {
     Route::group(['prefix' => 'reports'], function () {
         Route::get('/dashboard-stats', [ReportsController::class, 'getDashboardStats'])
             ->middleware('permission:reports.view');
+        Route::get('/departments/performance', [ReportsController::class, 'getDepartmentPerformance'])
+            ->middleware(['permission:reports.view', 'permission:staff.view-team|staff.view-all']);
         Route::get('/booking-analytics', [ReportsController::class, 'getBookingAnalytics'])
             ->middleware('permission:reports.view');
         Route::get('/bookings/analytics', [ReportsController::class, 'getBookingAnalytics'])
@@ -2075,6 +2077,7 @@ Route::middleware(['auth:api'])->group(function () {
             ->middleware('permission:staff.view-team|staff.view-all');
         Route::get('/department-options', [ReportsController::class, 'getReportDepartmentOptions'])
             ->middleware('permission:staff.view-team|staff.view-all');
+        Route::get('/booking-filter-options', [ReportsController::class, 'getBookingFilterOptions']);
         Route::get('/financial-reports', [ReportsController::class, 'getFinancialReports'])
             ->middleware('permission:reports.view');
         Route::get('/financial', [ReportsController::class, 'getFinancialReports'])

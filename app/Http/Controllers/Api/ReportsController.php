@@ -4,6 +4,7 @@ namespace App\Http\Controllers\Api;
 
 use App\Http\Controllers\Controller;
 use App\Models\Booking\Booking;
+use App\Models\Booking\BookingItem;
 use App\Models\Booking\BookingGeneratedReport;
 use App\Models\Customer;
 use App\Models\CustomerLoyaltyPoint;
@@ -62,7 +63,7 @@ class ReportsController extends Controller
             $stats = [
                 'total_bookings'   => (clone $bookings)->count(),
                 'revenue_by_currency' => (clone $completedBookings)
-                    ->selectRaw("COALESCE(NULLIF(UPPER(currency), ''), 'LKR') as currency, SUM(COALESCE(total_actual, 0)) as revenue")
+                    ->selectRaw("COALESCE(NULLIF(UPPER(currency), ''), 'LKR') as currency, SUM(COALESCE(total_actual, 0)) as revenue, COUNT(total_actual) as priced_bookings_count, COUNT(CASE WHEN total_actual IS NULL THEN 1 END) as unpriced_bookings_count")
                     ->groupBy('currency')->orderBy('currency')->get(),
             'total_customers'  => $this->allCustomers()->where('created_at', '>=', TimezoneService::userDateStartUtc($filters['date_from']))
                     ->where('created_at', '<', $this->exclusiveDateEnd($filters['date_to']))
@@ -89,7 +90,7 @@ class ReportsController extends Controller
                     'completed_bookings' => $completed,
                     'cancelled_bookings' => $cancelled,
                     'revenue_by_currency' => (clone $completedComparisonBookings)
-                        ->selectRaw("COALESCE(NULLIF(UPPER(currency), ''), 'LKR') as currency, SUM(COALESCE(total_actual, 0)) as revenue")
+                        ->selectRaw("COALESCE(NULLIF(UPPER(currency), ''), 'LKR') as currency, SUM(COALESCE(total_actual, 0)) as revenue, COUNT(total_actual) as priced_bookings_count, COUNT(CASE WHEN total_actual IS NULL THEN 1 END) as unpriced_bookings_count")
                         ->groupBy('currency')->orderBy('currency')->get(),
                 ];
             }
@@ -103,6 +104,72 @@ class ReportsController extends Controller
         return response()->json(['status' => 'success', 'data' => $stats]);
     }
 
+    public function getDepartmentPerformance(Request $request): JsonResponse
+    {
+        $actor = $request->user();
+        abort_unless($actor->can('staff.view-team') || $actor->can('staff.view-all'), 403);
+
+        $filters = $this->parseFilters($request);
+        $comparison = $request->validate([
+            'compare_date_from' => ['sometimes', 'required_with:compare_date_to', 'date_format:Y-m-d'],
+            'compare_date_to' => ['sometimes', 'required_with:compare_date_from', 'date_format:Y-m-d', 'after_or_equal:compare_date_from'],
+        ]);
+
+        $assignmentScope = $this->currentDepartmentAssignments($actor)
+            ->select('staff.user_id', 'assignment.organization_unit_id')->distinct();
+        if (!empty($filters['staff_user_id'])) $assignmentScope->where('staff.user_id', $filters['staff_user_id']);
+        if (!empty($filters['organization_unit_id'])) $assignmentScope->where('assignment.organization_unit_id', $filters['organization_unit_id']);
+
+        $loadPeriod = function (array $periodFilters) use ($assignmentScope) {
+            $allVisibleBookings = Booking::query();
+            $this->applyFilters($allVisibleBookings, $periodFilters);
+            $visibleCount = (clone $allVisibleBookings)->count();
+            $query = Booking::query()
+                ->joinSub(clone $assignmentScope, 'report_department_assignment', fn ($join) => $join->on('report_department_assignment.user_id', '=', 'bookings.responsible_user_id'))
+                ->join('hr_organization_units as report_department', 'report_department.id', '=', 'report_department_assignment.organization_unit_id');
+            $this->applyFilters($query, $periodFilters);
+
+            $departments = (clone $query)
+                ->select('report_department.id as organization_unit_id', 'report_department.name as department_name', 'report_department.code as department_code')
+                ->selectRaw("COUNT(DISTINCT bookings.id) as total_bookings, COUNT(DISTINCT CASE WHEN bookings.status = 'completed' THEN bookings.id END) as completed_bookings, COUNT(DISTINCT CASE WHEN bookings.status IN ('cancelled','inquiry_cancelled') THEN bookings.id END) as cancelled_bookings")
+                ->groupBy('report_department.id', 'report_department.name', 'report_department.code')
+                ->orderBy('report_department.name')->get();
+
+            $revenue = (clone $query)->where('bookings.status', 'completed')
+                ->select('report_department.id as organization_unit_id')
+                ->selectRaw("COALESCE(NULLIF(UPPER(bookings.currency), ''), 'LKR') as currency, SUM(COALESCE(bookings.total_actual, 0)) as revenue, COUNT(DISTINCT CASE WHEN bookings.total_actual IS NOT NULL THEN bookings.id END) as priced_bookings_count, COUNT(DISTINCT CASE WHEN bookings.total_actual IS NULL THEN bookings.id END) as unpriced_bookings_count")
+                ->groupBy('report_department.id')->groupByRaw("COALESCE(NULLIF(UPPER(bookings.currency), ''), 'LKR')")
+                ->orderBy('currency')->get()->groupBy('organization_unit_id');
+            $attributedCount = (clone $query)->distinct()->count('bookings.id');
+
+            return [
+                'departments' => $departments->map(fn ($department) => [
+                'organization_unit_id' => (string) $department->organization_unit_id,
+                'department_name' => (string) $department->department_name,
+                'department_code' => (string) $department->department_code,
+                'total_bookings' => (int) $department->total_bookings,
+                'completed_bookings' => (int) $department->completed_bookings,
+                'cancelled_bookings' => (int) $department->cancelled_bookings,
+                'revenue_by_currency' => collect($revenue->get($department->organization_unit_id, []))->map(fn ($row) => [
+                    'currency' => (string) $row->currency,
+                    'revenue' => (float) $row->revenue,
+                    'priced_bookings_count' => (int) $row->priced_bookings_count,
+                    'unpriced_bookings_count' => (int) $row->unpriced_bookings_count,
+                ])->values(),
+                ])->values(),
+                'attributed_bookings' => $attributedCount,
+                'unattributed_bookings' => max(0, $visibleCount - $attributedCount),
+            ];
+        };
+
+        $current = $loadPeriod($filters);
+        $previous = isset($comparison['compare_date_from'], $comparison['compare_date_to'])
+            ? $loadPeriod([...$filters, 'date_from' => $comparison['compare_date_from'], 'date_to' => $comparison['compare_date_to']])
+            : null;
+
+        return response()->json(['status' => 'success', 'data' => ['current' => $current, 'comparison' => $previous]]);
+    }
+
     // ─────────────────────────────────────────────────────────────────
     // Booking analytics
     // ─────────────────────────────────────────────────────────────────
@@ -111,7 +178,8 @@ class ReportsController extends Controller
     {
         $filters = $this->parseFilters($request);
         $query   = Booking::query();
-        $this->applyFilters($query, $filters);
+        $this->applyFilters($query, $filters, $this->reportBookingDateColumn($filters));
+        $this->applyUnpricedBookingFilter($query, $filters);
 
         $analytics = [
             'total_bookings'           => (clone $query)->count(),
@@ -133,7 +201,8 @@ class ReportsController extends Controller
         $dateFormat = $this->getDateFormat($groupBy);
 
         $query = Booking::query();
-        $this->applyFilters($query, $filters);
+        $this->applyFilters($query, $filters, $this->reportBookingDateColumn($filters));
+        $this->applyUnpricedBookingFilter($query, $filters);
 
         $trends = $query
             ->selectRaw("{$dateFormat} as date, COALESCE(NULLIF(UPPER(currency), ''), 'LKR') as currency, COUNT(*) as bookings,
@@ -169,7 +238,8 @@ class ReportsController extends Controller
 
         $serviceFilters = $filters;
         unset($serviceFilters['currency']);
-        $this->applyFilters($query, $serviceFilters);
+        $this->applyFilters($query, $serviceFilters, $this->reportBookingDateColumn($filters));
+        $this->applyUnpricedBookingFilter($query, $filters);
         if (!empty($filters['currency'])) $query->whereRaw("{$serviceCurrency} = ?", [$filters['currency']]);
 
         return response()->json(['status' => 'success', 'data' => $query->get()]);
@@ -196,7 +266,11 @@ class ReportsController extends Controller
                 SUM(COALESCE(total_actual, 0)) as total_revenue,
                 SUM(COALESCE(driver_cost, 0)) as driver_cost,
                 COUNT(*) as total_bookings,
-                AVG(COALESCE(total_actual, 0)) as average_booking_value")
+                COUNT(total_actual) as priced_bookings_count,
+                COUNT(CASE WHEN total_actual IS NULL THEN 1 END) as unpriced_bookings_count,
+                COUNT(CASE WHEN driver_cost IS NULL THEN 1 END) as missing_driver_cost_count,
+                COUNT(CASE WHEN total_actual IS NULL OR driver_cost IS NULL THEN 1 END) as incomplete_financial_bookings_count,
+                AVG(total_actual) as average_booking_value")
             ->groupBy('period', 'currency')
             ->orderBy('period')->orderBy('currency')
             ->get();
@@ -215,7 +289,9 @@ class ReportsController extends Controller
             $currency = (string) $report->currency;
             $previousPeriod = $this->previousReportPeriod($period, (string) $report->period);
             $prev = (float) ($revenueByPeriod[$currency . '|' . $previousPeriod]->total_revenue ?? 0);
-            $report->growth_rate = $prev > 0
+            $previousRow = $revenueByPeriod[$currency . '|' . $previousPeriod] ?? null;
+            $report->growth_comparison_incomplete = (int) $report->unpriced_bookings_count > 0 || (int) ($previousRow->unpriced_bookings_count ?? 0) > 0;
+            $report->growth_rate = !$report->growth_comparison_incomplete && $prev > 0
                 ? round((($report->total_revenue - $prev) / $prev) * 100, 2)
                 : null;
         }
@@ -374,21 +450,23 @@ class ReportsController extends Controller
         $summaryFilters = $filters;
         unset($summaryFilters['search']);
         $summaryQuery = Booking::query();
-        $this->applyFilters($summaryQuery, $summaryFilters);
+        $this->applyFilters($summaryQuery, $summaryFilters, $this->reportBookingDateColumn($filters));
+        $this->applyUnpricedBookingFilter($summaryQuery, $filters);
         $query = clone $summaryQuery;
         if (!empty($filters['search'])) $this->applyBookingSearch($query, $filters['search']);
 
         $currencyExpression = "COALESCE(NULLIF(UPPER(currency), ''), 'LKR')";
         $paymentStatusExpression = "COALESCE(NULLIF(LOWER(payment_status), ''), 'unknown')";
         $byCurrency = (clone $summaryQuery)
-            ->selectRaw("{$currencyExpression} as currency, COUNT(*) as bookings, SUM(COALESCE(total_actual, 0)) as amount")
-            ->groupByRaw($currencyExpression)->orderBy('currency')->get();
+            ->selectRaw("{$currencyExpression} as currency, COUNT(*) as bookings, SUM(COALESCE(total_actual, 0)) as amount, COUNT(total_actual) as priced_bookings_count, COUNT(CASE WHEN total_actual IS NULL THEN 1 END) as unpriced_bookings_count")
+            ->groupByRaw($currencyExpression)->orderBy('currency')->get()
+            ->map(fn ($row) => ['currency' => (string) $row->currency, 'bookings' => (int) $row->bookings, 'amount' => (float) $row->amount, 'priced_bookings_count' => (int) $row->priced_bookings_count, 'unpriced_bookings_count' => (int) $row->unpriced_bookings_count])->values();
         $byStatus = (clone $summaryQuery)
             ->selectRaw('status, COUNT(*) as bookings')->groupBy('status')->orderBy('status')->get()
             ->map(fn ($row) => ['status' => $row->status, 'bookings' => (int) $row->bookings])->values();
 
         $byPaymentStatus = (clone $summaryQuery)
-            ->selectRaw("{$paymentStatusExpression} as status, {$currencyExpression} as currency, COUNT(*) as bookings, SUM(COALESCE(total_actual, 0)) as gross_booking_value")
+            ->selectRaw("{$paymentStatusExpression} as status, {$currencyExpression} as currency, COUNT(*) as bookings, SUM(COALESCE(total_actual, 0)) as gross_booking_value, COUNT(total_actual) as priced_bookings_count, COUNT(CASE WHEN total_actual IS NULL THEN 1 END) as unpriced_bookings_count")
             ->groupByRaw($paymentStatusExpression)->groupByRaw($currencyExpression)
             ->orderBy('status')->orderBy('currency')->get()
             ->map(fn ($row) => [
@@ -396,19 +474,22 @@ class ReportsController extends Controller
                 'currency' => (string) $row->currency,
                 'bookings' => (int) $row->bookings,
                 'gross_booking_value' => (float) $row->gross_booking_value,
+                'priced_bookings_count' => (int) $row->priced_bookings_count,
+                'unpriced_bookings_count' => (int) $row->unpriced_bookings_count,
             ])->values();
 
         $comparison = null;
         if (isset($comparisonDates['compare_date_from'], $comparisonDates['compare_date_to'])) {
             $comparisonFilters = [...$summaryFilters, 'date_from' => $comparisonDates['compare_date_from'], 'date_to' => $comparisonDates['compare_date_to']];
             $comparisonQuery = Booking::query();
-            $this->applyFilters($comparisonQuery, $comparisonFilters);
+            $this->applyFilters($comparisonQuery, $comparisonFilters, $this->reportBookingDateColumn($comparisonFilters));
+            $this->applyUnpricedBookingFilter($comparisonQuery, $comparisonFilters);
             $comparison = [
                 'total_bookings' => (clone $comparisonQuery)->count(),
                 'by_currency' => (clone $comparisonQuery)
-                    ->selectRaw("{$currencyExpression} as currency, COUNT(*) as bookings, SUM(COALESCE(total_actual, 0)) as amount")
+                    ->selectRaw("{$currencyExpression} as currency, COUNT(*) as bookings, SUM(COALESCE(total_actual, 0)) as amount, COUNT(total_actual) as priced_bookings_count, COUNT(CASE WHEN total_actual IS NULL THEN 1 END) as unpriced_bookings_count")
                     ->groupByRaw($currencyExpression)->orderBy('currency')->get()
-                    ->map(fn ($row) => ['currency' => (string) $row->currency, 'bookings' => (int) $row->bookings, 'amount' => (float) $row->amount])->values(),
+                    ->map(fn ($row) => ['currency' => (string) $row->currency, 'bookings' => (int) $row->bookings, 'amount' => (float) $row->amount, 'priced_bookings_count' => (int) $row->priced_bookings_count, 'unpriced_bookings_count' => (int) $row->unpriced_bookings_count])->values(),
             ];
         }
 
@@ -433,7 +514,7 @@ class ReportsController extends Controller
                 ?? '',
             'start_date' => $booking->bookingItems->min('from_date'),
             'end_date' => $booking->bookingItems->max('to_date'),
-            'total_amount' => (float) $booking->total_actual,
+            'total_amount' => $booking->total_actual === null ? null : (float) $booking->total_actual,
             'currency' => strtoupper((string) ($booking->currency ?: 'LKR')),
             'status' => $booking->status,
             'payment_status' => strtolower((string) ($booking->payment_status ?: 'unknown')),
@@ -512,6 +593,66 @@ class ReportsController extends Controller
         ])->values()]);
     }
 
+    public function getBookingFilterOptions(Request $request): JsonResponse
+    {
+        $data = $request->validate([
+            'type' => ['required', 'in:customer,vehicle,agent'],
+            'q' => ['nullable', 'string', 'max:100'],
+            'selected_id' => ['nullable', 'uuid'],
+            'staff_user_id' => ['nullable', 'uuid'],
+            'organization_unit_id' => ['nullable', 'uuid'],
+        ]);
+        abort_unless($data['type'] !== 'agent' || $request->user()->can('agents.view'), 403);
+        $filters = array_filter([
+            'staff_user_id' => $data['staff_user_id'] ?? null,
+            'organization_unit_id' => $data['organization_unit_id'] ?? null,
+        ]);
+        $bookings = DB::table('bookings as bookings')->select('bookings.id');
+        $this->applyReportBookingScope($bookings);
+        $this->applyResponsibleFilters($bookings, $filters);
+
+        $type = $data['type'];
+        $query = match ($type) {
+            'customer' => Customer::query()->select(['customers.id', 'customers.user_id', 'customers.code'])
+                ->whereIn('customers.id', Booking::query()->whereIn('bookings.id', clone $bookings)->whereNotNull('bookings.customer_id')->select('bookings.customer_id'))
+                ->with('user:id,first_name,last_name'),
+            'vehicle' => Vehicle::query()->select(['vehicles.id', 'vehicles.title', 'vehicles.license_plate', 'vehicles.registration_no'])
+                ->whereIn('vehicles.id', BookingItem::query()->whereIn('booking_items.booking_id', clone $bookings)->whereNotNull('booking_items.vehicle_id')->select('booking_items.vehicle_id')),
+            default => Agent::query()->select(['agents.id', 'agents.user_id', 'agents.code'])
+                ->whereIn('agents.id', Booking::query()->whereIn('bookings.id', clone $bookings)->whereNotNull('bookings.agent_id')->select('bookings.agent_id'))
+                ->with('user:id,first_name,last_name'),
+        };
+
+        if (!empty($data['q'])) {
+            $term = '%' . mb_strtolower(trim($data['q'])) . '%';
+            $query->where(function ($search) use ($type, $term) {
+                if ($type === 'vehicle') {
+                    $search->whereRaw('LOWER(COALESCE(vehicles.title, \'\')) LIKE ?', [$term])
+                        ->orWhereRaw('LOWER(COALESCE(vehicles.license_plate, vehicles.registration_no, \'\')) LIKE ?', [$term]);
+                } else {
+                    $search->whereRaw('LOWER(COALESCE(' . ($type === 'customer' ? 'customers.code' : 'agents.code') . ', \'\')) LIKE ?', [$term])
+                        ->orWhereHas('user', fn ($user) => $user->whereRaw("LOWER(CONCAT_WS(' ', first_name, last_name)) LIKE ?", [$term]));
+                }
+            });
+        }
+
+        if (!empty($data['selected_id'])) {
+            $query->orderByRaw('CASE WHEN id = ? THEN 0 ELSE 1 END', [$data['selected_id']]);
+        }
+        $options = $query->orderBy('id')->limit(50)->get()->map(function ($option) use ($type) {
+            $name = $type === 'vehicle'
+                ? (string) ($option->title ?: $option->license_plate ?: $option->registration_no ?: 'Vehicle')
+                : trim(($option->user?->first_name ?? '') . ' ' . ($option->user?->last_name ?? ''));
+            return [
+                'id' => (string) $option->id,
+                'name' => $name ?: ($type === 'customer' ? ($option->code ?: 'Customer') : ($option->code ?: 'Agent')),
+                'code' => $type === 'vehicle' ? ($option->license_plate ?: $option->registration_no) : $option->code,
+            ];
+        })->values();
+
+        return response()->json(['status' => 'success', 'data' => $options]);
+    }
+
     public function getCustomerReports(Request $request): JsonResponse
     {
         $pagination = $request->validate([
@@ -545,6 +686,7 @@ class ReportsController extends Controller
                 ->where('created_at', '>=', TimezoneService::userDateStartUtc($comparisonDates['compare_date_from']))
                 ->where('created_at', '<', $this->exclusiveDateEnd($comparisonDates['compare_date_to']))
                 ->when(!empty($filters['customer_status']), fn ($q) => $q->where('is_active', $filters['customer_status'] === 'active'));
+            $this->applyCustomerSearchFilter($previousCohort, $filters);
             $this->applyCustomerActivityFilter($previousCohort, $filters);
             $summary['comparison'] = [
                 'total_customers' => (clone $previousCohort)->count(),
@@ -574,7 +716,7 @@ class ReportsController extends Controller
 
     private function customerReportQuery(array $filters)
     {
-        return $this->allCustomers($filters)
+        $query = $this->allCustomers($filters)
             ->leftJoin('users as report_customer_users', 'customers.user_id', '=', 'report_customer_users.id')
             ->select('customers.*')
             ->with('user')
@@ -589,15 +731,20 @@ class ReportsController extends Controller
             ->when(!empty($filters['date_from']), fn ($q) => $q->where('customers.created_at', '>=', TimezoneService::userDateStartUtc($filters['date_from'])))
             ->when(!empty($filters['date_to']), fn ($q) => $q->where('customers.created_at', '<', $this->exclusiveDateEnd($filters['date_to'])))
             ->when(!empty($filters['customer_status']), fn ($q) => $q->where('customers.is_active', $filters['customer_status'] === 'active'))
-            ->when(!empty($filters['customer_activity']), fn ($q) => $this->applyCustomerActivityFilter($q, $filters))
-            ->when(!empty($filters['search']), function ($q) use ($filters) {
-                $search = '%' . mb_strtolower($filters['search']) . '%';
-                $q->where(function ($where) use ($search) {
-                    $where->whereRaw("LOWER(CONCAT_WS(' ', report_customer_users.first_name, report_customer_users.last_name)) LIKE ?", [$search])
-                        ->orWhereRaw('LOWER(COALESCE(report_customer_users.email, \'\')) LIKE ?', [$search])
-                        ->orWhereRaw('LOWER(COALESCE(report_customer_users.phone, \'\')) LIKE ?', [$search]);
-                });
-            });
+            ->when(!empty($filters['customer_activity']), fn ($q) => $this->applyCustomerActivityFilter($q, $filters));
+        $this->applyCustomerSearchFilter($query, $filters);
+        return $query;
+    }
+
+    private function applyCustomerSearchFilter($query, array $filters): void
+    {
+        if (empty($filters['search'])) return;
+        $search = '%' . mb_strtolower($filters['search']) . '%';
+        $query->whereHas('user', function ($user) use ($search): void {
+            $user->whereRaw("LOWER(CONCAT_WS(' ', first_name, last_name)) LIKE ?", [$search])
+                ->orWhereRaw('LOWER(COALESCE(email, \'\')) LIKE ?', [$search])
+                ->orWhereRaw('LOWER(COALESCE(phone, \'\')) LIKE ?', [$search]);
+        });
     }
 
     private function customerReportSummary(array $filters): array
@@ -610,6 +757,8 @@ class ReportsController extends Controller
             ->when(!empty($filters['date_from']), fn ($q) => $q->where('created_at', '>=', TimezoneService::userDateStartUtc($filters['date_from'])))
             ->when(!empty($filters['date_to']), fn ($q) => $q->where('created_at', '<', $this->exclusiveDateEnd($filters['date_to'])))
             ->when(!empty($filters['customer_status']), fn ($q) => $q->where('is_active', $filters['customer_status'] === 'active'));
+        $this->applyCustomerSearchFilter($cohort, $filters);
+        $this->applyCustomerSearchFilter($customers, $filters);
         $this->applyCustomerActivityFilter($cohort, $filters);
         $this->applyCustomerActivityFilter($customers, $filters);
         $spend = DB::table('bookings')->joinSub($cohort, 'report_customers', 'report_customers.id', '=', 'bookings.customer_id')
@@ -632,20 +781,26 @@ class ReportsController extends Controller
 
     private function countRepeatCustomers($customers, array $filters): int
     {
-        return (clone $customers)->whereHas('bookings', function ($query) use ($filters): void {
-            $this->applyReportBookingScope($query);
-            $this->applyResponsibleFilters($query, $filters);
-        }, '>=', 2)->count();
+        return (clone $customers)->whereHas('bookings', fn ($query) => $this->applyCustomerActivityBookingFilters($query, $filters), '>=', 2)->count();
+    }
+
+    private function applyCustomerActivityBookingFilters($query, array $filters): void
+    {
+        $this->applyReportBookingScope($query);
+        $this->applyResponsibleFilters($query, $filters);
+        if (!empty($filters['activity_date_from'])) {
+            $query->where('bookings.created_at', '>=', TimezoneService::userDateStartUtc($filters['activity_date_from']));
+        }
+        if (!empty($filters['activity_date_to'])) {
+            $query->where('bookings.created_at', '<', $this->exclusiveDateEnd($filters['activity_date_to']));
+        }
     }
 
     private function applyCustomerActivityFilter($customers, array $filters): void
     {
         if (empty($filters['customer_activity'])) return;
 
-        $scopeBookings = function ($query) use ($filters): void {
-            $this->applyReportBookingScope($query);
-            $this->applyResponsibleFilters($query, $filters);
-        };
+        $scopeBookings = fn ($query) => $this->applyCustomerActivityBookingFilters($query, $filters);
         if ($filters['customer_activity'] === 'repeat') {
             $customers->whereHas('bookings', $scopeBookings, '>=', 2);
             return;
@@ -712,6 +867,7 @@ class ReportsController extends Controller
         $direction = $pagination['sort_direction'] ?? 'asc';
         $sortBy = $pagination['vehicle_sort_by'] ?? 'registration_number';
         $vehicles = $this->filteredReportVehicles($filters);
+        $filteredVehicleIds = (clone $vehicles)->select('vehicles.id');
         match ($sortBy) {
             'category' => $vehicles->leftJoin('vehicle_groups as report_vehicle_groups', 'vehicles.vehicle_group_id', '=', 'report_vehicle_groups.id')->orderBy('report_vehicle_groups.name', $direction)->select('vehicles.*'),
             'status' => $vehicles->orderBy('vehicles.status', $direction),
@@ -725,29 +881,31 @@ class ReportsController extends Controller
         $pageRows = $this->vehicleReportMetrics($filters, $vehicleIds)->get()->groupBy(fn ($metric) => (string) $metric->vehicle_id);
         $data = collect($vehicles->items())->flatMap(function ($vehicle) use ($pageRows) {
             $metrics = $pageRows->get((string) $vehicle->id, collect());
-            if ($metrics->isEmpty()) $metrics = collect([(object) ['currency' => '', 'trip_count' => 0, 'completed_revenue' => 0]]);
+            if ($metrics->isEmpty()) $metrics = collect([(object) ['currency' => '', 'trip_count' => 0, 'priced_completed_trips' => 0, 'unpriced_completed_trips' => 0, 'completed_revenue' => 0]]);
             return $metrics->map(fn ($metric) => [
                 'id' => (string) $vehicle->id,
                 'registration_number' => $vehicle->license_plate,
                 'vehicle_info' => $vehicle->title ?? $vehicle->license_plate,
                 'category' => $vehicle->group?->name ?? '',
                 'total_bookings' => (int) $metric->trip_count,
+                'priced_completed_trips' => (int) $metric->priced_completed_trips,
+                'unpriced_completed_trips' => (int) $metric->unpriced_completed_trips,
                 'total_revenue' => (float) $metric->completed_revenue,
                 'currency' => (string) $metric->currency,
                 'status' => $vehicle->status ?? $vehicle->availability_status,
             ]);
         })->values();
-        $summaryByCurrency = DB::query()->fromSub($this->vehicleReportMetrics($filters), 'vehicle_report_metrics')
-            ->selectRaw('currency, SUM(trip_count) as trips, SUM(completed_revenue) as revenue')
+        $summaryByCurrency = DB::query()->fromSub($this->vehicleReportMetrics($filters, $filteredVehicleIds), 'vehicle_report_metrics')
+            ->selectRaw('currency, SUM(trip_count) as trips, SUM(priced_completed_trips) as priced_completed_trips, SUM(unpriced_completed_trips) as unpriced_completed_trips, SUM(completed_revenue) as revenue')
             ->groupBy('currency')->orderBy('currency')->get()
-            ->map(fn ($row) => ['currency' => (string) $row->currency, 'trips' => (int) $row->trips, 'revenue' => (float) $row->revenue])->values();
+            ->map(fn ($row) => ['currency' => (string) $row->currency, 'trips' => (int) $row->trips, 'priced_completed_trips' => (int) $row->priced_completed_trips, 'unpriced_completed_trips' => (int) $row->unpriced_completed_trips, 'revenue' => (float) $row->revenue])->values();
         $comparison = null;
         if (isset($comparisonDates['compare_date_from'], $comparisonDates['compare_date_to'])) {
             $comparisonFilters = [...$filters, 'date_from' => $comparisonDates['compare_date_from'], 'date_to' => $comparisonDates['compare_date_to']];
-            $comparisonByCurrency = DB::query()->fromSub($this->vehicleReportMetrics($comparisonFilters), 'vehicle_report_metrics')
-                ->selectRaw('currency, SUM(trip_count) as trips, SUM(completed_revenue) as revenue')
+            $comparisonByCurrency = DB::query()->fromSub($this->vehicleReportMetrics($comparisonFilters, $filteredVehicleIds), 'vehicle_report_metrics')
+                ->selectRaw('currency, SUM(trip_count) as trips, SUM(priced_completed_trips) as priced_completed_trips, SUM(unpriced_completed_trips) as unpriced_completed_trips, SUM(completed_revenue) as revenue')
                 ->groupBy('currency')->orderBy('currency')->get()
-                ->map(fn ($row) => ['currency' => (string) $row->currency, 'trips' => (int) $row->trips, 'revenue' => (float) $row->revenue])->values();
+                ->map(fn ($row) => ['currency' => (string) $row->currency, 'trips' => (int) $row->trips, 'priced_completed_trips' => (int) $row->priced_completed_trips, 'unpriced_completed_trips' => (int) $row->unpriced_completed_trips, 'revenue' => (float) $row->revenue])->values();
             $comparison = ['trips' => (int) $comparisonByCurrency->sum('trips'), 'revenue_by_currency' => $comparisonByCurrency];
         }
 
@@ -761,7 +919,7 @@ class ReportsController extends Controller
                 'last_page' => $vehicles->lastPage(),
                 'to' => $vehicles->lastItem(),
                 'total' => $vehicles->total(),
-                'summary' => ['total_vehicles' => $this->visibleVehicles()->when(!empty($filters['vehicle_id']), fn ($query) => $query->whereKey($filters['vehicle_id']))->count(), 'trips' => (int) $summaryByCurrency->sum('trips'), 'revenue_by_currency' => $summaryByCurrency, 'comparison' => $comparison],
+                'summary' => ['total_vehicles' => $this->filteredReportVehicles($filters)->count(), 'trips' => (int) $summaryByCurrency->sum('trips'), 'revenue_by_currency' => $summaryByCurrency, 'comparison' => $comparison],
             ],
         ]);
     }
@@ -791,26 +949,30 @@ class ReportsController extends Controller
             ->orderBy('drivers.id')->orderBy('currency')
             ->paginate($pagination['per_page'] ?? 25, ['*'], 'page', $pagination['page'] ?? 1);
         $summary = DB::query()->fromSub($this->driverReportQuery($filters), 'report_driver_metrics')
-            ->selectRaw('currency, COUNT(DISTINCT driver_id) as drivers, SUM(bookings) as assignments, SUM(completed_bookings) as completed_assignments, SUM(completed_revenue) as completed_revenue')
+            ->selectRaw('currency, COUNT(DISTINCT driver_id) as drivers, SUM(assignments) as assignments, SUM(completed_assignments) as completed_assignments, SUM(priced_completed_assignments) as priced_completed_assignments, SUM(unpriced_completed_assignments) as unpriced_completed_assignments, SUM(completed_revenue) as completed_revenue')
             ->groupBy('currency')->orderBy('currency')->get()
             ->map(fn ($row) => [
                 'currency' => (string) $row->currency,
                 'drivers' => (int) $row->drivers,
                 'assignments' => (int) $row->assignments,
                 'completed_assignments' => (int) $row->completed_assignments,
+                'priced_completed_assignments' => (int) $row->priced_completed_assignments,
+                'unpriced_completed_assignments' => (int) $row->unpriced_completed_assignments,
                 'completed_revenue' => (float) $row->completed_revenue,
             ])->values();
         $comparison = null;
         if (isset($comparisonDates['compare_date_from'], $comparisonDates['compare_date_to'])) {
             $comparisonFilters = [...$filters, 'date_from' => $comparisonDates['compare_date_from'], 'date_to' => $comparisonDates['compare_date_to']];
             $comparison = DB::query()->fromSub($this->driverReportQuery($comparisonFilters), 'report_driver_metrics')
-                ->selectRaw('currency, COUNT(DISTINCT driver_id) as drivers, SUM(bookings) as assignments, SUM(completed_bookings) as completed_assignments, SUM(completed_revenue) as completed_revenue')
+                ->selectRaw('currency, COUNT(DISTINCT driver_id) as drivers, SUM(assignments) as assignments, SUM(completed_assignments) as completed_assignments, SUM(priced_completed_assignments) as priced_completed_assignments, SUM(unpriced_completed_assignments) as unpriced_completed_assignments, SUM(completed_revenue) as completed_revenue')
                 ->groupBy('currency')->orderBy('currency')->get()
                 ->map(fn ($row) => [
                     'currency' => (string) $row->currency,
                     'drivers' => (int) $row->drivers,
                     'assignments' => (int) $row->assignments,
                     'completed_assignments' => (int) $row->completed_assignments,
+                    'priced_completed_assignments' => (int) $row->priced_completed_assignments,
+                    'unpriced_completed_assignments' => (int) $row->unpriced_completed_assignments,
                     'completed_revenue' => (float) $row->completed_revenue,
                 ])->values();
         }
@@ -823,6 +985,9 @@ class ReportsController extends Controller
                 'currency' => (string) $row->currency,
                 'bookings' => (int) $row->bookings,
                 'completed_bookings' => (int) $row->completed_bookings,
+                'completed_assignments' => (int) $row->completed_assignments,
+                'priced_completed_assignments' => (int) $row->priced_completed_assignments,
+                'unpriced_completed_assignments' => (int) $row->unpriced_completed_assignments,
                 'completed_revenue' => (float) $row->completed_revenue,
             ])->values(),
             'meta' => [
@@ -845,6 +1010,7 @@ class ReportsController extends Controller
             'maintenance_sort_by' => ['nullable', 'in:vehicle,type,performed_date,status,cost'],
             'sort_direction' => ['nullable', 'in:asc,desc'],
             'maintenance_status' => ['nullable', 'in:completed,pending,cancelled'],
+            'maintenance_cost_status' => ['nullable', 'in:missing,recorded'],
             'payment_status' => ['nullable', 'string', 'max:64'],
         ]);
         $filters = $this->parseFilters($request);
@@ -866,11 +1032,11 @@ class ReportsController extends Controller
         $totals = DB::query()->fromSub(clone $summaryRows, 'maintenance_rows')
             ->selectRaw('COUNT(*) as records')->first();
         $costByCurrency = DB::query()->fromSub(clone $summaryRows, 'maintenance_rows')
-            ->selectRaw("currency, SUM(CASE WHEN status = 'completed' THEN COALESCE(cost, 0) ELSE 0 END) as completed_cost")
+            ->selectRaw("currency, SUM(CASE WHEN status = 'completed' THEN COALESCE(cost, 0) ELSE 0 END) as completed_cost, COUNT(CASE WHEN status = 'completed' AND cost IS NOT NULL THEN 1 END) as priced_completed_records, COUNT(CASE WHEN status = 'completed' AND cost IS NULL THEN 1 END) as unpriced_completed_records")
             ->groupBy('currency')->orderBy('currency')->get()
-            ->map(fn ($row) => ['currency' => (string) $row->currency, 'completed_cost' => (float) $row->completed_cost])->values();
+            ->map(fn ($row) => ['currency' => (string) $row->currency, 'completed_cost' => (float) $row->completed_cost, 'priced_completed_records' => (int) $row->priced_completed_records, 'unpriced_completed_records' => (int) $row->unpriced_completed_records])->values();
         $byStatus = DB::query()->fromSub($summaryRows, 'maintenance_rows')
-            ->selectRaw('status, currency, COUNT(*) as records, SUM(COALESCE(cost, 0)) as total_cost')->groupBy('status', 'currency')->orderBy('status')->orderBy('currency')->get();
+            ->selectRaw('status, currency, COUNT(*) as records, SUM(COALESCE(cost, 0)) as total_cost, COUNT(CASE WHEN cost IS NULL THEN 1 END) as missing_cost_records')->groupBy('status', 'currency')->orderBy('status')->orderBy('currency')->get();
         $overdueSchedulesQuery = DB::table('vehicle_maintenance_schedules')->whereNull('deleted_at')
             ->whereNotNull('next_due_date')->whereDate('next_due_date', '<', Carbon::today(TimezoneService::getUserTimezone())->toDateString());
         $visibleVehicleIds = $this->visibleVehicleIds();
@@ -882,9 +1048,9 @@ class ReportsController extends Controller
             $previousRows = $this->maintenanceReportQuery($comparisonFilters);
             $previousTotals = DB::query()->fromSub(clone $previousRows, 'maintenance_rows')->selectRaw('COUNT(*) as records')->first();
             $previousCost = DB::query()->fromSub(clone $previousRows, 'maintenance_rows')
-                ->selectRaw("currency, SUM(CASE WHEN status = 'completed' THEN COALESCE(cost, 0) ELSE 0 END) as completed_cost")
+                ->selectRaw("currency, SUM(CASE WHEN status = 'completed' THEN COALESCE(cost, 0) ELSE 0 END) as completed_cost, COUNT(CASE WHEN status = 'completed' AND cost IS NOT NULL THEN 1 END) as priced_completed_records, COUNT(CASE WHEN status = 'completed' AND cost IS NULL THEN 1 END) as unpriced_completed_records")
                 ->groupBy('currency')->orderBy('currency')->get()
-                ->map(fn ($row) => ['currency' => (string) $row->currency, 'completed_cost' => (float) $row->completed_cost])->values();
+                ->map(fn ($row) => ['currency' => (string) $row->currency, 'completed_cost' => (float) $row->completed_cost, 'priced_completed_records' => (int) $row->priced_completed_records, 'unpriced_completed_records' => (int) $row->unpriced_completed_records])->values();
             $comparison = ['records' => (int) ($previousTotals->records ?? 0), 'completed_cost_by_currency' => $previousCost];
         }
 
@@ -898,7 +1064,7 @@ class ReportsController extends Controller
                     'records' => (int) ($totals->records ?? 0),
                     'overdue_schedules' => $overdueSchedules,
                     'completed_cost_by_currency' => $costByCurrency,
-                    'by_status' => $byStatus->map(fn ($row) => ['status' => $row->status, 'currency' => (string) $row->currency, 'records' => (int) $row->records, 'total_cost' => (float) $row->total_cost])->values(),
+                    'by_status' => $byStatus->map(fn ($row) => ['status' => $row->status, 'currency' => (string) $row->currency, 'records' => (int) $row->records, 'total_cost' => (float) $row->total_cost, 'missing_cost_records' => (int) $row->missing_cost_records])->values(),
                     'comparison' => $comparison,
                 ],
             ],
@@ -920,7 +1086,7 @@ class ReportsController extends Controller
                 $q->whereRaw("LOWER(CONCAT_WS(' ', users.first_name, users.last_name)) LIKE ?", [$search]);
             })
             ->selectRaw("drivers.id as driver_id, CONCAT(users.first_name, ' ', users.last_name) as driver_name, COALESCE(NULLIF(UPPER(booking_items.currency), ''), NULLIF(UPPER(bookings.currency), ''), 'LKR') as currency")
-            ->selectRaw('COUNT(DISTINCT bookings.id) as bookings, COUNT(DISTINCT CASE WHEN bookings.status = \'completed\' THEN bookings.id END) as completed_bookings, SUM(CASE WHEN bookings.status = \'completed\' THEN COALESCE(booking_items.total_price, 0) ELSE 0 END) as completed_revenue')
+            ->selectRaw("COUNT(DISTINCT bookings.id) as bookings, COUNT(DISTINCT CASE WHEN bookings.status = 'completed' THEN bookings.id END) as completed_bookings, COUNT(booking_items.id) as assignments, COUNT(CASE WHEN bookings.status = 'completed' THEN booking_items.id END) as completed_assignments, COUNT(CASE WHEN bookings.status = 'completed' AND booking_items.total_price IS NOT NULL THEN booking_items.id END) as priced_completed_assignments, COUNT(CASE WHEN bookings.status = 'completed' AND booking_items.total_price IS NULL THEN booking_items.id END) as unpriced_completed_assignments, SUM(CASE WHEN bookings.status = 'completed' THEN COALESCE(booking_items.total_price, 0) ELSE 0 END) as completed_revenue")
             ->groupBy('drivers.id', 'users.first_name', 'users.last_name')
             ->groupByRaw("COALESCE(NULLIF(UPPER(booking_items.currency), ''), NULLIF(UPPER(bookings.currency), ''), 'LKR')");
 
@@ -937,13 +1103,15 @@ class ReportsController extends Controller
 
         return $vehicles->flatMap(function ($vehicle) use ($metrics) {
                 $rows = $metrics->get((string) $vehicle->id, collect());
-                if ($rows->isEmpty()) $rows = collect([(object) ['currency' => '', 'trip_count' => 0, 'completed_revenue' => 0]]);
+                if ($rows->isEmpty()) $rows = collect([(object) ['currency' => '', 'trip_count' => 0, 'priced_completed_trips' => 0, 'unpriced_completed_trips' => 0, 'completed_revenue' => 0]]);
                 return $rows->map(fn ($metric) => [
                     'id' => (string) $vehicle->id,
                     'registration_number' => $vehicle->license_plate,
                     'vehicle_info' => $vehicle->title ?? $vehicle->license_plate,
                     'category' => $vehicle->group?->name ?? '',
                     'total_bookings' => (int) $metric->trip_count,
+                    'priced_completed_trips' => (int) $metric->priced_completed_trips,
+                    'unpriced_completed_trips' => (int) $metric->unpriced_completed_trips,
                     'total_revenue' => (float) $metric->completed_revenue,
                     'currency' => (string) $metric->currency,
                     'status' => $vehicle->status ?? $vehicle->availability_status,
@@ -975,7 +1143,7 @@ class ReportsController extends Controller
             ->when($vehicleIds !== null, fn ($q) => $q->whereIn('booking_items.vehicle_id', $vehicleIds))
             ->when(!empty($filters['date_from']), fn ($q) => $q->whereRaw('COALESCE(booking_items.to_date, booking_items.from_date) >= ?', [TimezoneService::userDateStartUtc($filters['date_from'])]))
             ->when(!empty($filters['date_to']), fn ($q) => $q->where('booking_items.from_date', '<', TimezoneService::userDateEndExclusiveUtc($filters['date_to'])))
-            ->selectRaw("booking_items.vehicle_id, COALESCE(NULLIF(UPPER(booking_items.currency), ''), NULLIF(UPPER(bookings.currency), ''), 'LKR') as currency, COUNT(*) as trip_count, SUM(CASE WHEN booking_items.status = 'completed' THEN COALESCE(booking_items.total_price, 0) ELSE 0 END) as completed_revenue")
+            ->selectRaw("booking_items.vehicle_id, COALESCE(NULLIF(UPPER(booking_items.currency), ''), NULLIF(UPPER(bookings.currency), ''), 'LKR') as currency, COUNT(*) as trip_count, COUNT(CASE WHEN booking_items.status = 'completed' AND booking_items.total_price IS NOT NULL THEN 1 END) as priced_completed_trips, COUNT(CASE WHEN booking_items.status = 'completed' AND booking_items.total_price IS NULL THEN 1 END) as unpriced_completed_trips, SUM(CASE WHEN booking_items.status = 'completed' THEN COALESCE(booking_items.total_price, 0) ELSE 0 END) as completed_revenue")
             ->groupBy('booking_items.vehicle_id')
             ->groupByRaw("COALESCE(NULLIF(UPPER(booking_items.currency), ''), NULLIF(UPPER(bookings.currency), ''), 'LKR')");
 
@@ -1189,12 +1357,16 @@ class ReportsController extends Controller
             'customer_id' => ['nullable', 'uuid'],
             'customer_status' => ['nullable', 'in:active,inactive'],
             'customer_activity' => ['nullable', 'in:repeat,not_repeat'],
+            'activity_date_from' => ['nullable', 'required_with:activity_date_to', 'date_format:Y-m-d'],
+            'activity_date_to' => ['nullable', 'required_with:activity_date_from', 'date_format:Y-m-d', 'after_or_equal:activity_date_from'],
             'agent_id' => ['nullable', 'uuid'],
             'staff_user_id' => ['nullable', 'uuid'],
             'organization_unit_id' => ['nullable', 'uuid'],
             'service_type_id' => ['nullable', 'uuid'],
             'payment_status' => ['nullable', 'string', 'max:64'],
+            'unpriced_only' => ['nullable', 'boolean'],
             'maintenance_status' => ['nullable', 'in:completed,pending,cancelled'],
+            'maintenance_cost_status' => ['nullable', 'in:missing,recorded'],
             'currency' => ['nullable', 'required_with:min_amount,max_amount', 'regex:/^[A-Za-z]{3}$/'],
             'min_amount' => ['nullable', 'numeric', 'min:0'],
             'max_amount' => ['nullable', 'numeric', 'min:0', 'gte:min_amount'],
@@ -1216,6 +1388,9 @@ class ReportsController extends Controller
             'vehicle_id'     => $request->get('vehicle_id'),
             'customer_id'    => $request->get('customer_id'),
             'customer_status' => $request->get('customer_status'),
+            'customer_activity' => $request->get('customer_activity'),
+            'activity_date_from' => $request->get('activity_date_from'),
+            'activity_date_to' => $request->get('activity_date_to'),
             'booking_status' => $request->get('booking_status'),
             'agent_id'       => $request->get('agent_id'),
             'staff_user_id'  => $request->get('staff_user_id'),
@@ -1226,7 +1401,9 @@ class ReportsController extends Controller
             'max_amount'     => $request->get('max_amount'),
             'search'         => $request->get('search'),
             'maintenance_status' => $request->get('maintenance_status'),
+            'maintenance_cost_status' => $request->get('maintenance_cost_status'),
             'payment_status' => $request->get('payment_status'),
+            'unpriced_only' => $request->boolean('unpriced_only') ? true : null,
         ], fn ($value) => $value !== null && $value !== '');
     }
 
@@ -1286,6 +1463,18 @@ class ReportsController extends Controller
                     break;
             }
         }
+    }
+
+    private function applyUnpricedBookingFilter($query, array $filters): void
+    {
+        if (!empty($filters['unpriced_only'])) {
+            $query->whereNull('bookings.total_actual')->where('bookings.status', 'completed');
+        }
+    }
+
+    private function reportBookingDateColumn(array $filters): string
+    {
+        return !empty($filters['unpriced_only']) ? 'bookings.completed_at' : 'bookings.created_at';
     }
 
     private function applyResponsibleFilters($query, array $filters, string $bookingTable = 'bookings'): void
@@ -1456,7 +1645,7 @@ class ReportsController extends Controller
         $query = Booking::query()->where('status', 'completed');
         $this->applyFilters($query, $filters, 'bookings.completed_at');
         return $query
-            ->selectRaw($this->getDateFormat('day', 'completed_at') . " as date, COALESCE(NULLIF(UPPER(currency), ''), 'LKR') as currency, SUM(COALESCE(total_actual,0)) as revenue")
+            ->selectRaw($this->getDateFormat('day', 'completed_at') . " as date, COALESCE(NULLIF(UPPER(currency), ''), 'LKR') as currency, SUM(COALESCE(total_actual,0)) as revenue, COUNT(total_actual) as priced_bookings_count, COUNT(CASE WHEN total_actual IS NULL THEN 1 END) as unpriced_bookings_count")
             ->groupBy('date', 'currency')
             ->orderBy('date')->orderBy('currency')
             ->get()
@@ -1849,6 +2038,8 @@ class ReportsController extends Controller
             ->when(!empty($filters['date_to']), fn ($q) => $q->whereDate('vmr.performed_date', '<=', $filters['date_to']))
             ->when(!empty($filters['vehicle_id']), fn ($q) => $q->where('vmr.vehicle_id', $filters['vehicle_id']))
             ->when(!empty($filters['maintenance_status']), fn ($q) => $q->where('vmr.status', $filters['maintenance_status']))
+            ->when(($filters['maintenance_cost_status'] ?? null) === 'missing', fn ($q) => $q->whereNull('vmr.cost'))
+            ->when(($filters['maintenance_cost_status'] ?? null) === 'recorded', fn ($q) => $q->whereNotNull('vmr.cost'))
             ->when(!empty($filters['search']), function ($q) use ($filters) {
                 $term = '%' . mb_strtolower($filters['search']) . '%';
                 $q->where(fn ($search) => $search->whereRaw('LOWER(v.title) LIKE ?', [$term])
@@ -1926,7 +2117,8 @@ class ReportsController extends Controller
         $query = Booking::with('bookingItems')
             ->select('id', 'booking_number', 'status', 'payment_status', 'total_actual', 'currency', 'created_at');
 
-        $this->applyFilters($query, $filters);
+        $this->applyFilters($query, $filters, $this->reportBookingDateColumn($filters));
+        $this->applyUnpricedBookingFilter($query, $filters);
         $rows = $query->orderByDesc('created_at')->get();
 
         $headers = ['Booking #', 'Status', 'Payment Status', 'From', 'To', 'Total', 'Currency', 'Created'];
@@ -1963,10 +2155,10 @@ class ReportsController extends Controller
     private function exportVehicleReport(array $filters, string $format): Response
     {
         $rows = collect($this->vehicleReportRows($filters));
-        $headers = ['Vehicle', 'Registration', 'Category', 'Trips in range', 'Completed revenue', 'Currency', 'Status'];
+        $headers = ['Vehicle', 'Registration', 'Category', 'Trips in range', 'Priced completed trips', 'Unpriced completed trips', 'Completed revenue', 'Currency', 'Status'];
         $data = $rows->map(fn ($vehicle) => [
             $vehicle['vehicle_info'], $vehicle['registration_number'], $vehicle['category'],
-            $vehicle['total_bookings'], $vehicle['total_revenue'], $vehicle['currency'], $vehicle['status'],
+            $vehicle['total_bookings'], $vehicle['priced_completed_trips'], $vehicle['unpriced_completed_trips'], $vehicle['total_revenue'], $vehicle['currency'], $vehicle['status'],
         ])->all();
 
         return $this->reportResponse('vehicles_report', $format, $headers, $data, $filters, $filters['locale'] ?? 'en');
@@ -1975,8 +2167,8 @@ class ReportsController extends Controller
     private function exportDriverReport(array $filters, string $format): Response
     {
         $rows = $this->driverReportQuery($filters)->orderBy('driver_name')->orderBy('currency')->get();
-        $headers = ['Driver', 'Currency', 'Bookings', 'Completed bookings', 'Completed revenue'];
-        $data = $rows->map(fn ($row) => [$row->driver_name, $row->currency, $row->bookings, $row->completed_bookings, $row->completed_revenue])->all();
+        $headers = ['Driver', 'Currency', 'Bookings', 'Completed bookings', 'Completed assignment items', 'Priced completed assignment items', 'Unpriced completed assignment items', 'Completed revenue'];
+        $data = $rows->map(fn ($row) => [$row->driver_name, $row->currency, $row->bookings, $row->completed_bookings, $row->completed_assignments, $row->priced_completed_assignments, $row->unpriced_completed_assignments, $row->completed_revenue])->all();
         return $this->reportResponse('drivers_report', $format, $headers, $data, $filters, $filters['locale'] ?? 'en');
     }
 
@@ -2033,29 +2225,38 @@ class ReportsController extends Controller
                 COALESCE(NULLIF(UPPER(currency), ''), 'LKR') as currency,
                 COUNT(*) as bookings,
                 SUM(COALESCE(total_actual,0)) as revenue,
-                SUM(COALESCE(driver_cost,0)) as driver_cost");
+                AVG(total_actual) as average_booking_value,
+                SUM(COALESCE(driver_cost,0)) as driver_cost,
+                COUNT(total_actual) as priced_bookings_count,
+                COUNT(CASE WHEN total_actual IS NULL THEN 1 END) as unpriced_bookings_count,
+                COUNT(CASE WHEN driver_cost IS NULL THEN 1 END) as missing_driver_cost_count,
+                COUNT(CASE WHEN total_actual IS NULL OR driver_cost IS NULL THEN 1 END) as incomplete_financial_bookings_count");
 
         $this->applyFilters($query, $filters, 'bookings.completed_at');
         $rows = $query->groupBy('period', 'currency')->orderBy('period')->orderBy('currency')->get();
         $revenueByPeriod = $rows->keyBy(fn ($row) => $row->currency . '|' . $row->period);
         $serviceRevenue = $this->getAllocatedServiceRevenue($filters, $period);
-        $headers = ['Record type', 'Period', 'Currency', 'Completed bookings', 'Completed revenue', 'Average booking value', 'Driver cost', 'Revenue after driver cost', 'Growth rate (%)', 'Service type', 'Service revenue'];
+        $headers = ['Record type', 'Period', 'Currency', 'Completed bookings', 'Priced bookings', 'Unpriced completed bookings', 'Bookings missing driver cost', 'Completed revenue', 'Average priced booking value', 'Driver cost', 'Revenue after driver cost', 'Growth rate (%)', 'Growth comparison unavailable reason', 'Service type', 'Service revenue'];
         $data = [];
         foreach ($rows as $row) {
             $previousPeriod = $this->previousReportPeriod($period, (string) $row->period);
-            $previousRevenue = (float) ($revenueByPeriod[$row->currency . '|' . $previousPeriod]->revenue ?? 0);
-            $growthRate = $previousRevenue > 0
+            $previousRow = $revenueByPeriod[$row->currency . '|' . $previousPeriod] ?? null;
+            $previousRevenue = (float) ($previousRow->revenue ?? 0);
+            $growthIncomplete = (int) $row->unpriced_bookings_count > 0 || (int) ($previousRow->unpriced_bookings_count ?? 0) > 0;
+            $growthRate = !$growthIncomplete && $previousRevenue > 0
                 ? round((((float) $row->revenue - $previousRevenue) / $previousRevenue) * 100, 2)
                 : null;
             $data[] = [
                 'period_summary', $row->period, $row->currency, (int) $row->bookings,
-                (float) $row->revenue, (float) $row->revenue / max((int) $row->bookings, 1),
-                (float) $row->driver_cost, (float) $row->revenue - (float) $row->driver_cost,
-                $growthRate, '', '',
+                (int) $row->priced_bookings_count, (int) $row->unpriced_bookings_count, (int) $row->missing_driver_cost_count,
+                (int) $row->priced_bookings_count === 0 ? '' : (float) $row->revenue, $row->average_booking_value === null ? '' : (float) $row->average_booking_value,
+                (int) $row->bookings > 0 && (int) $row->missing_driver_cost_count === (int) $row->bookings ? '' : (float) $row->driver_cost,
+                (int) $row->incomplete_financial_bookings_count === 0 ? (float) $row->revenue - (float) $row->driver_cost : '',
+                $growthRate, $growthIncomplete ? (($filters['locale'] ?? 'en') === 'tr' ? 'Bu veya önceki dönemde fiyatlandırılmamış rezervasyonlar' : 'Unpriced bookings in this or prior period') : '', '', '',
             ];
 
             foreach ($serviceRevenue[$row->period . '|' . $row->currency]['services'] ?? [] as $serviceType => $values) {
-                $data[] = ['service_allocation', $row->period, $row->currency, '', '', '', '', '', '', $serviceType, (float) $values['revenue']];
+                $data[] = ['service_allocation', $row->period, $row->currency, '', '', '', '', '', '', '', '', '', '', $serviceType, (float) $values['revenue']];
             }
         }
 
@@ -2094,9 +2295,10 @@ class ReportsController extends Controller
     {
         $isTurkish = $locale === 'tr';
         $labels = $isTurkish
-            ? ['Report' => 'Rapor', 'Generated at' => 'Oluşturulma zamanı', 'Time zone' => 'Saat dilimi', 'Access scope' => 'Erişim kapsamı', 'Date range' => 'Tarih aralığı', 'Comparison period' => 'Karşılaştırma dönemi', 'Period comparison' => 'Dönem karşılaştırması', 'Currency handling' => 'Para birimi işleme', 'Applied filters' => 'Uygulanan filtreler', 'Definition' => 'Tanım', 'Data rows' => 'Veri satırı', 'booking_status' => 'Rezervasyon durumu', 'payment_status' => 'Ödeme durumu', 'staff_user_id' => 'Personel kullanıcı kimliği', 'organization_unit_id' => 'Organizasyon birimi kimliği', 'service_type_id' => 'Hizmet türü kimliği', 'maintenance_status' => 'Bakım durumu', 'search' => 'Arama', 'vehicle_id' => 'Araç kimliği', 'customer_id' => 'Müşteri kimliği', 'agent_id' => 'Acenta kimliği', 'min_amount' => 'En düşük tutar', 'max_amount' => 'En yüksek tutar', 'currency' => 'Para birimi', 'period' => 'Gruplama dönemi']
-            : ['Report' => 'Report', 'Generated at' => 'Generated at', 'Time zone' => 'Time zone', 'Access scope' => 'Access scope', 'Date range' => 'Date range', 'Comparison period' => 'Comparison period', 'Period comparison' => 'Period comparison', 'Currency handling' => 'Currency handling', 'Applied filters' => 'Applied filters', 'Definition' => 'Definition', 'Data rows' => 'Data rows', 'booking_status' => 'Booking status', 'payment_status' => 'Payment status', 'staff_user_id' => 'Staff user ID', 'organization_unit_id' => 'Organization unit ID', 'service_type_id' => 'Service type ID', 'maintenance_status' => 'Maintenance status', 'search' => 'Search', 'vehicle_id' => 'Vehicle ID', 'customer_id' => 'Customer ID', 'agent_id' => 'Agent ID', 'min_amount' => 'Minimum amount', 'max_amount' => 'Maximum amount', 'currency' => 'Currency', 'period' => 'Grouping period'];
+            ? ['Report' => 'Rapor', 'Generated at' => 'Oluşturulma zamanı', 'Time zone' => 'Saat dilimi', 'Access scope' => 'Erişim kapsamı', 'Date range' => 'Tarih aralığı', 'Comparison period' => 'Karşılaştırma dönemi', 'Period comparison' => 'Dönem karşılaştırması', 'Currency handling' => 'Para birimi işleme', 'Applied filters' => 'Uygulanan filtreler', 'Definition' => 'Tanım', 'Data rows' => 'Veri satırı', 'booking_status' => 'Rezervasyon durumu', 'payment_status' => 'Ödeme durumu', 'staff_user_id' => 'Personel kullanıcı kimliği', 'organization_unit_id' => 'Organizasyon birimi kimliği', 'service_type_id' => 'Hizmet türü kimliği', 'maintenance_status' => 'Bakım durumu', 'maintenance_cost_status' => 'Maliyet kaydı durumu', 'activity_date_from' => 'Hareket dönemi başlangıcı', 'activity_date_to' => 'Hareket dönemi bitişi', 'search' => 'Arama', 'vehicle_id' => 'Araç kimliği', 'customer_id' => 'Müşteri kimliği', 'agent_id' => 'Acenta kimliği', 'min_amount' => 'En düşük tutar', 'max_amount' => 'En yüksek tutar', 'currency' => 'Para birimi', 'period' => 'Gruplama dönemi']
+            : ['Report' => 'Report', 'Generated at' => 'Generated at', 'Time zone' => 'Time zone', 'Access scope' => 'Access scope', 'Date range' => 'Date range', 'Comparison period' => 'Comparison period', 'Period comparison' => 'Period comparison', 'Currency handling' => 'Currency handling', 'Applied filters' => 'Applied filters', 'Definition' => 'Definition', 'Data rows' => 'Data rows', 'booking_status' => 'Booking status', 'payment_status' => 'Payment status', 'staff_user_id' => 'Staff user ID', 'organization_unit_id' => 'Organization unit ID', 'service_type_id' => 'Service type ID', 'maintenance_status' => 'Maintenance status', 'maintenance_cost_status' => 'Cost recording status', 'activity_date_from' => 'Booking activity from', 'activity_date_to' => 'Booking activity through', 'search' => 'Search', 'vehicle_id' => 'Vehicle ID', 'customer_id' => 'Customer ID', 'agent_id' => 'Agent ID', 'min_amount' => 'Minimum amount', 'max_amount' => 'Maximum amount', 'currency' => 'Currency', 'period' => 'Grouping period'];
         $labels['customer_activity'] = $isTurkish ? 'Müşteri rezervasyon hareketi' : 'Customer booking activity';
+        $labels['unpriced_only'] = $isTurkish ? 'Fiyatı kaydedilmemiş tamamlanan rezervasyonlar' : 'Completed bookings without a recorded price';
         $timezone = TimezoneService::getUserTimezone();
         $generatedAt = Carbon::now($timezone)->toIso8601String();
         $user = request()->user();
@@ -2116,17 +2318,27 @@ class ReportsController extends Controller
             ? (($isTurkish ? 'Filtre: ' : 'Filter: ') . $filters['currency'] . ($isTurkish ? '; kaynak para birimleri ayrı tutulur' : '; source currencies remain separate'))
             : ($isTurkish ? 'Kaynak para birimleri ayrı tutulur; farklı para birimleri toplanmaz' : 'Source currencies remain separate; different currencies are not added together');
         $definitions = $isTurkish
-            ? ['bookings_report' => 'Rezervasyon oluşturulma tarihi; brüt rezervasyon tutarı rezervasyon para biriminde.', 'customers_report' => 'Seçilen dönemde kaydedilen müşteriler; tekrar müşteri, görünür rezervasyon kapsamındaki en az iki rezervasyondur. Tamamlanan harcama tüm zamanlar içindir ve para birimine göre ayrılır.', 'vehicles_report' => 'Araç hizmet tarihleri booking item tarih aralığına göre; tamamlanan gelir para birimine göre ayrılır.', 'drivers_report' => 'Sürücü atamaları booking item kayıtlarından; tamamlanan gelir para birimine göre ayrılır.', 'maintenance_report' => 'Bakım işlem tarihi ve kaydedilmiş maliyet para birimi.', 'financial_report' => 'Tamamlanma tarihi; tamamlanma tarihi yoksa rezervasyon oluşturulma tarihi. Para birimleri ayrı gösterilir.', 'cash_collections_report' => 'Tahsilat makbuzları alındığı tarih, düzeltmeler etkin tarih ile; kaynak tutar ve kaydedilmiş dönüşüm.', 'custom_report' => 'Seçilen rezervasyon alanları; yetkili rezervasyon kapsamı.']
-            : ['bookings_report' => 'Booking creation date; gross booking value in booking currency.', 'customers_report' => 'Customers registered in the selected period; repeat customers have at least two bookings in the visible booking scope. Completed spend is lifetime and separated by currency.', 'vehicles_report' => 'Vehicle activity by booking-item travel dates; completed revenue separated by currency.', 'drivers_report' => 'Driver assignments from booking items; completed revenue separated by currency.', 'maintenance_report' => 'Maintenance performed date and recorded cost currency.', 'financial_report' => 'Completion date, falling back to booking creation date when completion is not recorded; currencies stay separate.', 'cash_collections_report' => 'Receipts by received date and adjustments by effective date; source amounts and recorded conversions.', 'custom_report' => 'Selected booking fields within authorized booking scope.'];
+            ? ['bookings_report' => 'Rezervasyon oluşturulma tarihi; brüt rezervasyon tutarı rezervasyon para biriminde.', 'customers_report' => 'Seçilen dönemde kaydedilen müşteriler; tekrar müşteri, görünür rezervasyon kapsamındaki seçilen hareket döneminde en az iki rezervasyondur; dönem belirtilmezse tüm zamanlar kullanılır. Tamamlanan harcama tüm zamanlar içindir ve para birimine göre ayrılır.', 'vehicles_report' => 'Araç etkinliği booking item yolculuk tarih aralığına göre. Tamamlanan gelir kayıtlı öğe fiyatlarından hesaplanır; fiyatı eksik öğeler sayılır ve gelir dönem karşılaştırması kullanılamaz.', 'drivers_report' => 'Sürücü atamaları booking item kayıtlarından gelir. Tamamlanan gelir, kaynak para birimindeki kayıtlı öğe fiyatlarının toplamıdır; fiyatı eksik öğeler sayılır ve bu durumda gelir dönem karşılaştırması kullanılamaz.', 'maintenance_report' => 'Bakım işlem tarihi ve kaynak para birimine göre kaydedilen maliyetler. Tamamlanan kayıtlardaki eksik maliyetler sayılır; eksik değer varsa maliyet karşılaştırması kullanılamaz.', 'financial_report' => 'Tamamlanma tarihi, yoksa rezervasyon oluşturulma tarihi kullanılır. Gelir ve sürücü maliyeti yalnızca kaydedilmiş değerleri içerir; ortalama yalnızca fiyatı kayıtlı rezervasyonlardan hesaplanır, eksik tutarlar raporlanır. Para birimleri ayrı gösterilir.', 'cash_collections_report' => 'Tahsilat makbuzları alındığı tarih, düzeltmeler etkin tarih ile; kaynak tutar ve kaydedilmiş dönüşüm.', 'custom_report' => 'Seçilen rezervasyon alanları; yetkili rezervasyon kapsamı.']
+            : ['bookings_report' => 'Booking creation date; gross booking value in booking currency.', 'customers_report' => 'Customers registered in the selected period; repeat customers have at least two bookings in the selected booking activity period within the visible booking scope, or lifetime when no activity period is set. Completed spend is lifetime and separated by currency.', 'vehicles_report' => 'Vehicle activity by booking-item travel dates. Completed revenue sums recorded item prices; unpriced items are counted and revenue comparison is unavailable when any are missing.', 'drivers_report' => 'Driver assignments come from booking items. Completed revenue sums recorded item prices by source currency; unpriced items are counted, and revenue comparison is unavailable when any are missing.', 'maintenance_report' => 'Maintenance performed date and recorded costs by source currency. Missing completed-record costs are counted; cost comparison is unavailable when any are missing.', 'financial_report' => 'Completion date, falling back to booking creation date when completion is not recorded. Revenue and driver-cost totals include recorded values only; average value uses priced bookings, and missing values are counted. Currencies stay separate.', 'cash_collections_report' => 'Receipts by received date and adjustments by effective date; source amounts and recorded conversions.', 'custom_report' => 'Selected booking fields within authorized booking scope.'];
+        if (!empty($filters['unpriced_only'])) {
+            $definitions['bookings_report'] = $isTurkish
+                ? 'Tamamlanma tarihi, yoksa rezervasyon oluşturulma tarihi; yalnızca fiyatı kaydedilmemiş tamamlanan rezervasyonlar.'
+                : 'Booking completion date, falling back to creation date when completion is missing; completed bookings without a recorded price only.';
+        }
+        $definitions['bookings_report'] .= $isTurkish
+            ? ' Kaydedilmemiş fiyatlar sıfır sayılmaz; fiyatı eksik kayıtlar ayrıca sayılır.'
+            : ' Missing prices are not treated as zero; bookings without a price are counted separately.';
         $ignored = ['locale', 'date_from', 'date_to', 'compare_date_from', 'compare_date_to'];
         $appliedFilters = collect($filters)->except($ignored)->map(function ($value, $key) use ($labels, $isTurkish): string {
-            $displayValue = $key === 'customer_activity'
-                ? match ($value) {
+            $displayValue = match ($key) {
+                'customer_activity' => match ($value) {
                     'repeat' => $isTurkish ? 'Tekrarlayan müşteriler (2+ rezervasyon)' : 'Repeat customers (2+ bookings)',
                     'not_repeat' => $isTurkish ? 'Diğer müşteriler (0–1 görünür rezervasyon)' : 'Other customers (0–1 visible booking)',
                     default => '',
-                }
-                : (is_array($value) ? implode(', ', $value) : (string) $value);
+                },
+                'unpriced_only' => $isTurkish ? 'Evet' : 'Yes',
+                default => is_array($value) ? implode(', ', $value) : (string) $value,
+            };
             return ($labels[$key] ?? str_replace('_', ' ', ucfirst($key))) . ': ' . $displayValue;
         })->values()->implode('; ');
         if ($appliedFilters === '') $appliedFilters = $isTurkish ? 'Ek filtre yok' : 'No additional filters';
@@ -2181,37 +2393,51 @@ class ReportsController extends Controller
         if (in_array($filename, ['bookings_report', 'custom_report'], true)) {
             $aggregate = function (array $period) {
                 $query = Booking::query();
-                $this->applyFilters($query, $period);
-                return (clone $query)->selectRaw("COALESCE(NULLIF(UPPER(currency), ''), 'LKR') as currency, COUNT(*) as bookings, SUM(COALESCE(total_actual, 0)) as amount")
+                $this->applyFilters($query, $period, $this->reportBookingDateColumn($period));
+                $this->applyUnpricedBookingFilter($query, $period);
+                return (clone $query)->selectRaw("COALESCE(NULLIF(UPPER(currency), ''), 'LKR') as currency, COUNT(*) as bookings, SUM(COALESCE(total_actual, 0)) as amount, COUNT(CASE WHEN total_actual IS NULL THEN 1 END) as unpriced_bookings_count")
                     ->groupBy('currency')->orderBy('currency')->get();
             };
             $nowRows = $aggregate($current);
             $priorRows = $aggregate($previous);
             $summary = $delta($countLabel, (int) $nowRows->sum('bookings'), (int) $priorRows->sum('bookings'), $isTurkish);
-            return $summary . ($filename === 'custom_report' ? '' : '; ' . $currencyDelta($nowRows, $priorRows, 'amount'));
+            if ($filename === 'custom_report') return $summary;
+            $missing = $delta($isTurkish ? 'Fiyatı eksik rezervasyon' : 'Bookings missing price', (int) $nowRows->sum('unpriced_bookings_count'), (int) $priorRows->sum('unpriced_bookings_count'), $isTurkish);
+            $amountComparison = (int) $nowRows->sum('unpriced_bookings_count') > 0 || (int) $priorRows->sum('unpriced_bookings_count') > 0
+                ? ($isTurkish ? 'Tutar karşılaştırması kullanılamıyor: fiyatı eksik rezervasyonlar var' : 'Amount comparison unavailable: bookings are missing prices')
+                : $currencyDelta($nowRows, $priorRows, 'amount');
+            return $summary . '; ' . $missing . '; ' . $amountComparison;
         }
 
         if ($filename === 'vehicles_report') {
             $aggregate = function (array $period) {
                 $vehicleIds = $this->filteredReportVehicles($period)->pluck('vehicles.id');
                 return DB::query()->fromSub($this->vehicleReportMetrics($period, $vehicleIds), 'metrics')
-                    ->selectRaw('currency, SUM(trip_count) as trips, SUM(completed_revenue) as revenue')
+                    ->selectRaw('currency, SUM(trip_count) as trips, SUM(priced_completed_trips) as priced_completed_trips, SUM(unpriced_completed_trips) as unpriced_completed_trips, SUM(completed_revenue) as revenue')
                     ->groupBy('currency')->orderBy('currency')->get();
             };
             $nowRows = $aggregate($current);
             $priorRows = $aggregate($previous);
-            return $delta($isTurkish ? 'Yolculuklar' : 'Trips', (int) $nowRows->sum('trips'), (int) $priorRows->sum('trips'), $isTurkish) . '; ' . $currencyDelta($nowRows, $priorRows, 'revenue');
+            $revenueComparison = (int) $nowRows->sum('unpriced_completed_trips') > 0 || (int) $priorRows->sum('unpriced_completed_trips') > 0
+                ? ($isTurkish ? 'Eksik tamamlanan yolculuk fiyatları nedeniyle gelir karşılaştırması kullanılamıyor' : 'Revenue comparison unavailable because completed trip prices are missing')
+                : $currencyDelta($nowRows, $priorRows, 'revenue');
+            return $delta($isTurkish ? 'Yolculuklar' : 'Trips', (int) $nowRows->sum('trips'), (int) $priorRows->sum('trips'), $isTurkish) . '; ' . $delta($isTurkish ? 'Fiyatı kaydedilmiş tamamlanan yolculuklar' : 'Priced completed trips', (int) $nowRows->sum('priced_completed_trips'), (int) $priorRows->sum('priced_completed_trips'), $isTurkish) . '; ' . $delta($isTurkish ? 'Fiyatı eksik tamamlanan yolculuklar' : 'Unpriced completed trips', (int) $nowRows->sum('unpriced_completed_trips'), (int) $priorRows->sum('unpriced_completed_trips'), $isTurkish) . '; ' . $revenueComparison;
         }
 
         if ($filename === 'drivers_report') {
             $aggregate = fn (array $period) => DB::query()->fromSub($this->driverReportQuery($period), 'drivers')
-                ->selectRaw('currency, SUM(bookings) as assignments, SUM(completed_bookings) as completed_assignments, SUM(completed_revenue) as revenue')
+                ->selectRaw('currency, SUM(assignments) as assignments, SUM(completed_assignments) as completed_assignments, SUM(priced_completed_assignments) as priced_completed_assignments, SUM(unpriced_completed_assignments) as unpriced_completed_assignments, SUM(completed_revenue) as revenue')
                 ->groupBy('currency')->orderBy('currency')->get();
             $nowRows = $aggregate($current);
             $priorRows = $aggregate($previous);
+            $revenueComparison = (int) $nowRows->sum('unpriced_completed_assignments') > 0 || (int) $priorRows->sum('unpriced_completed_assignments') > 0
+                ? ($isTurkish ? 'Fiyatı eksik tamamlanan atamalar nedeniyle gelir karşılaştırması kullanılamıyor' : 'Revenue comparison unavailable because completed assignment prices are missing')
+                : $currencyDelta($nowRows, $priorRows, 'revenue');
             return $delta($isTurkish ? 'Sürücü atamaları' : 'Driver assignments', (int) $nowRows->sum('assignments'), (int) $priorRows->sum('assignments'), $isTurkish)
                 . '; ' . $delta($isTurkish ? 'Tamamlanan atamalar' : 'Completed assignments', (int) $nowRows->sum('completed_assignments'), (int) $priorRows->sum('completed_assignments'), $isTurkish)
-                . '; ' . $currencyDelta($nowRows, $priorRows, 'revenue');
+                . '; ' . $delta($isTurkish ? 'Fiyatı kaydedilmiş tamamlanan atamalar' : 'Priced completed assignments', (int) $nowRows->sum('priced_completed_assignments'), (int) $priorRows->sum('priced_completed_assignments'), $isTurkish)
+                . '; ' . $delta($isTurkish ? 'Fiyatı eksik tamamlanan atamalar' : 'Unpriced completed assignments', (int) $nowRows->sum('unpriced_completed_assignments'), (int) $priorRows->sum('unpriced_completed_assignments'), $isTurkish)
+                . '; ' . $revenueComparison;
         }
 
         if ($filename === 'maintenance_report') {
@@ -2219,27 +2445,35 @@ class ReportsController extends Controller
                 $query = $this->maintenanceReportQuery($period);
                 $count = (int) DB::query()->fromSub(clone $query, 'maintenance_rows')->count();
                 $rows = DB::query()->fromSub($query, 'maintenance_rows')
-                    ->selectRaw("currency, SUM(CASE WHEN status = 'completed' THEN COALESCE(cost, 0) ELSE 0 END) as cost")
+                    ->selectRaw("currency, SUM(CASE WHEN status = 'completed' THEN COALESCE(cost, 0) ELSE 0 END) as cost, COUNT(CASE WHEN status = 'completed' AND cost IS NOT NULL THEN 1 END) as priced_completed_records, COUNT(CASE WHEN status = 'completed' AND cost IS NULL THEN 1 END) as missing_completed_cost")
                     ->groupBy('currency')->orderBy('currency')->get();
                 return [$count, $rows];
             };
             [$nowCount, $nowRows] = $aggregate($current);
             [$priorCount, $priorRows] = $aggregate($previous);
-            return $delta($isTurkish ? 'Bakım kayıtları' : 'Maintenance records', $nowCount, $priorCount, $isTurkish) . '; ' . $currencyDelta($nowRows, $priorRows, 'cost');
+            $costComparison = (int) $nowRows->sum('missing_completed_cost') > 0 || (int) $priorRows->sum('missing_completed_cost') > 0
+                ? ($isTurkish ? 'Eksik tamamlanan bakım maliyetleri nedeniyle maliyet karşılaştırması kullanılamıyor' : 'Cost comparison unavailable because completed maintenance costs are missing')
+                : $currencyDelta($nowRows, $priorRows, 'cost');
+            return $delta($isTurkish ? 'Bakım kayıtları' : 'Maintenance records', $nowCount, $priorCount, $isTurkish)
+                . '; ' . $delta($isTurkish ? 'Maliyeti kaydedilmiş tamamlanan kayıtlar' : 'Completed records with cost', (int) $nowRows->sum('priced_completed_records'), (int) $priorRows->sum('priced_completed_records'), $isTurkish)
+                . '; ' . $delta($isTurkish ? 'Maliyeti eksik tamamlanan kayıtlar' : 'Completed records missing cost', (int) $nowRows->sum('missing_completed_cost'), (int) $priorRows->sum('missing_completed_cost'), $isTurkish)
+                . '; ' . $costComparison;
         }
 
         if ($filename === 'financial_report') {
             $aggregate = function (array $period) {
                 $query = Booking::query()->where('status', 'completed');
                 $this->applyFilters($query, $period, 'bookings.completed_at');
-                return (clone $query)->selectRaw("COALESCE(NULLIF(UPPER(currency), ''), 'LKR') as currency, COUNT(*) as bookings, SUM(COALESCE(total_actual, 0)) as revenue, SUM(COALESCE(driver_cost, 0)) as driver_cost")
+                return (clone $query)->selectRaw("COALESCE(NULLIF(UPPER(currency), ''), 'LKR') as currency, COUNT(*) as bookings, COUNT(CASE WHEN total_actual IS NULL THEN 1 END) as unpriced_bookings, COUNT(CASE WHEN driver_cost IS NULL THEN 1 END) as missing_driver_cost, SUM(COALESCE(total_actual, 0)) as revenue, SUM(COALESCE(driver_cost, 0)) as driver_cost")
                     ->groupBy('currency')->orderBy('currency')->get();
             };
             $nowRows = $aggregate($current);
             $priorRows = $aggregate($previous);
             return $delta($isTurkish ? 'Tamamlanan rezervasyonlar' : 'Completed bookings', (int) $nowRows->sum('bookings'), (int) $priorRows->sum('bookings'), $isTurkish)
                 . '; ' . $currencyDelta($nowRows, $priorRows, 'revenue')
-                . '; ' . $currencyDelta($nowRows, $priorRows, 'driver_cost');
+                . '; ' . $currencyDelta($nowRows, $priorRows, 'driver_cost')
+                . '; ' . $delta($isTurkish ? 'Fiyatlandırılmamış tamamlanan rezervasyon' : 'Unpriced completed bookings', (int) $nowRows->sum('unpriced_bookings'), (int) $priorRows->sum('unpriced_bookings'), $isTurkish)
+                . '; ' . $delta($isTurkish ? 'Sürücü maliyeti eksik rezervasyon' : 'Bookings missing driver cost', (int) $nowRows->sum('missing_driver_cost'), (int) $priorRows->sum('missing_driver_cost'), $isTurkish);
         }
 
         if ($filename === 'cash_collections_report') {
@@ -2271,11 +2505,14 @@ class ReportsController extends Controller
             'Vehicle' => 'Araç', 'Registration' => 'Plaka', 'Category' => 'Kategori', 'Trips in range' => 'Aralıktaki Yolculuklar',
             'Completed revenue' => 'Tamamlanan Gelir', 'Driver' => 'Sürücü', 'Bookings' => 'Rezervasyonlar',
             'Completed bookings' => 'Tamamlanan Rezervasyonlar', 'Performed date' => 'İşlem Tarihi', 'Group' => 'Grup',
+            'Priced bookings' => 'Fiyatı Kaydedilmiş Rezervasyonlar', 'Unpriced completed bookings' => 'Fiyatlandırılmamış Tamamlanan Rezervasyonlar',
+            'Bookings missing driver cost' => 'Sürücü Maliyeti Eksik Rezervasyonlar',
+            'Growth comparison unavailable reason' => 'Büyüme Karşılaştırmasının Kullanılamama Nedeni',
             'Activity type' => 'Hareket Türü', 'Payment purpose' => 'Ödeme Amacı', 'Records' => 'Kayıt Sayısı',
             'Source amount' => 'Kaynak Tutar', 'Source currency' => 'Kaynak Para Birimi',
             'Recorded LKR equivalent' => 'Kaydedilen LKR Karşılığı', 'Missing LKR conversions' => 'Eksik LKR Dönüşümü',
             'Maintenance type' => 'Bakım Türü', 'Cost' => 'Maliyet', 'Notes' => 'Notlar', 'Record type' => 'Kayıt Türü',
-            'Period' => 'Dönem', 'Average booking value' => 'Ortalama Rezervasyon Tutarı', 'Driver cost' => 'Sürücü Maliyeti',
+            'Period' => 'Dönem', 'Average priced booking value' => 'Fiyatı Kaydedilmiş Rezervasyon Ortalaması', 'Driver cost' => 'Sürücü Maliyeti',
             'Revenue after driver cost' => 'Sürücü Maliyeti Sonrası Gelir', 'Growth rate (%)' => 'Büyüme Oranı (%)',
             'Service type' => 'Hizmet Türü', 'Service revenue' => 'Hizmet Geliri', 'Booking ID' => 'Rezervasyon Kimliği',
             'Reference Number' => 'Referans Numarası', 'Pickup Location' => 'Alış Konumu', 'Dropoff Location' => 'Varış Konumu',
