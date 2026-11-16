@@ -100,13 +100,13 @@
 
         /* Content */
         .email-content {
-            padding: 5px 35px;
+            padding: 20px 30px;
         }
 
         .greeting {
-            font-size: 16px;
+            font-size: 14px;
             color: #333333;
-            margin-bottom: 20px;
+            margin-bottom: 12px;
             line-height: 1.6;
         }
 
@@ -115,10 +115,10 @@
         }
 
         .intro-text {
-            font-size: 15px;
+            font-size: 14px;
             color: #555555;
-            line-height: 1.7;
-            margin-bottom: 25px;
+            line-height: 1.55;
+            margin-bottom: 16px;
         }
 
         /* Reference Box */
@@ -128,7 +128,7 @@
             border-left: 4px solid #BF2629;
             border-radius: 8px;
             padding: 10px 24px;
-            margin: 25px 0;
+            margin: 16px 0;
         }
 
         .reference-label {
@@ -148,15 +148,15 @@
 
         /* Section */
         .section {
-            margin-bottom: 18px;
+            margin-bottom: 12px;
         }
 
         .section-title {
-            font-size: 17px;
+            font-size: 15px;
             font-weight: 600;
             color: #BF2629;
-            margin-bottom: 8px;
-            padding-bottom: 7px;
+            margin-bottom: 6px;
+            padding-bottom: 5px;
             border-bottom: 2px solid #BF2629;
             display: flex;
             align-items: center;
@@ -449,7 +449,7 @@
             }
 
             .email-content {
-                padding: 5px 20px;
+            padding: 16px 20px;
             }
 
             .email-footer {

@@ -10,6 +10,12 @@
 @section('content')
     @php
         $isQuotation = $type === 'quotation';
+        $workflowData = is_string($booking?->workflow_data)
+            ? json_decode($booking->workflow_data, true)
+            : ($booking?->workflow_data ?? []);
+        $checkoutContact = (array) ($workflowData['checkout_contact'] ?? []);
+        $customerName = trim((string) ($checkoutContact['first_name'] ?? '') . ' ' . (string) ($checkoutContact['last_name'] ?? ''))
+            ?: ($booking?->customer?->full_name ?: 'Valued Customer');
         $isAdvancePayment = $booking && $booking->payment_type === 'advance' && $booking->payment_status === 'paid';
         $isFullPayment = $booking && $booking->payment_type === 'full' && $booking->payment_status === 'paid';
         $isPaid = $isAdvancePayment || $isFullPayment;
@@ -61,8 +67,7 @@
                         <i class="bi bi-file-text-fill"></i>
                     </div> --}}
                     <h1>Quotation Request Submitted!</h1>
-                    <p class="lead">Thank you for your interest. Our team will review your request and send you a detailed
-                        quotation  as soon as possible.</p>
+                    <p class="lead">Thank you for your interest. Our team will review your request and contact you with a quotation.</p>
                 @elseif($isAdvancePayment)
                     {{-- <div class="success-icon paid">
                         <i class="bi bi-check-circle-fill"></i>
@@ -105,13 +110,12 @@
                     <div class="email-content">
                         <!-- Greeting -->
                         <p class="greeting">
-                            Dear <strong>{{ $booking->customer->full_name ?? 'Valued Customer' }}</strong>,
+                            Dear <strong>{{ $customerName }}</strong>,
                         </p>
 
                         <p class="intro-text">
                             @if ($isQuotation)
-                                Thank you for your quotation request. Our team will review your requirements and get back to
-                                you as soon as possible.
+                                Thank you for your quotation request. Our team will review your requirements and contact you with an offer.
                             @elseif($isAdvancePayment)
                                 Thank you for your advance payment with {{ ($settings['company_name'] ?? $settings['brand_name'] ?? $settings['site_name'] ?? 'Company') }}!
                                 Your {{ $advancePercentage }}% advance payment is confirmed, and your booking is confirmed. The remaining balance is due {{ $tourOnlyBooking ? 'according to your Tour booking terms' : 'at vehicle pickup' }}.
