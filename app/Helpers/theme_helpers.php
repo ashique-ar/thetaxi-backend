@@ -160,7 +160,10 @@ if (!function_exists('get_hero_slides')) {
         $slides = [];
 
         if (is_array($decoded)) {
-            $mode = $settings['hero_display_mode'] ?? 'carousel';
+            $themeModes = $settings['hero_display_modes'] ?? [];
+            $themeModes = is_string($themeModes) ? json_decode($themeModes, true) : $themeModes;
+            $activeTheme = $settings['active_theme'] ?? get_active_theme();
+            $mode = is_array($themeModes) ? ($themeModes[$activeTheme] ?? $settings['hero_display_mode'] ?? 'carousel') : ($settings['hero_display_mode'] ?? 'carousel');
             if (in_array($mode, ['image', 'video'], true)) {
                 $decoded = array_slice($decoded, 0, 1);
             }

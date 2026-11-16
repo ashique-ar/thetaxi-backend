@@ -218,6 +218,7 @@ class SettingsViewComposer
                     'banner_image',
                     'hero_slides',
                     'hero_display_mode',
+                    'hero_display_modes',
                     'hero_booking_note',
                     'theme_02_slider_images',
 

@@ -354,8 +354,14 @@ class WebsiteSettingController extends Controller
                 $decoded = json_decode($hero['hero_slides'], true);
                 $hero['hero_slides'] = json_last_error() === JSON_ERROR_NONE ? $decoded : false;
             }
+            if (array_key_exists('hero_display_modes', $hero) && is_string($hero['hero_display_modes'])) {
+                $decoded = json_decode($hero['hero_display_modes'], true);
+                $hero['hero_display_modes'] = json_last_error() === JSON_ERROR_NONE ? $decoded : false;
+            }
             $heroValidator = Validator::make($hero, [
                 'hero_display_mode' => 'sometimes|required|in:image,video,carousel',
+                'hero_display_modes' => 'sometimes|array',
+                'hero_display_modes.*' => 'required|in:image,video,carousel',
                 'hero_slides' => 'sometimes|array|list|max:30',
                 'hero_slides.*' => 'required|array',
                 'hero_slides.*.type' => 'sometimes|in:image,video',
