@@ -13,7 +13,12 @@
         $currencyCode = getBookingDisplayCurrency($booking);
         $tourOnlyBooking = $booking->bookingItems->count() === 1
             && filled(data_get($booking->bookingItems->first()->metadata, 'tour_itinerary_id'));
-        $customerName = $booking->customer?->full_name ?? 'Valued Customer';
+        $workflowData = is_string($booking->workflow_data)
+            ? json_decode($booking->workflow_data, true)
+            : ($booking->workflow_data ?? []);
+        $checkoutContact = (array) ($workflowData['checkout_contact'] ?? []);
+        $customerName = trim((string) ($checkoutContact['first_name'] ?? '') . ' ' . (string) ($checkoutContact['last_name'] ?? ''))
+            ?: ($booking->customer?->full_name ?: 'Valued Customer');
         $paymentLink = \App\Helpers\BookingLinkHelper::getPaymentLink($booking);
         $isFallbackPaymentLink = $paymentLink === route('checkout');
     @endphp
@@ -41,7 +46,7 @@
         <table class="info-table">
             <tr>
                 <td>Name</td>
-                <td>{{ $booking->customer->full_name ?? 'N/A' }}</td>
+                <td>{{ $customerName }}</td>
             </tr>
             <tr>
                 <td>Email</td>

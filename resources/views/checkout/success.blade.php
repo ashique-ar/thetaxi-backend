@@ -68,8 +68,7 @@
                         <i class="bi bi-check-circle-fill"></i>
                     </div> --}}
                     <h1>Advance Payment Successful!</h1>
-                    <p class="lead">Your {{ $advancePercentage }}% advance payment has been confirmed. You will receive a
-                        confirmation email shortly.</p>
+                    <p class="lead">Your {{ $advancePercentage }}% advance payment is confirmed. Your booking is confirmed, and the remaining balance is due {{ $tourOnlyBooking ? 'according to your Tour booking terms' : 'at vehicle pickup' }}. A confirmation email will follow.</p>
                 @elseif($isFullPayment)
                     {{-- <div class="success-icon paid">
                         <i class="bi bi-check-circle-fill"></i>
@@ -115,8 +114,7 @@
                                 you as soon as possible.
                             @elseif($isAdvancePayment)
                                 Thank you for your advance payment with {{ ($settings['company_name'] ?? $settings['brand_name'] ?? $settings['site_name'] ?? 'Company') }}!
-                                Your {{ $advancePercentage }}% advance payment has been confirmed. The remaining balance
-                                will be collected at pickup.
+                                Your {{ $advancePercentage }}% advance payment is confirmed, and your booking is confirmed. The remaining balance is due {{ $tourOnlyBooking ? 'according to your Tour booking terms' : 'at vehicle pickup' }}.
                             @elseif($isFullPayment)
                                 Thank you for your booking with {{ ($settings['company_name'] ?? $settings['brand_name'] ?? $settings['site_name'] ?? 'Company') }}! Your
                                 reservation has been confirmed and fully paid. We're excited to serve you.
@@ -249,23 +247,16 @@
                                     </div>
                                 @elseif($isAdvancePayment)
                                     <div class="highlight-box success">
-                                        <h3>✓ Advance Payment Confirmed!</h3>
-                                        <p>You have successfully paid {{ $advancePercentage }}% advance
+                                        <h3>✓ Booking Confirmed — Advance Payment Received</h3>
+                                        <p>Your booking is confirmed. You have paid {{ $advancePercentage }}% of the total
                                             ({{ $currencySymbol }}
                                             {{ number_format(floor(max(0, $displayAmount($booking->amount_to_pay ?? 0))), 0) }}).</p>
-                                        <p><strong>{{ $tourOnlyBooking ? 'Remaining balance due:' : 'Balance Due at Pickup:' }}</strong> {{ $currencySymbol }}
+                                        <p><strong>{{ $tourOnlyBooking ? 'Remaining balance due under your Tour terms:' : 'Remaining balance due at vehicle pickup:' }}</strong> {{ $currencySymbol }}
                                             {{ number_format(floor(max(0, $displayAmount($booking->total_estimated - ($booking->amount_to_pay ?? 0)))), 0) }}
                                         </p>
-                                        <p style="margin-bottom: 8px;"><strong>Important Reminders:</strong></p>
-                                        <ul>
-                                            <li>Bring valid government-issued ID/Passport</li>
-                                            <li>Bring a valid driver's license</li>
-                                            <li>A credit card may be required for security deposit</li>
-                                            <li>Arrive 15 minutes before scheduled pickup time</li>
-                                            <li><strong>{{ $tourOnlyBooking ? 'Remaining balance: ' : 'Pay remaining balance at pickup: ' }}{{ $currencySymbol }}
-                                                    {{ number_format(floor(max(0, $displayAmount($booking->total_estimated - ($booking->amount_to_pay ?? 0)))), 0) }}</strong>
-                                            </li>
-                                        </ul>
+                                        @unless ($tourOnlyBooking)
+                                            <p class="mb-0">Please bring your valid ID and driver's licence to pickup. Arrive 15 minutes before your scheduled pickup time.</p>
+                                        @endunless
                                     </div>
                                 @elseif($isPayOnCheckin)
                                     <div class="highlight-box success">
@@ -438,6 +429,17 @@
 
 @push('styles')
     <style>
+        .checkout-success { padding-top: 1.5rem !important; padding-bottom: 1.5rem !important; }
+        .checkout-success > .container > .row > .card { padding: 1.25rem !important; }
+        .checkout-success .email-content { font-size: 14px; line-height: 1.5; }
+        .checkout-success .email-content :is(p, td, li) { font-size: 14px; line-height: 1.5; }
+        .checkout-success .intro-text { margin-bottom: 16px; }
+        .checkout-success .section { margin-bottom: 12px; }
+        .checkout-success .section-title { margin-bottom: 7px; padding-bottom: 5px; font-size: 16px; }
+        .checkout-success .reference-box { margin: 16px 0; }
+        .checkout-success .highlight-box { padding: 11px 14px; margin: 10px 0; }
+        .checkout-success .highlight-box h3 { margin-bottom: 7px; font-size: 15px; }
+        .checkout-success .highlight-box p { margin: 5px 0; font-size: 13px; }
         .greeting {
             font-size: 16px;
             color: #333333;

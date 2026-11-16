@@ -270,8 +270,10 @@
             @endphp
             <div class="highlight-box success">
                 <h3>✓ Your Booking is Confirmed!</h3>
-                   <p>Your payment has been successfully processed and your vehicle will be prepared and ready for pickup on
+                   <p>Your booking is confirmed{{ $tourOnlyBooking ? '.' : ', and your vehicle will be prepared and ready for pickup on' }}
+                    @unless ($tourOnlyBooking)
                     <strong>{{ \Carbon\Carbon::parse($booking->from_date)->format('F d, Y \a\t g:i A') }}</strong>.
+                    @endunless
                 </p>
                 <p>Driver Details will be shared with you before 3 hours of pickup time.
                 </p>
@@ -281,7 +283,7 @@
                 @else
                     <p>You have successfully paid {{ $actualPercentagePaid }}% advance
                         ({{ $currencyCode }} {{ number_format(floor(max(0, $actualAmountPaid)), 0) }}).</p>
-                    <p><strong>Balance Due at Pickup:</strong>
+                    <p><strong>{{ $tourOnlyBooking ? 'Remaining balance due according to your Tour booking terms:' : 'Remaining balance due at vehicle pickup:' }}</strong>
                         {{ $currencyCode }}
                         {{ number_format(floor(max(0, $booking->total_estimated - $actualAmountPaid)), 0) }}
                     </p>
