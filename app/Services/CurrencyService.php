@@ -356,6 +356,28 @@ class CurrencyService
                     $item['original_amount'] = $this->roundAmount($item['original_amount'] * $exchangeRate, $toCurrency);
                 }
             }
+
+        }
+
+        // Adjustment metadata is displayed alongside the converted total.
+        // Convert its monetary fields too, or cards show base-currency savings
+        // with a selected-currency symbol.
+        if (isset($convertedPricing['adjustment_details']) && is_array($convertedPricing['adjustment_details'])) {
+            $adjustmentDetails = &$convertedPricing['adjustment_details'];
+            foreach (['original_amount', 'final_amount', 'total_adjustment', 'total_discount', 'total_increase', 'total_savings', 'total_markup'] as $field) {
+                if (isset($adjustmentDetails[$field])) {
+                    $adjustmentDetails[$field] = $this->roundAmount((float) $adjustmentDetails[$field] * $exchangeRate, $toCurrency);
+                }
+            }
+            foreach ($adjustmentDetails['adjustments'] ?? [] as &$adjustment) {
+                foreach (['amount', 'adjustment_amount', 'applied_amount', 'original_amount', 'final_amount', 'discount_amount'] as $field) {
+                    if (isset($adjustment[$field])) {
+                        $adjustment[$field] = $this->roundAmount((float) $adjustment[$field] * $exchangeRate, $toCurrency);
+                    }
+                }
+            }
+            unset($adjustment, $adjustmentDetails);
+            $convertedPricing['adjustment_details']['savings_display'] = null;
         }
 
         // Convert addon items
