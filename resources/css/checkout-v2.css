@@ -73,3 +73,10 @@
 #checkout-v2-overlays .v2-addon-step { width: 38px; min-height: 38px; border: 0; background: transparent; color: var(--checkout-accent); font-size: 16px; font-weight: 700; }
 #checkout-v2-overlays .checkout-addon-actions { align-self: center; }
 #checkout-v2-overlays .v2-addon-status { margin-bottom: 12px; padding: 12px; border: 1px solid #fecaca; border-radius: 8px; background: #fef2f2; color: #991b1b; font-size: 12px; }
+#checkout-v2 .term-body :where(ol,ul) { padding-left: 1.5em; }
+#checkout-v2 .term-body ol { list-style: decimal; }
+#checkout-v2 .term-body ul { list-style: disc; }
+#checkout-v2 .term-body ol:has(> li[data-list]) { list-style: none; counter-reset: terms-list; }
+#checkout-v2 .term-body li[data-list=ordered] { counter-increment: terms-list; }
+#checkout-v2 .term-body li[data-list=ordered]::marker { content: counter(terms-list) '.  '; }
+#checkout-v2 .term-body li[data-list=bullet]::marker { content: '•  '; }

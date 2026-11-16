@@ -37,8 +37,8 @@
         </div>
         @foreach (['address' => ['Street address', 'street-address'], 'city' => ['City', 'address-level2']] as $field => [$label, $autocomplete])
             <div>
-                <label for="v2-{{ $field }}" class="mb-1.5 block text-xs font-semibold uppercase tracking-wider text-slate-700">{{ $label }} <span class="text-checkout-accent">*</span></label>
-                <input id="v2-{{ $field }}" name="{{ $field }}" type="text" required autocomplete="{{ $autocomplete }}" value="{{ old($field) }}" class="w-full rounded-xl border-slate-200 px-3.5 py-2.5 text-sm focus:border-checkout-accent focus:ring-checkout-accent">
+                <label for="v2-{{ $field }}" class="mb-1.5 block text-xs font-semibold uppercase tracking-wider text-slate-700">{{ $label }} <span class="normal-case text-slate-400">(optional)</span></label>
+                <input id="v2-{{ $field }}" name="{{ $field }}" type="text" autocomplete="{{ $autocomplete }}" value="{{ old($field) }}" class="w-full rounded-xl border-slate-200 px-3.5 py-2.5 text-sm focus:border-checkout-accent focus:ring-checkout-accent">
                 @error($field) <p class="mt-1 text-xs text-red-600">{{ $message }}</p> @enderror
             </div>
         @endforeach

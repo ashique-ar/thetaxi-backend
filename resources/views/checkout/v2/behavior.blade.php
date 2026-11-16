@@ -1159,19 +1159,25 @@
             window.checkoutIntlTelInput = iti;
             window.validateCheckoutPhoneNumber = validatePhoneNumber;
 
-            // Update country selection when select dropdown changes
+            let countryManuallySelected = false;
+            let phoneCountryManuallySelected = false;
             $(phoneCountrySelect).on('change', function() {
-                const selectedCountry = $(this).val();
-                const countryCode = countryCodeMap[selectedCountry];
-
-                if (countryCode) {
-                    iti.setCountry(countryCode);
-                    // Focus and validate
-                    setTimeout(() => {
-                        validatePhoneNumber();
-                    }, 100);
+                countryManuallySelected = true;
+                if (phoneCountryManuallySelected) return;
+                const countryCode = countryCodeMap[$(this).val()];
+                if (countryCode) iti.setCountry(countryCode);
+            });
+            phoneInput.addEventListener('countrychange', function() {
+                if (countryManuallySelected) return;
+                const countryData = iti.getSelectedCountryData();
+                const countryName = Object.keys(countryCodeMap).find(name => countryCodeMap[name] === countryData.iso2);
+                if (countryName && !phoneCountryManuallySelected) {
+                    $(phoneCountrySelect).val(countryName).trigger('change.select2');
                 }
             });
+            phoneInput.addEventListener('countrychange', function() {
+                phoneCountryManuallySelected = true;
+            }, { once: true });
 
             // Validate on input
             $(phoneInput).on('input change blur', function() {
