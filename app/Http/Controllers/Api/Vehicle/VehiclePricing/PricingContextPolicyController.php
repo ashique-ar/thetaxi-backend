@@ -11,7 +11,7 @@ class PricingContextPolicyController extends Controller
     public function __construct()
     {
         $this->middleware(
-            'permission:business-settings.view|business-settings.edit|vehicle-group-pricing.view|vehicle-pricing-slabs.view|vehicle-pricing-common-rates.view|vehicle-pricing-calculations.view|km-range-pricing.view|price-adjustments.view|service-types.view|bookings.view|bookings.create|create_bookings'
+            'permission:business-settings.view|business-settings.edit|vehicle-group-pricing.view|vehicle-pricing-slabs.view|vehicle-pricing-common-rates.view|vehicle-pricing-calculations.view|km-range-pricing.view|price-adjustments.view|service-types.view|bookings.view|bookings.view-assigned|bookings.view-rep-team|bookings.create|create_bookings'
         );
     }
 

@@ -1668,7 +1668,6 @@ Route::middleware(['auth:api'])->group(function () {
         Route::put('website-settings/{section}/{key}', [WebsiteSettingController::class, 'updateByKey']);
         Route::apiResource('website-settings', WebsiteSettingController::class);
         Route::apiResource('vip-types', VipTypeController::class);
-        Route::get('pricing-context-policy', [PricingContextPolicyController::class, 'show']);
         Route::post('service-types/workflow-preview', [ServiceTypeController::class, 'previewWorkflow'])->middleware('pricing.context');
         Route::get('service-types/{serviceType}/vehicle-classes', [\App\Http\Controllers\Api\Service\ServiceVehicleClassController::class, 'index'])
             ->middleware(['ensure.internal', 'pricing.context']);
@@ -2057,6 +2056,8 @@ Route::middleware(['auth:api'])->group(function () {
         Route::get('vehicles/{vehicle}/default-driver', [BookingAssignmentController::class, 'getVehicleDefaultDriver']);
         Route::put('vehicles/{vehicle}/default-driver', [BookingAssignmentController::class, 'updateVehicleDefaultDriver']);
     });
+
+    Route::get('pricing-context-policy', [PricingContextPolicyController::class, 'show']);
 
     Route::group(['prefix' => 'reports'], function () {
         Route::get('/dashboard-stats', [ReportsController::class, 'getDashboardStats'])
