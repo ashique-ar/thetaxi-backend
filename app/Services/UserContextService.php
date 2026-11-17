@@ -354,10 +354,13 @@ class UserContextService
                     continue;
                 }
 
-                if ($userContext->context_type !== 'staff'
-                    && in_array($roleModel->name, ['admin', 'super-admin'], true)) {
+                $mappedTypes = $roleModel->context_types;
+                if (is_string($mappedTypes)) {
+                    $mappedTypes = json_decode($mappedTypes, true);
+                }
+                if (is_array($mappedTypes) && ! in_array($userContext->context_type, $mappedTypes, true)) {
                     throw ValidationException::withMessages([
-                        'roles' => 'Admin and Master Admin roles can only be assigned to staff contexts.',
+                        'roles' => 'The selected role is not mapped to this context.',
                     ]);
                 }
 
@@ -416,11 +419,31 @@ class UserContextService
         DB::transaction(function () use ($user, $roles, $actorUserId): void {
             $user = User::query()->whereKey($user->id)->lockForUpdate()->firstOrFail();
             foreach (collect($roles) as $role) {
-                if (!$role instanceof Role || ($role->auto_assign_contexts ?? true) === false) {
+                if (! $role instanceof Role) {
                     continue;
                 }
 
-                foreach ($this->getContextTypesForRole($role) as $contextType) {
+                $configuredTypes = $role->context_types;
+                if (is_string($configuredTypes)) {
+                    $configuredTypes = json_decode($configuredTypes, true);
+                }
+                $contextTypes = $this->getContextTypesForRole($role);
+
+                if (is_array($configuredTypes)) {
+                    $staleContexts = $user->contexts()
+                        ->whereHas('roles', fn ($query) => $query->whereKey($role->id))
+                        ->whereNotIn('context_type', $contextTypes)
+                        ->get();
+                    foreach ($staleContexts as $staleContext) {
+                        $this->revokeRoleFromContext($user, $staleContext, (int) $role->id);
+                    }
+                }
+
+                if (($role->auto_assign_contexts ?? true) === false) {
+                    continue;
+                }
+
+                foreach ($contextTypes as $contextType) {
                     $context = $this->resolveOrCreateContextForRole($user, $contextType, $actorUserId);
 
                     if ($context) {

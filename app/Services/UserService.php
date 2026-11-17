@@ -5,6 +5,7 @@ namespace App\Services;
 use App\Models\User;
 use App\Models\UserContext;
 use App\Notifications\PasswordResetNotification;
+use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Support\Facades\Hash;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Str;
@@ -64,15 +65,7 @@ class UserService
             $context = $filters['context'];
 
             if ($context === 'internal') {
-                $query->where(function ($q) {
-                    $q->whereHas('roles', function ($roleQuery) {
-                        $roleQuery->whereIn('name', ['admin', 'staff'])
-                            ->where('guard_name', config('permissions.canonical_guard', 'api'));
-                    })->orWhereHas('contexts', function ($contextQuery) {
-                        $contextQuery->where('context_type', 'staff')
-                            ->where('is_active', true);
-                    });
-                });
+                $this->applyInternalContextFilter($query);
             } else {
                 $query->whereHas('contexts', function ($q) use ($context) {
                     $q->where('context_type', $context)
@@ -147,11 +140,7 @@ class UserService
             ->filter()
             ->values();
 
-        if (
-            User::whereHas('roles', function ($query) {
-                $query->whereIn('name', ['admin', 'staff']);
-            })->exists()
-        ) {
+        if ($this->applyInternalContextFilter(User::query())->exists()) {
             $contextTypes->prepend('internal');
         }
 
@@ -180,6 +169,40 @@ class UserService
             'roles' => $roles,
             'contexts' => $contexts,
         ];
+    }
+
+    private function applyInternalContextFilter(Builder $query): Builder
+    {
+        $activeStaffContext = function (Builder $contexts): void {
+            $contexts->where('context_type', 'staff')
+                ->where('is_active', true)
+                ->whereIn('context_id', function ($staff): void {
+                    $staff->select('id')->from('staff')
+                        ->whereNull('deleted_at')
+                        ->where(fn ($employment) => $employment
+                            ->whereNull('employment_ended_at')
+                            ->orWhere('employment_ended_at', '>', now()));
+                });
+        };
+
+        return $query->where(function (Builder $users) use ($activeStaffContext): void {
+            $users->whereHas('roles', function (Builder $roles): void {
+                $roles->whereIn('name', ['admin', 'super-admin'])
+                    ->where('guard_name', config('permissions.canonical_guard', 'api'));
+            })->orWhere(function (Builder $subAdmins) use ($activeStaffContext): void {
+                $subAdmins->whereHas('roles', function (Builder $roles): void {
+                    $roles->where('name', 'sub-admin')
+                        ->where('guard_name', config('permissions.canonical_guard', 'api'));
+                })->whereHas('contexts', $activeStaffContext);
+            })->orWhereHas('contexts', function (Builder $contexts) use ($activeStaffContext): void {
+                $activeStaffContext($contexts);
+                $contexts
+                    ->whereHas('roles', function (Builder $roles): void {
+                        $roles->whereIn('name', ['admin', 'sub-admin', 'super-admin'])
+                            ->where('guard_name', config('permissions.canonical_guard', 'api'));
+                    });
+            });
+        });
     }
 
     /**
