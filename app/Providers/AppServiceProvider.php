@@ -59,6 +59,14 @@ class AppServiceProvider extends ServiceProvider
     {
         $this->configureDriverApiDocumentation();
 
+        // Outlook and Gmail drop <style> blocks (always in replies/forwards), so inline the CSS at send time.
+        \Illuminate\Support\Facades\Event::listen(\Illuminate\Mail\Events\MessageSending::class, function ($event) {
+            $html = $event->message->getHtmlBody();
+            if (is_string($html) && str_contains($html, '<style')) {
+                $event->message->html((new \TijsVerkoyen\CssToInlineStyles\CssToInlineStyles())->convert($html));
+            }
+        });
+
         $whereLikeInsensitive = function (string $column, string $value, string $boolean = 'and') {
             $query = $this instanceof EloquentBuilder ? $this->getQuery() : $this;
             $driver = $query->getConnection()->getDriverName();

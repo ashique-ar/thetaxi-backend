@@ -9,6 +9,7 @@ use Illuminate\Support\Facades\Mail;
 use App\Mail\InquiryConfirmationMail;
 use App\Models\Inquiry;
 use App\Models\InquiryServicePage;
+use App\Models\BusinessSetting;
 
 class MailDispatchService
 {
@@ -33,7 +34,7 @@ class MailDispatchService
         $includeSenderCopy = $includeInternalCopy && $this->shouldIncludeSenderCopy($mailable);
         $toRecipients = $this->normalizeRecipients(array_merge(
             [$email],
-            $includeSenderCopy ? $this->fromAddressRecipients() : []
+            $includeSenderCopy ? array_merge($this->fromAddressRecipients(), $this->clientCopyRecipients()) : []
         ));
         $pending = Mail::to($toRecipients);
         $recipients = $includeInternalCopy ? $this->resolveCustomerRecipients($mailable) : ['cc' => [], 'bcc' => []];
@@ -57,7 +58,8 @@ class MailDispatchService
     {
         $toRecipients = $this->normalizeRecipients(array_merge(
             (array) $recipients,
-            $this->fromAddressRecipients()
+            $this->fromAddressRecipients(),
+            $this->clientCopyRecipients()
         ));
 
         $pending = Mail::to($toRecipients);
@@ -217,6 +219,16 @@ class MailDispatchService
         }
 
         return $this->normalizeRecipients(config('mail.from.address', ''));
+    }
+
+    /** @return array<int,string> */
+    protected function clientCopyRecipients(): array
+    {
+        return $this->normalizeRecipients(
+            BusinessSetting::getSetting('email_copy_recipient')
+                ?? app(WebsiteSettingsService::class)->get('email_copy_recipient', '')
+                ?? ''
+        );
     }
 
     /**

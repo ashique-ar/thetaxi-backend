@@ -87,6 +87,7 @@ class WebsiteSettingsService
         'mail_from_address',
         'booking_confirmation_enabled',
         'booking_reminder_enabled',
+        'email_copy_recipient',
         'contact_form_notification',
         'email_footer_text',
         'email_header_subtitle',
@@ -1024,6 +1025,7 @@ class WebsiteSettingsService
             'mail_from_address',
             'booking_confirmation_enabled',
             'booking_reminder_enabled',
+            'email_copy_recipient',
             'contact_form_notification',
             'email_footer_text',
             'email_header_subtitle'

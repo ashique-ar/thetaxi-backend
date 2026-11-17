@@ -110,6 +110,7 @@ class BusinessSettingController extends Controller
             'mail_from_address',
             'booking_confirmation_enabled',
             'booking_reminder_enabled',
+            'email_copy_recipient',
             'contact_form_notification',
             'corporate_booking_notification_email',
             'email_footer_text',
@@ -218,6 +219,7 @@ class BusinessSettingController extends Controller
 
         if ($category === 'email') {
             $emailValidator = Validator::make($request->input('settings', []), [
+                'email_copy_recipient' => ['sometimes', 'nullable', 'email:rfc', 'max:255'],
                 'corporate_booking_notification_email' => ['sometimes', 'nullable', 'email:rfc', 'max:255'],
             ]);
             if ($emailValidator->fails()) {

@@ -8,6 +8,7 @@
 
 @section('content')
     @php
+        $currencyCode = getBookingDisplayCurrency($booking);
         $workflowData = is_string($booking->workflow_data)
             ? json_decode($booking->workflow_data, true)
             : $booking->workflow_data ?? [];

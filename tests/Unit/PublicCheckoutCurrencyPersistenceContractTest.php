@@ -162,4 +162,13 @@ class PublicCheckoutCurrencyPersistenceContractTest extends TestCase
         $this->assertStringContainsString('$currencyService->convert((float) $amount, $sourceCurrencyCode, $displayCurrencyCode)', $bookingItem);
         $this->assertStringNotContainsString('->convert((float) $amount, $source_currency, $currency)', $bookingItem);
     }
+
+    public function test_checkout_success_and_quotation_email_render_refundable_deposit_in_booking_currency(): void
+    {
+        $success = file_get_contents(__DIR__ . '/../../resources/views/checkout/success.blade.php');
+        $quotation = file_get_contents(__DIR__ . '/../../resources/views/emails/quotation-request.blade.php');
+
+        $this->assertStringContainsString('<x-booking-refundable-deposit :booking="$booking" :currency="$currencyCode" />', $success);
+        $this->assertStringContainsString('$currencyCode = getBookingDisplayCurrency($booking);', $quotation);
+    }
 }

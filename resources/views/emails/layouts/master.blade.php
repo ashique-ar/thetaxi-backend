@@ -70,8 +70,8 @@
 
         /* Header */
         .email-header {
-            background: linear-gradient(135deg, #BF2629 0%, #8f1d1f 100%);
-            padding: 15px 30px;
+            background-color: #BF2629;
+            padding: 14px 24px;
             text-align: center;
         }
 
@@ -80,27 +80,28 @@
         }
 
         .logo-container img {
-            max-height: 50px;
+            height: 40px;
+            max-height: 40px;
             width: auto;
         }
 
         .email-header h1 {
             color: #ffffff;
-            font-size: 26px;
+            font-size: 20px;
             font-weight: 600;
-            margin: 0;
+            margin: 6px 0 0;
             letter-spacing: -0.5px;
         }
 
         .email-header .subtitle {
             color: rgba(255, 255, 255, 0.85);
-            font-size: 14px;
-            margin-top: 0;
+            font-size: 13px;
+            margin: 2px 0 0;
         }
 
         /* Content */
         .email-content {
-            padding: 20px 30px;
+            padding: 18px 24px;
         }
 
         .greeting {
@@ -123,12 +124,12 @@
 
         /* Reference Box */
         .reference-box {
-            background: linear-gradient(135deg, #fef5f5 0%, #fff8f8 100%);
-            border: 1px solid rgba(191, 38, 41, 0.15);
+            background-color: #fef5f5;
+            border: 1px solid #f3d4d4;
             border-left: 4px solid #BF2629;
             border-radius: 8px;
-            padding: 10px 24px;
-            margin: 16px 0;
+            padding: 8px 16px;
+            margin: 14px 0;
         }
 
         .reference-label {
@@ -136,11 +137,11 @@
             color: #717171;
             text-transform: uppercase;
             letter-spacing: 1px;
-            margin-bottom: 8px;
+            margin-bottom: 2px;
         }
 
         .reference-number {
-            font-size: 22px;
+            font-size: 18px;
             font-weight: 700;
             color: #BF2629;
             letter-spacing: 1px;
@@ -155,8 +156,8 @@
             font-size: 15px;
             font-weight: 600;
             color: #BF2629;
-            margin-bottom: 6px;
-            padding-bottom: 5px;
+            margin: 0 0 6px;
+            padding-bottom: 4px;
             border-bottom: 2px solid #BF2629;
             display: flex;
             align-items: center;
@@ -202,8 +203,8 @@
             background-color: #f8f9fa;
             border-left: 4px solid #BF2629;
             border-radius: 0 8px 8px 0;
-            padding: 14px 18px;
-            margin: 14px 0;
+            padding: 10px 14px;
+            margin: 10px 0;
         }
 
         .highlight-box.success {
@@ -222,8 +223,8 @@
         }
 
         .highlight-box h3 {
-            margin: 0 0 12px 0;
-            font-size: 16px;
+            margin: 0 0 6px 0;
+            font-size: 15px;
             font-weight: 600;
         }
 
@@ -240,7 +241,7 @@
         }
 
         .highlight-box p {
-            margin: 8px 0;
+            margin: 4px 0;
             font-size: 14px;
             color: #555555;
             line-height: 1.6;
@@ -261,24 +262,23 @@
         /* Button */
         .btn-container {
             text-align: center;
-            margin: 30px 0;
+            margin: 18px 0 6px;
         }
 
         .btn {
             display: inline-block;
-            padding: 14px 32px;
-            background: linear-gradient(135deg, #15803d 0%, #166534 100%);
+            padding: 10px 24px;
+            background-color: #15803d;
             color: #ffffff !important;
             text-decoration: none;
-            font-size: 15px;
+            font-size: 14px;
             font-weight: 600;
             border-radius: 8px;
-            transition: all 0.3s ease;
             box-shadow: 0 4px 12px rgba(21, 128, 61, 0.24);
         }
 
         .btn:hover {
-            background: linear-gradient(135deg, #166534 0%, #14532d 100%);
+            background-color: #166534;
         }
 
         .btn-secondary {
@@ -313,25 +313,18 @@
         /* Divider */
         .divider {
             height: 1px;
-            background: linear-gradient(to right, transparent, #e5e7eb, transparent);
-            margin: 30px 0;
+            line-height: 1px;
+            font-size: 1px;
+            background-color: #e5e7eb;
+            margin: 14px 0;
         }
 
         /* Footer */
         .email-footer {
-            background: linear-gradient(135deg, #f8f9fa 0%, #f1f2f4 100%);
-            padding: 30px 35px;
+            background-color: #f6f7f8;
+            padding: 14px 24px;
             text-align: center;
             border-top: 1px solid #eef0f2;
-        }
-
-        .footer-brand {
-            margin-bottom: 20px;
-        }
-
-        .footer-brand img {
-            max-height: 32px;
-            opacity: 0.8;
         }
 
         .footer-text {
@@ -346,7 +339,7 @@
         }
 
         .footer-links {
-            margin: 15px 0;
+            margin: 6px 0;
         }
 
         .footer-links a {
@@ -378,7 +371,7 @@
         .copyright {
             font-size: 12px;
             color: #999999;
-            margin-top: 15px;
+            margin: 6px 0 0;
         }
 
         /* Contact Card */
@@ -386,8 +379,8 @@
             background: #ffffff;
             border: 1px solid #eef0f2;
             border-radius: 10px;
-            padding: 20px;
-            margin: 20px 0;
+            padding: 12px 14px;
+            margin: 12px 0;
         }
 
         .contact-card .title {
@@ -426,8 +419,8 @@
         }
 
         .price-total td {
-            font-size: 16px !important;
-            padding: 11px 0 !important;
+            font-size: 15px !important;
+            padding: 8px 0 !important;
         }
 
         .price-total td:last-child {
@@ -441,38 +434,37 @@
             }
 
             .email-header {
-                padding: 15px 20px;
+                padding: 12px 16px !important;
             }
 
             .email-header h1 {
-                font-size: 22px;
+                font-size: 18px !important;
             }
 
             .email-content {
-            padding: 16px 20px;
+                padding: 14px 16px !important;
             }
 
             .email-footer {
-                padding: 25px 20px;
+                padding: 12px 16px !important;
             }
 
             .info-table td {
-                display: block;
-                width: 100%;
+                display: block !important;
+                width: 100% !important;
             }
 
             .info-table td:first-child {
-                padding-bottom: 4px;
-                border-bottom: none;
+                padding-bottom: 0 !important;
             }
 
             .info-table td:last-child {
-                padding-top: 0;
+                padding-top: 0 !important;
+                padding-bottom: 4px !important;
             }
 
             .btn {
-                display: block;
-                width: 100%;
+                display: block !important;
                 text-align: center;
             }
         }
@@ -494,11 +486,11 @@
                 <td align="center">
                     <div class="email-container">
                         <!-- Header -->
-                        <div class="email-header">
+                        <div class="email-header" style="background-color: #BF2629;">
                             @if($brandLogoUrl)
-                                <div class="logo-container"><img src="{{ $brandLogoUrl }}" alt="{{ $brandName }}"></div>
+                                <div class="logo-container"><img src="{{ $brandLogoUrl }}" alt="{{ $brandName }}" height="40" style="height: 40px; max-height: 40px; width: auto;"></div>
                             @else
-                                <strong>{{ $brandName }}</strong>
+                                <strong style="color: #ffffff; font-size: 18px;">{{ $brandName }}</strong>
                             @endif
                             <h1>@yield('header_title', 'Welcome')</h1>
                             @hasSection('header_subtitle')
@@ -513,10 +505,6 @@
 
                         <!-- Footer -->
                         <div class="email-footer">
-                            @if($brandLogoUrl)
-                                <div class="footer-brand"><img src="{{ $brandLogoUrl }}" alt="{{ $brandName }}"></div>
-                            @endif
-
                             <p class="footer-text">
                                 Best regards,<br>
                                 <strong>{{ $brandName }} Team</strong>

@@ -200,6 +200,7 @@
                                     <span class="icon">💳</span> Payment Summary
                                 </h2>
                                 <x-booking-payment-summary :booking="$booking" :currency="$currencyCode" :source_currency="$bookingCurrencyCode" :advance_percentage="$advancePercentage" />
+                                <x-booking-refundable-deposit :booking="$booking" :currency="$currencyCode" />
                             </div>
                             @if ($booking->special_requirements)
                                 <div class="section">
@@ -445,7 +446,7 @@
         .checkout-success .highlight-box h3 { margin-bottom: 7px; font-size: 15px; }
         .checkout-success .highlight-box p { margin: 5px 0; font-size: 13px; }
         .greeting {
-            font-size: 16px;
+            font-size: 15px;
             color: #333333;
             margin-bottom: 0;
             line-height: 1.6;
@@ -456,10 +457,10 @@
         }
 
         .intro-text {
-            font-size: 15px;
+            font-size: 14px;
             color: #555555;
-            line-height: 1.7;
-            margin-bottom: 25px;
+            line-height: 1.55;
+            margin-bottom: 14px;
         }
 
         /* Reference Box */
@@ -469,7 +470,7 @@
             border-left: 4px solid #BF2629;
             border-radius: 8px;
             padding: 10px 15px;
-            margin: 25px 0;
+            margin: 16px 0;
         }
 
         .reference-label {
@@ -481,7 +482,7 @@
         }
 
         .reference-number {
-            font-size: 22px;
+            font-size: 20px;
             font-weight: 700;
             color: #BF2629;
             letter-spacing: 1px;
@@ -493,11 +494,11 @@
         }
 
         .section-title {
-            font-size: 17px;
+            font-size: 16px;
             font-weight: 600;
             color: #BF2629;
-            margin-bottom: 10px;
-            padding-bottom: 8px;
+            margin-bottom: 7px;
+            padding-bottom: 5px;
             border-bottom: 2px solid #BF2629;
             display: flex;
             align-items: center;
@@ -539,19 +540,19 @@
         }
 
         .booking-payment-summary .booking-payment-total-row td {
-            padding-top: 12px;
-            padding-bottom: 12px;
+            padding-top: 8px;
+            padding-bottom: 8px;
         }
 
         .booking-payment-summary .booking-payment-total-row td:last-child {
-            font-size: 22px;
+            font-size: 18px;
             font-weight: 800;
             color: #BF2629;
         }
 
         .booking-payment-summary .booking-payment-due-row td {
-            padding-top: 9px;
-            padding-bottom: 9px;
+            padding-top: 6px;
+            padding-bottom: 6px;
         }
 
         /* Highlight Box */
@@ -618,12 +619,12 @@
         /* Button */
         .btn-container {
             text-align: center;
-            margin: 30px 0;
+            margin: 18px 0;
         }
 
         .btn-new {
             display: inline-block;
-            padding: 14px 32px;
+            padding: 10px 24px;
             background: linear-gradient(135deg, #15803d 0%, #166534 100%);
             color: #ffffff !important;
             text-decoration: none;
@@ -672,7 +673,7 @@
         .divider {
             height: 1px;
             background: linear-gradient(to right, transparent, #e5e7eb, transparent);
-            margin: 30px 0;
+            margin: 16px 0;
         }
 
         /* Footer */
@@ -726,34 +727,18 @@
 
         /* Responsive */
         @media (max-width: 768px) {
-            .email-wrapper {
-                padding: 20px 10px;
-            }
-
-            .email-content {
-                padding: 30px 20px;
-            }
-
-            .email-header {
-                padding: 30px 20px;
-            }
-
-            .email-header h1 {
-                font-size: 22px;
-            }
-
             .reference-number {
                 font-size: 18px;
             }
 
-            .btn {
-                padding: 12px 24px;
+            .btn-new {
+                padding: 10px 20px;
                 font-size: 14px;
             }
         }
     </style>
     <link rel="stylesheet"
-        href="{{ assetVersion(is_theme('theme-02') ? 'assets/css/checkout-theme-02.css' : 'assets/css/checkout-theme-01.css') }}">
+        href="{{ assetVersion(theme_asset('checkout_stylesheet') ?? 'assets/css/checkout-theme-01.css') }}">
 @endpush
 
 @push('scripts')
