@@ -765,6 +765,11 @@ class SettingsCategoryService
                     'placeholder' => 'Booking Notice: Bookings must be made at least <strong>4 hours</strong> in advance.',
                     'description' => 'Shown below the public booking form. Supports basic formatting and tel: links.'
                 ],
+                'booking_confirmation_cc_creator' => [
+                    'label' => 'CC Booking Creator on Customer Emails',
+                    'type' => 'toggle',
+                    'description' => 'Copy the staff member who created the booking on customer booking confirmation emails.'
+                ],
                 // Service visibility toggles
                 'enable_airport_transfers' => [
                     'label' => 'Enable Airport Transfers',

@@ -1587,7 +1587,7 @@ Route::middleware(['auth:api'])->group(function () {
     Route::get('staff/workload', StaffWorkloadController::class)
         ->middleware('permission:staff.view');
     Route::get('my-work/summary', MyWorkController::class)
-        ->middleware('permission:bookings.view|bookings.assign|bookings.update|inquiries.view|inquiries.edit|phone-calls.view|phone-calls.edit|customers.view|customers.edit|sales.crm.view');
+        ->middleware('permission:bookings.view|bookings.view-assigned|bookings.view-rep-team|bookings.assign|bookings.assign-reps|bookings.update|inquiries.view|inquiries.edit|phone-calls.view|phone-calls.edit|customers.view|customers.edit|sales.crm.view');
     Route::post('staff', [StaffController::class, 'store'])
         ->middleware('permission:staff.create');
     Route::get('staff/{staff}', [StaffController::class, 'show'])

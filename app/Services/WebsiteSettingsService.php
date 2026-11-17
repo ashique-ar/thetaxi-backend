@@ -1093,6 +1093,7 @@ class WebsiteSettingsService
             'customer_portal_booking_advance_hours',
             'corporate_portal_booking_advance_hours',
             'booking_notice_html',
+            'booking_confirmation_cc_creator',
             'booking_max_days',
             'cancellation_allowed',
             'cancellation_hours',

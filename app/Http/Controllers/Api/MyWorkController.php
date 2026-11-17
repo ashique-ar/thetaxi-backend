@@ -25,7 +25,7 @@ class MyWorkController extends Controller
         $employeeWorkload = [];
         $activeBookingStatuses = array_merge(['inquiry', 'inquiry_qualified'], BookingLifecycleStatus::activeOperationalValues());
 
-        if ($request->user()->can('bookings.view') && !Schema::hasColumn('bookings', 'responsible_user_id')) {
+        if ($request->user()->canAny(['bookings.view', 'bookings.view-assigned']) && !Schema::hasColumn('bookings', 'responsible_user_id')) {
             return response()->json([
                 'status' => 'error',
                 'code' => 'WORKSPACE_SETUP_REQUIRED',
@@ -33,7 +33,7 @@ class MyWorkController extends Controller
             ], 503);
         }
 
-        if ($request->user()->can('bookings.view')) {
+        if ($request->user()->canAny(['bookings.view', 'bookings.view-assigned'])) {
             $bookings = DB::table('bookings as booking')->whereNull('booking.deleted_at')
                 ->where('booking.responsible_user_id', $userId)
                 ->whereIn('booking.status', array_merge(['draft'], $activeBookingStatuses));
@@ -49,7 +49,7 @@ class MyWorkController extends Controller
             }
         }
 
-        if ($request->user()->can('bookings.view')
+        if ($request->user()->canAny(['bookings.view', 'bookings.view-assigned'])
             && Schema::hasTable('booking_dispatches')
             && Schema::hasColumn('booking_items', 'workflow_config_snapshot')
             && Schema::hasColumn('booking_dispatches', 'booking_item_id')) {
@@ -343,7 +343,7 @@ class MyWorkController extends Controller
             }
         }
 
-        if ($request->user()->can('bookings.view') && Schema::hasTable('booking_activities')) {
+        if ($request->user()->canAny(['bookings.view', 'bookings.view-assigned']) && Schema::hasTable('booking_activities')) {
             $quotes = DB::table('bookings as booking')->whereNull('booking.deleted_at')
                 ->where('booking.status', 'quotation_requested')
                 ->where(fn ($owner) => $owner->where('booking.responsible_user_id', $userId)

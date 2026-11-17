@@ -22,7 +22,7 @@ class MailDispatchService
      *     internal copy, e.g. staff-confirmed admin-portal bookings pass false since
      *     the staff member already knows the booking exists.
      */
-    public function sendToCustomer(string $email, Mailable $mailable, bool $includeInternalCopy = true): void
+    public function sendToCustomer(string $email, Mailable $mailable, bool $includeInternalCopy = true, array $additionalCc = []): void
     {
         if (!$email) {
             Log::warning('Skipping customer email send; missing recipient.', [
@@ -39,8 +39,9 @@ class MailDispatchService
         $pending = Mail::to($toRecipients);
         $recipients = $includeInternalCopy ? $this->resolveCustomerRecipients($mailable) : ['cc' => [], 'bcc' => []];
 
-        if (!empty($recipients['cc'])) {
-            $pending->cc($recipients['cc']);
+        $ccRecipients = $this->normalizeRecipients(array_merge($recipients['cc'], $additionalCc));
+        if (!empty($ccRecipients)) {
+            $pending->cc($ccRecipients);
         }
         if (!empty($recipients['bcc'])) {
             $pending->bcc($recipients['bcc']);

@@ -19,32 +19,7 @@ use Spatie\Permission\PermissionRegistrar;
 
 class UserContextService
 {
-    private const ROLE_CONTEXT_MAP = [
-        'customer' => ['customer'],
-        'driver' => ['driver'],
-        'admin' => ['staff'],
-        'super-admin' => ['staff'],
-        'staff' => ['staff'],
-        'staff-operations' => ['staff'],
-        'accountant' => ['staff'],
-        'admin-mkt' => ['staff'],
-        'data-entry' => ['staff'],
-        'driver-coordinator' => ['staff'],
-        'fleet-manager' => ['staff'],
-        'hr-integration-adapter' => ['staff'],
-        'hr-manager' => ['staff'],
-        'hr-notification-adapter' => ['staff'],
-        'hr-officer' => ['staff'],
-        'hr-safety-integration-adapter' => ['staff'],
-        'management' => ['staff'],
-        'rep-marketing' => ['staff'],
-        'sales-manager' => ['staff'],
-        'salesperson' => ['staff'],
-        'sub-admin' => ['staff'],
-        'agent' => ['agent'],
-        'vehicle-owner' => ['vehicle_owner'],
-        'vehicle_owner' => ['vehicle_owner'],
-    ];
+    private const INTERNAL_PORTAL_ROLES = ['admin', 'sub-admin', 'super-admin'];
 
     /**
      * Switch user to a specific context.
@@ -911,7 +886,7 @@ class UserContextService
         }
 
         if ($contextTypes === null) {
-            $contextTypes = self::ROLE_CONTEXT_MAP[$role->name] ?? [];
+            $contextTypes = [];
         }
 
         return collect($contextTypes)
@@ -1027,13 +1002,7 @@ class UserContextService
             $roles = $this->formatRoleCollection($roleModels);
             $permissions = $this->formatPermissionCollection($permissionModels);
         }
-        $roleNames = collect($roles)->pluck('name');
         $route = $this->routeForPortalProfile($portalProfile);
-        if ($portalProfile === 'internal'
-            && $roleNames->contains('salesperson')
-            && ! $roleNames->intersect(['admin', 'sub-admin', 'management', 'sales-manager'])->isNotEmpty()) {
-            $route = '/sales/me';
-        }
 
         return [
             'id' => $contextType,
@@ -1213,15 +1182,9 @@ class UserContextService
      */
     private function canAccessInternalPortal(User $user): bool
     {
-        if ($user->hasRole(['admin', 'super-admin', 'staff'])) {
-            return true;
-        }
-
-        if ($user->contexts()->where('context_type', 'staff')->where('is_active', true)->exists()) {
-            return true;
-        }
-
-        return false;
+        return app(PermissionEvaluator::class)
+            ->rolesForInternalContext($user)
+            ->contains(fn ($role) => in_array($role->name, self::INTERNAL_PORTAL_ROLES, true));
     }
 
     /**
@@ -1258,6 +1221,7 @@ class UserContextService
     private function routeForPortalProfile(string $portalProfile): string
     {
         return match ($portalProfile) {
+            'internal' => '/dashboard',
             'corporate' => '/corporate/dashboard',
             'customer' => '/customer-portal',
             'driver', 'vehicle_owner', 'agent' => '/user',

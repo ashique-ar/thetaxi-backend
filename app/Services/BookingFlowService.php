@@ -9208,6 +9208,12 @@ class BookingFlowService
             // Send confirmation email to customer
             if ($customerEmail) {
                 try {
+                    $creatorEmail = filter_var(
+                        app(WebsiteSettingsService::class)->get('booking_confirmation_cc_creator', false),
+                        FILTER_VALIDATE_BOOL
+                    ) ? ($booking->createdBy?->email ?? \App\Models\User::query()
+                        ->whereKey($booking->created_user_id ?? $booking->created_by_user_id)
+                        ->value('email')) : null;
                     $this->mailDispatchService->sendToCustomer(
                         $customerEmail,
                         new GeneralMail([
@@ -9223,7 +9229,8 @@ class BookingFlowService
                                 'confirmation_number' => $confirmationNumber,
                             ],
                         ]),
-                        $notifyInternalTeam
+                        $notifyInternalTeam,
+                        $creatorEmail ? [$creatorEmail] : []
                     );
                 } catch (\Throwable $e) {
                     Log::warning('Failed to send booking confirmation email', [
