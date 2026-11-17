@@ -34,12 +34,12 @@ class MailDispatchService
         $includeSenderCopy = $includeInternalCopy && $this->shouldIncludeSenderCopy($mailable);
         $toRecipients = $this->normalizeRecipients(array_merge(
             [$email],
-            $includeSenderCopy ? array_merge($this->fromAddressRecipients(), $this->clientCopyRecipients()) : []
+            $includeSenderCopy ? $this->fromAddressRecipients() : []
         ));
         $pending = Mail::to($toRecipients);
         $recipients = $includeInternalCopy ? $this->resolveCustomerRecipients($mailable) : ['cc' => [], 'bcc' => []];
 
-        $ccRecipients = $this->normalizeRecipients(array_merge($recipients['cc'], $additionalCc));
+        $ccRecipients = $this->normalizeRecipients(array_merge($this->clientCopyRecipients(), $recipients['cc'], $additionalCc));
         if (!empty($ccRecipients)) {
             $pending->cc($ccRecipients);
         }
@@ -59,11 +59,14 @@ class MailDispatchService
     {
         $toRecipients = $this->normalizeRecipients(array_merge(
             (array) $recipients,
-            $this->fromAddressRecipients(),
-            $this->clientCopyRecipients()
+            $this->fromAddressRecipients()
         ));
 
         $pending = Mail::to($toRecipients);
+        $clientCopyRecipients = $this->clientCopyRecipients();
+        if (!empty($clientCopyRecipients)) {
+            $pending->cc($clientCopyRecipients);
+        }
         $pending->bcc($this->globalBccRecipients());
         $this->dispatch($pending, $mailable);
     }
