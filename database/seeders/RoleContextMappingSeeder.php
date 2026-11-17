@@ -71,7 +71,7 @@ class RoleContextMappingSeeder extends Seeder
                     $contextService->syncContextsForAssignedRoles($user, [$role]);
 
                     if (in_array($role->name, ['admin', 'sub-admin', 'super-admin'], true)) {
-                        $contextService->switchContext($user, 'customer', ['roles' => ['customer']]);
+                        $contextService->switchContext($user, 'customer');
                     }
                 });
             });
