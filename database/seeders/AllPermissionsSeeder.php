@@ -173,10 +173,12 @@ class AllPermissionsSeeder extends Seeder
         'api.webhooks',
         'approve_bookings',
         'bookings.assign',
+        'bookings.assign-reps',
         'bookings.approve',
         'bookings.complete',
         'bookings.complete_repairs',
         'bookings.view-assigned',
+        'bookings.view-rep-team',
         'bookings.edit-assigned',
         'bookings.delete-assigned',
         'bookings.price_override',
@@ -1062,6 +1064,16 @@ class AllPermissionsSeeder extends Seeder
                 ),
                 ['bookings.view-assigned', 'bookings.edit-assigned', 'bookings.delete-assigned']
             ))),
+            'rep-marketing-admin' => array_values(array_unique(array_merge(
+                array_diff(
+                    $this->permissionsForResources(
+                        ['customers', 'quotations', 'bookings', 'inquiries'],
+                        ['view', 'create', 'edit', 'delete']
+                    ),
+                    ['bookings.view', 'bookings.edit', 'bookings.delete']
+                ),
+                ['bookings.view-assigned', 'bookings.edit-assigned', 'bookings.delete-assigned', 'bookings.view-rep-team', 'bookings.assign-reps']
+            ))),
             'salesperson' => [
                 'sales.self.view',
                 'sales.collections.view',
@@ -1327,6 +1339,15 @@ class AllPermissionsSeeder extends Seeder
             'bookings.assign', 'bookings.approve', 'bookings.complete', 'bookings.complete_repairs',
             'bookings.price_override', 'bookings.dispatch', 'bookings.process_return', 'bookings.qc_inspect',
             'bookings.export', 'bookings.tracking_export', 'bookings.tracking_replay', 'bookings.tracking_estimate',
+        ], $permissionModels);
+
+        $repMarketingAdmin = Role::firstOrCreate(['name' => 'rep-marketing-admin', 'guard_name' => $guard]);
+        $this->revokePermissionsFromRole($repMarketingAdmin, [
+            'bookings.view', 'bookings.edit', 'bookings.update', 'bookings.delete', 'bookings.manage',
+            'bookings.view-all', 'view_all_bookings', 'approve_bookings', 'create_bookings', 'create_bookings_for_others',
+            'bookings.approve', 'bookings.complete', 'bookings.complete_repairs', 'bookings.price_override',
+            'bookings.dispatch', 'bookings.process_return', 'bookings.qc_inspect', 'bookings.export',
+            'bookings.tracking_export', 'bookings.tracking_replay', 'bookings.tracking_estimate',
         ], $permissionModels);
 
         $staffOperations = Role::firstOrCreate(['name' => 'staff-operations', 'guard_name' => $guard]);

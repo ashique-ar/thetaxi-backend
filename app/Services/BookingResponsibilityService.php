@@ -12,22 +12,26 @@ use Illuminate\Support\Facades\Log;
 
 class BookingResponsibilityService
 {
-    public function eligibleEmployees()
+    public function eligibleEmployees(?User $actor = null)
     {
         $employees = DB::table('staff')->join('users', 'users.id', '=', 'staff.user_id')
             ->whereNull('staff.deleted_at')->where(fn ($employment) => $employment->whereNull('staff.employment_ended_at')->orWhere('staff.employment_ended_at', '>', now()))
             ->whereNull('users.deleted_at')->where('users.is_active', true)
             ->select(['users.id', 'users.first_name', 'users.last_name', 'staff.code'])
             ->orderBy('users.first_name')->orderBy('users.last_name')->get();
-        $canViewBookings = User::permission(['bookings.view', 'bookings.view-assigned'])
-            ->whereIn('id', $employees->pluck('id'))->pluck('id')->map(fn ($id) => (string) $id)->all();
+        $eligibleUsers = User::permission(['bookings.view', 'bookings.view-assigned'])
+            ->whereIn('id', $employees->pluck('id'));
+        if ($actor?->can('bookings.assign-reps') && ! $actor->can('bookings.assign')) {
+            $eligibleUsers->role('rep-marketing');
+        }
+        $canViewBookings = $eligibleUsers->pluck('id')->map(fn ($id) => (string) $id)->all();
 
         return $employees->whereIn('id', $canViewBookings)->values();
     }
 
-    public function eligibleEmployeesWithOpenBookingCounts(): array
+    public function eligibleEmployeesWithOpenBookingCounts(?User $actor = null): array
     {
-        $employees = $this->eligibleEmployees();
+        $employees = $this->eligibleEmployees($actor);
         $employeeIds = $employees->pluck('id')->map(fn ($id) => (string) $id)->all();
         $workload = collect();
         if ($employeeIds) {

@@ -20,7 +20,7 @@ class BookingPolicy
     public function view(User $user, Booking $booking): bool
     {
         if ($user->can('bookings.view-assigned') && ! $user->can('bookings.view')) {
-            return app(BookingOwnership::class)->owns($user, $booking);
+            return app(BookingOwnership::class)->canAccess($user, $booking);
         }
 
         if ($user->can('bookings.view')) {

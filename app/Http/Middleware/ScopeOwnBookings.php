@@ -49,7 +49,7 @@ class ScopeOwnBookings
 
         if ($ids->isNotEmpty()) {
             foreach (Booking::query()->whereIn('id', $ids)->get() as $booking) {
-                abort_unless($this->ownership->owns($user, $booking), 404);
+                abort_unless($this->ownership->canAccess($user, $booking), 404);
             }
         }
 

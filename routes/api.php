@@ -2542,9 +2542,9 @@ Route::middleware(['auth:api'])->group(function () {
             Route::get('bookings', [BookingFlowController::class, 'getBookingsList'])
                 ->middleware('permission:bookings.view|bookings.view-assigned');
             Route::get('bookings/responsible-user-options', [BookingFlowController::class, 'responsibleUserOptions'])
-                ->middleware('permission:bookings.assign');
+                ->middleware('permission:bookings.assign|bookings.assign-reps');
             Route::put('bookings/{bookingId}/responsible-user', [BookingFlowController::class, 'assignResponsibleUser'])
-                ->whereUuid('bookingId')->middleware(['permission:bookings.assign', DenyCustomerPortalLegacyBookingActions::class]);
+                ->whereUuid('bookingId')->middleware(['permission:bookings.assign|bookings.assign-reps', DenyCustomerPortalLegacyBookingActions::class]);
             Route::get('return-inspection/options', [BookingFlowController::class, 'getReturnInspectionOptions'])
                 ->middleware('permission:bookings.view');
             Route::get('bookings/{bookingId}/items/{bookingItemId}/operations-notes', [BookingFlowController::class, 'getOperationsNotes'])

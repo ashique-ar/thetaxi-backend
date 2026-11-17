@@ -848,7 +848,7 @@ trait BookingSubmissionTrait
     public function responsibleUserOptions(Request $request): JsonResponse
     {
         $employees = app(\App\Services\BookingResponsibilityService::class)
-            ->eligibleEmployeesWithOpenBookingCounts();
+            ->eligibleEmployeesWithOpenBookingCounts($request->user());
 
         return response()->json(['status' => 'success', 'data' => $employees]);
     }
@@ -868,7 +868,9 @@ trait BookingSubmissionTrait
                     ->where(fn ($employment) => $employment->whereNull('staff.employment_ended_at')->orWhere('staff.employment_ended_at', '>', now()))
                     ->whereNull('users.deleted_at')->where('users.is_active', true)
                     ->lockForUpdate()->exists()
-                    && User::permission(['bookings.view', 'bookings.view-assigned'])->whereKey($newOwnerId)->exists();
+                    && (User::permission(['bookings.view', 'bookings.view-assigned'])
+                        ->when($request->user()->can('bookings.assign-reps') && ! $request->user()->can('bookings.assign'), fn ($users) => $users->role('rep-marketing'))
+                        ->whereKey($newOwnerId)->exists());
                 abort_unless($eligible, 422, 'Select an active employee who can view bookings.');
             }
 

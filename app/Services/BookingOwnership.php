@@ -19,8 +19,24 @@ class BookingOwnership
                 || (string) $booking->created_user_id === (string) $user->id);
     }
 
+    public function canAccess(User $user, Booking $booking): bool
+    {
+        return $this->owns($user, $booking)
+            || ($user->can('bookings.view-rep-team')
+                && (! $booking->responsible_user_id
+                    || User::role('rep-marketing')->whereKey($booking->responsible_user_id)->exists()));
+    }
+
     public function scope(Builder $query, User $user): Builder
     {
+        if ($user->can('bookings.view-rep-team')) {
+            $repIds = User::role('rep-marketing')->select('id');
+
+            return $query->where(fn (Builder $team) => $team
+                ->whereNull('bookings.responsible_user_id')
+                ->orWhereIn('bookings.responsible_user_id', $repIds));
+        }
+
         return $query->where(function (Builder $owner) use ($user) {
             $owner->where('bookings.responsible_user_id', $user->id)
                 ->orWhere(function (Builder $unassigned) use ($user) {
