@@ -10,7 +10,8 @@ class BookingOwnership
 {
     public function requiresScope(User $user): bool
     {
-        return $user->can('bookings.view-assigned') || $user->can('bookings.view-rep-team');
+        return ! $user->can('bookings.view-all')
+            && ($user->can('bookings.view-assigned') || $user->can('bookings.view-rep-team'));
     }
 
     public function owns(User $user, Booking $booking): bool
@@ -26,6 +27,10 @@ class BookingOwnership
 
     public function canAccess(User $user, Booking $booking): bool
     {
+        if ($user->can('bookings.view-all')) {
+            return true;
+        }
+
         return $this->owns($user, $booking)
             || ($user->can('bookings.view-rep-team')
                 && (! $booking->responsible_user_id
@@ -34,6 +39,10 @@ class BookingOwnership
 
     public function scope(Builder $query, User $user): Builder
     {
+        if ($user->can('bookings.view-all')) {
+            return $query;
+        }
+
         if ($user->can('bookings.view-rep-team')) {
             $assignedScopeIds = User::permission('bookings.view-assigned')->select('id');
 

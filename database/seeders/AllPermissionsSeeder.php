@@ -178,6 +178,7 @@ class AllPermissionsSeeder extends Seeder
         'bookings.complete',
         'bookings.complete_repairs',
         'bookings.view-assigned',
+        'bookings.view-all',
         'bookings.view-rep-team',
         'bookings.edit-assigned',
         'bookings.delete-assigned',
@@ -649,6 +650,7 @@ class AllPermissionsSeeder extends Seeder
                 [
                     'bookings.assign', 'bookings.approve', 'bookings.complete', 'bookings.dispatch',
                     'bookings.process_return', 'bookings.qc_inspect', 'bookings.complete_repairs',
+                    'bookings.view-all',
                     'view_all_bookings', 'create_bookings', 'create_bookings_for_others', 'approve_bookings',
                     'dashboard.view', 'customers.view', 'customers.create', 'customers.edit',
                     'service-types.view', 'service-packages.view', 'addons.view',
@@ -1369,6 +1371,7 @@ class AllPermissionsSeeder extends Seeder
     private static function denyByDefaultPermissions(): array
     {
         return [
+            'bookings.view-all',
             'drivers.onboarding-drafts.view',
             'uploads.delete-any',
             'hr.medical-records.view',
