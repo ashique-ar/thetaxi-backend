@@ -520,10 +520,11 @@
         $brandWebsite = $settings['company_website'] ?? config('app.url');
     @endphp
     <div class="email-wrapper">
-        <table role="presentation" cellspacing="0" cellpadding="0" border="0" width="100%">
+        <table role="presentation" cellspacing="0" cellpadding="0" border="0" width="100%" style="width: 100%;">
             <tr>
                 <td align="center">
-                    <div class="email-container">
+                    <table role="presentation" cellspacing="0" cellpadding="0" border="0" width="600" style="width: 100%; max-width: 600px; background-color: #ffffff;">
+                    <tr><td class="email-container" style="width: 600px; max-width: 600px; background-color: #ffffff; border-radius: 12px; overflow: hidden;">
                         <!-- Header -->
                         <div class="email-header">
                             @if($brandLogoUrl)
@@ -567,7 +568,8 @@
                                     reply directly to this message.</span>
                             </p>
                         </div>
-                    </div>
+                    </td></tr>
+                    </table>
                 </td>
             </tr>
         </table>
