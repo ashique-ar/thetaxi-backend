@@ -22,7 +22,7 @@ class BookingResponsibilityService
         $eligibleUsers = User::permission(['bookings.view', 'bookings.view-assigned'])
             ->whereIn('id', $employees->pluck('id'));
         if ($actor?->can('bookings.assign-reps') && ! $actor->can('bookings.assign')) {
-            $eligibleUsers->role('rep-marketing');
+            $eligibleUsers->permission('bookings.view-assigned');
         }
         $canViewBookings = $eligibleUsers->pluck('id')->map(fn ($id) => (string) $id)->all();
 

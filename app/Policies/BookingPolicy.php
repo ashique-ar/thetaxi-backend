@@ -19,8 +19,7 @@ class BookingPolicy
 
     public function view(User $user, Booking $booking): bool
     {
-        if (app(BookingOwnership::class)->isScopedRole($user)
-            || ($user->can('bookings.view-assigned') && ! $user->can('bookings.view'))) {
+        if (app(BookingOwnership::class)->requiresScope($user)) {
             return app(BookingOwnership::class)->canAccess($user, $booking);
         }
 
@@ -56,7 +55,7 @@ class BookingPolicy
 
     public function update(User $user, Booking $booking): bool
     {
-        if (app(BookingOwnership::class)->isScopedRole($user)) {
+        if (app(BookingOwnership::class)->requiresScope($user)) {
             return $user->can('bookings.edit-assigned') && app(BookingOwnership::class)->owns($user, $booking);
         }
 
@@ -86,7 +85,7 @@ class BookingPolicy
 
     public function delete(User $user, Booking $booking): bool
     {
-        if (app(BookingOwnership::class)->isScopedRole($user)) {
+        if (app(BookingOwnership::class)->requiresScope($user)) {
             return $user->can('bookings.delete-assigned') && app(BookingOwnership::class)->owns($user, $booking);
         }
 

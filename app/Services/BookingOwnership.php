@@ -8,14 +8,9 @@ use Illuminate\Database\Eloquent\Builder;
 
 class BookingOwnership
 {
-    public function isScopedRole(User $user): bool
+    public function requiresScope(User $user): bool
     {
-        return $user->hasRole('rep-marketing') || $user->hasRole('rep-marketing-admin');
-    }
-
-    private function isRepMarketingRep(User $user): bool
-    {
-        return $user->hasRole('rep-marketing') && ! $user->hasRole('rep-marketing-admin');
+        return $user->can('bookings.view-assigned') || $user->can('bookings.view-rep-team');
     }
 
     public function owns(User $user, Booking $booking): bool
@@ -31,25 +26,21 @@ class BookingOwnership
 
     public function canAccess(User $user, Booking $booking): bool
     {
-        if ($this->isRepMarketingRep($user)) {
-            return $this->owns($user, $booking);
-        }
-
         return $this->owns($user, $booking)
             || ($user->can('bookings.view-rep-team')
                 && (! $booking->responsible_user_id
-                    || User::role('rep-marketing')->whereKey($booking->responsible_user_id)->exists()));
+                    || User::permission('bookings.view-assigned')->whereKey($booking->responsible_user_id)->exists()));
     }
 
     public function scope(Builder $query, User $user): Builder
     {
-        if ($user->can('bookings.view-rep-team') && ! $this->isRepMarketingRep($user)) {
-            $repIds = User::role('rep-marketing')->select('id');
+        if ($user->can('bookings.view-rep-team')) {
+            $assignedScopeIds = User::permission('bookings.view-assigned')->select('id');
 
             return $query->where(fn (Builder $team) => $team
                 ->where('bookings.responsible_user_id', $user->id)
                 ->orWhereNull('bookings.responsible_user_id')
-                ->orWhereIn('bookings.responsible_user_id', $repIds));
+                ->orWhereIn('bookings.responsible_user_id', $assignedScopeIds));
         }
 
         return $query->where(function (Builder $owner) use ($user) {

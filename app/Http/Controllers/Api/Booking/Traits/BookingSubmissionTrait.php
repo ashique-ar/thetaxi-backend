@@ -715,8 +715,7 @@ trait BookingSubmissionTrait
     {
         try {
             $record = Booking::query()->where('status', 'draft')->findOrFail($draftId);
-            $scopedAccess = app(\App\Services\BookingOwnership::class)->isScopedRole(Auth::user())
-                || (Auth::user()?->can('bookings.view-assigned') && ! Auth::user()?->can('bookings.view'));
+            $scopedAccess = app(\App\Services\BookingOwnership::class)->requiresScope(Auth::user());
             if ($scopedAccess && ! Gate::allows('update', $record)) {
                 return response()->json(['success' => false, 'error' => 'Booking not found'], 404);
             }
@@ -869,7 +868,7 @@ trait BookingSubmissionTrait
                     ->whereNull('users.deleted_at')->where('users.is_active', true)
                     ->lockForUpdate()->exists()
                     && (User::permission(['bookings.view', 'bookings.view-assigned'])
-                        ->when($request->user()->can('bookings.assign-reps') && ! $request->user()->can('bookings.assign'), fn ($users) => $users->role('rep-marketing'))
+                        ->when($request->user()->can('bookings.assign-reps') && ! $request->user()->can('bookings.assign'), fn ($users) => $users->permission('bookings.view-assigned'))
                         ->whereKey($newOwnerId)->exists());
                 abort_unless($eligible, 422, 'Select an active employee who can view bookings.');
             }
@@ -1063,8 +1062,7 @@ trait BookingSubmissionTrait
 
         try {
             $record = Booking::findOrFail($bookingId);
-            $assignedOnly = app(\App\Services\BookingOwnership::class)->isScopedRole(Auth::user())
-                || (Auth::user()?->can('bookings.view-assigned') && ! Auth::user()?->can('bookings.view'));
+            $assignedOnly = app(\App\Services\BookingOwnership::class)->requiresScope(Auth::user());
             $authorized = $request->status === 'cancelled'
                 ? Gate::allows('delete', $record)
                 : Auth::user()?->can('bookings.update') && Gate::allows('update', $record);

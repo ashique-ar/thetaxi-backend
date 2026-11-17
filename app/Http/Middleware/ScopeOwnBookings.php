@@ -17,8 +17,7 @@ class ScopeOwnBookings
     public function handle(Request $request, Closure $next): Response
     {
         $user = $request->user();
-        if (! $user || (! $this->ownership->isScopedRole($user)
-            && (! $user->can('bookings.view-assigned') || $user->can('bookings.view')))) {
+        if (! $user || ! $this->ownership->requiresScope($user)) {
             return $next($request);
         }
 
