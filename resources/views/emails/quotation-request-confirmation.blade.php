@@ -51,7 +51,7 @@
                     </div>
                 @endif
                 <div style="flex: 1;">
-                    <h3 style="margin-top: 0; margin-bottom: 5px; color: #BF2629; font-size: 16px;">
+                    <h3 style="margin-top: 0; margin-bottom: 5px; color: {{ $brandColor }}; font-size: 16px;">
                         Vehicle 1: {{ $vehicleGroup->name }}
                     </h3>
                     <span
@@ -171,17 +171,17 @@
             <tr>
                 <td>Phone</td>
                 <td><a href="tel:{{ $supportPhone }}"
-                        style="color: #BF2629; text-decoration: none;">{{ $supportPhone }}</a></td>
+                        style="color: {{ $brandColor }}; text-decoration: none;">{{ $supportPhone }}</a></td>
             </tr>
             <tr>
                 <td>Email</td>
                 <td><a href="mailto:{{ $supportEmail }}"
-                        style="color: #BF2629; text-decoration: none;">{{ $supportEmail }}</a></td>
+                        style="color: {{ $brandColor }}; text-decoration: none;">{{ $supportEmail }}</a></td>
             </tr>
             <tr>
                 <td>Website</td>
                 <td><a href="{{ config('app.url') }}"
-                        style="color: #BF2629; text-decoration: none;">{{ config('app.url') }}</a></td>
+                        style="color: {{ $brandColor }}; text-decoration: none;">{{ config('app.url') }}</a></td>
             </tr>
         </table>
         @php
@@ -190,7 +190,7 @@
         @if(!empty($supportPhoneTel))
             <div style="text-align: center; margin: 20px 0 10px 0;">
                 <a href="tel:{{ $supportPhoneTel }}"
-                    style="display: inline-block; background-color: #BF2629; background-image: linear-gradient(135deg, #BF2629 0%, #8f1d1f 100%); color: #ffffff; padding: 12px 28px; text-decoration: none; border-radius: 8px; font-weight: 700; font-size: 15px; box-shadow: 0 4px 12px rgba(191, 38, 41, 0.25);">
+                    style="display: inline-block; background-color: {{ $brandColor }}; color: #ffffff; padding: 10px 22px; text-decoration: none; border-radius: 8px; font-weight: 600; font-size: 14px;">
                     📞 Call 24/7 Support
                 </a>
             </div>

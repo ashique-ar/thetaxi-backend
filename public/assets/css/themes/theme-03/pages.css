@@ -322,3 +322,13 @@ body.theme-theme-03 .booking-status--theme-03 .progress-bar { background: var(--
         transition-duration: 0.01ms !important;
     }
 }
+
+/* Success + payment-resume: confirmation pages stay compact (customer complaints about oversized type). */
+body.theme-theme-03:is(.theme-page-checkout-success, .theme-page-checkout-payment-resume) .breadcrumb-section { min-height: 0; padding: 28px 0 24px; }
+body.theme-theme-03:is(.theme-page-checkout-success, .theme-page-checkout-payment-resume) .breadcrumb-section::after { display: none; }
+body.theme-theme-03:is(.theme-page-checkout-success, .theme-page-checkout-payment-resume) .breadcrumb-section .banner-content { gap: 6px; }
+body.theme-theme-03:is(.theme-page-checkout-success, .theme-page-checkout-payment-resume) .breadcrumb-section h1 { font-size: clamp(1.6rem, 2.6vw, 2.2rem); line-height: 1.1; }
+body.theme-theme-03:is(.theme-page-checkout-success, .theme-page-checkout-payment-resume) .breadcrumb-section .lead { margin: 0; font-size: 15px; line-height: 1.5; }
+body.theme-theme-03:is(.theme-page-checkout-success, .theme-page-checkout-payment-resume) .checkout-success { padding: 20px 0; }
+body.theme-theme-03 :where(.checkout-success--theme-03, .payment-resume--theme-03) .section { padding-block: 12px; }
+body.theme-theme-03 :where(.checkout-success--theme-03, .payment-resume--theme-03) .section-title { font-size: 19px; }

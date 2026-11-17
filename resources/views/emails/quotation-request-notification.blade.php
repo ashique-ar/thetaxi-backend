@@ -50,7 +50,7 @@
                     </div>
                 @endif
                 <div style="flex: 1;">
-                    <h3 style="margin-top: 0; margin-bottom: 5px; color: #BF2629; font-size: 16px;">
+                    <h3 style="margin-top: 0; margin-bottom: 5px; color: {{ $brandColor }}; font-size: 16px;">
                         Vehicle 1: {{ $vehicleGroup->name }}
                     </h3>
                     <span
@@ -118,12 +118,12 @@
             <tr>
                 <td>Email</td>
                 <td><a href="mailto:{{ $customerEmail }}"
-                        style="color: #BF2629; text-decoration: none;">{{ $customerEmail }}</a></td>
+                        style="color: {{ $brandColor }}; text-decoration: none;">{{ $customerEmail }}</a></td>
             </tr>
             <tr>
                 <td>Phone</td>
                 <td><a href="tel:{{ $customerPhone }}"
-                        style="color: #BF2629; text-decoration: none;">{{ $customerPhone }}</a></td>
+                        style="color: {{ $brandColor }}; text-decoration: none;">{{ $customerPhone }}</a></td>
             </tr>
             @if ($companyName)
                 <tr>

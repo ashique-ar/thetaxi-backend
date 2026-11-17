@@ -545,6 +545,119 @@ class ReportsController extends Controller
         ]);
     }
 
+    public function getOperationsReports(Request $request): JsonResponse
+    {
+        $filters = $request->validate([
+            'date_from' => ['nullable', 'date_format:Y-m-d'],
+            'date_to' => ['nullable', 'date_format:Y-m-d', 'after_or_equal:date_from'],
+            'staff_user_id' => ['nullable', 'uuid'],
+            'organization_unit_id' => ['nullable', 'uuid'],
+        ]);
+        $timezone = TimezoneService::getUserTimezone();
+        $to = $filters['date_to'] ?? Carbon::today($timezone)->toDateString();
+        $from = $filters['date_from'] ?? Carbon::parse($to, $timezone)->startOfMonth()->toDateString();
+        abort_if(Carbon::parse($from)->diffInDays(Carbon::parse($to)) > 366, 422, 'Operations report range cannot exceed 367 days.');
+        $filters = [...$filters, 'date_from' => $from, 'date_to' => $to];
+        $start = TimezoneService::userDateStartUtc($from);
+        $end = $this->exclusiveDateEnd($to);
+
+        $bookings = Booking::query();
+        $this->applyFilters($bookings, $filters);
+        $dailyExpression = DB::connection()->getDriverName() === 'pgsql'
+            ? "DATE(bookings.created_at AT TIME ZONE 'UTC' AT TIME ZONE ?)"
+            : 'DATE(bookings.created_at)';
+        $dailyBindings = DB::connection()->getDriverName() === 'pgsql' ? [$timezone] : [];
+        $dailyCounts = (clone $bookings)->selectRaw("{$dailyExpression} as day, COUNT(*) as bookings", $dailyBindings)
+            ->groupByRaw($dailyExpression, $dailyBindings)->orderBy('day')->get()
+            ->mapWithKeys(fn ($row) => [(string) $row->day => (int) $row->bookings]);
+        $dailyBookings = collect();
+        $day = Carbon::parse($from, $timezone);
+        $lastDay = Carbon::parse($to, $timezone);
+        while ($day->lte($lastDay)) {
+            $date = $day->toDateString();
+            $dailyBookings->push(['day' => $date, 'bookings' => $dailyCounts->get($date, 0)]);
+            $day->addDay();
+        }
+
+        $visibleBookingIds = Booking::query()->select('bookings.id');
+        $this->applyReportBookingScope($visibleBookingIds);
+        $this->applyResponsibleFilters($visibleBookingIds, $filters);
+
+        $cancelledQuery = Booking::query()->whereIn('bookings.id', clone $visibleBookingIds)
+            ->whereIn('bookings.status', ['cancelled', 'inquiry_cancelled'])
+            ->whereNotNull('bookings.cancelled_at')->where('bookings.cancelled_at', '>=', $start)->where('bookings.cancelled_at', '<', $end);
+        $cancellations = (clone $cancelledQuery)->orderByDesc('bookings.cancelled_at')->limit(50)
+            ->get(['bookings.id', 'bookings.booking_number', 'bookings.status', 'bookings.cancelled_at', 'bookings.workflow_data'])
+            ->map(fn ($booking) => [
+                'id' => (string) $booking->id,
+                'booking_number' => $booking->booking_number,
+                'status' => $booking->status,
+                'cancelled_at' => $booking->cancelled_at,
+                'reason' => data_get($booking->workflow_data, 'cancellation_reason'),
+            ])->values();
+
+        $dispatchQuery = DB::table('booking_dispatches as dispatch')
+            ->join('bookings', 'bookings.id', '=', 'dispatch.booking_id')
+            ->whereIn('bookings.id', clone $visibleBookingIds)
+            ->whereNotNull('dispatch.dispatched_at')->where('dispatch.dispatched_at', '>=', $start)->where('dispatch.dispatched_at', '<', $end)
+            ->whereNull('dispatch.deleted_at');
+        $dispatches = (clone $dispatchQuery)->orderByDesc('dispatch.dispatched_at')->limit(50)
+            ->get(['bookings.id', 'bookings.booking_number', 'dispatch.dispatch_status', 'dispatch.dispatched_at', 'dispatch.actual_return_at'])
+            ->map(fn ($row) => ['id' => (string) $row->id, 'booking_number' => $row->booking_number, 'status' => $row->dispatch_status, 'dispatched_at' => $row->dispatched_at, 'returned_at' => $row->actual_return_at])->values();
+        $dispatchEvents = $dispatches->map(fn ($row) => ['kind' => 'booking_dispatch', 'reference' => $row['booking_number'], 'event' => 'dispatch', 'result' => $row['status'], 'occurred_at' => $row['dispatched_at']]);
+        $cancellationEvents = $cancellations->map(fn ($row) => ['kind' => 'booking_cancellation', 'reference' => $row['booking_number'], 'event' => 'cancellation', 'result' => $row['reason'] ?? '', 'occurred_at' => $row['cancelled_at']]);
+
+        $inquiries = null;
+        $inquiryEvents = collect();
+        if ($request->user()->can('inquiries.view')) {
+            $inquiryQuery = DB::table('inquiries')->whereNull('deleted_at')->where('created_at', '>=', $start)->where('created_at', '<', $end);
+            if (!empty($filters['staff_user_id'])) $inquiryQuery->where('assigned_to', $filters['staff_user_id']);
+            if (!empty($filters['organization_unit_id'])) {
+                $departmentUsers = $this->currentDepartmentAssignments($request->user())
+                    ->where('assignment.organization_unit_id', $filters['organization_unit_id'])->select('staff.user_id');
+                $inquiryQuery->whereIn('assigned_to', $departmentUsers);
+            }
+            $responseMinutesExpression = DB::connection()->getDriverName() === 'pgsql'
+                ? 'EXTRACT(EPOCH FROM (first_response_sent_at - created_at)) / 60'
+                : '(julianday(first_response_sent_at) - julianday(created_at)) * 1440';
+            $firstResponse = (clone $inquiryQuery)->whereNotNull('first_response_sent_at')
+                ->selectRaw("COUNT(*) as answered, AVG({$responseMinutesExpression}) as average_minutes")->first();
+            $inquiries = [
+                'total' => (clone $inquiryQuery)->count(),
+                'by_status' => (clone $inquiryQuery)->select('status')->selectRaw('COUNT(*) as total')->groupBy('status')->orderBy('status')->get()
+                    ->map(fn ($row) => ['status' => (string) ($row->status ?: 'unknown'), 'total' => (int) $row->total])->values(),
+                'by_source' => (clone $inquiryQuery)->select('source')->selectRaw('COUNT(*) as total')->groupBy('source')->orderBy('source')->get()
+                    ->map(fn ($row) => ['source' => (string) ($row->source ?: 'unknown'), 'total' => (int) $row->total])->values(),
+                'first_response' => ['answered' => (int) $firstResponse->answered, 'average_minutes' => $firstResponse->average_minutes === null ? null : (float) $firstResponse->average_minutes],
+            ];
+            $inquiryEvents = DB::table('inquiry_status_events as event')
+                ->join('inquiries', 'inquiries.id', '=', 'event.inquiry_id')
+                ->whereNull('inquiries.deleted_at')->where('event.occurred_at', '>=', $start)->where('event.occurred_at', '<', $end)
+                ->when(!empty($filters['staff_user_id']), fn ($query) => $query->where('inquiries.assigned_to', $filters['staff_user_id']))
+                ->when(!empty($filters['organization_unit_id']), fn ($query) => $query->whereIn('inquiries.assigned_to', $this->currentDepartmentAssignments($request->user())->where('assignment.organization_unit_id', $filters['organization_unit_id'])->select('staff.user_id')))
+                ->orderByDesc('event.occurred_at')->limit(50)
+                ->get(['event.inquiry_id', 'inquiries.inquiry_number', 'event.from_status', 'event.to_status', 'event.occurred_at'])
+                ->map(fn ($event) => ['kind' => 'inquiry_status', 'reference' => $event->inquiry_number ?: (string) $event->inquiry_id, 'from' => $event->from_status, 'to' => $event->to_status, 'occurred_at' => $event->occurred_at]);
+        }
+
+        $bookingEvents = DB::table('booking_activities as activity')
+            ->join('bookings', 'bookings.id', '=', 'activity.booking_id')
+            ->whereIn('bookings.id', clone $visibleBookingIds)->whereNull('activity.deleted_at')
+            ->where('activity.event_at', '>=', $start)->where('activity.event_at', '<', $end)
+            ->orderByDesc('activity.event_at')->limit(50)
+            ->get(['bookings.booking_number', 'activity.event_key', 'activity.channel', 'activity.result_status', 'activity.source', 'activity.event_at'])
+            ->map(fn ($event) => ['kind' => 'booking_activity', 'reference' => $event->booking_number, 'event' => $event->event_key, 'channel' => $event->channel, 'result' => $event->result_status, 'source' => $event->source, 'occurred_at' => $event->event_at]);
+
+        return response()->json(['status' => 'success', 'data' => [
+            'daily_bookings' => $dailyBookings,
+            'total_bookings' => (clone $bookings)->count(),
+            'cancellations' => ['total' => (clone $cancelledQuery)->count(), 'rows' => $cancellations],
+            'dispatches' => ['total' => (clone $dispatchQuery)->count(), 'rows' => $dispatches],
+            'inquiries' => $inquiries,
+            'activity' => $inquiryEvents->concat($bookingEvents)->concat($dispatchEvents)->concat($cancellationEvents)->sortByDesc('occurred_at')->take(100)->values(),
+        ], 'meta' => ['date_from' => $from, 'date_to' => $to, 'timezone' => $timezone, 'row_limit' => 50, 'activity_row_limit' => 100, 'activity_note' => 'Recorded inquiry status changes and booking activity events only; this is not a complete audit history.']]);
+    }
+
     public function getReportStaffOptions(Request $request): JsonResponse
     {
         abort_unless($request->user()->can('staff.view-team') || $request->user()->can('staff.view-all'), 403);

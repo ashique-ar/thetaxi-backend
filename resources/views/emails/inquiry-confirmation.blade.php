@@ -251,17 +251,17 @@
             <tr>
                 <td>📧 Email</td>
                 <td><a href="mailto:{{ $supportEmail }}"
-                        style="color: #BF2629; text-decoration: none;">{{ $supportEmail }}</a></td>
+                        style="color: {{ $brandColor }}; text-decoration: none;">{{ $supportEmail }}</a></td>
             </tr>
             <tr>
                 <td>📞 Phone</td>
                 <td><a href="tel:{{ $supportPhone }}"
-                        style="color: #BF2629; text-decoration: none;">{{ $supportPhone }}</a></td>
+                        style="color: {{ $brandColor }}; text-decoration: none;">{{ $supportPhone }}</a></td>
             </tr>
             <tr>
                 <td>🌐 Website</td>
                 <td><a href="{{ config('app.url') }}"
-                        style="color: #BF2629; text-decoration: none;">{{ config('app.url') }}</a></td>
+                        style="color: {{ $brandColor }}; text-decoration: none;">{{ config('app.url') }}</a></td>
             </tr>
         </table>
     </div>

@@ -306,10 +306,10 @@
                                                         link for this booking.</p>
                                                     <p>Please <a
                                                             href="mailto:{{ config('mail.from.address', 'bookings@example.com') }}"
-                                                            style="color:#BF2629; text-decoration:none;">contact support</a>
+                                                            style="color:var(--primary-color1, #BF2629); text-decoration:none;">contact support</a>
                                                         or
                                                         visit our <a href="{{ route('checkout') }}"
-                                                            style="color:#BF2629; text-decoration:none;">checkout page</a>
+                                                            style="color:var(--primary-color1, #BF2629); text-decoration:none;">checkout page</a>
                                                         to
                                                         complete your payment.</p>
                                                 </div>
@@ -365,26 +365,26 @@
                                     @if($supportPhone)
                                         <tr>
                                             <td>Phone</td>
-                                            <td><a href="tel:{{ $supportPhoneTel }}" style="color: #BF2629; text-decoration: none;">{{ $supportPhone }}</a></td>
+                                            <td><a href="tel:{{ $supportPhoneTel }}" style="color: var(--primary-color1, #BF2629); text-decoration: none;">{{ $supportPhone }}</a></td>
                                         </tr>
                                     @endif
                                     <tr>
                                         <td>Email</td>
                                         <td><a href="mailto:{{ $supportEmail }}"
-                                                style="color: #BF2629; text-decoration: none;">{{ $supportEmail }}</a>
+                                                style="color: var(--primary-color1, #BF2629); text-decoration: none;">{{ $supportEmail }}</a>
                                         </td>
                                     </tr>
                                     <tr>
                                         <td>Website</td>
                                         <td><a href="{{ $supportWebsite }}"
-                                                style="color: #BF2629; text-decoration: none;">{{ $supportWebsite }}</a>
+                                                style="color: var(--primary-color1, #BF2629); text-decoration: none;">{{ $supportWebsite }}</a>
                                         </td>
                                     </tr>
                                     @if($supportWhatsapp)
                                         <tr>
                                             <td>WhatsApp</td>
                                             <td><a href="https://wa.me/{{ $supportWhatsappUrl }}"
-                                                    style="color: #BF2629; text-decoration: none;">{{ $supportWhatsapp }}</a></td>
+                                                    style="color: var(--primary-color1, #BF2629); text-decoration: none;">{{ $supportWhatsapp }}</a></td>
                                         </tr>
                                     @endif
                                 </table>
@@ -453,7 +453,7 @@
         }
 
         .greeting strong {
-            color: #BF2629;
+            color: var(--primary-color1, #BF2629);
         }
 
         .intro-text {
@@ -465,9 +465,9 @@
 
         /* Reference Box */
         .reference-box {
-            background: linear-gradient(135deg, #fef5f5 0%, #fff8f8 100%);
-            border: 1px solid rgba(191, 38, 41, 0.15);
-            border-left: 4px solid #BF2629;
+            background: #f7f7f8;
+            border: 1px solid #e5e7eb;
+            border-left: 4px solid var(--primary-color1, #BF2629);
             border-radius: 8px;
             padding: 10px 15px;
             margin: 16px 0;
@@ -484,7 +484,7 @@
         .reference-number {
             font-size: 20px;
             font-weight: 700;
-            color: #BF2629;
+            color: var(--primary-color1, #BF2629);
             letter-spacing: 1px;
         }
 
@@ -496,10 +496,10 @@
         .section-title {
             font-size: 16px;
             font-weight: 600;
-            color: #BF2629;
+            color: var(--primary-color1, #BF2629);
             margin-bottom: 7px;
             padding-bottom: 5px;
-            border-bottom: 2px solid #BF2629;
+            border-bottom: 2px solid var(--primary-color1, #BF2629);
             display: flex;
             align-items: center;
         }
@@ -547,7 +547,7 @@
         .booking-payment-summary .booking-payment-total-row td:last-child {
             font-size: 18px;
             font-weight: 800;
-            color: #BF2629;
+            color: var(--primary-color1, #BF2629);
         }
 
         .booking-payment-summary .booking-payment-due-row td {
@@ -558,7 +558,7 @@
         /* Highlight Box */
         .highlight-box {
             background-color: #f8f9fa;
-            border-left: 4px solid #BF2629;
+            border-left: 4px solid var(--primary-color1, #BF2629);
             border-radius: 0 8px 8px 0;
             padding: 14px 18px;
             margin: 14px 0;
@@ -701,7 +701,7 @@
         }
 
         .footer-text strong {
-            color: #BF2629;
+            color: var(--primary-color1, #BF2629);
         }
 
         .footer-links {
@@ -716,7 +716,7 @@
         }
 
         .footer-links a:hover {
-            color: #BF2629;
+            color: var(--primary-color1, #BF2629);
         }
 
         .copyright {

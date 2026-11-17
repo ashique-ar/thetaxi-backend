@@ -314,3 +314,9 @@ body.theme-default .checkout-success .reference-box { border-color: #e5e7eb !imp
     body.theme-default .checkout-pricing-heading small { display: none; }
     body.theme-default #checkout-submit-btn { width: 100%; }
 }
+
+/* Success + payment-resume: compact confirmation banner (customer complaints about oversized type). */
+body.theme-default:is(.theme-page-checkout-success, .theme-page-checkout-payment-resume) .breadcrumb-section { padding: 36px 0 30px; }
+body.theme-default:is(.theme-page-checkout-success, .theme-page-checkout-payment-resume) .breadcrumb-section .banner-content h1 { margin-bottom: 6px; font-size: clamp(24px, 2.6vw, 32px); }
+body.theme-default:is(.theme-page-checkout-success, .theme-page-checkout-payment-resume) .breadcrumb-section .lead { margin: 0; font-size: 15px; line-height: 1.5; }
+body.theme-default .checkout-success .section-title { font-size: 16px; }

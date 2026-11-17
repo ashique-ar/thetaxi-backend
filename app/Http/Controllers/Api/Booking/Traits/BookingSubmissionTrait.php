@@ -787,7 +787,7 @@ trait BookingSubmissionTrait
             'assignment_type.*' => 'string|in:primary,concurrent,override',
             'date_from' => 'nullable|date',
             'date_to' => 'nullable|date|after_or_equal:date_from',
-            'sort_by' => 'nullable|string|in:created_at,booking_date,from_date,to_date,total_amount,total_actual,status,booking_status,priority',
+            'sort_by' => 'nullable|string|in:created_at,booking_date,from_date,pickup_datetime,to_date,total_amount,total_actual,status,booking_status,priority',
             'sort_direction' => 'nullable|string|in:asc,desc',
             'sort_order' => 'nullable|string|in:asc,desc',
             'requires_approval' => 'nullable|boolean',

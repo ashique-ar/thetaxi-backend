@@ -323,15 +323,15 @@
                         <p style="text-align: center; color: #717171; font-size: 13px; margin: 15px 0;">
                             If the button above doesn't work, copy and paste this link in your browser:<br>
                             <a href="{{ $paymentLink }}"
-                                style="color: #BF2629; text-decoration: underline; word-break: break-all;">{{ $paymentLink }}</a>
+                                style="color: {{ $brandColor }}; text-decoration: underline; word-break: break-all;">{{ $paymentLink }}</a>
                         </p>
                     @else
                         <div class="highlight-box warning" style="text-align:center;">
                             <p style="font-weight:600;">We couldn't generate a secure direct payment link for this booking.
                             </p>
                             <p>Please <a href="mailto:{{ config('mail.from.address', 'bookings@example.com') }}"
-                                    style="color:#BF2629; text-decoration:none;">contact support</a> or visit our <a
-                                    href="{{ route('checkout') }}" style="color:#BF2629; text-decoration:none;">checkout
+                                    style="color:{{ $brandColor }}; text-decoration:none;">contact support</a> or visit our <a
+                                    href="{{ route('checkout') }}" style="color:{{ $brandColor }}; text-decoration:none;">checkout
                                     page</a> to complete your payment.</p>
                         </div>
                     @endif
@@ -372,24 +372,24 @@
             @if($supportPhone)
                 <tr>
                     <td>Phone</td>
-                    <td><a href="tel:{{ $supportPhoneTel }}" style="color: #BF2629; text-decoration: none;">{{ $supportPhone }}</a></td>
+                    <td><a href="tel:{{ $supportPhoneTel }}" style="color: {{ $brandColor }}; text-decoration: none;">{{ $supportPhone }}</a></td>
                 </tr>
             @endif
             <tr>
                 <td>Email</td>
                 <td><a href="mailto:{{ $supportEmail }}"
-                        style="color: #BF2629; text-decoration: none;">{{ $supportEmail }}</a>
+                        style="color: {{ $brandColor }}; text-decoration: none;">{{ $supportEmail }}</a>
                 </td>
             </tr>
             <tr>
                 <td>Website</td>
                 <td><a href="{{ $supportWebsite }}"
-                        style="color: #BF2629; text-decoration: none;">{{ $supportWebsite }}</a></td>
+                        style="color: {{ $brandColor }}; text-decoration: none;">{{ $supportWebsite }}</a></td>
             </tr>
             @if($supportWhatsapp)
                 <tr>
                     <td>WhatsApp</td>
-                    <td><a href="https://wa.me/{{ $supportWhatsappUrl }}" style="color: #BF2629; text-decoration: none;">{{ $supportWhatsapp }}</a></td>
+                    <td><a href="https://wa.me/{{ $supportWhatsappUrl }}" style="color: {{ $brandColor }}; text-decoration: none;">{{ $supportWhatsapp }}</a></td>
                 </tr>
             @endif
         </table>
@@ -398,7 +398,7 @@
         @if($supportPhone)
             <div style="text-align: center; margin: 20px 0 10px 0;">
                 <a href="tel:{{ $supportPhoneTel }}"
-                    style="display: inline-block; background-color: #BF2629; background-image: linear-gradient(135deg, #BF2629 0%, #8f1d1f 100%); color: #ffffff; padding: 12px 28px; text-decoration: none; border-radius: 8px; font-weight: 700; font-size: 15px; box-shadow: 0 4px 12px rgba(191, 38, 41, 0.25);">
+                    style="display: inline-block; background-color: {{ $brandColor }}; color: #ffffff; padding: 10px 22px; text-decoration: none; border-radius: 8px; font-weight: 600; font-size: 14px;">
                     📞 Call 24/7 Support
                 </a>
             </div>

@@ -39,3 +39,15 @@ it('returns queue counts from the same canonical predicate owner', function () {
         ->toContain('private function getBookingQueueCounts(')
         ->toContain('$this->applyOperationsQueueFilter($queueQuery, $queue)');
 });
+
+it('supports stable chronological pickup ordering for dispatch screens', function () {
+    $service = file_get_contents(app_path('Services/BookingFlowService.php'));
+    $controller = file_get_contents(app_path('Http/Controllers/Api/Booking/Traits/BookingSubmissionTrait.php'));
+    $sorts = Str::between($service, "case 'pickup_datetime':", "case 'to_date':");
+
+    expect($controller)->toContain('from_date,pickup_datetime,to_date')
+        ->and($sorts)
+        ->toContain("orderBy('booking_items.from_date', \$sortDirection)")
+        ->toContain("orderBy('booking_items.from_time', \$sortDirection)")
+        ->toContain("orderBy('booking_items.id', \$sortDirection)");
+});

@@ -236,7 +236,7 @@
         <p style="text-align: center; color: #717171; font-size: 13px; margin-top: 10px;">
             If the button doesn't work, copy and paste this link:<br>
             <a href="{{ $checkoutLink }}"
-                style="color: #BF2629; text-decoration: underline; word-break: break-all;">{{ $checkoutLink }}</a>
+                style="color: {{ $brandColor }}; text-decoration: underline; word-break: break-all;">{{ $checkoutLink }}</a>
         </p>
     </div>
     @elseif ($staffRequested)
@@ -252,7 +252,7 @@
     @if(!empty($supportPhoneTel))
         <div style="text-align: center; margin: 25px 0 15px 0;">
             <a href="tel:{{ $supportPhoneTel }}"
-                style="display: inline-block; background-color: #BF2629; background-image: linear-gradient(135deg, #BF2629 0%, #8f1d1f 100%); color: #ffffff; padding: 12px 28px; text-decoration: none; border-radius: 8px; font-weight: 700; font-size: 15px; box-shadow: 0 4px 12px rgba(191, 38, 41, 0.25);">
+                style="display: inline-block; background-color: {{ $brandColor }}; color: #ffffff; padding: 10px 22px; text-decoration: none; border-radius: 8px; font-weight: 600; font-size: 14px;">
                 📞 Call 24/7 Support
             </a>
         </div>

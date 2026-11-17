@@ -181,6 +181,13 @@ class AppServiceProvider extends ServiceProvider
 
         // Register settings view composer for all views
         view()->composer('*', \App\Http\ViewComposers\SettingsViewComposer::class);
+        // Emails follow the active website theme and the brand colour from settings (validated: it is injected into CSS).
+        view()->composer('emails.*', function ($view) {
+            $settings = app(\App\Services\WebsiteSettingsService::class);
+            $color = collect([$settings->get('primary_color'), $settings->get('brand_color_primary')])
+                ->first(fn ($c) => is_string($c) && preg_match('/^#[0-9a-f]{3}([0-9a-f]{3})?$/i', trim($c)));
+            $view->with(['brandColor' => $color ? trim($color) : '#BF2629', 'emailTheme' => get_active_theme()]);
+        });
 
         // Register services view composer for all views (Updated: 2026-02-14)
         view()->composer('*', \App\Http\ViewComposers\ServicesViewComposer::class);

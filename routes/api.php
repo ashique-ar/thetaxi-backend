@@ -2073,6 +2073,8 @@ Route::middleware(['auth:api'])->group(function () {
             ->middleware('permission:reports.view');
         Route::get('/bookings', [ReportsController::class, 'getBookingReports'])
             ->middleware('permission:reports.view');
+        Route::get('/operations', [ReportsController::class, 'getOperationsReports'])
+            ->middleware('permission:reports.view');
         Route::get('/staff-options', [ReportsController::class, 'getReportStaffOptions'])
             ->middleware('permission:staff.view-team|staff.view-all');
         Route::get('/department-options', [ReportsController::class, 'getReportDepartmentOptions'])

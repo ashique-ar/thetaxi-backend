@@ -70,7 +70,7 @@
 
         /* Header */
         .email-header {
-            background-color: #BF2629;
+            background-color: {{ $brandColor }};
             padding: 14px 24px;
             text-align: center;
         }
@@ -112,7 +112,7 @@
         }
 
         .greeting strong {
-            color: #BF2629;
+            color: {{ $brandColor }};
         }
 
         .intro-text {
@@ -124,9 +124,9 @@
 
         /* Reference Box */
         .reference-box {
-            background-color: #fef5f5;
-            border: 1px solid #f3d4d4;
-            border-left: 4px solid #BF2629;
+            background-color: #f7f7f8;
+            border: 1px solid #e5e7eb;
+            border-left: 4px solid {{ $brandColor }};
             border-radius: 8px;
             padding: 8px 16px;
             margin: 14px 0;
@@ -143,7 +143,7 @@
         .reference-number {
             font-size: 18px;
             font-weight: 700;
-            color: #BF2629;
+            color: {{ $brandColor }};
             letter-spacing: 1px;
         }
 
@@ -155,10 +155,10 @@
         .section-title {
             font-size: 15px;
             font-weight: 600;
-            color: #BF2629;
+            color: {{ $brandColor }};
             margin: 0 0 6px;
             padding-bottom: 4px;
-            border-bottom: 2px solid #BF2629;
+            border-bottom: 2px solid {{ $brandColor }};
             display: flex;
             align-items: center;
         }
@@ -201,7 +201,7 @@
         /* Highlight Box */
         .highlight-box {
             background-color: #f8f9fa;
-            border-left: 4px solid #BF2629;
+            border-left: 4px solid {{ $brandColor }};
             border-radius: 0 8px 8px 0;
             padding: 10px 14px;
             margin: 10px 0;
@@ -268,13 +268,12 @@
         .btn {
             display: inline-block;
             padding: 10px 24px;
-            background-color: #15803d;
+            background-color: {{ $brandColor }};
             color: #ffffff !important;
             text-decoration: none;
             font-size: 14px;
             font-weight: 600;
             border-radius: 8px;
-            box-shadow: 0 4px 12px rgba(21, 128, 61, 0.24);
         }
 
         .btn:hover {
@@ -335,7 +334,7 @@
         }
 
         .footer-text strong {
-            color: #BF2629;
+            color: {{ $brandColor }};
         }
 
         .footer-links {
@@ -350,7 +349,7 @@
         }
 
         .footer-links a:hover {
-            color: #BF2629;
+            color: {{ $brandColor }};
         }
 
         .social-links {
@@ -404,17 +403,17 @@
         .contact-icon {
             width: 20px;
             margin-right: 12px;
-            color: #BF2629;
+            color: {{ $brandColor }};
         }
 
         .contact-item a {
-            color: #BF2629;
+            color: {{ $brandColor }};
             text-decoration: none;
         }
 
         /* Price Row */
         .price-total {
-            background-color: #fef5f5;
+            background-color: #f7f7f8;
             font-weight: 600;
         }
 
@@ -424,8 +423,48 @@
         }
 
         .price-total td:last-child {
-            color: #BF2629 !important;
+            color: {{ $brandColor }} !important;
         }
+
+        .brand-name {
+            color: #ffffff;
+            font-size: 18px;
+        }
+
+        /* Theme layers: same structure and brand colour, each theme's own look. */
+        @if ($emailTheme === 'theme-02')
+        /* Theme 02 - contemporary: light header with a brand bar, soft rounded cards, pill buttons. */
+        .email-container { border-radius: 16px; }
+        .email-header { background-color: #ffffff; border-top: 4px solid {{ $brandColor }}; border-bottom: 1px solid #eef0f2; }
+        .email-header h1, .brand-name { color: #1f2937; }
+        .email-header .subtitle { color: #6b7280; }
+        .section-title { border-bottom: 1px solid #e5e7eb; }
+        .reference-box, .highlight-box { border-radius: 12px; }
+        .btn { border-radius: 999px; }
+        @elseif ($emailTheme === 'theme-03')
+        /* Theme 03 - Ceylon Modernist: warm paper, ink header, square edges, editorial serif headings. */
+        body, .email-wrapper { background-color: #efe9dd; }
+        .email-container { background-color: #fffdf8; border-radius: 0; border: 1px solid #d9d1c1; }
+        .email-header { background-color: #1d211f; border-bottom: 4px solid {{ $brandColor }}; text-align: left; }
+        .email-header h1 { font-family: Georgia, 'Times New Roman', serif; font-weight: 400; }
+        .email-header .subtitle { color: #d9d1c1; }
+        .section-title { font-family: Georgia, 'Times New Roman', serif; font-weight: 400; color: #1d211f; border-bottom: 1px solid #d9d1c1; }
+        .reference-box, .highlight-box, .contact-card { border-radius: 0; background-color: #f6f1e7; }
+        .reference-label { color: #6b6457; }
+        .info-table tr { border-bottom-color: #ebe4d6; }
+        .btn { border-radius: 0; background-color: #1d211f; }
+        .email-footer { background-color: #f6f1e7; border-top-color: #d9d1c1; }
+        @elseif ($emailTheme === 'theme-04')
+        /* Theme 04 - Executive: black header with a brand rule, crisp white body, tight corners. */
+        .email-container { border-radius: 6px; border: 1px solid #e5e7eb; }
+        .email-header { background-color: #111111; border-top: 4px solid {{ $brandColor }}; text-align: left; }
+        .email-header h1 { font-weight: 500; letter-spacing: -0.2px; }
+        .email-header .subtitle { color: #a1a1aa; }
+        .section-title { color: #111111; text-transform: uppercase; font-size: 13px; letter-spacing: 1px; border-bottom: 2px solid {{ $brandColor }}; }
+        .reference-box, .highlight-box, .contact-card { border-radius: 4px; }
+        .btn { border-radius: 4px; }
+        .email-footer { background-color: #fafafa; }
+        @endif
 
         /* Responsive */
         @media only screen and (max-width: 600px) {
@@ -486,11 +525,11 @@
                 <td align="center">
                     <div class="email-container">
                         <!-- Header -->
-                        <div class="email-header" style="background-color: #BF2629;">
+                        <div class="email-header">
                             @if($brandLogoUrl)
                                 <div class="logo-container"><img src="{{ $brandLogoUrl }}" alt="{{ $brandName }}" height="40" style="height: 40px; max-height: 40px; width: auto;"></div>
                             @else
-                                <strong style="color: #ffffff; font-size: 18px;">{{ $brandName }}</strong>
+                                <strong class="brand-name">{{ $brandName }}</strong>
                             @endif
                             <h1>@yield('header_title', 'Welcome')</h1>
                             @hasSection('header_subtitle')

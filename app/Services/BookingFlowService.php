@@ -10464,6 +10464,12 @@ class BookingFlowService
                     ->orderBy('booking_items.from_time', $sortDirection);
                 break;
 
+            case 'pickup_datetime':
+                $query->orderBy('booking_items.from_date', $sortDirection)
+                    ->orderBy('booking_items.from_time', $sortDirection)
+                    ->orderBy('booking_items.id', $sortDirection);
+                break;
+
             case 'to_date':
                 $query->orderBy('booking_items.to_date', $sortDirection)
                     ->orderBy('booking_items.to_time', $sortDirection);
@@ -10657,6 +10663,7 @@ class BookingFlowService
                         });
                     });
                 })->whereNotNull('booking_items.vehicle_id')
+                ->whereNotIn('booking_items.status', ['completed', 'cancelled', 'rejected'])
                 ->where(function ($driverQuery) {
                         $driverQuery->where('booking_items.is_self_driven', true)
                         ->orWhereNotNull('booking_items.driver_id');
