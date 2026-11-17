@@ -353,7 +353,7 @@ trait BookingCorporateTrait
                 if (!$activeEmployee) {
                     return CorporateEmployee::query()->whereRaw('1 = 0');
                 }
-            } elseif ($activeContext && ($activeContext['portal_profile'] ?? null) !== 'internal') {
+            } elseif ($activeContext && ! in_array($activeContext['portal_profile'] ?? null, ['internal', 'staff'], true)) {
                 return CorporateEmployee::query()->whereRaw('1 = 0');
             }
         }

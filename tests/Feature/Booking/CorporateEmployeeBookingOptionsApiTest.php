@@ -156,3 +156,32 @@ it('searches and hydrates only authorized travelers for corporate portal booking
         ->assertJsonPath('data.data.0.record.employee_code', 'TARGET-001');
     $this->actingAs($actor, 'api')->getJson($url.'?per_page=51', $headers)->assertUnprocessable();
 });
+
+it('loads corporate employee options for staff booking creation under a Staff context', function () {
+    $corporate = Corporate::create(['name' => 'Staff Corporate Booking']);
+    $employeeUser = User::factory()->create(['first_name' => 'Taylor', 'last_name' => 'Traveler']);
+    $employee = CorporateEmployee::create([
+        'user_id' => $employeeUser->id,
+        'corporate_id' => $corporate->id,
+        'employee_code' => 'STAFF-BOOK-001',
+        'is_active' => true,
+    ]);
+
+    $staffUser = User::factory()->create();
+    $staffContext = app(\App\Services\UserContextService::class)->switchContext($staffUser, 'staff');
+    $role = \Spatie\Permission\Models\Role::firstOrCreate([
+        'name' => 'staff-booking-options-test',
+        'guard_name' => 'api',
+    ]);
+    $role->givePermissionTo(\Spatie\Permission\Models\Permission::findOrCreate('bookings.create', 'api'));
+    $staffContext->roles()->attach($role->id);
+
+    $this->actingAs($staffUser, 'api')
+        ->getJson("/api/booking-flow/corporates/{$corporate->id}/employee-options", [
+            'X-Active-Context-Type' => 'staff',
+            'X-Active-Context-Id' => $staffContext->id,
+        ])
+        ->assertOk()
+        ->assertJsonPath('data.data.0.value', $employee->id)
+        ->assertJsonPath('data.data.0.record.corporate_id', $corporate->id);
+});
