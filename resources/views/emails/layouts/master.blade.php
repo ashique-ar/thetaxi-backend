@@ -455,11 +455,11 @@
         .btn { border-radius: 0; background-color: #1d211f; }
         .email-footer { background-color: #f6f1e7; border-top-color: #d9d1c1; }
         @elseif ($emailTheme === 'theme-04')
-        /* Theme 04 - Executive: black header with a brand rule, crisp white body, tight corners. */
+        /* Theme 04 - Executive: white header with a brand rule, crisp white body, tight corners. */
         .email-container { border-radius: 6px; border: 1px solid #e5e7eb; }
-        .email-header { background-color: #111111; border-top: 4px solid {{ $brandColor }}; text-align: left; }
-        .email-header h1 { font-weight: 500; letter-spacing: -0.2px; }
-        .email-header .subtitle { color: #a1a1aa; }
+        .email-header { background-color: #ffffff; border-top: 4px solid {{ $brandColor }}; text-align: left; }
+        .email-header h1, .brand-name { color: #1f2937; font-weight: 500; letter-spacing: -0.2px; }
+        .email-header .subtitle { color: #6b7280; }
         .section-title { color: #111111; text-transform: uppercase; font-size: 13px; letter-spacing: 1px; border-bottom: 2px solid {{ $brandColor }}; }
         .reference-box, .highlight-box, .contact-card { border-radius: 4px; }
         .btn { border-radius: 4px; }
