@@ -19,8 +19,6 @@ use Spatie\Permission\PermissionRegistrar;
 
 class UserContextService
 {
-    private const INTERNAL_PORTAL_ROLES = ['admin', 'sub-admin', 'super-admin'];
-
     /**
      * Switch user to a specific context.
      *
@@ -937,7 +935,7 @@ class UserContextService
         $roleMap = [
             'customer' => ['customer'],
             'vehicle_owner' => ['vehicle-owner'],
-            'staff' => ['staff', 'staff-operations'],
+            'staff' => [],
             'driver' => ['driver'],
             'agent' => ['agent'],
         ];
@@ -1136,7 +1134,7 @@ class UserContextService
             return $this->formatPermissionCollection($permissions);
         }
 
-        if ($this->shouldFallbackToGlobalPermissions($user, $userContext)) {
+        if ($userContext->context_type !== 'staff' && $this->shouldFallbackToGlobalPermissions($user, $userContext)) {
             $permissions = $user->getAllPermissions();
             if (! $isMasterAdmin) {
                 $permissions = $permissions->reject(fn ($permission) =>
@@ -1182,9 +1180,12 @@ class UserContextService
      */
     private function canAccessInternalPortal(User $user): bool
     {
-        return app(PermissionEvaluator::class)
-            ->rolesForInternalContext($user)
-            ->contains(fn ($role) => in_array($role->name, self::INTERNAL_PORTAL_ROLES, true));
+        $patterns = config('permissions.internal_portal_permissions', []);
+
+        return app(PermissionEvaluator::class)->permissionsForInternalContext($user)
+            ->contains(fn ($permission) => collect($patterns)->contains(
+                fn (string $pattern) => \Illuminate\Support\Str::is($pattern, $permission->name)
+            ));
     }
 
     /**
@@ -1205,7 +1206,8 @@ class UserContextService
     private function portalProfileForContextType(string $contextType): string
     {
         return match ($contextType) {
-            'internal', 'staff' => 'internal',
+            'internal' => 'internal',
+            'staff' => 'staff',
             'corporate' => 'corporate',
             'customer' => 'customer',
             'driver' => 'driver',
@@ -1221,7 +1223,8 @@ class UserContextService
     private function routeForPortalProfile(string $portalProfile): string
     {
         return match ($portalProfile) {
-            'internal' => '/dashboard',
+            'internal' => '/admin/dashboard',
+            'staff' => '/staff/dashboard',
             'corporate' => '/corporate/dashboard',
             'customer' => '/customer-portal',
             'driver', 'vehicle_owner', 'agent' => '/user',

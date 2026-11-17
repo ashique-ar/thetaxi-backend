@@ -4,6 +4,7 @@ return [
     'canonical_guard' => 'api',
     'legacy_guards' => [],
     'admin_only_permissions' => ['system.*', 'website-settings.*', 'view_audit_log'],
+    'internal_portal_permissions' => ['system.*', 'users.*', 'roles.*', 'permissions.*', 'navigation-menus.*', 'footer-links.*', 'faqs.*', 'cms-contents.*'],
 
     'modules' => [
         'admin' => ['label' => 'Administration', 'description' => 'Users, roles, permissions, and system controls.'],

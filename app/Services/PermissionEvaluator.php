@@ -45,7 +45,7 @@ class PermissionEvaluator
 
         // Corporate permissions belong to the selected employee context. A user
         // may be an admin in one company and an ordinary employee in another.
-        if ($contextType !== 'corporate' && $this->userHasAny($user, $permissions)) {
+        if (! in_array($contextType, ['corporate', 'staff'], true) && $this->userHasAny($user, $permissions)) {
             return true;
         }
 
@@ -103,10 +103,6 @@ class PermissionEvaluator
 
     public function userHasAnyForInternalContext(User $user, array $permissions): bool
     {
-        if (! $this->hasActiveStaffIdentity($user)) {
-            return false;
-        }
-
         $permissions = array_values(array_filter($permissions, fn ($permission) =>
             $this->mayUseProtectedPermission($user, (string) $permission)
         ));
@@ -135,53 +131,16 @@ class PermissionEvaluator
             ->with(['permissions' => fn ($permissions) => $permissions
                 ->where('guard_name', $this->registry->canonicalGuard())])
             ->get();
-        $adminRoles = $userRoles->whereIn('name', ['admin', 'super-admin']);
-
-        if ($adminRoles->isEmpty() && ! $this->hasActiveStaffIdentity($user)) {
-            return collect();
-        }
-
-        $staffContexts = $user->contexts()
-            ->where('context_type', 'staff')
-            ->where('is_active', true)
-            ->with(['roles' => fn ($roles) => $roles
-                ->where('guard_name', $this->registry->canonicalGuard())
-                ->with(['permissions' => fn ($permissions) => $permissions
-                    ->where('guard_name', $this->registry->canonicalGuard())])])
-            ->whereIn('context_id', function ($staff) use ($user) {
-                $staff->select('id')
-                    ->from('staff')
-                    ->where('user_id', $user->id)
-                    ->whereNull('deleted_at')
-                    ->where(fn ($employment) => $employment
-                        ->whereNull('employment_ended_at')
-                        ->orWhere('employment_ended_at', '>', now()));
-            })
-            ->get();
-        $externalContexts = $user->contexts()
-            ->where('context_type', '!=', 'staff')
-            ->with(['roles' => fn ($roles) => $roles
-                ->where('guard_name', $this->registry->canonicalGuard())
-                ->with(['permissions' => fn ($permissions) => $permissions
-                    ->where('guard_name', $this->registry->canonicalGuard())])])
-            ->get();
-        $staffRoleIds = $staffContexts
-            ->flatMap(fn (UserContext $context) => $context->roles->pluck('id'))
-            ->unique();
+        $contextRoleIds = DB::table('user_context_roles')
+            ->join('user_contexts', 'user_contexts.id', '=', 'user_context_roles.user_context_id')
+            ->where('user_contexts.user_id', $user->id)
+            ->pluck('user_context_roles.role_id');
         $directRoleIds = DB::table('user_direct_role_grants')
             ->where('user_id', $user->id)
             ->pluck('role_id');
-        $externalRoleIds = $externalContexts
-            ->flatMap(fn (UserContext $context) => $context->roles->pluck('id'))
-            ->unique();
 
-        return $adminRoles
-            ->merge(
-                $userRoles->filter(fn ($role) => $staffRoleIds->contains($role->id)
-                    || $directRoleIds->contains($role->id)
-                    || ! $externalRoleIds->contains($role->id))
-            )
-            ->merge($staffContexts->flatMap(fn (UserContext $context) => $context->roles))
+        return $userRoles->filter(fn ($role) => $directRoleIds->contains($role->id)
+                || ! $contextRoleIds->contains($role->id))
             ->unique('id')
             ->values();
     }
@@ -190,19 +149,9 @@ class PermissionEvaluator
     {
         $canUseProtectedPermissions = $this->isMasterAdmin($user);
 
-        $staffContextPermissions = Permission::query()
-            ->join('user_context_permission_grants as grants', 'permissions.id', '=', 'grants.permission_id')
+        $contextPermissionIds = DB::table('user_context_permission_grants as grants')
             ->join('user_contexts', 'user_contexts.id', '=', 'grants.user_context_id')
             ->where('user_contexts.user_id', $user->id)
-            ->where('user_contexts.context_type', 'staff')
-            ->where('user_contexts.is_active', true)
-            ->whereNull('user_contexts.deleted_at')
-            ->where('permissions.guard_name', $this->registry->canonicalGuard())
-            ->get(['permissions.*']);
-        $externalContextPermissionIds = DB::table('user_context_permission_grants as grants')
-            ->join('user_contexts', 'user_contexts.id', '=', 'grants.user_context_id')
-            ->where('user_contexts.user_id', $user->id)
-            ->where('user_contexts.context_type', '!=', 'staff')
             ->pluck('grants.permission_id')
             ->unique();
         $directPermissionIds = DB::table('user_direct_permission_grants')
@@ -210,13 +159,12 @@ class PermissionEvaluator
             ->pluck('permission_id');
         $directPermissions = $user->getDirectPermissions()
             ->where('guard_name', $this->registry->canonicalGuard())
-            ->reject(fn (Permission $permission) => $externalContextPermissionIds->contains($permission->id)
+            ->reject(fn (Permission $permission) => $contextPermissionIds->contains($permission->id)
                 && ! $directPermissionIds->contains($permission->id));
 
         return $this->rolesForInternalContext($user)
             ->flatMap(fn ($role) => $role->permissions)
             ->merge($directPermissions)
-            ->merge($staffContextPermissions)
             ->reject(fn ($permission) => ! $canUseProtectedPermissions
                 && PermissionRegistry::isAdminOnlyPermissionName($this->registry->resolveKey((string) $permission->name)))
             ->unique('name')

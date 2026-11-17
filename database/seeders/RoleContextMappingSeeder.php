@@ -36,6 +36,10 @@ class RoleContextMappingSeeder extends Seeder
                     ->filter(fn ($type) => in_array($type, ['customer', 'vehicle_owner', 'staff', 'agent', 'driver', 'corporate'], true))
                     ->unique()->values()->all();
 
+                if (in_array($role->name, ['admin', 'sub-admin', 'super-admin'], true)) {
+                    $mappedContextTypes = ['internal', 'staff'];
+                }
+
                 if ($mappedContextTypes !== $contextTypes) {
                     $role->update(['context_types' => json_encode($mappedContextTypes)]);
                 }
@@ -49,6 +53,12 @@ class RoleContextMappingSeeder extends Seeder
                     ->where('model_type', User::class)
                     ->pluck('model_id')
                     ->merge(DB::table('user_direct_role_grants')->where('role_id', $role->id)->pluck('user_id'))
+                    ->merge(DB::table('user_context_roles')
+                        ->join('user_contexts', 'user_contexts.id', '=', 'user_context_roles.user_context_id')
+                        ->where('user_context_roles.role_id', $role->id)
+                        ->where('user_contexts.is_active', true)
+                        ->whereNull('user_contexts.deleted_at')
+                        ->pluck('user_contexts.user_id'))
                     ->unique();
 
                 User::query()->whereIn('id', $userIds)->where('is_active', true)->each(function (User $user) use ($role, $mappedContextTypes, $contextService): void {
@@ -59,6 +69,10 @@ class RoleContextMappingSeeder extends Seeder
                     }
 
                     $contextService->syncContextsForAssignedRoles($user, [$role]);
+
+                    if (in_array($role->name, ['admin', 'sub-admin', 'super-admin'], true)) {
+                        $contextService->switchContext($user, 'customer', ['roles' => ['customer']]);
+                    }
                 });
             });
     }

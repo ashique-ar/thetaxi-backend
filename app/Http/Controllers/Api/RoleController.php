@@ -181,9 +181,9 @@ class RoleController extends Controller
             }
             if (in_array($role->name, ['admin', 'super-admin'], true)
                 && isset($data['context_types'])
-                && array_diff($data['context_types'] ?? [], ['staff']) !== []) {
+                && array_diff($data['context_types'] ?? [], ['staff', 'internal']) !== []) {
                 throw ValidationException::withMessages([
-                    'context_types' => 'Admin and Master Admin roles can only be mapped to staff contexts.',
+                    'context_types' => 'Admin and Master Admin roles can only be mapped to Internal and Staff contexts.',
                 ]);
             }
             $permissions = $data['permissions'] ?? null;
