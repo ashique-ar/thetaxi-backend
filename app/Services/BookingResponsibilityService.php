@@ -19,7 +19,8 @@ class BookingResponsibilityService
             ->whereNull('users.deleted_at')->where('users.is_active', true)
             ->select(['users.id', 'users.first_name', 'users.last_name', 'staff.code'])
             ->orderBy('users.first_name')->orderBy('users.last_name')->get();
-        $canViewBookings = User::permission('bookings.view')->whereIn('id', $employees->pluck('id'))->pluck('id')->map(fn ($id) => (string) $id)->all();
+        $canViewBookings = User::permission(['bookings.view', 'bookings.view-assigned'])
+            ->whereIn('id', $employees->pluck('id'))->pluck('id')->map(fn ($id) => (string) $id)->all();
 
         return $employees->whereIn('id', $canViewBookings)->values();
     }

@@ -62,6 +62,7 @@ return Application::configure(basePath: dirname(__DIR__))
             'agent.api' => \App\Http\Middleware\AuthenticateAgentApiKey::class,
             'agent.api.access' => \App\Http\Middleware\EnsureAgentApiAccess::class,
             'booking.operations.telemetry' => \App\Http\Middleware\BookingOperationsTelemetry::class,
+            'booking.own-scope' => \App\Http\Middleware\ScopeOwnBookings::class,
             'pricing.context' => \App\Http\Middleware\ApplyPricingContextPolicy::class,
             'tours.schema' => \App\Http\Middleware\EnsureTourSchemaReady::class,
             'api.deprecated' => \App\Http\Middleware\DeprecatedApiRoute::class,

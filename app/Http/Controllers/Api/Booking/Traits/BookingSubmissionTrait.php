@@ -714,6 +714,13 @@ trait BookingSubmissionTrait
     public function loadBookingDraft(string $draftId): JsonResponse
     {
         try {
+            $record = Booking::query()->where('status', 'draft')->findOrFail($draftId);
+            if (Auth::user()?->can('bookings.view-assigned')
+                && ! Auth::user()?->can('bookings.view')
+                && ! Gate::allows('update', $record)) {
+                return response()->json(['success' => false, 'error' => 'Booking not found'], 404);
+            }
+
             $draft = $this->bookingFlowService->loadBookingDraft($draftId);
 
             return response()->json([
@@ -861,7 +868,7 @@ trait BookingSubmissionTrait
                     ->where(fn ($employment) => $employment->whereNull('staff.employment_ended_at')->orWhere('staff.employment_ended_at', '>', now()))
                     ->whereNull('users.deleted_at')->where('users.is_active', true)
                     ->lockForUpdate()->exists()
-                    && User::permission('bookings.view')->whereKey($newOwnerId)->exists();
+                    && User::permission(['bookings.view', 'bookings.view-assigned'])->whereKey($newOwnerId)->exists();
                 abort_unless($eligible, 422, 'Select an active employee who can view bookings.');
             }
 
@@ -982,6 +989,11 @@ trait BookingSubmissionTrait
     public function getBookingDetails(string $bookingId): JsonResponse
     {
         try {
+            $record = Booking::findOrFail($bookingId);
+            if (! Gate::allows('view', $record)) {
+                return response()->json(['status' => 'error', 'message' => 'Booking not found'], 404);
+            }
+
             $booking = $this->bookingFlowService->getBookingDetails($bookingId);
 
             return response()->json([
@@ -1007,6 +1019,11 @@ trait BookingSubmissionTrait
     public function deleteBooking(string $bookingId): JsonResponse
     {
         try {
+            $record = Booking::findOrFail($bookingId);
+            if (! Gate::allows('delete', $record)) {
+                return response()->json(['status' => 'error', 'message' => 'Unauthorized to delete this booking'], 403);
+            }
+
             $result = $this->bookingFlowService->deleteBooking($bookingId, Auth::id());
 
             return response()->json([
@@ -1043,6 +1060,16 @@ trait BookingSubmissionTrait
         ]);
 
         try {
+            $record = Booking::findOrFail($bookingId);
+            $assignedOnly = Auth::user()?->can('bookings.view-assigned')
+                && ! Auth::user()?->can('bookings.view');
+            $authorized = $request->status === 'cancelled'
+                ? Gate::allows('delete', $record)
+                : Auth::user()?->can('bookings.update') && Gate::allows('update', $record);
+            if ($assignedOnly && ! $authorized) {
+                return response()->json(['status' => 'error', 'message' => 'Unauthorized to update this booking'], 403);
+            }
+
             $result = $this->bookingFlowService->updateBookingStatus(
                 $bookingId,
                 $request->status,
@@ -1081,6 +1108,11 @@ trait BookingSubmissionTrait
         ]);
 
         try {
+            $record = Booking::findOrFail($bookingId);
+            if (! Gate::allows('delete', $record)) {
+                return response()->json(['status' => 'error', 'message' => 'Unauthorized to cancel this booking'], 403);
+            }
+
             $result = $this->bookingFlowService->cancelRecurringBooking(
                 $bookingId,
                 $validated['scope'],

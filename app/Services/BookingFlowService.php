@@ -10184,6 +10184,11 @@ class BookingFlowService
                 'booking.corporateDivision:id,name',
             ]);
 
+        $viewer = Auth::user();
+        if ($viewer?->can('bookings.view-assigned') && ! $viewer->can('bookings.view')) {
+            $query->whereHas('booking', fn ($bookingQuery) => app(BookingOwnership::class)->scope($bookingQuery, $viewer));
+        }
+
         if (!empty($filters['corporate_id'])) {
             $query->whereHas('booking', function ($bookingQuery) use ($filters) {
                 $bookingQuery->where('corporate_account_id', $filters['corporate_id']);

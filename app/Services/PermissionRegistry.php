@@ -164,7 +164,7 @@ class PermissionRegistry
     private function actionFor(string $name): string
     {
         $last = Str::of($name)->afterLast('.')->toString();
-        $known = ['view', 'create', 'edit', 'update', 'delete', 'manage', 'approve', 'dispatch', 'cancel'];
+        $known = ['view', 'create', 'edit', 'update', 'delete', 'manage', 'approve', 'dispatch', 'cancel', 'view-assigned', 'edit-assigned', 'delete-assigned'];
 
         return in_array($last, $known, true) ? $last : 'other';
     }

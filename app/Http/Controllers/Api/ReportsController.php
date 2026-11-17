@@ -663,6 +663,19 @@ class ReportsController extends Controller
             'staff_user_id' => ['nullable', 'uuid'],
             'organization_unit_id' => ['nullable', 'uuid'],
         ]);
+        if (!empty($filters['staff_user_id'])) {
+            abort_unless($request->user()->can('staff.view-team') || $request->user()->can('staff.view-all'), 403);
+            $visibleStaff = app(\App\Services\StaffAccessService::class)->scope(
+                \App\Models\Staff::query()->select('staff.user_id')->whereNotNull('staff.user_id'),
+                $request->user(),
+            )->where('staff.user_id', $filters['staff_user_id'])->exists();
+            abort_unless($visibleStaff, 403, 'Selected staff member is outside your reporting scope.');
+        }
+        if (!empty($filters['organization_unit_id'])) {
+            $visibleDepartment = $this->currentDepartmentAssignments($request->user())
+                ->where('assignment.organization_unit_id', $filters['organization_unit_id'])->exists();
+            abort_unless($visibleDepartment, 403, 'Selected department is outside your reporting scope.');
+        }
         $timezone = TimezoneService::getUserTimezone();
         $to = $filters['date_to'] ?? Carbon::today($timezone)->toDateString();
         $from = $filters['date_from'] ?? Carbon::parse($to, $timezone)->startOfMonth()->toDateString();
@@ -1386,7 +1399,8 @@ class ReportsController extends Controller
             }
 
             foreach ($cancellations->cursor() as $booking) {
-                $write(['Cancellation', $localTime($booking->cancelled_at), $booking->booking_number, $booking->status, '', '', '', 'cancellation', data_get($booking->workflow_data, 'cancellation_reason') ?? '']);
+                $reason = data_get($booking->workflow_data, 'cancellation_reason');
+                $write(['Cancellation', $localTime($booking->cancelled_at), $booking->booking_number, $booking->status, '', '', '', 'cancellation', is_string($reason) && trim($reason) !== '' ? $reason : 'No reason recorded']);
             }
             foreach ($dispatches->cursor() as $dispatch) {
                 $write(['Dispatch', $localTime($dispatch->dispatched_at), $dispatch->booking_number, $dispatch->dispatch_status, '', '', '', 'dispatch', '', '', '', $localTime($dispatch->actual_return_at)]);

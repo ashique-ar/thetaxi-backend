@@ -176,6 +176,9 @@ class AllPermissionsSeeder extends Seeder
         'bookings.approve',
         'bookings.complete',
         'bookings.complete_repairs',
+        'bookings.view-assigned',
+        'bookings.edit-assigned',
+        'bookings.delete-assigned',
         'bookings.price_override',
         'bookings.dispatch',
         'bookings.export',
@@ -1049,10 +1052,16 @@ class AllPermissionsSeeder extends Seeder
                     'collection-commissions.view-all',
                 ]
             ))),
-            'rep-marketing' => $this->permissionsForResources(
-                ['customers', 'quotations', 'bookings', 'inquiries'],
-                ['view', 'create', 'edit', 'delete']
-            ),
+            'rep-marketing' => array_values(array_unique(array_merge(
+                array_diff(
+                    $this->permissionsForResources(
+                        ['customers', 'quotations', 'bookings', 'inquiries'],
+                        ['view', 'create', 'edit', 'delete']
+                    ),
+                    ['bookings.view', 'bookings.edit', 'bookings.delete']
+                ),
+                ['bookings.view-assigned', 'bookings.edit-assigned', 'bookings.delete-assigned']
+            ))),
             'salesperson' => [
                 'sales.self.view',
                 'sales.collections.view',
@@ -1112,6 +1121,8 @@ class AllPermissionsSeeder extends Seeder
             ],
 
             'sales-manager' => [
+                'bookings.view',
+                'bookings.assign',
                 'staff.view',
                 'staff.view-team',
                 'sales.self.view',
@@ -1308,6 +1319,15 @@ class AllPermissionsSeeder extends Seeder
             $this->revokeAnyAdminOnlyPermissions($role);
 
         }
+
+        $repMarketing = Role::firstOrCreate(['name' => 'rep-marketing', 'guard_name' => $guard]);
+        $this->revokePermissionsFromRole($repMarketing, [
+            'bookings.view', 'bookings.edit', 'bookings.update', 'bookings.delete', 'bookings.manage',
+            'bookings.view-all', 'view_all_bookings', 'approve_bookings', 'create_bookings', 'create_bookings_for_others',
+            'bookings.assign', 'bookings.approve', 'bookings.complete', 'bookings.complete_repairs',
+            'bookings.price_override', 'bookings.dispatch', 'bookings.process_return', 'bookings.qc_inspect',
+            'bookings.export', 'bookings.tracking_export', 'bookings.tracking_replay', 'bookings.tracking_estimate',
+        ], $permissionModels);
 
         $staffOperations = Role::firstOrCreate(['name' => 'staff-operations', 'guard_name' => $guard]);
         $this->revokeAnyAdminOnlyPermissions($staffOperations);

@@ -2328,18 +2328,18 @@ Route::middleware(['auth:api'])->group(function () {
     */
 
     Route::post('bookings/route-usage', [BookingRouteUsageController::class, 'store'])
-        ->middleware(['permission:bookings.view|bookings.create|bookings.update|dashboard.view|analytics.view|analytics.bookings|reports.view|reports.generate|vehicle-availability.view|vip-types.view', 'throttle:120,1']);
+        ->middleware(['permission:bookings.view|bookings.view-assigned|bookings.create|bookings.update|dashboard.view|analytics.view|analytics.bookings|reports.view|reports.generate|vehicle-availability.view|vip-types.view', 'throttle:120,1']);
 
-    Route::middleware(['permission:bookings.view'])->group(function () {
+    Route::middleware(['permission:bookings.view|bookings.view-assigned', 'booking.own-scope'])->group(function () {
 
         Route::group(['prefix' => 'booking-flow', 'middleware' => [RedactCustomerPortalBookingData::class]], function () {
             // Vehicle Availability Routes - Updated to match frontend service
             Route::get('vehicle-groups/availability', [BookingFlowController::class, 'getAvailableVehicleGroups'])
-                ->middleware('permission:bookings.view');
+                ->middleware('permission:bookings.view|bookings.view-assigned');
             Route::get('vehicles/availability', [BookingFlowController::class, 'getAvailableVehiclesInGroup'])
-                ->middleware('permission:bookings.view');
+                ->middleware('permission:bookings.view|bookings.view-assigned');
             Route::get('drivers/availability', [BookingFlowController::class, 'getAvailableDrivers'])
-                ->middleware('permission:bookings.view');
+                ->middleware('permission:bookings.view|bookings.view-assigned');
 
             Route::get('/availability/vehicle', [BookingFlowController::class, 'getAvailableVehicleGroups'])
                 ->middleware('api.deprecated:/api/booking-flow/vehicle-groups/availability');
@@ -2361,37 +2361,37 @@ Route::middleware(['auth:api'])->group(function () {
 
             // Pricing Routes - Updated to match frontend service
             Route::post('pricing/calculate', [BookingFlowController::class, 'calculatePricing'])
-                ->middleware('permission:bookings.view');
+                ->middleware('permission:bookings.view|bookings.view-assigned');
 
             Route::get('currencies', [BookingFlowController::class, 'getAvailableCurrencies'])
-                ->middleware('permission:bookings.view');
+                ->middleware('permission:bookings.view|bookings.view-assigned');
 
             Route::get('dynamic-pricing-adjustments', [BookingFlowController::class, 'getDynamicPricingAdjustments'])
-                ->middleware('permission:bookings.view');
+                ->middleware('permission:bookings.view|bookings.view-assigned');
 
             // Add-ons Routes - Updated to match frontend service
             Route::get('addons/available', [BookingFlowController::class, 'getAvailableAddons'])
-                ->middleware(['permission:bookings.view', 'pricing.context']);
+                ->middleware(['permission:bookings.view|bookings.view-assigned', 'pricing.context']);
             Route::post('addons/process-dependencies', [BookingFlowController::class, 'processAddonDependencies'])
                 ->middleware(['permission:bookings.create', 'pricing.context']);
 
             // Alternative route names for backward compatibility
             Route::get('available-addons', [BookingFlowController::class, 'getAvailableAddons'])
-                ->middleware(['permission:bookings.view', 'pricing.context', 'api.deprecated:/api/booking-flow/addons/available']);
+                ->middleware(['permission:bookings.view|bookings.view-assigned', 'pricing.context', 'api.deprecated:/api/booking-flow/addons/available']);
             Route::post('process-addon-dependencies', [BookingFlowController::class, 'processAddonDependencies'])
                 ->middleware(['permission:bookings.create', 'pricing.context', 'api.deprecated:/api/booking-flow/addons/process-dependencies']);
 
             // Self-Driven Routes - Updated to match frontend service
             Route::get('customers/{customerId}/self-driven-eligibility', [BookingFlowController::class, 'validateSelfDrivenEligibility'])
-                ->middleware('permission:bookings.view');
+                ->middleware('permission:bookings.view|bookings.view-assigned');
             Route::get('vehicles/{vehicleId}/self-driven-suitability', [BookingFlowController::class, 'getVehicleSelfDrivenSuitability'])
-                ->middleware('permission:bookings.view');
+                ->middleware('permission:bookings.view|bookings.view-assigned');
 
             // Alternative route names for backward compatibility
             Route::get('validate-self-driven-eligibility/{customerId}', [BookingFlowController::class, 'validateSelfDrivenEligibility'])
-                ->middleware('permission:bookings.view');
+                ->middleware('permission:bookings.view|bookings.view-assigned');
             Route::get('vehicle-self-driven-suitability/{vehicleId}', [BookingFlowController::class, 'getVehicleSelfDrivenSuitability'])
-                ->middleware('permission:bookings.view');
+                ->middleware('permission:bookings.view|bookings.view-assigned');
 
             // Booking Submission Routes
             Route::post('submit-for-approval', [BookingFlowController::class, 'submitBookingForApproval'])
@@ -2401,7 +2401,7 @@ Route::middleware(['auth:api'])->group(function () {
 
             // Review & Confirmation Enhancement Routes
             Route::post('booking-summary', [BookingFlowController::class, 'getBookingSummary'])
-                ->middleware(['permission:bookings.view', DenyCustomerPortalLegacyBookingActions::class]);
+                ->middleware(['permission:bookings.view|bookings.view-assigned', DenyCustomerPortalLegacyBookingActions::class]);
 
             // Draft Management Routes - Updated to match frontend service
             Route::post('create-inquiry-from-call', [BookingFlowController::class, 'createCallBookingInquiry'])
@@ -2413,15 +2413,15 @@ Route::middleware(['auth:api'])->group(function () {
             Route::post('request-quotation', [BookingFlowController::class, 'requestBookingQuotation'])
                 ->middleware(['permission:bookings.create', DenyCustomerPortalLegacyBookingActions::class]);
             Route::get('draft/{draftId}', [BookingFlowController::class, 'loadBookingDraft'])
-                ->middleware(['permission:bookings.view', DenyCustomerPortalLegacyBookingActions::class]);
+                ->middleware(['permission:bookings.view|bookings.view-assigned', DenyCustomerPortalLegacyBookingActions::class]);
 
             // Alternative route names for backward compatibility
             Route::get('load-draft/{draftId}', [BookingFlowController::class, 'loadBookingDraft'])
-                ->middleware(['permission:bookings.view', DenyCustomerPortalLegacyBookingActions::class]);
+                ->middleware(['permission:bookings.view|bookings.view-assigned', DenyCustomerPortalLegacyBookingActions::class]);
 
             // Approval Workflow Routes - Updated to match frontend service
             Route::get('approval-status/{bookingId}', [BookingFlowController::class, 'getApprovalStatus'])
-                ->middleware(['permission:bookings.view', DenyCustomerPortalLegacyBookingActions::class]);
+                ->middleware(['permission:bookings.view|bookings.view-assigned', DenyCustomerPortalLegacyBookingActions::class]);
             Route::post('request-approval/{bookingId}', [BookingFlowController::class, 'requestManagerApproval'])
                 ->middleware('permission:bookings.approve');
 
@@ -2431,36 +2431,36 @@ Route::middleware(['auth:api'])->group(function () {
 
             // Variable Customization Routes - NEW
             Route::get('variables/customizable', [BookingFlowController::class, 'getCustomizableVariables'])
-                ->middleware(['permission:bookings.view', DenyCustomerPortalLegacyBookingActions::class]);
+                ->middleware(['permission:bookings.view|bookings.view-assigned', DenyCustomerPortalLegacyBookingActions::class]);
             Route::post('variables/customizations', [BookingFlowController::class, 'storeVariableCustomizations'])
                 ->middleware(['permission:bookings.create', DenyCustomerPortalLegacyBookingActions::class]);
             Route::get('variables/customizations', [BookingFlowController::class, 'getVariableCustomizations'])
-                ->middleware(['permission:bookings.view', DenyCustomerPortalLegacyBookingActions::class]);
+                ->middleware(['permission:bookings.view|bookings.view-assigned', DenyCustomerPortalLegacyBookingActions::class]);
 
             // Enhanced Assignment Management Routes
             Route::post('select-vehicle-assignment', [BookingFlowController::class, 'selectVehicleWithAssignmentDetails'])
-                ->middleware(['permission:bookings.view', DenyCustomerPortalLegacyBookingActions::class]);
+                ->middleware(['permission:bookings.view|bookings.view-assigned', DenyCustomerPortalLegacyBookingActions::class]);
             Route::post('alternative-assignments', [BookingFlowController::class, 'getAlternativeAssignments'])
-                ->middleware(['permission:bookings.view', DenyCustomerPortalLegacyBookingActions::class]);
+                ->middleware(['permission:bookings.view|bookings.view-assigned', DenyCustomerPortalLegacyBookingActions::class]);
             Route::post('process-assignment-confirmation', [BookingFlowController::class, 'processAssignmentConfirmation'])
                 ->middleware(['permission:bookings.create', DenyCustomerPortalLegacyBookingActions::class]);
             Route::post('approve-assignments', [BookingFlowController::class, 'approveAssignments'])
                 ->middleware('permission:bookings.approve');
 
             Route::post('validate-rules', [BookingFlowController::class, 'validateBookingRules'])
-                ->middleware('permission:bookings.view');
+                ->middleware('permission:bookings.view|bookings.view-assigned');
             Route::post('alternatives', [BookingFlowController::class, 'getAlternativeSuggestions'])
-                ->middleware('permission:bookings.view');
+                ->middleware('permission:bookings.view|bookings.view-assigned');
 
             // Alternative route names for backward compatibility
             Route::post('validate-booking-rules', [BookingFlowController::class, 'validateBookingRules'])
-                ->middleware('permission:bookings.view');
+                ->middleware('permission:bookings.view|bookings.view-assigned');
             Route::get('alternative-suggestions', [BookingFlowController::class, 'getAlternativeSuggestions'])
-                ->middleware('permission:bookings.view');
+                ->middleware('permission:bookings.view|bookings.view-assigned');
 
             // Confirmation Routes - Updated to match frontend service
             Route::post('generate-confirmation/{bookingId}', [BookingFlowController::class, 'generateBookingConfirmation'])
-                ->middleware(['permission:bookings.view', DenyCustomerPortalLegacyBookingActions::class]);
+                ->middleware(['permission:bookings.view|bookings.view-assigned', DenyCustomerPortalLegacyBookingActions::class]);
 
             // Corporate booking context routes
             Route::get('corporates', [BookingFlowController::class, 'getCorporates'])
@@ -2485,11 +2485,11 @@ Route::middleware(['auth:api'])->group(function () {
                 ->middleware('permission:bookings.create');
             // Saved location search for booking forms
             Route::get('locations', [BookingFlowController::class, 'getSavedLocations'])
-                ->middleware('permission:bookings.view');
+                ->middleware('permission:bookings.view|bookings.view-assigned');
 
             // Route Calculation for Multiple Locations
             Route::post('calculate-route', [BookingFlowController::class, 'calculateRoute'])
-                ->middleware('permission:bookings.view');
+                ->middleware('permission:bookings.view|bookings.view-assigned');
 
             Route::get('edit/{id}', [BookingFlowController::class, 'getBookingForEdit'])
                 ->middleware(DenyCustomerPortalLegacyBookingActions::class);
@@ -2499,7 +2499,7 @@ Route::middleware(['auth:api'])->group(function () {
                 ->middleware(DenyCustomerPortalLegacyBookingActions::class);
             // ->middleware('permission:bookings.update');
             Route::get('edit-history/{bookingId}', [BookingFlowController::class, 'getBookingEditHistory'])
-                ->middleware(['permission:bookings.view', DenyCustomerPortalLegacyBookingActions::class]);
+                ->middleware(['permission:bookings.view|bookings.view-assigned', DenyCustomerPortalLegacyBookingActions::class]);
             Route::get('{bookingId}/items/{bookingItemId}/price-history', [BookingFlowController::class, 'getTripPriceHistory'])
                 ->middleware(['permission:bookings.price_override', DenyCustomerPortalLegacyBookingActions::class]);
             Route::put('{bookingId}/items/{bookingItemId}/price', [BookingFlowController::class, 'updateTripPrice'])
@@ -2512,27 +2512,27 @@ Route::middleware(['auth:api'])->group(function () {
             Route::post('pricing/gamify-discount', [BookingFlowController::class, 'applyGamifyDiscount'])
                 ->middleware('permission:bookings.update');
             Route::post('pricing/recalculate/{bookingId}', [BookingFlowController::class, 'calculatePricing'])
-                ->middleware(['permission:bookings.view', DenyCustomerPortalLegacyBookingActions::class]);
+                ->middleware(['permission:bookings.view|bookings.view-assigned', DenyCustomerPortalLegacyBookingActions::class]);
 
             // Enhanced Discount & Loyalty Management Routes
             Route::post('discounts/apply-promo-code', [BookingFlowController::class, 'applyPromoCode'])
                 ->middleware('permission:bookings.create|bookings.update');
             Route::get('discounts/customer-loyalty/{customerId}', [BookingFlowController::class, 'getCustomerLoyaltyInfo'])
-                ->middleware(['permission:bookings.view', DenyCustomerPortalLegacyBookingActions::class]);
+                ->middleware(['permission:bookings.view|bookings.view-assigned', DenyCustomerPortalLegacyBookingActions::class]);
             Route::post('discounts/remove', [BookingFlowController::class, 'removeDiscount'])
                 ->middleware('permission:bookings.update');
             Route::get('discounts/booking-summary/{bookingId}', [BookingFlowController::class, 'getBookingDiscountSummary'])
-                ->middleware(['permission:bookings.view', DenyCustomerPortalLegacyBookingActions::class]);
+                ->middleware(['permission:bookings.view|bookings.view-assigned', DenyCustomerPortalLegacyBookingActions::class]);
             Route::post('loyalty/process-earning', [BookingFlowController::class, 'processLoyaltyPointsEarning'])
                 ->middleware('permission:bookings.update');
 
             // Approval details and processing routes
             Route::get('approval/details/{bookingId}', [BookingFlowController::class, 'getBookingApprovalDetails'])
-                ->middleware(['permission:bookings.view', DenyCustomerPortalLegacyBookingActions::class]);
+                ->middleware(['permission:bookings.view|bookings.view-assigned', DenyCustomerPortalLegacyBookingActions::class]);
             Route::post('approval/process', [BookingFlowController::class, 'processBookingApproval'])
                 ->middleware('permission:bookings.approve');
             Route::post('bookings/{bookingId}/status', [BookingFlowController::class, 'updateBookingStatus'])
-                ->middleware(['permission:bookings.update', DenyCustomerPortalLegacyBookingActions::class]);
+                ->middleware(['permission:bookings.update|bookings.delete-assigned', DenyCustomerPortalLegacyBookingActions::class]);
 
             // ========================
             // BOOKING LIST MANAGEMENT
@@ -2540,7 +2540,7 @@ Route::middleware(['auth:api'])->group(function () {
 
             // Advanced booking list with filtering
             Route::get('bookings', [BookingFlowController::class, 'getBookingsList'])
-                ->middleware('permission:bookings.view');
+                ->middleware('permission:bookings.view|bookings.view-assigned');
             Route::get('bookings/responsible-user-options', [BookingFlowController::class, 'responsibleUserOptions'])
                 ->middleware('permission:bookings.assign');
             Route::put('bookings/{bookingId}/responsible-user', [BookingFlowController::class, 'assignResponsibleUser'])
@@ -2548,15 +2548,15 @@ Route::middleware(['auth:api'])->group(function () {
             Route::get('return-inspection/options', [BookingFlowController::class, 'getReturnInspectionOptions'])
                 ->middleware('permission:bookings.view');
             Route::get('bookings/{bookingId}/items/{bookingItemId}/operations-notes', [BookingFlowController::class, 'getOperationsNotes'])
-                ->middleware(['permission:bookings.view', DenyCustomerPortalLegacyBookingActions::class]);
+                ->middleware(['permission:bookings.view|bookings.view-assigned', DenyCustomerPortalLegacyBookingActions::class]);
             Route::put('bookings/{bookingId}/items/{bookingItemId}/operations-notes', [BookingFlowController::class, 'updateOperationsNotes'])
                 ->middleware(['permission:bookings.update', DenyCustomerPortalLegacyBookingActions::class]);
             Route::get('bookings/{bookingId}', [BookingFlowController::class, 'getBookingDetails'])
-                ->middleware(['permission:bookings.view', DenyCustomerPortalLegacyBookingActions::class]);
+                ->middleware(['permission:bookings.view|bookings.view-assigned', DenyCustomerPortalLegacyBookingActions::class]);
             Route::post('bookings/{bookingId}/recurring/cancel', [BookingFlowController::class, 'cancelRecurringBooking'])
-                ->middleware(['permission:bookings.delete', DenyCustomerPortalLegacyBookingActions::class]);
+                ->middleware(['permission:bookings.delete|bookings.delete-assigned', DenyCustomerPortalLegacyBookingActions::class]);
             Route::delete('bookings/{bookingId}', [BookingFlowController::class, 'deleteBooking'])
-                ->middleware(['permission:bookings.delete', DenyCustomerPortalLegacyBookingActions::class]);
+                ->middleware(['permission:bookings.delete|bookings.delete-assigned', DenyCustomerPortalLegacyBookingActions::class]);
 
             // Bulk operations
             Route::post('bookings/bulk-operations', [BookingFlowController::class, 'bulkOperations'])
@@ -2588,7 +2588,7 @@ Route::middleware(['auth:api'])->group(function () {
 
             // Individual booking analytics
             Route::get('bookings/{bookingId}/analytics', [BookingFlowController::class, 'getBookingAnalytics'])
-                ->middleware(['permission:bookings.view', DenyCustomerPortalLegacyBookingActions::class]);
+                ->middleware(['permission:bookings.view|bookings.view-assigned', DenyCustomerPortalLegacyBookingActions::class]);
         });
 
         // Assignment Management Routes
