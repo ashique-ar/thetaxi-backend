@@ -19,7 +19,7 @@ class VehicleGroupController extends Controller
 {
     public function __construct()
     {
-        $this->middleware('permission:vehicle-groups.view')->only(['index', 'show']);
+        $this->middleware('permission:vehicle-groups.view')->only(['show']);
         $this->middleware('permission:vehicle-groups.create')->only(['store']);
         $this->middleware('permission:vehicle-groups.edit')->only(['update']);
         $this->middleware('permission:vehicle-groups.delete')->only(['destroy']);
@@ -28,7 +28,18 @@ class VehicleGroupController extends Controller
 
     public function index(Request $request)
     {
+        $evaluator = app(\App\Services\PermissionEvaluator::class);
+        $contextType = $request->attributes->get('resolved_active_context_type', $request->header('X-Active-Context-Type'));
+        $contextId = $request->attributes->get('resolved_active_context_id', $request->header('X-Active-Context-Id'));
+
         if ($request->boolean('booking_lookup')) {
+            abort_unless($evaluator->userHasAnyForRequest(
+                $request->user(),
+                ['bookings.create', 'bookings.view'],
+                $contextType,
+                $contextId
+            ), 403);
+
             return response()->json([
                 'status' => 'success',
                 'data' => VehicleGroup::withInactive()
@@ -36,6 +47,12 @@ class VehicleGroupController extends Controller
                     ->get(['id', 'name']),
             ]);
         }
+
+        abort_unless(
+            $evaluator->userHasAnyForRequest($request->user(), ['vehicles.view'], $contextType, $contextId)
+            && $evaluator->userHasAnyForRequest($request->user(), ['vehicle-groups.view'], $contextType, $contextId),
+            403
+        );
 
         $q = VehicleGroup::withInactive()->with(
             'grade',

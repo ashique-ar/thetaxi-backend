@@ -998,9 +998,18 @@ class BookingSearchRequest extends FormRequest
             $fields,
             static fn ($field) => is_array($field) && ($field['type'] ?? null) === 'location'
         ));
+        $hasSeparateRouteOption = collect($fields)->contains(static fn ($field) =>
+            is_array($field)
+            && ($field['type'] ?? null) === 'location'
+            && collect($field['options'] ?? [])->contains(static fn ($option) =>
+                is_array($option) && ($option['route_mode'] ?? 'shared') === 'separate'
+            )
+        );
         if (count($locationFields) === 1) {
             $fieldMappings['locations']['pickup_location'] ??= $locationFields[0];
-            $fieldMappings['locations']['dropoff_location'] ??= $locationFields[0];
+            if (!$hasSeparateRouteOption) {
+                $fieldMappings['locations']['dropoff_location'] ??= $locationFields[0];
+            }
         }
 
         $pricingServiceType = $serviceType

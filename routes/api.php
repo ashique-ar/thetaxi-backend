@@ -1818,6 +1818,7 @@ Route::middleware(['auth:api'])->group(function () {
         ->middleware('permission:vehicles.edit')->middleware('throttle:10,1');
     Route::post('fleet-tracking/vehicles/{vehicle}/commands/{commandId}', [FleetTrackingController::class, 'executeCommand'])
         ->whereNumber('commandId')->middleware('permission:vehicles.edit')->middleware('throttle:6,1');
+    Route::get('vehicles/vehicle-groups', [VehicleGroupController::class, 'index']);
     Route::middleware(['permission:vehicles.view'])->group(function () {
         Route::get('fleet-tracking', [FleetTrackingController::class, 'index'])->middleware('throttle:60,1');
         Route::get('fleet-tracking/vehicles/{vehicle}/telemetry', [FleetTrackingController::class, 'telemetry'])->middleware('throttle:60,1');
@@ -1852,7 +1853,7 @@ Route::middleware(['auth:api'])->group(function () {
             Route::apiResource('vehicle-grades', VehicleGradeController::class);
             Route::get('vehicle-groups/seo-service-types', [VehicleGroupController::class, 'seoServiceTypes'])->middleware('permission:vehicle-groups.view');
             Route::post('vehicle-groups/{vehicleGroup}/move-vehicles', [VehicleGroupController::class, 'moveVehicles']);
-            Route::apiResource('vehicle-groups', VehicleGroupController::class);
+            Route::apiResource('vehicle-groups', VehicleGroupController::class)->except(['index']);
             Route::apiResource('vehicle-images', VehicleImageController::class);
             Route::post('vehicle-insurances/{vehicleInsurance}/renew', [VehicleInsuranceController::class, 'renew']);
             Route::apiResource('vehicle-insurances.claims', VehicleInsuranceClaimController::class)->shallow(false);

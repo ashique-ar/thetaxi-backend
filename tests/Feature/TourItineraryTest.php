@@ -153,7 +153,10 @@ class TourItineraryTest extends TestCase
             $table->timestamps();
             $table->softDeletes();
         });
-        Schema::create('currencies', fn (Blueprint $table) => $table->string('code', 3)->primary());
+        Schema::create('currencies', function (Blueprint $table): void {
+            $table->string('code', 3)->primary();
+            $table->softDeletes();
+        });
         Schema::create('bookings', function (Blueprint $table): void {
             $table->uuid('id')->primary();
             $table->string('status')->nullable();
@@ -746,8 +749,6 @@ class TourItineraryTest extends TestCase
             'id' => $contextId, 'user_id' => self::USER_ID, 'context_type' => 'customer',
             'context_id' => $customerId, 'is_active' => true,
         ]);
-        DB::table('currencies')->insert(['code' => 'LKR']);
-
         $itinerary = (new TourItineraryController)->store(
             $this->request($this->payload($destinationId, $activityId))
         )->getData(true)['data'];
@@ -766,7 +767,7 @@ class TourItineraryTest extends TestCase
         $cartService->expects(self::once())->method('addItem')->with($cart, ['is_tour' => true], 'tour-'.$itinerary['id']);
         app()->instance(CartService::class, $cartService);
 
-        $this->withSession([
+        $this->withoutMiddleware(\App\Http\Middleware\WebsiteSettingsSecurity::class)->withSession([
             'tour_checkout_customer_id' => $customerId,
             'tour_checkout_user_id' => self::USER_ID,
             'tour_checkout_itinerary_id' => $itinerary['id'],
