@@ -715,9 +715,9 @@ trait BookingSubmissionTrait
     {
         try {
             $record = Booking::query()->where('status', 'draft')->findOrFail($draftId);
-            if (Auth::user()?->can('bookings.view-assigned')
-                && ! Auth::user()?->can('bookings.view')
-                && ! Gate::allows('update', $record)) {
+            $scopedAccess = app(\App\Services\BookingOwnership::class)->isScopedRole(Auth::user())
+                || (Auth::user()?->can('bookings.view-assigned') && ! Auth::user()?->can('bookings.view'));
+            if ($scopedAccess && ! Gate::allows('update', $record)) {
                 return response()->json(['success' => false, 'error' => 'Booking not found'], 404);
             }
 
@@ -1063,8 +1063,8 @@ trait BookingSubmissionTrait
 
         try {
             $record = Booking::findOrFail($bookingId);
-            $assignedOnly = Auth::user()?->can('bookings.view-assigned')
-                && ! Auth::user()?->can('bookings.view');
+            $assignedOnly = app(\App\Services\BookingOwnership::class)->isScopedRole(Auth::user())
+                || (Auth::user()?->can('bookings.view-assigned') && ! Auth::user()?->can('bookings.view'));
             $authorized = $request->status === 'cancelled'
                 ? Gate::allows('delete', $record)
                 : Auth::user()?->can('bookings.update') && Gate::allows('update', $record);

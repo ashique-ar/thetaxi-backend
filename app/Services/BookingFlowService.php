@@ -10185,7 +10185,8 @@ class BookingFlowService
             ]);
 
         $viewer = Auth::user();
-        if ($viewer?->can('bookings.view-assigned') && ! $viewer->can('bookings.view')) {
+        if ($viewer && (app(BookingOwnership::class)->isScopedRole($viewer)
+            || ($viewer->can('bookings.view-assigned') && ! $viewer->can('bookings.view')))) {
             $query->whereHas('booking', fn ($bookingQuery) => app(BookingOwnership::class)->scope($bookingQuery, $viewer));
         }
 
