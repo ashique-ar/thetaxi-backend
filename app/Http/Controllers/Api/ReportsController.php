@@ -547,19 +547,7 @@ class ReportsController extends Controller
 
     public function getOperationsReports(Request $request): JsonResponse
     {
-        $filters = $request->validate([
-            'date_from' => ['nullable', 'date_format:Y-m-d'],
-            'date_to' => ['nullable', 'date_format:Y-m-d', 'after_or_equal:date_from'],
-            'staff_user_id' => ['nullable', 'uuid'],
-            'organization_unit_id' => ['nullable', 'uuid'],
-        ]);
-        $timezone = TimezoneService::getUserTimezone();
-        $to = $filters['date_to'] ?? Carbon::today($timezone)->toDateString();
-        $from = $filters['date_from'] ?? Carbon::parse($to, $timezone)->startOfMonth()->toDateString();
-        abort_if(Carbon::parse($from)->diffInDays(Carbon::parse($to)) > 366, 422, 'Operations report range cannot exceed 367 days.');
-        $filters = [...$filters, 'date_from' => $from, 'date_to' => $to];
-        $start = TimezoneService::userDateStartUtc($from);
-        $end = $this->exclusiveDateEnd($to);
+        ['filters' => $filters, 'timezone' => $timezone, 'from' => $from, 'to' => $to, 'start' => $start, 'end' => $end] = $this->operationsReportPeriod($request);
 
         $bookings = Booking::query();
         $this->applyFilters($bookings, $filters);
@@ -609,6 +597,7 @@ class ReportsController extends Controller
 
         $inquiries = null;
         $inquiryEvents = collect();
+        $inquiryActivities = collect();
         if ($request->user()->can('inquiries.view')) {
             $inquiryQuery = DB::table('inquiries')->whereNull('deleted_at')->where('created_at', '>=', $start)->where('created_at', '<', $end);
             if (!empty($filters['staff_user_id'])) $inquiryQuery->where('assigned_to', $filters['staff_user_id']);
@@ -638,6 +627,14 @@ class ReportsController extends Controller
                 ->orderByDesc('event.occurred_at')->limit(50)
                 ->get(['event.inquiry_id', 'inquiries.inquiry_number', 'event.from_status', 'event.to_status', 'event.occurred_at'])
                 ->map(fn ($event) => ['kind' => 'inquiry_status', 'reference' => $event->inquiry_number ?: (string) $event->inquiry_id, 'from' => $event->from_status, 'to' => $event->to_status, 'occurred_at' => $event->occurred_at]);
+            $inquiryActivities = DB::table('booking_activities as activity')->join('inquiries', 'inquiries.id', '=', 'activity.inquiry_id')
+                ->whereNull('inquiries.deleted_at')->whereNull('activity.deleted_at')
+                ->where('activity.event_at', '>=', $start)->where('activity.event_at', '<', $end)
+                ->when(!empty($filters['staff_user_id']), fn ($query) => $query->where('inquiries.assigned_to', $filters['staff_user_id']))
+                ->when(!empty($filters['organization_unit_id']), fn ($query) => $query->whereIn('inquiries.assigned_to', $this->currentDepartmentAssignments($request->user())->where('assignment.organization_unit_id', $filters['organization_unit_id'])->select('staff.user_id')))
+                ->orderByDesc('activity.event_at')->limit(50)
+                ->get(['activity.inquiry_id', 'inquiries.inquiry_number', 'activity.event_key', 'activity.channel', 'activity.result_status', 'activity.source', 'activity.event_at'])
+                ->map(fn ($event) => ['kind' => 'inquiry_activity', 'reference' => $event->inquiry_number ?: (string) $event->inquiry_id, 'event' => $event->event_key, 'channel' => $event->channel, 'result' => $event->result_status, 'source' => $event->source, 'occurred_at' => $event->event_at]);
         }
 
         $bookingEvents = DB::table('booking_activities as activity')
@@ -654,8 +651,31 @@ class ReportsController extends Controller
             'cancellations' => ['total' => (clone $cancelledQuery)->count(), 'rows' => $cancellations],
             'dispatches' => ['total' => (clone $dispatchQuery)->count(), 'rows' => $dispatches],
             'inquiries' => $inquiries,
-            'activity' => $inquiryEvents->concat($bookingEvents)->concat($dispatchEvents)->concat($cancellationEvents)->sortByDesc('occurred_at')->take(100)->values(),
-        ], 'meta' => ['date_from' => $from, 'date_to' => $to, 'timezone' => $timezone, 'row_limit' => 50, 'activity_row_limit' => 100, 'activity_note' => 'Recorded inquiry status changes and booking activity events only; this is not a complete audit history.']]);
+            'activity' => $inquiryEvents->concat($inquiryActivities)->concat($bookingEvents)->concat($dispatchEvents)->concat($cancellationEvents)->sortByDesc('occurred_at')->take(100)->values(),
+        ], 'meta' => ['date_from' => $from, 'date_to' => $to, 'timezone' => $timezone, 'row_limit' => 50, 'activity_row_limit' => 100, 'activity_note' => 'Recorded inquiry status changes, inquiry and booking activity events, dispatches, and cancellations only; this is not a complete audit history.']]);
+    }
+
+    private function operationsReportPeriod(Request $request): array
+    {
+        $filters = $request->validate([
+            'date_from' => ['nullable', 'date_format:Y-m-d'],
+            'date_to' => ['nullable', 'date_format:Y-m-d', 'after_or_equal:date_from'],
+            'staff_user_id' => ['nullable', 'uuid'],
+            'organization_unit_id' => ['nullable', 'uuid'],
+        ]);
+        $timezone = TimezoneService::getUserTimezone();
+        $to = $filters['date_to'] ?? Carbon::today($timezone)->toDateString();
+        $from = $filters['date_from'] ?? Carbon::parse($to, $timezone)->startOfMonth()->toDateString();
+        abort_if(Carbon::parse($from)->diffInDays(Carbon::parse($to)) > 366, 422, 'Operations report range cannot exceed 367 days.');
+
+        return [
+            'filters' => [...$filters, 'date_from' => $from, 'date_to' => $to],
+            'timezone' => $timezone,
+            'from' => $from,
+            'to' => $to,
+            'start' => TimezoneService::userDateStartUtc($from),
+            'end' => $this->exclusiveDateEnd($to),
+        ];
     }
 
     public function getReportStaffOptions(Request $request): JsonResponse
@@ -1273,7 +1293,7 @@ class ReportsController extends Controller
     {
         $request->validate([
             'format' => 'sometimes|in:csv,pdf',
-            'type' => 'sometimes|string|in:bookings,customers,vehicles,drivers,financial,collections,maintenance',
+            'type' => 'sometimes|string|in:bookings,customers,vehicles,drivers,financial,collections,maintenance,operations',
             'period' => 'sometimes|in:daily,weekly,monthly,yearly',
         ]);
 
@@ -1286,6 +1306,7 @@ class ReportsController extends Controller
         $format  = $request->get('format', 'csv');
         $filters = [...$this->parseFilters($request), ...$comparison];
         if ($type === 'financial') $filters['period'] = $request->get('period', 'daily');
+        if ($type === 'operations') abort_unless($format === 'csv', 422, 'Operations reports are available as CSV.');
 
         return match ($type) {
             'bookings'  => $this->exportBookingReport($filters, $format),
@@ -1295,8 +1316,111 @@ class ReportsController extends Controller
             'financial' => $this->exportFinancialReport($filters, $format, $request->get('period', 'daily')),
             'collections' => $this->exportCashCollectionReport($filters, $format),
             'maintenance' => $this->exportMaintenanceReport($filters, $format),
+            'operations' => $this->exportOperationsReport($request),
             default     => response()->json(['error' => 'Invalid report type'], 400),
         };
+    }
+
+    private function exportOperationsReport(Request $request): \Symfony\Component\HttpFoundation\StreamedResponse
+    {
+        ['filters' => $filters, 'timezone' => $timezone, 'from' => $from, 'to' => $to, 'start' => $start, 'end' => $end] = $this->operationsReportPeriod($request);
+        $visibleBookingIds = Booking::query()->select('bookings.id');
+        $this->applyReportBookingScope($visibleBookingIds);
+        $this->applyResponsibleFilters($visibleBookingIds, $filters);
+        $cancellations = Booking::query()->whereIn('bookings.id', clone $visibleBookingIds)
+            ->whereIn('bookings.status', ['cancelled', 'inquiry_cancelled'])->whereNotNull('bookings.cancelled_at')
+            ->where('bookings.cancelled_at', '>=', $start)->where('bookings.cancelled_at', '<', $end)
+            ->orderBy('bookings.cancelled_at')->select(['bookings.id', 'bookings.booking_number', 'bookings.status', 'bookings.cancelled_at', 'bookings.workflow_data']);
+        $dispatches = DB::table('booking_dispatches as dispatch')->join('bookings', 'bookings.id', '=', 'dispatch.booking_id')
+            ->whereIn('bookings.id', clone $visibleBookingIds)->whereNull('dispatch.deleted_at')->whereNotNull('dispatch.dispatched_at')
+            ->where('dispatch.dispatched_at', '>=', $start)->where('dispatch.dispatched_at', '<', $end)->orderBy('dispatch.dispatched_at')
+            ->select(['bookings.booking_number', 'dispatch.dispatch_status', 'dispatch.dispatched_at', 'dispatch.actual_return_at']);
+
+        $inquiryQuery = null;
+        if ($request->user()->can('inquiries.view')) {
+            $inquiryQuery = DB::table('inquiries')->whereNull('deleted_at')->where('created_at', '>=', $start)->where('created_at', '<', $end);
+            if (!empty($filters['staff_user_id'])) $inquiryQuery->where('assigned_to', $filters['staff_user_id']);
+            if (!empty($filters['organization_unit_id'])) {
+                $departmentUsers = $this->currentDepartmentAssignments($request->user())
+                    ->where('assignment.organization_unit_id', $filters['organization_unit_id'])->select('staff.user_id');
+                $inquiryQuery->whereIn('assigned_to', $departmentUsers);
+            }
+            $inquiryQuery->select(['id', 'inquiry_number', 'status', 'source', 'created_at', 'first_response_sent_at']);
+        }
+
+        return response()->streamDownload(function () use ($request, $filters, $timezone, $from, $to, $start, $end, $visibleBookingIds, $cancellations, $dispatches, $inquiryQuery): void {
+            $stream = fopen('php://output', 'wb');
+            fwrite($stream, "\xEF\xBB\xBF");
+            $safe = static fn ($value) => is_string($value) && preg_match('/^[\s]*[=+\-@]/u', $value) ? "'".$value : $value;
+            $write = static fn (array $row) => fputcsv($stream, array_map($safe, array_pad($row, 12, '')), ',', '"', '');
+            $localTime = static fn ($value) => $value ? Carbon::parse($value, 'UTC')->setTimezone($timezone)->toIso8601String() : '';
+            $write(['Report', 'Operations']);
+            $write(['Generated at UTC', now()->utc()->toIso8601String()]);
+            $write(['Date from', $from, 'Date to', $to, 'Timezone', $timezone]);
+            $write(['Staff scope', $filters['staff_user_id'] ?? 'all visible', 'Department scope', $filters['organization_unit_id'] ?? 'all visible']);
+            $write(['Record type', 'Timestamp', 'Reference', 'Status', 'From status', 'To status', 'Source', 'Event', 'Result', 'Count', 'Average response minutes', 'Return time']);
+
+            if ($inquiryQuery) {
+                $answered = (clone $inquiryQuery)->whereNotNull('first_response_sent_at')->select([])
+                    ->selectRaw('COUNT(*) as answered, AVG(' . (DB::connection()->getDriverName() === 'pgsql'
+                        ? 'EXTRACT(EPOCH FROM (first_response_sent_at - created_at)) / 60'
+                        : '(julianday(first_response_sent_at) - julianday(created_at)) * 1440') . ') as average_minutes')->first();
+                $write(['Inquiry summary', '', '', '', '', '', '', 'received', '', (clone $inquiryQuery)->count()]);
+                $write(['Inquiry summary', '', '', '', '', '', '', 'first_response', '', (int) $answered->answered, $answered->average_minutes]);
+            }
+
+            $bookings = Booking::query();
+            $this->applyFilters($bookings, $filters);
+            $dailyExpression = DB::connection()->getDriverName() === 'pgsql'
+                ? "DATE(bookings.created_at AT TIME ZONE 'UTC' AT TIME ZONE ?)"
+                : 'DATE(bookings.created_at)';
+            $dailyBindings = DB::connection()->getDriverName() === 'pgsql' ? [$timezone] : [];
+            $dailyCounts = (clone $bookings)->selectRaw("{$dailyExpression} as day, COUNT(*) as total", $dailyBindings)
+                ->groupByRaw($dailyExpression, $dailyBindings)->orderBy('day')->get()->mapWithKeys(fn ($row) => [(string) $row->day => (int) $row->total]);
+            $day = Carbon::parse($from, $timezone);
+            $lastDay = Carbon::parse($to, $timezone);
+            while ($day->lte($lastDay)) {
+                $date = $day->toDateString();
+                $write(['Daily booking', $date, '', '', '', '', '', '', '', $dailyCounts->get($date, 0)]);
+                $day->addDay();
+            }
+
+            foreach ($cancellations->cursor() as $booking) {
+                $write(['Cancellation', $localTime($booking->cancelled_at), $booking->booking_number, $booking->status, '', '', '', 'cancellation', data_get($booking->workflow_data, 'cancellation_reason') ?? '']);
+            }
+            foreach ($dispatches->cursor() as $dispatch) {
+                $write(['Dispatch', $localTime($dispatch->dispatched_at), $dispatch->booking_number, $dispatch->dispatch_status, '', '', '', 'dispatch', '', '', '', $localTime($dispatch->actual_return_at)]);
+            }
+
+            if ($inquiryQuery) {
+                foreach ((clone $inquiryQuery)->orderBy('created_at')->cursor() as $inquiry) {
+                    $write(['Inquiry', $localTime($inquiry->created_at), $inquiry->inquiry_number ?: $inquiry->id, $inquiry->status, '', '', $inquiry->source, 'received', '', '', '', $localTime($inquiry->first_response_sent_at)]);
+                }
+                foreach (DB::table('inquiry_status_events as event')->join('inquiries', 'inquiries.id', '=', 'event.inquiry_id')
+                    ->whereNull('inquiries.deleted_at')->where('event.occurred_at', '>=', $start)->where('event.occurred_at', '<', $end)
+                    ->when(!empty($filters['staff_user_id']), fn ($query) => $query->where('inquiries.assigned_to', $filters['staff_user_id']))
+                    ->when(!empty($filters['organization_unit_id']), fn ($query) => $query->whereIn('inquiries.assigned_to', $this->currentDepartmentAssignments($request->user())->where('assignment.organization_unit_id', $filters['organization_unit_id'])->select('staff.user_id')))
+                    ->orderBy('event.occurred_at')->select(['event.inquiry_id', 'inquiries.inquiry_number', 'event.from_status', 'event.to_status', 'event.occurred_at'])->cursor() as $event) {
+                    $write(['Inquiry status change', $localTime($event->occurred_at), $event->inquiry_number ?: $event->inquiry_id, '', $event->from_status, $event->to_status]);
+                }
+                foreach (DB::table('booking_activities as activity')->join('inquiries', 'inquiries.id', '=', 'activity.inquiry_id')
+                    ->whereNull('inquiries.deleted_at')->whereNull('activity.deleted_at')
+                    ->where('activity.event_at', '>=', $start)->where('activity.event_at', '<', $end)
+                    ->when(!empty($filters['staff_user_id']), fn ($query) => $query->where('inquiries.assigned_to', $filters['staff_user_id']))
+                    ->when(!empty($filters['organization_unit_id']), fn ($query) => $query->whereIn('inquiries.assigned_to', $this->currentDepartmentAssignments($request->user())->where('assignment.organization_unit_id', $filters['organization_unit_id'])->select('staff.user_id')))
+                    ->orderBy('activity.event_at')->select(['activity.inquiry_id', 'inquiries.inquiry_number', 'activity.source', 'activity.event_key', 'activity.channel', 'activity.result_status', 'activity.event_at'])->cursor() as $event) {
+                    $write(['Inquiry activity', $localTime($event->event_at), $event->inquiry_number ?: $event->inquiry_id, '', '', '', $event->source, $event->event_key . ' · ' . $event->channel, $event->result_status]);
+                }
+            }
+
+            foreach (DB::table('booking_activities as activity')->join('bookings', 'bookings.id', '=', 'activity.booking_id')
+                ->whereIn('bookings.id', clone $visibleBookingIds)->whereNull('activity.deleted_at')
+                ->where('activity.event_at', '>=', $start)->where('activity.event_at', '<', $end)->orderBy('activity.event_at')
+                ->select(['bookings.booking_number', 'activity.source', 'activity.event_key', 'activity.result_status', 'activity.event_at'])->cursor() as $event) {
+                $write(['Booking activity', $localTime($event->event_at), $event->booking_number, '', '', '', $event->source, $event->event_key, $event->result_status]);
+            }
+            fclose($stream);
+        }, "operations-report-{$from}-to-{$to}.csv", ['Content-Type' => 'text/csv; charset=UTF-8']);
     }
 
     public function generatedReports(Request $request): JsonResponse

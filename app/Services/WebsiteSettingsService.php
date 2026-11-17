@@ -1246,6 +1246,7 @@ class WebsiteSettingsService
             'feature_respond_io_enabled',
             'feature_3cx_enabled',
             'feature_driver_management_enabled',
+            'driver_mobile_app_enabled',
         ]) + [
             'feature_tour_booking_enabled' => Schema::hasColumn('service_types', 'tour_booking_enabled')
                 && \App\Models\Service\ServiceType::query()
