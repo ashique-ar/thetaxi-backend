@@ -624,21 +624,19 @@ class DynamicServiceConfigurationService
     }
 
     /**
-     * Get dynamic form configuration for a specific service type.
-     * Resolve the public form from the service type's database configuration.
+     * Get dynamic form configuration for a code or an explicitly selected service type.
      */
-    public function getServiceFormConfiguration(string $serviceCode): array
+    public function getServiceFormConfiguration(string $serviceCode, ?ServiceType $serviceTypeOverride = null): array
     {
-        // Resolve the authoritative public record before caching. Including its
-        // identity and revision prevents the renderer from showing freshly saved
-        // defaults while validation/pricing still consumes an older cached form.
-        $serviceType = ServiceType::publicContext()
+        // Include the selected record identity and revision so cached forms from
+        // different pricing contexts cannot be mixed.
+        $serviceType = $serviceTypeOverride ?? ServiceType::publicContext()
             ->where('code', $serviceCode)
             ->where('is_active', true)
             ->orderByDesc('updated_at')
             ->first();
 
-        if (!$serviceType) {
+        if (!$serviceType || $serviceType->code !== $serviceCode) {
             return [
                 'error' => 'Service type not found',
                 'fields' => [],
@@ -649,10 +647,10 @@ class DynamicServiceConfigurationService
         $parentServiceType = $serviceType->parentServiceType;
         $revision = $serviceType->updated_at?->format('YmdHisv') ?? 'unversioned';
         $parentRevision = $parentServiceType?->updated_at?->format('YmdHisv') ?? 'none';
-        $cacheKey = "service_form_config_public_v7_{$serviceCode}_{$serviceType->id}_{$revision}_{$parentRevision}";
+        $cacheKey = "service_form_config_v8_{$serviceCode}_{$serviceType->id}_{$revision}_{$parentRevision}";
 
         $config = Cache::remember($cacheKey, self::CACHE_TIMEOUT, function () use ($serviceCode, $serviceType, $parentServiceType) {
-            // Public form fields come only from the service type's database configuration.
+            // Form fields come from the selected service type's database configuration.
             $serviceTypeFields = $this->extractRenderableFields($serviceType->form_config);
             $dbConfig = ServiceFormConfig::forCode($serviceCode);
             $fields = $serviceTypeFields;
@@ -721,11 +719,6 @@ class DynamicServiceConfigurationService
 
             $options = $field['options'] ?? [];
             foreach ($options as &$option) {
-                if (($option['action'] ?? null) === 'google_search'
-                    && stripos((string) ($option['label'] ?? ''), 'my doorstep') !== false) {
-                    $option['route_mode'] = 'separate';
-                }
-
                 $source = $option['location_source'] ?? null;
                 $location = null;
                 if ($source === 'saved_location' && !empty($option['location_id'])) {

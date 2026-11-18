@@ -82,18 +82,16 @@ class ServiceFormConfigController extends Controller
 
             $config = $this->buildFormConfig($serviceType);
 
-            // Keep portal booking forms in lockstep with the public Laravel
-            // blades. The blades resolve fields and field mappings through
-            // DynamicServiceConfigurationService; using only the raw effective
-            // service type here can return a different schema (notably for
-            // inherited or context-specific service types).
+            // Compile the exact effective service type selected above. Looking
+            // it up again by code can select a different same-code context and
+            // drop option settings such as route_mode.
             $bookingForm = app(\App\Services\DynamicServiceConfigurationService::class)
-                ->getServiceFormConfiguration($serviceType->code);
+                ->getServiceFormConfiguration($serviceType->code, $serviceType);
             if (empty($bookingForm['error'])) {
-                $config['fields'] = is_array($bookingForm['fields'] ?? null)
+                $config['fields'] = !empty($bookingForm['fields']) && is_array($bookingForm['fields'])
                     ? $bookingForm['fields']
                     : ($config['fields'] ?? []);
-                $config['field_mappings'] = is_array($bookingForm['field_mappings'] ?? null)
+                $config['field_mappings'] = !empty($bookingForm['field_mappings']) && is_array($bookingForm['field_mappings'])
                     ? $bookingForm['field_mappings']
                     : ($config['field_mappings'] ?? []);
             }
@@ -125,7 +123,7 @@ class ServiceFormConfigController extends Controller
         $fields = $storedConfig['fields'];
         if (empty($fields)) {
             $resolved = app(\App\Services\DynamicServiceConfigurationService::class)
-                ->getServiceFormConfiguration($serviceType->code);
+                ->getServiceFormConfiguration($serviceType->code, $serviceType);
             $fields = is_array($resolved['fields'] ?? null) ? $resolved['fields'] : [];
         }
         $fields = \App\Services\DynamicServiceConfigurationService::hydrateSavedLocations($fields);

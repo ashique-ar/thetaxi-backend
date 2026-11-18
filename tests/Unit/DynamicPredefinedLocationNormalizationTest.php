@@ -120,20 +120,28 @@ class DynamicPredefinedLocationNormalizationTest extends TestCase
         $this->assertSame('Pickup Location', $defaults['pickup_location']['custom_label']);
     }
 
-    public function test_legacy_doorstep_search_option_uses_separate_pickup_and_dropoff(): void
+    public function test_location_route_mode_is_preserved_without_label_inference(): void
     {
         $fields = \App\Services\DynamicServiceConfigurationService::hydrateSavedLocations([
             'pickup_location' => [
                 'type' => 'location',
                 'options' => [
-                    ['value' => 'doorstep', 'label' => 'My Doorstep (Search Google)', 'action' => 'google_search'],
-                    ['value' => 'custom', 'label' => 'Search another location', 'action' => 'google_search'],
+                    ['value' => 'custom', 'label' => 'Search another location', 'action' => 'google_search', 'route_mode' => 'separate'],
+                    ['value' => 'doorstep', 'label' => 'My Doorstep (Search Google)', 'action' => 'google_search', 'route_mode' => 'shared'],
+                    ['value' => 'legacy', 'label' => 'Legacy search option', 'action' => 'google_search'],
                 ],
             ],
         ]);
 
         $this->assertSame('separate', $fields['pickup_location']['options'][0]['route_mode']);
-        $this->assertArrayNotHasKey('route_mode', $fields['pickup_location']['options'][1]);
+        $this->assertSame('shared', $fields['pickup_location']['options'][1]['route_mode']);
+        $this->assertArrayNotHasKey('route_mode', $fields['pickup_location']['options'][2]);
+
+        $apiController = file_get_contents(app_path('Http/Controllers/Api/Service/ServiceFormConfigController.php'));
+        $this->assertStringContainsString(
+            'getServiceFormConfiguration($serviceType->code, $serviceType)',
+            $apiController
+        );
     }
 
     public function test_doorstep_dropoff_is_rendered_next_to_the_dynamic_pickup_field(): void
