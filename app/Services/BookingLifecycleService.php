@@ -4571,7 +4571,7 @@ class BookingLifecycleService
         $hasDriver = !empty($context['driver_id']);
         $isSelfDriven = (bool) $context['is_self_driven'];
 
-        if (($booking->status ?? null) === 'pending_approval' || $this->resolveApprovalStatus($booking) === 'pending') {
+        if ($this->resolveApprovalStatus($booking) === 'pending') {
             $actions[] = 'approve_booking';
             $actions[] = 'reject_booking';
             $blockingReasons[] = 'Approval is required before dispatch';
