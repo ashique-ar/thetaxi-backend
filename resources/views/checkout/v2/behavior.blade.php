@@ -334,6 +334,13 @@
                 return formatCheckoutAmount(addon.calculated_amount ?? addon.amount ?? 0);
             }
 
+            function checkoutAddonBillingLabel(addon) {
+                if (addon.rate_type === 'percentage' || addon.pricing_type === 'percentage') {
+                    return 'of booking total';
+                }
+                return ({ per_day: 'per day', per_hour: 'per hour', per_package: 'one-time' })[addon.billing_type] || 'one-time';
+            }
+
             function selectedAddonMap(selectedAddons) {
                 const map = {};
                 if (Array.isArray(selectedAddons)) {
@@ -371,7 +378,7 @@
                                 <strong>${checkoutEscapeHtml(addon.name || 'Add-on')}</strong>
                                 <small>Qty: ${Number(addon.qty || 1)}</small>
                             </div>
-                            <span>${checkoutAddonAmount(addon)}</span>
+                            <div><small>${checkoutAddonBillingLabel(addon)}</small><strong>${checkoutAddonAmount(addon)}</strong></div>
                         </div>
                     `;
                 }).join(''));
@@ -404,7 +411,10 @@
                     })
                 ).done(function(availableResponse, selectedResponse) {
                     const available = availableResponse[0]?.data || [];
-                    const selected = selectedResponse[0]?.data || [];
+                    const availableById = Object.fromEntries(available.map(function(addon) { return [addon.id, addon]; }));
+                    const selected = (selectedResponse[0]?.data || []).map(function(addon) {
+                        return { ...availableById[addon.addon_id] , ...addon };
+                    });
                     renderCheckoutAddons(cartKey, available, selected);
                     renderSelectedAddonSummary(cartKey, selected);
                     panel.data('loaded', true);
@@ -487,7 +497,7 @@
                             <div class="checkout-addon-info">
                                 <strong>${safeName}</strong>
                                 <small>${checkoutEscapeHtml(addon.description || 'Add-on')}</small>
-                                <span class="v2-addon-price">${checkoutAddonAmount(addon)}</span>
+                                <span class="v2-addon-price">${checkoutAddonAmount(addon)} <small>${checkoutAddonBillingLabel(addon)}</small></span>
                             </div>
                             <div class="checkout-addon-actions">
                                 <div class="checkout-addon-qty" ${qty > 0 ? '' : 'hidden'}>

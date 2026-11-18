@@ -511,7 +511,7 @@ class CartService
                         return $addon;
                     }
 
-                    $fields = ($addon['rate_type'] ?? null) === 'percentage'
+                    $fields = (($addon['rate_type'] ?? null) === 'percentage' || ($addon['pricing_type'] ?? null) === 'percentage')
                         ? ['calculated_amount', 'total', 'unit_price', 'total_price']
                         : ['amount', 'calculated_amount', 'total', 'unit_price', 'total_price'];
                     foreach ($fields as $field) {
@@ -884,7 +884,7 @@ class CartService
         $selectedCurrency = $this->currencyService->getSelectedCurrency();
 
         $addons = $query
-            ->select('id', 'name', 'description', 'thumbnail', 'amount', 'rate_type', 'min_qty', 'max_qty', 'tags', 'integration_settings')
+            ->select('id', 'name', 'description', 'thumbnail', 'amount', 'pricing_type', 'rate_type', 'billing_type', 'min_qty', 'max_qty', 'tags', 'integration_settings')
             ->orderBy('name')
             ->get()
             ->map(function ($addon) use ($selectedCurrency, $cartItem) {
@@ -893,7 +893,7 @@ class CartService
                 $amountLkr = $dynamic && $cartItem
                     ? $this->calculateAddonAmount($addon, 1, $cartItem)
                     : (float) ($addon->amount ?? 0);
-                $converted = $addon->rate_type === 'percentage'
+                $converted = ($addon->rate_type === 'percentage' || $addon->pricing_type === 'percentage')
                     ? $amountLkr
                     : $this->currencyService->convertFromLKR($amountLkr, $selectedCurrency);
                 return [
@@ -906,6 +906,8 @@ class CartService
                     'is_dynamic_priced' => $dynamic,
                     'pricing_formula' => $dynamic ? $formula : null,
                     'rate_type' => $addon->rate_type,
+                    'pricing_type' => $addon->pricing_type,
+                    'billing_type' => $addon->billing_type,
                     'min_qty' => $addon->min_qty,
                     'max_qty' => $addon->max_qty,
                     'is_child_seat' => collect($addon->tags ?? [])
