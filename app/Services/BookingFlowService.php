@@ -11227,6 +11227,7 @@ class BookingFlowService
             'booking_total_amount' => (float) ($booking?->total_actual ?? $booking?->total_estimated ?? 0),
             'currency' => $item->currency ?? $this->currencyService->getBookingBaseCurrency(),
             'payment_status' => $booking?->payment_status,
+            'payment_collection_status' => $booking?->payment_collection_status,
             'payment_method' => $booking?->payment_method,
             'payment_collected_amount' => $booking?->payment_collected_amount !== null
                 ? (float) $booking->payment_collected_amount
