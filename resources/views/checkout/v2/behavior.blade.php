@@ -341,6 +341,23 @@
                 return ({ per_day: 'per day', per_hour: 'per hour', per_package: 'one-time' })[addon.billing_type] || 'one-time';
             }
 
+            function checkoutSelectedAddonTotalLabel(addon, cartKey) {
+                if (addon.rate_type === 'percentage' || addon.pricing_type === 'percentage') {
+                    return 'calculated total';
+                }
+                const wrapper = $('.checkout-item-addons').filter(function() {
+                    return String($(this).data('cart-key')) === String(cartKey);
+                }).first();
+                if (addon.billing_type === 'per_day') {
+                    return 'total for ' + Math.max(1, Number(wrapper.data('duration-days')) || 1) + ' days';
+                }
+                if (addon.billing_type === 'per_hour') {
+                    const hours = Number(wrapper.data('duration-hours')) || 0;
+                    return hours > 0 ? 'total for ' + hours + ' hours' : 'calculated total';
+                }
+                return 'one-time total';
+            }
+
             function selectedAddonMap(selectedAddons) {
                 const map = {};
                 if (Array.isArray(selectedAddons)) {
@@ -378,7 +395,7 @@
                                 <strong>${checkoutEscapeHtml(addon.name || 'Add-on')}</strong>
                                 <small>Qty: ${Number(addon.qty || 1)}</small>
                             </div>
-                            <div><small>${checkoutAddonBillingLabel(addon)}</small><strong>${checkoutAddonAmount(addon)}</strong></div>
+                            <div><small>${checkoutSelectedAddonTotalLabel(addon, cartKey)}</small><strong>${checkoutAddonAmount(addon)}</strong></div>
                         </div>
                     `;
                 }).join(''));
