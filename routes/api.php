@@ -2647,7 +2647,7 @@ Route::middleware(['auth:api'])->group(function () {
         });
 
         Route::prefix('financial-settlements')->middleware('booking.operations.telemetry')->group(function () {
-            Route::get('dashboard', [FinancialSettlementController::class, 'dashboard'])->middleware('permission:bookings.view');
+            Route::get('dashboard', [FinancialSettlementController::class, 'dashboard'])->middleware('permission:bookings.view|financial-settlements.view');
             Route::get('report/export', [FinancialSettlementController::class, 'exportBillingPeriods'])->middleware(['permission:bookings.view', 'permission:reports.generate']);
             Route::get('driver-cash/open', [FinancialSettlementController::class, 'driverCash'])->middleware('permission:bookings.view');
             Route::get('accounts/{ownerType}/{ownerId}', [FinancialSettlementController::class, 'account'])->whereIn('ownerType', ['customer', 'corporate'])->whereUuid('ownerId')->middleware('permission:bookings.view');

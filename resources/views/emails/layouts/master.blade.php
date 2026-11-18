@@ -1,6 +1,11 @@
 <!DOCTYPE html>
 <html lang="en">
 
+@php
+    $brandColor = $brandColor ?? '#BF2629';
+    $emailTheme = $emailTheme ?? 'default';
+@endphp
+
 <head>
     <meta charset="utf-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
