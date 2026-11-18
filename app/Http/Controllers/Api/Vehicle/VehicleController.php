@@ -1003,7 +1003,12 @@ class VehicleController extends Controller
             : 'next_due_date';
 
         $schedulesQuery = VehicleMaintenanceSchedule::with(['vehicle'])
-            ->where($scheduleDateColumn, '>=', now())
+            ->where(function ($query) use ($scheduleDateColumn): void {
+                $query->where($scheduleDateColumn, '>=', now());
+                if (Schema::hasColumn('vehicle_maintenance_schedules', 'next_due_mileage')) {
+                    $query->orWhereNotNull('next_due_mileage');
+                }
+            })
             ->orderBy($scheduleDateColumn);
 
         if (Schema::hasColumn('vehicle_maintenance_schedules', 'status')) {

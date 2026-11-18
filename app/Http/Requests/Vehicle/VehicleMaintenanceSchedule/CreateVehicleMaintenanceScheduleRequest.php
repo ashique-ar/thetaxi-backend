@@ -16,6 +16,7 @@ class CreateVehicleMaintenanceScheduleRequest extends FormRequest
             'interval_km' => ['nullable', 'integer', 'min:0'],
             'interval_days' => ['nullable', 'integer', 'min:0'],
             'next_due_date' => ['nullable', 'date'],
+            'next_due_mileage' => ['nullable', 'integer', 'min:0'],
             'notes' => ['nullable', 'string', 'max:3000'],
             'booking_id' => ['nullable', 'uuid', 'exists:bookings,id'],
             'booking_item_id' => ['nullable', 'uuid', 'exists:booking_items,id'],

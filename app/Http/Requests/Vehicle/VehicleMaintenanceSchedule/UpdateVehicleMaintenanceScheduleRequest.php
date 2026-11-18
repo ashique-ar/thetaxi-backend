@@ -16,6 +16,8 @@ class UpdateVehicleMaintenanceScheduleRequest extends FormRequest
             'interval_km' => ['sometimes', 'nullable', 'integer', 'min:0'],
             'interval_days' => ['sometimes', 'nullable', 'integer', 'min:0'],
             'next_due_date' => ['sometimes', 'nullable', 'date'],
+            'next_due_mileage' => ['sometimes', 'nullable', 'integer', 'min:0'],
+            'notes' => ['sometimes', 'nullable', 'string', 'max:3000'],
         ];
     }
 }
