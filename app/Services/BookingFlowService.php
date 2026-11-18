@@ -8476,10 +8476,13 @@ class BookingFlowService
         $booking->approval_by = $userId;
         $booking->approval_at = now();
         $booking->approval_note = $note;
+        $booking->status = $action === 'approve' ? 'confirmed' : 'cancelled';
+        $booking->workflow_step = $action === 'approve' ? 'confirmed' : 'cancelled';
 
         if ($action === 'approve') {
             // Lock the pricing values
             $booking->confirmed = true;
+            $booking->confirmed_at = now();
         } else {
             // Reset overrides if rejected
             $booking->base_price_override = null;
