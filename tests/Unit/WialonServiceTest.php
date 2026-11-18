@@ -45,6 +45,27 @@ class WialonServiceTest extends TestCase
             && json_decode($request['params'], true)['flags'] === 2106625);
     }
 
+    public function test_catalog_can_preview_a_replacement_token_in_one_session(): void
+    {
+        Http::fakeSequence()
+            ->push(['eid' => 'preview-session'])
+            ->push(['items' => [['id' => 70, 'nm' => 'Reports', 'rep' => []]]])
+            ->push(['items' => [['id' => 5, 'nm' => 'Fleet', 'u' => [12]]]])
+            ->push(['items' => [['id' => 12, 'nm' => 'Taxi 12']]])
+            ->push(['error' => 0]);
+
+        $catalog = app(WialonService::class)->catalog('replacement-token');
+
+        $this->assertSame(70, $catalog['resources'][0]['id']);
+        $this->assertSame(5, $catalog['groups'][0]['id']);
+        $this->assertSame('Taxi 12', $catalog['units'][0]['nm']);
+        Http::assertSentCount(5);
+        Http::assertSent(fn (Request $request) => $request['svc'] === 'token/login'
+            && json_decode($request['params'], true)['token'] === 'replacement-token');
+        Http::assertSent(fn (Request $request) => $request['svc'] === 'core/search_items'
+            && $request['sid'] === 'preview-session');
+    }
+
     public function test_report_runs_inside_one_session_and_cleans_up_result(): void
     {
         $resources = ['items' => [['id' => 70, 'nm' => 'Reports', 'rep' => ['4' => ['id' => 4, 'n' => 'Trips']]]]];
@@ -72,13 +93,13 @@ class WialonServiceTest extends TestCase
         Http::fakeSequence()
             ->push(['eid' => 'session-id'])
             ->push(['items' => [['id' => 5, 'u' => [12]]]])
-            ->push(['error' => 0])
-            ->push(['eid' => 'session-id'])
+            ->push(['item' => ['id' => 12]])
             ->push(['cnm' => 12000])
             ->push(['error' => 0]);
 
         $this->assertSame(12000, app(WialonService::class)->setMileage(12, 12000));
         Http::assertSent(fn (Request $request) => $request['svc'] === 'unit/update_mileage_counter'
+            && $request['sid'] === 'session-id'
             && json_decode($request['params'], true) === ['itemId' => 12, 'newValue' => 12000]);
     }
 
@@ -87,8 +108,7 @@ class WialonServiceTest extends TestCase
         Http::fakeSequence()
             ->push(['eid' => 'session-id'])
             ->push(['items' => [['id' => 5, 'u' => [12]]]])
-            ->push(['error' => 0])
-            ->push(['eid' => 'session-id'])
+            ->push(['item' => ['id' => 12]])
             ->push(['error' => 7])
             ->push(['error' => 0]);
 

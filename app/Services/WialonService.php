@@ -566,6 +566,15 @@ class WialonService
         return $this->withSession(fn (string $sid) => $this->searchReportResources($sid));
     }
 
+    public function catalog(?string $token = null): array
+    {
+        return $this->withSession(fn (string $sid) => [
+            'resources' => $this->searchReportResources($sid),
+            'groups' => $this->searchUnitGroups($sid),
+            'units' => $this->portalUnits($this->searchUnits($sid)),
+        ], $token);
+    }
+
     public function unitGroups(): array
     {
         return $this->withSession(fn (string $sid) => $this->searchUnitGroups($sid));
@@ -646,11 +655,11 @@ class WialonService
         }
     }
 
-    private function withSession(callable $callback): mixed
+    private function withSession(callable $callback, ?string $token = null): mixed
     {
-        $integration = $this->integration();
-        $this->baseUrl = rtrim($integration->base_url ?: $this->baseUrl, '/');
-        $login = $this->call(null, 'token/login', ['token' => $integration->token]);
+        $integration = $token === null ? $this->integration() : DB::table('wialon_installation_settings')->where('id', 'installation')->first();
+        $this->baseUrl = rtrim($integration->base_url ?? $this->baseUrl, '/');
+        $login = $this->call(null, 'token/login', ['token' => $token ?? $integration->token]);
         if (empty($login['eid'])) {
             throw new RuntimeException('The GPS service did not start a session.');
         }
@@ -671,7 +680,7 @@ class WialonService
                     throw new RuntimeException('The GPS service returned an invalid API host.');
                 }
                 $this->baseUrl = $reported;
-                if ($integration->base_url !== $reported) {
+                if ($token === null && $integration->base_url !== $reported) {
                     DB::table('wialon_installation_settings')->where('id', 'installation')->update(['base_url' => $reported, 'updated_at' => now()]);
                 }
             }

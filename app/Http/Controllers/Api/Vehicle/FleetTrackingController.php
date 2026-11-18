@@ -314,7 +314,8 @@ class FleetTrackingController extends Controller
     public function catalog(Request $request, WialonService $wialon): JsonResponse
     {
         try {
-            return response()->json(['status' => 'success', 'data' => ['resources' => $wialon->resources(), 'groups' => $wialon->unitGroups(), 'units' => $wialon->units(true)]]);
+            $data = $request->validate(['token' => ['nullable', 'string', 'min:10', 'max:10000']]);
+            return response()->json(['status' => 'success', 'data' => $wialon->catalog($data['token'] ?? null)]);
         } catch (RuntimeException $error) {
             return response()->json(['status' => 'error', 'message' => $error->getMessage()], 503);
         }
