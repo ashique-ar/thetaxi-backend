@@ -11551,8 +11551,8 @@ class BookingFlowService
         // service details
         $serviceDetails = [
             'service_type' => $booking->serviceType?->name ?? 'Unknown Service',
-            'from_date' => optional($booking->from_date)->format('Y-m-d') ?? (string) $booking->from_date,
-            'to_date' => optional($booking->to_date)->format('Y-m-d') ?? (string) $booking->to_date,
+            'from_date' => $booking->from_date ? Carbon::parse($booking->from_date)->format('Y-m-d') : null,
+            'to_date' => $booking->to_date ? Carbon::parse($booking->to_date)->format('Y-m-d') : null,
             'from_time' => property_exists($booking, 'from_time') ? (string) $booking->from_time : null,
             'to_time' => property_exists($booking, 'to_time') ? (string) $booking->to_time : null,
             'pickup_location' => [
@@ -11628,9 +11628,9 @@ class BookingFlowService
                 'addons' => $item->addons ?? [],
                 'customizations' => $item->customizations ?? [],
                 'discounts' => $item->discounts ?? [],
-                'from_date' => optional($item->from_date)->format('Y-m-d') ?? (string) $item->from_date,
+                'from_date' => $item->from_date ? Carbon::parse($item->from_date)->format('Y-m-d') : null,
                 'from_time' => (string) ($item->from_time ?? ''),
-                'to_date' => optional($item->to_date)->format('Y-m-d') ?? (string) $item->to_date,
+                'to_date' => $item->to_date ? Carbon::parse($item->to_date)->format('Y-m-d') : null,
                 'to_time' => (string) ($item->to_time ?? ''),
                 'pickup_location' => $item->pickup_location ?? null,
                 'dropoff_location' => $item->dropoff_location ?? null,
