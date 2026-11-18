@@ -4193,7 +4193,7 @@ class BookingLifecycleService
             $context['booking_item']
         );
         $approvalReasonLabels = $this->bookingFlowService->formatApprovalTriggerLabels($approvalTriggers);
-        $requiresApproval = (bool) (($booking->requires_approval ?? false) || (($booking->status ?? null) === 'pending_approval'));
+        $requiresApproval = $this->resolveApprovalStatus($booking) === 'pending';
         if ($requiresApproval && empty($approvalReasonLabels)) {
             $approvalReasonLabels = ['Manager approval required'];
         }
@@ -4404,6 +4404,9 @@ class BookingLifecycleService
         }
         if ($bookingStatus === 'booking_cancelled') {
             return BookingLifecycleStatus::BOOKING_CANCELLED;
+        }
+        if ($bookingStatus === 'pending_approval' && $this->resolveApprovalStatus($booking) === 'approved') {
+            return BookingLifecycleStatus::BOOKING_APPROVED;
         }
         if (in_array($bookingStatus, ['rejected', 'booking_rejected'], true)) {
             return BookingLifecycleStatus::BOOKING_REJECTED;
