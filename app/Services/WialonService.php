@@ -14,6 +14,7 @@ class WialonService
     public const MAX_COUNTER_KILOMETERS = 4294967;
 
     private string $baseUrl;
+    private ?int $sessionUserId = null;
 
     public function __construct()
     {
@@ -201,13 +202,13 @@ class WialonService
         $vehicle = \App\Models\Vehicle\Vehicle::withInactive()
             ->where('wialon_unit_id', $unitId)
             ->first();
-        $this->assertSelectedUnit($unitId);
         $vehicle?->forceFill([
             'wialon_mileage_sync_pending' => true,
             'wialon_mileage_sync_requested_at' => now(),
         ])->save();
 
-        $confirmedMileage = $this->withSession(
+        $confirmedMileage = $this->withSelectedUnitSession(
+            $unitId,
             fn (string $sid) => $this->writeMileageCounter($sid, $unitId, $mileageKm),
         );
         DB::transaction(function () use ($unitId, $mileageKm, $confirmedMileage): void {
@@ -653,6 +654,8 @@ class WialonService
         if (empty($login['eid'])) {
             throw new RuntimeException('The GPS service did not start a session.');
         }
+        $userId = filter_var(data_get($login, 'user.id'), FILTER_VALIDATE_INT);
+        $this->sessionUserId = $userId === false ? null : $userId;
         try {
             if (!empty($login['base_url'])) {
                 $reported = rtrim((string) $login['base_url'], '/');
@@ -679,6 +682,7 @@ class WialonService
             } catch (RuntimeException) {
                 // The Wialon session expires even if logout is unavailable.
             }
+            $this->sessionUserId = null;
         }
     }
 
@@ -689,6 +693,7 @@ class WialonService
         $context = ['service' => $service, 'request' => $this->safeGpsLogData($params)];
         $startedAt = microtime(true);
         $logPayload = in_array($service, ['unit/update_mileage_counter', 'unit/update_eh_counter', 'unit/exec_cmd', 'unit_group/update_units'], true);
+        if ($logPayload && $this->sessionUserId !== null) $context['wialon_user_id'] = $this->sessionUserId;
         $logLevel = $logPayload ? 'info' : 'debug';
         // Successful read logs use synchronous HTTP to Loki in production; keep them for local debugging only.
         $logSuccess = $logPayload || config('app.debug');

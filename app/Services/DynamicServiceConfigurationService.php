@@ -721,6 +721,11 @@ class DynamicServiceConfigurationService
 
             $options = $field['options'] ?? [];
             foreach ($options as &$option) {
+                if (($option['action'] ?? null) === 'google_search'
+                    && stripos((string) ($option['label'] ?? ''), 'my doorstep') !== false) {
+                    $option['route_mode'] = 'separate';
+                }
+
                 $source = $option['location_source'] ?? null;
                 $location = null;
                 if ($source === 'saved_location' && !empty($option['location_id'])) {
