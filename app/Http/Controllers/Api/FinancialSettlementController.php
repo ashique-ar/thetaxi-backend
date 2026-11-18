@@ -91,9 +91,10 @@ class FinancialSettlementController extends Controller
             ->pluck('booking_item_ids')->flatten()->filter()->map(fn($id) => (string) $id)->unique();
         $monthlyItems = BookingItem::query()->where('booking_items.status', 'completed')->whereHas('booking', fn($q) => $q->where('is_corporate_booking', true)->where('payment_collection_method', 'monthly_invoice'));
         $pendingMonthly = (clone $monthlyItems)->whereNotNull('booking_items.final_priced_at')->whereNotIn('booking_items.id', $billedMonthlyItemIds);
+        $monthlyCurrency = "COALESCE(NULLIF(UPPER(booking_items.currency), ''), NULLIF(UPPER(monthly_bookings.currency), ''), 'LKR')";
         $pendingMonthlyByCurrency = (clone $pendingMonthly)->join('bookings as monthly_bookings', 'booking_items.booking_id', '=', 'monthly_bookings.id')
-            ->selectRaw("COALESCE(NULLIF(UPPER(booking_items.currency), ''), NULLIF(UPPER(monthly_bookings.currency), ''), 'LKR') as currency, SUM(COALESCE(booking_items.total_price, 0)) as amount")
-            ->groupBy('currency')->orderBy('currency')->get()
+            ->selectRaw("{$monthlyCurrency} as currency, SUM(COALESCE(booking_items.total_price, 0)) as amount")
+            ->groupByRaw($monthlyCurrency)->orderByRaw("{$monthlyCurrency} asc")->get()
             ->map(fn ($row) => ['currency' => (string) $row->currency, 'amount' => (float) $row->amount])->values();
         $currencyBySettlement = DB::table('financial_settlement_items as currency_items')
             ->join('bookings as currency_bookings', 'currency_bookings.id', '=', 'currency_items.booking_id')
