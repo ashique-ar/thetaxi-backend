@@ -16,6 +16,7 @@ use App\Http\Resources\Driver\DriverResource;
 use App\Http\Resources\Driver\DriverSessionResource;
 use App\Http\Resources\Driver\RoutePointResource;
 use App\Models\DriverAssignment;
+use App\Models\BusinessSetting;
 use App\Models\User;
 use App\Services\Driver\NotificationTriggerService;
 use App\Services\WebsiteSettingsService;
@@ -1346,12 +1347,14 @@ class DriverController extends Controller
             ]]);
         }
 
+        $offlineTimeout = BusinessSetting::getSetting('driver_auto_offline_timeout');
+        $activeSince = now()->subMinutes(is_numeric($offlineTimeout) ? max(1, (int) $offlineTimeout) : 10);
+
         $query = Driver::query()
             ->select([
                 'id', 'user_id', 'code', 'current_latitude', 'current_longitude',
                 'is_online', 'last_active_at', 'current_device_uuid',
             ])
-            ->where('is_online', true)
             ->whereNotNull('current_latitude')
             ->whereNotNull('current_longitude');
         
@@ -1374,15 +1377,17 @@ class DriverController extends Controller
                 ->select(['id', 'driver_id', 'booking_id', 'booking_item_id', 'trip_phase', 'updated_at'])
                 ->with('booking:id,booking_number')
                 ->where('status', 'active')
-                ->activeTripPhase()
+                ->where('trip_phase', \App\Enums\TripPhase::IN_PROGRESS->value)
+                ->nonTerminalBooking()
                 ->latest('updated_at')
                 ->limit(1),
         ])->get();
         
-        $locations = $drivers->map(function ($driver) {
+        $locations = $drivers->map(function ($driver) use ($activeSince) {
             $assignment = $driver->realtimeStatusAssignments->first();
             $currentDevice = $driver->devices->firstWhere('device_uuid', $driver->current_device_uuid);
             $activeSession = $driver->activeSession;
+            $isOnline = (bool) $driver->is_online && $driver->last_active_at?->gte($activeSince);
             return [
                 'driver_id' => $driver->id,
                 'driver_name' => $driver->user ? 
@@ -1391,16 +1396,16 @@ class DriverController extends Controller
                 'driver_code' => $driver->code,
                 'latitude' => (float) $driver->current_latitude,
                 'longitude' => (float) $driver->current_longitude,
-                'is_online' => $driver->is_online,
+                'is_online' => $isOnline,
                 'last_active_at' => $driver->last_active_at?->toIso8601String(),
                 'mobile_app' => [
-                    'session_active' => (bool) $activeSession,
-                    'device_active' => (bool) $currentDevice,
+                    'session_active' => (bool) $activeSession && $isOnline,
+                    'device_active' => (bool) $currentDevice && $currentDevice->last_active_at?->gte($activeSince),
                     'platform' => $currentDevice?->platform_display ?? $currentDevice?->platform,
                     'app_version' => $currentDevice?->app_version,
                     'last_active_at' => $currentDevice?->last_active_at?->toIso8601String(),
                 ],
-                'active_assignment' => $assignment ? [
+                'active_assignment' => $isOnline && $assignment ? [
                     'assignment_id' => (string) $assignment->id,
                     'booking_id' => (string) $assignment->booking_id,
                     'booking_item_id' => $assignment->booking_item_id
