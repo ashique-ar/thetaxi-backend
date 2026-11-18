@@ -13607,7 +13607,11 @@ class BookingFlowService
                     $unitPrice = $addon->amount;
 
                     // Get billing type from addon (per_day, per_hour, per_package)
-                    $billingType = $addon->billing_type ?? 'per_package';
+                    $billingType = $addon->billing_type ?: match ($addon->pricing_type) {
+                        'per_day' => 'per_day',
+                        'per_hour' => 'per_hour',
+                        default => 'per_package',
+                    };
 
                     // Initialize variables
                     $basePrice = $unitPrice * $quantity;
@@ -13642,7 +13646,11 @@ class BookingFlowService
                 $unitPrice = $customPrice ?? $addon->amount;
 
                 // Get billing type from addon (per_day, per_hour, per_package)
-                $billingType = $addon->billing_type ?? 'per_package';
+                $billingType = $addon->billing_type ?: match ($addon->pricing_type) {
+                    'per_day' => 'per_day',
+                    'per_hour' => 'per_hour',
+                    default => 'per_package',
+                };
 
                 // Initialize variables
                 $basePrice = $unitPrice * $quantity;

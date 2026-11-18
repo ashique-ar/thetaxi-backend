@@ -733,6 +733,8 @@ class CartService
                 'qty' => $qty,
                 'amount' => (float) $addon->amount,
                 'rate_type' => $addon->rate_type,
+                'pricing_type' => $addon->pricing_type,
+                'billing_type' => $addon->billing_type,
                 'calculated_amount' => $addonAmount,
                 'added_at' => now()->toIso8601String()
             ];
@@ -996,10 +998,20 @@ class CartService
             if (!is_numeric($price) || !is_finite((float) $price) || $price < 0) {
                 throw new \DomainException('The add-on formula did not produce a valid price.');
             }
-            return round((float) $price * $qty, 2);
+            $billingType = $addon->billing_type ?: match ($addon->pricing_type) {
+                'per_day' => 'per_day',
+                'per_hour' => 'per_hour',
+                default => 'per_package',
+            };
+            $multiplier = match ($billingType) {
+                'per_day' => max(1, (int) ($item['days'] ?? 1)),
+                'per_hour' => max(1, (int) ($item['hours'] ?? 1)),
+                default => 1,
+            };
+            return round((float) $price * $qty * $multiplier, 2);
         }
 
-        if ($addon->rate_type === 'percentage') {
+        if ($addon->rate_type === 'percentage' || $addon->pricing_type === 'percentage') {
             $serviceType = $item['service_type'] ?? '';
             $isPackage = ($item['is_package'] ?? false) || in_array($serviceType, ['wedding_hire', 'airport_transfers']);
             $price = (float) ($item['price_lkr'] ?? $item['price'] ?? 0);
@@ -1007,8 +1019,19 @@ class CartService
 
             return $base * ((float) $addon->amount / 100);
         } else {
-            // Flat rate per unit
-            return (float) $addon->amount * $qty;
+            // Billing cadence multiplies each selected unit by the rental duration.
+            $billingType = $addon->billing_type ?: match ($addon->pricing_type) {
+                'per_day' => 'per_day',
+                'per_hour' => 'per_hour',
+                default => 'per_package',
+            };
+            $multiplier = match ($billingType) {
+                'per_day' => max(1, (int) ($item['days'] ?? 1)),
+                'per_hour' => max(1, (int) ($item['hours'] ?? 1)),
+                default => 1,
+            };
+
+            return round((float) $addon->amount * $qty * $multiplier, 2);
         }
     }
 
@@ -1055,7 +1078,7 @@ class CartService
             $itemAddons = is_array($item['addons']) ? $item['addons'] : [];
             return collect($itemAddons)->sum(function ($addon) use ($item) {
                 // For percentage-based addons, calculate based on item price and days
-                if ($addon['rate_type'] === 'percentage') {
+                if (($addon['rate_type'] ?? null) === 'percentage' || ($addon['pricing_type'] ?? null) === 'percentage') {
                     $itemPrice = is_array($item) ? ($item['price_lkr'] ?? 0) : ($item->price_lkr ?? 0);
                     $days = is_array($item) ? ($item['days'] ?? 1) : ($item->days ?? 1);
                     $percentage = $addon['amount'];
