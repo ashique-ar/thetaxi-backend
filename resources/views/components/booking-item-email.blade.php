@@ -616,7 +616,7 @@
                 <td style="padding: 4px 0; border-bottom: 1px solid #eef0f2; color: #555;">
                     {{ number_format($extraKilometers) }} km
                     @if ($extraKmPrice > 0)
-                        @ {{ $displayCurrencyLabel }} {{ number_format(floor(max(0, $displayExtraKmPrice)), 0) }}/km
+                        @ {{ $displayCurrencyLabel }} {{ number_format(max(0, $displayExtraKmPrice), $displayCurrencyCode === 'LKR' ? 0 : 2) }}/km
                     @endif
                     @if ($extraKmTotal > 0)
                         <span style="float: right; color: #BF2629;">{{ $displayCurrencyLabel }} {{ number_format(floor(max(0, $displayExtraKmTotal)), 0) }}</span>
@@ -643,7 +643,7 @@
         @if ($extraKmPrice)
             <tr>
                 <td>Extra KM Rate</td>
-                <td><strong>{{ $displayCurrencyLabel }} {{ number_format(floor(max(0, $displayExtraKmPrice)), 0) }}</strong> per km</td>
+                <td><strong>{{ $displayCurrencyLabel }} {{ number_format(max(0, $displayExtraKmPrice), $displayCurrencyCode === 'LKR' ? 0 : 2) }}</strong> per km</td>
             </tr>
         @endif
 

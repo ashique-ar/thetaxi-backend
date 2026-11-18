@@ -20,6 +20,7 @@
         $currencyCode = getBookingDisplayCurrency($booking);
         $tourOnlyBooking = $booking->bookingItems->count() === 1
             && filled(data_get($booking->bookingItems->first()->metadata, 'tour_itinerary_id'));
+        $hasDriverService = $booking->bookingItems->contains(fn ($item) => !(bool) $item->is_self_driven);
         $workflowData = is_string($booking->workflow_data)
             ? json_decode($booking->workflow_data, true)
             : $booking->workflow_data ?? [];
@@ -275,8 +276,9 @@
                     <strong>{{ \Carbon\Carbon::parse($booking->from_date)->format('F d, Y \a\t g:i A') }}</strong>.
                     @endunless
                 </p>
-                <p>Driver Details will be shared with you before 3 hours of pickup time.
-                </p>
+                @if ($hasDriverService)
+                    <p>Driver Details will be shared with you before 3 hours of pickup time.</p>
+                @endif
                 @if($actualPercentagePaid >= 100)
                     <p>You have successfully paid the <strong>full amount</strong>
                         ({{ $currencyCode }} {{ number_format(floor(max(0, $actualAmountPaid)), 0) }}).</p>
@@ -346,8 +348,9 @@
                 <p>Your payment has been successfully processed and your vehicle will be prepared and ready for pickup on
                     <strong>{{ \Carbon\Carbon::parse($booking->from_date)->format('F d, Y \a\t g:i A') }}</strong>.
                 </p>
-                <p>Driver Details will be shared with you before 3 hours of pickup time.
-                </p>
+                @if ($hasDriverService)
+                    <p>Driver Details will be shared with you before 3 hours of pickup time.</p>
+                @endif
             </div>
         @else
             <div class="highlight-box success">
@@ -355,8 +358,9 @@
                 <p>Your vehicle will be prepared and ready for pickup on
                     <strong>{{ \Carbon\Carbon::parse($booking->from_date)->format('F d, Y \a\t g:i A') }}</strong>.
                 </p>
-                <p>Driver Details will be shared with you before 3 hours of pickup time.
-                </p>
+                @if ($hasDriverService)
+                    <p>Driver Details will be shared with you before 3 hours of pickup time.</p>
+                @endif
             </div>
         @endif
     </div>
