@@ -1374,9 +1374,7 @@ class DriverController extends Controller
                 ->select(['id', 'driver_id', 'booking_id', 'booking_item_id', 'trip_phase', 'updated_at'])
                 ->with('booking:id,booking_number')
                 ->where('status', 'active')
-                ->where(fn ($phaseQuery) => $phaseQuery
-                    ->whereNull('trip_phase')
-                    ->orWhereNotIn('trip_phase', ['completed', 'declined']))
+                ->activeTripPhase()
                 ->latest('updated_at')
                 ->limit(1),
         ])->get();
