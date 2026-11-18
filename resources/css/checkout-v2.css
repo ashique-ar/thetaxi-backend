@@ -13,7 +13,16 @@
 #checkout-v2 [data-v2-choice]:focus-within { outline: 2px solid var(--checkout-accent-border); outline-offset: 2px; }
 #checkout-v2 .v2-summary-row { display: flex; justify-content: space-between; }
 #checkout-v2 .checkout-option-pending, #checkout-v2 .checkout-cart-item.is-collapsed .v2-item-details { display: none !important; }
-#checkout-v2 .checkout-selected-addon-row { display: flex; flex-wrap: wrap; justify-content: space-between; gap: .25rem; }
+#checkout-v2 .checkout-selected-addons { display: grid; gap: .375rem; }
+#checkout-v2 .checkout-selected-addon-row { display: grid; grid-template-columns: minmax(0, 1fr) auto; align-items: center; gap: .75rem; padding: .5rem .625rem; border: 1px solid #e2e8f0; border-radius: .5rem; background: #fff; font-size: .75rem; }
+#checkout-v2 .checkout-selected-addon-row > div { display: grid; min-width: 0; gap: .125rem; }
+#checkout-v2 .checkout-selected-addon-row > div:last-child { text-align: right; white-space: nowrap; }
+#checkout-v2 .checkout-selected-addon-row strong { color: #334155; font-size: .75rem; font-weight: 650; }
+#checkout-v2 .checkout-selected-addon-row small { color: #64748b; font-size: .6875rem; line-height: 1.35; }
+@media (max-width: 420px) {
+    #checkout-v2 .checkout-selected-addon-row { grid-template-columns: minmax(0, 1fr); gap: .375rem; }
+    #checkout-v2 .checkout-selected-addon-row > div:last-child { display: flex; justify-content: space-between; gap: .5rem; text-align: left; }
+}
 #checkout-v2-overlays .v2-modal-dialog { max-width: 680px; }
 #checkout-v2-overlays .v2-modal-dialog--distance { max-width: 520px; }
 #checkout-v2-overlays .modal-content { max-height: calc(100vh - 2rem); }
@@ -80,3 +89,7 @@
 #checkout-v2 .term-body li[data-list=ordered] { counter-increment: terms-list; }
 #checkout-v2 .term-body li[data-list=ordered]::marker { content: counter(terms-list) '.  '; }
 #checkout-v2 .term-body li[data-list=bullet]::marker { content: '•  '; }
+#checkout-v2 .checkout-item-route-summary,
+#checkout-v2 .checkout-item-route-summary p,
+#checkout-v2 .checkout-item-route-summary strong { font-size: .8125rem !important; line-height: 1.45 !important; }
+#checkout-v2 .checkout-item-route-summary strong { font-weight: 600; }
