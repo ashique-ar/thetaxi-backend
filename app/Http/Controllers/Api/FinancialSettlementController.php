@@ -127,15 +127,16 @@ class FinancialSettlementController extends Controller
             ->selectRaw("COALESCE(NULLIF(UPPER(currency), ''), 'LKR') as currency, SUM(unapplied_amount) as amount")
             ->where('unapplied_amount', '>', 0)->groupBy('currency')->orderBy('currency')->get()
             ->map(fn ($row) => ['currency' => (string) $row->currency, 'amount' => (float) $row->amount])->values();
+        $cashCurrency = "COALESCE(NULLIF(UPPER(booking_payment_receipts.source_currency), ''), NULLIF(UPPER(cash_bookings.currency), ''), 'LKR')";
         $driverCashByCurrency = BookingPaymentReceipt::query()->join('bookings as cash_bookings', 'cash_bookings.id', '=', 'booking_payment_receipts.booking_id')
             ->where('received_via', 'driver')->where('finality_status', 'confirmed')
-            ->selectRaw("COALESCE(NULLIF(UPPER(source_currency), ''), NULLIF(UPPER(cash_bookings.currency), ''), 'LKR') as currency, COALESCE(SUM(amount - driver_company_settled_amount), 0) as amount")
-            ->groupBy('currency')->orderBy('currency')->get()
+            ->selectRaw("{$cashCurrency} as currency, COALESCE(SUM(booking_payment_receipts.amount - booking_payment_receipts.driver_company_settled_amount), 0) as amount")
+            ->groupByRaw($cashCurrency)->orderByRaw("{$cashCurrency} asc")->get()
             ->map(fn ($row) => ['currency' => (string) $row->currency, 'amount' => (float) $row->amount])->values();
         $driverCashOverdueByCurrency = BookingPaymentReceipt::query()->join('bookings as cash_bookings', 'cash_bookings.id', '=', 'booking_payment_receipts.booking_id')
             ->where('received_via', 'driver')->whereIn('driver_company_settlement_status', ['unsettled', 'partially_settled'])->where('finality_status', 'confirmed')->where('received_at', '<', now()->subDays(7))
-            ->selectRaw("COALESCE(NULLIF(UPPER(source_currency), ''), NULLIF(UPPER(cash_bookings.currency), ''), 'LKR') as currency, COALESCE(SUM(amount - driver_company_settled_amount), 0) as amount")
-            ->groupBy('currency')->orderBy('currency')->get()
+            ->selectRaw("{$cashCurrency} as currency, COALESCE(SUM(booking_payment_receipts.amount - booking_payment_receipts.driver_company_settled_amount), 0) as amount")
+            ->groupByRaw($cashCurrency)->orderByRaw("{$cashCurrency} asc")->get()
             ->map(fn ($row) => ['currency' => (string) $row->currency, 'amount' => (float) $row->amount])->values();
         $driverPositions = DriverHireSettlement::query()->whereNotIn('status', ['paid', 'recovered'])->select('driver_id')->selectRaw('SUM(final_balance) as net_balance')->groupBy('driver_id')->with('driver.user')->get()->map(fn($row) => ['driver_id' => $row->driver_id, 'driver_name' => trim(($row->driver?->user?->first_name ?? '') . ' ' . ($row->driver?->user?->last_name ?? '')), 'net_balance' => (float) $row->net_balance, 'position' => (float) $row->net_balance > 0 ? 'company_owes_driver' : ((float) $row->net_balance < 0 ? 'driver_owes_company' : 'settled')]);
         return response()->json([
