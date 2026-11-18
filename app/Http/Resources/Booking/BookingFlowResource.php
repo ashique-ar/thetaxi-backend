@@ -72,8 +72,8 @@ class BookingFlowResource extends JsonResource
 
             // Booking dates and times
             'booking_date' => $this->booking_date?->format('Y-m-d H:i:s'),
-            'from_date' => $this->from_date?->format('Y-m-d'),
-            'to_date' => $this->to_date?->format('Y-m-d'),
+            'from_date' => $this->from_date ? \Illuminate\Support\Carbon::parse($this->from_date)->format('Y-m-d') : null,
+            'to_date' => $this->to_date ? \Illuminate\Support\Carbon::parse($this->to_date)->format('Y-m-d') : null,
             'from_time' => $this->from_time,
             'to_time' => $this->to_time,
 
