@@ -188,8 +188,8 @@ class BusinessSettingController extends Controller
 
         if ($category === 'booking') {
             $timingValidator = Validator::make($request->input('settings', []), [
-                'customer_portal_booking_advance_hours' => ['sometimes', 'required', 'integer', 'min:0', 'max:8760'],
-                'corporate_portal_booking_advance_hours' => ['sometimes', 'required', 'numeric', 'min:0', 'max:8760'],
+                'customer_portal_booking_advance_hours' => ['sometimes', 'nullable', 'integer'],
+                'corporate_portal_booking_advance_hours' => ['sometimes', 'nullable', 'numeric'],
                 'feature_vehicle_return_management_enabled' => ['sometimes', 'boolean'],
                 'assignment_enable_qc_stage' => ['sometimes', 'boolean'],
                 'assignment_enable_maintenance_stage' => ['sometimes', 'boolean'],
@@ -200,7 +200,7 @@ class BusinessSettingController extends Controller
             if ($timingValidator->fails()) {
                 return response()->json([
                     'status' => 'error',
-                    'message' => 'Portal booking notice must be between 0 and 8760 hours; corporate settings may use decimals.',
+                    'message' => 'Portal booking advance values must be numeric.',
                     'errors' => $timingValidator->errors(),
                 ], 422);
             }
@@ -238,8 +238,8 @@ class BusinessSettingController extends Controller
             foreach (['customer', 'staff', 'driver'] as $entity) {
                 $numberingRules["{$entity}_code_prefix"] = ['nullable', 'string', 'max:20', 'regex:/^[A-Za-z0-9_-]*$/'];
                 $numberingRules["{$entity}_code_suffix"] = ['nullable', 'string', 'max:20', 'regex:/^[A-Za-z0-9_-]*$/'];
-                $numberingRules["{$entity}_code_digits"] = ['required', 'integer', 'min:1', 'max:12'];
-                $numberingRules["{$entity}_code_start_number"] = ['required', 'integer', 'min:1'];
+                $numberingRules["{$entity}_code_digits"] = ['sometimes', 'nullable', 'integer', 'min:1', 'max:12'];
+                $numberingRules["{$entity}_code_start_number"] = ['sometimes', 'nullable', 'integer', 'min:1'];
             }
             $numberingValidator = Validator::make($request->input('settings', []), $numberingRules);
             if ($numberingValidator->fails()) {
