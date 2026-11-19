@@ -1291,14 +1291,14 @@
             // Always target the column wrappers so the grid classes (e.g., col-lg-3) are preserved
             const $vehicleCards = $root.find('.vehicle-results-grid').find('.vehicle-card-wrapper');
             const $vehicleCountDisplay = $root.find('#vehicleGroupsCount');
-            let totalVehicles = $vehicleCards.length;
+            const loadMoreStatus = $root.find('#vehicleLoadMoreStatus').get(0);
+            const totalVehicles = Number(loadMoreStatus?.dataset.total) || $vehicleCards.length;
             let loadedVehicleCards = $vehicleCards;
             const applyVehicleFilter = () => $searchInput.trigger('input');
 
             window.vehicleLoadMoreObserver?.disconnect();
             window.vehicleLoadMoreAbortController?.abort();
             window.vehicleLoadMoreAbortController = null;
-            const loadMoreStatus = $root.find('#vehicleLoadMoreStatus').get(0);
             if (loadMoreStatus) {
                 let loading = false;
                 let observer = null;
@@ -1369,7 +1369,6 @@
                             grid.appendChild(card);
                             loadedVehicleCards = loadedVehicleCards.add(card);
                         });
-                        totalVehicles += vehicles.length;
                         applyVehicleFilter();
                         loadMoreStatus.dataset.nextPage = String(nextPage + 1);
                         loadMoreStatus.dataset.lastPage = String(payload.pagination?.last_page || lastPage);
