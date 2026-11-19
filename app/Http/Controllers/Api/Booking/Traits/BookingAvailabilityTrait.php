@@ -18,7 +18,7 @@ trait BookingAvailabilityTrait
                 && filter_var(app(\App\Services\WebsiteSettingsService::class)->get('add_trip_vehicle_group_pricing_enabled', false), FILTER_VALIDATE_BOOLEAN)
             ) {
                 $params['defer_pricing'] = false;
-                $params['sort_by'] = 'price_high';
+                $params['sort_by'] = 'price_low';
             }
             if ($request->user() && filter_var($request->input('add_trip_form', false), FILTER_VALIDATE_BOOLEAN)
                 && filter_var($request->input('include_distance_details', false), FILTER_VALIDATE_BOOLEAN)) {
