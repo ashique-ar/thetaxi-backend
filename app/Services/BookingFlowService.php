@@ -1013,6 +1013,7 @@ class BookingFlowService
             : 'price_low';
         $deferAvailabilityForCards = filter_var($params['defer_availability'] ?? false, FILTER_VALIDATE_BOOL);
         $deferPricingForCards = filter_var($params['defer_pricing'] ?? false, FILTER_VALIDATE_BOOL);
+        $includeDistanceDetails = filter_var($params['include_distance_details'] ?? false, FILTER_VALIDATE_BOOL);
         if ($deferPricingForCards) {
             $sortBy = 'name_asc';
         }
@@ -1182,7 +1183,7 @@ class BookingFlowService
             : $fromTime;
         $pricingFromDate = $fromDate->format('Y-m-d');
         $pricingToDate = $effectiveToDate->format('Y-m-d');
-        $shouldCalculateGroupPricing = !$deferPricingForCards
+        $shouldCalculateGroupPricing = (!$deferPricingForCards || $includeDistanceDetails)
             && $pricingServiceTypeModel
             && $hasRequiredPricingLocations
             && (!$packageSelectionRequired || $hasSelectedPackage);
@@ -1369,6 +1370,9 @@ class BookingFlowService
                 $pricingError = 'Pricing calculation failed: ' . $e->getMessage();
                 Log::warning("Pricing calculation failed for vehicle group {$group->id}: " . $e->getMessage());
             }
+            if ($deferPricingForCards) {
+                $pricingError = null;
+            }
             $hasLongTermAssignments = false;
 
             // Check if service type requires inquiry (is_inquiry flag)
@@ -1451,7 +1455,10 @@ class BookingFlowService
                 'has_long_term' => $hasLongTermAssignments,
                 'pricing_configured' => $isPricingConfigured,
                 'pricing_deferred' => $deferPricingForCards,
-                'pricing_info' => $pricingInfo,
+                'pricing_info' => $deferPricingForCards ? null : $pricingInfo,
+                'distance_details' => isset($pricingInfo['distance_details'])
+                    ? [...$pricingInfo['distance_details'], 'duration_days' => $durationInfo['days'] ?? 1]
+                    : null,
                 'pricing_error' => $pricingError,
                 'supports_self_driven' => $group->supports_self_driven ?? false,
                 'requires_driver' => $group->requires_driver ?? true,

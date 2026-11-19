@@ -81,6 +81,7 @@ class BusinessSettingController extends Controller
             'assignment_enable_qc_stage',
             'assignment_enable_maintenance_stage',
             'booking_signed_agreement_required',
+            'add_trip_vehicle_group_pricing_enabled',
         ],
         'pricing' => [
             'internal_pricing_mode',
@@ -194,6 +195,7 @@ class BusinessSettingController extends Controller
                 'assignment_enable_maintenance_stage' => ['sometimes', 'boolean'],
                 'booking_signed_agreement_required' => ['sometimes', 'boolean'],
                 'tour_ai_itinerary_enabled' => ['sometimes', 'boolean'],
+                'add_trip_vehicle_group_pricing_enabled' => ['sometimes', 'boolean'],
             ]);
             if ($timingValidator->fails()) {
                 return response()->json([

@@ -14,6 +14,17 @@ trait BookingAvailabilityTrait
         try {
             $params = $this->bookingFlowService->normalizeDynamicCalculationParams($request->all());
             if (
+                filter_var($request->input('add_trip_form', false), FILTER_VALIDATE_BOOLEAN)
+                && filter_var(app(\App\Services\WebsiteSettingsService::class)->get('add_trip_vehicle_group_pricing_enabled', false), FILTER_VALIDATE_BOOLEAN)
+            ) {
+                $params['defer_pricing'] = false;
+                $params['sort_by'] = 'price_high';
+            }
+            if ($request->user() && filter_var($request->input('add_trip_form', false), FILTER_VALIDATE_BOOLEAN)
+                && filter_var($request->input('include_distance_details', false), FILTER_VALIDATE_BOOLEAN)) {
+                $params['include_distance_details'] = true;
+            }
+            if (
                 array_key_exists('defer_availability', $params)
                 && $params['defer_availability'] !== null
                 && is_scalar($params['defer_availability'])
@@ -54,6 +65,7 @@ trait BookingAvailabilityTrait
                 'resource_lookup' => 'nullable|boolean',
                 'defer_availability' => 'nullable|boolean',
                 'defer_pricing' => 'nullable|boolean',
+                'include_distance_details' => 'nullable|boolean',
                 'pickup_location' => (!$resourceLookup && $pickupRequired) ? 'required|array' : 'nullable|array',
                 'pickup_location.latitude' => $resourceLookup ? 'nullable|numeric' : ($pickupRequired ? 'required|numeric' : 'required_with:pickup_location|numeric'),
                 'pickup_location.longitude' => $resourceLookup ? 'nullable|numeric' : ($pickupRequired ? 'required|numeric' : 'required_with:pickup_location|numeric'),
