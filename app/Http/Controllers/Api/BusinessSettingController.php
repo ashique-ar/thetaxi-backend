@@ -55,6 +55,7 @@ class BusinessSettingController extends Controller
         'booking' => [
             'booking_base_currency',
             'booking_advance_hours',
+            'booking_confirmation_cc_creator',
             'customer_portal_booking_advance_hours',
             'corporate_portal_booking_advance_hours',
             'booking_max_days',
