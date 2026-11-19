@@ -176,7 +176,9 @@ class GoogleMapsService
         // coordinates instead of sending an invalid place_id to Google.
         $placeId = trim((string) ($loc['place_id'] ?? ''));
         $looksLikeAirportCode = preg_match('/^[A-Z0-9]{3}$/i', $placeId) === 1;
-        if ($looksLikeAirportCode && is_numeric($lat) && is_numeric($lng)) {
+        // Locally managed location IDs (for example CASONS_HQ) are not Google
+        // Place IDs; use their saved coordinates instead.
+        if (($looksLikeAirportCode || !empty($loc['location_id'])) && is_numeric($lat) && is_numeric($lng)) {
             return $lat . ',' . $lng;
         }
 

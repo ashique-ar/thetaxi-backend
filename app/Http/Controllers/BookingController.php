@@ -1942,7 +1942,10 @@ class BookingController extends Controller
      */
     private function getCartItemDetails(array $item): array
     {
-        $vehicleGroup = VehicleGroup::find($item['vehicle_group_id']);
+        $vehicleGroupId = (string) ($item['vehicle_group_id'] ?? '');
+        $vehicleGroup = \Illuminate\Support\Str::isUuid($vehicleGroupId)
+            ? VehicleGroup::find($vehicleGroupId)
+            : VehicleGroup::where('seo_slug', $vehicleGroupId)->first();
 
         return [
             'id' => $item['id'],
