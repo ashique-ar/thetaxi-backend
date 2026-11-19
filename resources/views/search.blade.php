@@ -187,11 +187,6 @@
                                         {{ \Carbon\Carbon::parse($search->to_date)->format('M d, Y') }}
                                     </span>
                                 @endif
-                                <div class="vehicle-count-info">
-                                    <span class="vehicle-groups-label text-white-50">Vehicles found:</span>
-                                    <strong class="vehicle-groups-count text-white ms-2"
-                                        id="vehicleGroupsCount">{{ $results['total'] ?? count($results['data']) }}</strong>
-                                </div>
                             </div>
                         </div>
                         <div class="search-details">
@@ -1290,9 +1285,7 @@
             const $clearButton = $root.find('#clearSearch');
             // Always target the column wrappers so the grid classes (e.g., col-lg-3) are preserved
             const $vehicleCards = $root.find('.vehicle-results-grid').find('.vehicle-card-wrapper');
-            const $vehicleCountDisplay = $root.find('#vehicleGroupsCount');
             const loadMoreStatus = $root.find('#vehicleLoadMoreStatus').get(0);
-            const totalVehicles = Number(loadMoreStatus?.dataset.total) || $vehicleCards.length;
             let loadedVehicleCards = $vehicleCards;
             const applyVehicleFilter = () => $searchInput.trigger('input');
 
@@ -1381,7 +1374,6 @@
                             : `Showing ${loadedCount} of ${loadMoreStatus.dataset.total} vehicles. Scroll to load more.`;
                         if (nextPage >= Number(loadMoreStatus.dataset.lastPage)) {
                             window.vehicleLoadMoreObserver?.disconnect();
-                            message.textContent = 'You’ve reached the end of the vehicles';
                         }
                     } catch (error) {
                         if (error.name !== 'AbortError') {
@@ -1425,7 +1417,7 @@
                 if (searchTerm === '') {
                     // Show all vehicles - remove Bootstrap d-none instead of jQuery show()
                     loadedVehicleCards.removeClass('d-none');
-                    visibleCount = totalVehicles;
+                    visibleCount = loadedVehicleCards.length;
                     $clearButton.hide();
                 } else {
                     // Filter vehicles - toggle d-none on the column wrappers to keep grid classes intact
@@ -1444,9 +1436,6 @@
                     });
                     $clearButton.show();
                 }
-
-                // Update count display
-                $vehicleCountDisplay.text(visibleCount);
 
                 // Show no results message if needed
                 if (visibleCount === 0 && searchTerm !== '') {
