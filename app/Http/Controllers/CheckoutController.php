@@ -781,8 +781,8 @@ class CheckoutController extends Controller
         // Define validation rules
         $rules = [
             'payment_type' => 'required|in:' . implode(',', $allowedPaymentTypes),
-            'first_name' => ['required', 'string', 'max:255', 'regex:/^(?=.*\p{L})[\p{L}\p{M} .\x27?-]+$/u'],
-            'last_name' => ['nullable', 'string', 'max:255', 'regex:/^(?=.*\p{L})[\p{L}\p{M} .\x27?-]+$/u'],
+            'first_name' => ['required', 'string', 'max:255'],
+            'last_name' => ['nullable', 'string', 'max:255'],
             'phone' => ['required', 'string', 'min:5', 'max:20', 'regex:/^(?=(?:.*\d){5,})[+\d\s().-]+$/'],
             'phone_country_code' => 'required|string|max:5',
             'phone_international' => ['required', 'string', 'regex:/^\+[1-9][0-9]{7,14}$/'],
@@ -828,8 +828,6 @@ class CheckoutController extends Controller
             'email.required' => 'Please enter your email address.',
             'email.required_if' => 'Please enter your email address.',
             'email.email' => 'Please enter a valid email address.',
-            'first_name.regex' => 'Enter a name containing at least one letter. Numbers or punctuation alone are not accepted.',
-            'last_name.regex' => 'Enter a name containing at least one letter. Numbers or punctuation alone are not accepted.',
             'identification.required' => 'Please enter your identification number.',
             'identification.unique' => 'This identification number is already linked to another customer. Please check the number or use the email address on that customer account.',
             'address.regex' => 'Enter an address with at least two letters or numbers.',
