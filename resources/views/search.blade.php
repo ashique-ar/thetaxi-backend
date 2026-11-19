@@ -188,7 +188,7 @@
                                     </span>
                                 @endif
                                 <div class="vehicle-count-info">
-                                    <span class="vehicle-groups-label text-white-50">Vehicle Groups Available:</span>
+                                    <span class="vehicle-groups-label text-white-50">Vehicles found:</span>
                                     <strong class="vehicle-groups-count text-white ms-2"
                                         id="vehicleGroupsCount">{{ $results['total'] ?? count($results['data']) }}</strong>
                                 </div>
@@ -287,7 +287,7 @@
                         </div>
                     </div>
                 </div>
-                <!-- Vehicle Groups Available Section -->
+                <!-- Vehicle Search Results Section -->
             </div>
 
             <div class="row g-4 vehicle-search-skeleton d-none" id="vehicleSearchSkeleton" role="status" aria-label="Loading vehicles">
@@ -331,7 +331,7 @@
                         data-search-context-id="{{ $search->result_search_context_id ?? '' }}"
                         data-url="{{ route('search.vehicles.page') }}">
                         <span class="vehicle-load-more-spinner spinner-border spinner-border-sm d-none" aria-hidden="true"></span>
-                        <span class="vehicle-load-more-message">Scroll to load more vehicles</span>
+                        <span class="vehicle-load-more-message">Showing {{ count($results['data']) }} of {{ $pagination['total'] }} vehicles. Scroll to load more.</span>
                     </div>
                 @endif
             @else
@@ -1375,9 +1375,10 @@
                         loadMoreStatus.dataset.total = String(payload.pagination?.total ?? loadMoreStatus.dataset.total);
                         loadMoreStatus.dataset.perPage = String(payload.pagination?.per_page ?? perPage);
                         shouldPrefetchNextPage = nextPage < Number(loadMoreStatus.dataset.lastPage);
+                        const loadedCount = grid.querySelectorAll('.vehicle-card-wrapper:not(.vehicle-load-more-skeleton)').length;
                         message.textContent = nextPage >= Number(loadMoreStatus.dataset.lastPage)
-                            ? 'You’ve reached the end of the vehicles'
-                            : 'Scroll to load more vehicles';
+                            ? `Showing ${loadedCount} of ${loadMoreStatus.dataset.total} vehicles.`
+                            : `Showing ${loadedCount} of ${loadMoreStatus.dataset.total} vehicles. Scroll to load more.`;
                         if (nextPage >= Number(loadMoreStatus.dataset.lastPage)) {
                             window.vehicleLoadMoreObserver?.disconnect();
                             message.textContent = 'You’ve reached the end of the vehicles';
