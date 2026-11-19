@@ -21,6 +21,7 @@ class VehicleGroupServicePricingSetting extends BaseModel
         'service_type_id',
         'is_inquiry_only',
         'is_hidden',
+        'show_in_internal_bookings',
         'created_user_id',
         'updated_user_id',
     ];
@@ -28,6 +29,7 @@ class VehicleGroupServicePricingSetting extends BaseModel
     protected $casts = [
         'is_inquiry_only' => 'boolean',
         'is_hidden' => 'boolean',
+        'show_in_internal_bookings' => 'boolean',
         'created_at' => 'datetime',
         'updated_at' => 'datetime',
         'deleted_at' => 'datetime',

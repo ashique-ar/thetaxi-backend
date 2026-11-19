@@ -1206,6 +1206,9 @@ class BookingFlowService
             if ($isPublic && $servicePricingSetting?->is_hidden) {
                 continue;
             }
+            if (!$isPublic && !$servicePricingSetting?->show_in_internal_bookings) {
+                continue;
+            }
 
             // In sales-first public mode the administrator deliberately bypasses
             // date conflicts. Internal and corporate allocation remains unchanged.

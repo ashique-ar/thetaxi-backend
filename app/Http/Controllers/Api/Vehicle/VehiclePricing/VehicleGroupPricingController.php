@@ -376,6 +376,7 @@ class VehicleGroupPricingController extends Controller
                             'service_type_id' => $serviceType->id,
                             'is_inquiry_only' => false,
                             'is_hidden' => false,
+                            'show_in_internal_bookings' => false,
                         ],
                         'slab_definitions' => $slabDefinitions->map(function ($slab) use ($group, $allSlabPricing) {
                             $key = $group->id . '_' . $slab->id;
@@ -1031,6 +1032,7 @@ class VehicleGroupPricingController extends Controller
             'service_settings.*.service_type_id' => 'required_with:service_settings|uuid|exists:service_types,id',
             'service_settings.*.is_inquiry_only' => 'boolean',
             'service_settings.*.is_hidden' => 'boolean',
+            'service_settings.*.show_in_internal_bookings' => 'boolean',
             'context' => 'nullable|string|in:public,portal,corporate',
             'owner_type' => 'nullable|required_if:context,corporate|string|in:corporate',
             'owner_id' => 'nullable|required_if:context,corporate|uuid|exists:corporates,id|required_with:owner_type',
@@ -1257,6 +1259,7 @@ class VehicleGroupPricingController extends Controller
                     [
                         'is_inquiry_only' => $settingData['is_inquiry_only'] ?? false,
                         'is_hidden' => $settingData['is_hidden'] ?? false,
+                        'show_in_internal_bookings' => $settingData['show_in_internal_bookings'] ?? false,
                         'updated_user_id' => $userId,
                     ]
                 );
