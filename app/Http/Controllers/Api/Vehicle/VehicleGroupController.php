@@ -13,6 +13,7 @@ use Illuminate\Http\Request;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Cache;
+use Illuminate\Support\Str;
 use Illuminate\Validation\Rule;
 
 class VehicleGroupController extends Controller
@@ -157,8 +158,12 @@ class VehicleGroupController extends Controller
         return response()->json(['status' => 'success', 'message' => 'Group created', 'data' => ['group' => new VehicleGroupResource($vg)]], 201);
     }
 
-    public function show(VehicleGroup $vehicleGroup): JsonResponse
+    public function show(string $vehicleGroup): JsonResponse
     {
+        $vehicleGroup = Str::isUuid($vehicleGroup)
+            ? VehicleGroup::findOrFail($vehicleGroup)
+            : VehicleGroup::where('seo_slug', $vehicleGroup)->firstOrFail();
+
         return response()->json([
             'status' => 'success',
             'data' => [
