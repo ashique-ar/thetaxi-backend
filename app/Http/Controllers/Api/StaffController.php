@@ -27,7 +27,7 @@ use Illuminate\Support\Str;
 
 class StaffController extends Controller
 {
-    private const SENSITIVE_PERSONAL_FIELDS = ['nic', 'dob', 'license_no', 'license_expiry', 'address'];
+    private const SENSITIVE_PERSONAL_FIELDS = ['nic', 'dob', 'license_no', 'license_expiry'];
 
     public function __construct(
         private readonly UserContextService $contextService,
@@ -39,14 +39,14 @@ class StaffController extends Controller
 
     public function index(Request $request): AnonymousResourceCollection
     {
-        $q = $this->accessService->scope(Staff::with(['user', 'country', 'state']), $request->user());
+        $q = $this->accessService->scope(Staff::with(['user', 'addresses.country', 'addresses.state']), $request->user());
         $canSearchSensitivePersonal = $request->user()->can('staff-sensitive-personal.view');
         if ($request->filled('search')) {
             $search = trim((string) $request->get('search'));
             $q->where(function ($query) use ($search, $canSearchSensitivePersonal) {
                 $query->whereLikeInsensitive('staff_type', $search)
                     ->orWhereLikeInsensitive('code', $search)
-                    ->orWhereLikeInsensitive('city', $search)
+                    ->orWhereHas('addresses', fn ($addresses) => $addresses->whereLikeInsensitive('city', $search)->orWhereLikeInsensitive('postal_code', $search))
                     ->orWhereHas('user', function ($userQuery) use ($search) {
                         $userQuery->whereLikeInsensitive('first_name', $search)
                             ->orWhereLikeInsensitive('last_name', $search)
@@ -166,8 +166,11 @@ class StaffController extends Controller
         if ($dob = SriLankanNic::dateOfBirth($data['nic'] ?? null)) $data['dob'] = $dob;
         $data['created_user_id'] = $request->user()->id;
         $paymentMethods = $data['payment_methods'] ?? null;
-        unset($data['payment_methods']);
-        $staff = DB::transaction(function () use ($request, $data): Staff {
+        $addresses = $data['addresses'] ?? null;
+        if ($addresses === null && ! empty($data['address'])) $addresses = [['type' => 'other', 'address' => $data['address'], 'city' => $data['city'] ?? null, 'state_id' => $data['state_id'] ?? null, 'country_id' => $data['country_id'] ?? null, 'postal_code' => $data['postal_code'] ?? null, 'is_default' => true]];
+        unset($data['payment_methods'], $data['addresses']);
+        unset($data['address'], $data['city'], $data['state_id'], $data['country_id'], $data['postal_code']);
+        $staff = DB::transaction(function () use ($request, $data, $addresses): Staff {
             $user = ! empty($data['user_id'])
                 ? User::query()->findOrFail($data['user_id'])
                 : User::query()->create([
@@ -184,11 +187,13 @@ class StaffController extends Controller
                 403,
                 'Creating Staff for another User requires Staff create-all permission.'
             );
+            abort_unless($addresses === null || $user->id === $request->user()->id || $request->user()->can('staff-sensitive-personal.view'), 403, 'Sensitive personal permission is required to manage staff addresses.');
             $contextData = $this->restrictSensitivePersonalFields($data, $user->id, $request->user());
             $contextData = array_intersect_key($contextData, array_flip((new Staff())->getFillable()));
             $context = $this->contextService->switchContext($user, 'staff', $contextData, $data['created_user_id']);
             $staff = Staff::query()->findOrFail($context->context_id);
             $staff = $this->peopleCore->initializeStaff($staff, $data, $data['created_user_id']);
+            if ($addresses !== null) app(\App\Services\AddressSyncService::class)->sync($staff, $addresses);
             $this->recruitmentConversion->complete($data['recruitment_application_id'] ?? null, $staff, $data['created_user_id']);
 
             return $staff;
@@ -198,7 +203,7 @@ class StaffController extends Controller
             app(PaymentMethodSyncService::class)->syncMany($staff, $paymentMethods, $request->user()->id);
         }
 
-        $staff->load(['user', 'country', 'state', 'paymentMethods']);
+        $staff->load(['user', 'paymentMethods', 'addresses.country', 'addresses.state']);
 
         return response()->json([
             'status' => 'success',
@@ -210,7 +215,7 @@ class StaffController extends Controller
     public function show(Request $request, Staff $staff): JsonResponse
     {
         $this->accessService->authorize($request->user(), $staff, 'view');
-        $staff->load(['user', 'country', 'state']);
+        $staff->load(['user', 'addresses.country', 'addresses.state']);
         $viewer = $request->user();
         if ($viewer->id !== $staff->user_id && $viewer->can('staff-sensitive-personal.view')) {
             activity('staff-sensitive-data')
@@ -234,20 +239,25 @@ class StaffController extends Controller
         $data = $this->restrictSensitivePersonalFields($data, $staff->user_id, $request->user());
         $data['updated_user_id'] = $request->user()->id;
         $paymentMethods = $data['payment_methods'] ?? null;
-        unset($data['payment_methods']);
+        $addresses = $data['addresses'] ?? null;
+        if ($addresses === null && ! empty($data['address'])) $addresses = [['type' => 'other', 'address' => $data['address'], 'city' => $data['city'] ?? null, 'state_id' => $data['state_id'] ?? null, 'country_id' => $data['country_id'] ?? null, 'postal_code' => $data['postal_code'] ?? null, 'is_default' => true]];
+        unset($data['payment_methods'], $data['addresses']);
+        unset($data['address'], $data['city'], $data['state_id'], $data['country_id'], $data['postal_code']);
         $userData = collect($data)->only(['first_name', 'last_name', 'email', 'phone'])->all();
         unset($data['first_name'], $data['last_name'], $data['email'], $data['phone'], $data['status'], $data['user_id']);
-        $staff = DB::transaction(function () use ($staff, $data, $userData): Staff {
+        abort_unless($addresses === null || $request->user()->id === $staff->user_id || $request->user()->can('staff-sensitive-personal.view'), 403, 'Sensitive personal permission is required to manage staff addresses.');
+        $staff = DB::transaction(function () use ($staff, $data, $userData, $addresses): Staff {
             $staff = Staff::query()->lockForUpdate()->findOrFail($staff->id);
             if ($userData !== []) $staff->user()->update($userData);
             $staff->update($data);
+            if ($addresses !== null) app(\App\Services\AddressSyncService::class)->sync($staff, $addresses);
 
             return $staff;
         });
         if ($paymentMethods !== null) {
             app(PaymentMethodSyncService::class)->syncMany($staff, $paymentMethods, $request->user()->id);
         }
-        $staff->load(['user', 'country', 'state', 'paymentMethods']);
+        $staff->load(['user', 'paymentMethods', 'addresses.country', 'addresses.state']);
 
         return response()->json([
             'status' => 'success',
@@ -278,7 +288,7 @@ class StaffController extends Controller
     }
 
     /**
-     * Drop nic/dob/license/address from a create or update payload unless the
+     * Drop nic/dob/license from a create or update payload unless the
      * actor is the Staff owner or holds staff-sensitive-personal.view, so a
      * generic-scope editor can never blindly overwrite fields they cannot see.
      */

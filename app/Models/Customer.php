@@ -17,10 +17,6 @@ use App\Traits\UUID;
  * @property \Illuminate\Support\Carbon|null $license_expiry License expiry date (optional)
  * @property string|null $license_type License type (optional)
  * @property \Illuminate\Support\Carbon|null $dob Date of birth (optional)
- * @property string|null $address Customer address (optional)
- * @property string|null $country_id Foreign key to countries table (optional)
- * @property string|null $state_id Foreign key to states table (optional)
- * @property string|null $city Foreign key to cities table (optional)
  * @property string|null $created_user_id ID of user who created this record
  * @property string|null $updated_user_id ID of user who last updated this record
  * @property \Illuminate\Support\Carbon|null $created_at
@@ -28,8 +24,6 @@ use App\Traits\UUID;
  * @property \Illuminate\Support\Carbon|null $deleted_at
  *
  * @property-read \App\Models\User $user Customer's user account
- * @property-read \App\Models\Country|null $country Customer's country
- * @property-read \App\Models\State|null $state Customer's state
  * @property-read \App\Models\User|null $createdBy User who created this record
  * @property-read \App\Models\User|null $updatedBy User who last updated this record
  * @property-read \Illuminate\Database\Eloquent\Collection|\App\Models\Booking\Booking[] $bookings Customer's bookings
@@ -62,13 +56,7 @@ class Customer extends BaseModel
         'license_expiry',
         'license_type',
         'dob',
-        'address',
-        'postal_code',
         'gender',
-        'country_id',
-        'country',
-        'state_id',
-        'city',
         'created_user_id',
         'updated_user_id',
         'marketing_consent',
@@ -106,21 +94,11 @@ class Customer extends BaseModel
      *
      * @return \Illuminate\Database\Eloquent\Relations\BelongsTo
      */
-    public function country()
-    {
-        return $this->belongsTo(Country::class);
-    }
-
     /**
      * Get the customer's state.
      *
      * @return \Illuminate\Database\Eloquent\Relations\BelongsTo
      */
-    public function state()
-    {
-        return $this->belongsTo(State::class);
-    }
-
 
     /**
      * Get the user who created this record.
@@ -164,7 +142,14 @@ class Customer extends BaseModel
 
     public function addresses()
     {
-        return $this->hasMany(CustomerAddress::class)->orderByDesc('is_default')->orderBy('created_at');
+        return $this->morphMany(Address::class, 'addressable')->orderByDesc('is_default')->orderBy('created_at');
+    }
+
+    public function defaultAddressRecord(): ?Address
+    {
+        return $this->relationLoaded('addresses')
+            ? $this->addresses->firstWhere('is_default', true)
+            : $this->addresses()->with(['country', 'state'])->where('is_default', true)->first();
     }
 
     public function paymentMethods()

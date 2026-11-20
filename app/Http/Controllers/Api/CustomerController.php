@@ -72,7 +72,7 @@ class CustomerController extends Controller
 
         $q = Customer::query()->select('customers.*')
             ->leftJoin('users as customer_phone', 'customer_phone.id', '=', 'customers.user_id')
-            ->with(['user', 'state', 'paymentMethods']);
+            ->with(['user', 'paymentMethods', 'addresses.country', 'addresses.state']);
         $phoneCallingCode = null;
         $completedBookingCount = DB::table('bookings as completed_booking')->selectRaw('COUNT(*)')
             ->whereColumn('completed_booking.customer_id', 'customers.id')->whereNotNull('completed_booking.completed_at')
@@ -181,10 +181,8 @@ class CustomerController extends Controller
                     ->orWhereLikeInsensitive('sub_type', $search)
                     ->orWhereLikeInsensitive('category', $search)
                     ->orWhereLikeInsensitive('gender', $search)
-                    ->orWhereLikeInsensitive('address', $search)
-                    ->orWhereLikeInsensitive('postal_code', $search)
-                    ->orWhereLikeInsensitive('country', $search)
-                    ->orWhereLikeInsensitive('city', $search);
+                    ->orWhereHas('addresses', fn ($addresses) => $addresses->whereLikeInsensitive('address', $search)->orWhereLikeInsensitive('label', $search))
+                    ->orWhereHas('addresses', fn ($addresses) => $addresses->whereLikeInsensitive('city', $search)->orWhereLikeInsensitive('postal_code', $search)->orWhereHas('country', fn ($country) => $country->whereLikeInsensitive('name', $search)));
             });
         }
 
@@ -292,7 +290,9 @@ class CustomerController extends Controller
     {
         $data = $request->validated();
         $addresses = $data['addresses'] ?? null;
+        if ($addresses === null && ! empty($data['address'])) $addresses = [['type' => 'other', 'address' => $data['address'], 'city' => $data['city'] ?? null, 'state_id' => $data['state_id'] ?? null, 'country_id' => $data['country_id'] ?? null, 'postal_code' => $data['postal_code'] ?? null, 'is_default' => true]];
         unset($data['addresses']);
+        unset($data['address'], $data['city'], $data['state_id'], $data['country_id'], $data['postal_code'], $data['country']);
         abort_unless(! array_key_exists('payment_methods', $data) || $request->user()->can('payment-methods.manage'), 403,
             'Payment method management permission is required.');
         if ($dob = SriLankanNic::dateOfBirth($data['nic'] ?? null)) $data['dob'] = $dob;
@@ -331,17 +331,12 @@ class CustomerController extends Controller
                     'license_type' => $data['license_type'] ?? null,
                     'gender' => $data['gender'] ?? null,
                     'dob' => $data['dob'] ?? null,
-                    'address' => $data['address'] ?? null,
-                    'postal_code' => $data['postal_code'] ?? null,
-                    'country_id' => $data['country_id'] ?? null,
-                    'state_id' => $data['state_id'] ?? null,
-                    'city' => $data['city'] ?? null,
                     'wedding_date' => $data['wedding_date'] ?? null,
                     'default_payment_arrangement' => $data['default_payment_arrangement'] ?? 'account_credit',
                 ];
 
                 $context = $this->contextService->switchContext($existingUser, 'customer', $contextData);
-                $customer = Customer::with(['user', 'state', 'paymentMethods'])->find($context->getAttribute('context_id'));
+                $customer = Customer::with(['user', 'paymentMethods'])->find($context->getAttribute('context_id'));
                 if ($addresses !== null) $this->syncCustomerAddresses($customer, $addresses);
                 $customer->load('addresses');
                 if (array_key_exists('payment_methods', $data)) {
@@ -381,17 +376,12 @@ class CustomerController extends Controller
                     'license_type' => $data['license_type'] ?? null,
                     'gender' => $data['gender'] ?? null,
                     'dob' => $data['dob'] ?? null,
-                    'address' => $data['address'] ?? null,
-                    'postal_code' => $data['postal_code'] ?? null,
-                    'country_id' => $data['country_id'] ?? null,
-                    'state_id' => $data['state_id'] ?? null,
-                    'city' => $data['city'] ?? null,
                     'wedding_date' => $data['wedding_date'] ?? null,
                     'default_payment_arrangement' => $data['default_payment_arrangement'] ?? 'account_credit',
                 ];
 
                 $context = $this->contextService->switchContext($user, 'customer', $contextData);
-                $customer = Customer::with(['user', 'state', 'paymentMethods'])->find($context->getAttribute('context_id'));
+                $customer = Customer::with(['user', 'paymentMethods'])->find($context->getAttribute('context_id'));
                 if ($addresses !== null) $this->syncCustomerAddresses($customer, $addresses);
                 $customer->load('addresses');
                 if (array_key_exists('payment_methods', $data)) {
@@ -422,7 +412,7 @@ class CustomerController extends Controller
         $completedBookings = DB::table('bookings as booking')->where('booking.customer_id', $customer->id)
             ->whereNotNull('booking.completed_at')->whereNull('booking.deleted_at');
         $completedBookingCount = $completedBookings->count();
-        $customer->load(['user', 'state', 'paymentMethods', 'addresses']);
+        $customer->load(['user', 'paymentMethods', 'addresses.country', 'addresses.state']);
         $customer->setAttribute('completed_booking_count', $completedBookingCount);
         $customer->setAttribute('customer_lifecycle', $completedBookingCount > 0 ? 'returning' : 'no_completed_booking');
         $customer->setAttribute('relationship_owner', $this->currentRelationshipOwner($customer));
@@ -631,7 +621,7 @@ class CustomerController extends Controller
                     ->withProperties(['customer_id' => $locked->id, 'verified_email' => (bool) $user->email_verified_at, 'verified_phone' => (bool) $user->phone_verified_at])
                     ->log('customer_portal_activated');
             }
-            return $locked->load(['user', 'state', 'paymentMethods', 'addresses']);
+            return $locked->load(['user', 'paymentMethods', 'addresses.country', 'addresses.state']);
         });
 
         return response()->json(['status' => 'success', 'data' => new CustomerResource($customer)]);
@@ -685,7 +675,9 @@ class CustomerController extends Controller
         try {
             $data = $request->validated();
             $addresses = $data['addresses'] ?? null;
+            if ($addresses === null && ! empty($data['address'])) $addresses = [['type' => 'other', 'address' => $data['address'], 'city' => $data['city'] ?? null, 'state_id' => $data['state_id'] ?? null, 'country_id' => $data['country_id'] ?? null, 'postal_code' => $data['postal_code'] ?? null, 'is_default' => true]];
             unset($data['addresses']);
+            unset($data['address'], $data['city'], $data['state_id'], $data['country_id'], $data['postal_code'], $data['country']);
             abort_unless(! array_key_exists('payment_methods', $data) || $request->user()->can('payment-methods.manage'), 403,
                 'Payment method management permission is required.');
             if ($dob = SriLankanNic::dateOfBirth($data['nic'] ?? null)) $data['dob'] = $dob;
@@ -710,7 +702,7 @@ class CustomerController extends Controller
                 app(PaymentMethodSyncService::class)->syncMany($customer, $data['payment_methods'] ?? [], $request->user()->id);
             }
 
-            $customer->load(['user', 'state', 'paymentMethods', 'addresses']);
+            $customer->load(['user', 'paymentMethods', 'addresses.country', 'addresses.state']);
 
             return response()->json([
                 'status' => 'success',
@@ -729,22 +721,7 @@ class CustomerController extends Controller
 
     private function syncCustomerAddresses(Customer $customer, array $addresses): void
     {
-        $defaultIndex = collect($addresses)->search(fn ($address) => ! empty($address['is_default']));
-        if ($defaultIndex === false && $addresses) $defaultIndex = 0;
-        $kept = [];
-        foreach (array_values($addresses) as $index => $address) {
-            $id = $address['id'] ?? null;
-            unset($address['id']);
-            $address['is_default'] = $index === $defaultIndex;
-            if ($id) {
-                $record = $customer->addresses()->whereKey($id)->firstOrFail();
-                $record->update($address);
-            } else {
-                $record = $customer->addresses()->create($address);
-            }
-            $kept[] = $record->id;
-        }
-        $customer->addresses()->whereNotIn('id', $kept ?: [''])->delete();
+        app(\App\Services\AddressSyncService::class)->sync($customer, $addresses);
     }
 
     public function destroy(Customer $customer): JsonResponse
@@ -1477,9 +1454,8 @@ class CustomerController extends Controller
                     ->orWhereLikeInsensitive('nic', $search)
                     ->orWhereLikeInsensitive('passport_number', $search)
                     ->orWhereLikeInsensitive('license_no', $search)
-                    ->orWhereLikeInsensitive('address', $search)
-                    ->orWhereLikeInsensitive('country', $search)
-                    ->orWhereLikeInsensitive('city', $search);
+                    ->orWhereHas('addresses', fn ($addresses) => $addresses->whereLikeInsensitive('address', $search)->orWhereLikeInsensitive('label', $search))
+                    ->orWhereHas('addresses', fn ($addresses) => $addresses->whereLikeInsensitive('city', $search)->orWhereHas('country', fn ($country) => $country->whereLikeInsensitive('name', $search)));
             });
         }
 
@@ -1537,7 +1513,7 @@ class CustomerController extends Controller
                         $this->csvValue($customer->passport_number),
                         $this->csvValue($customer->license_no),
                         $this->csvValue($customer->getAttribute('country')),
-                        $this->csvValue($customer->city),
+                        $this->csvValue($customer->defaultAddressRecord()?->city),
                         $customer->created_at?->toIso8601String(),
                     ]);
                 }

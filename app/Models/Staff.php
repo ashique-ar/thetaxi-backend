@@ -21,10 +21,6 @@ use Spatie\Activitylog\Support\LogOptions;
  * @property \Illuminate\Support\Carbon|null $dob Date of birth (optional)
  * @property string|null $license_no Driving license number (optional)
  * @property \Illuminate\Support\Carbon|null $license_expiry License expiry date (optional)
- * @property string|null $address Staff address (optional)
- * @property string|null $country_id Foreign key to countries table (optional)
- * @property string|null $state_id Foreign key to states table (optional)
- * @property string|null $city Foreign key to cities table (optional)
  * @property string|null $created_user_id ID of user who created this record
  * @property string|null $updated_user_id ID of user who last updated this record
  * @property \Illuminate\Support\Carbon|null $created_at
@@ -32,8 +28,6 @@ use Spatie\Activitylog\Support\LogOptions;
  * @property \Illuminate\Support\Carbon|null $deleted_at
  *
  * @property-read \App\Models\User $user Staff user account
- * @property-read \App\Models\Country|null $country Staff's country
- * @property-read \App\Models\State|null $state Staff's state
  * @property-read \App\Models\User|null $createdBy User who created this record
  * @property-read \App\Models\User|null $updatedBy User who last updated this record
  */
@@ -60,10 +54,6 @@ class Staff extends BaseModel
         'dob',
         'license_no',
         'license_expiry',
-        'address',
-        'country_id',
-        'state_id',
-        'city',
         'created_user_id',
         'updated_user_id'
     ];
@@ -97,21 +87,11 @@ class Staff extends BaseModel
      *
      * @return \Illuminate\Database\Eloquent\Relations\BelongsTo
      */
-    public function country()
-    {
-        return $this->belongsTo(Country::class);
-    }
-
     /**
      * Get the staff's state.
      *
      * @return \Illuminate\Database\Eloquent\Relations\BelongsTo
      */
-    public function state()
-    {
-        return $this->belongsTo(State::class);
-    }
-
 
     /**
      * Get the user who created this record.
@@ -136,6 +116,18 @@ class Staff extends BaseModel
     public function paymentMethods()
     {
         return $this->morphMany(PaymentMethod::class, 'payable');
+    }
+
+    public function addresses()
+    {
+        return $this->morphMany(Address::class, 'addressable')->orderByDesc('is_default')->orderBy('created_at');
+    }
+
+    public function defaultAddressRecord(): ?Address
+    {
+        return $this->relationLoaded('addresses')
+            ? $this->addresses->firstWhere('is_default', true)
+            : $this->addresses()->with(['country', 'state'])->where('is_default', true)->first();
     }
 
     public function documents()

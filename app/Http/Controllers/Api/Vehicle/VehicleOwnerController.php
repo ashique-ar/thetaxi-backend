@@ -246,7 +246,7 @@ class VehicleOwnerController extends Controller
         $driver->fill($contextData);
         $driver->save();
 
-        return $driver->load(['user', 'country', 'state', 'licenseType']);
+        return $driver->load(['user', 'addresses.country', 'addresses.state', 'licenseType']);
     }
 
     public function destroy(VehicleOwner $vehicleOwner): JsonResponse

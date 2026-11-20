@@ -535,10 +535,23 @@ trait BookingCorporateTrait
         ], 201);
     }
 
-    public function getSavedLocations(): JsonResponse
+    public function getSavedLocations(Request $request): JsonResponse
     {
         try {
-            $locations = $this->bookingFlowService->getSavedLocations();
+            $customerId = null;
+            if ($request->filled('customer_id')) {
+                $request->validate(['customer_id' => ['uuid', 'exists:customers,id']]);
+                $selectedCustomer = \App\Models\Customer::query()->whereKey($request->input('customer_id'))->firstOrFail();
+                $context = $request->user()
+                    ? app(\App\Services\UserContextService::class)->resolveActiveContextFromRequest($request->user(), $request)
+                    : null;
+                $customerId = (string) ($context['context_id'] ?? '');
+                if (! $customerId || $customerId !== (string) $request->input('customer_id')) {
+                    abort_unless($request->user()?->can('customers.view'), 403, 'Customer address access is not authorized.');
+                    $customerId = (string) $selectedCustomer->id;
+                }
+            }
+            $locations = $this->bookingFlowService->getSavedLocations($customerId);
 
             return response()->json([
                 'status' => 'success',

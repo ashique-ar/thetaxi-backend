@@ -8664,7 +8664,7 @@ class BookingFlowService
     /**
      * Get saved locations for booking dropdowns
      */
-    public function getSavedLocations(): array
+    public function getSavedLocations(?string $customerId = null): array
     {
         // Only locations with valid address and coordinates can be selected.
         $companies = Company::where('is_active', true)
@@ -8688,6 +8688,23 @@ class BookingFlowService
             ];
         }
 
+        if ($customerId) {
+            $customerAddresses = DB::table('addresses')
+                ->where('addressable_type', Customer::class)->where('addressable_id', $customerId)->whereNotNull('latitude')->whereNotNull('longitude')
+                ->orderByDesc('is_default')->orderBy('created_at')
+                ->get(['id', 'label', 'type', 'address', 'latitude', 'longitude']);
+            foreach ($customerAddresses as $address) {
+                $locations[] = [
+                    'id' => 'customer-address:'.$address->id,
+                    'name' => $address->label ?: ucfirst($address->type).' address',
+                    'address' => $address->address,
+                    'latitude' => (float) $address->latitude,
+                    'longitude' => (float) $address->longitude,
+                    'type' => 'saved_location',
+                ];
+            }
+        }
+
         return $locations;
     }
 
@@ -8708,7 +8725,7 @@ class BookingFlowService
                     'email' => $customer->email,
                     'phone' => $customer->phone,
                     'nic' => $customer->nic,
-                    'address' => $customer->address,
+                    'address' => $customer->defaultAddressRecord()?->address,
                 ] : null;
             }
 

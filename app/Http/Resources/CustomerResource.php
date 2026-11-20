@@ -49,18 +49,13 @@ class CustomerResource extends JsonResource
             'driving_license_expiry' => $this->license_expiry,
             'dob'             => $this->dob,
             'gender'          => $this->gender,
-            'address'         => $this->address,
             'addresses'       => $this->whenLoaded('addresses', fn () => $this->addresses->map(fn ($address) => [
                 'id' => $address->id, 'label' => $address->label, 'type' => $address->type,
                 'address' => $address->address, 'city' => $address->city, 'state_id' => $address->state_id,
-                'country_id' => $address->country_id, 'postal_code' => $address->postal_code, 'is_default' => $address->is_default,
+                'country_id' => $address->country_id, 'state' => $address->state?->name ?? $address->state_name,
+                'country' => $address->country?->name ?? $address->country_name,
+                'postal_code' => $address->postal_code, 'latitude' => $address->latitude, 'longitude' => $address->longitude, 'is_default' => $address->is_default,
             ])->values()),
-            'country_id'      => $this->country_id,
-            'country'         => $this->getAttribute('country'),
-            'state_id'        => $this->state_id,
-            'state'           => $this->state?->name,
-            'city'            => $this->city,
-            'postal_code'     => $this->postal_code,
             'payment_methods' => $this->when(
                 $request->user()?->can('payment-methods.view') && $this->resource->relationLoaded('paymentMethods'),
                 fn () => PaymentMethodResource::collection($this->paymentMethods)

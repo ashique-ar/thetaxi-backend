@@ -67,12 +67,14 @@ class DriverResource extends JsonResource
             'profile_photo' => $profilePhoto ? $this->documentPayload($profilePhoto) : null,
             'documents' => $driverDocuments->map(fn ($document) => $this->documentPayload($document))->values(),
             'dob' => $this->dob,
-            'address' => $this->address,
-            'country_id' => $this->country_id,
-            'state_id' => $this->state_id,
-            'city' => $this->city,
+            'addresses' => $this->whenLoaded('addresses', fn () => $this->addresses->map(fn ($address) => [
+                'id' => $address->id, 'label' => $address->label, 'type' => $address->type,
+                'address' => $address->address, 'city' => $address->city, 'state_id' => $address->state_id,
+                'country_id' => $address->country_id, 'state' => $address->state?->name ?? $address->state_name,
+                'country' => $address->country?->name ?? $address->country_name, 'postal_code' => $address->postal_code,
+                'latitude' => $address->latitude, 'longitude' => $address->longitude, 'is_default' => $address->is_default,
+            ])->values()),
             'remarks' => $this->remarks,
-            'postal_code' => $this->postal_code,
             'emergency_contact_name' => $this->emergency_contact_name,
             'emergency_contact_phone' => $this->emergency_contact_phone,
             'blood_group' => $this->blood_group,
@@ -111,8 +113,6 @@ class DriverResource extends JsonResource
             ),
             // Relations
             'licenseType' => new DrivingLicenseTypeResource($this->whenLoaded('licenseType')),
-            'state' => new StateResource($this->whenLoaded('state')),
-            'country' => new CountryResource($this->whenLoaded('country')),
             'user' => new UserResource($this->whenLoaded('user')),
         ];
     }

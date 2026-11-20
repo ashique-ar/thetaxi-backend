@@ -108,7 +108,7 @@ class DriverController extends Controller
 
     private function driverListQuery(Request $request)
     {
-        $q = Driver::query();
+        $q = Driver::query()->with(['addresses.country', 'addresses.state']);
         if ($request->filled('search')) {
             $search = trim((string) $request->get('search'));
             $q->where(function ($query) use ($search) {
@@ -116,9 +116,8 @@ class DriverController extends Controller
                     ->orWhereLikeInsensitive('nic', $search)
                     ->orWhereLikeInsensitive('license_no', $search)
                     ->orWhereLikeInsensitive('license_type', $search)
-                    ->orWhereLikeInsensitive('address', $search)
-                    ->orWhereLikeInsensitive('city', $search)
-                    ->orWhereLikeInsensitive('postal_code', $search)
+                    ->orWhereHas('addresses', fn ($addresses) => $addresses->whereLikeInsensitive('address', $search)->orWhereLikeInsensitive('label', $search))
+                    ->orWhereHas('addresses', fn ($addresses) => $addresses->whereLikeInsensitive('city', $search)->orWhereLikeInsensitive('postal_code', $search))
                     ->orWhereLikeInsensitive('remarks', $search)
                     ->orWhereLikeInsensitive('blood_group', $search)
                     ->orWhereLikeInsensitive('medical_conditions', $search)
@@ -168,7 +167,7 @@ class DriverController extends Controller
             };
         }
         if ($request->filled('license_type')) $q->where('license_type', $request->license_type);
-        if ($request->filled('city')) $q->whereLikeInsensitive('city', trim($request->city));
+        if ($request->filled('city')) $q->whereHas('addresses', fn ($addresses) => $addresses->whereLikeInsensitive('city', trim($request->city)));
         if ($request->filled('hire_date_from')) $q->whereDate('hire_date', '>=', $request->hire_date_from);
         if ($request->filled('hire_date_to')) $q->whereDate('hire_date', '<=', $request->hire_date_to);
         if ($request->filled('has_device')) {
@@ -205,6 +204,10 @@ class DriverController extends Controller
     {
         $data = $request->validated();
         $data = $this->normalizeDriverPayload($data);
+        $addresses = $data['addresses'] ?? null;
+        if ($addresses === null && ! empty($data['address'])) $addresses = [['type' => 'other', 'address' => $data['address'], 'city' => $data['city'] ?? null, 'state_id' => $data['state_id'] ?? null, 'country_id' => $data['country_id'] ?? null, 'postal_code' => $data['postal_code'] ?? null, 'is_default' => true]];
+        unset($data['addresses']);
+        unset($data['address'], $data['city'], $data['state_id'], $data['country_id'], $data['postal_code']);
 
         try {
             $existingUser = !empty($data['user_id'])
@@ -240,11 +243,6 @@ class DriverController extends Controller
                     'license_issued_at' => $data['license_issued_at'] ?? null,
                     'license_reminder_days' => $data['license_reminder_days'] ?? 30,
                     'dob' => $data['dob'] ?? null,
-                    'address' => $data['address'] ?? null,
-                    'country_id' => $data['country_id'] ?? null,
-                    'state_id' => $data['state_id'] ?? null,
-                    'city' => $data['city'] ?? null,
-                    'postal_code' => $data['postal_code'] ?? null,
                     'default_vehicle_id' => $data['default_vehicle_id'] ?? null,
                     'remarks' => $data['remarks'] ?? null,
                     'emergency_contact_name' => $data['emergency_contact_name'] ?? null,
@@ -260,6 +258,7 @@ class DriverController extends Controller
                 if ($existingDriver?->trashed()) {
                     $existingDriver->restore();
                     $existingDriver->update($contextData);
+                    if ($addresses !== null) app(\App\Services\AddressSyncService::class)->sync($existingDriver, $addresses);
                     if (array_key_exists('payment_method', $data)) {
                         app(PaymentMethodSyncService::class)->syncOne(
                             $existingDriver,
@@ -267,7 +266,7 @@ class DriverController extends Controller
                             request()->user()->id
                         );
                     }
-                    $existingDriver->load(['user', 'licenseType', 'paymentMethod']);
+                    $existingDriver->load(['user', 'licenseType', 'paymentMethod', 'addresses']);
 
                     return response()->json([
                         'status' => 'success',
@@ -282,10 +281,11 @@ class DriverController extends Controller
 
                 $context = $this->contextService->switchContext($existingUser, 'driver', $contextData);
                 $driver = Driver::find($context->getAttribute('context_id'));
+                if ($driver && $addresses !== null) app(\App\Services\AddressSyncService::class)->sync($driver, $addresses);
                 if ($driver && array_key_exists('payment_method', $data)) {
                     app(PaymentMethodSyncService::class)->syncOne($driver, $data['payment_method'], request()->user()->id);
                 }
-                $driver?->load(['user', 'licenseType', 'paymentMethod', 'profilePhotoDocument']);
+                $driver?->load(['user', 'licenseType', 'paymentMethod', 'profilePhotoDocument', 'addresses']);
 
                 return response()->json([
                     'status' => 'success',
@@ -313,11 +313,6 @@ class DriverController extends Controller
                     'license_issued_at' => $data['license_issued_at'] ?? null,
                     'license_reminder_days' => $data['license_reminder_days'] ?? 30,
                     'dob' => $data['dob'] ?? null,
-                    'country_id' => $data['country_id'] ?? null,
-                    'state_id' => $data['state_id'] ?? null,
-                    'address' => $data['address'] ?? null,
-                    'city' => $data['city'] ?? null,
-                    'postal_code' => $data['postal_code'] ?? null,
                     'default_vehicle_id' => $data['default_vehicle_id'] ?? null,
                     'remarks' => $data['remarks'] ?? null,
                     'emergency_contact_name' => $data['emergency_contact_name'] ?? null,
@@ -332,10 +327,11 @@ class DriverController extends Controller
 
                 $context = $this->contextService->switchContext($user, 'driver', $contextData);
                 $driver = Driver::find($context->getAttribute('context_id'));
+                if ($driver && $addresses !== null) app(\App\Services\AddressSyncService::class)->sync($driver, $addresses);
                 if ($driver && array_key_exists('payment_method', $data)) {
                     app(PaymentMethodSyncService::class)->syncOne($driver, $data['payment_method'], request()->user()->id);
                 }
-                $driver?->load(['user', 'licenseType', 'paymentMethod']);
+                $driver?->load(['user', 'licenseType', 'paymentMethod', 'addresses']);
 
                 return response()->json([
                     'status' => 'success',
@@ -359,7 +355,7 @@ class DriverController extends Controller
             $driver->setAttribute('current_latitude', null);
             $driver->setAttribute('current_longitude', null);
         }
-        $driver->load(['user', 'country', 'state', 'licenseType', 'paymentMethod', 'licenseRenewals', 'devices', 'documents', 'profilePhotoDocument', 'defaultVehicle.documents', 'defaultVehicle.make', 'defaultVehicle.model', 'defaultVehicle.group']);
+        $driver->load(['user', 'licenseType', 'paymentMethod', 'addresses.country', 'addresses.state', 'licenseRenewals', 'devices', 'documents', 'profilePhotoDocument', 'defaultVehicle.documents', 'defaultVehicle.make', 'defaultVehicle.model', 'defaultVehicle.group']);
         return response()->json([
             'status' => 'success',
             'data' => new DriverResource($driver)
@@ -372,6 +368,10 @@ class DriverController extends Controller
             $previousLicense = $driver->only(['license_no', 'license_expiry']);
             $data = $this->normalizeDriverPayload($request->validated());
             $data['updated_user_id'] = $request->user()->id;
+            $addresses = $data['addresses'] ?? null;
+            if ($addresses === null && ! empty($data['address'])) $addresses = [['type' => 'other', 'address' => $data['address'], 'city' => $data['city'] ?? null, 'state_id' => $data['state_id'] ?? null, 'country_id' => $data['country_id'] ?? null, 'postal_code' => $data['postal_code'] ?? null, 'is_default' => true]];
+            unset($data['addresses']);
+            unset($data['address'], $data['city'], $data['state_id'], $data['country_id'], $data['postal_code']);
 
             // Separate user data from vehicle owner data
             $userData = array_intersect_key($data, array_flip([
@@ -382,6 +382,7 @@ class DriverController extends Controller
             ]));
 
             $driverData = array_diff_key($data, $userData);
+            unset($driverData['address'], $driverData['city'], $driverData['state_id'], $driverData['country_id'], $driverData['postal_code']);
 
             // Update user data if provided
             if (!empty($userData)) {
@@ -392,6 +393,7 @@ class DriverController extends Controller
             $paymentMethod = $driverData['payment_method'] ?? null;
             unset($driverData['payment_method']);
             $driver->update($driverData);
+            if ($addresses !== null) app(\App\Services\AddressSyncService::class)->sync($driver, $addresses);
 
             if ($driver->license_no && $driver->license_expiry && (
                 $previousLicense['license_no'] !== $driver->license_no

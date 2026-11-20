@@ -336,7 +336,7 @@ class InvoiceService
         $fullName  = trim("$firstName $lastName") ?: ($hasCheckoutContact ? 'Customer' : ($customer?->name ?? 'Customer'));
         $address = $hasCheckoutContact
             ? collect(['address', 'city', 'country'])->map(fn (string $field) => trim((string) ($checkoutContact[$field] ?? '')))->filter()->implode(', ')
-            : ($customer?->address ?? $user?->address);
+            : ($customer?->defaultAddressRecord()?->address ?? $user?->address);
 
         $dueDays = (int) (WebsiteSetting::getValue('invoice_due_days', 7) ?? 7);
 

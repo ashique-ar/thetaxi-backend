@@ -33,10 +33,6 @@ use Spatie\Activitylog\Support\LogOptions;
  * @property \Carbon\Carbon|null $license_expiry License expiration date
  * @property string|null $license_type Type of driver's license
  * @property \Carbon\Carbon|null $dob Date of birth
- * @property string|null $address Physical address
- * @property string|null $country_id Foreign key to countries table
- * @property string|null $state_id Foreign key to states table
- * @property string|null $city Foreign key to cities table
  * @property string|null $remarks Additional remarks about the driver
  * @property bool $is_online Whether driver is currently online
  * @property \Carbon\Carbon|null $last_active_at Last activity timestamp
@@ -52,8 +48,6 @@ use Spatie\Activitylog\Support\LogOptions;
  * @property \Carbon\Carbon|null $deleted_at Soft deletion timestamp
  * 
  * @property-read User $user User account associated with this driver
- * @property-read Country|null $country Country where driver is located
- * @property-read State|null $state State/province where driver is located
  * @property-read \Illuminate\Database\Eloquent\Collection<DriverLog> $logs Driver activity logs
  * @property-read \Illuminate\Database\Eloquent\Collection<Booking> $bookings Bookings assigned to this driver
  * @property-read \Illuminate\Database\Eloquent\Collection<DriverSession> $sessions Driver online sessions
@@ -100,12 +94,7 @@ class Driver extends BaseModel
         'license_type',
         'license_issued_at',
         'dob',
-        'address',
-        'country_id',
-        'state_id',
-        'city',
         'remarks',
-        'postal_code',
         'default_vehicle_id',
         'profile_photo_document_id',
         'license_reminder_days',
@@ -146,6 +135,18 @@ class Driver extends BaseModel
         'deleted_at' => 'datetime',
     ];
 
+    public function addresses()
+    {
+        return $this->morphMany(\App\Models\Address::class, 'addressable')->orderByDesc('is_default')->orderBy('created_at');
+    }
+
+    public function defaultAddressRecord(): ?\App\Models\Address
+    {
+        return $this->relationLoaded('addresses')
+            ? $this->addresses->firstWhere('is_default', true)
+            : $this->addresses()->with(['country', 'state'])->where('is_default', true)->first();
+    }
+
     /**
      * Get the user account associated with this driver.
      */
@@ -157,19 +158,9 @@ class Driver extends BaseModel
     /**
      * Get the country where driver is located.
      */
-    public function country(): BelongsTo
-    {
-        return $this->belongsTo(Country::class);
-    }
-
     /**
      * Get the state/province where driver is located.
      */
-    public function state(): BelongsTo
-    {
-        return $this->belongsTo(State::class);
-    }
-
     public function licenseType(): BelongsTo
     {
         return $this->belongsTo(DrivingLicenseType::class, 'license_type');

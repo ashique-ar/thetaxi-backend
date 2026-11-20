@@ -132,15 +132,12 @@ class CustomerService
                 ], fn ($value) => $value !== null));
             }
             $customer->update([
-                'address' => $data['customer_address'] ?? $customer->address,
-                'city' => $data['customer_city'] ?? $customer->city,
-                'country' => $data['customer_country'] ?? $customer->country,
-                'country_id' => $data['country_id'] ?? $customer->country_id,
                 'nic' => $data['customer_identification'] ?? $customer->nic,
                 'dob' => $data['dob'] ?? $customer->dob,
                 'gender' => $data['gender'] ?? $customer->gender,
                 'updated_user_id' => Auth::id(),
             ]);
+            if (array_key_exists('customer_address', $data)) $this->syncDefaultAddress($customer, $data);
 
             return $customer->fresh();
         });
@@ -342,10 +339,6 @@ class CustomerService
         }
 
         $customer->fill([
-            'address' => $data['customer_address'] ?? $customer->address,
-            'city' => $data['customer_city'] ?? $customer->city,
-            'country' => $data['customer_country'] ?? $customer->country,
-            'country_id' => $data['country_id'] ?? $customer->country_id,
             'nic' => $data['customer_identification'] ?? $customer->nic,
             'dob' => $data['dob'] ?? $customer->dob,
             'gender' => $data['gender'] ?? $customer->gender,
@@ -359,9 +352,34 @@ class CustomerService
         }
 
         $customer->save();
+        if (array_key_exists('customer_address', $data)) $this->syncDefaultAddress($customer, $data);
         $this->ensureCustomerContext($user, $customer);
 
         return $customer->fresh('user');
+    }
+
+    private function syncDefaultAddress(Customer $customer, array $data): void
+    {
+        $countryId = $data['country_id'] ?? null;
+        if (! $countryId && ! empty($data['customer_country'])) {
+            $countryId = \App\Models\Country::query()
+                ->whereRaw('LOWER(name) = ?', [strtolower(trim((string) $data['customer_country']))])
+                ->value('id');
+        }
+        $values = [
+            'label' => 'Primary address', 'type' => 'other', 'address' => trim((string) ($data['customer_address'] ?? '')),
+            'city' => $data['customer_city'] ?? null,
+            'country_id' => $countryId,
+            'country_name' => $data['customer_country'] ?? null,
+            'is_default' => true,
+        ];
+        $address = $customer->addresses()->where('is_default', true)->first();
+        if (! $values['address']) {
+            $address?->delete();
+            $customer->addresses()->orderBy('created_at')->first()?->update(['is_default' => true]);
+            return;
+        }
+        $address ? $address->update($values) : $customer->addresses()->create($values);
     }
 
     public function customerForUser(User $user): ?Customer

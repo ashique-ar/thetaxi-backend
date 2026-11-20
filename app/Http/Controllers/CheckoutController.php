@@ -245,7 +245,7 @@ class CheckoutController extends Controller
             return null;
         }
 
-        $customer = Customer::query()->with(['user', 'country'])->find($customerId);
+        $customer = Customer::query()->with(['user', 'addresses.country', 'addresses.state'])->find($customerId);
         if (!$customer?->user || $customer->user->trashed() || !$customer->user->is_active) {
             return null;
         }
@@ -351,10 +351,10 @@ class CheckoutController extends Controller
             Cache::forget($key);
             abort(422, 'We could not confirm those details. Please try again or enter your details below.');
         }
-        $customer->load(['user', 'country']);
+        $customer->load(['user', 'addresses.country', 'addresses.state']);
         Cache::forget($key);
         $email = mb_strtolower(trim((string) $customer->user->email));
-        $mobile = $this->normalizeCheckoutMobile((string) $customer->user->phone, $customer->country?->callcode);
+        $mobile = $this->normalizeCheckoutMobile((string) $customer->user->phone, $customer->defaultAddressRecord()?->country?->callcode);
         session()->put('checkout_verified_email', $email);
         session()->put('checkout_verified_email_at', now()->timestamp);
         session()->put('checkout_verified_customer_id', (string) $customer->id);
@@ -365,9 +365,9 @@ class CheckoutController extends Controller
             'last_name' => $customer->user->last_name,
             'email' => $customer->user->email,
             'phone' => $mobile,
-            'address' => $customer->address,
-            'city' => $customer->city,
-            'country' => $customer->getAttribute('country') ?: $customer->getRelation('country')?->name,
+            'address' => $customer->defaultAddressRecord()?->address,
+            'city' => $customer->defaultAddressRecord()?->city,
+            'country' => $customer->defaultAddressRecord()?->country?->name ?? $customer->defaultAddressRecord()?->country_name,
             'identification' => $customer->nic,
         ]]);
     }
@@ -538,16 +538,16 @@ class CheckoutController extends Controller
         $tourCheckoutCustomer = $this->sessionTourCustomer($cart);
         if ($customerLookupEnabled && session('checkout_verified_customer_id')
             && now()->timestamp - (int) session('checkout_verified_email_at', 0) <= 1800) {
-            $customer = Customer::query()->with(['user', 'country'])->find(session('checkout_verified_customer_id'));
+            $customer = Customer::query()->with(['user', 'addresses.country', 'addresses.state'])->find(session('checkout_verified_customer_id'));
             if ($this->isEligibleCheckoutCustomer($customer)) {
                 $verifiedCheckoutCustomer = [
                     'first_name' => $customer->user->first_name,
                     'last_name' => $customer->user->last_name,
                     'email' => $customer->user->email,
-                    'phone' => $this->normalizeCheckoutMobile((string) $customer->user->phone, $customer->country?->callcode),
-                    'address' => $customer->address,
-                    'city' => $customer->city,
-                    'country' => $customer->getAttribute('country') ?: $customer->getRelation('country')?->name,
+                    'phone' => $this->normalizeCheckoutMobile((string) $customer->user->phone, $customer->defaultAddressRecord()?->country?->callcode),
+                    'address' => $customer->defaultAddressRecord()?->address,
+                    'city' => $customer->defaultAddressRecord()?->city,
+                    'country' => $customer->defaultAddressRecord()?->country?->name ?? $customer->defaultAddressRecord()?->country_name,
                     'identification' => $customer->nic,
                 ];
             }
