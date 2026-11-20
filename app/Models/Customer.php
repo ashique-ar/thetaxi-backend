@@ -162,6 +162,11 @@ class Customer extends BaseModel
         return $this->hasMany(BillingAddress::class);
     }
 
+    public function addresses()
+    {
+        return $this->hasMany(CustomerAddress::class)->orderByDesc('is_default')->orderBy('created_at');
+    }
+
     public function paymentMethods()
     {
         return $this->morphMany(PaymentMethod::class, 'payable');

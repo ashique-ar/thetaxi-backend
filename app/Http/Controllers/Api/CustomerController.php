@@ -243,7 +243,7 @@ class CustomerController extends Controller
         $search = $request->get('q', '');
         $limit = (int) $request->get('limit', 20);
 
-        $customers = Customer::with('user')
+        $customers = Customer::with(['user', 'addresses'])
             ->when($search !== '', function ($query) use ($search) {
                 $query->whereHas('user', function ($userQuery) use ($search) {
                     $userQuery->whereLikeInsensitive('first_name', $search)
@@ -291,12 +291,14 @@ class CustomerController extends Controller
     public function store(CreateCustomerRequest $request): JsonResponse
     {
         $data = $request->validated();
+        $addresses = $data['addresses'] ?? null;
+        unset($data['addresses']);
         abort_unless(! array_key_exists('payment_methods', $data) || $request->user()->can('payment-methods.manage'), 403,
             'Payment method management permission is required.');
         if ($dob = SriLankanNic::dateOfBirth($data['nic'] ?? null)) $data['dob'] = $dob;
         $data['created_user_id'] = $request->user()->id;
         try {
-            return DB::transaction(function () use ($data) {
+            return DB::transaction(function () use ($data, $addresses) {
                 $existingUser = !empty($data['user_id'])
                     ? User::lockForUpdate()->findOrFail($data['user_id'])
                     : (!empty($data['email']) ? User::whereRaw('LOWER(email) = ?', [strtolower(trim($data['email']))])->lockForUpdate()->first() : null);
@@ -340,6 +342,8 @@ class CustomerController extends Controller
 
                 $context = $this->contextService->switchContext($existingUser, 'customer', $contextData);
                 $customer = Customer::with(['user', 'state', 'paymentMethods'])->find($context->getAttribute('context_id'));
+                if ($addresses !== null) $this->syncCustomerAddresses($customer, $addresses);
+                $customer->load('addresses');
                 if (array_key_exists('payment_methods', $data)) {
                     app(PaymentMethodSyncService::class)->syncMany($customer, $data['payment_methods'] ?? [], $data['created_user_id']);
                     $customer->load('paymentMethods');
@@ -359,6 +363,7 @@ class CustomerController extends Controller
                     'email' => $data['email'] ?? null,
                     'password' => bcrypt($data['password'] ?? Str::random(12)),
                     'phone' => $data['phone'] ?? null,
+                    'profile_image' => $data['profile_image'] ?? null,
                     'email_verified_at' => !empty($data['email']) ? now() : null,
                     'is_active' => true,
                 ]);
@@ -387,6 +392,8 @@ class CustomerController extends Controller
 
                 $context = $this->contextService->switchContext($user, 'customer', $contextData);
                 $customer = Customer::with(['user', 'state', 'paymentMethods'])->find($context->getAttribute('context_id'));
+                if ($addresses !== null) $this->syncCustomerAddresses($customer, $addresses);
+                $customer->load('addresses');
                 if (array_key_exists('payment_methods', $data)) {
                     app(PaymentMethodSyncService::class)->syncMany($customer, $data['payment_methods'] ?? [], $data['created_user_id']);
                     $customer->load('paymentMethods');
@@ -415,7 +422,7 @@ class CustomerController extends Controller
         $completedBookings = DB::table('bookings as booking')->where('booking.customer_id', $customer->id)
             ->whereNotNull('booking.completed_at')->whereNull('booking.deleted_at');
         $completedBookingCount = $completedBookings->count();
-        $customer->load(['user', 'state', 'paymentMethods']);
+        $customer->load(['user', 'state', 'paymentMethods', 'addresses']);
         $customer->setAttribute('completed_booking_count', $completedBookingCount);
         $customer->setAttribute('customer_lifecycle', $completedBookingCount > 0 ? 'returning' : 'no_completed_booking');
         $customer->setAttribute('relationship_owner', $this->currentRelationshipOwner($customer));
@@ -624,7 +631,7 @@ class CustomerController extends Controller
                     ->withProperties(['customer_id' => $locked->id, 'verified_email' => (bool) $user->email_verified_at, 'verified_phone' => (bool) $user->phone_verified_at])
                     ->log('customer_portal_activated');
             }
-            return $locked->load(['user', 'state', 'paymentMethods']);
+            return $locked->load(['user', 'state', 'paymentMethods', 'addresses']);
         });
 
         return response()->json(['status' => 'success', 'data' => new CustomerResource($customer)]);
@@ -677,13 +684,15 @@ class CustomerController extends Controller
         $customer = $this->findCustomer($customer);
         try {
             $data = $request->validated();
+            $addresses = $data['addresses'] ?? null;
+            unset($data['addresses']);
             abort_unless(! array_key_exists('payment_methods', $data) || $request->user()->can('payment-methods.manage'), 403,
                 'Payment method management permission is required.');
             if ($dob = SriLankanNic::dateOfBirth($data['nic'] ?? null)) $data['dob'] = $dob;
             $data['updated_user_id'] = $request->user()->id;
 
             $userData = array_intersect_key($data, array_flip([
-                'first_name', 'last_name', 'email', 'phone'
+                'first_name', 'last_name', 'email', 'phone', 'profile_image'
             ]));
 
             $customerData = array_diff_key($data, $userData, ['payment_methods' => true]);
@@ -692,13 +701,16 @@ class CustomerController extends Controller
                 $customer->user->update($userData);
             }
 
-            $customer->update($customerData);
+            DB::transaction(function () use ($customer, $customerData, $addresses, $request): void {
+                $customer->update($customerData);
+                if ($addresses !== null) $this->syncCustomerAddresses($customer, $addresses);
+            });
 
             if (array_key_exists('payment_methods', $data)) {
                 app(PaymentMethodSyncService::class)->syncMany($customer, $data['payment_methods'] ?? [], $request->user()->id);
             }
 
-            $customer->load(['user', 'state', 'paymentMethods']);
+            $customer->load(['user', 'state', 'paymentMethods', 'addresses']);
 
             return response()->json([
                 'status' => 'success',
@@ -713,6 +725,26 @@ class CustomerController extends Controller
                 'error' => $e->getMessage()
             ], 500);
         }
+    }
+
+    private function syncCustomerAddresses(Customer $customer, array $addresses): void
+    {
+        $defaultIndex = collect($addresses)->search(fn ($address) => ! empty($address['is_default']));
+        if ($defaultIndex === false && $addresses) $defaultIndex = 0;
+        $kept = [];
+        foreach (array_values($addresses) as $index => $address) {
+            $id = $address['id'] ?? null;
+            unset($address['id']);
+            $address['is_default'] = $index === $defaultIndex;
+            if ($id) {
+                $record = $customer->addresses()->whereKey($id)->firstOrFail();
+                $record->update($address);
+            } else {
+                $record = $customer->addresses()->create($address);
+            }
+            $kept[] = $record->id;
+        }
+        $customer->addresses()->whereNotIn('id', $kept ?: [''])->delete();
     }
 
     public function destroy(Customer $customer): JsonResponse

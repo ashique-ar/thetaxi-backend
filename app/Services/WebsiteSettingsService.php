@@ -49,6 +49,7 @@ class WebsiteSettingsService
         'portal_sidebar_appearance',
         'portal_sidebar_style',
         'booking_base_currency',
+        'booking_approvals_enabled',
         'booking_advance_hours',
         'customer_portal_booking_advance_hours',
         'corporate_portal_booking_advance_hours',
@@ -1089,6 +1090,7 @@ class WebsiteSettingsService
     public function getBookingSettings(): array
     {
         $types = [
+            'booking_approvals_enabled',
             'booking_advance_hours',
             'customer_portal_booking_advance_hours',
             'corporate_portal_booking_advance_hours',
@@ -1103,6 +1105,9 @@ class WebsiteSettingsService
             'checkout_customer_verification_resend_seconds',
             'enable_whatsapp_quote_requests',
             'booking_base_currency',
+            'tax_enabled',
+            'tax_rate',
+            'tax_label',
             'booking_submit_inquiry_label',
             'booking_search_submit_label',
             'booking_return_trip_toggle_label',

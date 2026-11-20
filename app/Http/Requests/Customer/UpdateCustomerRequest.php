@@ -2,6 +2,7 @@
 // app/Http/Requests/Customer/UpdateCustomerRequest.php
 namespace App\Http\Requests\Customer;
 
+use App\Models\Customer;
 use Illuminate\Foundation\Http\FormRequest;
 
 class UpdateCustomerRequest extends FormRequest
@@ -38,6 +39,7 @@ class UpdateCustomerRequest extends FormRequest
                 },
             ],
             'phone' => 'sometimes|nullable|string|max:20',
+            'profile_image' => ['sometimes', 'nullable', 'string', 'max:2048'],
             'wedding_date' => 'sometimes|nullable|date',
             'type' => 'sometimes|nullable|string|max:50',
             'sub_type' => 'sometimes|nullable|string|max:50',
@@ -55,6 +57,16 @@ class UpdateCustomerRequest extends FormRequest
             'country_id' => ['sometimes', 'nullable', 'exists:countries,id'],
             'state_id' => ['sometimes', 'nullable', 'exists:states,id'],
             'city' => ['sometimes', 'nullable', 'string'],
+            'addresses' => ['sometimes', 'array', 'max:50'],
+            'addresses.*.id' => ['nullable', 'uuid'],
+            'addresses.*.label' => ['nullable', 'string', 'max:100'],
+            'addresses.*.type' => ['required', 'in:home,office,billing,other'],
+            'addresses.*.address' => ['required', 'string', 'max:2000'],
+            'addresses.*.city' => ['nullable', 'string', 'max:255'],
+            'addresses.*.state_id' => ['nullable', 'exists:states,id'],
+            'addresses.*.country_id' => ['nullable', 'exists:countries,id'],
+            'addresses.*.postal_code' => ['nullable', 'string', 'max:20'],
+            'addresses.*.is_default' => ['nullable', 'boolean'],
             'default_payment_arrangement' => ['sometimes', 'nullable', 'in:cash_to_driver,online,advance_then_balance,deposit_then_balance,pay_at_end,account_credit,bank_transfer,card,complimentary'],
             'payment_methods' => ['sometimes', 'nullable', 'array'],
             'payment_methods.*.id' => ['nullable', 'uuid'],

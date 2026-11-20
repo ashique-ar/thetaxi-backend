@@ -25,7 +25,7 @@ class BookingWorkflowSettingsResolver
                 'require_signed_agreement' => $business['require_signed_agreement'] && (bool) ($serviceConfig['signed_agreement_required'] ?? false),
                 'require_driver_license' => (bool) ($serviceConfig['driver_license_required'] ?? false),
                 'require_customer_identity_document' => (bool) ($serviceConfig['customer_identity_document_required'] ?? false),
-                'require_booking_approval' => (bool) ($serviceConfig['booking_approval_required'] ?? false),
+                'require_booking_approval' => $business['require_booking_approval'] && (bool) ($serviceConfig['booking_approval_required'] ?? false),
                 'require_handover_checklist' => (bool) ($serviceConfig['handover_checklist_required'] ?? false),
             ];
         }
@@ -46,10 +46,11 @@ class BookingWorkflowSettingsResolver
             if (array_key_exists($configKey, $serviceConfig ?? []) && $serviceConfig[$configKey] !== null) {
                 if ($settingKey === 'require_signed_agreement') {
                     $settings[$settingKey] = $defaults[$settingKey] && (bool) $serviceConfig[$configKey];
+                } elseif ($settingKey === 'require_booking_approval') {
+                    $settings[$settingKey] = $defaults[$settingKey] && (bool) $serviceConfig[$configKey];
                 } elseif (in_array($settingKey, [
                         'require_driver_license',
                         'require_customer_identity_document',
-                        'require_booking_approval',
                         'require_handover_checklist',
                     ], true)) {
                     $settings[$settingKey] = (bool) $serviceConfig[$configKey];
@@ -175,7 +176,7 @@ class BookingWorkflowSettingsResolver
                 'require_signed_agreement' => $this->enabled('booking_signed_agreement_required', true),
                 'require_driver_license' => false,
                 'require_customer_identity_document' => false,
-                'require_booking_approval' => false,
+                'require_booking_approval' => $this->enabled('booking_approvals_enabled', true),
                 'require_handover_checklist' => false,
             ];
         }

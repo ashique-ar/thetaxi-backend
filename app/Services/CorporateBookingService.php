@@ -45,7 +45,7 @@ class CorporateBookingService
         $creditApprovalRequired = $this->requiresCreditApproval($corporate, $data);
 
         return DB::transaction(function () use ($employee, $corporate, $data, $creditApprovalRequired) {
-            $needsApproval = $corporate->approval_required || $creditApprovalRequired;
+            $needsApproval = $this->bookingApprovalsEnabled() && ($corporate->approval_required || $creditApprovalRequired);
 
             $params = array_merge($data, [
                 'customer_id' => $this->resolveCustomerIdForEmployee($employee),
@@ -104,8 +104,10 @@ class CorporateBookingService
         $creditApprovalRequired = $this->requiresCreditApproval($corporate, $data);
 
         return DB::transaction(function () use ($requester, $corporate, $data, $creditApprovalRequired) {
-            $needsApproval = ($corporate->approval_required && ! $corporate->exempt_coordinator_from_approval)
-                || $creditApprovalRequired;
+            $needsApproval = $this->bookingApprovalsEnabled() && (
+                ($corporate->approval_required && ! $corporate->exempt_coordinator_from_approval)
+                || $creditApprovalRequired
+            );
             $params = array_merge($data, [
                 'customer_id' => null,
                 'is_corporate_booking' => true,
@@ -170,8 +172,10 @@ class CorporateBookingService
         $creditApprovalRequired = $this->requiresCreditApproval($corporate, $data);
 
         return DB::transaction(function () use ($coordinator, $targetEmployee, $corporate, $data, $creditApprovalRequired) {
-            $needsApproval = ($corporate->approval_required && ! $corporate->exempt_coordinator_from_approval)
-                || $creditApprovalRequired;
+            $needsApproval = $this->bookingApprovalsEnabled() && (
+                ($corporate->approval_required && ! $corporate->exempt_coordinator_from_approval)
+                || $creditApprovalRequired
+            );
 
             $params = array_merge($data, [
                 'customer_id' => $this->resolveCustomerIdForEmployee($targetEmployee),
@@ -1295,6 +1299,11 @@ class CorporateBookingService
     }
 
     // ─── Audit Logging ────────────────────────────────────────────────
+
+    private function bookingApprovalsEnabled(): bool
+    {
+        return filter_var(app(WebsiteSettingsService::class)->get('booking_approvals_enabled', true), FILTER_VALIDATE_BOOLEAN);
+    }
 
     private function resolveCustomerIdForEmployee(CorporateEmployee $employee): string
     {

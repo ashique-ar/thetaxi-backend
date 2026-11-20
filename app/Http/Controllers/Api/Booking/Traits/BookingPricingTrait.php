@@ -96,6 +96,7 @@ trait BookingPricingTrait
                 'preserve_custom_addon_prices' => 'sometimes|boolean',
                 'force_recalculation' => 'sometimes|boolean',
                 'applied_discounts' => 'sometimes|array',
+                'include_tax' => 'sometimes|boolean',
             ];
 
             if ($usesDropoffTime) {

@@ -3993,6 +3993,10 @@ class BookingLifecycleService
      */
     private function checkAllocationRequiresApproval(Booking $booking): bool
     {
+        if (!filter_var(app(WebsiteSettingsService::class)->get('booking_approvals_enabled', true), FILTER_VALIDATE_BOOLEAN)) {
+            return false;
+        }
+
         // 1. Global override
         $globalRequired = $this->normalizeSettingBoolean(
             WebsiteSetting::getValue('allocation_requires_approval', 'false'),

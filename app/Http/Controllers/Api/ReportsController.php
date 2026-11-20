@@ -1002,10 +1002,11 @@ class ReportsController extends Controller
         $pagination = $request->validate([
             'page' => ['sometimes', 'integer', 'min:1'],
             'per_page' => ['sometimes', 'integer', 'min:1', 'max:100'],
-            'vehicle_sort_by' => ['nullable', 'in:registration_number,category,status'],
+            'vehicle_sort_by' => ['nullable', 'in:registration_number,category,status,idle_days'],
             'sort_direction' => ['nullable', 'in:asc,desc'],
         ]);
         $filters = $this->parseFilters($request);
+        $minimumIdleDays = $filters['min_idle_days'] ?? null;
         $comparisonDates = $request->validate([
             'compare_date_from' => ['sometimes', 'required_with:compare_date_to', 'date_format:Y-m-d'],
             'compare_date_to' => ['sometimes', 'required_with:compare_date_from', 'date_format:Y-m-d', 'after_or_equal:compare_date_from'],
@@ -1013,10 +1014,19 @@ class ReportsController extends Controller
         $direction = $pagination['sort_direction'] ?? 'asc';
         $sortBy = $pagination['vehicle_sort_by'] ?? 'registration_number';
         $vehicles = $this->filteredReportVehicles($filters);
-        $filteredVehicleIds = (clone $vehicles)->select('vehicles.id');
+        if ($minimumIdleDays !== null) {
+            $lastTrip = $this->vehicleLastTripQuery($filters);
+            $vehicles->leftJoinSub($lastTrip, 'report_vehicle_last_trip', fn ($join) => $join->on('report_vehicle_last_trip.vehicle_id', '=', 'vehicles.id'))
+                ->where(function ($query) use ($minimumIdleDays) {
+                    $query->whereNull('report_vehicle_last_trip.last_trip_at')
+                        ->orWhere('report_vehicle_last_trip.last_trip_at', '<', now(TimezoneService::getUserTimezone())->startOfDay()->subDays((int) $minimumIdleDays)->utc());
+                });
+        }
+        $filteredVehicleIds = (clone $vehicles)->reorder()->select('vehicles.id');
         match ($sortBy) {
             'category' => $vehicles->leftJoin('vehicle_groups as report_vehicle_groups', 'vehicles.vehicle_group_id', '=', 'report_vehicle_groups.id')->orderBy('report_vehicle_groups.name', $direction)->select('vehicles.*'),
             'status' => $vehicles->orderBy('vehicles.status', $direction),
+            'idle_days' => $vehicles->orderByRaw('report_vehicle_last_trip.last_trip_at IS NOT NULL')->orderBy('report_vehicle_last_trip.last_trip_at', $direction),
             default => $vehicles->orderBy('vehicles.license_plate', $direction),
         };
         $vehicles->orderBy('vehicles.id');
@@ -1025,9 +1035,12 @@ class ReportsController extends Controller
         $vehicles = $vehicles->paginate($perPage, ['*'], 'page', $page);
         $vehicleIds = collect($vehicles->items())->pluck('id');
         $pageRows = $this->vehicleReportMetrics($filters, $vehicleIds)->get()->groupBy(fn ($metric) => (string) $metric->vehicle_id);
-        $data = collect($vehicles->items())->flatMap(function ($vehicle) use ($pageRows) {
+        $lastTrips = $this->vehicleLastTripQuery($filters, $vehicleIds)->get()->keyBy(fn ($row) => (string) $row->vehicle_id);
+        $today = Carbon::today(TimezoneService::getUserTimezone());
+        $data = collect($vehicles->items())->flatMap(function ($vehicle) use ($pageRows, $lastTrips, $today) {
             $metrics = $pageRows->get((string) $vehicle->id, collect());
             if ($metrics->isEmpty()) $metrics = collect([(object) ['currency' => '', 'trip_count' => 0, 'priced_completed_trips' => 0, 'unpriced_completed_trips' => 0, 'completed_revenue' => 0]]);
+            $lastTrip = $lastTrips->get((string) $vehicle->id)?->last_trip_at;
             return $metrics->map(fn ($metric) => [
                 'id' => (string) $vehicle->id,
                 'registration_number' => $vehicle->license_plate,
@@ -1039,6 +1052,8 @@ class ReportsController extends Controller
                 'total_revenue' => (float) $metric->completed_revenue,
                 'currency' => (string) $metric->currency,
                 'status' => $vehicle->status ?? $vehicle->availability_status,
+                'last_trip_at' => $lastTrip,
+                'idle_days' => $lastTrip ? (int) Carbon::parse($lastTrip)->setTimezone(TimezoneService::getUserTimezone())->startOfDay()->diffInDays($today) : null,
             ]);
         })->values();
         $summaryByCurrency = DB::query()->fromSub($this->vehicleReportMetrics($filters, $filteredVehicleIds), 'vehicle_report_metrics')
@@ -1065,7 +1080,7 @@ class ReportsController extends Controller
                 'last_page' => $vehicles->lastPage(),
                 'to' => $vehicles->lastItem(),
                 'total' => $vehicles->total(),
-                'summary' => ['total_vehicles' => $this->filteredReportVehicles($filters)->count(), 'trips' => (int) $summaryByCurrency->sum('trips'), 'revenue_by_currency' => $summaryByCurrency, 'comparison' => $comparison],
+                'summary' => ['total_vehicles' => (clone $filteredVehicleIds)->distinct()->count('vehicles.id'), 'idle_vehicles' => (clone $filteredVehicleIds)->distinct()->count('vehicles.id'), 'trips' => (int) $summaryByCurrency->sum('trips'), 'revenue_by_currency' => $summaryByCurrency, 'comparison' => $comparison],
             ],
         ]);
     }
@@ -1246,10 +1261,13 @@ class ReportsController extends Controller
     {
         $vehicles = $this->filteredReportVehicles($filters)->orderBy('title')->get();
         $metrics = $this->vehicleReportMetrics($filters, $vehicles->pluck('id'))->get()->groupBy(fn ($row) => (string) $row->vehicle_id);
+        $lastTrips = $this->vehicleLastTripQuery($filters, $vehicles->pluck('id'))->get()->keyBy(fn ($row) => (string) $row->vehicle_id);
+        $today = Carbon::today(TimezoneService::getUserTimezone());
 
-        return $vehicles->flatMap(function ($vehicle) use ($metrics) {
+        return $vehicles->flatMap(function ($vehicle) use ($metrics, $lastTrips, $today) {
                 $rows = $metrics->get((string) $vehicle->id, collect());
                 if ($rows->isEmpty()) $rows = collect([(object) ['currency' => '', 'trip_count' => 0, 'priced_completed_trips' => 0, 'unpriced_completed_trips' => 0, 'completed_revenue' => 0]]);
+                $lastTrip = $lastTrips->get((string) $vehicle->id)?->last_trip_at;
                 return $rows->map(fn ($metric) => [
                     'id' => (string) $vehicle->id,
                     'registration_number' => $vehicle->license_plate,
@@ -1261,6 +1279,8 @@ class ReportsController extends Controller
                     'total_revenue' => (float) $metric->completed_revenue,
                     'currency' => (string) $metric->currency,
                     'status' => $vehicle->status ?? $vehicle->availability_status,
+                    'last_trip_at' => $lastTrip,
+                    'idle_days' => $lastTrip ? (int) Carbon::parse($lastTrip)->setTimezone(TimezoneService::getUserTimezone())->startOfDay()->diffInDays($today) : null,
                 ]);
             })->values()->all();
     }
@@ -1295,6 +1315,23 @@ class ReportsController extends Controller
 
         $this->applyReportBookingScope($query);
 
+        return $query;
+    }
+
+    private function vehicleLastTripQuery(array $filters, $vehicleIds = null)
+    {
+        $query = DB::table('booking_items')
+            ->join('bookings', 'bookings.id', '=', 'booking_items.booking_id')
+            ->whereNotNull('booking_items.vehicle_id')
+            ->whereNotNull('booking_items.from_date')
+            ->where('booking_items.status', 'completed')
+            ->whereRaw('COALESCE(booking_items.to_date, booking_items.from_date) < ?', [now(TimezoneService::getUserTimezone())->startOfDay()->utc()])
+            ->where('booking_items.from_date', '<', now(TimezoneService::getUserTimezone())->startOfDay()->utc())
+            ->when($vehicleIds !== null, fn ($q) => $q->whereIn('booking_items.vehicle_id', $vehicleIds))
+            ->selectRaw('booking_items.vehicle_id, MAX(COALESCE(booking_items.to_date, booking_items.from_date)) as last_trip_at')
+            ->groupBy('booking_items.vehicle_id');
+        $this->applyReportBookingScope($query);
+        $this->applyResponsibleFilters($query, $filters);
         return $query;
     }
 
@@ -1602,6 +1639,7 @@ class ReportsController extends Controller
         $rules = [
             'date_from' => ['nullable', 'date_format:Y-m-d'],
             'date_to' => ['nullable', 'date_format:Y-m-d', 'after_or_equal:date_from'],
+            'min_idle_days' => ['nullable', 'integer', 'min:0', 'max:3650'],
             'locale' => ['nullable', 'in:en,tr'],
             'search' => ['nullable', 'string', 'max:100'],
             'vehicle_id' => ['nullable', 'uuid'],
@@ -1637,6 +1675,7 @@ class ReportsController extends Controller
             'date_to'        => $request->get('date_to') ?: ($hasExplicitRange ? null : $today),
             'locale'         => $request->get('locale', 'en'),
             'vehicle_id'     => $request->get('vehicle_id'),
+            'min_idle_days'  => $request->get('min_idle_days'),
             'customer_id'    => $request->get('customer_id'),
             'customer_status' => $request->get('customer_status'),
             'customer_activity' => $request->get('customer_activity'),
@@ -2405,11 +2444,19 @@ class ReportsController extends Controller
 
     private function exportVehicleReport(array $filters, string $format): Response
     {
-        $rows = collect($this->vehicleReportRows($filters));
-        $headers = ['Vehicle', 'Registration', 'Category', 'Trips in range', 'Priced completed trips', 'Unpriced completed trips', 'Completed revenue', 'Currency', 'Status'];
+        $minimumIdleDays = $filters['min_idle_days'] ?? null;
+        $vehicles = $this->filteredReportVehicles($filters);
+        if ($minimumIdleDays !== null) {
+            $lastTrip = $this->vehicleLastTripQuery($filters);
+            $vehicles->leftJoinSub($lastTrip, 'report_vehicle_last_trip', fn ($join) => $join->on('report_vehicle_last_trip.vehicle_id', '=', 'vehicles.id'))
+                ->where(fn ($query) => $query->whereNull('report_vehicle_last_trip.last_trip_at')->orWhere('report_vehicle_last_trip.last_trip_at', '<', now(TimezoneService::getUserTimezone())->startOfDay()->subDays((int) $minimumIdleDays)->utc()));
+        }
+        $vehicleIds = $vehicles->pluck('vehicles.id');
+        $rows = collect($this->vehicleReportRows($filters))->whereIn('id', $vehicleIds);
+        $headers = ['Vehicle', 'Registration', 'Category', 'Trips in range', 'Priced completed trips', 'Unpriced completed trips', 'Completed revenue', 'Currency', 'Status', 'Last trip', 'Idle days'];
         $data = $rows->map(fn ($vehicle) => [
             $vehicle['vehicle_info'], $vehicle['registration_number'], $vehicle['category'],
-            $vehicle['total_bookings'], $vehicle['priced_completed_trips'], $vehicle['unpriced_completed_trips'], $vehicle['total_revenue'], $vehicle['currency'], $vehicle['status'],
+            $vehicle['total_bookings'], $vehicle['priced_completed_trips'], $vehicle['unpriced_completed_trips'], $vehicle['total_revenue'], $vehicle['currency'], $vehicle['status'], $vehicle['last_trip_at'], $vehicle['idle_days'],
         ])->all();
 
         return $this->reportResponse('vehicles_report', $format, $headers, $data, $filters, $filters['locale'] ?? 'en');
@@ -2548,6 +2595,7 @@ class ReportsController extends Controller
         $labels = $isTurkish
             ? ['Report' => 'Rapor', 'Generated at' => 'Oluşturulma zamanı', 'Time zone' => 'Saat dilimi', 'Access scope' => 'Erişim kapsamı', 'Date range' => 'Tarih aralığı', 'Comparison period' => 'Karşılaştırma dönemi', 'Period comparison' => 'Dönem karşılaştırması', 'Currency handling' => 'Para birimi işleme', 'Applied filters' => 'Uygulanan filtreler', 'Definition' => 'Tanım', 'Data rows' => 'Veri satırı', 'booking_status' => 'Rezervasyon durumu', 'payment_status' => 'Ödeme durumu', 'staff_user_id' => 'Personel kullanıcı kimliği', 'organization_unit_id' => 'Organizasyon birimi kimliği', 'service_type_id' => 'Hizmet türü kimliği', 'maintenance_status' => 'Bakım durumu', 'maintenance_cost_status' => 'Maliyet kaydı durumu', 'activity_date_from' => 'Hareket dönemi başlangıcı', 'activity_date_to' => 'Hareket dönemi bitişi', 'search' => 'Arama', 'vehicle_id' => 'Araç kimliği', 'customer_id' => 'Müşteri kimliği', 'agent_id' => 'Acenta kimliği', 'min_amount' => 'En düşük tutar', 'max_amount' => 'En yüksek tutar', 'currency' => 'Para birimi', 'period' => 'Gruplama dönemi']
             : ['Report' => 'Report', 'Generated at' => 'Generated at', 'Time zone' => 'Time zone', 'Access scope' => 'Access scope', 'Date range' => 'Date range', 'Comparison period' => 'Comparison period', 'Period comparison' => 'Period comparison', 'Currency handling' => 'Currency handling', 'Applied filters' => 'Applied filters', 'Definition' => 'Definition', 'Data rows' => 'Data rows', 'booking_status' => 'Booking status', 'payment_status' => 'Payment status', 'staff_user_id' => 'Staff user ID', 'organization_unit_id' => 'Organization unit ID', 'service_type_id' => 'Service type ID', 'maintenance_status' => 'Maintenance status', 'maintenance_cost_status' => 'Cost recording status', 'activity_date_from' => 'Booking activity from', 'activity_date_to' => 'Booking activity through', 'search' => 'Search', 'vehicle_id' => 'Vehicle ID', 'customer_id' => 'Customer ID', 'agent_id' => 'Agent ID', 'min_amount' => 'Minimum amount', 'max_amount' => 'Maximum amount', 'currency' => 'Currency', 'period' => 'Grouping period'];
+        $labels['min_idle_days'] = $isTurkish ? 'En az boşta gün' : 'Minimum idle days';
         $labels['customer_activity'] = $isTurkish ? 'Müşteri rezervasyon hareketi' : 'Customer booking activity';
         $labels['unpriced_only'] = $isTurkish ? 'Fiyatı kaydedilmemiş tamamlanan rezervasyonlar' : 'Completed bookings without a recorded price';
         $timezone = TimezoneService::getUserTimezone();

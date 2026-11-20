@@ -54,6 +54,7 @@ class BusinessSettingController extends Controller
         ],
         'booking' => [
             'booking_base_currency',
+            'booking_approvals_enabled',
             'booking_advance_hours',
             'booking_confirmation_cc_creator',
             'customer_portal_booking_advance_hours',
@@ -166,6 +167,7 @@ class BusinessSettingController extends Controller
         $categories['booking']['feature_driver_management_enabled'] ??= true;
         $categories['booking']['driver_form_public_enabled'] ??= false;
         $categories['booking']['booking_signed_agreement_required'] ??= true;
+        $categories['booking']['booking_approvals_enabled'] ??= true;
         return response()->json([
             'status' => 'success',
             'data' => $categories,
@@ -195,6 +197,7 @@ class BusinessSettingController extends Controller
                 'assignment_enable_qc_stage' => ['sometimes', 'boolean'],
                 'assignment_enable_maintenance_stage' => ['sometimes', 'boolean'],
                 'booking_signed_agreement_required' => ['sometimes', 'boolean'],
+                'booking_approvals_enabled' => ['sometimes', 'boolean'],
                 'tour_ai_itinerary_enabled' => ['sometimes', 'boolean'],
                 'add_trip_vehicle_group_pricing_enabled' => ['sometimes', 'boolean'],
             ]);

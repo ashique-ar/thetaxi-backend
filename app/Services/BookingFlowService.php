@@ -2816,6 +2816,7 @@ class BookingFlowService
             $booking->base_amount = $totals['base_amount'];
             $booking->addons_cost = $totals['addons_cost'];
             $booking->discount_amount = $totals['discount_amount'];
+            $booking->tax_amount = (float) ($pricing['tax_amount'] ?? 0);
             $booking->total_estimated = $totals['total_estimated'];
             $booking->duration_metrics = $totals['duration_metrics'] ?? null;
             $booking->distance_metrics = $totals['distance_metrics'] ?? null;
@@ -3553,6 +3554,7 @@ class BookingFlowService
             $booking->base_amount = $totals['base_amount'];
             $booking->addons_cost = $totals['addons_cost'];
             $booking->discount_amount = $totals['discount_amount'];
+            $booking->tax_amount = (float) ($pricing['tax_amount'] ?? 0);
             $booking->total_estimated = $totals['total_estimated'];
             $booking->duration_metrics = $totals['duration_metrics'] ?? null;
             $booking->distance_metrics = $totals['distance_metrics'] ?? null;
@@ -4154,6 +4156,7 @@ class BookingFlowService
                         'slab_definition_id' => $itemData['slab_definition_id']
                             ?? data_get($itemData, 'metadata.slab_definition_id'),
                         'booking_id' => $bookingId,
+                        'include_tax' => $params['include_tax'] ?? false,
                         'preserve_custom_pricing' => $params['preserve_custom_pricing'] ?? false,
                         'variable_customizations' => $params['variable_customizations'] ?? [],
                     ];
@@ -4308,17 +4311,31 @@ class BookingFlowService
                 $bookingLevelDiscount = min($totalEstimated, $bookingLevelDiscount);
                 $totalDiscountAmount += $bookingLevelDiscount;
                 $totalEstimated = max(0, $totalEstimated - $bookingLevelDiscount);
+                $taxAmount = filter_var($params['include_tax'] ?? false, FILTER_VALIDATE_BOOL)
+                    ? (float) ($params['tax_amount'] ?? 0)
+                    : 0;
+                if ($taxAmount <= 0 && filter_var($params['include_tax'] ?? false, FILTER_VALIDATE_BOOL)) {
+                    $taxSettings = app(WebsiteSettingsService::class);
+                    $taxRate = (float) ($taxSettings->get('tax_rate') ?? config('booking.tax.rate', 0.18));
+                    $taxRate = max(0, min(1, $taxRate > 1 ? $taxRate / 100 : $taxRate));
+                    if ($taxRate > 0 && filter_var($taxSettings->get('tax_enabled', config('booking.tax.enabled', true)), FILTER_VALIDATE_BOOL)) {
+                        $taxAmount = round($totalEstimated * $taxRate, 2);
+                    }
+                }
+                $totalEstimated += $taxAmount;
 
                 // Update booking totals
                 $booking->base_amount = $totalBaseAmount;
                 $booking->addons_cost = $totalAddonsCost;
                 $booking->discount_amount = $totalDiscountAmount;
+                $booking->tax_amount = $taxAmount;
                 $booking->total_estimated = $totalEstimated;
                 $booking->pricing_snapshot = [
                     'items_count' => count($params['booking_items']),
                     'total_base' => $totalBaseAmount,
                     'total_addons' => $totalAddonsCost,
                     'total_discount' => $totalDiscountAmount,
+                    'tax_amount' => $taxAmount,
                     'total' => $totalEstimated,
                 ];
             }
@@ -4344,7 +4361,11 @@ class BookingFlowService
                 $booking->base_amount = $totals['base_amount'];
                 $booking->addons_cost = $totals['addons_cost'];
                 $booking->discount_amount = $totals['discount_amount'];
+                $booking->tax_amount = (float) ($pricing['tax_amount'] ?? 0);
                 $booking->total_estimated = $totals['total_estimated'];
+                if (array_key_exists('booking_items', $params)) {
+                    $booking->tax_amount = (float) ($booking->pricing_snapshot['tax_amount'] ?? 0);
+                }
                 $booking->duration_metrics = $totals['duration_metrics'] ?? $booking->duration_metrics;
                 $booking->distance_metrics = $totals['distance_metrics'] ?? $booking->distance_metrics;
                 $booking->discounts = $params['applied_discounts'] ?? ($booking->discounts ?? []);
@@ -6866,16 +6887,18 @@ class BookingFlowService
 
             if ($isMultiGroup) {
                 // Handle multi-group pricing calculation
-                return $this->calculateMultiGroupPricing($params, $duration, $baseCurrency, $targetCurrency);
+                $result = $this->calculateMultiGroupPricing($params, $duration, $baseCurrency, $targetCurrency);
             } elseif (!empty($params['booking_items'])) {
                 // Handle multi-trip (booking items) pricing calculation
-                return $this->calculateBookingItemsPricing($params, $baseCurrency, $targetCurrency);
+                $result = $this->calculateBookingItemsPricing($params, $baseCurrency, $targetCurrency);
             } elseif ($hasSingleGroup) {
                 // Handle single group pricing (existing logic)
-                return $this->calculateSingleGroupPricing($params, $duration, $baseCurrency, $targetCurrency);
+                $result = $this->calculateSingleGroupPricing($params, $duration, $baseCurrency, $targetCurrency);
             } else {
                 throw new \Exception('No vehicle groups specified for pricing calculation');
             }
+
+            return $this->applyOptionalBookingTax($result, $params);
         } catch (\InvalidArgumentException $e) {
             Log::notice('Pricing calculation rejected invalid input', [
                 'error' => $e->getMessage(),
@@ -6898,6 +6921,72 @@ class BookingFlowService
 
             throw $e;
         }
+    }
+
+    private function applyOptionalBookingTax(array $pricing, array $params): array
+    {
+        $taxEnabled = filter_var($params['include_tax'] ?? false, FILTER_VALIDATE_BOOL);
+        $settings = app(WebsiteSettingsService::class);
+        $rate = (float) ($settings->get('tax_rate') ?? config('booking.tax.rate', 0.18));
+        if ($rate > 1) {
+            $rate /= 100;
+        }
+        $rate = max(0, min(1, $rate));
+        if (isset($pricing['groups']) && isset($pricing['summary'])) {
+            $pricing['summary']['total'] = array_sum(array_map(
+                fn (array $group): float => (float) data_get($group, 'summary.total', 0),
+                $pricing['groups']
+            ));
+        }
+        $taxAmount = 0.0;
+        $configuredTaxEnabled = filter_var($settings->get('tax_enabled', config('booking.tax.enabled', true)), FILTER_VALIDATE_BOOL);
+        if ($taxEnabled && $configuredTaxEnabled && $rate > 0) {
+            $discount = (float) data_get($pricing, 'discount_summary.total_discount_amount', 0);
+            $taxableAmount = max(0, (float) data_get($pricing, 'summary.total', 0) - $discount);
+            $taxAmount = round($taxableAmount * $rate, 2);
+            if (isset($pricing['groups']) && is_array($pricing['groups'])) {
+                $remainingTax = $taxAmount;
+                foreach ($pricing['groups'] as $index => &$group) {
+                    $groupTax = $index === array_key_last($pricing['groups'])
+                        ? $remainingTax
+                        : round((float) data_get($group, 'summary.total', 0) * $rate, 2);
+                    $remainingTax -= $groupTax;
+                    $group['tax_amount'] = $groupTax;
+                    $group['tax_rate'] = $rate * 100;
+                    $group['summary']['total_before_tax'] = (float) data_get($group, 'summary.total', 0);
+                    $group['summary']['total'] += $groupTax;
+                    if (isset($group['final_breakdown'])) {
+                        $group['final_breakdown']['tax_amount'] = $groupTax;
+                        $group['final_breakdown']['final_amount'] = (float) data_get($group, 'final_breakdown.amount_after_discount', data_get($group, 'summary.total_before_tax')) + $groupTax;
+                    }
+                    $itemId = array_keys($pricing['items'] ?? [])[$index] ?? null;
+                    if ($itemId !== null) {
+                        $pricing['items'][$itemId] = $group;
+                    }
+                }
+                unset($group);
+            }
+        }
+
+        $pricing['tax_amount'] = $taxAmount;
+        $pricing['tax_rate'] = $taxEnabled ? $rate * 100 : 0;
+        $pricing['summary']['total_before_tax'] = (float) ($pricing['summary']['total'] ?? 0);
+        if (!isset($pricing['groups'])) {
+            $pricing['summary']['total'] = (float) ($pricing['summary']['total'] ?? 0) + $taxAmount;
+        }
+        if (isset($pricing['final_breakdown'])) {
+            $pricing['final_breakdown']['tax_amount'] = $taxAmount;
+            $pricing['final_breakdown']['final_amount'] = (float) ($pricing['final_breakdown']['amount_after_discount'] ?? $pricing['final_breakdown']['final_amount'] ?? 0) + $taxAmount;
+        } elseif ($taxAmount > 0) {
+            $pricing['final_breakdown'] = [
+                'subtotal_before_discount' => (float) ($pricing['summary']['total_before_tax'] ?? 0),
+                'total_discount' => $discount,
+                'amount_after_discount' => max(0, (float) ($pricing['summary']['total_before_tax'] ?? 0) - $discount),
+                'tax_amount' => $taxAmount,
+                'final_amount' => (float) $pricing['summary']['total'],
+            ];
+        }
+        return $pricing;
     }
 
     /**
@@ -7137,7 +7226,6 @@ class BookingFlowService
             } else {
                 $groupResult = $this->calculateSingleGroupPricing($itemParams, $duration, $baseCurrency, $targetCurrency);
             }
-
             // Add item metadata
             $groupResult['item_index'] = $index;
             $groupResult['group_id'] = $vehicleGroupId;
@@ -7499,6 +7587,10 @@ class BookingFlowService
         ?BookingItem $bookingItem = null
     ): array
     {
+        if (!filter_var(app(WebsiteSettingsService::class)->get('booking_approvals_enabled', true), FILTER_VALIDATE_BOOLEAN)) {
+            return [];
+        }
+
         $triggers = [];
         $discounts = $this->collectApprovalDiscounts($params, $booking);
 
@@ -8750,6 +8842,7 @@ class BookingFlowService
             'base_amount' => $baseAmount,
             'addons_cost' => $addonsCost,
             'discount_amount' => $discountAmount,
+            'tax_amount' => (float) ($pricing['tax_amount'] ?? 0),
             'total_estimated' => $finalAmount,
             'duration_metrics' => $pricing['duration'] ?? null,
             'distance_metrics' => $pricing['km_calculations']
