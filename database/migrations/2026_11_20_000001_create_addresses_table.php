@@ -47,7 +47,7 @@ return new class extends Migration
             DB::table('billing_addresses as billing')->join($ownerTable.' as owner', 'owner.user_id', '=', 'billing.user_id')
                 ->whereNull('billing.deleted_at')->whereNotNull('billing.address_line1')->whereRaw("TRIM(billing.address_line1) <> ''")
                 ->orderBy('billing.id')->select([
-                    'billing.id as billing_id', 'owner.id as owner_id', 'billing.address_line1', 'billing.address_line2',
+                    'billing.id', 'owner.id as owner_id', 'billing.address_line1', 'billing.address_line2',
                     'billing.city', 'billing.state', 'billing.postal_code', 'billing.country', 'billing.latitude',
                     'billing.longitude', 'billing.is_default', 'billing.created_at', 'billing.updated_at',
                 ])->chunkById(500, function ($addresses) use ($ownerType): void {
@@ -66,7 +66,7 @@ return new class extends Migration
                             'created_at' => $address->created_at ?? now(), 'updated_at' => $address->updated_at ?? now(),
                         ]);
                     }
-                }, 'billing_id', 'billing.id');
+                }, 'billing.id', 'id');
         }
     }
 
