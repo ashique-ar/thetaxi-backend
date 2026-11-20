@@ -2868,7 +2868,7 @@ class BookingFlowService
                 }
                 $this->syncBookingTotalsFromItems($booking);
             }
-            if ($booking->wasRecentlyCreated) {
+            if ($booking->wasRecentlyCreated && !$requiresApproval) {
                 app(BookingResponsibilityService::class)->notifyBookingCreated($booking);
             }
 
@@ -2896,6 +2896,7 @@ class BookingFlowService
                 $approval->override_reasons = $booking->override_reasons ?? [];
                 $approval->justification = $booking->approval_justification ?? null;
                 $approval->priority = $this->determineApprovalPriority($params);
+                $approval->conditions = $this->approvalStepSnapshot();
                 $approval->save();
 
                 if (method_exists($this, 'notifyApprovalRequested')) {
@@ -4529,6 +4530,7 @@ class BookingFlowService
                     $approval->override_reasons = $booking->override_reasons ?? [];
                     $approval->justification = $params['approval_reason'] ?? null;
                     $approval->priority = $this->determineApprovalPriority($params);
+                    $approval->conditions = $this->approvalStepSnapshot();
                     $approval->save();
 
                     if (method_exists($this, 'notifyApprovalRequested')) {
@@ -4780,6 +4782,7 @@ class BookingFlowService
         $approval->override_reasons = $approvalData['override_reasons'];
         $approval->justification = $approvalData['justification'];
         $approval->status = 'pending';
+        $approval->conditions = $this->approvalStepSnapshot();
         $approval->save();
 
         $this->notifyBookingCustomer(
@@ -7572,6 +7575,7 @@ class BookingFlowService
             'custom_addons' => 'Custom add-on pricing applied',
             'concurrent_assignments' => 'Concurrent assignment detected',
             'service_booking_approval' => 'This service requires manager approval',
+            'resource_swap' => 'Vehicle, group or driver replacement pending approval',
         ];
 
         return array_values(array_unique(array_map(
@@ -7587,7 +7591,8 @@ class BookingFlowService
         ?BookingItem $bookingItem = null
     ): array
     {
-        if (!filter_var(app(WebsiteSettingsService::class)->get('booking_approvals_enabled', true), FILTER_VALIDATE_BOOLEAN)) {
+        $settings = app(WebsiteSettingsService::class);
+        if (!filter_var($settings->get('booking_approvals_enabled', false), FILTER_VALIDATE_BOOLEAN)) {
             return [];
         }
 
@@ -7614,11 +7619,25 @@ class BookingFlowService
             $triggers[] = 'service_booking_approval';
         }
 
-        return array_values(array_unique($triggers));
+        $triggerSettings = [
+            'manual_discount' => 'approval_manual_discount_enabled',
+            'has_overrides' => 'approval_pricing_override_enabled',
+            'custom_addons' => 'approval_custom_addon_enabled',
+            'concurrent_assignments' => 'approval_concurrent_assignment_enabled',
+            'service_booking_approval' => 'approval_service_rule_enabled',
+        ];
+
+        return array_values(array_unique(array_filter($triggers, fn (string $trigger): bool =>
+            filter_var($settings->get($triggerSettings[$trigger] ?? '', false), FILTER_VALIDATE_BOOLEAN)
+        )));
     }
 
     private function serviceRequiresBookingApproval(array $params, ?Booking $booking, ?BookingItem $bookingItem): bool
     {
+        if (!filter_var(app(WebsiteSettingsService::class)->get('booking_approvals_enabled', false), FILTER_VALIDATE_BOOLEAN)) {
+            return false;
+        }
+
         if ($booking && ($booking->confirmed || $booking->confirmed_at || $booking->status === 'confirmed')) {
             return false;
         }
@@ -8540,6 +8559,9 @@ class BookingFlowService
     public function getApprovalDetails(string $bookingId): array
     {
         $booking = Booking::with(['customer', 'basePriceEditedBy', 'approvedBy'])->findOrFail($bookingId);
+        $pendingApproval = BookingApproval::query()->where('booking_id', $bookingId)
+            ->where('status', BookingApproval::STATUS_PENDING)->latest()->first();
+        $approvalConditions = is_array($pendingApproval?->conditions) ? $pendingApproval->conditions : [];
 
         return [
             'booking' => $booking,
@@ -8559,6 +8581,11 @@ class BookingFlowService
             'approved_by' => $booking->approvedBy?->name,
             'approval_at' => $booking->approval_at,
             'approval_note' => $booking->approval_note,
+            'approval_steps' => $pendingApproval ? [
+                'current_step' => (int) $pendingApproval->approval_level,
+                'total_steps' => max(1, (int) ($approvalConditions['required_steps'] ?? 1)),
+                'decisions' => $approvalConditions['step_decisions'] ?? [],
+            ] : null,
             'requires_approval' => $booking->requiresApproval(),
         ];
     }
@@ -8568,53 +8595,93 @@ class BookingFlowService
      */
     public function processApproval(string $bookingId, string $action, ?string $note, string $userId): array
     {
-        $booking = Booking::findOrFail($bookingId);
-
-        if (!$booking->requiresApproval()) {
-            throw new \Exception('This booking does not require approval.');
-        }
-
-        $booking->approval_status = $action === 'approve' ? 'approved' : 'rejected';
-        $booking->approval_by = $userId;
-        $booking->approval_at = now();
-        $booking->approval_note = $note;
-        $booking->status = $action === 'approve' ? 'confirmed' : 'cancelled';
-        $booking->workflow_step = $action === 'approve' ? 'confirmed' : 'cancelled';
-
-        if ($action === 'approve') {
-            // Lock the pricing values
-            $booking->confirmed = true;
-            $booking->confirmed_at = now();
-        } else {
-            // Reset overrides if rejected
-            $booking->base_price_override = null;
-            $booking->base_price_override_reason = null;
-            $booking->addon_overrides = null;
-            $booking->discounts = null;
-
-            // Restore original totals
-            if ($booking->original_totals) {
-                $booking->base_amount = $booking->original_totals['base_amount'] ?? $booking->base_amount;
-                $booking->total_estimated = $booking->original_totals['total_estimated'] ?? $booking->total_estimated;
+        return DB::transaction(function () use ($bookingId, $action, $note, $userId): array {
+            $booking = Booking::query()->whereKey($bookingId)->lockForUpdate()->firstOrFail();
+            $approval = BookingApproval::query()->where('booking_id', $bookingId)
+                ->where('status', BookingApproval::STATUS_PENDING)->latest()->lockForUpdate()->first();
+            if ($approval?->approval_type === 'resource_swap') {
+                abort_if($approval->manager_id && (string) $approval->manager_id !== $userId, 403, 'This request is assigned to another approver.');
+                $conditions = is_array($approval->conditions) ? $approval->conditions : [];
+                $requiredSteps = max(1, min(3, (int) ($conditions['required_steps'] ?? app(WebsiteSettingsService::class)->get('booking_approval_steps', 1))));
+                $decisions = is_array($conditions['step_decisions'] ?? null) ? $conditions['step_decisions'] : [];
+                if ($action === 'reject') {
+                    $approval->reject($userId, $note ?? 'Rejected');
+                    return ['booking' => $booking, 'action' => 'reject', 'status' => 'rejected', 'approval_type' => 'resource_swap', 'message' => 'Resource swap rejected. Current assignments were left in place.'];
+                }
+                abort_if(collect($decisions)->contains(fn ($decision) => (string) ($decision['user_id'] ?? '') === $userId), 409, 'Each approval step requires a different approver.');
+                $decisions[] = ['step' => count($decisions) + 1, 'user_id' => $userId, 'comments' => $note, 'decided_at' => now()->toISOString()];
+                $approval->conditions = array_merge($conditions, ['required_steps' => $requiredSteps, 'step_decisions' => $decisions]);
+                if (count($decisions) < $requiredSteps) {
+                    $approval->approval_level = count($decisions) + 1;
+                    $approval->save();
+                    return ['booking' => $booking, 'action' => 'approve', 'status' => 'pending', 'approval_type' => 'resource_swap', 'current_step' => $approval->approval_level, 'total_steps' => $requiredSteps, 'message' => 'Approval recorded; another authorized approver must review this swap.'];
+                }
+                $approval->approve($userId, $note);
+                return ['booking' => $booking, 'action' => 'approve', 'status' => 'approved', 'approval_type' => 'resource_swap', 'message' => 'Resource swap approved and ready to apply.'];
             }
-        }
+            if (!$booking->requiresApproval()) {
+                throw new \RuntimeException('This booking does not require approval.');
+            }
 
-        $booking->save();
+            if ($approval) {
+                abort_if($approval->manager_id && (string) $approval->manager_id !== $userId, 403, 'This request is assigned to another approver.');
+                $conditions = is_array($approval->conditions) ? $approval->conditions : [];
+                $requiredSteps = max(1, min(3, (int) ($conditions['required_steps'] ?? app(WebsiteSettingsService::class)->get('booking_approval_steps', 1))));
+                $decisions = is_array($conditions['step_decisions'] ?? null) ? $conditions['step_decisions'] : [];
+                if ($action === 'approve') {
+                    abort_if(collect($decisions)->contains(fn ($decision) => (string) ($decision['user_id'] ?? '') === $userId), 409, 'Each approval step requires a different approver.');
+                    $decisions[] = ['step' => count($decisions) + 1, 'user_id' => $userId, 'comments' => $note, 'decided_at' => now()->toISOString()];
+                    if (count($decisions) < $requiredSteps) {
+                        $approval->conditions = array_merge($conditions, ['required_steps' => $requiredSteps, 'step_decisions' => $decisions]);
+                        $approval->approval_level = count($decisions) + 1;
+                        $approval->save();
+                        return ['booking' => $booking, 'action' => 'approve', 'status' => 'pending', 'current_step' => $approval->approval_level, 'total_steps' => $requiredSteps, 'message' => 'Approval recorded; another authorized approver must review this booking.'];
+                    }
+                    $approval->conditions = array_merge($conditions, ['required_steps' => $requiredSteps, 'step_decisions' => $decisions]);
+                    $approval->approve($userId, $note);
+                } else {
+                    $approval->reject($userId, $note ?? 'Rejected');
+                }
+            }
 
-        $this->notifyBookingCustomer(
-            $booking,
-            $action === 'approve' ? 'Booking approved' : 'Booking rejected',
-            $action === 'approve'
-            ? 'Your booking request has been approved.'
-            : 'Your booking request was not approved.',
-            $action === 'approve' ? 'booking_approved' : 'booking_rejected'
-        );
+            $booking->approval_status = $action === 'approve' ? 'approved' : 'rejected';
+            $booking->approval_by = $userId;
+            $booking->approval_at = now();
+            $booking->approval_note = $note;
+            $booking->status = $action === 'approve' ? 'confirmed' : 'cancelled';
+            $booking->workflow_step = $action === 'approve' ? 'confirmed' : 'cancelled';
 
-        return [
-            'booking' => $booking,
-            'action' => $action,
-            'message' => 'Booking ' . $action . 'd successfully',
-        ];
+            if ($action === 'approve') {
+                $booking->confirmed = true;
+                $booking->confirmed_at = now();
+            } else {
+                $booking->base_price_override = null;
+                $booking->base_price_override_reason = null;
+                $booking->addon_overrides = null;
+                $booking->discounts = null;
+                if ($booking->original_totals) {
+                    $booking->base_amount = $booking->original_totals['base_amount'] ?? $booking->base_amount;
+                    $booking->total_estimated = $booking->original_totals['total_estimated'] ?? $booking->total_estimated;
+                }
+            }
+
+            $booking->save();
+
+            $this->notifyBookingCustomer(
+                $booking,
+                $action === 'approve' ? 'Booking approved' : 'Booking rejected',
+                $action === 'approve' ? 'Your booking request has been approved.' : 'Your booking request was not approved.',
+                $action === 'approve' ? 'booking_approved' : 'booking_rejected'
+            );
+
+            return ['booking' => $booking, 'action' => $action, 'status' => $action === 'approve' ? 'approved' : 'rejected', 'message' => 'Booking ' . $action . 'd successfully'];
+        });
+    }
+
+    private function approvalStepSnapshot(): array
+    {
+        $steps = (int) app(WebsiteSettingsService::class)->get('booking_approval_steps', 1);
+        return ['required_steps' => max(1, min(3, $steps)), 'step_decisions' => []];
     }
 
     private function notifyBookingCustomer(
@@ -9915,6 +9982,7 @@ class BookingFlowService
             'requested_at' => now(),
             'change_summary' => json_encode($changeAnalytics['changes']),
             'approval_type' => 'modification',
+            'conditions' => $this->approvalStepSnapshot(),
         ]);
     }
 
@@ -10312,6 +10380,7 @@ class BookingFlowService
                 'booking.corporateAccount:id,name',
                 'booking.corporateDepartment:id,name',
                 'booking.corporateDivision:id,name',
+                'booking.approvals' => fn ($q) => $q->where('approval_type', 'resource_swap')->where('status', BookingApproval::STATUS_PENDING),
             ]);
 
         $viewer = Auth::user();
@@ -10765,13 +10834,17 @@ class BookingFlowService
                         : $bookingQuery->where('bookings.created_at', '<=', now()->subMinutes($targetMinutes));
                     }
                 }),
-            'needs_approval' => $query->whereHas('booking', function ($bookingQuery) {
+            'needs_approval' => $query->where(function ($approvalQueue) {
+                $approvalQueue->whereHas('booking', function ($bookingQuery) {
                     $bookingQuery->where('status', 'pending_approval')
                     ->orWhere(function ($approvalQuery) {
                         $approvalQuery->where('requires_approval', true)
                         ->whereIn('approval_status', ['pending', 'required']);
                     });
-                }),
+                })->orWhereHas('booking.approvals', fn ($approvalQuery) => $approvalQuery
+                    ->where('approval_type', 'resource_swap')
+                    ->where('status', BookingApproval::STATUS_PENDING));
+            }),
             'needs_assignment' => $query->whereHas('booking', function ($bookingQuery) {
                     $bookingQuery->whereIn('status', ['approved', 'confirmed', 'allocated'])
                     ->whereDoesntHave('dispatches', function ($dispatchQuery) {
@@ -11117,8 +11190,10 @@ class BookingFlowService
             ? $dispatchStatusRaw->value
             : (is_string($dispatchStatusRaw) ? $dispatchStatusRaw : null);
         $approvalTriggers = $booking ? $this->getApprovalTriggersForBooking($booking, $item) : [];
+        $pendingSwap = $booking?->approvals?->first();
+        if ($pendingSwap) $approvalTriggers[] = 'resource_swap';
         $approvalTriggerLabels = $this->formatApprovalTriggerLabels($approvalTriggers);
-        $requiresApproval = (bool) (($booking?->requires_approval ?? false) || (($booking?->status ?? null) === 'pending_approval'));
+        $requiresApproval = (bool) ($pendingSwap || ($booking?->requires_approval ?? false) || (($booking?->status ?? null) === 'pending_approval'));
         if ($requiresApproval && empty($approvalTriggerLabels)) {
             $approvalTriggerLabels = ['Manager approval required'];
         }
@@ -12115,6 +12190,7 @@ class BookingFlowService
                     'override_reasons' => $copy->override_reasons ?? [],
                     'justification' => $copy->approval_justification,
                     'priority' => $copy->approval_priority ?? 'normal',
+                    'conditions' => $this->approvalStepSnapshot(),
                 ]);
             }
 

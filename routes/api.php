@@ -2619,6 +2619,8 @@ Route::middleware(['auth:api'])->group(function () {
                 ->middleware('permission:bookings.update');
             Route::post('swap', [AssignmentController::class, 'performSwap'])
                 ->middleware('permission:bookings.update');
+            Route::post('swap-approvals/{approvalId}/decide', [AssignmentController::class, 'decideSwapApproval'])
+                ->whereUuid('approvalId')->middleware('permission:bookings.approve');
             Route::post('breakdown', [AssignmentController::class, 'recordBreakdown'])
                 ->middleware('permission:bookings.update');
         });

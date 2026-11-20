@@ -46,6 +46,10 @@ trait BookingApprovalTrait
                 Auth::id()
             );
 
+            if (($result['status'] ?? null) === 'pending') {
+                return response()->json(['status' => 'success', 'data' => $result, 'message' => $result['message']]);
+            }
+
             return response()->json([
                 'status' => 'success',
                 'data' => $result,

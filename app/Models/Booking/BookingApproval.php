@@ -22,6 +22,7 @@ class BookingApproval extends BaseModel
         'rejected_at',
         'auto_approved',
         'approval_level',
+        'conditions',
     ];
 
     protected $casts = [
@@ -30,6 +31,7 @@ class BookingApproval extends BaseModel
         'rejected_at' => 'datetime',
         'auto_approved' => 'boolean',
         'approval_level' => 'integer',
+        'conditions' => 'array',
     ];
 
     const STATUS_PENDING = 'pending';

@@ -3993,7 +3993,10 @@ class BookingLifecycleService
      */
     private function checkAllocationRequiresApproval(Booking $booking): bool
     {
-        if (!filter_var(app(WebsiteSettingsService::class)->get('booking_approvals_enabled', true), FILTER_VALIDATE_BOOLEAN)) {
+        if (!filter_var(app(WebsiteSettingsService::class)->get('booking_approvals_enabled', false), FILTER_VALIDATE_BOOLEAN)) {
+            return false;
+        }
+        if (!filter_var(app(WebsiteSettingsService::class)->get('approval_allocation_exception_enabled', false), FILTER_VALIDATE_BOOLEAN)) {
             return false;
         }
 

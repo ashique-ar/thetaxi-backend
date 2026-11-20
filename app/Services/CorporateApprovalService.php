@@ -27,7 +27,7 @@ class CorporateApprovalService
     public function approveBooking(string $bookingId, string $approverId, string $corporateId, ?string $comments = null): Booking
     {
         return DB::transaction(function () use ($bookingId, $approverId, $corporateId, $comments) {
-            $booking = Booking::where('corporate_account_id', $corporateId)->findOrFail($bookingId);
+            $booking = Booking::where('corporate_account_id', $corporateId)->lockForUpdate()->findOrFail($bookingId);
 
             if ($booking->status !== 'pending_approval') {
                 abort(422, 'Booking is not in pending approval status.');
@@ -36,10 +36,26 @@ class CorporateApprovalService
             // Update the BookingApproval record
             $approval = BookingApproval::where('booking_id', $bookingId)
                 ->where('status', BookingApproval::STATUS_PENDING)
-                ->latest()
-                ->first();
+                ->latest()->lockForUpdate()->first();
 
             if ($approval) {
+                $conditions = is_array($approval->conditions) ? $approval->conditions : [];
+                $requiredSteps = max(1, min(3, (int) ($conditions['required_steps'] ?? app(WebsiteSettingsService::class)->get('booking_approval_steps', 1))));
+                $decisions = is_array($conditions['step_decisions'] ?? null) ? $conditions['step_decisions'] : [];
+                abort_if(collect($decisions)->contains(fn ($decision) => (string) ($decision['user_id'] ?? '') === $approverId), 409, 'Each approval step requires a different approver.');
+                $decisions[] = ['step' => count($decisions) + 1, 'user_id' => $approverId, 'comments' => $comments, 'decided_at' => now()->toISOString()];
+                $approval->conditions = array_merge($conditions, ['required_steps' => $requiredSteps, 'step_decisions' => $decisions]);
+                if (count($decisions) < $requiredSteps) {
+                    $approval->approval_level = count($decisions) + 1;
+                    $approval->save();
+                    $this->logAudit('corporate_booking_approval_step_completed', 'Booking', $bookingId, [
+                        'corporate_id' => $booking->corporate_account_id,
+                        'approver_id' => $approverId,
+                        'completed_step' => count($decisions),
+                        'required_steps' => $requiredSteps,
+                    ]);
+                    return $booking->fresh();
+                }
                 $approval->approve($approverId, $comments);
             }
 

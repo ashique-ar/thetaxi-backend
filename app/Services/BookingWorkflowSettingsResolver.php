@@ -176,7 +176,8 @@ class BookingWorkflowSettingsResolver
                 'require_signed_agreement' => $this->enabled('booking_signed_agreement_required', true),
                 'require_driver_license' => false,
                 'require_customer_identity_document' => false,
-                'require_booking_approval' => $this->enabled('booking_approvals_enabled', true),
+                'require_booking_approval' => $this->enabled('booking_approvals_enabled', false)
+                    && $this->enabled('approval_service_rule_enabled', false),
                 'require_handover_checklist' => false,
             ];
         }

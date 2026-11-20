@@ -55,6 +55,16 @@ class BusinessSettingController extends Controller
         'booking' => [
             'booking_base_currency',
             'booking_approvals_enabled',
+            'booking_approval_steps',
+            'approval_manual_discount_enabled',
+            'approval_pricing_override_enabled',
+            'approval_custom_addon_enabled',
+            'approval_concurrent_assignment_enabled',
+            'approval_service_rule_enabled',
+            'approval_corporate_booking_enabled',
+            'approval_credit_limit_enabled',
+            'approval_allocation_exception_enabled',
+            'approval_resource_swap_enabled',
             'booking_advance_hours',
             'booking_confirmation_cc_creator',
             'customer_portal_booking_advance_hours',
@@ -167,7 +177,17 @@ class BusinessSettingController extends Controller
         $categories['booking']['feature_driver_management_enabled'] ??= true;
         $categories['booking']['driver_form_public_enabled'] ??= false;
         $categories['booking']['booking_signed_agreement_required'] ??= true;
-        $categories['booking']['booking_approvals_enabled'] ??= true;
+        $categories['booking']['booking_approvals_enabled'] ??= false;
+        $categories['booking']['booking_approval_steps'] ??= 1;
+        foreach ([
+            'approval_manual_discount_enabled', 'approval_pricing_override_enabled',
+            'approval_custom_addon_enabled', 'approval_concurrent_assignment_enabled',
+            'approval_service_rule_enabled', 'approval_corporate_booking_enabled',
+            'approval_credit_limit_enabled', 'approval_allocation_exception_enabled',
+            'approval_resource_swap_enabled',
+        ] as $approvalSetting) {
+            $categories['booking'][$approvalSetting] ??= false;
+        }
         return response()->json([
             'status' => 'success',
             'data' => $categories,
@@ -198,6 +218,16 @@ class BusinessSettingController extends Controller
                 'assignment_enable_maintenance_stage' => ['sometimes', 'boolean'],
                 'booking_signed_agreement_required' => ['sometimes', 'boolean'],
                 'booking_approvals_enabled' => ['sometimes', 'boolean'],
+                'booking_approval_steps' => ['sometimes', 'integer', 'between:1,3'],
+                'approval_manual_discount_enabled' => ['sometimes', 'boolean'],
+                'approval_pricing_override_enabled' => ['sometimes', 'boolean'],
+                'approval_custom_addon_enabled' => ['sometimes', 'boolean'],
+                'approval_concurrent_assignment_enabled' => ['sometimes', 'boolean'],
+                'approval_service_rule_enabled' => ['sometimes', 'boolean'],
+                'approval_corporate_booking_enabled' => ['sometimes', 'boolean'],
+                'approval_credit_limit_enabled' => ['sometimes', 'boolean'],
+                'approval_allocation_exception_enabled' => ['sometimes', 'boolean'],
+                'approval_resource_swap_enabled' => ['sometimes', 'boolean'],
                 'tour_ai_itinerary_enabled' => ['sometimes', 'boolean'],
                 'add_trip_vehicle_group_pricing_enabled' => ['sometimes', 'boolean'],
             ]);

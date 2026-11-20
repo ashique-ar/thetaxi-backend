@@ -240,6 +240,8 @@ class BookingFlowResource extends JsonResource
                         'rejected_at' => $approval->rejected_at?->format('Y-m-d H:i:s'),
                         'auto_approved' => $approval->auto_approved,
                         'approval_level' => $approval->approval_level,
+                        'approval_steps' => max(1, (int) data_get($approval->conditions, 'required_steps', 1)),
+                        'step_decisions' => data_get($approval->conditions, 'step_decisions', []),
                         'requester' => $approval->requester->name ?? null,
                         'approver' => $approval->approver->name ?? null,
                         'manager' => $approval->manager->name ?? null,

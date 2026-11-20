@@ -9,6 +9,7 @@ use App\Services\ContractualDistanceSnapshotProjector;
 use App\Services\BookingPaymentLedgerService;
 use App\Services\Sales\SalesAccessScope;
 use App\Models\Booking\Booking;
+use App\Models\Booking\BookingApproval;
 use App\Models\Booking\BookingActivity;
 use App\Models\Booking\BookingPaymentReceipt;
 use App\Enums\BookingLifecycleStatus;
@@ -448,6 +449,7 @@ class AssignmentController extends Controller
                         ];
                     }),
                 ],
+                'pending_swap_approval' => $this->pendingSwapApprovalDetails($booking),
                 'tracking' => $trackingPayload,
             ];
 
@@ -1876,6 +1878,18 @@ class AssignmentController extends Controller
      */
     public function performSwap(Request $request): JsonResponse
     {
+        $approvedSwapApprovalId = $request->input('_approved_swap_approval_id');
+        $approvedSwapConditions = null;
+        if ($approvedSwapApprovalId) {
+            $approvedSwap = BookingApproval::query()->whereKey($approvedSwapApprovalId)
+                ->where('approval_type', 'resource_swap')->where('status', BookingApproval::STATUS_APPROVED)->firstOrFail();
+            $approvedSwapConditions = is_array($approvedSwap->conditions) ? $approvedSwap->conditions : [];
+            abort_if(!empty($approvedSwapConditions['swap_applied_at']), 409, 'This approved swap has already been applied.');
+            $savedRequest = $approvedSwapConditions['swap_request'] ?? null;
+            abort_unless(is_array($savedRequest), 409, 'The approved swap request is missing its saved details.');
+            $request = new Request($savedRequest);
+        }
+
         $request->validate([
             'booking_id' => 'required|uuid',
             'booking_item_id' => 'nullable|uuid',
@@ -1896,8 +1910,12 @@ class AssignmentController extends Controller
             'handoff_location.longitude' => 'required_with:handoff_location|numeric|between:-180,180',
         ]);
 
+        if (!$approvedSwapApprovalId && $this->requiresResourceSwapApproval()) {
+            return $this->requestSwapApproval($request);
+        }
+
         try {
-            return DB::transaction(function () use ($request) {
+            return DB::transaction(function () use ($request, $approvedSwapApprovalId, $approvedSwapConditions) {
                 $bookingQuery = Booking::with(['customer', 'bookingItems'])->whereKey($request->booking_id);
                 $booking = $bookingQuery->lockForUpdate()->firstOrFail();
                 $selectedBookingItem = null;
@@ -1922,6 +1940,10 @@ class AssignmentController extends Controller
                 $swapTime = Carbon::now('UTC');
                 $oldVehicleId = $selectedBookingItem?->vehicle_id ?? $booking->vehicle_id;
                 $oldDriverId = $selectedBookingItem?->driver_id ?? $booking->driver_id;
+                if ($approvedSwapApprovalId) {
+                    abort_unless((string) ($approvedSwapConditions['old_vehicle_id'] ?? '') === (string) ($oldVehicleId ?? ''), 409, 'The assigned vehicle changed after this swap was submitted. Submit a new request.');
+                    abort_unless((string) ($approvedSwapConditions['old_driver_id'] ?? '') === (string) ($oldDriverId ?? ''), 409, 'The assigned driver changed after this swap was submitted. Submit a new request.');
+                }
                 $newVehicleId = $request->new_vehicle_id;
                 $newDriverId = $request->new_driver_id;
                 if ($newVehicleId && in_array($request->swap_type, ['vehicle', 'both'], true)) {
@@ -2281,6 +2303,15 @@ class AssignmentController extends Controller
 
                 Log::info('Vehicle/Driver swap performed', $swapRecord);
 
+                if ($approvedSwapApprovalId) {
+                    $approval = BookingApproval::query()->whereKey($approvedSwapApprovalId)->lockForUpdate()->firstOrFail();
+                    $conditions = is_array($approval->conditions) ? $approval->conditions : [];
+                    abort_if(!empty($conditions['swap_applied_at']), 409, 'This approved swap has already been applied.');
+                    $conditions['swap_applied_at'] = now()->toISOString();
+                    $approval->conditions = $conditions;
+                    $approval->save();
+                }
+
                 return response()->json([
                     'status' => 'success',
                     'data' => [
@@ -2304,6 +2335,115 @@ class AssignmentController extends Controller
                 'error' => $e->getMessage()
             ], 500);
         }
+    }
+
+    public function decideSwapApproval(Request $request, string $approvalId): JsonResponse
+    {
+        $data = $request->validate([
+            'action' => 'required|in:approve,reject',
+            'comments' => 'nullable|string|max:1000',
+        ]);
+        if ($data['action'] === 'reject') {
+            $request->validate(['comments' => 'required|string|min:3|max:1000']);
+        }
+
+        $approval = BookingApproval::query()->whereKey($approvalId)
+            ->where('approval_type', 'resource_swap')->where('status', BookingApproval::STATUS_PENDING)->firstOrFail();
+        $decision = $this->bookingFlowService->processApproval(
+            (string) $approval->booking_id,
+            $data['action'],
+            $data['comments'] ?? null,
+            (string) $request->user()->id,
+        );
+
+        if (($decision['status'] ?? null) === 'approved' && ($decision['approval_type'] ?? null) === 'resource_swap') {
+            $result = $this->performSwap(new Request(['_approved_swap_approval_id' => $approvalId]));
+            return response()->json(['status' => 'success', 'data' => $result->getData(true)['data'] ?? [], 'message' => 'Approved swap applied.']);
+        }
+
+        return response()->json(['status' => 'success', 'data' => $decision]);
+    }
+
+    private function requiresResourceSwapApproval(): bool
+    {
+        $settings = app(\App\Services\WebsiteSettingsService::class);
+        return filter_var($settings->get('booking_approvals_enabled', false), FILTER_VALIDATE_BOOLEAN)
+            && filter_var($settings->get('approval_resource_swap_enabled', false), FILTER_VALIDATE_BOOLEAN);
+    }
+
+    private function requestSwapApproval(Request $request): JsonResponse
+    {
+        return DB::transaction(function () use ($request): JsonResponse {
+            $booking = Booking::with('bookingItems')->lockForUpdate()->findOrFail($request->booking_id);
+            $item = $request->filled('booking_item_id')
+                ? $booking->bookingItems->firstWhere('id', $request->booking_item_id)
+                : $booking->bookingItems->sortBy(fn ($row) => sprintf('%08d-%s', (int) ($row->trip_number ?? 0), (string) $row->id))->first();
+            if ($request->filled('booking_item_id')) {
+                abort_unless($item, 422, 'Selected trip does not belong to this booking.');
+            }
+
+            $existing = BookingApproval::query()->where('booking_id', $booking->id)
+                ->where('approval_type', 'resource_swap')->where('status', BookingApproval::STATUS_PENDING)->exists();
+            abort_if($existing, 409, 'A resource swap is already waiting for approval on this booking.');
+
+            $payload = $request->except('_approved_swap_approval_id');
+            $settings = app(\App\Services\WebsiteSettingsService::class);
+            $steps = max(1, min(3, (int) $settings->get('booking_approval_steps', 1)));
+            $approval = new BookingApproval;
+            $approval->booking_id = $booking->id;
+            $approval->requested_by = Auth::id();
+            $approval->status = BookingApproval::STATUS_PENDING;
+            $approval->approval_type = 'resource_swap';
+            $approval->approval_level = 1;
+            $approval->priority = 'high';
+            $approval->override_reasons = ['resource_swap'];
+            $approval->justification = trim((string) ($payload['notes'] ?? $payload['reason'] ?? 'Resource replacement'));
+            $approval->requested_at = now();
+            $approval->conditions = [
+                'required_steps' => $steps,
+                'step_decisions' => [],
+                'swap_request' => $payload,
+                'old_vehicle_id' => $item?->vehicle_id ?? $booking->vehicle_id,
+                'old_driver_id' => $item?->driver_id ?? $booking->driver_id,
+                'old_vehicle_group_id' => $item?->vehicle_group_id ?? $booking->vehicle_group_id,
+                'new_vehicle_group_id' => $payload['new_vehicle_id']
+                    ? DB::table('vehicles')->where('id', $payload['new_vehicle_id'])->value('vehicle_group_id')
+                    : null,
+            ];
+            $approval->save();
+
+            return response()->json([
+                'status' => 'success',
+                'data' => ['approval_id' => $approval->id, 'booking_id' => $booking->id, 'status' => 'pending_approval', 'approval_type' => 'resource_swap'],
+                'message' => 'Resource swap submitted for approval. Current assignments remain active until it is approved.',
+            ], 202);
+        });
+    }
+
+    private function pendingSwapApprovalDetails(Booking $booking): ?array
+    {
+        $approval = BookingApproval::query()->where('booking_id', $booking->id)
+            ->where('approval_type', 'resource_swap')->where('status', BookingApproval::STATUS_PENDING)
+            ->latest('requested_at')->first();
+        if (!$approval) return null;
+
+        $conditions = is_array($approval->conditions) ? $approval->conditions : [];
+        $request = is_array($conditions['swap_request'] ?? null) ? $conditions['swap_request'] : [];
+        $newVehicle = !empty($request['new_vehicle_id']) ? DB::table('vehicles')->where('id', $request['new_vehicle_id'])->first(['id', 'title', 'license_plate']) : null;
+        $newDriver = !empty($request['new_driver_id']) ? DB::table('drivers')->where('id', $request['new_driver_id'])->first(['id', 'name']) : null;
+        return [
+            'id' => (string) $approval->id,
+            'requested_by' => $approval->requester?->name,
+            'requested_at' => $approval->requested_at?->toIso8601String(),
+            'request' => $request,
+            'new_vehicle' => $newVehicle,
+            'new_driver' => $newDriver,
+            'old_vehicle_group_id' => $conditions['old_vehicle_group_id'] ?? null,
+            'new_vehicle_group_id' => $conditions['new_vehicle_group_id'] ?? null,
+            'current_step' => (int) $approval->approval_level,
+            'total_steps' => max(1, (int) ($conditions['required_steps'] ?? 1)),
+            'decisions' => $conditions['step_decisions'] ?? [],
+        ];
     }
 
     /**
