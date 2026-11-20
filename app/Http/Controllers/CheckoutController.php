@@ -3046,7 +3046,7 @@ class CheckoutController extends Controller
                     return redirect()->route('home')->with('error', 'This quotation is no longer awaiting acceptance. Please contact our team.');
                 }
                 $snapshotHash = (string) data_get($quotation, 'snapshot_hash', '');
-                if ($snapshotHash === '' || ! hash_equals($snapshotHash, BookingLinkHelper::quotationSnapshotHash($booking))) {
+                if ($snapshotHash === '' || ! BookingLinkHelper::matchesQuotationSnapshot($booking, $snapshotHash)) {
                     return redirect()->route('home')->with('error', 'This quotation has changed. Please contact our team for an updated offer.');
                 }
                 if (! is_numeric($booking->total_estimated) || (float) $booking->total_estimated <= 0) {
@@ -3089,7 +3089,7 @@ class CheckoutController extends Controller
                 return redirect()->route('home')->with('error', 'This quotation is no longer awaiting acceptance. Please contact our team.');
             }
 
-            if (!hash_equals((string) $quotationData['snapshot_hash'], BookingLinkHelper::quotationSnapshotHash($quotationBooking))) {
+            if (!BookingLinkHelper::matchesQuotationSnapshot($quotationBooking, (string) $quotationData['snapshot_hash'])) {
                 return redirect()->route('home')->with('error', 'This quotation has changed. Please contact our team for an updated offer.');
             }
 
@@ -3153,7 +3153,7 @@ class CheckoutController extends Controller
                 if (empty($legacy['expires_at']) || Carbon::parse($legacy['expires_at'])->isPast()) return [null, 'This quotation has expired. Please contact our team for an updated offer.'];
                 $booking = Booking::query()->lockForUpdate()->find($legacy['booking_id'] ?? null);
                 if ($booking && ! empty($legacy['snapshot_hash'])
-                    && ! hash_equals((string) $legacy['snapshot_hash'], BookingLinkHelper::quotationSnapshotHash($booking))) {
+                    && ! BookingLinkHelper::matchesQuotationSnapshot($booking, (string) $legacy['snapshot_hash'])) {
                     return [null, 'This quotation has changed. Please contact our team for an updated offer.'];
                 }
             }
@@ -3169,7 +3169,7 @@ class CheckoutController extends Controller
             if ($quote) {
                 $quotation = data_get($quote->booking_context, 'quotation', []);
                 $snapshotHash = (string) ($quotation['snapshot_hash'] ?? '');
-                if ($snapshotHash === '' || ! hash_equals($snapshotHash, BookingLinkHelper::quotationSnapshotHash($booking))) {
+                if ($snapshotHash === '' || ! BookingLinkHelper::matchesQuotationSnapshot($booking, $snapshotHash)) {
                     return [null, 'This quotation has changed. Please contact our team for an updated offer.'];
                 }
                 $terms = is_array($quotation['terms'] ?? null)

@@ -6,7 +6,6 @@ use App\Models\Booking\Booking;
 use App\Services\PendingPaymentManager;
 use App\Services\UrlShortenerService;
 use Illuminate\Support\Facades\Crypt;
-use Illuminate\Support\Facades\URL;
 
 /**
  * BookingLinkHelper
@@ -15,7 +14,7 @@ use Illuminate\Support\Facades\URL;
  * Used in email templates to provide one-click checkout for customers
  * Now uses persistent PendingPaymentManager for better cart-independent payment management
  * 
- * URL Shortening: All payment and quotation links are automatically shortened using
+ * Payment links can be shortened using
  * UrlShortenerService to create email-friendly URLs (e.g., /s/abc123 instead of 
  * /checkout/payment-resume/very-long-token). This significantly reduces email length
  * and improves deliverability while maintaining security.
@@ -55,55 +54,26 @@ class BookingLinkHelper
         }
     }
 
-    /**
-     * Generate a quotation conversion link for a booking
-     * When customer accepts quotation, clicking this link creates a new booking
-     * with same vehicle group, dates, and discounts applied
-     * 
-     * @param Booking $booking
-     * @return string
-     */
-    public static function getQuotationCheckoutLink(Booking $booking): string
+    public static function getQuotationCheckoutLink(\App\Models\Website\PendingPaymentLink $quote): string
     {
-        try {
-            $quote = PendingPaymentManager::createQuotationLink($booking, 168);
-
-            $originalUrl = route('checkout.quotation-convert', [
-                'token' => $quote->token,
-            ]);
-
-            // Create shortened URL for email-friendly links
-            $shortenedUrl = UrlShortenerService::shorten(
-                $originalUrl,
-                168, // Match the seven-day offer validity.
-                'booking',
-                $booking->id,
-                'email', // source
-                'quotation_conversion', // campaign
-                'transactional', // medium
-                [ // metadata
-                    'booking_number' => $booking->booking_number ?? null,
-                    'vehicle_group_id' => $booking->vehicle_group_id,
-                    'quotation_type' => 'conversion',
-                ]
-            );
-
-            $shortUrl = UrlShortenerService::getShortUrl($shortenedUrl);
-
-
-            return $shortUrl;
-        } catch (\Exception $e) {
-            \Illuminate\Support\Facades\Log::error('BookingLinkHelper: Error generating quotation checkout link', [
-                'booking_id' => $booking->id ?? null,
-                'error' => $e->getMessage(),
-            ]);
-            return '';
-        }
+        return rtrim(config('app.url'), '/') . route('checkout.quotation-convert', [
+            'token' => $quote->token,
+        ], absolute: false);
     }
 
-    public static function quotationSnapshotHash(Booking $booking): string
+    public static function matchesQuotationSnapshot(Booking $booking, string $hash): bool
     {
-        return hash('sha256', \App\Support\Foundation\CanonicalJson::encode(self::quotationSnapshot($booking)));
+        $snapshot = self::quotationSnapshot($booking);
+        if (hash_equals($hash, hash('sha256', \App\Support\Foundation\CanonicalJson::encode($snapshot)))) {
+            return true;
+        }
+
+        // Older links were issued before the refundable deposit was included in the hash.
+        foreach ($snapshot['items'] as &$item) {
+            unset($item['refundable_deposit_lkr']);
+        }
+
+        return hash_equals($hash, hash('sha256', \App\Support\Foundation\CanonicalJson::encode($snapshot)));
     }
 
     public static function quotationSnapshot(Booking $booking): array
@@ -139,6 +109,9 @@ class BookingLinkHelper
                 'unit_price' => $money($item->unit_price),
                 'total_price' => $money($item->total_price),
                 'quantity' => (string) ($item->quantity ?? ''),
+                ...(isset($item->metadata['refundable_deposit_lkr']) ? [
+                    'refundable_deposit_lkr' => $money($item->metadata['refundable_deposit_lkr']),
+                ] : []),
                 'pricing_breakdown' => $item->pricing_breakdown ?? [],
             ])->values()->all(),
         ];

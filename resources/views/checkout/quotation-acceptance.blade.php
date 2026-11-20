@@ -94,7 +94,7 @@
                 <article class="border rounded p-3 mb-3">
                     <h4 class="h6 mb-1">{{ $term['title'] }}</h4>
                     <p class="text-muted mb-2">Version {{ ($term['version'] ?? '') ?: 'current at issue' }}</p>
-                    <div style="white-space: pre-wrap;">{{ $term['content'] }}</div>
+                    <div style="white-space: pre-wrap;">{{ \App\Services\PendingPaymentManager::quotationTermText($term['content']) }}</div>
                 </article>
             @empty
                 <p class="text-muted">No additional service terms apply to this quotation.</p>

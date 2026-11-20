@@ -168,26 +168,36 @@ class PendingPaymentManager
     public static function quotationTermsSnapshot(Booking $booking): array
     {
         $booking->loadMissing('bookingItems.serviceType');
-        $terms = collect();
-        foreach ($booking->bookingItems as $item) {
-            $service = $item->serviceType;
-            if ($service?->id) {
-                $terms = $terms->merge(TermsAndCondition::getForCheckout((string) $service->id, 'quotation'));
-            }
-            if ($service?->code) {
-                $terms = $terms->merge(TermsAndCondition::getForCheckout((string) $service->code, 'quotation'));
-            }
-        }
-        $terms = $terms->merge(TermsAndCondition::getGeneralServiceTerms());
+        $serviceIds = $booking->bookingItems->pluck('service_type_id')->filter()->unique()->values();
+        $serviceCodes = $booking->bookingItems->pluck('serviceType.code')->filter()->unique()->values();
 
-        return $terms->unique('id')->values()->map(fn (TermsAndCondition $term): array => [
-            'id' => (string) $term->id,
-            'title' => (string) $term->title,
-            'version' => (string) ($term->version ?? ''),
-            'content' => (string) $term->content,
-            'service_type_id' => $term->service_type_id ? (string) $term->service_type_id : null,
-            'service_type' => $term->service_type,
-        ])->all();
+        return TermsAndCondition::active()
+            ->where(fn ($query) => $query->whereNull('payment_type')->orWhere('payment_type', 'quotation'))
+            ->where(function ($query) use ($serviceIds, $serviceCodes) {
+                $query->whereIn('service_type_id', $serviceIds)
+                    ->orWhere(fn ($legacy) => $legacy->whereNull('service_type_id')
+                        ->where(fn ($code) => $code->whereNull('service_type')
+                            ->orWhereIn('service_type', $serviceCodes->merge(['', 'general']))));
+            })
+            ->orderBy('display_order')
+            ->get()
+            ->map(fn (TermsAndCondition $term): array => [
+                'id' => (string) $term->id,
+                'title' => (string) $term->title,
+                'version' => (string) ($term->version ?? ''),
+                'content' => (string) $term->content,
+                'service_type_id' => $term->service_type_id ? (string) $term->service_type_id : null,
+                'service_type' => $term->service_type,
+            ])->all();
+    }
+
+    public static function quotationTermText(string $content): string
+    {
+        $content = html_entity_decode($content, ENT_QUOTES | ENT_HTML5, 'UTF-8');
+        $content = preg_replace('~<(script|style)\b[^>]*>.*?</\1\s*>~is', '', $content);
+        $content = preg_replace('~<br\b[^>]*>|</(?:p|div|li|h[1-6]|tr)\s*>~i', "\n", $content);
+
+        return trim(strip_tags($content));
     }
 
     /**

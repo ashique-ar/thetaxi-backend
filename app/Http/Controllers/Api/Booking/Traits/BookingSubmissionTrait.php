@@ -8,6 +8,7 @@ use App\Mail\QuotationRequestMail;
 use App\Models\Booking\Booking;
 use App\Models\Booking\BookingActivity;
 use App\Models\User;
+use App\Services\PendingPaymentManager;
 use App\Services\Sms\SmsAutomationService;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
@@ -655,10 +656,20 @@ trait BookingSubmissionTrait
                     $booking->loadMissing('customer.user', 'bookingItems.vehicleGroup', 'bookingItems.serviceType');
                     $email = $booking->customer?->user?->email;
                     if ($email) {
-                        $checkoutLink = \App\Helpers\BookingLinkHelper::getQuotationCheckoutLink($booking);
+                        if ((float) $booking->total_estimated <= 0) {
+                            throw new \RuntimeException('The quotation has no valid saved total.');
+                        }
+
+                        $quote = PendingPaymentManager::createQuotationLink($booking);
+                        $checkoutLink = \App\Helpers\BookingLinkHelper::getQuotationCheckoutLink($quote);
                         app(\App\Services\MailDispatchService::class)->sendToCustomer(
                             $email,
-                            new QuotationRequestMail($booking, staffRequested: true, checkoutLink: $checkoutLink ?: null)
+                            new QuotationRequestMail(
+                                $booking,
+                                staffRequested: true,
+                                checkoutLink: $checkoutLink,
+                                terms: $quote->booking_context['quotation']['terms'],
+                            )
                         );
                         $quotationEmailStatus = 'sent';
                         try {

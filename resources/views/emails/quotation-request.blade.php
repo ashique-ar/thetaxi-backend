@@ -163,39 +163,12 @@
         </div>
     @endif
 
-    @php
-        $paymentType = 'quotation';
-        $serviceParams = collect();
-        foreach ($booking->bookingItems as $bi) {
-            $serviceParams->push($bi->service_type ?? ($bi->serviceType?->id ?? null));
-        }
-        if ($booking->serviceType?->id) {
-            $serviceParams->push($booking->serviceType->id);
-        }
-        $serviceParams = $serviceParams->filter()->unique()->values();
-
-        $applicableTerms = collect();
-        if ($serviceParams->count()) {
-            foreach ($serviceParams as $s) {
-                $applicableTerms = $applicableTerms->merge(
-                    \App\Models\TermsAndCondition::getForCheckout($s, $paymentType),
-                );
-            }
-        } else {
-            $applicableTerms = \App\Models\TermsAndCondition::getForCheckout(null, $paymentType);
-        }
-        $applicableTerms = $applicableTerms->unique('id')->values();
-    @endphp
-
-    @if ($applicableTerms->count())
+    @if ($terms)
         <div class="section">
-            <h2 class="section-title"><span class="icon">📜</span> Terms & Conditions</h2>
-            @foreach ($applicableTerms as $t)
-                <h4 style="margin-top:8px;">{{ $t->title }} @if ($t->service_name)
-                        <small class="text-muted">({{ $t->service_name }})</small>
-                    @endif
-                </h4>
-                <div style="color:#555;text-align: left;">{!! $t->content !!}</div>
+            <h2 class="section-title"><span class="icon">📜</span> Terms &amp; Conditions</h2>
+            @foreach ($terms as $term)
+                <h4 style="margin-top:8px;">{{ $term['title'] }}</h4>
+                <div style="color:#555;text-align:left;">{!! nl2br(e(\App\Services\PendingPaymentManager::quotationTermText($term['content']))) !!}</div>
             @endforeach
         </div>
     @endif
@@ -218,14 +191,13 @@
         <h2 class="section-title">
             <span class="icon">⚡</span> Accept & Proceed to Payment
         </h2>
-        <p style="color: #555; margin-bottom: 15px;">If you're ready to proceed with the same vehicle and dates now, you can
-            click the button below to proceed directly to payment. All your previously selected options will be pre-filled.
+        <p style="color: #555; margin-bottom: 15px;">Open your quotation to review the booking details and terms before accepting and continuing to payment.
         </p>
 
         <div class="btn-container">
             <a href="{{ $checkoutLink }}" class="btn"
                 style="display: inline-block; background-color: #15803d; background-image: linear-gradient(135deg, #15803d 0%, #166534 100%); box-shadow: 0 4px 12px rgba(21, 128, 61, 0.24); color: #FFFFFF; padding: 12px 30px; text-decoration: none; border-radius: 5px; font-weight: bold;">
-                ✓ Accept Quotation & Proceed to Payment
+                Review your quotation
             </a>
         </div>
 

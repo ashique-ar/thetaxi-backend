@@ -492,20 +492,19 @@ class AssignmentController extends Controller
             $booking = Booking::query()->whereKey($bookingId)->lockForUpdate()->firstOrFail();
             $attribution = DB::table('sales_booking_attributions')->where('booking_id', $booking->id)
                 ->whereNull('deleted_at')->lockForUpdate()->first(['collection_sales_profile_id']);
-            abort_unless(
-                $attribution?->collection_sales_profile_id,
-                409,
-                'Assign a collection owner before collecting payment.'
-            );
-            $collectionProfile = \App\Models\Sales\SalesProfile::query()->find($attribution->collection_sales_profile_id);
-            abort_unless($collectionProfile, 409, 'The booking collection owner is unavailable.');
-            app(SalesAccessScope::class)->assertProfile(
-                $request->user(),
-                $collectionProfile,
-                'sales.collections.view-all',
-                'sales.collections.view-team',
-            );
-            return $this->paymentLedger->receive($booking, $data, Auth::id());
+            $actor = $request->user();
+            if ($attribution?->collection_sales_profile_id) {
+                $collectionProfile = \App\Models\Sales\SalesProfile::query()->find($attribution->collection_sales_profile_id);
+                abort_unless($collectionProfile, 409, 'The booking collection owner is unavailable.');
+                app(SalesAccessScope::class)->assertProfile(
+                    $actor,
+                    $collectionProfile,
+                    'sales.collections.view-all',
+                    'sales.collections.view-team',
+                );
+            }
+
+            return $this->paymentLedger->receive($booking, $data, (string) $actor->id);
         }, 3);
 
         return response()->json([

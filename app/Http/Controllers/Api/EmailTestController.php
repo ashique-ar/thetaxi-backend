@@ -211,6 +211,7 @@ class EmailTestController
             'from_date' => Carbon::now()->addDays(5)->setHour(10),
             'to_date' => Carbon::now()->addDays(8)->setHour(10),
             'pickup_location' => json_encode(['address' => 'Hotel Mount Lavinia, Colombo']),
+            'bookingItems' => collect(),
             'contact_time' => 'morning',
             'status' => 'quotation_requested',
             'special_requirements' => 'English speaking driver preferred, sightseeing tour guide needed',
@@ -225,6 +226,9 @@ class EmailTestController
 
         return view('emails.quotation-request', [
             'booking' => $booking,
+            'staffRequested' => false,
+            'checkoutLink' => null,
+            'terms' => [],
         ]);
     }
 

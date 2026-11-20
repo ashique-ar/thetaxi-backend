@@ -14542,6 +14542,19 @@ class BookingFlowService
             $booking->payment_status = 'not_required';
             $workflowData = is_array($booking->workflow_data) ? $booking->workflow_data : [];
 
+            $booking->loadMissing(['bookingItems.serviceType', 'bookingItems.vehicleGroup']);
+            foreach ($booking->bookingItems as $item) {
+                $requiresDeposit = (bool) ($item->workflow_config_snapshot['requires_refundable_deposit']
+                    ?? $item->serviceType?->requires_refundable_deposit);
+                $item->metadata = array_merge($item->metadata ?? [], [
+                    'requires_refundable_deposit' => $requiresDeposit,
+                    'refundable_deposit_lkr' => $requiresDeposit
+                        ? max(0, (float) $item->vehicleGroup?->refundable_deposit) * max(1, (int) $item->quantity)
+                        : 0,
+                ]);
+                $item->save();
+            }
+
             $booking->status = 'quotation_requested';
             $booking->workflow_step = 'quotation_requested';
             $booking->workflow_data = array_merge($workflowData, [

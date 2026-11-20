@@ -7,7 +7,10 @@ it('authorizes assignment payment collection by its Sales collection owner inste
     expect($method)
         ->toContain("first(['collection_sales_profile_id'])")
         ->toContain("'sales.collections.view-team'")
+        ->toContain('if ($attribution?->collection_sales_profile_id)')
         ->toContain('assertProfile(')
+        ->toContain('$this->paymentLedger->receive($booking, $data, (string) $actor->id)')
+        ->not->toContain('Assign a collection owner before collecting payment.')
         ->not->toContain("first(['company_id'])", 'assertCompany(', "DB::table('companies')");
 });
 

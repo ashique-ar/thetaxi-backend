@@ -16,8 +16,8 @@
 @endphp
 @if ($deposit > 0)
     <div class="mt-3 p-3" style="background:#fff7ed;border:1px solid #fdba74;border-radius:8px;">
-        <div style="display:flex;justify-content:space-between;gap:12px;"><strong>Refundable deposit due when you collect the vehicle</strong><strong>{{ $currency }} {{ number_format(floor($deposit), 0) }}</strong></div>
-        <div style="display:flex;justify-content:space-between;gap:12px;margin-top:6px;"><strong>Booking total including refundable deposit</strong><strong>{{ $currency }} {{ number_format(floor($bookingTotal + $deposit), 0) }}</strong></div>
+        <div style="display:flex;justify-content:space-between;gap:12px;"><strong>Refundable deposit due when you collect the vehicle</strong><strong>{{ $currency }} {{ number_format($deposit, 2) }}</strong></div>
+        <div style="display:flex;justify-content:space-between;gap:12px;margin-top:6px;"><strong>Booking total including refundable deposit</strong><strong>{{ $currency }} {{ number_format($bookingTotal + $deposit, 2) }}</strong></div>
         <small>The deposit is refundable and is payable at vehicle collection. It is separate from the booking payment above.</small>
     </div>
 @endif

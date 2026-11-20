@@ -3,6 +3,7 @@
 namespace App\Mail;
 
 use App\Models\Booking\Booking;
+use App\Services\PendingPaymentManager;
 use Illuminate\Bus\Queueable;
 use Illuminate\Mail\Mailable;
 use Illuminate\Mail\Mailables\Content;
@@ -20,7 +21,7 @@ class QuotationRequestMail extends Mailable
     /**
      * Create a new message instance.
      */
-    public function __construct(Booking $booking, bool $staffRequested = false, ?string $checkoutLink = null)
+    public function __construct(Booking $booking, bool $staffRequested = false, ?string $checkoutLink = null, protected ?array $terms = null)
     {
         $this->booking = $booking;
         $this->staffRequested = $staffRequested;
@@ -61,6 +62,7 @@ class QuotationRequestMail extends Mailable
                 'booking' => $this->booking,
                 'staffRequested' => $this->staffRequested,
                 'checkoutLink' => $this->checkoutLink,
+                'terms' => $this->terms ?? PendingPaymentManager::quotationTermsSnapshot($this->booking),
             ]
         );
     }
