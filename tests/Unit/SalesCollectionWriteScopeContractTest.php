@@ -164,3 +164,42 @@ it('binds legacy paid receipt repair to restricted booking evidence and checksum
         ->toContain("'payment-ledger/legacy-receipt-repair-history'")
         ->toContain("'bookings/{booking}/payment-ledger/repair-legacy'");
 });
+
+it('records payment under the signed-in staff member when no collection owner is assigned', function (): void {
+    \Illuminate\Support\Facades\Schema::create('bookings', function ($table) {
+        $table->uuid('id')->primary();
+        $table->softDeletes();
+    });
+    \Illuminate\Support\Facades\Schema::create('sales_booking_attributions', function ($table) {
+        $table->uuid('booking_id');
+        $table->uuid('collection_sales_profile_id')->nullable();
+        $table->softDeletes();
+    });
+
+    $bookingId = (string) Str::uuid();
+    $actor = new \App\Models\User();
+    $actor->id = (string) Str::uuid();
+    \Illuminate\Support\Facades\DB::table('bookings')->insert(['id' => $bookingId]);
+
+    $request = \Illuminate\Http\Request::create('/', 'POST', [
+        'amount' => 500,
+        'payment_method' => 'cash',
+        'payment_stage' => 'part_payment',
+        'received_at' => now()->subMinute()->toDateTimeString(),
+        'idempotency_key' => (string) Str::uuid(),
+    ]);
+    $request->setUserResolver(fn () => $actor);
+
+    $ledger = Mockery::mock(\App\Services\BookingPaymentLedgerService::class);
+    $ledger->shouldReceive('receive')->once()->with(
+        Mockery::on(fn ($booking) => $booking->id === $bookingId),
+        Mockery::on(fn ($data) => $data['amount'] === 500),
+        $actor->id,
+    )->andReturn(['paid_amount' => 500]);
+    app()->instance(\App\Services\BookingPaymentLedgerService::class, $ledger);
+
+    $response = app(\App\Http\Controllers\Api\AssignmentController::class)->receivePayment($request, $bookingId);
+
+    expect($response->getStatusCode())->toBe(200);
+    expect($response->getData(true)['data']['paid_amount'])->toBe(500);
+});
