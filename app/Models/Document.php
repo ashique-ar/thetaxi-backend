@@ -65,9 +65,11 @@ class Document extends BaseModel
     /** Domain-backed file URL; storage paths remain the persisted source of truth. */
     public function resourceUrl(): ?string
     {
-        return $this->path
+        $path = ltrim(trim((string) $this->path), '/');
+
+        return $path !== ''
             ? URL::temporarySignedRoute('resources.assets', now()->addMinutes(15), [
-                'path' => ltrim($this->path, '/'),
+                'path' => $path,
                 'disk' => $this->disk,
             ])
             : null;

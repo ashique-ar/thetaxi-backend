@@ -1900,7 +1900,7 @@ class CustomerController extends Controller
             'document_type' => $document->document_type,
             'document_number' => $document->document_number,
             'expiry_date' => $document->expiry_date?->toDateString(),
-            'file_url' => resource_proxy_url($document->path, $document->disk),
+            'file_url' => $document->resourceUrl(),
             'file_name' => $document->file_name,
             'file_size' => $document->file_size,
             'file_type' => $document->file_type,

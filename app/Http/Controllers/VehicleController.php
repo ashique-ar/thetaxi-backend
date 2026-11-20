@@ -67,8 +67,8 @@ class VehicleController extends Controller
      */
     public function show(Request $request, string $id, ?string $serviceSlug = null)
     {
-        // Find the vehicle group
-        $vehicleGroup = VehicleGroup::with([
+        // Legacy detail links may contain the group's SEO slug in the ID segment.
+        $vehicleGroupQuery = VehicleGroup::with([
             'grade',
             'make',
             'model',
@@ -76,7 +76,10 @@ class VehicleController extends Controller
             'class',
             'transmission',
             'fuelType',
-        ])->withCount('vehicles')->findOrFail($id);
+        ])->withCount('vehicles');
+        $vehicleGroup = Str::isUuid($id)
+            ? $vehicleGroupQuery->findOrFail($id)
+            : $vehicleGroupQuery->where('seo_slug', $id)->firstOrFail();
 
         if (!$request->routeIs('vehicle.details.seo')) {
             $routeParams = [
