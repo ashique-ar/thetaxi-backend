@@ -24,7 +24,8 @@ class BookingHistoryService
         'vehicle_class_id', 'vehicle_id', 'driver_id', 'from_date', 'from_time',
         'to_date', 'to_time', 'pickup_landmark', 'dropoff_landmark',
         'unit_price', 'total_price', 'currency', 'discount_amount', 'tax_amount', 'confirmed',
-        'confirmed_at', 'completed_at', 'cancelled_at', 'approval_status',
+        'confirmed_at', 'completed_at', 'cancelled_at', 'approval_status', 'approval_justification', 'status',
+        'approval_by', 'approval_at', 'approval_note',
         'requires_approval', 'approved_at', 'actual_start', 'actual_end',
         'trip_phase', 'trip_completed_at',
         'assigned_from', 'assigned_to', 'assignment_type', 'assignment_notes',
@@ -85,7 +86,7 @@ class BookingHistoryService
         'context', 'qty', 'rate', 'is_insurance', 'is_milage', 'label',
         'decision', 'actor_type', 'effective_at', 'current_step', 'total_steps',
         'booking_payment_schedule_id', 'booking_payment_receipt_id', 'receipt_id', 'allocated_at',
-        'verified_at', 'submitted_by_staff_id', 'submitted_by_user_id', 'assigned_sales_profile_id',
+        'verified_at', 'submitted_by_staff_id', 'submitted_by_user_id', 'assigned_sales_profile_id', 'collection_sales_profile_id',
     ];
 
     public function recordFinancialAuditEvent(FinancialAuditEvent $event, string $provenance = 'live'): void
@@ -262,9 +263,17 @@ class BookingHistoryService
 
         $request = request();
         $actor = Auth::user();
+        if (!$actor) {
+            $actorId = $model->getAttribute('updated_user_id') ?? ($before['updated_user_id'] ?? null);
+            $actor = $actorId ? User::query()->find($actorId) : null;
+        }
         $requestReason = $reasonOverride
             ?? $request->input('change_reason')
-            ?? $model->getAttribute('cancellation_reason')
+            ?? data_get($model->getAttribute('workflow_data'), 'cancellation_reason')
+            ?? data_get($model->getAttribute('workflow_data'), 'approval_reason')
+            ?? data_get($model->getAttribute('meta'), 'reason')
+            ?? $model->getAttribute('approval_note')
+            ?? $model->getAttribute('approval_justification')
             ?? $model->getAttribute('price_override_reason')
             ?? $model->getAttribute('justification')
             ?? $model->getAttribute('customization_reason')
@@ -313,6 +322,8 @@ class BookingHistoryService
     private function eventType(Model $model, string $operation, array $changes): string
     {
         $class = class_basename($model);
+        if ($model instanceof \App\Models\Booking\Booking && isset($changes['status'])) return 'booking_status_changed';
+        if ($model instanceof \App\Models\Booking\Booking && $operation === 'created') return 'booking_created';
         if (isset($changes['trip_phase'])) return 'booking_trip_phase_changed';
         if ($model instanceof \App\Models\Driver\DriverTrackingIncident) return 'booking_tracking_incident_' . (isset($changes['state']) ? 'state_changed' : $operation);
         if ($model instanceof \App\Models\Driver\DriverLog) return 'booking_driver_log_' . (isset($changes['status']) ? 'status_changed' : $operation);

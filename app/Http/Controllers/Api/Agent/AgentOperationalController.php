@@ -5,14 +5,14 @@ namespace App\Http\Controllers\Api\Agent;
 use App\Http\Controllers\Controller;
 use App\Models\Booking\Booking;
 use App\Models\Customer;
-use App\Services\Sms\SmsAutomationService;
+use App\Services\BookingFlowService;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Symfony\Component\HttpFoundation\Response;
 
 class AgentOperationalController extends Controller
 {
-    public function __construct(private readonly SmsAutomationService $smsAutomationService) {}
+    public function __construct(private readonly BookingFlowService $bookingFlowService) {}
 
     public function profile(Request $request): JsonResponse
     {
@@ -64,17 +64,15 @@ class AgentOperationalController extends Controller
         $this->authorizeAgentBooking($request, $booking);
 
         $data = $request->validate([
-            'status' => 'required|string|max:50',
+            'status' => 'required|string|in:draft,pending_approval,approved,confirmed,allocated,in_progress,completed,cancelled',
+            'reason' => 'nullable|string|max:1000',
         ]);
-
-        $previousStatus = (string) $booking->status;
-        $booking->update([
-            'status' => $data['status'],
-        ]);
-
-        if ($data['status'] === 'confirmed' && $previousStatus !== 'confirmed') {
-            $this->smsAutomationService->queueBookingConfirmation($booking->fresh());
-        }
+        $this->bookingFlowService->updateBookingStatus(
+            (string) $booking->id,
+            $data['status'],
+            $data['reason'] ?? null,
+            (string) $request->attributes->get('agent')->user_id,
+        );
 
         return response()->json([
             'status' => 'success',

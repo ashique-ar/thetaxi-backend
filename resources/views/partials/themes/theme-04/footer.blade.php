@@ -59,7 +59,9 @@
 
     <div class="t4-footer__main">
         <div class="t4-footer__brand">
-            <a href="{{ route('home') }}"><img src="{{ s3_asset($settings['logo_footer'] ?? $settings['logo_header'] ?? 'assets/img/header-logo.png') }}" alt="{{ $settings['logo_footer_alt'] ?? $theme04Brand }}"></a>
+            @if (!empty($settings['logo_footer'] ?? $settings['logo_header'] ?? null))
+                <a href="{{ route('home') }}"><img src="{{ s3_asset($settings['logo_footer'] ?? $settings['logo_header']) }}" alt="{{ $settings['logo_footer_alt'] ?? $theme04Brand }}"></a>
+            @endif
             @if (!empty($settings['footer_company_tagline']))<small>{{ $settings['footer_company_tagline'] }}</small>@endif
             <p>{{ ($settings['footer_description'] ?? null) ?: ($settings['site_tagline'] ?? 'Professional transport services') }}</p>
             <ul class="t4-footer__social" aria-label="Social media">

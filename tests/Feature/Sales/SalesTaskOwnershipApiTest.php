@@ -87,8 +87,13 @@ it('validates task links and makes create, transition, and transfer commands rep
         'to_status' => 'completed', 'expected_version' => 1, 'reason' => 'Done',
         'idempotency_key' => (string) Str::uuid(),
     ];
+    actingAs($actor, 'api')->postJson('/api/sales/tasks/'.$task->id.'/transition', [
+        ...$transition, 'reason' => '', 'idempotency_key' => (string) Str::uuid(),
+    ])->assertUnprocessable()->assertJsonValidationErrors('reason');
     actingAs($actor, 'api')->postJson('/api/sales/tasks/'.$task->id.'/transition', $transition)->assertOk();
     actingAs($actor, 'api')->postJson('/api/sales/tasks/'.$task->id.'/transition', $transition)->assertOk();
+    actingAs($actor, 'api')->getJson('/api/sales/tasks?status=completed')
+        ->assertOk()->assertJsonPath('data.data.0.completion_outcome', 'Done');
     actingAs($actor, 'api')->postJson('/api/sales/tasks/'.$task->id.'/transition', [
         ...$transition, 'to_status' => 'cancelled',
     ])->assertConflict();

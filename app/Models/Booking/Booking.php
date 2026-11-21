@@ -1015,12 +1015,12 @@ class Booking extends BaseModel
         $this->status = 'cancelled';
         $this->cancelled_at = now();
 
-        if ($reason) {
-            $this->workflow_data = array_merge($this->workflow_data ?? [], [
-                'cancellation_reason' => $reason,
-                'cancelled_by' => $userId
-            ]);
+        $workflowData = $this->workflow_data ?? [];
+        if ($reason !== null && trim($reason) !== '') {
+            $workflowData['cancellation_reason'] = trim($reason);
         }
+        if ($userId) $workflowData['cancellation_actor_id'] = $userId;
+        $this->workflow_data = $workflowData;
 
         if ($userId) {
             $this->updated_user_id = $userId;
@@ -1034,6 +1034,7 @@ class Booking extends BaseModel
      */
     public function applyApprovalDecision(string $decision, string $approverId, string $note = null): void
     {
+        $before = $this->getOriginal();
         $this->approval_status = $decision;
         $this->approval_by = $approverId;
         $this->approval_at = now();
@@ -1042,10 +1043,12 @@ class Booking extends BaseModel
         if ($decision === 'approved') {
             $this->markAsConfirmed($approverId);
         } elseif ($decision === 'rejected') {
-            $this->markAsCancelled('approval_rejected', $approverId);
+            $this->markAsCancelled($note, $approverId);
         }
 
+        $this->updated_user_id = $approverId;
         $this->save();
+        app(\App\Services\BookingHistoryService::class)->recordModelChange($this, 'updated', $before, $note);
     }
 
     // ========================

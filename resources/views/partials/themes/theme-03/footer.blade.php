@@ -73,11 +73,9 @@
 
     <div class="t3-footer__main">
         <div class="t3-footer__brand">
-            <a href="{{ route('home') }}" class="t3-footer__logo">
-                <img
-                    src="{{ s3_asset($settings['logo_footer'] ?? $settings['logo_header'] ?? 'assets/img/header-logo.png') }}"
-                    alt="{{ $settings['logo_footer_alt'] ?? $theme03Brand }}">
-            </a>
+            @if (!empty($settings['logo_footer'] ?? $settings['logo_header'] ?? null))
+                <a href="{{ route('home') }}" class="t3-footer__logo"><img src="{{ s3_asset($settings['logo_footer'] ?? $settings['logo_header']) }}" alt="{{ $settings['logo_footer_alt'] ?? $theme03Brand }}"></a>
+            @endif
             <p>{{ $settings['footer_company_tagline'] ?? ($settings['site_tagline'] ?? $settings['brand_tagline'] ?? 'Professional transport services') }}</p>
             @if (!empty($settings['company_address']))
                 <address>{{ $settings['company_address'] }}</address>

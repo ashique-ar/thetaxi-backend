@@ -4,6 +4,8 @@ namespace App\Services\Sales;
 
 use App\Models\Sales\SalesBookingAttribution;
 use App\Models\Sales\SalesProfile;
+use App\Models\Booking\BookingCollectionWorkItem;
+use App\Models\Booking\BookingPaymentSchedule;
 use Carbon\CarbonImmutable;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Str;
@@ -114,23 +116,22 @@ class SalesEffectiveProjectionService
             'status' => $active ? 'active' : 'held',
             'updated_user_id' => $event->actor_user_id,
         ]);
-        DB::table('booking_payment_schedules')
+        BookingPaymentSchedule::query()
             ->where('booking_id', $attribution->booking_id)
             ->whereNull('deleted_at')
             ->whereNull('superseded_at')
             ->whereNotIn('status', ['paid', 'cancelled', 'superseded'])
-            ->update([
+            ->get()->each(fn (BookingPaymentSchedule $schedule) => $schedule->forceFill([
                 'collection_sales_profile_id' => $eligibleTarget?->id,
                 'updated_user_id' => $event->actor_user_id,
-                'updated_at' => now(),
-            ]);
-        DB::table('booking_collection_work_items')
+            ])->save());
+        BookingCollectionWorkItem::query()
             ->where('booking_id', $attribution->booking_id)
             ->whereIn('status', ['open', 'due', 'overdue'])
-            ->update([
+            ->get()->each(fn (BookingCollectionWorkItem $workItem) => $workItem->forceFill([
                 'assigned_sales_profile_id' => $eligibleTarget?->id,
-                'updated_at' => now(),
-            ]);
+                'updated_user_id' => $event->actor_user_id,
+            ])->save());
 
         if (! $eligibleTarget) {
             DB::table('sales_attribution_exceptions')->insertOrIgnore([

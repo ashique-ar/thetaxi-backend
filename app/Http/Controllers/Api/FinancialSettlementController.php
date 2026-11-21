@@ -301,11 +301,12 @@ class FinancialSettlementController extends Controller
 
     public function followUp(Request $request, FinancialAccountSettlement $financialSettlement)
     {
+        $this->assertSettlementCollectionScope($request, $financialSettlement);
         $data = $request->validate([
             'collection_owner_id' => 'nullable|uuid',
             'collection_last_contact_at' => 'nullable|date|before_or_equal:now',
             'promised_payment_date' => 'nullable|date',
-            'next_follow_up_at' => 'nullable|date',
+            'next_follow_up_at' => 'required|date|after:now',
             'collection_notes' => 'nullable|string|max:2000',
         ]);
         return response()->json(['status' => 'success', 'message' => 'Collection follow-up updated.', 'data' => $this->service->updateCollectionFollowUp($financialSettlement, $data, Auth::id())]);

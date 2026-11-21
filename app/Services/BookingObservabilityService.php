@@ -113,12 +113,18 @@ class BookingObservabilityService
         $activityActorIds = $bookingActivities->flatMap(fn (BookingActivity $activity) => [
             data_get($activity->meta, 'actor_user_id'),
             data_get($activity->meta, 'initiated_by'),
+            data_get($activity->meta, 'changed_by'),
+            data_get($activity->meta, 'requested_by'),
+            data_get($activity->meta, 'reviewed_by'),
+            data_get($activity->meta, 'closed_by'),
         ])->filter()->unique();
         $activityActors = User::query()->whereIn('id', $activityActorIds)
             ->get(['id', 'first_name', 'last_name'])->keyBy('id');
         $bookingActivityEvents = $bookingActivities->map(fn (BookingActivity $activity): array =>
             $this->mapBookingUpdate($booking, $activity, $activityActors->get(
                 data_get($activity->meta, 'actor_user_id') ?? data_get($activity->meta, 'initiated_by')
+                    ?? data_get($activity->meta, 'changed_by') ?? data_get($activity->meta, 'requested_by')
+                    ?? data_get($activity->meta, 'reviewed_by') ?? data_get($activity->meta, 'closed_by')
             )));
 
         $vehicleAssignments = $bookingItemId ? collect() : VehicleAssignment::query()
@@ -784,8 +790,11 @@ class BookingObservabilityService
 
     private function mapBookingUpdate(Booking $booking, BookingActivity $activity, ?User $actor): array
     {
-        $actorName = trim((string) ($actor?->first_name ?? '') . ' ' . (string) ($actor?->last_name ?? ''));
-        $actorId = data_get($activity->meta, 'actor_user_id') ?? data_get($activity->meta, 'initiated_by');
+        $actorName = trim((string) ($actor?->first_name ?? '') . ' ' . (string) ($actor?->last_name ?? ''))
+            ?: (string) data_get($activity->meta, 'changed_by_name', '');
+        $actorId = data_get($activity->meta, 'actor_user_id') ?? data_get($activity->meta, 'initiated_by')
+            ?? data_get($activity->meta, 'changed_by') ?? data_get($activity->meta, 'requested_by')
+            ?? data_get($activity->meta, 'reviewed_by') ?? data_get($activity->meta, 'closed_by');
         $isSwap = $activity->event_key === 'resource_swap_completed';
         $changes = [];
         if ($isSwap) {
@@ -825,6 +834,8 @@ class BookingObservabilityService
                 'to' => data_get($activity->meta, 'amount'),
             ];
         }
+        if (!auth()->user()?->can('bookings.price_override')) unset($changes['total_price'], $changes['currency']);
+        if (!auth()->user()?->can('payments.view')) unset($changes['charge_amount']);
 
         return [
             'id' => 'booking-activity:' . $activity->id,

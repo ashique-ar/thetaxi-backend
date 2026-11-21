@@ -797,6 +797,8 @@ class SalesCrmService
                 abort_unless($locked->state_version === $data['expected_version'], 409, 'Task version changed; refresh before retrying.');
                 $allowed = ['open' => ['in_progress', 'completed', 'cancelled'], 'in_progress' => ['open', 'completed', 'cancelled'], 'completed' => ['open'], 'cancelled' => ['open']];
                 abort_unless(in_array($data['to_status'], $allowed[$locked->status] ?? [], true), 422, 'Invalid task transition.');
+                abort_unless($data['to_status'] !== 'completed' || trim((string) ($data['reason'] ?? '')) !== '',
+                    422, 'Record the outcome before completing this follow-up.');
                 $from = $locked->status;
                 $locked->update(['status' => $data['to_status'], 'completed_at' => $data['to_status'] === 'completed' ? now() : null, 'state_version' => $locked->state_version + 1, 'updated_user_id' => $actorUserId]);
                 $this->taskEvent($locked, 'status_changed', $from, $data['to_status'], $locked->owner_sales_profile_id,
@@ -844,6 +846,48 @@ class SalesCrmService
                     && $event->to_owner_sales_profile_id === $newOwner->id && $event->expected_version === $expectedVersion
                     && $event->reason === $reason && $event->actor_user_id === $actorUserId,
                     409, 'The task transfer key was already used for a different command.');
+            });
+        }
+    }
+
+    public function rescheduleTask(SalesTask $task, array $data, string $actorUserId): SalesTask
+    {
+        try {
+            return DB::transaction(function () use ($task, $data, $actorUserId) {
+                $this->assertSalesFeatureEnabled();
+                $locked = SalesTask::query()->lockForUpdate()->findOrFail($task->id);
+                $this->assertTaskLinks($locked);
+                $eventReason = 'Rescheduled to '.CarbonImmutable::parse($data['due_at'])->utc()->toIso8601String().': '.trim($data['reason']);
+                $existing = SalesTaskEvent::query()->where('idempotency_key', $data['idempotency_key'])->first();
+                if ($existing) {
+                    abort_unless($existing->task_id === $locked->id && $existing->event_type === 'rescheduled'
+                        && $existing->expected_version === $data['expected_version'] && $existing->reason === $eventReason
+                        && $existing->actor_user_id === $actorUserId,
+                        409, 'The task reschedule key was already used for a different command.');
+                    return $locked->refresh();
+                }
+                abort_unless($locked->state_version === $data['expected_version'], 409, 'Task version changed; refresh before retrying.');
+                abort_unless(in_array($locked->status, ['open', 'in_progress'], true), 422, 'Only an open follow-up can be rescheduled.');
+                abort_unless(CarbonImmutable::parse($data['due_at'])->isAfter(now()), 422, 'Choose a future follow-up time.');
+                $from = $locked->status;
+                $locked->update([
+                    'due_at' => $data['due_at'],
+                    'state_version' => $locked->state_version + 1,
+                    'updated_user_id' => $actorUserId,
+                ]);
+                $this->taskEvent($locked, 'rescheduled', $from, $from, $locked->owner_sales_profile_id,
+                    $locked->owner_sales_profile_id, $eventReason, $data['idempotency_key'], $actorUserId,
+                    $data['expected_version']);
+                if ($locked->opportunity_id) $this->syncOpportunityNextAction((string) $locked->opportunity_id, $actorUserId);
+                return $locked->refresh();
+            });
+        } catch (QueryException $exception) {
+            return $this->recoverTaskEventReplay($exception, $task, $data['idempotency_key'], function ($event, $locked) use ($data, $actorUserId): void {
+                $eventReason = 'Rescheduled to '.CarbonImmutable::parse($data['due_at'])->utc()->toIso8601String().': '.trim($data['reason']);
+                abort_unless($event->task_id === $locked->id && $event->event_type === 'rescheduled'
+                    && $event->expected_version === $data['expected_version'] && $event->reason === $eventReason
+                    && $event->actor_user_id === $actorUserId,
+                    409, 'The task reschedule key was already used for a different command.');
             });
         }
     }

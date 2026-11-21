@@ -54,9 +54,11 @@
             <div class="row gy-md-4 gy-5">
                 <div class="col-lg-3 col-md-4 col-sm-6">
                     <div class="footer-logo-and-addition-info">
-                        <a href="{{ route('home') }}" class="footer-logo">
-                            <img src="{{ s3_asset($settings['logo_footer'] ?? $settings['logo_header'] ?? 'assets/img/header-logo.png') }}" alt="{{ $settings['logo_footer_alt'] ?? $settings['site_name'] ?? $settings['brand_name'] ?? 'Company' }}">
-                        </a>
+                        @if (!empty($settings['logo_footer'] ?? $settings['logo_header'] ?? null))
+                            <a href="{{ route('home') }}" class="footer-logo">
+                                <img src="{{ s3_asset($settings['logo_footer'] ?? $settings['logo_header']) }}" alt="{{ $settings['logo_footer_alt'] ?? $settings['site_name'] ?? $settings['brand_name'] ?? 'Company' }}">
+                            </a>
+                        @endif
                         <div class="address-area">
                             <span>{{ $settings['footer_company_tagline'] ?? ($settings['site_tagline'] ?? $settings['brand_tagline'] ?? 'Professional Services') }}</span>
                             <a href="#">{{ $settings['company_address'] ?? '123 Transport Avenue, Suite 100, Your City, State 12345, Country' }}</a>

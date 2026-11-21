@@ -10023,14 +10023,17 @@ class BookingFlowService
                 ->get();
         }
 
+        $history = app(BookingObservabilityService::class)->trace($booking, null, null, 100);
         return [
             'booking_id' => $bookingId,
             'current_status' => $booking->status,
             'approvals' => $approvals,
             'activities' => $activities,
+            'events' => $history['events'] ?? [],
+            'coverage_start' => $history['coverage_start'] ?? null,
             'last_modified' => [
-                'by' => $booking->last_modified_by,
-                'at' => $booking->last_modified_at,
+                'by' => $booking->updated_user_id ?? $booking->created_user_id,
+                'at' => $booking->updated_at,
             ],
         ];
     }
@@ -10047,7 +10050,8 @@ class BookingFlowService
         // Remove unique fields and set as draft
         unset($clonedData['id'], $clonedData['booking_number'], $clonedData['confirmation_number']);
         $clonedData['status'] = 'draft';
-        $clonedData['created_by'] = $userId;
+        $clonedData['created_user_id'] = $userId;
+        $clonedData['updated_user_id'] = $userId;
         $clonedData['created_at'] = now();
         $clonedData['booking_date'] = now();
 
@@ -10055,8 +10059,9 @@ class BookingFlowService
         $clonedData['approval_status'] = null;
         $clonedData['approval_requested_at'] = null;
         $clonedData['approval_requested_by'] = null;
-        $clonedData['approved_by'] = null;
-        $clonedData['approved_at'] = null;
+        $clonedData['approval_by'] = null;
+        $clonedData['approval_at'] = null;
+        $clonedData['approval_note'] = null;
 
         $clonedBooking = Booking::create($clonedData);
 
@@ -10126,14 +10131,16 @@ class BookingFlowService
      */
     private function getStatusHistory(Booking $booking): array
     {
-        $changes = BookingStatus::query()->with('createdBy:id,first_name,last_name')
-            ->where('booking_id', $booking->id)->orderBy('created_at')->get()
-            ->map(fn(BookingStatus $status) => [
-                'from' => $status->old_status,
-                'to' => $status->new_status,
-                'changed_by' => $status->createdBy?->name,
-                'changed_at' => optional($status->created_at)->toIso8601String(),
-            ])->all();
+        $trace = app(BookingObservabilityService::class)->trace($booking, null, null, 100, 'all', ['entity_type' => 'Booking']);
+        $changes = collect($trace['events'] ?? [])->filter(fn (array $event) =>
+            in_array($event['event_type'] ?? null, ['booking_created', 'booking_status_changed'], true)
+        )->sortBy('occurred_at')->map(fn (array $event) => [
+                'reason' => $event['reason'] ?? data_get($event, 'metadata.reason'),
+                'changed_by' => data_get($event, 'actor.name'),
+                'changed_at' => $event['occurred_at'] ?? null,
+                'from' => $event['from_status'] ?? data_get($event, 'changes.status.from'),
+                'to' => $event['to_status'] ?? data_get($event, 'changes.status.to'),
+            ])->values()->all();
 
         return [
             'current_status' => $booking->status,
@@ -10146,8 +10153,8 @@ class BookingFlowService
      */
     private function getEditCount(Booking $booking): int
     {
-        return BookingActivity::query()->where('booking_id', $booking->id)
-            ->where('event_key', 'booking_updated')->count();
+        return \App\Models\Booking\BookingHistoryEvent::query()->where('booking_id', $booking->id)
+            ->where('entity_type', 'Booking')->count();
     }
 
     private function bookingUpdateChangedFieldLabels(Booking $original, array $originalItemAttributes, Booking $booking): array
@@ -12308,7 +12315,7 @@ class BookingFlowService
                 'scope' => 'single',
                 'affected_booking_ids' => [$booking->id],
                 'affected_count' => 1,
-                'result' => $this->deleteBooking($booking->id, $userId, $reason ?: 'Recurring occurrence cancelled'),
+                'result' => $this->deleteBooking($booking->id, $userId, $reason),
             ];
         }
 
@@ -12337,7 +12344,7 @@ class BookingFlowService
 
         $affectedIds = [];
         foreach ($bookings as $futureBooking) {
-            $this->cancelBookingRecord($futureBooking, $userId, $reason ?: 'Future recurring bookings cancelled');
+            $this->cancelBookingRecord($futureBooking, $userId, $reason);
             $affectedIds[] = $futureBooking->id;
         }
 
@@ -12348,15 +12355,20 @@ class BookingFlowService
         ];
     }
 
-    private function cancelBookingRecord(Booking $booking, string $userId, string $reason): void
+    private function cancelBookingRecord(Booking $booking, string $userId, ?string $reason): void
     {
         DB::transaction(function () use ($booking, $userId, $reason): void {
-            $booking->update([
-                'status' => 'cancelled',
-                'cancelled_at' => now(),
-                'cancelled_by' => $userId,
-                'cancellation_reason' => $reason,
-            ]);
+            $before = $booking->getOriginal();
+            $workflowData = $booking->workflow_data ?? [];
+            $workflowData['cancellation_actor_id'] = $userId;
+            if ($reason !== null && trim($reason) !== '') {
+                $workflowData['cancellation_reason'] = trim($reason);
+            }
+            $booking->workflow_data = $workflowData;
+            $booking->status = 'cancelled';
+            $booking->cancelled_at = now();
+            $booking->updated_user_id = $userId;
+            $booking->save();
 
             $booking->bookingItems()->get()->each(function (BookingItem $item): void {
                 $item->status = 'cancelled';
@@ -12396,7 +12408,7 @@ class BookingFlowService
         }
 
         if ($booking->canBeCancelled()) {
-            $this->cancelBookingRecord($booking, $userId, $reason ?: 'Cancelled by user');
+            $this->cancelBookingRecord($booking, $userId, $reason);
 
             return [
                 'deleted' => false,
@@ -12415,9 +12427,16 @@ class BookingFlowService
      */
     public function updateBookingStatus(string $bookingId, string $status, ?string $reason, string $userId): array
     {
+        if (!in_array($status, ['draft', 'pending_approval', 'approved', 'confirmed', 'allocated', 'in_progress', 'completed', 'cancelled'], true)) {
+            throw ValidationException::withMessages(['status' => ['The requested booking status is invalid.']]);
+        }
         [$booking, $previousStatus] = DB::transaction(function () use ($bookingId, $status, $reason, $userId): array {
             $booking = Booking::query()->lockForUpdate()->findOrFail($bookingId);
             $previousStatus = (string) $booking->status;
+
+            if ($previousStatus === $status) {
+                return [$booking, $previousStatus];
+            }
 
             if ($status === 'cancelled') {
                 if (!$booking->canBeCancelled()) {
@@ -12425,9 +12444,9 @@ class BookingFlowService
                         'booking' => [$booking->cancellationBlockReason() ?: 'This booking cannot be cancelled.'],
                     ]);
                 }
-                $this->cancelBookingRecord($booking, $userId, $reason ?: 'Cancelled by user');
+                $this->cancelBookingRecord($booking, $userId, $reason);
             } else {
-                $changes = ['status' => $status];
+                $changes = ['status' => $status, 'updated_user_id' => $userId];
                 if ($status === 'confirmed' && $previousStatus !== 'confirmed') {
                     $changes['confirmed'] = true;
                     $changes['confirmed_at'] = now();
@@ -13160,14 +13179,143 @@ class BookingFlowService
 
     private function assignVehicle($bookingId, $vehicleId, $userId): void
     {
+        DB::transaction(function () use ($bookingId, $vehicleId, $userId): void {
+            $booking = Booking::query()->with('customer')->whereKey($bookingId)->lockForUpdate()->firstOrFail();
+            $items = BookingItem::query()->where('booking_id', $booking->id)->with('serviceType')->lockForUpdate()->get();
+            if ($items->isEmpty()) {
+                throw ValidationException::withMessages(['booking' => 'A vehicle cannot be assigned until the booking has a trip.']);
+            }
+            foreach ($items as $item) {
+                if (!$item->from_date || !$item->to_date || $this->bookingDateTime($item->from_date, $item->from_time)->gt($this->bookingDateTime($item->to_date, $item->to_time))) {
+                    throw ValidationException::withMessages(['booking' => 'Every trip needs a valid start and end before vehicle assignment.']);
+                }
+            }
+            Vehicle::query()->whereKey($vehicleId)->where('is_active', true)->where('status', 'active')->firstOrFail();
+            $activeVehicleAssignments = VehicleAssignment::query()->where('booking_id', $booking->id)->where('vehicle_id', $vehicleId)
+                ->whereNull('actual_end')->whereNotIn('status', ['cancelled', 'completed'])->get();
+            $itemsNeedingAssignment = $items->filter(function (BookingItem $item) use ($activeVehicleAssignments, $vehicleId): bool {
+                $from = $this->bookingDateTime($item->from_date, $item->from_time);
+                $to = $this->bookingDateTime($item->to_date, $item->to_time);
+                return (string) $item->vehicle_id !== (string) $vehicleId
+                    || !$activeVehicleAssignments->contains(fn (VehicleAssignment $assignment): bool =>
+                        Carbon::parse($assignment->assigned_from)->lte($from)
+                        && Carbon::parse($assignment->assigned_to)->gte($to));
+            });
+            if ($itemsNeedingAssignment->isEmpty()) return;
+
+            foreach ($itemsNeedingAssignment as $item) {
+                $availability = $this->assignmentService->getEnhancedVehicleAvailability(
+                    (string) $vehicleId,
+                    $this->bookingDateTime($item->from_date, $item->from_time),
+                    $this->bookingDateTime($item->to_date, $item->to_time),
+                    (string) $booking->id,
+                );
+                if (!($availability['enforcement']['available'] ?? false)) {
+                    throw ValidationException::withMessages(['vehicle_id' => $availability['enforcement']['blocking_reasons'] ?? ['The vehicle is unavailable for this trip.']]);
+                }
+            }
+
+            VehicleAssignment::query()->where('booking_id', $booking->id)
+                ->where('vehicle_id', '!=', $vehicleId)->whereNull('actual_end')
+                ->whereNotIn('status', ['cancelled', 'completed'])
+                ->get()->each(fn (VehicleAssignment $assignment) => $assignment->update([
+                    'actual_end' => now(), 'status' => 'completed', 'updated_user_id' => $userId,
+                    'assignment_notes' => request()->input('reason'),
+                ]));
+
+            $booking->update(['vehicle_id' => $vehicleId, 'updated_user_id' => $userId]);
+            $customerName = (string) ($booking->customer?->name ?? $booking->customer?->customer_name ?? 'Unknown Customer');
+            foreach ($itemsNeedingAssignment as $item) {
+                $item->update(['vehicle_id' => $vehicleId, 'updated_user_id' => $userId]);
+                $this->assignmentService->createVehicleAssignment([
+                    'vehicle_id' => $vehicleId,
+                    'booking_id' => $booking->id,
+                    'customer_name' => $customerName,
+                    'service_type' => $item->serviceType?->name ?? 'Unknown Service',
+                    'assigned_from' => $this->bookingDateTime($item->from_date, $item->from_time),
+                    'assigned_to' => $this->bookingDateTime($item->to_date, $item->to_time),
+                    'assigned_by' => $userId,
+                    'created_user_id' => $userId,
+                    'status' => $booking->status === 'confirmed' ? 'active' : 'pending_approval',
+                    'requires_approval' => $booking->status !== 'confirmed' || (bool) $booking->requires_approval,
+                ]);
+            }
+        });
     }
 
     private function assignDriver($bookingId, $driverId, $userId): void
     {
+        DB::transaction(function () use ($bookingId, $driverId, $userId): void {
+            $booking = Booking::query()->with('customer')->whereKey($bookingId)->lockForUpdate()->firstOrFail();
+            $items = BookingItem::query()->where('booking_id', $booking->id)->with('serviceType')->lockForUpdate()->get();
+            if ($items->isEmpty()) {
+                throw ValidationException::withMessages(['booking' => 'A driver cannot be assigned until the booking has a trip.']);
+            }
+            foreach ($items as $item) {
+                if (!$item->from_date || !$item->to_date || $this->bookingDateTime($item->from_date, $item->from_time)->gt($this->bookingDateTime($item->to_date, $item->to_time))) {
+                    throw ValidationException::withMessages(['booking' => 'Every trip needs a valid start and end before driver assignment.']);
+                }
+            }
+            Driver::query()->whereKey($driverId)->where('status', 'active')->firstOrFail();
+            $itemsNeedingAssignment = $items->filter(function (BookingItem $item) use ($booking, $driverId): bool {
+                return (string) $item->driver_id !== (string) $driverId
+                    || !DriverAssignment::query()->where('booking_id', $booking->id)->where('booking_item_id', $item->id)
+                        ->where('driver_id', $driverId)->whereNull('actual_end')
+                        ->whereNotIn('status', ['cancelled', 'completed'])->exists();
+            });
+            if ($itemsNeedingAssignment->isEmpty()) return;
+
+            foreach ($itemsNeedingAssignment as $item) {
+                if (ServiceType::isSelfDriveType($item->serviceType?->type)) {
+                    throw ValidationException::withMessages(['driver_id' => 'A driver cannot be assigned to a self-drive trip.']);
+                }
+                $availability = $this->assignmentService->getEnhancedDriverAvailability(
+                    (string) $driverId,
+                    $this->bookingDateTime($item->from_date, $item->from_time),
+                    $this->bookingDateTime($item->to_date, $item->to_time),
+                    (string) $booking->id,
+                );
+                if (!($availability['enforcement']['available'] ?? false)) {
+                    throw ValidationException::withMessages(['driver_id' => $availability['enforcement']['blocking_reasons'] ?? ['The driver is unavailable for this trip.']]);
+                }
+            }
+            foreach ($itemsNeedingAssignment as $item) {
+                DriverAssignment::query()->where('booking_id', $booking->id)->where('booking_item_id', $item->id)
+                    ->where('driver_id', '!=', $driverId)->whereNull('actual_end')
+                    ->whereNotIn('status', ['cancelled', 'completed'])
+                    ->get()->each(fn (DriverAssignment $assignment) => $assignment->update([
+                        'actual_end' => now(), 'status' => 'completed', 'updated_user_id' => $userId,
+                        'assignment_notes' => request()->input('reason'),
+                    ]));
+            }
+
+            $booking->update(['driver_id' => $driverId, 'updated_user_id' => $userId]);
+            $customerName = (string) ($booking->customer?->name ?? $booking->customer?->customer_name ?? 'Unknown Customer');
+            foreach ($itemsNeedingAssignment as $item) {
+                $item->update(['driver_id' => $driverId, 'updated_user_id' => $userId]);
+                $this->assignmentService->createDriverAssignment([
+                    'driver_id' => $driverId,
+                    'booking_id' => $booking->id,
+                    'booking_item_id' => $item->id,
+                    'customer_name' => $customerName,
+                    'service_type' => $item->serviceType?->name ?? 'Unknown Service',
+                    'assigned_from' => $this->bookingDateTime($item->from_date, $item->from_time),
+                    'assigned_to' => $this->bookingDateTime($item->to_date, $item->to_time),
+                    'assigned_by' => $userId,
+                    'created_user_id' => $userId,
+                    'status' => $booking->status === 'confirmed' ? 'active' : 'pending_approval',
+                    'requires_approval' => $booking->status !== 'confirmed' || (bool) $booking->requires_approval,
+                ]);
+            }
+        });
     }
 
     private function changeBookingStatus($bookingId, $status, $userId, $reason): void
     {
+        if (!in_array($status, ['draft', 'pending_approval', 'approved', 'confirmed', 'allocated', 'in_progress', 'completed', 'cancelled'], true)) {
+            throw ValidationException::withMessages(['status' => 'The requested booking status is invalid.']);
+        }
+        $this->updateBookingStatus((string) $bookingId, (string) $status, $reason, (string) $userId);
     }
 
     /**
@@ -13175,13 +13323,13 @@ class BookingFlowService
      */
     private function approveBooking(string $bookingId, string $userId, ?string $reason = null): void
     {
-        $booking = Booking::findOrFail($bookingId);
-
-        $booking->update([
+        Booking::query()->findOrFail($bookingId)->update([
             'status' => 'approved',
-            'approved_at' => now(),
-            'approved_by' => $userId,
-            'approval_reason' => $reason,
+            'approval_status' => 'approved',
+            'approval_at' => now(),
+            'approval_by' => $userId,
+            'approval_note' => $reason,
+            'updated_user_id' => $userId,
         ]);
     }
 
@@ -13190,13 +13338,13 @@ class BookingFlowService
      */
     private function rejectBooking(string $bookingId, string $userId, ?string $reason = null): void
     {
-        $booking = Booking::findOrFail($bookingId);
-
-        $booking->update([
+        Booking::query()->findOrFail($bookingId)->update([
             'status' => 'rejected',
-            'rejected_at' => now(),
-            'rejected_by' => $userId,
-            'rejection_reason' => $reason,
+            'approval_status' => 'rejected',
+            'approval_at' => now(),
+            'approval_by' => $userId,
+            'approval_note' => $reason,
+            'updated_user_id' => $userId,
         ]);
     }
 

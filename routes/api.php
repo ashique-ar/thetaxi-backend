@@ -912,6 +912,8 @@ Route::middleware(['auth:api'])->group(function () {
         Route::post('tasks', [SalesCrmController::class, 'createTask'])->middleware('permission:sales.crm.manage');
         Route::post('tasks/{task}/transition', [SalesCrmController::class, 'transitionTask'])
             ->whereUuid('task')->middleware('permission:sales.crm.manage');
+        Route::post('tasks/{task}/reschedule', [SalesCrmController::class, 'rescheduleTask'])
+            ->whereUuid('task')->middleware('permission:sales.crm.manage');
         Route::post('tasks/{task}/transfer', [SalesCrmController::class, 'transferTask'])
             ->whereUuid('task')->middleware('permission:sales.crm.manage');
         Route::get('targets/versions', [SalesPerformanceController::class, 'targets'])->middleware('permission:sales.performance.view');
@@ -1747,6 +1749,7 @@ Route::middleware(['auth:api'])->group(function () {
 
     // AI Content Generation Routes
     Route::prefix('ai-content')->group(function () {
+        Route::post('ideas', [AIContentController::class, 'suggestIdeas'])->name('api.ai-content.ideas');
         Route::post('generate', [AIContentController::class, 'generateFromTitle'])->name('api.ai-content.generate');
         Route::post('generate-meta', [AIContentController::class, 'generateMeta'])->name('api.ai-content.generate-meta');
         Route::post('improve', [AIContentController::class, 'improveContent'])->name('api.ai-content.improve');
@@ -2654,6 +2657,9 @@ Route::middleware(['auth:api'])->group(function () {
             Route::get('report/export', [FinancialSettlementController::class, 'exportBillingPeriods'])->middleware(['permission:bookings.view', 'permission:reports.generate']);
             Route::get('driver-cash/open', [FinancialSettlementController::class, 'driverCash'])->middleware('permission:bookings.view');
             Route::get('accounts/{ownerType}/{ownerId}', [FinancialSettlementController::class, 'account'])->whereIn('ownerType', ['customer', 'corporate'])->whereUuid('ownerId')->middleware('permission:bookings.view');
+            Route::post('corporates/{corporate}/remittances', [FinancialSettlementController::class, 'receiveCorporateRemittance'])->middleware('permission:financial-settlements.manage');
+            Route::post('corporate-remittances/{remittance}/allocate', [FinancialSettlementController::class, 'allocateCorporateRemittance'])->middleware('permission:financial-settlements.manage');
+            Route::post('corporate-remittance-allocations/{allocation}/reverse', [FinancialSettlementController::class, 'reverseCorporateRemittanceAllocation'])->middleware('permission:financial-settlements.manage');
             Route::post('driver-cash/settle', [FinancialSettlementController::class, 'settleDriverCash'])->middleware('permission:bookings.update');
             Route::post('driver-cash/{receipt}/dispute', [FinancialSettlementController::class, 'disputeDriverCash'])->middleware('permission:bookings.update');
             Route::post('driver-cash/{receipt}/resolve-dispute', [FinancialSettlementController::class, 'resolveDriverCashDispute'])->middleware('permission:bookings.update');
@@ -2661,6 +2667,7 @@ Route::middleware(['auth:api'])->group(function () {
             Route::post('', [FinancialSettlementController::class, 'store'])->middleware('permission:bookings.update');
             Route::post('{financialSettlement}/issue', [FinancialSettlementController::class, 'issue'])->middleware('permission:bookings.update');
             Route::post('{financialSettlement}/payments', [FinancialSettlementController::class, 'receivePayment'])->middleware('permission:bookings.update');
+            Route::patch('{financialSettlement}/follow-up', [FinancialSettlementController::class, 'followUp'])->middleware('permission:financial-settlements.follow-up');
             Route::post('{financialSettlement}/adjustments', [FinancialSettlementController::class, 'adjust'])->middleware('permission:bookings.update');
             Route::post('{financialSettlement}/dispute', [FinancialSettlementController::class, 'dispute'])->middleware('permission:bookings.update');
             Route::post('{financialSettlement}/resolve-dispute', [FinancialSettlementController::class, 'resolveDispute'])->middleware('permission:bookings.update');

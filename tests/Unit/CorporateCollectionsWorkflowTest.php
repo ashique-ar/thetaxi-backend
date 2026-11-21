@@ -29,6 +29,7 @@ it('registers remittances follow ups refunds and dedicated finance permissions',
     $migration = file_get_contents($root.'/database/migrations/2026_09_14_000001_complete_corporate_collections_workflow.php');
 
     expect($routes)->toContain("corporates/{corporate}/remittances")->toContain("corporate-remittances/{remittance}/allocate")->toContain("{financialSettlement}/follow-up")
+        ->toContain("FinancialSettlementController::class, 'followUp'")->toContain('permission:financial-settlements.follow-up')
         ->toContain('permission:financial-settlements.manage')
         ->and($controller)->toContain('receiveCorporateRemittance')->toContain("'metadata.refunded_at' => 'required_if:type,refund")
         ->and($service)->toContain('receiveCorporateRemittance')->toContain('allocateCorporateRemittance')->toContain('updateCollectionFollowUp')->toContain('unapplied_amount')

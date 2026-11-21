@@ -6,11 +6,9 @@
 
 <header class="t3-header" data-t3-header>
     <div class="t3-header__frame">
-        <a href="{{ route('home') }}" class="t3-header__logo" aria-label="{{ $theme03Brand }} home">
-            <img
-                src="{{ s3_asset($settings['logo_header'] ?? 'assets/img/header-logo.png') }}"
-                alt="{{ $settings['logo_header_alt'] ?? $theme03Brand }}">
-        </a>
+        @if (!empty($settings['logo_header']))
+            <a href="{{ route('home') }}" class="t3-header__logo" aria-label="{{ $theme03Brand }} home"><img src="{{ s3_asset($settings['logo_header']) }}" alt="{{ $settings['logo_header_alt'] ?? $theme03Brand }}"></a>
+        @endif
 
         <button
             class="t3-header__menu-toggle"

@@ -20,7 +20,7 @@ class AIContentController extends Controller
     public function __construct(AIContentService $aiContentService)
     {
         $this->aiContentService = $aiContentService;
-        $this->middleware('permission:cms-contents.create')->only(['generateFromTitle', 'generateMeta']);
+        $this->middleware('permission:cms-contents.create')->only(['generateFromTitle', 'generateMeta', 'suggestIdeas']);
         $this->middleware('permission:cms-contents.edit')->only(['improveContent']);
     }
 
@@ -39,6 +39,7 @@ class AIContentController extends Controller
             'tone' => 'nullable|string|max:100',
             'business_context' => 'nullable|string|max:500',
             'target_audience' => 'nullable|string|max:500',
+            'locale' => 'nullable|string|in:en,tr',
         ]);
 
         if ($validator->fails()) {
@@ -64,6 +65,7 @@ class AIContentController extends Controller
                 'tone' => $request->input('tone', 'professional yet friendly'),
                 'business_context' => $request->input('business_context'),
                 'target_audience' => $request->input('target_audience'),
+                'locale' => $request->input('locale'),
             ];
 
             $generatedContent = $this->aiContentService->generateContentFromTitle(
@@ -83,6 +85,48 @@ class AIContentController extends Controller
             return response()->json([
                 'status' => 'error',
                 'message' => 'Failed to generate content: ' . $e->getMessage(),
+            ], 500);
+        }
+    }
+
+    public function suggestIdeas(Request $request): JsonResponse
+    {
+        $validator = Validator::make($request->all(), [
+            'content_type' => 'nullable|string|max:50',
+            'content_type_locked' => 'nullable|boolean',
+            'focus' => 'nullable|string|max:240',
+            'locale' => 'nullable|string|in:en,tr',
+        ]);
+
+        if ($validator->fails()) {
+            return response()->json([
+                'status' => 'error',
+                'message' => 'Validation failed',
+                'errors' => $validator->errors(),
+            ], 422);
+        }
+
+        if (!$this->aiContentService->isConfigured()) {
+            return response()->json([
+                'status' => 'error',
+                'message' => 'AI content generation is not configured.',
+            ], 503);
+        }
+
+        try {
+            $ideas = $this->aiContentService->suggestContentIdeas($request->only([
+                'content_type', 'content_type_locked', 'focus', 'locale',
+            ]));
+
+            return response()->json([
+                'status' => 'success',
+                'message' => 'Content ideas generated successfully',
+                'data' => ['ideas' => $ideas],
+            ]);
+        } catch (\Exception $e) {
+            return response()->json([
+                'status' => 'error',
+                'message' => 'Failed to generate content ideas: ' . $e->getMessage(),
             ], 500);
         }
     }
@@ -149,6 +193,7 @@ class AIContentController extends Controller
             'body' => 'required|string|min:50',
             'business_context' => 'nullable|string|max:500',
             'target_audience' => 'nullable|string|max:500',
+            'locale' => 'nullable|string|in:en,tr',
         ]);
 
         if ($validator->fails()) {
@@ -173,6 +218,7 @@ class AIContentController extends Controller
                 [
                     'business_context' => $request->input('business_context'),
                     'target_audience' => $request->input('target_audience'),
+                    'locale' => $request->input('locale'),
                 ]
             );
 

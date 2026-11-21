@@ -446,6 +446,9 @@ class SalesCrmController extends Controller
                 'customer.user:id,first_name,last_name',
             ])
             ->addSelect(['owner_active' => $activeTaskOwner()])
+            ->addSelect(['completion_outcome' => SalesTaskEvent::query()->select('reason')
+                ->whereColumn('task_id', 'sales_tasks.id')->where('event_type', 'status_changed')
+                ->where('to_status', 'completed')->orderByDesc('occurred_at')->limit(1)])
             ->whereExists(fn ($profile) => $profile->selectRaw('1')->from('sales_profiles as profile')
                 ->whereColumn('profile.id', 'sales_tasks.owner_sales_profile_id')
                 ->whereNull('profile.deleted_at')
@@ -545,6 +548,7 @@ class SalesCrmController extends Controller
                 'is_overdue' => (bool) (in_array($task->status, ['open', 'in_progress'], true)
                     && $task->due_at?->utc()->lt($nowUtc)),
                 'state_version' => (int) $task->state_version,
+                'completion_outcome' => $task->status === 'completed' ? $task->completion_outcome : null,
                 'source_type' => $sourceType,
                 'source_id' => $sourceId,
                 'source_label' => $sourceLabel,
@@ -729,7 +733,7 @@ class SalesCrmController extends Controller
     public function transitionTask(Request $request, SalesTask $task, SalesCrmService $crm): JsonResponse
     {
         $profile = SalesProfile::query()->findOrFail($task->owner_sales_profile_id); $this->scope->assertProfile($request->user(), $profile, 'sales.crm.manage-all', 'sales.crm.manage-team');
-        $data = $request->validate(['to_status' => ['required', Rule::in(['open', 'in_progress', 'completed', 'cancelled'])], 'expected_version' => ['required', 'integer', 'min:1'], 'reason' => ['nullable', 'string', 'max:2000'], 'idempotency_key' => ['required', 'string', 'max:160']]);
+        $data = $request->validate(['to_status' => ['required', Rule::in(['open', 'in_progress', 'completed', 'cancelled'])], 'expected_version' => ['required', 'integer', 'min:1'], 'reason' => ['required_if:to_status,completed', 'nullable', 'string', 'max:2000'], 'idempotency_key' => ['required', 'string', 'max:160']]);
         return response()->json(['status' => 'success', 'data' => $this->writeConfirmation($crm->transitionTask($task, $data, (string) $request->user()->id))]);
     }
 
@@ -741,6 +745,21 @@ class SalesCrmController extends Controller
         $newOwner = SalesProfile::query()->findOrFail($data['owner_sales_profile_id']);
         $this->scope->assertProfile($request->user(), $newOwner, 'sales.crm.manage-all', 'sales.crm.manage-team');
         return response()->json(['status' => 'success', 'data' => $this->writeConfirmation($crm->transferTask($task, $newOwner, $data['expected_version'], $data['reason'], $data['idempotency_key'], (string) $request->user()->id))]);
+    }
+
+    public function rescheduleTask(Request $request, SalesTask $task, SalesCrmService $crm): JsonResponse
+    {
+        $profile = SalesProfile::query()->findOrFail($task->owner_sales_profile_id);
+        $this->scope->assertProfile($request->user(), $profile, 'sales.crm.manage-all', 'sales.crm.manage-team');
+        $data = $request->validate([
+            'due_at' => ['required', 'date'],
+            'expected_version' => ['required', 'integer', 'min:1'],
+            'reason' => ['required', 'string', 'max:1000'],
+            'idempotency_key' => ['required', 'uuid'],
+        ]);
+        return response()->json(['status' => 'success', 'data' => $this->writeConfirmation(
+            $crm->rescheduleTask($task, $data, (string) $request->user()->id),
+        )]);
     }
 
     private function assertOpportunityScope(Request $request, SalesOpportunity $opportunity, bool $manage = false): void

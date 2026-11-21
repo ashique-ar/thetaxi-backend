@@ -1565,7 +1565,7 @@ class WebsiteSettingsService
         $tagline = $this->firstFilled($settings, ['brand_tagline', 'site_tagline'], self::DEFAULT_TAGLINE);
         $shortName = $this->firstFilled($settings, ['brand_short_name', 'brand_name', 'site_name'], $brandName);
         $primaryLogo = $this->firstFilled($settings, ['brand_logo_primary', 'logo_header', 'portal_logo'], '');
-        $favicon = $this->firstFilled($settings, ['brand_favicon', 'favicon', 'favicon_url'], 'favicon.ico');
+        $favicon = $this->firstFilled($settings, ['brand_favicon', 'favicon', 'favicon_url'], '');
 
         $settings['brand_name'] = $brandName;
         $settings['brand_short_name'] = $shortName;

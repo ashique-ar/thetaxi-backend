@@ -39,15 +39,17 @@
 <header class="header-area style-2 travel-agency3">
     <div class="container-fluid d-flex flex-nowrap align-items-center justify-content-between">
         <div class="logo-and-menu-area">
-            <a href="{{ route('home') }}" class="header-logo">
-                <img src="{{ s3_asset($settings['logo_header'] ?? 'assets/img/header-logo.png') }}"
-                    alt="{{ $settings['logo_header_alt'] ?? ($settings['site_name'] ?? $settings['brand_name'] ?? 'Company') }}">
-            </a>
+            @if (!empty($settings['logo_header']))
+                <a href="{{ route('home') }}" class="header-logo">
+                    <img src="{{ s3_asset($settings['logo_header']) }}" alt="{{ $settings['logo_header_alt'] ?? ($settings['site_name'] ?? $settings['brand_name'] ?? 'Company') }}">
+                </a>
+            @endif
             <div class="main-menu">
                 <div class="mobile-logo-area d-xl-none d-flex align-items-center justify-content-between">
                     <a href="{{ route('home') }}" class="mobile-logo-wrap">
-                        <img src="{{ s3_asset($settings['logo_mobile'] ?? ($settings['logo_header'] ?? 'assets/img/header-logo.png')) }}"
-                            alt="{{ $settings['logo_mobile_alt'] ?? ($settings['site_name'] ?? $settings['brand_name'] ?? 'Company') }}">
+                        @if (!empty($settings['logo_mobile'] ?? $settings['logo_header'] ?? null))
+                            <img src="{{ s3_asset($settings['logo_mobile'] ?? $settings['logo_header']) }}" alt="{{ $settings['logo_mobile_alt'] ?? ($settings['site_name'] ?? $settings['brand_name'] ?? 'Company') }}">
+                        @endif
                     </a>
                     <div class="menu-close-btn">
                         <i class="bi bi-x"></i>
