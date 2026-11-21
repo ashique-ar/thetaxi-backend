@@ -4,13 +4,12 @@ namespace App\Models;
 
 use App\Models\Booking\Booking;
 use App\Models\BaseModel;
-use Illuminate\Database\Eloquent\SoftDeletes;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use App\Traits\RecordsBookingHistoryAtomically;
 
 class Invoice extends BaseModel
 {
-    use SoftDeletes, RecordsBookingHistoryAtomically;
+    use RecordsBookingHistoryAtomically;
 
     protected $table = 'invoices';
 
