@@ -4,9 +4,12 @@ namespace App\Models\Website;
 
 use App\Models\BaseModel;
 use App\Models\Booking\Booking;
+use App\Traits\RecordsBookingHistoryAtomically;
 
 class PendingPaymentLink extends BaseModel
 {
+    use RecordsBookingHistoryAtomically;
+
     protected $table = 'pending_payment_links';
 
     protected $fillable = [

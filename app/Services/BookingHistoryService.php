@@ -66,6 +66,8 @@ class BookingHistoryService
         'paid_at', 'settlement_recorded_at', 'status', 'frozen_at', 'service_date',
         'activity_type', 'outcome', 'next_action', 'next_action_at', 'occurred_at',
         'included_count', 'service_date', 'direction', 'route_id', 'shift_id', 'program_id',
+        'expires_at', 'invalidated_at', 'accepted_at', 'revision_number', 'amount_due',
+        'revision_amount_due', 'revision_total',
         'incident_id', 'state', 'cause', 'started_at', 'reported_at', 'recovered_at',
         'stage', 'expected_value_source', 'expected_value_lkr', 'probability_percent', 'expected_close_date',
         'won_booking_id', 'won_at', 'closed_at', 'lost_reason_code', 'confidentiality', 'state_version',

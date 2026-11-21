@@ -78,6 +78,7 @@ use App\Models\Vehicle\Vehicle;
 use App\Models\Vehicle\VehicleAssignment;
 use App\Models\Vehicle\VehicleMaintenanceSchedule;
 use App\Models\Vehicle\VehiclePricing\BookingPriceAdjustmentHistory as VehicleBookingPriceAdjustmentHistory;
+use App\Models\Website\PendingPaymentLink;
 use App\Models\Finance\FinancialAuditEvent;
 use App\Models\Staff;
 use App\Observers\DriverObserver;
@@ -219,6 +220,7 @@ class AppServiceProvider extends ServiceProvider
         BookingVariableCustomization::observe(BookingHistoryObserver::class);
         VehicleAssignment::observe(BookingHistoryObserver::class);
         VehicleMaintenanceSchedule::observe(BookingHistoryObserver::class);
+        PendingPaymentLink::observe(BookingHistoryObserver::class);
         DriverAssignment::observe(BookingHistoryObserver::class);
         FinancialAuditEvent::observe(BookingHistoryObserver::class);
 
