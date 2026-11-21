@@ -14,6 +14,8 @@ class BookingHistoryService
 {
     private const TRACKED_FIELDS = [
         'status', 'old_status', 'new_status', 'payment_status', 'payment_collection_status',
+        'booking_channel_id', 'booking_source', 'booking_origin', 'booking_date', 'booked_at', 'created_from',
+        'workflow_step', 'workflow_data', 'confirmation_number', 'approval_priority', 'approval_requested_at', 'approval_requested_by',
         'customer_id', 'agent_id', 'responsible_user_id', 'passenger_count', 'luggage_count', 'driver_hire_settlement_id', 'issued_date', 'issued_by',
         'special_requirements', 'emergency_contact_name', 'emergency_contact_phone',
         'review_notes', 'base_amount', 'total_estimated', 'total_actual', 'driver_cost',
@@ -23,12 +25,21 @@ class BookingHistoryService
         'cost_center', 'project_code', 'service_type_id', 'vehicle_group_id',
         'vehicle_class_id', 'vehicle_id', 'driver_id', 'from_date', 'from_time',
         'to_date', 'to_time', 'pickup_landmark', 'dropoff_landmark',
+        'item_type', 'item_code', 'duration_days', 'duration_hours', 'duration_minutes', 'is_self_driven',
+        'pickup_location', 'pickup_latitude', 'pickup_longitude', 'dropoff_location', 'dropoff_latitude', 'dropoff_longitude',
+        'final_priced_at', 'price_overridden_at', 'price_overridden_by', 'price_override_amount', 'price_override_reason',
         'unit_price', 'total_price', 'currency', 'discount_amount', 'tax_amount', 'confirmed',
         'confirmed_at', 'completed_at', 'cancelled_at', 'approval_status', 'approval_justification', 'status',
         'approval_by', 'approval_at', 'approval_note',
         'requires_approval', 'approved_at', 'actual_start', 'actual_end',
+        'manager_id', 'requested_at', 'processed_by', 'conditions', 'notes',
         'trip_phase', 'trip_completed_at',
         'assigned_from', 'assigned_to', 'assignment_type', 'assignment_notes',
+        'confirmation_method', 'confirmation_notes', 'confirmed_by', 'confirmed_by_name_snapshot',
+        'assigned_by_name_snapshot', 'driver_name_snapshot', 'decline_reason', 'parent_assignment_id',
+        'pickup_arrived_at', 'trip_started_at', 'accept_latitude', 'accept_longitude', 'final_latitude', 'final_longitude',
+        'pickup_arrival_latitude', 'pickup_arrival_longitude', 'trip_start_latitude', 'trip_start_longitude',
+        'hire_waiting_time_seconds', 'pickup_waiting_time_seconds', 'total_waiting_time_seconds',
         'amount', 'refunded_amount', 'payment_method', 'payment_stage',
         'payment_purpose', 'finality_status', 'allocation_status', 'refund_method',
         'driver_company_settlement_status', 'driver_company_settled_at',
@@ -56,6 +67,8 @@ class BookingHistoryService
         'discount_name', 'type', 'value', 'adjustment_type', 'applied_amount',
         'event_type', 'source', 'message_direction', 'outbound_status',
         'stop_type', 'route_order', 'completed_at', 'completed_action', 'skip_reason',
+        'type_sequence', 'arrived_at', 'address', 'location', 'latitude', 'longitude',
+        'arrived_latitude', 'arrived_longitude', 'completed_latitude', 'completed_longitude',
         'assignment_id', 'start_time', 'end_time', 'total_distance_km', 'linked_booking_id',
         'call_status', 'follow_up_due_at', 'follow_up_completed_at',
         'exception_type', 'details', 'resolved_by', 'resolved_at', 'detected_at',
@@ -80,9 +93,12 @@ class BookingHistoryService
         'approval_type', 'priority', 'override_reasons', 'justification', 'comments',
         'rejected_at', 'auto_approved', 'approval_level', 'approver_id',
         'requested_by', 'dispatch_status', 'dispatched_at', 'dispatched_by',
+        'trigger_delivered_at', 'trigger_delivery_channel',
         'expected_return_at', 'actual_return_at', 'returned_by', 'dispatch_notes',
         'return_notes', 'fuel_level_out', 'fuel_level_in', 'mileage_out', 'mileage_in',
         'vehicle_condition_out', 'vehicle_condition_in', 'damages_reported',
+        'inspection_started_at', 'inspector_id', 'passed_inspection', 'repair_required', 'requires_maintenance',
+        'fuel_level', 'mileage', 'next_maintenance_due', 'estimated_repair_cost',
         'additional_charges', 'late_return_fee', 'documents_generated', 'agreements_signed',
         'quantity', 'addon_id', 'price', 'variable_name',
         'variable_type', 'original_value', 'custom_value', 'customization_reason',
@@ -117,7 +133,7 @@ class BookingHistoryService
         $actor = $event->performed_by ? User::query()->find($event->performed_by) : null;
         $reason = $metadata['reason'] ?? request()->input('change_reason', request()->input('reason'));
         $occurredAt = $event->occurred_at?->utc() ?? now()->utc();
-        $correlationId = implode(':', ['finance', $event->subject_type, $event->subject_id, $event->event_type]);
+        $correlationId = 'financial-audit:' . $event->getKey();
         DB::table('booking_history_events')->insertOrIgnore([
             'id' => (string) Str::uuid(),
             'booking_id' => (string) $event->booking_id,
@@ -274,7 +290,13 @@ class BookingHistoryService
                 if (in_array($operation, ['created', 'deleted', 'restored'], true) || $old !== $new) {
                     $redact = in_array($field, [
                         'special_requirements', 'emergency_contact_name', 'emergency_contact_phone',
-                        'details', 'context',
+                        'details', 'context', 'workflow_data', 'conditions', 'notes', 'confirmation_notes',
+                        'pickup_location', 'pickup_latitude', 'pickup_longitude',
+                        'dropoff_location', 'dropoff_latitude', 'dropoff_longitude', 'address', 'location',
+                        'latitude', 'longitude', 'accept_latitude', 'accept_longitude', 'final_latitude',
+                        'final_longitude', 'pickup_arrival_latitude', 'pickup_arrival_longitude',
+                        'trip_start_latitude', 'trip_start_longitude', 'driver_name_snapshot',
+                        'assigned_by_name_snapshot', 'confirmed_by_name_snapshot',
                     ], true);
                     $changes[$field] = [
                         'from' => $operation === 'created' || $operation === 'restored'
@@ -286,6 +308,20 @@ class BookingHistoryService
                     ];
                 }
             }
+        }
+        $changedFields = match ($operation) {
+            'created' => array_keys($model->getAttributes()),
+            'updated' => array_keys($model->getChanges()),
+            default => [],
+        };
+        $untrackedFields = array_values(array_diff(
+            $changedFields,
+            self::TRACKED_FIELDS,
+            ['id', 'booking_id', 'booking_item_id', 'created_at', 'updated_at', 'deleted_at', 'created_user_id', 'updated_user_id'],
+        ));
+        if ($untrackedFields !== []) {
+            sort($untrackedFields);
+            $changes['other_fields'] = ['from' => null, 'to' => implode(', ', $untrackedFields)];
         }
         if ($operation === 'updated' && $changes === []) return;
 
@@ -425,8 +461,6 @@ class BookingHistoryService
         if ($value instanceof \BackedEnum) return $value->value;
         if ($value instanceof \DateTimeInterface) return $value->format(DATE_ATOM);
         if (is_scalar($value) || $value === null) return $value;
-        if (is_array($value)) return '[redacted]';
-
-        return (string) $value;
+        return '[redacted]';
     }
 }

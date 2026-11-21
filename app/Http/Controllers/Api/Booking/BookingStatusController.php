@@ -31,6 +31,7 @@ class BookingStatusController extends Controller
     public function store(CreateBookingStatusRequest $request): JsonResponse
     {
         $data = $request->validated();
+        unset($data['change_reason']);
         $data['created_user_id'] = $request->user()->id;
         $st = BookingStatus::create($data);
 
@@ -52,6 +53,7 @@ class BookingStatusController extends Controller
     public function update(UpdateBookingStatusRequest $request, BookingStatus $bookingStatus): JsonResponse
     {
         $data = $request->validated();
+        unset($data['change_reason']);
         $data['updated_user_id'] = $request->user()->id;
         $bookingStatus->update($data);
 
@@ -62,8 +64,9 @@ class BookingStatusController extends Controller
         ]);
     }
 
-    public function destroy(BookingStatus $bookingStatus): JsonResponse
+    public function destroy(Request $request, BookingStatus $bookingStatus): JsonResponse
     {
+        $request->validate(['change_reason' => ['nullable', 'string', 'max:1000']]);
         $bookingStatus->delete();
         return response()->json([
             'status' => 'success',

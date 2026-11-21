@@ -4412,9 +4412,6 @@ class BookingLifecycleService
         if ($bookingStatus === 'booking_cancelled') {
             return BookingLifecycleStatus::BOOKING_CANCELLED;
         }
-        if ($bookingStatus === 'pending_approval' && $this->resolveApprovalStatus($booking) === 'approved') {
-            return BookingLifecycleStatus::BOOKING_APPROVED;
-        }
         if (in_array($bookingStatus, ['rejected', 'booking_rejected'], true)) {
             return BookingLifecycleStatus::BOOKING_REJECTED;
         }
@@ -4464,7 +4461,7 @@ class BookingLifecycleService
         $itemIsSelfDriven = (bool) ($bookingItem?->is_self_driven ?? $booking->is_self_driven);
         if (
             $bookingItem
-            && in_array($bookingStatus, ['confirmed', 'approved', 'booking_confirmed', 'booking_approved', 'allocation_pending', 'pending_allocation'], true)
+            && in_array($bookingStatus, ['pending_approval', 'confirmed', 'approved', 'booking_confirmed', 'booking_approved', 'allocation_pending', 'pending_allocation'], true)
             && !empty($bookingItem->vehicle_id)
             && ($itemIsSelfDriven || !empty($bookingItem->driver_id))
         ) {
@@ -4473,6 +4470,10 @@ class BookingLifecycleService
             }
 
             return BookingLifecycleStatus::ALLOCATION_ASSIGNED;
+        }
+
+        if ($bookingStatus === 'pending_approval' && $this->resolveApprovalStatus($booking) === 'approved') {
+            return BookingLifecycleStatus::BOOKING_APPROVED;
         }
 
         return $booking->getLifecycleStatus();
@@ -4588,6 +4589,7 @@ class BookingLifecycleService
         }
 
         if (in_array($currentStatus, [
+            BookingLifecycleStatus::BOOKING_APPROVED,
             BookingLifecycleStatus::BOOKING_CONFIRMED,
             BookingLifecycleStatus::ALLOCATION_PENDING,
             BookingLifecycleStatus::ALLOCATION_CONFLICTS,
@@ -4698,6 +4700,7 @@ class BookingLifecycleService
             $blockingReasons = array_merge($blockingReasons, $financialBlockingReasons);
         }
         if (in_array($currentStatus, [
+            BookingLifecycleStatus::BOOKING_APPROVED,
             BookingLifecycleStatus::BOOKING_CONFIRMED,
             BookingLifecycleStatus::ALLOCATION_PENDING,
             BookingLifecycleStatus::ALLOCATION_CONFLICTS,
@@ -4709,6 +4712,7 @@ class BookingLifecycleService
             $blockingReasons[] = 'The required service deposit must be received before dispatch';
         }
         if (in_array($currentStatus, [
+            BookingLifecycleStatus::BOOKING_APPROVED,
             BookingLifecycleStatus::BOOKING_CONFIRMED,
             BookingLifecycleStatus::ALLOCATION_PENDING,
             BookingLifecycleStatus::ALLOCATION_CONFLICTS,
@@ -4720,6 +4724,7 @@ class BookingLifecycleService
             $blockingReasons[] = 'Add a verified, unexpired driver licence to the customer profile before dispatch';
         }
         if (in_array($currentStatus, [
+            BookingLifecycleStatus::BOOKING_APPROVED,
             BookingLifecycleStatus::BOOKING_CONFIRMED,
             BookingLifecycleStatus::ALLOCATION_PENDING,
             BookingLifecycleStatus::ALLOCATION_CONFLICTS,

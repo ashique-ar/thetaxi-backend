@@ -15,6 +15,7 @@ class CreateBookingStatusRequest extends FormRequest
             'booking_id' => ['nullable', 'exists:bookings,id'],
             'old_status' => ['nullable', 'string', 'max:50'],
             'new_status' => ['nullable', 'string', 'max:50'],
+            'change_reason' => ['nullable', 'string', 'max:1000'],
         ];
     }
 }

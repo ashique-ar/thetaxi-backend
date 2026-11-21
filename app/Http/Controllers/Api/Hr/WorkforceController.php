@@ -540,24 +540,26 @@ class WorkforceController extends Controller
     }
     public function payrollInputs(Request $r, StaffAccessService $access): JsonResponse
     {
-        $data = $r->validate(['staff_id' => ['nullable', 'uuid'], 'status' => ['nullable', Rule::in(['staged', 'approved', 'rejected'])], 'export' => ['nullable', 'boolean']]);
+        $data = $r->validate(['staff_id' => ['nullable', 'uuid'], 'status' => ['nullable', Rule::in(['staged', 'approved', 'rejected'])], 'date_from' => ['nullable', 'date'], 'date_to' => ['nullable', 'date', 'after_or_equal:date_from'], 'export' => ['nullable', 'boolean']]);
         $staff = $access->scope(Staff::query()->select('staff.id'), $r->user());
-        $q = DB::table('hr_payroll_input_facts')->whereIn('staff_id', $staff)
-            ->when($data['staff_id'] ?? null, fn($query, $staffId) => $query->where('staff_id', $staffId))
-            ->when($data['status'] ?? null, fn($query, $status) => $query->where('status', $status))
-            ->latest('effective_date')->select([
-                    'id',
-                    'staff_id',
-                    'fact_kind',
-                    'effective_date',
-                    'quantity_minutes',
-                    'quantity_units',
-                    'rate_category',
-                    'status',
-                    'created_at',
-                    'updated_at',
-                ]);
-        return response()->json(['status' => 'success', 'data' => ($data['export'] ?? false) ? $q->limit(10000)->get() : $q->paginate($this->paginationSize($r, 50))]);
+        $q = DB::table('hr_payroll_input_facts as fact')
+            ->join('staff', 'staff.id', '=', 'fact.staff_id')
+            ->leftJoin('users', 'users.id', '=', 'staff.user_id')
+            ->whereIn('fact.staff_id', $staff)
+            ->when($data['staff_id'] ?? null, fn($query, $staffId) => $query->where('fact.staff_id', $staffId))
+            ->when($data['status'] ?? null, fn($query, $status) => $query->where('fact.status', $status))
+            ->when($data['date_from'] ?? null, fn($query, $date) => $query->whereDate('fact.effective_date', '>=', $date))
+            ->when($data['date_to'] ?? null, fn($query, $date) => $query->whereDate('fact.effective_date', '<=', $date))
+            ->latest('fact.effective_date')->select([
+                'fact.id', 'fact.staff_id', 'staff.code as staff_code', 'users.first_name as staff_first_name',
+                'users.last_name as staff_last_name', 'fact.fact_kind', 'fact.effective_date', 'fact.quantity_minutes',
+                'fact.quantity_units', 'fact.rate_category', 'fact.status', 'fact.created_at', 'fact.updated_at',
+            ]);
+        if ($data['export'] ?? false) {
+            abort_if((clone $q)->count() > 10000, 422, 'Narrow the export filters to 10,000 payroll inputs or fewer.');
+            return response()->json(['status' => 'success', 'data' => $q->limit(10000)->get()]);
+        }
+        return response()->json(['status' => 'success', 'data' => $q->paginate($this->paginationSize($r, 50))]);
     }
 
     private function approveConfig(Request $r, string $table, string $id, ?callable $validate = null): JsonResponse

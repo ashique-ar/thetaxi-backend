@@ -2,9 +2,9 @@
 
 namespace App\Models\Booking;
 
-use App\Models\BaseModel;
+use App\Models\NonSoftDeletableModel;
 
-class BookingHistoryEvent extends BaseModel
+class BookingHistoryEvent extends NonSoftDeletableModel
 {
     protected $table = 'booking_history_events';
 
