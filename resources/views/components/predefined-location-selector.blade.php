@@ -89,7 +89,7 @@ $selectedLocationId = $locationOptions->firstWhere('code', $selectedLocationCode
         <div class="custom-select-dropdown">
         {{-- Custom dropdown trigger (looks like a text input) --}}
         <div class="pls-dropdown" id="{{ $selectId }}_dropdown" data-field-name="{{ $name }}">
-            <div class="pls-dropdown-trigger" tabindex="0" role="combobox" aria-labelledby="{{ $selectId }}_label" aria-expanded="false" aria-haspopup="listbox">
+            <div class="pls-dropdown-trigger" tabindex="0" role="combobox" aria-labelledby="{{ $selectId }}_label" aria-required="{{ $required ? 'true' : 'false' }}" aria-expanded="false" aria-haspopup="listbox">
                 <span class="pls-dropdown-current {{ $selectedLocationName ? '' : 'pls-placeholder' }}">{{ $selectedLocationName ?: 'Select ' . $label }}</span>
                 <span class="pls-dropdown-arrow"></span>
             </div>

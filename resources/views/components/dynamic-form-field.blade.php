@@ -76,11 +76,11 @@
                             @include('components.airport-select', [
                             'selectId' => $elementId,
                             'ariaLabel' => $label,
+                            'required' => $required,
                             'name' => $submitAs,
                             'airports' => $airportOptions ?? collect(),
                             'selectedValue' => $fieldValue,
                             'placeholder' => $placeholder ?: $airportSelectPlaceholder,
-                            'required' => $required,
                             ])
                         </div>
                     </div>

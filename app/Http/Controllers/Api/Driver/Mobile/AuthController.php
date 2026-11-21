@@ -20,6 +20,7 @@ use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\Hash;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Facades\Storage;
 use Illuminate\Support\Str;
 use Illuminate\Validation\Rule;
@@ -229,6 +230,14 @@ class AuthController extends Controller
             $errors = $e->errors();
             $user = \App\Models\User::where('email', strtolower((string) $request->input('email')))->first();
 
+            Log::channel('loki_backend')->warning('Driver password login rejected', [
+                'event' => 'auth.driver.login_rejected',
+                'email_hash' => hash_hmac('sha256', strtolower(trim((string) $request->input('email'))), (string) config('app.key')),
+                'reason' => array_key_first($errors) ?? 'invalid_credentials',
+                'user_id' => $user?->id,
+                'request_id' => $request->header('X-Request-ID'),
+            ]);
+
             if (array_key_exists('account', $errors) && $user?->isLocked()) {
                 return response()->json([
                     'status' => 'error',
@@ -250,6 +259,13 @@ class AuthController extends Controller
                 'errors' => $errors
             ], 401);
         } catch (\Exception $e) {
+            Log::channel('loki_backend')->error('Driver password login failed unexpectedly', [
+                'event' => 'auth.driver.login_error',
+                'email_hash' => hash_hmac('sha256', strtolower(trim((string) $request->input('email'))), (string) config('app.key')),
+                'exception' => $e::class,
+                'request_id' => $request->header('X-Request-ID'),
+            ]);
+
             return response()->json([
                 'status' => 'error',
                 'message' => 'Login failed',
