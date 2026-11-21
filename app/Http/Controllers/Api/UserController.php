@@ -496,7 +496,7 @@ class UserController extends Controller
         return response()->json([
             'status' => 'success',
             'data' => [
-                'permissions' => $permissions->map(function ($permission) use ($directNames, $contextNames, $roleNames) {
+                'permissions' => $permissions->map(function ($permission) use ($directNames, $contextNames, $roleNames, $registry) {
                     return [
                         'id' => $permission->id,
                         'name' => $registry->resolveKey($permission->name),

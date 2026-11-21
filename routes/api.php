@@ -1749,6 +1749,7 @@ Route::middleware(['auth:api'])->group(function () {
 
     // AI Content Generation Routes
     Route::prefix('ai-content')->group(function () {
+        Route::post('content-types', [AIContentController::class, 'suggestContentTypes'])->name('api.ai-content.content-types');
         Route::post('ideas', [AIContentController::class, 'suggestIdeas'])->name('api.ai-content.ideas');
         Route::post('generate', [AIContentController::class, 'generateFromTitle'])->name('api.ai-content.generate');
         Route::post('generate-meta', [AIContentController::class, 'generateMeta'])->name('api.ai-content.generate-meta');

@@ -72,7 +72,7 @@ $displayText = $selectedAirportName
 <div class="airport-pls-wrapper {{ $cssClass ?? '' }}" id="{{ $selectId }}_wrapper">
     {{-- Custom dropdown (PLS style) --}}
     <div class="pls-dropdown airport-pls-dropdown" id="{{ $dropdownId }}" data-select-id="{{ $selectId }}">
-        <div class="pls-dropdown-trigger" tabindex="0" role="combobox" aria-expanded="false" aria-haspopup="listbox">
+        <div class="pls-dropdown-trigger" tabindex="0" role="combobox" aria-label="{{ $ariaLabel ?? $placeholder }}" aria-expanded="false" aria-haspopup="listbox">
             <span class="pls-dropdown-current {{ $displayText ? '' : 'pls-placeholder' }}">{{ $displayText ?: $placeholder }}</span>
             <span class="pls-dropdown-arrow"></span>
         </div>

@@ -47,6 +47,9 @@ return [
         'organization' => env('OPENAI_ORGANIZATION'),
         'model' => env('OPENAI_MODEL', 'gpt-6-luna'),
     ],
+    'ai_content' => [
+        'international_audience_enabled' => env('AI_CONTENT_INTERNATIONAL_AUDIENCE_ENABLED', false),
+    ],
 
     'turnstile' => [
         'enabled' => env('TURNSTILE_ENABLED', false),

@@ -21,6 +21,7 @@ class AIContentController extends Controller
     {
         $this->aiContentService = $aiContentService;
         $this->middleware('permission:cms-contents.create')->only(['generateFromTitle', 'generateMeta', 'suggestIdeas']);
+        $this->middleware('permission:cms-content-types.view')->only(['suggestContentTypes']);
         $this->middleware('permission:cms-contents.edit')->only(['improveContent']);
     }
 
@@ -40,6 +41,7 @@ class AIContentController extends Controller
             'business_context' => 'nullable|string|max:500',
             'target_audience' => 'nullable|string|max:500',
             'locale' => 'nullable|string|in:en,tr',
+            'audience_mode' => 'nullable|string|in:local,international',
         ]);
 
         if ($validator->fails()) {
@@ -49,6 +51,7 @@ class AIContentController extends Controller
                 'errors' => $validator->errors(),
             ], 422);
         }
+        if ($audienceModeError = $this->internationalAudienceModeError($request)) return $audienceModeError;
 
         if (!$this->aiContentService->isConfigured()) {
             return response()->json([
@@ -66,6 +69,7 @@ class AIContentController extends Controller
                 'business_context' => $request->input('business_context'),
                 'target_audience' => $request->input('target_audience'),
                 'locale' => $request->input('locale'),
+                'audience_mode' => $request->input('audience_mode', 'local'),
             ];
 
             $generatedContent = $this->aiContentService->generateContentFromTitle(
@@ -96,6 +100,7 @@ class AIContentController extends Controller
             'content_type_locked' => 'nullable|boolean',
             'focus' => 'nullable|string|max:240',
             'locale' => 'nullable|string|in:en,tr',
+            'audience_mode' => 'nullable|string|in:local,international',
         ]);
 
         if ($validator->fails()) {
@@ -105,6 +110,7 @@ class AIContentController extends Controller
                 'errors' => $validator->errors(),
             ], 422);
         }
+        if ($audienceModeError = $this->internationalAudienceModeError($request)) return $audienceModeError;
 
         if (!$this->aiContentService->isConfigured()) {
             return response()->json([
@@ -115,7 +121,7 @@ class AIContentController extends Controller
 
         try {
             $ideas = $this->aiContentService->suggestContentIdeas($request->only([
-                'content_type', 'content_type_locked', 'focus', 'locale',
+                'content_type', 'content_type_locked', 'focus', 'locale', 'audience_mode',
             ]));
 
             return response()->json([
@@ -127,6 +133,39 @@ class AIContentController extends Controller
             return response()->json([
                 'status' => 'error',
                 'message' => 'Failed to generate content ideas: ' . $e->getMessage(),
+            ], 500);
+        }
+    }
+
+    public function suggestContentTypes(Request $request): JsonResponse
+    {
+        $validator = Validator::make($request->all(), [
+            'locale' => 'nullable|string|in:en,tr',
+        ]);
+        if ($validator->fails()) {
+            return response()->json([
+                'status' => 'error',
+                'message' => 'Validation failed',
+                'errors' => $validator->errors(),
+            ], 422);
+        }
+        if (!$this->aiContentService->isConfigured()) {
+            return response()->json([
+                'status' => 'error',
+                'message' => 'AI content generation is not configured.',
+            ], 503);
+        }
+
+        try {
+            return response()->json([
+                'status' => 'success',
+                'message' => 'Content type suggestions generated successfully',
+                'data' => ['types' => $this->aiContentService->suggestContentTypes($request->input('locale', 'en'))],
+            ]);
+        } catch (\Exception $e) {
+            return response()->json([
+                'status' => 'error',
+                'message' => 'Failed to suggest content types: ' . $e->getMessage(),
             ], 500);
         }
     }
@@ -194,6 +233,7 @@ class AIContentController extends Controller
             'business_context' => 'nullable|string|max:500',
             'target_audience' => 'nullable|string|max:500',
             'locale' => 'nullable|string|in:en,tr',
+            'audience_mode' => 'nullable|string|in:local,international',
         ]);
 
         if ($validator->fails()) {
@@ -203,6 +243,7 @@ class AIContentController extends Controller
                 'errors' => $validator->errors(),
             ], 422);
         }
+        if ($audienceModeError = $this->internationalAudienceModeError($request)) return $audienceModeError;
 
         if (!$this->aiContentService->isConfigured()) {
             return response()->json([
@@ -219,6 +260,7 @@ class AIContentController extends Controller
                     'business_context' => $request->input('business_context'),
                     'target_audience' => $request->input('target_audience'),
                     'locale' => $request->input('locale'),
+                    'audience_mode' => $request->input('audience_mode', 'local'),
                 ]
             );
 
@@ -249,7 +291,20 @@ class AIContentController extends Controller
             'data' => [
                 'configured' => $this->aiContentService->isConfigured(),
                 'model' => config('services.openai.model', 'gpt-4o'),
+                'international_audience_enabled' => (bool) config('services.ai_content.international_audience_enabled', false),
             ],
         ]);
+    }
+
+    private function internationalAudienceModeError(Request $request): ?JsonResponse
+    {
+        if ($request->input('audience_mode', 'local') === 'international'
+            && !config('services.ai_content.international_audience_enabled', false)) {
+            return response()->json([
+                'status' => 'error',
+                'message' => 'International visitor content is not enabled for this deployment.',
+            ], 403);
+        }
+        return null;
     }
 }

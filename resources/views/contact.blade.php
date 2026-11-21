@@ -76,41 +76,41 @@
                                 <div class="row g-4 mb-60">
                                     <div class="col-md-6">
                                         <div class="form-inner">
-                                            <label>{{ $settings['contact_form_name_label'] ?? 'Full Name' }} *</label>
-                                            <input type="text" name="name"
-                                                placeholder="{{ $settings['contact_form_name_placeholder'] ?? 'Wasington Mongla' }}"
-                                                value="{{ old('name') }}" required>
+                                            <label for="contact-name">{{ $settings['contact_form_name_label'] ?? 'Full Name' }} *</label>
+                                            <input id="contact-name" type="text" name="name" autocomplete="name"
+                                                placeholder="{{ $settings['contact_form_name_placeholder'] ?? 'Your full name' }}"
+                                                value="{{ old('name') }}" required aria-invalid="{{ $errors->has('name') ? 'true' : 'false' }}" @if ($errors->has('name')) aria-describedby="contact-name-error" @endif>
                                             @error('name')
-                                                <span class="text-danger small">{{ $message }}</span>
+                                                <span id="contact-name-error" class="text-danger small" role="alert">{{ $message }}</span>
                                             @enderror
                                         </div>
                                     </div>
                                     <div class="col-md-6">
                                         <div class="form-inner">
-                                            <label>{{ $settings['contact_form_email_label'] ?? 'Email Address' }} *</label>
-                                            <input type="email" name="email"
+                                            <label for="contact-email">{{ $settings['contact_form_email_label'] ?? 'Email Address' }} *</label>
+                                            <input id="contact-email" type="email" name="email" autocomplete="email"
                                                 placeholder="{{ $settings['contact_form_email_placeholder'] ?? 'info@example.com' }}"
-                                                value="{{ old('email') }}" required>
+                                                value="{{ old('email') }}" required aria-invalid="{{ $errors->has('email') ? 'true' : 'false' }}" @if ($errors->has('email')) aria-describedby="contact-email-error" @endif>
                                             @error('email')
-                                                <span class="text-danger small">{{ $message }}</span>
+                                                <span id="contact-email-error" class="text-danger small" role="alert">{{ $message }}</span>
                                             @enderror
                                         </div>
                                     </div>
                                     <div class="col-md-6">
                                         <div class="form-inner">
-                                            <label>{{ $settings['contact_form_phone_label'] ?? 'Phone Number' }} *</label>
-                                            <input type="text" id="contact-phone" name="phone"
+                                            <label for="contact-phone">{{ $settings['contact_form_phone_label'] ?? 'Phone Number' }} *</label>
+                                            <input type="tel" id="contact-phone" name="phone" autocomplete="tel"
                                                 placeholder="{{ $settings['contact_form_phone_placeholder'] ?? '+92 567 *** ***' }}"
-                                                value="{{ old('phone') }}" required>
+                                                value="{{ old('phone') }}" required aria-invalid="{{ $errors->has('phone') ? 'true' : 'false' }}" @if ($errors->has('phone')) aria-describedby="contact-phone-error" @endif>
                                             @error('phone')
-                                                <span class="text-danger small">{{ $message }}</span>
+                                                <span id="contact-phone-error" class="text-danger small" role="alert">{{ $message }}</span>
                                             @enderror
                                         </div>
                                     </div>
                                     <div class="col-md-6">
                                         <div class="form-inner">
-                                            <label>Service Type</label>
-                                            <select name="service_type_select">
+                                            <label for="contact-service-type">Service Type</label>
+                                            <select id="contact-service-type" name="service_type_select" aria-invalid="{{ $errors->has('service_type_select') ? 'true' : 'false' }}" @if ($errors->has('service_type_select')) aria-describedby="contact-service-type-error" @endif>
                                                 <option value="">Select Service Type</option>
                                                 <option value="general_inquiry"
                                                     {{ old('service_type_select') == 'general_inquiry' ? 'selected' : '' }}>
@@ -132,14 +132,14 @@
                                                 </option>
                                             </select>
                                             @error('service_type_select')
-                                                <span class="text-danger small">{{ $message }}</span>
+                                                <span id="contact-service-type-error" class="text-danger small" role="alert">{{ $message }}</span>
                                             @enderror
                                         </div>
                                     </div>
                                     <div class="col-md-6">
                                         <div class="form-inner">
-                                            <label>Vehicle Class</label>
-                                            <select name="vehicle_class" class="form-select no-nice">
+                                            <label for="contact-vehicle-class">Vehicle Class</label>
+                                            <select id="contact-vehicle-class" name="vehicle_class" class="form-select no-nice" aria-invalid="{{ $errors->has('vehicle_class') ? 'true' : 'false' }}" @if ($errors->has('vehicle_class')) aria-describedby="contact-vehicle-class-error" @endif>
                                                 <option value="">Select Vehicle Class</option>
                                                 @foreach ($vehicleClasses as $vehicleClass)
                                                     <option value="{{ $vehicleClass->name }}"
@@ -149,14 +149,14 @@
                                                 @endforeach
                                             </select>
                                             @error('vehicle_class')
-                                                <span class="text-danger small">{{ $message }}</span>
+                                                <span id="contact-vehicle-class-error" class="text-danger small" role="alert">{{ $message }}</span>
                                             @enderror
                                         </div>
                                     </div>
                                     <div class="col-md-6">
                                         <div class="form-inner">
-                                            <label>{{ $settings['contact_form_destination_label'] ?? 'Country' }}</label>
-                                            <select name="country" class="form-select no-nice">
+                                            <label for="contact-country">{{ $settings['contact_form_destination_label'] ?? 'Country' }}</label>
+                                            <select id="contact-country" name="country" class="form-select no-nice" autocomplete="country-name" aria-invalid="{{ $errors->has('country') ? 'true' : 'false' }}" @if ($errors->has('country')) aria-describedby="contact-country-error" @endif>
                                                 <option value="">
                                                     {{ $settings['contact_form_destination_placeholder'] ?? 'Select your Country' }}
                                                 </option>
@@ -173,17 +173,17 @@
                                                 @endforelse
                                             </select>
                                             @error('country')
-                                                <span class="text-danger small">{{ $message }}</span>
+                                                <span id="contact-country-error" class="text-danger small" role="alert">{{ $message }}</span>
                                             @enderror
                                         </div>
                                     </div>
                                     <div class="col-md-12">
                                         <div class="form-inner">
-                                            <label>{{ $settings['contact_form_message_label'] ?? 'Brief/Message' }} *</label>
-                                            <textarea name="message" required
-                                                placeholder="{{ $settings['contact_form_message_placeholder'] ?? 'Write somethings about inquiry' }}">{{ old('message') }}</textarea>
+                                            <label for="contact-message">{{ $settings['contact_form_message_label'] ?? 'Brief/Message' }} *</label>
+                                            <textarea id="contact-message" name="message" required
+                                                placeholder="{{ $settings['contact_form_message_placeholder'] ?? 'Tell us how we can help' }}" aria-invalid="{{ $errors->has('message') ? 'true' : 'false' }}" @if ($errors->has('message')) aria-describedby="contact-message-error" @endif>{{ old('message') }}</textarea>
                                             @error('message')
-                                                <span class="text-danger small">{{ $message }}</span>
+                                                <span id="contact-message-error" class="text-danger small" role="alert">{{ $message }}</span>
                                             @enderror
                                         </div>
                                     </div>

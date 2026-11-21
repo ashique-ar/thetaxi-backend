@@ -78,7 +78,7 @@ $selectedLocationId = $locationOptions->firstWhere('code', $selectedLocationCode
 
 <!-- Location Selector (styled like airport select) -->
 <div class="booking-field">
-    <label class="input-label">{{ $label }}</label>
+    <span class="input-label" id="{{ $selectId }}_label">{{ $label }}</span>
     <div class="single-search-box location-search-box">
         <svg width="15" height="15" viewBox="0 0 18 18" xmlns="http://www.w3.org/2000/svg">
             <g>
@@ -89,7 +89,7 @@ $selectedLocationId = $locationOptions->firstWhere('code', $selectedLocationCode
         <div class="custom-select-dropdown">
         {{-- Custom dropdown trigger (looks like a text input) --}}
         <div class="pls-dropdown" id="{{ $selectId }}_dropdown" data-field-name="{{ $name }}">
-            <div class="pls-dropdown-trigger" tabindex="0" role="combobox" aria-expanded="false" aria-haspopup="listbox">
+            <div class="pls-dropdown-trigger" tabindex="0" role="combobox" aria-labelledby="{{ $selectId }}_label" aria-expanded="false" aria-haspopup="listbox">
                 <span class="pls-dropdown-current {{ $selectedLocationName ? '' : 'pls-placeholder' }}">{{ $selectedLocationName ?: 'Select ' . $label }}</span>
                 <span class="pls-dropdown-arrow"></span>
             </div>
@@ -139,7 +139,7 @@ $selectedLocationId = $locationOptions->firstWhere('code', $selectedLocationCode
 <div class="booking-field custom-location-box"
      id="{{ $customInputId }}_wrapper"
      style="display: {{ $isCustom && $currentValue ? 'block' : 'none' }};">
-    <label class="input-label">{{ $customLabel }}</label>
+    <label class="input-label" for="{{ $customInputId }}">{{ $customLabel }}</label>
     <div class="single-search-box location-search-box">
         <svg width="15" height="15" viewBox="0 0 18 18" xmlns="http://www.w3.org/2000/svg">
             <g>

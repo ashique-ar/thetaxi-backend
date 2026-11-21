@@ -75,6 +75,7 @@
                         <div class="custom-select-dropdown">
                             @include('components.airport-select', [
                             'selectId' => $elementId,
+                            'ariaLabel' => $label,
                             'name' => $submitAs,
                             'airports' => $airportOptions ?? collect(),
                             'selectedValue' => $fieldValue,
@@ -156,6 +157,7 @@
                                         <div class="custom-select-dropdown">
                                             @include('components.airport-select', [
                                             'selectId' => $elementId . '_' . $condValue,
+                                            'ariaLabel' => $label,
                                             'name' => $submitAs,
                                             'airports' => $conditionalAirportOptions,
                                             'selectedValue' => $isActiveVariant ? $fieldValue : '',
@@ -171,7 +173,7 @@
                                 </div>
                             @else
                                 <div class="booking-field">
-                                    <label class="input-label">{{ $label }}</label>
+                                    <label class="input-label" for="{{ $elementId }}_{{ $condValue }}">{{ $label }}</label>
                                     <div class="single-search-box location-search-box">
                                         @include('components.partials.location-icon')
                                         <div class="custom-select-dropdown">
@@ -205,7 +207,7 @@
             {{-- Default: Google Places autocomplete --}}
             @default
                 <div class="booking-field">
-                    <label class="input-label">{{ $label }}</label>
+                    <label class="input-label" for="{{ $elementId }}">{{ $label }}</label>
                     <div class="single-search-box location-search-box">
                         @include('components.partials.location-icon')
                         <div class="custom-select-dropdown">
@@ -267,7 +269,7 @@
     {{-- ===== TIME FIELD ===== --}}
     @case('time')
         <div class="booking-field">
-            <label class="input-label">{{ $label }}</label>
+            <label class="input-label" for="{{ $elementId }}">{{ $label }}</label>
             <div class="single-search-box">
                 @include('components.partials.clock-icon')
                 <div class="custom-select-dropdown">
@@ -308,7 +310,7 @@
     {{-- ===== SELECT FIELD ===== --}}
     @case('select')
         <div class="booking-field">
-            <label class="input-label">{{ $label }}</label>
+            <label class="input-label" for="{{ $elementId }}">{{ $label }}</label>
             <div class="single-search-box">
                 <div class="custom-select-dropdown">
                     <select name="{{ $submitAs }}" id="{{ $elementId }}"
@@ -422,7 +424,7 @@
     {{-- ===== TEXT / TEXTAREA / NUMBER ===== --}}
     @case('textarea')
         <div class="booking-field">
-            <label class="input-label">{{ $label }}</label>
+            <label class="input-label" for="{{ $elementId }}">{{ $label }}</label>
             <div class="single-search-box booking-textarea-box">
                 <div class="custom-select-dropdown">
                     <textarea name="{{ $submitAs }}" id="{{ $elementId }}"
@@ -444,7 +446,7 @@
             $maximum = data_get($field, 'validation.max');
         @endphp
         <div class="booking-field" style="width: 100% !important; min-width: 0 !important;">
-            <label class="input-label">{{ $label }}</label>
+            <label class="input-label" for="{{ $elementId }}">{{ $label }}</label>
             <div class="single-search-box" style="width: 100% !important; min-width: 0 !important;">
                 <div class="custom-select-dropdown" style="display: block !important; width: 100% !important; max-width: 100% !important;">
                     <input type="number" name="{{ $submitAs }}" id="{{ $elementId }}"
@@ -476,7 +478,7 @@
     @case('package_select')
         @if(isset($servicePackages) && $servicePackages->count() > 1)
         <div class="booking-field package-selector-field">
-            <label class="input-label">{{ $label }}</label>
+            <span class="input-label">{{ $label }}</span>
             {{-- Only show package selector if there are 2 or more packages --}}
 
                 
@@ -512,7 +514,7 @@
     {{-- ===== DEFAULT: TEXT INPUT ===== --}}
     @default
         <div class="booking-field">
-            <label class="input-label">{{ $label }}</label>
+            <label class="input-label" for="{{ $elementId }}">{{ $label }}</label>
             <div class="single-search-box">
                 <div class="custom-select-dropdown">
                     <input type="{{ in_array($type, ['text', 'email', 'tel'], true) ? $type : 'text' }}" name="{{ $submitAs }}" id="{{ $elementId }}"

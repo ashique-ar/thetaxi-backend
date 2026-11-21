@@ -36,12 +36,13 @@ class AIContentService
      */
     public function generateContentFromTitle(string $title, ?string $contentType = 'blog', array $options = []): array
     {
-        $businessContext = $options['business_context'] ?? 'A taxi booking service offering airport transfers, wedding cars, corporate travel, and tour packages';
-        $targetAudience = $options['target_audience'] ?? 'travelers, tourists, business professionals, and locals in Sri Lanka';
+        $businessContext = $options['business_context'] ?? 'A transport business offering the services shown in its website profile';
+        $audienceMode = $options['audience_mode'] ?? 'local';
+        $targetAudience = $options['target_audience'] ?? $this->defaultTargetAudience($audienceMode);
         $locale = $options['locale'] ?? config('app.locale', 'en');
         $businessDetails = $this->getContentGenerationDetails();
 
-        $systemPrompt = $this->buildSystemPrompt($businessContext, $targetAudience, $locale, $businessDetails);
+        $systemPrompt = $this->buildSystemPrompt($businessContext, $targetAudience, $locale, $businessDetails, $audienceMode);
         $userPrompt = $this->buildUserPrompt($title, $contentType, $options, $businessDetails);
 
         try {
@@ -59,14 +60,18 @@ class AIContentService
     /**
      * Build the system prompt for content generation
      */
-    protected function buildSystemPrompt(string $businessContext, string $targetAudience, string $locale = 'en', array $businessDetails = []): string
+    protected function buildSystemPrompt(string $businessContext, string $targetAudience, string $locale = 'en', array $businessDetails = [], string $audienceMode = 'local'): string
     {
         $businessDetailsJson = json_encode($businessDetails, JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE | JSON_THROW_ON_ERROR);
+        $audienceInstruction = $audienceMode === 'international'
+            ? 'The user explicitly selected international visitors to Sri Lanka. Write for travelers outside Sri Lanka who are planning a visit, and overseas travel partners where relevant. Support Sri Lankan tourism using only the business profile facts. Do not invent service locations, prices, entry/visa rules, availability, or traveler nationality.'
+            : 'Focus on the business profile’s local customers and supported service areas. Do not assume a Sri Lankan or international audience unless its profile and the requested topic support that.';
 
         return <<<PROMPT
 You are a careful CMS copywriter for transport and travel businesses. Create useful, accurate content for readers first, and consider SEO, AEO, SXO, and GEO together. These are editorial goals, not promises of rankings, citations, or traffic.
 
 Write in locale/language: {$locale}
+Audience mode: {$audienceInstruction}
 Business context: {$businessContext}
 Intended audience: {$targetAudience}
 Approved business contact details (use exactly; never invent or alter): {$businessDetailsJson}
@@ -77,11 +82,18 @@ SXO: make the page easy to scan and act on, with useful sections, readable parag
 GEO: use specific, self-contained, fact-grounded statements; clearly name places and services only when provided, so a reader or summarizer can represent the page accurately. Do not add fake citations or claim AI search visibility.
 Use only facts supplied in the title, business context, and approved contact details. Do not invent prices, routes, service areas, availability, fleet features, credentials, policies, sources, or guarantees. If important facts are missing, keep the copy general rather than guessing.
 Infer the reader's likely question from the title and answer it directly. Use descriptive headings, natural related terms, short readable paragraphs, and a clear next step. Do not force a keyword into every field or repeat the same paragraph to meet a length target.
-Mention Sri Lanka only when supported by the title or business context. Use the approved website and phone exactly when contact details are needed; do not create other URLs or phone numbers. The application adds the canonical contact block to the body, so do not invent or duplicate contact details.
+Use the approved website and phone exactly when contact details are needed; do not create other URLs or phone numbers. The application adds the canonical contact block to the body, so do not invent or duplicate contact details.
 Avoid generic filler, keyword stuffing, markdown, and unsupported claims.
 
 Respond ONLY with valid JSON. No markdown code blocks, no comments, and no explanations outside the JSON.
 PROMPT;
+    }
+
+    private function defaultTargetAudience(string $audienceMode): string
+    {
+        return $audienceMode === 'international'
+            ? 'international visitors planning a trip to Sri Lanka and overseas tourism partners'
+            : 'the business’s local customers and travelers in its supported service areas';
     }
 
     /**
@@ -178,7 +190,7 @@ PROMPT;
     public function suggestContentIdeas(array $options = []): array
     {
         $settings = app(WebsiteSettingsService::class);
-        $availableTypes = \App\Models\Website\CmsContentType::query()
+        $availableTypes = \App\Models\Website\CmsContentType::withInactive()
             ->orderBy('title')
             ->get(['id', 'title', 'slug'])
             ->map(fn ($type) => ['id' => (string) $type->id, 'title' => (string) $type->title, 'slug' => (string) $type->slug])
@@ -190,13 +202,7 @@ PROMPT;
                 || Str::lower($type['title']) === Str::lower($preferredType)
             ));
         }
-        $businessProfile = [
-            'name' => Str::limit(trim((string) $settings->get('company_name', '')), 120, ''),
-            'tagline' => Str::limit(trim((string) $settings->get('site_tagline', '')), 200, ''),
-            'description' => Str::limit(trim((string) $settings->get('homepage_description', '')), 1200, ''),
-            'address' => Str::limit(trim((string) $settings->get('company_address', '')), 250, ''),
-            'website' => $this->getContentGenerationDetails()['website'],
-        ];
+        $businessProfile = $this->getIdeaBusinessProfile($settings);
         $existingTitles = \App\Models\Website\CmsContent::withInactive()
             ->whereNotNull('title')
             ->orderByDesc('updated_at')
@@ -208,14 +214,20 @@ PROMPT;
             ->all();
 
         $locale = $options['locale'] ?? config('app.locale', 'en');
+        $audienceMode = $options['audience_mode'] ?? 'local';
+        $audienceInstruction = $audienceMode === 'international'
+            ? 'The user explicitly requested international-facing ideas to support tourism in Sri Lanka. Target visitors based outside Sri Lanka and overseas tourism partners; use only verified Sri Lankan services and destinations in the supplied profile/content.'
+            : 'Target the business’s local customers and supported markets. Do not assume the business is in Sri Lanka or target foreign visitors unless the user selects that mode.';
         $systemPrompt = <<<PROMPT
 You are a content strategist for a transport and travel business. Suggest useful website content opportunities that can support organic search visibility, but never claim an idea will rank or invent search-volume, difficulty, traffic, or competitor data.
 Consider SEO, AEO, SXO, and GEO: match real reader intent; suggest a clear question or task to answer; make the content useful and easy to act on; and keep each idea specific, self-contained, and grounded in supplied facts.
-The strategic goal is to build durable topical authority and help this business become a trusted leader in tourism taxi and vehicle rental where those services are supported by its profile. Never claim the company is already an industry leader. Use the provided business profile and current website titles to identify relevant gaps and avoid duplicates. Do not suggest thin doorway pages, near-duplicate city/keyword swaps, unsupported service areas, or topics unrelated to the supplied business. When location information is missing, do not invent a location. Favor a balanced set of service explainers, practical tourism guidance, taxi/rental decision help, local intent where supported, and useful destination transport topics.
-Choose each idea's content type only from the supplied active CMS content types and return its slug exactly. Use different suitable types where useful. Do not invent content types. Return exactly 12 distinct ideas in the requested language. Return only valid JSON with one top-level key, ideas. Each idea has title, content_type_slug, format, search_intent, focus_phrase, and why_it_fits. Use short editorial explanations, not ranking predictions.
+Audience mode: {$audienceInstruction}
+Build durable topical authority for the business categories and markets supported by its profile. Never claim the company is already an industry leader. Use the provided business profile and current website titles to identify relevant gaps and avoid duplicates. Do not suggest thin doorway pages, near-duplicate city/keyword swaps, unsupported service areas, or topics unrelated to the supplied business. When location information is missing, do not invent a location. Favor a balanced set of service explainers, practical tourism guidance, taxi/rental decision help, local intent where supported, and useful destination transport topics.
+Choose each idea's content type only from the supplied CMS content types (including inactive types) and return its slug exactly. Use different suitable types where useful. Do not invent content types. Return exactly 12 distinct ideas in the requested language. Return only valid JSON with one top-level key, ideas. Each idea has title, content_type_slug, format, search_intent, focus_phrase, and why_it_fits. Use short editorial explanations, not ranking predictions.
 PROMPT;
         $userPrompt = json_encode([
             'language' => $locale,
+            'audience_mode' => $audienceMode,
             'business_profile' => $businessProfile,
             'selected_cms_content_type' => $options['content_type'] ?? 'blog',
             'content_type_is_locked' => !empty($options['content_type_locked']),
@@ -276,6 +288,87 @@ PROMPT;
         }
 
         return $ideas;
+    }
+
+    public function suggestContentTypes(string $locale = 'en'): array
+    {
+        $settings = app(WebsiteSettingsService::class);
+        $businessProfile = $this->getIdeaBusinessProfile($settings);
+        $existingTypes = \App\Models\Website\CmsContentType::withTrashed()->withInactive()
+            ->get(['title', 'slug'])
+            ->map(fn ($type) => ['title' => (string) $type->title, 'slug' => (string) $type->slug])
+            ->all();
+        $existingTitles = \App\Models\Website\CmsContent::withInactive()
+            ->whereNotNull('title')
+            ->orderByDesc('updated_at')
+            ->limit(100)
+            ->pluck('title')
+            ->map(fn ($title) => trim((string) $title))
+            ->filter()
+            ->values()
+            ->all();
+        $systemPrompt = <<<PROMPT
+You are a CMS information architect for a tourism, taxi, and vehicle-rental business. Recommend useful reusable website content types that help the business build durable topical authority and become a trusted leader in its supported markets.
+Use SEO, AEO, SXO, and GEO as editorial principles: organize useful coverage around real customer needs and make each section clear, trustworthy, and easy to navigate. Never promise rankings or invent search-volume, traffic, competition, or market-leadership facts.
+Use the supplied business profile and current CMS content types to find genuine structural gaps. Do not repeat existing types, create near-duplicate categories, create a type for each keyword/location, or suggest unsupported services/areas. Recommend only categories broad enough to contain multiple useful pages. Return up to 5 distinct new content types in the requested language as JSON under the single key types. Each type has title, description, and why_it_fits.
+PROMPT;
+        $userPrompt = json_encode([
+            'language' => $locale,
+            'business_profile' => $businessProfile,
+            'existing_cms_content_types' => $existingTypes,
+            'existing_website_content_titles' => $existingTitles,
+            'response_shape' => [
+                'types' => [[
+                    'title' => 'Short reusable content category name',
+                    'description' => 'What belongs in this category, without unsupported claims',
+                    'why_it_fits' => 'Brief reason grounded in the profile and content gaps',
+                ]],
+            ],
+        ], JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES | JSON_THROW_ON_ERROR);
+
+        $decoded = json_decode($this->callOpenAI($systemPrompt, $userPrompt), true);
+        if (!is_array($decoded) || !is_array($decoded['types'] ?? null)) {
+            throw new \RuntimeException('The content type suggester returned an invalid response.');
+        }
+
+        $existingSlugs = array_fill_keys(array_map(fn ($type) => Str::lower($type['slug']), $existingTypes), true);
+        $seenTitles = [];
+        $types = [];
+        foreach ($decoded['types'] as $type) {
+            if (!is_array($type) || !is_string($type['title'] ?? null)) {
+                continue;
+            }
+            $title = Str::limit(trim(strip_tags($type['title'])), 100, '');
+            $titleKey = Str::lower($title);
+            $slug = Str::slug($title);
+            if ($title === '' || $slug === '' || isset($seenTitles[$titleKey]) || isset($existingSlugs[Str::lower($slug)])) {
+                continue;
+            }
+            $seenTitles[$titleKey] = true;
+            $existingSlugs[Str::lower($slug)] = true;
+            $types[] = [
+                'title' => $title,
+                'slug' => $slug,
+                'description' => Str::limit(trim(strip_tags(is_scalar($type['description'] ?? null) ? (string) $type['description'] : '')), 500, ''),
+                'why_it_fits' => Str::limit(trim(strip_tags(is_scalar($type['why_it_fits'] ?? null) ? (string) $type['why_it_fits'] : '')), 280, ''),
+            ];
+            if (count($types) === 5) {
+                break;
+            }
+        }
+
+        return $types;
+    }
+
+    private function getIdeaBusinessProfile(WebsiteSettingsService $settings): array
+    {
+        return [
+            'name' => Str::limit(trim((string) $settings->get('company_name', '')), 120, ''),
+            'tagline' => Str::limit(trim((string) $settings->get('site_tagline', '')), 200, ''),
+            'description' => Str::limit(trim((string) $settings->get('homepage_description', '')), 1200, ''),
+            'address' => Str::limit(trim((string) $settings->get('company_address', '')), 250, ''),
+            'website' => $this->getContentGenerationDetails()['website'],
+        ];
     }
 
     private function findSuggestedContentType(mixed $slug, array $availableTypes): ?array
@@ -433,11 +526,13 @@ PROMPT;
     public function improveContent(string $title, string $body, array $options = []): array
     {
         $businessDetails = $this->getContentGenerationDetails();
+        $audienceMode = $options['audience_mode'] ?? 'local';
         $systemPrompt = $this->buildSystemPrompt(
-            $options['business_context'] ?? 'Taxi booking service',
-            $options['target_audience'] ?? 'travelers and business professionals',
+            $options['business_context'] ?? 'Transport business shown in the website profile',
+            $options['target_audience'] ?? $this->defaultTargetAudience($audienceMode),
             $options['locale'] ?? config('app.locale', 'en'),
-            $businessDetails
+            $businessDetails,
+            $audienceMode
         );
 
         $userPrompt = <<<PROMPT
