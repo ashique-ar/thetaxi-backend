@@ -179,12 +179,10 @@ class CollectionScheduleWorkflowService
                 $oldSchedule->delete();
             }
 
-            $created = collect();
             foreach ($preparedItems as $preparedItem) {
                 $schedule = new BookingPaymentSchedule($preparedItem['attributes'] + ['created_user_id' => $actorUserId]);
                 $schedule->id = $preparedItem['id'];
                 $schedule->save();
-                $created->push($schedule);
                 $this->ensureWorkItem($schedule, $preparedItem['reminder_offset_days']);
             }
 
@@ -192,7 +190,7 @@ class CollectionScheduleWorkflowService
             $this->events->record('sales', 'booking_payment_schedule', $booking->id,
                 'sales.collection.schedule.revised', $revisionNumber, 1, [
                     'booking_id' => $booking->id, 'revision_id' => $revision->id,
-                    'replaced_count' => $replaceable->count(), 'created_count' => $created->count(),
+                    'replaced_count' => $replaceable->count(), 'created_count' => $preparedItems->count(),
                     'reconciliation' => $reconciliation['summary'],
                 ], now(), $data['idempotency_key']);
 
