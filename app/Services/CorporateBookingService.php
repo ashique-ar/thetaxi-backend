@@ -453,7 +453,8 @@ class CorporateBookingService
         if ($corporateApprovalRequired) {
             foreach (collect([$booking])->merge($siblings) as $staffReviewBooking) {
                 BookingApproval::query()->where('booking_id', $staffReviewBooking->id)
-                    ->where('status', BookingApproval::STATUS_PENDING)->delete();
+                    ->where('status', BookingApproval::STATUS_PENDING)->get()
+                    ->each(fn (BookingApproval $approval) => $approval->delete());
             }
             return;
         }

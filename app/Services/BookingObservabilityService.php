@@ -856,7 +856,8 @@ class BookingObservabilityService
                 'to' => data_get($activity->meta, 'amount'),
             ];
         }
-        if (!auth()->user()?->can('bookings.price_override')) unset($changes['total_price'], $changes['currency']);
+        $canViewPrice = auth()->user()?->can('bookings.price_override') ?? false;
+        if (!$canViewPrice) unset($changes['total_price'], $changes['currency']);
         if (!auth()->user()?->can('payments.view')) unset($changes['charge_amount']);
 
         return [
@@ -892,8 +893,9 @@ class BookingObservabilityService
             'metadata' => [],
             'evidence' => null,
             'actor_display_snapshot' => data_get($activity->meta, 'actor_display_snapshot'),
-            'reason' => data_get($activity->meta, 'reason')
-                ?? ($activity->event_key === 'trip_price_changed' ? $activity->detail : null),
+            'reason' => $activity->event_key === 'trip_price_changed'
+                ? ($canViewPrice ? (data_get($activity->meta, 'reason') ?? $activity->detail) : null)
+                : data_get($activity->meta, 'reason'),
             'changes' => $changes,
             'entity_type' => 'BookingActivity',
             'entity_id' => (string) $activity->id,
@@ -933,17 +935,17 @@ class BookingObservabilityService
             'severity' => 'info',
             'correlation_id' => $event->idempotency_key,
             'metadata' => array_filter([
-                'reason' => $event->reason,
-                'field_name' => $event->field_name,
+                'reason' => $canViewAttribution ? $event->reason : null,
+                'field_name' => $canViewAttribution ? $event->field_name : null,
                 'from_sales_profile_id' => $canViewAttribution ? $event->from_sales_profile_id : null,
                 'to_sales_profile_id' => $canViewAttribution ? $event->to_sales_profile_id : null,
                 'effective_at' => Carbon::parse($event->effective_at)->utc()->toIso8601String(),
                 'version' => (int) $event->version,
-                'changes' => $changes,
+                'changes' => $canViewAttribution ? $changes : null,
             ], fn ($value) => $value !== null),
             'evidence' => null,
             'actor_display_snapshot' => $actorName !== '' ? $actorName : null,
-            'reason' => $event->reason,
+            'reason' => $canViewAttribution ? $event->reason : null,
             'changes' => $changes,
             'entity_type' => $canViewAttribution ? 'SalesBookingAttributionEvent' : null,
             'entity_id' => $canViewAttribution ? (string) $event->id : null,

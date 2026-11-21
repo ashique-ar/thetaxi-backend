@@ -133,12 +133,16 @@
                     <textarea id="{{ $inputId }}" name="{{ $field->name }}"
                         placeholder="{{ $field->placeholder ?? $field->label }}"
                         class="@error($field->name) is-invalid @enderror"
+                        aria-invalid="{{ $errors->has($field->name) ? 'true' : 'false' }}"
+                        @if ($errors->has($field->name)) aria-describedby="{{ $inputId }}-error" @endif
                         rows="4"
                         data-required="{{ $isConditionalRequired ? 'true' : 'false' }}"
                         @if ($field->is_required && $shouldShow) required @endif>{{ old($field->name, $field->default_value) }}</textarea>
                 @elseif ($isSelect)
                     <select id="{{ $inputId }}" name="{{ $field->name }}"
                         class="form-select @error($field->name) is-invalid @enderror"
+                        aria-invalid="{{ $errors->has($field->name) ? 'true' : 'false' }}"
+                        @if ($errors->has($field->name)) aria-describedby="{{ $inputId }}-error" @endif
                         data-required="{{ $isConditionalRequired ? 'true' : 'false' }}"
                         @if ($field->is_required && $shouldShow) required @endif>
                         <option value="">Select {{ $field->label }}</option>
@@ -154,7 +158,9 @@
                         @endforeach
                     </select>
                 @elseif ($isRadio)
-                    <div class="inquiry-radio-group" role="radiogroup" aria-labelledby="{{ $inputId }}-label">
+                    <div class="inquiry-radio-group" role="radiogroup" aria-labelledby="{{ $inputId }}-label"
+                        aria-invalid="{{ $errors->has($field->name) ? 'true' : 'false' }}"
+                        @if ($errors->has($field->name)) aria-describedby="{{ $inputId }}-error" @endif>
                         @foreach ($field->options ?? [] as $index => $option)
                             @php
                                 $optionValue = is_array($option) ? ($option['value'] ?? '') : $option;
@@ -172,7 +178,9 @@
                         @endforeach
                     </div>
                 @elseif ($field->type === 'checkbox')
-                    <div class="inquiry-radio-group" role="group" aria-labelledby="{{ $inputId }}-label">
+                    <div class="inquiry-radio-group" role="group" aria-labelledby="{{ $inputId }}-label"
+                        aria-invalid="{{ $errors->has($field->name) ? 'true' : 'false' }}"
+                        @if ($errors->has($field->name)) aria-describedby="{{ $inputId }}-error" @endif>
                         @foreach ($field->options ?? [] as $index => $option)
                             @php
                                 $optionValue = is_array($option) ? ($option['value'] ?? '') : $option;
@@ -191,12 +199,16 @@
                 @elseif ($field->type === 'file')
                     <input id="{{ $inputId }}" type="file" name="{{ $field->name }}"
                         class="@error($field->name) is-invalid @enderror"
+                        aria-invalid="{{ $errors->has($field->name) ? 'true' : 'false' }}"
+                        @if ($errors->has($field->name)) aria-describedby="{{ $inputId }}-error" @endif
                         data-required="{{ $isConditionalRequired ? 'true' : 'false' }}"
                         @if ($field->is_required && $shouldShow) required @endif>
                 @else
                     <input id="{{ $inputId }}" type="{{ $field->type }}" name="{{ $field->name }}"
                         placeholder="{{ $field->placeholder ?? $field->label }}"
                         class="@error($field->name) is-invalid @enderror"
+                        aria-invalid="{{ $errors->has($field->name) ? 'true' : 'false' }}"
+                        @if ($errors->has($field->name)) aria-describedby="{{ $inputId }}-error" @endif
                         value="{{ old($field->name, $field->default_value) }}"
                         data-required="{{ $isConditionalRequired ? 'true' : 'false' }}"
                         @if ($field->is_required && $shouldShow) required @endif autocomplete="off">
@@ -204,7 +216,7 @@
             </div>
 
             @error($field->name)
-                <span class="text-danger small">{{ $message }}</span>
+                <span id="{{ $inputId }}-error" class="text-danger small" role="alert">{{ $message }}</span>
             @enderror
             @if (!empty($field->help_text))
                 <small class="inquiry-help-text">{{ $field->help_text }}</small>

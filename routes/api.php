@@ -2640,7 +2640,7 @@ Route::middleware(['auth:api'])->group(function () {
 
         Route::prefix('bookings/{booking}')->middleware('booking.operations.telemetry')->group(function () {
             Route::get('trace', [BookingObservabilityController::class, 'trace'])
-                ->middleware('permission:bookings.view');
+                ->middleware(['permission:bookings.view|bookings.view-assigned', DenyCustomerPortalLegacyBookingActions::class]);
             Route::get('tracking-summary', [BookingObservabilityController::class, 'trackingSummary'])
                 ->middleware('permission:bookings.view');
             Route::get('route-replay', [BookingObservabilityController::class, 'routeReplay'])

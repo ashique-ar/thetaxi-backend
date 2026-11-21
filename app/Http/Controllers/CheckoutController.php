@@ -2846,12 +2846,15 @@ class CheckoutController extends Controller
             if (!($result['success'] ?? false)) {
                 Log::error('WebXPay resume payment creation failed', ['booking_id' => $booking->id, 'error' => $result['message'] ?? 'Unknown']);
                 if ($this->isTourBooking($booking)) {
-                    Booking::query()->whereKey($booking->id)
-                        ->where('status', config('booking.status.payment_processing'))
-                        ->update([
+                    DB::transaction(function () use ($booking): void {
+                        $processingBooking = Booking::query()->whereKey($booking->id)
+                            ->where('status', config('booking.status.payment_processing'))
+                            ->lockForUpdate()->first();
+                        $processingBooking?->forceFill([
                             'status' => config('booking.status.draft', 'draft'),
                             'payment_status' => 'failed',
-                        ]);
+                        ])->save();
+                    });
                 }
                 return back()->with('error', 'Unable to initiate payment. Please try again.');
             }

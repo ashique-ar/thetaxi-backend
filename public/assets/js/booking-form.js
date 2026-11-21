@@ -3748,25 +3748,44 @@
      */
     function validateForm(form) {
         const requiredInputs = form.querySelectorAll(
-            "input[required], textarea[required]"
+            "input[required], select[required], textarea[required]"
         );
         let isValid = true;
         let errorMessages = [];
+        const checkedRadioGroups = new Set();
 
         requiredInputs.forEach((input) => {
             // Skip disabled or hidden inputs (e.g., inactive conditional variants)
             if (input.disabled || input.offsetParent === null) {
                 return;
             }
+
+            if (input.type === "radio") {
+                if (checkedRadioGroups.has(input.name)) return;
+                checkedRadioGroups.add(input.name);
+            }
             
-            if (!input.value.trim()) {
+            const group = input.type === "radio"
+                ? Array.from(form.querySelectorAll("input[type=radio]")).filter((radio) => radio.name === input.name)
+                : [input];
+            const isEmpty = input.type === "checkbox"
+                ? !input.checked
+                : input.type === "radio"
+                    ? !group.some((radio) => radio.checked && !radio.disabled && radio.offsetParent !== null)
+                    : !String(input.value || "").trim();
+
+            if (isEmpty) {
                 isValid = false;
                 input.classList.add("error");
                 input.style.borderColor = "#dc3545";
+                input.setAttribute("aria-invalid", "true");
+                input.closest("[role=\"radiogroup\"]")?.classList.add("error");
                 console.log('VALIDATION FAIL: Required field empty -', input.name, input.type, input.id);
             } else {
                 input.classList.remove("error");
                 input.style.borderColor = "";
+                input.setAttribute("aria-invalid", "false");
+                input.closest("[role=\"radiogroup\"]")?.classList.remove("error");
             }
         });
 
@@ -3905,6 +3924,10 @@
         }
 
         if (!isValid) {
+            const firstInvalid = Array.from(form.querySelectorAll("input.error:not(:disabled), select.error:not(:disabled), textarea.error:not(:disabled)"))
+                .find((input) => input.offsetParent !== null);
+            firstInvalid?.scrollIntoView({ behavior: "smooth", block: "center" });
+            firstInvalid?.focus({ preventScroll: true });
             console.error('Form validation failed', {
                 errorMessages,
                 form: form.id
@@ -4100,6 +4123,8 @@
         // Create new message
         const messageEl = document.createElement("div");
         messageEl.className = "validation-message";
+        messageEl.setAttribute("role", type === 'success' ? 'status' : 'alert');
+        messageEl.setAttribute("aria-live", type === 'success' ? 'polite' : 'assertive');
         messageEl.style.cssText = `
             position: fixed;
             top: 20px;
