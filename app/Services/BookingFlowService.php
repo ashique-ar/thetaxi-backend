@@ -4466,7 +4466,7 @@ class BookingFlowService
 
             // 4) Replace variable customizations only if provided
             if (array_key_exists('variable_customizations', $params)) {
-                $booking->variableCustomizations()->delete();
+                $booking->variableCustomizations()->get()->each->delete();
                 if (!empty($params['variable_customizations'])) {
                     $this->storeVariableCustomizations($params['variable_customizations'], $booking->id, $params['session_id'] ?? null);
                 }

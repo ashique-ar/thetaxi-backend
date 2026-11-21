@@ -122,7 +122,11 @@ class CollectionScheduleWorkflowService
                 BookingCollectionWorkItem::query()
                     ->where('booking_payment_schedule_id', $oldSchedule->id)
                     ->whereIn('status', ['open', 'upcoming', 'due', 'overdue'])
-                    ->update(['status' => 'cancelled', 'completed_at' => now(), 'updated_at' => now()]);
+                    ->get()
+                    ->each(fn (BookingCollectionWorkItem $workItem) => $workItem->update([
+                        'status' => 'cancelled',
+                        'completed_at' => now(),
+                    ]));
                 $oldSchedule->delete();
             }
 

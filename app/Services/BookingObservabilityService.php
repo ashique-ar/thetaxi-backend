@@ -91,8 +91,9 @@ class BookingObservabilityService
 
         $bookingActivities = BookingActivity::query()
             ->where('booking_id', $booking->id)
-            ->whereIn('event_key', ['booking_updated', 'booking_vehicle_changed'])
-            ->when($filters['actor_id'] ?? null, fn ($query, $value) => $query->where('meta->actor_user_id', $value))
+            ->whereIn('event_key', ['booking_updated', 'booking_vehicle_changed', 'resource_swap_completed'])
+            ->when($filters['actor_id'] ?? null, fn ($query, $value) => $query->where(fn ($actors) => $actors
+                ->where('meta->actor_user_id', $value)->orWhere('meta->initiated_by', $value)))
             ->when(isset($filters['entity_type']) && strcasecmp($filters['entity_type'], 'BookingActivity') !== 0, fn ($query) => $query->whereRaw('1 = 0'))
             ->when($filters['entity_id'] ?? null, fn ($query, $value) => $query->whereKey($value))
             ->when($filters['event_type'] ?? null, fn ($query, $value) => $query->where('event_key', $value))
@@ -101,10 +102,16 @@ class BookingObservabilityService
             ->when($decodedCursor, fn ($query) => $query->where('event_at', '<=', $decodedCursor[0]))
             ->tap(fn ($query) => $this->applyTraceDateFilters($query, 'event_at', $filters))
             ->orderByDesc('event_at')->orderByDesc('id')->limit($limit + 1)->get();
-        $activityActors = User::query()->whereIn('id', $bookingActivities->pluck('meta.actor_user_id')->filter()->unique())
+        $activityActorIds = $bookingActivities->flatMap(fn (BookingActivity $activity) => [
+            data_get($activity->meta, 'actor_user_id'),
+            data_get($activity->meta, 'initiated_by'),
+        ])->filter()->unique();
+        $activityActors = User::query()->whereIn('id', $activityActorIds)
             ->get(['id', 'first_name', 'last_name'])->keyBy('id');
         $bookingActivityEvents = $bookingActivities->map(fn (BookingActivity $activity): array =>
-            $this->mapBookingUpdate($booking, $activity, $activityActors->get(data_get($activity->meta, 'actor_user_id'))));
+            $this->mapBookingUpdate($booking, $activity, $activityActors->get(
+                data_get($activity->meta, 'actor_user_id') ?? data_get($activity->meta, 'initiated_by')
+            )));
 
         $vehicleAssignments = $bookingItemId ? collect() : VehicleAssignment::query()
             ->with(['vehicle:id,title,license_plate', 'assignedBy:id,first_name,last_name'])
@@ -193,6 +200,7 @@ class BookingObservabilityService
                 ? $this->encodeCursor($last['occurred_at'], $last['id'])
                 : null,
             'generated_at' => now()->utc()->toIso8601String(),
+            'coverage_start' => config('booking_history.coverage_start'),
         ];
     }
 
@@ -769,25 +777,52 @@ class BookingObservabilityService
     private function mapBookingUpdate(Booking $booking, BookingActivity $activity, ?User $actor): array
     {
         $actorName = trim((string) ($actor?->first_name ?? '') . ' ' . (string) ($actor?->last_name ?? ''));
-        $actorId = data_get($activity->meta, 'actor_user_id');
+        $actorId = data_get($activity->meta, 'actor_user_id') ?? data_get($activity->meta, 'initiated_by');
+        $isSwap = $activity->event_key === 'resource_swap_completed';
+        $changes = [];
+        if ($isSwap) {
+            $swapType = data_get($activity->meta, 'swap_type');
+            if (in_array($swapType, ['vehicle', 'both'], true)) {
+                $changes['vehicle_id'] = [
+                    'from' => data_get($activity->meta, 'old_vehicle_id'),
+                    'to' => data_get($activity->meta, 'new_vehicle_id'),
+                ];
+            }
+            if (in_array($swapType, ['driver', 'both'], true)) {
+                $changes['driver_id'] = [
+                    'from' => data_get($activity->meta, 'old_driver_id'),
+                    'to' => data_get($activity->meta, 'new_driver_id'),
+                ];
+            }
+        }
 
         return [
             'id' => 'booking-activity:' . $activity->id,
             'booking_id' => (string) $booking->id,
             'booking_item_id' => $activity->booking_item_id ? (string) $activity->booking_item_id : null,
             'occurred_at' => $activity->event_at?->utc()->toIso8601String(),
-            'source' => 'system',
+            'source' => match ($activity->event_key) {
+                'resource_swap_completed', 'booking_vehicle_changed' => 'assignment',
+                'booking_updated' => 'booking',
+                default => 'system',
+            },
             'event_type' => $activity->event_key,
             'title' => $activity->title ?: 'Booking details updated',
-            'description' => $activity->detail,
-            'actor' => ['id' => $actorId ? (string) $actorId : null, 'name' => $actorName ?: 'System', 'type' => $actorId ? 'user' : 'system'],
+            'description' => $isSwap ? null : $activity->detail,
+            'actor' => [
+                'id' => $actorId ? (string) $actorId : null,
+                'name' => data_get($activity->meta, 'actor_display_snapshot') ?: ($actorName ?: 'System'),
+                'type' => $actorId ? 'user' : 'system',
+            ],
             'from_status' => null,
             'to_status' => null,
             'severity' => 'info',
             'correlation_id' => 'booking-activity:' . $activity->id,
             'metadata' => [],
             'evidence' => null,
-            'actor_display_snapshot' => null,
+            'actor_display_snapshot' => data_get($activity->meta, 'actor_display_snapshot'),
+            'reason' => $isSwap ? data_get($activity->meta, 'reason') : null,
+            'changes' => $changes,
             'entity_type' => 'BookingActivity',
             'entity_id' => (string) $activity->id,
         ];
@@ -796,8 +831,9 @@ class BookingObservabilityService
     private function mapBookingHistoryEvent(BookingHistoryEvent $history): array
     {
         $changes = is_array($history->changes) ? $history->changes : [];
+        unset($changes['transaction_id']);
         $priceFields = ['unit_price', 'total_price', 'base_amount', 'total_estimated', 'total_actual', 'driver_cost', 'distance_cost', 'addons_cost', 'discount_amount', 'tax_amount', 'currency', 'price', 'rate', 'original_value', 'custom_value', 'original_amount', 'final_amount', 'calculated_amount', 'applied_rate', 'delta_source_amount', 'delta_lkr_amount', 'previous_effective_source_amount', 'previous_effective_lkr_amount', 'resulting_effective_source_amount', 'resulting_effective_lkr_amount', 'contract_value_source', 'contract_value_lkr', 'subtotal', 'total_amount', 'commission_amount_lkr', 'eligible_lkr_amount', 'amount_spent', 'redemption_value', 'value', 'applied_amount'];
-        $paymentFields = ['amount', 'refunded_amount', 'payment_method', 'payment_stage', 'payment_purpose', 'source_amount', 'source_currency', 'lkr_amount', 'additional_charges', 'late_return_fee', 'refund_method', 'allocated_amount', 'driver_company_settled_amount', 'fx_rate_to_lkr', 'fx_rate_at', 'fx_source', 'reference', 'received_via', 'received_at', 'received_by', 'commission_amount', 'receipt_amount', 'eligible_amount', 'commission_rate', 'charge_amount', 'paid_before_amount', 'refund_amount', 'adjustment_amount', 'outstanding_amount', 'base_batta_amount', 'night_batta_rate', 'night_batta_amount', 'manual_adjustment_amount', 'approved_batta_amount', 'approved_expenses_total', 'iou_total', 'final_balance', 'cash_collected_unsettled'];
+        $paymentFields = ['amount', 'refunded_amount', 'payment_method', 'payment_stage', 'payment_purpose', 'source_amount', 'source_currency', 'lkr_amount', 'additional_charges', 'late_return_fee', 'refund_method', 'allocated_amount', 'driver_company_settled_amount', 'driver_company_settlement_status', 'driver_company_settled_at', 'payments_total', 'refunds_total', 'adjustments_total', 'outstanding_total', 'settled_at', 'fx_rate_to_lkr', 'fx_rate_at', 'fx_source', 'reference', 'received_via', 'received_at', 'received_by', 'commission_amount', 'receipt_amount', 'eligible_amount', 'commission_rate', 'charge_amount', 'paid_before_amount', 'refund_amount', 'adjustment_amount', 'outstanding_amount', 'base_batta_amount', 'night_batta_rate', 'night_batta_amount', 'manual_adjustment_amount', 'approved_batta_amount', 'approved_expenses_total', 'iou_total', 'final_balance', 'cash_collected_unsettled'];
         if (!auth()->user()?->can('bookings.price_override')) {
             foreach ($priceFields as $field) unset($changes[$field]);
         }

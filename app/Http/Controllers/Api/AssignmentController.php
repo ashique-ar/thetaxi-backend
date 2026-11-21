@@ -2231,6 +2231,8 @@ class AssignmentController extends Controller
                     'swap_time' => $swapTime,
                     'handoff_location' => $handoff,
                     'initiated_by' => Auth::id(),
+                    'actor_display_snapshot' => trim((string) (Auth::user()?->full_name ?? Auth::user()?->name ?? ''))
+                        ?: (Auth::id() ? 'User ' . Auth::id() : 'System'),
                     'notes' => $request->notes,
                     'photos' => $request->photos,
                     'documents' => $request->documents,

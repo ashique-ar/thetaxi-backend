@@ -127,6 +127,7 @@ it('replays only the original opportunity transition and transfer command', func
         ->and(SalesOpportunityStageEvent::query()->where('idempotency_key', 'opportunity-booking-idem-1')->count())->toBe(1)
         ->and($first->fresh()->owner_sales_profile_id)->toBe($newOwner->id)
         ->and($first->fresh()->stage)->toBe('qualified')
+        ->and((string) $first->fresh()->customer_id)->toBe((string) $customer->id)
         ->and($first->fresh()->won_booking_id)->toBeNull()
         ->and($booking->fresh()->sales_opportunity_id)->toBe($first->id)
         ->and($otherBooking->fresh()->sales_opportunity_id)->toBeNull()

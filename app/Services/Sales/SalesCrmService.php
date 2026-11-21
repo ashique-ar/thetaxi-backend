@@ -343,12 +343,18 @@ class SalesCrmService
                 if ($lockedOpportunity->customer_id && $lockedBooking->customer_id) {
                     abort_unless($lockedOpportunity->customer_id === $lockedBooking->customer_id, 422, 'Opportunity and booking Customers must match.');
                 }
+                $linkedCustomerId = $lockedOpportunity->customer_id ?: $lockedBooking->customer_id;
                 $lockedBooking->update(['sales_opportunity_id' => $lockedOpportunity->id, 'updated_user_id' => $actorUserId]);
-                $lockedOpportunity->update(['state_version' => $lockedOpportunity->state_version + 1, 'updated_user_id' => $actorUserId]);
+                $opportunityChanges = ['state_version' => $lockedOpportunity->state_version + 1, 'updated_user_id' => $actorUserId];
+                if (! $lockedOpportunity->customer_id && $linkedCustomerId) {
+                    $opportunityChanges['customer_id'] = $linkedCustomerId;
+                }
+                $lockedOpportunity->update($opportunityChanges);
                 $this->stageEvent($lockedOpportunity, $lockedOpportunity->stage, $lockedOpportunity->stage, 'booking_linked', 'Draft booking linked.', $key, $actorUserId,
                     $lockedOpportunity->owner_sales_profile_id, [
                         'booking_id' => (string) $lockedBooking->id,
                         'booking_owner_staff_id' => (string) $bookingStaff->id,
+                        'customer_id' => $linkedCustomerId ? (string) $linkedCustomerId : null,
                     ], 'booking_linked');
                 return $lockedOpportunity->refresh();
             });
@@ -379,7 +385,9 @@ class SalesCrmService
             && $event->from_stage === $event->to_stage
             && $event->from_owner_sales_profile_id === $event->to_owner_sales_profile_id
             && (string) ($event->snapshot['booking_id'] ?? '') === (string) $booking->id
+            && (! isset($event->snapshot['customer_id']) || (string) $event->snapshot['customer_id'] === (string) $booking->customer_id)
             && $bookingStaff && (string) ($event->snapshot['booking_owner_staff_id'] ?? '') === (string) $bookingStaff->id
+            && (! $opportunity->customer_id || (string) $opportunity->customer_id === (string) $booking->customer_id)
             && ($booking->sales_opportunity_id === $opportunity->id || $opportunity->won_booking_id === $booking->id),
             409, 'The opportunity booking-link key was already used for a different command.');
     }

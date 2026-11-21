@@ -26,9 +26,12 @@ class BookingHistoryService
         'unit_price', 'total_price', 'currency', 'discount_amount', 'tax_amount', 'confirmed',
         'confirmed_at', 'completed_at', 'cancelled_at', 'approval_status',
         'requires_approval', 'approved_at', 'actual_start', 'actual_end',
+        'trip_phase', 'trip_completed_at',
         'assigned_from', 'assigned_to', 'assignment_type', 'assignment_notes',
         'amount', 'refunded_amount', 'payment_method', 'payment_stage',
         'payment_purpose', 'finality_status', 'allocation_status', 'refund_method',
+        'driver_company_settlement_status', 'driver_company_settled_at',
+        'payments_total', 'refunds_total', 'adjustments_total', 'outstanding_total', 'settled_at',
         'refunded_at', 'source_amount', 'source_currency', 'lkr_amount',
         'allocated_amount', 'driver_company_settled_amount', 'fx_rate_to_lkr', 'fx_rate_at',
         'fx_source', 'reference', 'received_via', 'received_at', 'received_by',
@@ -47,7 +50,7 @@ class BookingHistoryService
         'contract_value_lkr', 'new_customer_status', 'commission_category', 'business_classification',
         'invoice_number', 'subtotal', 'total_amount', 'issue_date', 'due_date',
         'discount_name', 'type', 'value', 'adjustment_type', 'applied_amount',
-        'event_type', 'source', 'transaction_id', 'message_direction', 'outbound_status',
+        'event_type', 'source', 'message_direction', 'outbound_status',
         'stop_type', 'route_order', 'completed_at', 'completed_action', 'skip_reason',
         'assignment_id', 'start_time', 'end_time', 'total_distance_km', 'linked_booking_id',
         'call_status', 'follow_up_due_at', 'follow_up_completed_at',
@@ -296,6 +299,7 @@ class BookingHistoryService
     private function eventType(Model $model, string $operation, array $changes): string
     {
         $class = class_basename($model);
+        if (isset($changes['trip_phase'])) return 'booking_trip_phase_changed';
         if ($model instanceof \App\Models\Booking\BookingPaymentReceiptFinalityEvent) return 'payment_receipt_finality_changed';
         if ($model instanceof \App\Models\Booking\BookingCollectionSubmission) {
             return isset($changes['status']) ? 'collection_submission_decided' : 'collection_submission_recorded';
