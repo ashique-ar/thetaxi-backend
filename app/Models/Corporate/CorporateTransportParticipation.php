@@ -5,9 +5,11 @@ namespace App\Models\Corporate;
 use App\Models\BaseModel;
 use App\Models\Booking\Booking;
 use App\Models\Booking\BookingItem;
+use App\Traits\RecordsBookingHistoryAtomically;
 
 class CorporateTransportParticipation extends BaseModel
 {
+    use RecordsBookingHistoryAtomically;
     public const STATUS_INCLUDED = 'included';
     public const STATUS_OPTED_OUT = 'opted_out';
     public const STATUS_ON_LEAVE = 'on_leave';

@@ -6,6 +6,7 @@ use App\Models\BaseModel;
 use App\Traits\UUID;
 use App\Models\Booking\Booking;
 use App\Models\User;
+use App\Traits\RecordsBookingHistoryAtomically;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 
 /**
@@ -30,7 +31,7 @@ use Illuminate\Database\Eloquent\Relations\BelongsTo;
  */
 class AgentCommission extends BaseModel
 {
-    
+    use RecordsBookingHistoryAtomically;
 
     /**
      * The attributes that are mass assignable.

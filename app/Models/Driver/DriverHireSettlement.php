@@ -3,6 +3,7 @@
 namespace App\Models\Driver;
 
 use App\Models\BaseModel;
+use App\Traits\RecordsBookingHistoryAtomically;
 use App\Models\Booking\Booking;
 use App\Models\Booking\BookingItem;
 use App\Models\Vehicle\Vehicle;
@@ -12,6 +13,7 @@ use Illuminate\Database\Eloquent\Relations\HasMany;
 
 class DriverHireSettlement extends BaseModel
 {
+    use RecordsBookingHistoryAtomically;
     protected $fillable = [
         'booking_id',
         'booking_item_id',

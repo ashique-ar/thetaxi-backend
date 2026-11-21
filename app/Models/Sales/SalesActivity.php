@@ -4,10 +4,11 @@ namespace App\Models\Sales;
 
 use Illuminate\Database\Eloquent\Concerns\HasUuids;
 use Illuminate\Database\Eloquent\Model;
+use App\Traits\RecordsBookingHistoryAtomically;
 
 class SalesActivity extends Model
 {
-    use HasUuids;
+    use HasUuids, RecordsBookingHistoryAtomically;
 
     protected $hidden = ['source_reference'];
 

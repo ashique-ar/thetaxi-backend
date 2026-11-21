@@ -51,6 +51,14 @@ class BookingHistoryService
         'stop_type', 'route_order', 'completed_at', 'completed_action', 'skip_reason',
         'assignment_id', 'start_time', 'end_time', 'total_distance_km', 'linked_booking_id',
         'call_status', 'follow_up_due_at', 'follow_up_completed_at',
+        'points', 'balance_before', 'balance_after', 'amount_spent', 'earning_rate',
+        'redemption_value', 'redemption_rate', 'expired_at', 'processed_at',
+        'charge_amount', 'paid_before_amount', 'refund_amount', 'adjustment_amount',
+        'allocated_amount', 'outstanding_amount', 'base_batta_amount', 'night_count',
+        'night_batta_rate', 'night_batta_amount', 'manual_adjustment_amount', 'approved_batta_amount',
+        'approved_expenses_total', 'iou_total', 'final_balance', 'cash_collected_unsettled',
+        'paid_at', 'settlement_recorded_at', 'status', 'frozen_at', 'service_date',
+        'activity_type', 'outcome', 'next_action', 'next_action_at', 'occurred_at',
         'adjustment_type', 'direction', 'adjustment_effective_at',
         'approval_type', 'priority', 'override_reasons', 'justification', 'comments',
         'rejected_at', 'auto_approved', 'approval_level', 'approver_id',
@@ -318,6 +326,13 @@ class BookingHistoryService
         if ($model instanceof \App\Models\Driver\DriverSession && isset($changes['assignment_id'])) return 'booking_driver_session_assignment_changed';
         if ($model instanceof \App\Models\Inquiry) return 'booking_linked_inquiry_' . (isset($changes['status']) ? 'status_changed' : $operation);
         if ($model instanceof \App\Models\PhoneCall) return 'booking_linked_phone_call_' . $operation;
+        if ($model instanceof \App\Models\LoyaltyPointTransaction) return 'booking_loyalty_points_' . $operation;
+        if ($model instanceof \App\Models\Finance\FinancialSettlementItem) return 'booking_financial_settlement_item_' . $operation;
+        if ($model instanceof \App\Models\Finance\DriverCashSettlementItem) return 'booking_driver_cash_settlement_item_' . $operation;
+        if ($model instanceof \App\Models\Driver\DriverHireSettlement) return 'booking_driver_hire_settlement_' . (isset($changes['status']) ? 'status_changed' : $operation);
+        if ($model instanceof \App\Models\Agent\AgentCommission) return 'booking_agent_commission_' . $operation;
+        if ($model instanceof \App\Models\Corporate\CorporateTransportParticipation) return 'booking_passenger_participation_' . $operation;
+        if ($model instanceof \App\Models\Sales\SalesActivity) return 'booking_sales_activity_' . $operation;
         if (isset($changes['status']) || isset($changes['dispatch_status'])) return strtolower($class) . '_status_changed';
         if (isset($changes['vehicle_id']) || isset($changes['driver_id'])) return 'booking_assignment_changed';
         if (isset($changes['total_price']) || isset($changes['unit_price']) || isset($changes['currency'])) return 'booking_price_changed';
