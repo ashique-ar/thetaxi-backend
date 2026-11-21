@@ -23,8 +23,8 @@ class SeoIndexableMiddleware
     {
         $response = $next($request);
         
-        // Only add noindex header if SEO_INDEXABLE is false
-        if (!config('app.seo_indexable', true)) {
+        // Production pages stay indexable even if a stale deployment flag says otherwise.
+        if (config('app.env') !== 'production' && !config('app.seo_indexable', true)) {
             $response->headers->set('X-Robots-Tag', 'noindex, nofollow');
         }
         

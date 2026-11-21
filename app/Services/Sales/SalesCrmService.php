@@ -857,6 +857,7 @@ class SalesCrmService
                 $this->assertSalesFeatureEnabled();
                 $locked = SalesTask::query()->lockForUpdate()->findOrFail($task->id);
                 $this->assertTaskLinks($locked);
+                abort_unless($locked->owner_sales_profile_id === $task->owner_sales_profile_id, 409, 'Task owner changed; refresh before retrying.');
                 $eventReason = 'Rescheduled to '.CarbonImmutable::parse($data['due_at'])->utc()->toIso8601String().': '.trim($data['reason']);
                 $existing = SalesTaskEvent::query()->where('idempotency_key', $data['idempotency_key'])->first();
                 if ($existing) {

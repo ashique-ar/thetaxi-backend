@@ -71,7 +71,7 @@ Route::post('/booking/feedback/{booking}', [CustomerBookingFeedbackController::c
 
 // Dynamic robots.txt based on SEO_INDEXABLE environment variable
 Route::get('/robots.txt', function () {
-    $indexable = config('app.seo_indexable', true);
+    $indexable = config('app.env') === 'production' || config('app.seo_indexable', true);
     
     if ($indexable) {
         // Allow indexing for production sites

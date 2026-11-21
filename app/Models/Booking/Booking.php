@@ -994,7 +994,7 @@ class Booking extends BaseModel
     /**
      * Mark booking as confirmed
      */
-    public function markAsConfirmed(string $userId = null): void
+    public function markAsConfirmed(?string $userId = null): void
     {
         $this->status = 'confirmed';
         $this->confirmed = true;
@@ -1010,7 +1010,7 @@ class Booking extends BaseModel
     /**
      * Mark booking as cancelled
      */
-    public function markAsCancelled(string $reason = null, string $userId = null): void
+    public function markAsCancelled(?string $reason = null, ?string $userId = null): void
     {
         $this->status = 'cancelled';
         $this->cancelled_at = now();
@@ -1032,9 +1032,8 @@ class Booking extends BaseModel
     /**
      * Apply approval decision
      */
-    public function applyApprovalDecision(string $decision, string $approverId, string $note = null): void
+    public function applyApprovalDecision(string $decision, string $approverId, ?string $note = null): void
     {
-        $before = $this->getOriginal();
         $this->approval_status = $decision;
         $this->approval_by = $approverId;
         $this->approval_at = now();
@@ -1048,7 +1047,6 @@ class Booking extends BaseModel
 
         $this->updated_user_id = $approverId;
         $this->save();
-        app(\App\Services\BookingHistoryService::class)->recordModelChange($this, 'updated', $before, $note);
     }
 
     // ========================

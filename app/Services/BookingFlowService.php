@@ -10131,7 +10131,7 @@ class BookingFlowService
      */
     private function getStatusHistory(Booking $booking): array
     {
-        $trace = app(BookingObservabilityService::class)->trace($booking, null, null, 100, 'all', ['entity_type' => 'Booking']);
+        $trace = app(BookingObservabilityService::class)->trace($booking, null, null, 100);
         $changes = collect($trace['events'] ?? [])->filter(fn (array $event) =>
             in_array($event['event_type'] ?? null, ['booking_created', 'booking_status_changed'], true)
         )->sortBy('occurred_at')->map(fn (array $event) => [
@@ -12358,7 +12358,6 @@ class BookingFlowService
     private function cancelBookingRecord(Booking $booking, string $userId, ?string $reason): void
     {
         DB::transaction(function () use ($booking, $userId, $reason): void {
-            $before = $booking->getOriginal();
             $workflowData = $booking->workflow_data ?? [];
             $workflowData['cancellation_actor_id'] = $userId;
             if ($reason !== null && trim($reason) !== '') {
