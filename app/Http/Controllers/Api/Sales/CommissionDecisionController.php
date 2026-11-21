@@ -44,6 +44,7 @@ class CommissionDecisionController extends Controller
     {
         return [
             'id' => (string) $decision->id,
+            'booking_id' => (string) $decision->booking_id,
             'booking_number' => $decision->booking?->booking_number,
             'commission_category' => $decision->commission_category,
             'collection_cohort' => $decision->collection_cohort,

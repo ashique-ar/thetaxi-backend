@@ -1029,15 +1029,16 @@ trait BookingSubmissionTrait
         }
     }
 
-    public function deleteBooking(string $bookingId): JsonResponse
+    public function deleteBooking(Request $request, string $bookingId): JsonResponse
     {
         try {
+            $data = $request->validate(['reason' => 'nullable|string|max:1000']);
             $record = Booking::findOrFail($bookingId);
             if (! Gate::allows('delete', $record)) {
                 return response()->json(['status' => 'error', 'message' => 'Unauthorized to delete this booking'], 403);
             }
 
-            $result = $this->bookingFlowService->deleteBooking($bookingId, Auth::id());
+            $result = $this->bookingFlowService->deleteBooking($bookingId, Auth::id(), $data['reason'] ?? null);
 
             return response()->json([
                 'status' => 'success',

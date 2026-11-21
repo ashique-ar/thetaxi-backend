@@ -17,6 +17,14 @@
     line-height: 1.2 !important;
 }
 
+.booking-field-hint {
+    display: block;
+    margin-top: 6px;
+    color: #748194;
+    font-size: 12px;
+    line-height: 1.4;
+}
+
 /* Labels sit above the bordered control in both public themes. */
 .filter-wrapper .booking-field,
 .t2-filter-wrapper .booking-field {

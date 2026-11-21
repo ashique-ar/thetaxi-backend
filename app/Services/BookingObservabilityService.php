@@ -67,6 +67,10 @@ class BookingObservabilityService
 
         $historyEvents = BookingHistoryEvent::query()
             ->where('booking_id', $booking->id)
+            ->where(function ($scope) {
+                $scope->where('entity_type', '!=', 'BookingStatus')
+                    ->orWhereIn('event_type', ['booking_status_record_updated', 'booking_status_record_deleted', 'booking_status_record_restored']);
+            })
             ->when($bookingItemId, fn ($scope) => $scope->where(fn ($items) => $items
                 ->whereNull('booking_item_id')->orWhere('booking_item_id', $bookingItemId)))
             ->when($filters['actor_id'] ?? null, fn ($scope, $value) => $scope->where('actor_user_id', $value))
@@ -80,6 +84,12 @@ class BookingObservabilityService
 
         $bookingStatusEvents = BookingStatus::withTrashed()->with('createdBy:id,first_name,last_name')
             ->where('booking_id', $booking->id)
+            ->whereNotExists(fn ($query) => $query->selectRaw('1')
+                ->from('booking_history_events as status_history')
+                ->whereColumn('status_history.entity_id', 'booking_statuses.id')
+                ->where('status_history.entity_type', 'BookingStatus')
+                ->where('status_history.booking_id', $booking->id)
+                ->whereIn('status_history.event_type', ['booking_status_record_updated', 'booking_status_record_deleted', 'booking_status_record_restored']))
             ->when($filters['actor_id'] ?? null, fn ($query, $value) => $query->where('created_user_id', $value))
             ->when(isset($filters['entity_type']) && strcasecmp($filters['entity_type'], 'BookingStatus') !== 0, fn ($query) => $query->whereRaw('1 = 0'))
             ->when($filters['entity_id'] ?? null, fn ($query, $value) => $query->whereKey($value))

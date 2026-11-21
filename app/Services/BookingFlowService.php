@@ -9,6 +9,7 @@ use App\Models\Booking\BookingActivity;
 use App\Models\Booking\BookingAddon;
 use App\Models\Booking\BookingApproval;
 use App\Models\Booking\BookingChannel;
+use App\Models\Booking\BookingHistoryEvent;
 use App\Models\Booking\BookingItem;
 use App\Models\Booking\BookingStatus;
 use App\Models\Booking\BookingVariableCustomization;
@@ -10131,16 +10132,16 @@ class BookingFlowService
      */
     private function getStatusHistory(Booking $booking): array
     {
-        $trace = app(BookingObservabilityService::class)->trace($booking, null, null, 100);
-        $changes = collect($trace['events'] ?? [])->filter(fn (array $event) =>
-            in_array($event['event_type'] ?? null, ['booking_created', 'booking_status_changed'], true)
-        )->sortBy('occurred_at')->map(fn (array $event) => [
-                'reason' => $event['reason'] ?? data_get($event, 'metadata.reason'),
-                'changed_by' => data_get($event, 'actor.name'),
-                'changed_at' => $event['occurred_at'] ?? null,
-                'from' => $event['from_status'] ?? data_get($event, 'changes.status.from'),
-                'to' => $event['to_status'] ?? data_get($event, 'changes.status.to'),
-            ])->values()->all();
+        $changes = BookingHistoryEvent::query()->where('booking_id', $booking->id)
+            ->whereIn('event_type', ['booking_created', 'booking_status_changed'])
+            ->orderBy('occurred_at')->orderBy('id')->get()
+            ->map(fn (BookingHistoryEvent $event) => [
+                'reason' => $event->reason,
+                'changed_by' => $event->actor_display_snapshot,
+                'changed_at' => $event->occurred_at?->toIso8601String(),
+                'from' => data_get($event->changes, 'status.from'),
+                'to' => data_get($event->changes, 'status.to'),
+            ])->all();
 
         return [
             'current_status' => $booking->status,
@@ -12429,7 +12430,12 @@ class BookingFlowService
         if (!in_array($status, ['draft', 'pending_approval', 'approved', 'confirmed', 'allocated', 'in_progress', 'completed', 'cancelled'], true)) {
             throw ValidationException::withMessages(['status' => ['The requested booking status is invalid.']]);
         }
-        [$booking, $previousStatus] = DB::transaction(function () use ($bookingId, $status, $reason, $userId): array {
+        $request = request();
+        $previousReason = $request->attributes->get('booking_history_reason');
+        $hadPreviousReason = $request->attributes->has('booking_history_reason');
+        $request->attributes->set('booking_history_reason', $reason);
+        try {
+            [$booking, $previousStatus] = DB::transaction(function () use ($bookingId, $status, $reason, $userId): array {
             $booking = Booking::query()->lockForUpdate()->findOrFail($bookingId);
             $previousStatus = (string) $booking->status;
 
@@ -12465,7 +12471,14 @@ class BookingFlowService
             }
 
             return [$booking->fresh(), $previousStatus];
-        });
+            });
+        } finally {
+            if ($hadPreviousReason) {
+                $request->attributes->set('booking_history_reason', $previousReason);
+            } else {
+                $request->attributes->remove('booking_history_reason');
+            }
+        }
 
         if ($status === 'confirmed' && $previousStatus !== 'confirmed') {
             if (!$booking->skip_all_emails) {
@@ -12496,7 +12509,7 @@ class BookingFlowService
             try {
                 switch ($operation) {
                     case 'delete':
-                        $result = $this->deleteBooking($bookingId, $userId);
+                        $result = $this->deleteBooking($bookingId, $userId, $reason);
                         $results['success'][] = [
                             'booking_id' => $bookingId,
                             'result' => $result,

@@ -100,6 +100,29 @@ it('validates task links and makes create, transition, and transfer commands rep
     expect(SalesTask::query()->count())->toBe(1)
         ->and(SalesTaskEvent::query()->where('event_type', 'status_changed')->count())->toBe(1);
 
+    $reschedulablePayload = [
+        ...$payload,
+        'title' => 'Reschedulable customer follow-up',
+        'creation_idempotency_key' => (string) Str::uuid(),
+    ];
+    actingAs($actor, 'api')->postJson('/api/sales/tasks', $reschedulablePayload)->assertCreated();
+    $reschedulableTask = SalesTask::query()->where('title', $reschedulablePayload['title'])->firstOrFail();
+    $reschedule = [
+        'due_at' => now()->addDays(3)->toIso8601String(),
+        'expected_version' => 1,
+        'reason' => 'Customer asked for a later call',
+        'idempotency_key' => (string) Str::uuid(),
+    ];
+    actingAs($actor, 'api')->postJson('/api/sales/tasks/'.$reschedulableTask->id.'/reschedule', $reschedule)->assertOk();
+    actingAs($actor, 'api')->postJson('/api/sales/tasks/'.$reschedulableTask->id.'/reschedule', $reschedule)->assertOk();
+    expect($reschedulableTask->fresh()->state_version)->toBe(2)
+        ->and(SalesTaskEvent::query()->where('task_id', $reschedulableTask->id)->where('event_type', 'rescheduled')->count())->toBe(1)
+        ->and(SalesTaskEvent::query()->where('task_id', $reschedulableTask->id)->where('event_type', 'rescheduled')->value('reason'))
+        ->toContain('Customer asked for a later call');
+    actingAs($actor, 'api')->postJson('/api/sales/tasks/'.$reschedulableTask->id.'/reschedule', [
+        ...$reschedule, 'expected_version' => 1, 'idempotency_key' => (string) Str::uuid(),
+    ])->assertConflict();
+
     $scopedActor = User::factory()->create();
     $scopedActor->givePermissionTo(Permission::findByName('sales.crm.manage', 'api'));
     $scopedActor->givePermissionTo(Permission::findByName('sales.crm.view', 'api'));

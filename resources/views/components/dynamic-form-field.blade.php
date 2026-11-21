@@ -43,6 +43,10 @@
 
     // Build unique element IDs
     $elementId = $prefix . '_' . $submitAs;
+    $hintId = $elementId . '_hint';
+    $errorId = $elementId . '_error';
+    $hasFieldError = $errors->has($submitAs);
+    $describedBy = trim(($hint ? $hintId : '') . ($hasFieldError ? ' ' . $errorId : ''));
     $fieldValue = $currentValue ?? $defaultValue;
 @endphp
 
@@ -63,19 +67,22 @@
                     'predefinedLocations' => $predefinedLocations ?? collect(),
                     'configuredOptions' => $options,
                     'customLabel' => $field['custom_label'] ?? $label,
+                    'hasError' => $hasFieldError,
                 ])
                 @break
 
             {{-- Airport selector --}}
             @case('airport')
                 <div class="booking-field">
-                    <label class="input-label">{{ $label }}</label>
+                    <label class="input-label">{{ $label }}@if($required) <span aria-hidden="true">*</span>@endif</label>
                     <div class="single-search-box location-search-box">
                         @include('components.partials.location-icon')
                         <div class="custom-select-dropdown">
                             @include('components.airport-select', [
                             'selectId' => $elementId,
                             'ariaLabel' => $label,
+                            'hasError' => $hasFieldError,
+                            'errorId' => $errorId,
                             'required' => $required,
                             'name' => $submitAs,
                             'airports' => $airportOptions ?? collect(),
@@ -85,7 +92,7 @@
                         </div>
                     </div>
                     @error($submitAs)
-                        <span class="text-danger small">{{ $message }}</span>
+                        <span id="{{ $errorId }}" class="text-danger small" role="alert">{{ $message }}</span>
                     @enderror
                 </div>
                 @break
@@ -151,13 +158,15 @@
                         <div class="conditional-variant" data-condition-value="{{ $condValue }}" style="display:{{ $isActiveVariant ? 'block' : 'none' }};">
                             @if($condType === 'airport')
                                 <div class="booking-field">
-                                    <label class="input-label">{{ $label }}</label>
+                                    <label class="input-label">{{ $label }}@if($required) <span aria-hidden="true">*</span>@endif</label>
                                     <div class="single-search-box location-search-box">
                                         @include('components.partials.location-icon')
                                         <div class="custom-select-dropdown">
                                             @include('components.airport-select', [
                                             'selectId' => $elementId . '_' . $condValue,
                                             'ariaLabel' => $label,
+                                            'hasError' => $hasFieldError,
+                                            'errorId' => $elementId . '_' . $condValue . '_error',
                                             'name' => $submitAs,
                                             'airports' => $conditionalAirportOptions,
                                             'selectedValue' => $isActiveVariant ? $fieldValue : '',
@@ -168,18 +177,19 @@
                                         </div>
                                     </div>
                                     @error($submitAs)
-                                        <span class="text-danger small">{{ $message }}</span>
+                                        <span id="{{ $elementId }}_{{ $condValue }}_error" class="text-danger small" role="alert">{{ $message }}</span>
                                     @enderror
                                 </div>
                             @else
                                 <div class="booking-field">
-                                    <label class="input-label" for="{{ $elementId }}_{{ $condValue }}">{{ $label }}</label>
+                                    <label class="input-label" for="{{ $elementId }}_{{ $condValue }}">{{ $label }}@if($required) <span aria-hidden="true">*</span>@endif</label>
                                     <div class="single-search-box location-search-box">
                                         @include('components.partials.location-icon')
                                         <div class="custom-select-dropdown">
                                             <input type="text" name="{{ $submitAs }}" id="{{ $elementId }}_{{ $condValue }}"
                                                placeholder="{{ $placeholder ?: 'Enter ' . strtolower($label) }}"
                                                class="location-search @error($submitAs) is-invalid @enderror"
+                                               aria-invalid="{{ $hasFieldError ? 'true' : 'false' }}" @if($hasFieldError) aria-describedby="{{ $elementId }}_{{ $condValue }}_error" @endif
                                                @if($encodedPlaceholderExamples) data-placeholder-examples="{{ $encodedPlaceholderExamples }}" @endif
                                                data-placeholder-fallback="{{ $placeholder ?: 'Enter ' . strtolower($label) }}"
                                                value="{{ $isActiveVariant ? (($currentValue !== null && $currentValue !== '') ? $currentValue : $variantDefault) : '' }}"
@@ -195,7 +205,7 @@
                                         </div>
                                     </div>
                                     @error($submitAs)
-                                        <span class="text-danger small">{{ $message }}</span>
+                                        <span id="{{ $elementId }}_{{ $condValue }}_error" class="text-danger small" role="alert">{{ $message }}</span>
                                     @enderror
                                 </div>
                             @endif
@@ -207,13 +217,14 @@
             {{-- Default: Google Places autocomplete --}}
             @default
                 <div class="booking-field">
-                    <label class="input-label" for="{{ $elementId }}">{{ $label }}</label>
+                    <label class="input-label" for="{{ $elementId }}">{{ $label }}@if($required) <span aria-hidden="true">*</span>@endif</label>
                     <div class="single-search-box location-search-box">
                         @include('components.partials.location-icon')
                         <div class="custom-select-dropdown">
                             <input type="text" name="{{ $submitAs }}" id="{{ $elementId }}"
                                placeholder="{{ $placeholder ?: 'Enter ' . strtolower($label) }}"
                                class="location-search @error($submitAs) is-invalid @enderror"
+                               aria-invalid="{{ $hasFieldError ? 'true' : 'false' }}" @if($hasFieldError) aria-describedby="{{ $errorId }}" @endif
                                @if($encodedPlaceholderExamples) data-placeholder-examples="{{ $encodedPlaceholderExamples }}" @endif
                                data-placeholder-fallback="{{ $placeholder ?: 'Enter ' . strtolower($label) }}"
                                data-default-value="{{ $defaultValue }}"
@@ -230,7 +241,7 @@
                         </div>
                     </div>
                     @error($submitAs)
-                        <span class="text-danger small">{{ $message }}</span>
+                        <span id="{{ $errorId }}" class="text-danger small" role="alert">{{ $message }}</span>
                     @enderror
                 </div>
         @endswitch
@@ -239,12 +250,14 @@
     {{-- ===== DATE FIELD ===== --}}
     @case('date')
         <div class="booking-field">
-            <label class="input-label" for="{{ $elementId }}">{{ $label }}</label>
+            <label class="input-label" for="{{ $elementId }}">{{ $label }}@if($required) <span aria-hidden="true">*</span>@endif</label>
             <div class="single-search-box date-field">
                 @include('components.partials.calendar-icon')
                 <input type="text" name="{{ $submitAs }}" id="{{ $elementId }}"
                    placeholder="{{ $placeholder ?: $datePlaceholder }}"
                    class="custom-datepicker @error($submitAs) is-invalid @enderror"
+                   aria-invalid="{{ $hasFieldError ? 'true' : 'false' }}"
+                   @if($describedBy !== '') aria-describedby="{{ $describedBy }}" @endif
                    value="{{ $fieldValue }}"
                    {{ $required ? 'required' : '' }}
                    data-enable-time="false"
@@ -260,8 +273,9 @@
                    autocomplete="off"
                        readonly>
             </div>
+            @if($hint)<small class="booking-field-hint" id="{{ $hintId }}">{{ $hint }}</small>@endif
             @error($submitAs)
-                <span class="text-danger small">{{ $message }}</span>
+                <span class="text-danger small" id="{{ $errorId }}" role="alert">{{ $message }}</span>
             @enderror
         </div>
         @break
@@ -269,7 +283,7 @@
     {{-- ===== TIME FIELD ===== --}}
     @case('time')
         <div class="booking-field">
-            <label class="input-label" for="{{ $elementId }}">{{ $label }}</label>
+            <label class="input-label" for="{{ $elementId }}">{{ $label }}@if($required) <span aria-hidden="true">*</span>@endif</label>
             <div class="single-search-box">
                 @include('components.partials.clock-icon')
                 <div class="custom-select-dropdown">
@@ -277,11 +291,14 @@
                        value="{{ $fieldValue }}"
                        placeholder="{{ $placeholder }}"
                        class="@error($submitAs) is-invalid @enderror"
-                           {{ $required ? 'required' : '' }}>
+                       {{ $required ? 'required' : '' }}
+                       aria-invalid="{{ $hasFieldError ? 'true' : 'false' }}"
+                       @if($describedBy !== '') aria-describedby="{{ $describedBy }}" @endif>
                 </div>
             </div>
+            @if($hint)<small class="booking-field-hint" id="{{ $hintId }}">{{ $hint }}</small>@endif
             @error($submitAs)
-                <span class="text-danger small">{{ $message }}</span>
+                <span class="text-danger small" id="{{ $errorId }}" role="alert">{{ $message }}</span>
             @enderror
         </div>
         @break
@@ -289,20 +306,20 @@
     {{-- ===== DATE & TIME FIELD ===== --}}
     @case('datetime')
         <div class="booking-field">
-            <label class="input-label" for="{{ $elementId }}">{{ $label }}</label>
+            <label class="input-label" for="{{ $elementId }}">{{ $label }}@if($required) <span aria-hidden="true">*</span>@endif</label>
             <div class="single-search-box date-field">
                 @include('components.partials.calendar-icon')
                 <input type="datetime-local" name="{{ $submitAs }}" id="{{ $elementId }}"
                    placeholder="{{ $placeholder }}"
                    value="{{ $fieldValue }}"
                    class="@error($submitAs) is-invalid @enderror"
-                   {{ $required ? 'required' : '' }}>
+                   {{ $required ? 'required' : '' }}
+                   aria-invalid="{{ $hasFieldError ? 'true' : 'false' }}"
+                   @if($describedBy !== '') aria-describedby="{{ $describedBy }}" @endif>
             </div>
-            @if($hint)
-                <small class="text-muted">{{ $hint }}</small>
-            @endif
+            @if($hint)<small class="booking-field-hint" id="{{ $hintId }}">{{ $hint }}</small>@endif
             @error($submitAs)
-                <span class="text-danger small">{{ $message }}</span>
+                <span class="text-danger small" id="{{ $errorId }}" role="alert">{{ $message }}</span>
             @enderror
         </div>
         @break
@@ -310,12 +327,14 @@
     {{-- ===== SELECT FIELD ===== --}}
     @case('select')
         <div class="booking-field">
-            <label class="input-label" for="{{ $elementId }}">{{ $label }}</label>
+            <label class="input-label" for="{{ $elementId }}">{{ $label }}@if($required) <span aria-hidden="true">*</span>@endif</label>
             <div class="single-search-box">
                 <div class="custom-select-dropdown">
                     <select name="{{ $submitAs }}" id="{{ $elementId }}"
                         class="no-nice @error($submitAs) is-invalid @enderror"
-                        {{ $required ? 'required' : '' }}>
+                        {{ $required ? 'required' : '' }}
+                        aria-invalid="{{ $hasFieldError ? 'true' : 'false' }}"
+                        @if($describedBy !== '') aria-describedby="{{ $describedBy }}" @endif>
                     <option value="">{{ $placeholder ?: 'Select ' . $label }}</option>
                     @foreach($options as $option)
                         <option value="{{ $option['value'] }}"
@@ -326,8 +345,9 @@
                     </select>
                 </div>
             </div>
+            @if($hint)<small class="booking-field-hint" id="{{ $hintId }}">{{ $hint }}</small>@endif
             @error($submitAs)
-                <span class="text-danger small">{{ $message }}</span>
+                <span class="text-danger small" id="{{ $errorId }}" role="alert">{{ $message }}</span>
             @enderror
         </div>
         @break
@@ -344,7 +364,7 @@
             }
         @endphp
         @if($isTransferType)
-            <div class="transfer-type-selector text-center justify-items-center" id="{{ $elementId }}_wrapper">
+            <div class="transfer-type-selector text-center justify-items-center" id="{{ $elementId }}_wrapper" role="radiogroup" aria-label="{{ $label }}" aria-required="{{ $required ? 'true' : 'false' }}" aria-invalid="{{ $hasFieldError ? 'true' : 'false' }}" @if($hasFieldError) aria-describedby="{{ $errorId }}" @endif>
                 <div class="transfer-type-toggle">
                     @foreach($options as $option)
                         <label class="transfer-type-option">
@@ -356,13 +376,13 @@
                     @endforeach
                 </div>
                 @error($submitAs)
-                    <span class="text-danger small">{{ $message }}</span>
+                    <span id="{{ $errorId }}" class="text-danger small" role="alert">{{ $message }}</span>
                 @enderror
             </div>
         @else
             <div class="booking-field" id="{{ $elementId }}_wrapper">
-                <span class="input-label" id="{{ $elementId }}_label">{{ $label }}</span>
-                <div class="single-search-box radio-field" role="radiogroup" aria-labelledby="{{ $elementId }}_label">
+                <span class="input-label" id="{{ $elementId }}_label">{{ $label }}@if($required) <span aria-hidden="true">*</span>@endif</span>
+                <div class="single-search-box radio-field" role="radiogroup" aria-labelledby="{{ $elementId }}_label" aria-required="{{ $required ? 'true' : 'false' }}" aria-invalid="{{ $hasFieldError ? 'true' : 'false' }}" @if($hasFieldError) aria-describedby="{{ $errorId }}" @endif>
                     <div class="radio-options d-flex gap-3 flex-wrap">
                         @foreach($options as $option)
                             <label class="radio-option d-flex align-items-center gap-1">
@@ -375,7 +395,7 @@
                     </div>
                 </div>
                 @error($submitAs)
-                    <span class="text-danger small">{{ $message }}</span>
+                    <span id="{{ $errorId }}" class="text-danger small" role="alert">{{ $message }}</span>
                 @enderror
             </div>
         @endif
@@ -389,6 +409,8 @@
                     <input type="checkbox" name="{{ $submitAs }}" id="{{ $elementId }}"
                            value="1"
                            {{ $fieldValue ? 'checked' : '' }}
+                           aria-invalid="{{ $hasFieldError ? 'true' : 'false' }}"
+                           @if($hasFieldError) aria-describedby="{{ $errorId }}" @endif
                            {{ $required ? 'required' : '' }}>
                     <span class="return-trip-text">
                         <svg width="16" height="16" viewBox="0 0 24 24" fill="none"
@@ -401,21 +423,22 @@
                         {{ $label }}
                     </span>
                 </label>
+                @error($submitAs)<span id="{{ $errorId }}" class="text-danger small" role="alert">{{ $message }}</span>@enderror
             </div>
         @else
             <div class="booking-field">
-                <label class="input-label" for="{{ $elementId }}">{{ $label }}</label>
+                <label class="input-label" for="{{ $elementId }}">{{ $label }}@if($required) <span aria-hidden="true">*</span>@endif</label>
                 <div class="single-search-box checkbox-field">
                     <input type="checkbox" name="{{ $submitAs }}" id="{{ $elementId }}"
                            value="1"
                            {{ $fieldValue ? 'checked' : '' }}
+                           aria-invalid="{{ $hasFieldError ? 'true' : 'false' }}"
+                           @if($describedBy !== '') aria-describedby="{{ $describedBy }}" @endif
                            {{ $required ? 'required' : '' }}>
-                    @if($hint)
-                        <small class="text-muted">{{ $hint }}</small>
-                    @endif
+                    @if($hint)<small class="booking-field-hint" id="{{ $hintId }}">{{ $hint }}</small>@endif
                 </div>
                 @error($submitAs)
-                    <span class="text-danger small">{{ $message }}</span>
+                    <span id="{{ $errorId }}" class="text-danger small" role="alert">{{ $message }}</span>
                 @enderror
             </div>
         @endif
@@ -424,18 +447,21 @@
     {{-- ===== TEXT / TEXTAREA / NUMBER ===== --}}
     @case('textarea')
         <div class="booking-field">
-            <label class="input-label" for="{{ $elementId }}">{{ $label }}</label>
+            <label class="input-label" for="{{ $elementId }}">{{ $label }}@if($required) <span aria-hidden="true">*</span>@endif</label>
             <div class="single-search-box booking-textarea-box">
                 <div class="custom-select-dropdown">
                     <textarea name="{{ $submitAs }}" id="{{ $elementId }}"
                           placeholder="{{ $placeholder }}"
                           class="booking-textarea @error($submitAs) is-invalid @enderror"
                           {{ $required ? 'required' : '' }}
+                          aria-invalid="{{ $hasFieldError ? 'true' : 'false' }}"
+                          @if($describedBy !== '') aria-describedby="{{ $describedBy }}" @endif
                               rows="3">{{ $fieldValue }}</textarea>
                 </div>
             </div>
+            @if($hint)<small class="booking-field-hint" id="{{ $hintId }}">{{ $hint }}</small>@endif
             @error($submitAs)
-                <span class="text-danger small">{{ $message }}</span>
+                <span class="text-danger small" id="{{ $errorId }}" role="alert">{{ $message }}</span>
             @enderror
         </div>
         @break
@@ -446,7 +472,7 @@
             $maximum = data_get($field, 'validation.max');
         @endphp
         <div class="booking-field" style="width: 100% !important; min-width: 0 !important;">
-            <label class="input-label" for="{{ $elementId }}">{{ $label }}</label>
+            <label class="input-label" for="{{ $elementId }}">{{ $label }}@if($required) <span aria-hidden="true">*</span>@endif</label>
             <div class="single-search-box" style="width: 100% !important; min-width: 0 !important;">
                 <div class="custom-select-dropdown" style="display: block !important; width: 100% !important; max-width: 100% !important;">
                     <input type="number" name="{{ $submitAs }}" id="{{ $elementId }}"
@@ -455,6 +481,8 @@
                        style="width: 100% !important; max-width: 100% !important; box-sizing: border-box !important;"
                        class="@error($submitAs) is-invalid @enderror"
                        {{ $required ? 'required' : '' }}
+                       aria-invalid="{{ $hasFieldError ? 'true' : 'false' }}"
+                       @if($describedBy !== '') aria-describedby="{{ $describedBy }}" @endif
                        @if($minimum !== null && $minimum !== '') min="{{ $minimum }}" @endif
                        @if($maximum !== null && $maximum !== '') max="{{ $maximum }}" @endif
                        @if(filled($durationStartField ?? null) && filled($durationEndField ?? null))
@@ -463,8 +491,9 @@
                        @endif>
                 </div>
             </div>
+            @if($hint)<small class="booking-field-hint" id="{{ $hintId }}">{{ $hint }}</small>@endif
             @error($submitAs)
-                <span class="text-danger small">{{ $message }}</span>
+                <span class="text-danger small" id="{{ $errorId }}" role="alert">{{ $message }}</span>
             @enderror
         </div>
         @break
@@ -478,12 +507,12 @@
     @case('package_select')
         @if(isset($servicePackages) && $servicePackages->count() > 1)
         <div class="booking-field package-selector-field">
-            <span class="input-label">{{ $label }}</span>
+            <span class="input-label" id="{{ $elementId }}_label">{{ $label }}@if($required) <span aria-hidden="true">*</span>@endif</span>
             {{-- Only show package selector if there are 2 or more packages --}}
 
                 
                 {{-- Button-style package selector --}}
-                <div class="package-buttons-wrapper">
+                <div class="package-buttons-wrapper" role="radiogroup" aria-labelledby="{{ $elementId }}_label" aria-required="{{ $required ? 'true' : 'false' }}" aria-invalid="{{ $hasFieldError ? 'true' : 'false' }}" @if($hasFieldError) aria-describedby="{{ $errorId }}" @endif>
                     @foreach($servicePackages as $pkg)
                         <label class="package-button {{ $loop->first && !$fieldValue ? 'active' : ($fieldValue == $pkg->id ? 'active' : '') }}" data-package-id="{{ $pkg->id }}">
                             <input type="radio" 
@@ -502,7 +531,7 @@
                     @endforeach
                 </div>
             @error($submitAs)
-                <span class="text-danger small">{{ $message }}</span>
+                <span id="{{ $errorId }}" class="text-danger small" role="alert">{{ $message }}</span>
             @enderror
         </div>
         @elseif(isset($servicePackages) && $servicePackages->count() === 1)
@@ -514,18 +543,21 @@
     {{-- ===== DEFAULT: TEXT INPUT ===== --}}
     @default
         <div class="booking-field">
-            <label class="input-label" for="{{ $elementId }}">{{ $label }}</label>
+            <label class="input-label" for="{{ $elementId }}">{{ $label }}@if($required) <span aria-hidden="true">*</span>@endif</label>
             <div class="single-search-box">
                 <div class="custom-select-dropdown">
                     <input type="{{ in_array($type, ['text', 'email', 'tel'], true) ? $type : 'text' }}" name="{{ $submitAs }}" id="{{ $elementId }}"
                        placeholder="{{ $placeholder }}"
                        value="{{ $fieldValue }}"
                        class="@error($submitAs) is-invalid @enderror"
-                           {{ $required ? 'required' : '' }}>
+                       {{ $required ? 'required' : '' }}
+                       aria-invalid="{{ $hasFieldError ? 'true' : 'false' }}"
+                       @if($describedBy !== '') aria-describedby="{{ $describedBy }}" @endif>
                 </div>
             </div>
+            @if($hint)<small class="booking-field-hint" id="{{ $hintId }}">{{ $hint }}</small>@endif
             @error($submitAs)
-                <span class="text-danger small">{{ $message }}</span>
+                <span class="text-danger small" id="{{ $errorId }}" role="alert">{{ $message }}</span>
             @enderror
         </div>
 @endswitch

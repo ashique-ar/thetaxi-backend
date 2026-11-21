@@ -105,13 +105,13 @@
             @csrf
             <input type="hidden" name="terms_hash" value="{{ $termsHash }}">
             <label class="d-flex align-items-start gap-2 mb-3">
-                <input type="checkbox" name="accept_terms" value="1" required style="margin-top: 5px;">
+                <input id="accept-quotation-terms" type="checkbox" name="accept_terms" value="1" required aria-invalid="{{ $errors->has('accept_terms') ? 'true' : 'false' }}" @if ($errors->has('accept_terms')) aria-describedby="accept-quotation-terms-error" @endif style="margin-top: 5px;">
                 <span>I have reviewed this quotation and the terms above. I accept this offer and understand that I will
                     continue to payment.</span>
             </label>
             @error('accept_terms')
-            <p class="text-danger">{{ $message }}</p> @enderror
-            <button type="submit" class="btn btn-primary">Accept quotation and continue</button>
+            <p id="accept-quotation-terms-error" class="text-danger" role="alert">{{ $message }}</p> @enderror
+            <button type="submit" class="btn btn-primary">Accept quotation &amp; continue</button>
         </form>
     </main>
 @endsection

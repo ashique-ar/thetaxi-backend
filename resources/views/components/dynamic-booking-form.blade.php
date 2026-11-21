@@ -431,13 +431,15 @@
                     || preg_match('/pickup|from_location/i', $fieldName . ' ' . $submitAs)))
                 <div class="booking-field custom-location-box {{ $prefix }}-dropoff-box"
                      id="{{ $prefix }}_dropoff_wrapper" data-source-field="{{ $submitAs }}" style="display: none;">
-                    <label class="input-label">{{ $settings['booking_dropoff_label'] ?? 'Drop-off Location' }}</label>
+                    <label class="input-label" for="{{ $prefix }}_dropoff_input">{{ $settings['booking_dropoff_label'] ?? 'Drop-off Location' }}</label>
                     <div class="single-search-box location-search-box">
                         @include('components.partials.location-icon')
                         <div class="custom-select-dropdown">
                             <input type="text" name="dropoff" id="{{ $prefix }}_dropoff_input"
                                placeholder="{{ $settings['booking_dropoff_placeholder'] ?? 'Enter your drop-off location' }}"
                                class="location-search @error('dropoff') is-invalid @enderror"
+                               aria-invalid="{{ $errors->has('dropoff') ? 'true' : 'false' }}"
+                               @if($errors->has('dropoff')) aria-describedby="{{ $prefix }}_dropoff_error" @endif
                                value="{{ $safeOldOr('dropoff', $dropoffLoc['address'] ?? '') }}" disabled>
                             <input type="hidden" name="dropoff_lat" id="{{ $prefix }}_dropoff_lat" class="location-lat"
                                    value="{{ $safeOldOr('dropoff_lat', $dropoffLoc['lat'] ?? '') }}">
@@ -445,7 +447,7 @@
                                    value="{{ $safeOldOr('dropoff_lng', $dropoffLoc['lng'] ?? '') }}">
                         </div>
                     </div>
-                    @error('dropoff')<span class="text-danger small">{{ $message }}</span>@enderror
+                    @error('dropoff')<span id="{{ $prefix }}_dropoff_error" class="text-danger small" role="alert">{{ $message }}</span>@enderror
                 </div>
                 <input type="hidden" name="dropoff" id="{{ $prefix }}_dropoff_hidden" value="" disabled>
                 <input type="hidden" name="dropoff_lat" id="{{ $prefix }}_dropoff_lat_hidden" value="" disabled>
@@ -507,7 +509,7 @@
                 </div>
 
                 <div class="booking-field">
-                    <label class="input-label">{{ $settings['booking_return_date_label'] ?? 'Return Date' }}</label>
+                    <label class="input-label" for="ride_now-return-date">{{ $settings['booking_return_date_label'] ?? 'Return Date' }}</label>
                     <div class="single-search-box date-field">
                         @include('components.partials.calendar-icon')
                         <input type="text"
@@ -515,16 +517,18 @@
                            id="ride_now-return-date"
                            placeholder="{{ $settings['booking_return_date_placeholder'] ?? 'DD/MM/YYYY' }}"
                            class="custom-datepicker @error('return_date') is-invalid @enderror"
+                           aria-invalid="{{ $errors->has('return_date') ? 'true' : 'false' }}"
+                           @if($errors->has('return_date')) aria-describedby="ride_now-return-date-error" @endif
                            value="{{ $rideNowReturnDate }}"
                                autocomplete="off">
                     </div>
                     @error('return_date')
-                        <span class="text-danger small">{{ $message }}</span>
+                        <span id="ride_now-return-date-error" class="text-danger small" role="alert">{{ $message }}</span>
                     @enderror
                 </div>
 
                 <div class="booking-field">
-                    <label class="input-label">{{ $settings['booking_return_time_label'] ?? 'Return Time' }}</label>
+                    <label class="input-label" for="ride_now-return-time">{{ $settings['booking_return_time_label'] ?? 'Return Time' }}</label>
                     <div class="single-search-box">
                         @include('components.partials.clock-icon')
                         <div class="custom-select-dropdown">
@@ -532,11 +536,13 @@
                                name="return_time"
                                id="ride_now-return-time"
                                value="{{ $rideNowReturnTime }}"
-                                   class="@error('return_time') is-invalid @enderror">
+                                   class="@error('return_time') is-invalid @enderror"
+                                   aria-invalid="{{ $errors->has('return_time') ? 'true' : 'false' }}"
+                                   @if($errors->has('return_time')) aria-describedby="ride_now-return-time-error" @endif>
                         </div>
                     </div>
                     @error('return_time')
-                        <span class="text-danger small">{{ $message }}</span>
+                        <span id="ride_now-return-time-error" class="text-danger small" role="alert">{{ $message }}</span>
                     @enderror
                 </div>
 

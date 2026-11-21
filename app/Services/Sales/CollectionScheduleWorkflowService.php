@@ -16,6 +16,7 @@ use App\Services\BookingPaymentLedgerService;
 use Carbon\Carbon;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Schema;
+use Illuminate\Support\Str;
 use Illuminate\Validation\ValidationException;
 
 class CollectionScheduleWorkflowService
@@ -89,6 +90,54 @@ class CollectionScheduleWorkflowService
             abort_unless($effectiveCollectionProfile, 422, 'A current configured collection-eligible handler is required at the revision boundary.');
             $revisionNumber = (int) BookingPaymentScheduleRevision::query()->where('booking_id', $booking->id)->max('revision_number') + 1;
             $before = $replaceable->map(fn ($row) => $this->scheduleFacts($row))->values()->all();
+            $nextSequence = (int) BookingPaymentSchedule::withTrashed()->where('booking_id', $booking->id)->max('sequence') + 1;
+            $preparedItems = collect($data['items'])->map(function (array $item) use (&$nextSequence, $booking, $revisionNumber, $effectiveCollectionProfileId): array {
+                $sourceAmount = round((float) $item['source_amount'], 4);
+                $currency = strtoupper((string) $item['source_currency']);
+                if ($currency !== 'LKR' && empty($item['lkr_amount'])) {
+                    throw ValidationException::withMessages([
+                        'items' => ['Every non-LKR installment requires an approved LKR amount.'],
+                    ]);
+                }
+                $lkrAmount = $currency === 'LKR' ? $sourceAmount : round((float) $item['lkr_amount'], 4);
+                $id = (string) Str::uuid();
+                $sequence = $nextSequence++;
+                $attributes = [
+                    'booking_id' => $booking->id,
+                    'sequence' => $sequence,
+                    'label' => $item['label'] ?? null,
+                    'period_start' => $item['period_start'] ?? null,
+                    'period_end' => $item['period_end'] ?? null,
+                    'due_date' => $item['due_date'],
+                    'amount' => round($sourceAmount, 2),
+                    'source_amount' => $sourceAmount,
+                    'source_currency' => $currency,
+                    'lkr_amount' => $lkrAmount,
+                    'schedule_kind' => $item['schedule_kind'],
+                    'reconciliation_role' => $item['reconciliation_role'] ?? null,
+                    'is_collection_target_eligible' => (bool) $item['is_collection_target_eligible'],
+                    'collection_sales_profile_id' => $effectiveCollectionProfileId,
+                    'revision_number' => $revisionNumber,
+                    'notes' => $item['notes'] ?? null,
+                ];
+
+                return [
+                    'id' => $id,
+                    'attributes' => $attributes,
+                    'snapshot' => [
+                        'id' => $id, 'sequence' => $sequence, 'label' => $attributes['label'],
+                        'period_start' => $attributes['period_start'], 'period_end' => $attributes['period_end'],
+                        'due_date' => Carbon::parse($attributes['due_date'])->toDateString(),
+                        'source_amount' => number_format($sourceAmount, 4, '.', ''),
+                        'source_currency' => $currency, 'lkr_amount' => number_format($lkrAmount, 4, '.', ''),
+                        'schedule_kind' => $attributes['schedule_kind'],
+                        'reconciliation_role' => $attributes['reconciliation_role'],
+                        'is_collection_target_eligible' => $attributes['is_collection_target_eligible'],
+                        'collection_sales_profile_id' => $effectiveCollectionProfileId,
+                    ],
+                    'reminder_offset_days' => (int) $item['reminder_offset_days'],
+                ];
+            });
             $revision = BookingPaymentScheduleRevision::create([
                 'booking_id' => $booking->id,
                 'revision_number' => $revisionNumber,
@@ -105,7 +154,7 @@ class CollectionScheduleWorkflowService
                 'replacement_lkr_amount' => $reconciliation['summary']['replacement_lkr_amount'],
                 'preview_checksum' => $data['preview_checksum'],
                 'before_snapshot' => $before,
-                'after_snapshot' => [],
+                'after_snapshot' => $preparedItems->pluck('snapshot')->all(),
                 'reason' => $data['reason'],
                 'idempotency_key' => $data['idempotency_key'],
                 'request_payload_checksum' => $checksum,
@@ -130,45 +179,15 @@ class CollectionScheduleWorkflowService
                 $oldSchedule->delete();
             }
 
-            $nextSequence = (int) BookingPaymentSchedule::withTrashed()->where('booking_id', $booking->id)->max('sequence') + 1;
             $created = collect();
-            foreach ($data['items'] as $item) {
-                $sourceAmount = round((float) $item['source_amount'], 4);
-                $currency = strtoupper((string) $item['source_currency']);
-                if ($currency !== 'LKR' && empty($item['lkr_amount'])) {
-                    throw ValidationException::withMessages([
-                        'items' => ['Every non-LKR installment requires an approved LKR amount.'],
-                    ]);
-                }
-                $lkrAmount = $currency === 'LKR' ? $sourceAmount : round((float) $item['lkr_amount'], 4);
-                $schedule = BookingPaymentSchedule::create([
-                    'booking_id' => $booking->id,
-                    'sequence' => $nextSequence++,
-                    'label' => $item['label'] ?? null,
-                    'period_start' => $item['period_start'] ?? null,
-                    'period_end' => $item['period_end'] ?? null,
-                    'due_date' => $item['due_date'],
-                    'amount' => round($sourceAmount, 2),
-                    'source_amount' => $sourceAmount,
-                    'source_currency' => $currency,
-                    'lkr_amount' => $lkrAmount,
-                    'schedule_kind' => $item['schedule_kind'],
-                    'reconciliation_role' => $item['reconciliation_role'] ?? null,
-                    'is_collection_target_eligible' => (bool) $item['is_collection_target_eligible'],
-                    'collection_sales_profile_id' => $effectiveCollectionProfileId,
-                    'revision_number' => $revisionNumber,
-                    'notes' => $item['notes'] ?? null,
-                    'created_user_id' => $actorUserId,
-                ]);
+            foreach ($preparedItems as $preparedItem) {
+                $schedule = new BookingPaymentSchedule($preparedItem['attributes'] + ['created_user_id' => $actorUserId]);
+                $schedule->id = $preparedItem['id'];
+                $schedule->save();
                 $created->push($schedule);
-                $this->ensureWorkItem($schedule, (int) $item['reminder_offset_days']);
+                $this->ensureWorkItem($schedule, $preparedItem['reminder_offset_days']);
             }
 
-            DB::table('booking_payment_schedule_revisions')->where('id', $revision->id)->update([
-                'after_snapshot' => json_encode($created->map(fn ($row) => $this->scheduleFacts($row))->values()->all(), JSON_THROW_ON_ERROR),
-                'updated_at' => now(),
-            ]);
-            $revision->refresh();
             $this->ledger->allocateConfirmedReceiptsToSchedules($booking, $actorUserId);
             $this->events->record('sales', 'booking_payment_schedule', $booking->id,
                 'sales.collection.schedule.revised', $revisionNumber, 1, [

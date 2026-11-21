@@ -187,12 +187,14 @@ class WorkforceController extends Controller
 
     public function leaveRequests(Request $r, StaffAccessService $access): JsonResponse
     {
+        $data = $r->validate(['selected_id' => ['nullable', 'uuid']]);
         $staff = $access->scope(Staff::query(), $r->user())->select('id');
         $q = DB::table('hr_leave_requests as request')->join('hr_leave_types as type', 'type.id', '=', 'request.leave_type_id')
             ->whereIn('request.staff_id', $staff)
             ->whereExists(fn ($policy) => $policy->selectRaw('1')->from('hr_leave_policies')
                 ->whereColumn('hr_leave_policies.id', 'request.policy_id')
                 ->whereColumn('hr_leave_policies.leave_type_id', 'request.leave_type_id'))
+            ->when($data['selected_id'] ?? null, fn ($query, $id) => $query->where('request.id', $id))
             ->select(['request.id', 'type.name as leave_type_name', 'request.start_date', 'request.end_date', 'request.requested_minutes', 'request.status', 'request.requested_by', 'request.actual_return_date', 'request.recalled_at'])
             ->when($r->status, fn ($query, $status) => $query->where('request.status', $status))->latest('request.created_at');
         $rows = $q->paginate($this->paginationSize($r, 50));
@@ -388,8 +390,10 @@ class WorkforceController extends Controller
 
     public function workRequests(Request $r, StaffAccessService $access): JsonResponse
     {
+        $data = $r->validate(['selected_id' => ['nullable', 'uuid']]);
         $staff = $access->scope(Staff::query(), $r->user())->select('id');
         $q = DB::table('hr_work_requests')->whereIn('staff_id', $staff)
+            ->when($data['selected_id'] ?? null, fn ($query, $id) => $query->where('id', $id))
             ->whereExists(fn ($policy) => $policy->selectRaw('1')->from('hr_work_request_policies')
                 ->whereColumn('hr_work_request_policies.id', 'hr_work_requests.policy_id')
                 ->whereColumn('hr_work_request_policies.request_kind', 'hr_work_requests.request_kind'))
@@ -463,8 +467,10 @@ class WorkforceController extends Controller
 
     public function timesheets(Request $r, StaffAccessService $access): JsonResponse
     {
+        $data = $r->validate(['selected_id' => ['nullable', 'uuid']]);
         $staff = $access->scope(Staff::query(), $r->user())->select('id');
         $rows = DB::table('hr_timesheets as timesheet')->whereIn('timesheet.staff_id', $staff)
+            ->when($data['selected_id'] ?? null, fn ($query, $id) => $query->where('timesheet.id', $id))
             ->select(['timesheet.id', 'timesheet.submitted_by', 'timesheet.period_start', 'timesheet.period_end', 'timesheet.status', 'timesheet.version', 'timesheet.submitted_at'])
             ->latest('timesheet.period_start')->paginate($this->paginationSize($r, 50));
         $rows->getCollection()->transform(fn ($row) => [

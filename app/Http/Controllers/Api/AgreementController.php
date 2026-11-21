@@ -231,7 +231,7 @@ class AgreementController extends Controller
         return "Title,Type,Status,Start Date,End Date,Signed At\n".$rows->implode("\n");
     }
     private function activity(Agreement $agreement,string $type,string $description,Request $request,array $metadata=[]): void { AgreementActivity::create(['agreement_id'=>$agreement->id,'type'=>$type,'description'=>$description,'metadata'=>$metadata ?: null,'user_id'=>$request->user()?->id]); }
-    private function documentPayload(Document $d): array { return ['id'=>$d->id,'agreementId'=>$d->documentable_id,'name'=>$d->file_name,'type'=>$d->document_type,'url'=>$this->storageUrl($d->disk, $d->path),'size'=>$d->file_size,'uploadedAt'=>$d->created_at,'uploadedBy'=>$d->created_user_id]; }
+    private function documentPayload(Document $d): array { return ['id'=>$d->id,'agreementId'=>$d->documentable_id,'name'=>$d->file_name,'type'=>$d->document_type,'url'=>trim((string) $d->path) ? $this->storageUrl($d->disk, $d->path) : null,'size'=>$d->file_size,'uploadedAt'=>$d->created_at,'uploadedBy'=>$d->created_user_id]; }
     private function abortUnlessAgreementDocument(Document $document): void { abort_unless($document->documentable_type === Agreement::class, Response::HTTP_NOT_FOUND); }
     private function storageDisk(): string { return config('filesystems.default'); }
     private function storageUrl(string $diskName, string $path): string { return resource_proxy_url($path, $diskName); }

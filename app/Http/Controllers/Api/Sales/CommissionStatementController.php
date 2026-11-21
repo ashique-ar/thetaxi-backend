@@ -377,13 +377,53 @@ class CommissionStatementController extends Controller
 
     private function statementDetailProjection(SalesCommissionStatement $statement): array
     {
+        $lines = $statement->lines;
+        $decisionBySource = [];
+        $decisionIds = $lines->where('source_type', 'commission_decision')->pluck('source_id')->filter()->all();
+        foreach ($lines->where('source_type', 'commission_decision') as $line) $decisionBySource['commission_decision:'.$line->source_id] = $line->source_id;
+        foreach ([
+            'commission_hold_release' => 'sales_commission_hold_releases',
+            'commission_hold_adjustment' => 'sales_commission_hold_adjustments',
+        ] as $sourceType => $table) {
+            $sourceIds = $lines->where('source_type', $sourceType)->pluck('source_id')->filter()->all();
+            if ($sourceIds !== []) {
+                $sourceDecisions = DB::table($table)->whereIn('id', $sourceIds)->pluck('commission_decision_id', 'id')->all();
+                foreach ($sourceDecisions as $sourceId => $decisionId) $decisionBySource[$sourceType.':'.$sourceId] = $decisionId;
+                $decisionIds = [...$decisionIds, ...array_values($sourceDecisions)];
+            }
+        }
+        $recoveryIds = $lines->where('source_type', 'commission_recovery_decision')->pluck('source_id')->filter()->all();
+        if ($recoveryIds !== []) {
+            $sourceDecisions = DB::table('sales_commission_recovery_decisions as decision')
+                ->join('sales_commission_recovery_cases as recovery', 'recovery.id', '=', 'decision.recovery_case_id')
+                ->whereIn('decision.id', $recoveryIds)->pluck('recovery.commission_decision_id', 'decision.id')->all();
+            foreach ($sourceDecisions as $sourceId => $decisionId) $decisionBySource['commission_recovery_decision:'.$sourceId] = $decisionId;
+            $decisionIds = [...$decisionIds, ...array_values($sourceDecisions)];
+        }
+        $adjustmentIds = $lines->where('source_type', 'commission_statement_adjustment')->pluck('source_id')->filter()->all();
+        if ($adjustmentIds !== []) {
+            $sourceLines = DB::table('sales_commission_disputes as dispute')
+                ->join('sales_commission_statement_lines as source_line', 'source_line.id', '=', 'dispute.statement_line_id')
+                ->whereIn('dispute.dispute_id', $adjustmentIds)->get(['dispute.dispute_id', 'source_line.source_type', 'source_line.source_id']);
+            $sourceDecisions = [];
+            foreach ($sourceLines as $sourceLine) {
+                $decisionId = $decisionBySource[$sourceLine->source_type.':'.$sourceLine->source_id] ?? null;
+                if ($decisionId) $sourceDecisions[$sourceLine->dispute_id] = $decisionId;
+            }
+            foreach ($sourceDecisions as $sourceId => $decisionId) $decisionBySource['commission_statement_adjustment:'.$sourceId] = $decisionId;
+            $decisionIds = [...$decisionIds, ...array_values($sourceDecisions)];
+        }
+        $bookingByDecision = $decisionIds === [] ? [] : DB::table('sales_commission_decisions')
+            ->whereIn('id', array_unique($decisionIds))->pluck('booking_id', 'id')->all();
+
         return [
             'statement_number' => $statement->statement_number,
             'status' => $statement->status,
-            'lines' => $statement->lines->map(static fn (SalesCommissionStatementLine $line): array => [
+            'lines' => $lines->map(static fn (SalesCommissionStatementLine $line): array => [
                 'id' => (string) $line->id,
                 'line_type' => $line->line_type,
                 'description' => $line->description,
+                'source_booking_id' => $bookingByDecision[$decisionBySource[$line->source_type.':'.$line->source_id] ?? ''] ?? null,
                 'gross_lkr' => $line->gross_lkr,
                 'deduction_lkr' => $line->deduction_lkr,
                 'net_lkr' => $line->net_lkr,

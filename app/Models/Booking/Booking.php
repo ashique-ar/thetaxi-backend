@@ -1040,9 +1040,18 @@ class Booking extends BaseModel
         $this->approval_note = $note;
 
         if ($decision === 'approved') {
-            $this->markAsConfirmed($approverId);
+            $this->status = 'confirmed';
+            $this->confirmed = true;
+            $this->confirmed_at = now();
         } elseif ($decision === 'rejected') {
-            $this->markAsCancelled($note, $approverId);
+            $this->status = 'cancelled';
+            $this->cancelled_at = now();
+            $workflowData = $this->workflow_data ?? [];
+            if ($note !== null && trim($note) !== '') {
+                $workflowData['cancellation_reason'] = trim($note);
+            }
+            $workflowData['cancellation_actor_id'] = $approverId;
+            $this->workflow_data = $workflowData;
         }
 
         $this->updated_user_id = $approverId;

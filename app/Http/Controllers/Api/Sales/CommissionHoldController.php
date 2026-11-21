@@ -62,7 +62,7 @@ class CommissionHoldController extends Controller
             return $decision->only([
                 'id', 'eligible_lkr_amount', 'status', 'hold_code', 'calculation_explanation', 'decision_at', 'event_version',
             ]) + [
-                'booking' => ['booking_number' => $decision->booking?->booking_number],
+                'booking' => ['id' => (string) $decision->booking_id, 'booking_number' => $decision->booking?->booking_number],
                 'remediation' => Arr::only($this->remediation->describe($decision, $request->user()), [
                     'category', 'canonical_owner', 'action_authorized', 'action_path', 'action_label',
                     'release_preview_applicable', 'linked_adjustment_preview_applicable', 'guidance',

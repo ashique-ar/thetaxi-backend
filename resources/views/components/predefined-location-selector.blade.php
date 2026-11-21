@@ -78,7 +78,7 @@ $selectedLocationId = $locationOptions->firstWhere('code', $selectedLocationCode
 
 <!-- Location Selector (styled like airport select) -->
 <div class="booking-field">
-    <span class="input-label" id="{{ $selectId }}_label">{{ $label }}</span>
+    <span class="input-label" id="{{ $selectId }}_label">{{ $label }}@if($required) <span aria-hidden="true">*</span>@endif</span>
     <div class="single-search-box location-search-box">
         <svg width="15" height="15" viewBox="0 0 18 18" xmlns="http://www.w3.org/2000/svg">
             <g>
@@ -89,7 +89,7 @@ $selectedLocationId = $locationOptions->firstWhere('code', $selectedLocationCode
         <div class="custom-select-dropdown">
         {{-- Custom dropdown trigger (looks like a text input) --}}
         <div class="pls-dropdown" id="{{ $selectId }}_dropdown" data-field-name="{{ $name }}">
-            <div class="pls-dropdown-trigger" tabindex="0" role="combobox" aria-labelledby="{{ $selectId }}_label" aria-required="{{ $required ? 'true' : 'false' }}" aria-expanded="false" aria-haspopup="listbox">
+            <div class="pls-dropdown-trigger" tabindex="0" role="combobox" aria-labelledby="{{ $selectId }}_label" aria-required="{{ $required ? 'true' : 'false' }}" aria-invalid="{{ ($hasError ?? false) ? 'true' : 'false' }}" @if($hasError ?? false) aria-describedby="{{ $selectId }}_error" @endif aria-expanded="false" aria-haspopup="listbox">
                 <span class="pls-dropdown-current {{ $selectedLocationName ? '' : 'pls-placeholder' }}">{{ $selectedLocationName ?: 'Select ' . $label }}</span>
                 <span class="pls-dropdown-arrow"></span>
             </div>
@@ -131,7 +131,7 @@ $selectedLocationId = $locationOptions->firstWhere('code', $selectedLocationCode
         </div>
     </div>
     @error($name)
-        <span class="text-danger small">{{ $message }}</span>
+        <span id="{{ $selectId }}_error" class="text-danger small" role="alert">{{ $message }}</span>
     @enderror
 </div>
 
@@ -139,7 +139,7 @@ $selectedLocationId = $locationOptions->firstWhere('code', $selectedLocationCode
 <div class="booking-field custom-location-box"
      id="{{ $customInputId }}_wrapper"
      style="display: {{ $isCustom && $currentValue ? 'block' : 'none' }};">
-    <label class="input-label" for="{{ $customInputId }}">{{ $customLabel }}</label>
+    <label class="input-label" for="{{ $customInputId }}">{{ $customLabel }}@if($required) <span aria-hidden="true">*</span>@endif</label>
     <div class="single-search-box location-search-box">
         <svg width="15" height="15" viewBox="0 0 18 18" xmlns="http://www.w3.org/2000/svg">
             <g>
@@ -151,6 +151,8 @@ $selectedLocationId = $locationOptions->firstWhere('code', $selectedLocationCode
             <input type="text" name="{{ $name }}" id="{{ $customInputId }}"
                placeholder="Enter your {{ strtolower($customLabel) }}"
                class="location-search @error($name) is-invalid @enderror"
+               aria-invalid="{{ $errors->has($name) ? 'true' : 'false' }}"
+               @if($errors->has($name)) aria-describedby="{{ $selectId }}_custom_error" @endif
                value="{{ $isCustom ? $currentValue : '' }}"
                {{ $isCustom && $currentValue && $required ? 'required' : '' }}>
             <input type="hidden" name="{{ $name }}_lat" class="location-lat" value="{{ $currentLat }}">
@@ -158,7 +160,7 @@ $selectedLocationId = $locationOptions->firstWhere('code', $selectedLocationCode
         </div>
     </div>
     @error($name)
-        <span class="text-danger small">{{ $message }}</span>
+        <span id="{{ $selectId }}_custom_error" class="text-danger small" role="alert">{{ $message }}</span>
     @enderror
 </div>
 

@@ -13,7 +13,7 @@ use Illuminate\Support\Str;
 class BookingHistoryService
 {
     private const TRACKED_FIELDS = [
-        'status', 'payment_status', 'payment_collection_status',
+        'status', 'old_status', 'new_status', 'payment_status', 'payment_collection_status',
         'customer_id', 'agent_id', 'responsible_user_id', 'passenger_count', 'luggage_count', 'driver_hire_settlement_id', 'issued_date', 'issued_by',
         'special_requirements', 'emergency_contact_name', 'emergency_contact_phone',
         'review_notes', 'base_amount', 'total_estimated', 'total_actual', 'driver_cost',
@@ -250,11 +250,15 @@ class BookingHistoryService
             if (array_key_exists($field, $before) || array_key_exists($field, $model->getAttributes())) {
                 $old = $before[$field] ?? null;
                 $new = $model->getAttribute($field);
-                if ($operation === 'created' || $old !== $new) {
+                if (in_array($operation, ['created', 'deleted', 'restored'], true) || $old !== $new) {
                     $redact = in_array($field, ['special_requirements', 'emergency_contact_name', 'emergency_contact_phone'], true);
                     $changes[$field] = [
-                        'from' => $redact && $old !== null ? '[redacted]' : $this->safeValue($old),
-                        'to' => $redact && $new !== null ? '[redacted]' : $this->safeValue($new),
+                        'from' => $operation === 'created' || $operation === 'restored'
+                            ? null
+                            : ($redact && $old !== null ? '[redacted]' : $this->safeValue($old)),
+                        'to' => $operation === 'deleted'
+                            ? null
+                            : ($redact && $new !== null ? '[redacted]' : $this->safeValue($new)),
                     ];
                 }
             }
@@ -267,19 +271,23 @@ class BookingHistoryService
             $actorId = $model->getAttribute('updated_user_id') ?? ($before['updated_user_id'] ?? null);
             $actor = $actorId ? User::query()->find($actorId) : null;
         }
-        $requestReason = $reasonOverride
-            ?? $request->input('change_reason')
-            ?? data_get($model->getAttribute('workflow_data'), 'cancellation_reason')
-            ?? data_get($model->getAttribute('workflow_data'), 'approval_reason')
-            ?? data_get($model->getAttribute('meta'), 'reason')
-            ?? $model->getAttribute('approval_note')
-            ?? $model->getAttribute('approval_justification')
-            ?? $model->getAttribute('price_override_reason')
-            ?? $model->getAttribute('justification')
-            ?? $model->getAttribute('customization_reason')
-            ?? (in_array(class_basename($model), ['Booking', 'BookingItem'], true) ? null : $model->getAttribute('reason'))
-            ?? $request->input('reason')
-            ?? $model->getAttribute('assignment_notes');
+        $requestReason = $reasonOverride;
+        if ($requestReason === null && $request->attributes->has('booking_history_reason')) {
+            $requestReason = $request->attributes->get('booking_history_reason');
+        } elseif ($requestReason === null) {
+            $requestReason = $request->input('change_reason')
+                ?? data_get($model->getAttribute('workflow_data'), 'cancellation_reason')
+                ?? data_get($model->getAttribute('workflow_data'), 'approval_reason')
+                ?? data_get($model->getAttribute('meta'), 'reason')
+                ?? $model->getAttribute('approval_note')
+                ?? $model->getAttribute('approval_justification')
+                ?? $model->getAttribute('price_override_reason')
+                ?? $model->getAttribute('justification')
+                ?? $model->getAttribute('customization_reason')
+                ?? (in_array(class_basename($model), ['Booking', 'BookingItem'], true) ? null : $model->getAttribute('reason'))
+                ?? $request->input('reason')
+                ?? $model->getAttribute('assignment_notes');
+        }
         $reason = is_string($requestReason) ? trim($requestReason) : null;
         $id = (string) Str::uuid();
         $now = now()->utc();
@@ -324,6 +332,7 @@ class BookingHistoryService
         $class = class_basename($model);
         if ($model instanceof \App\Models\Booking\Booking && isset($changes['status'])) return 'booking_status_changed';
         if ($model instanceof \App\Models\Booking\Booking && $operation === 'created') return 'booking_created';
+        if ($model instanceof BookingStatus) return 'booking_status_record_' . $operation;
         if (isset($changes['trip_phase'])) return 'booking_trip_phase_changed';
         if ($model instanceof \App\Models\Driver\DriverTrackingIncident) return 'booking_tracking_incident_' . (isset($changes['state']) ? 'state_changed' : $operation);
         if ($model instanceof \App\Models\Driver\DriverLog) return 'booking_driver_log_' . (isset($changes['status']) ? 'status_changed' : $operation);

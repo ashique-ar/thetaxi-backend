@@ -517,7 +517,7 @@ class AttendanceResultController extends Controller
 
     public function corrections(Request $request, StaffAccessService $access): JsonResponse
     {
-        $data = $request->validate(['staff_id' => ['nullable', 'uuid'], 'status' => ['nullable', Rule::in(['pending_approval', 'approved', 'rejected'])]]);
+        $data = $request->validate(['staff_id' => ['nullable', 'uuid'], 'selected_id' => ['nullable', 'uuid'], 'status' => ['nullable', Rule::in(['pending_approval', 'approved', 'rejected'])]]);
         $staffIds = $access->scope(Staff::query(), $request->user())->when($data['staff_id'] ?? null, fn($q, $id) => $q->whereKey($id))->select('id');
         $canReview = $request->user()->can('hr.attendance.corrections.approve');
         $query = DB::table('hr_attendance_correction_requests as correction')
@@ -525,6 +525,7 @@ class AttendanceResultController extends Controller
             ->leftJoin('users as subject_user', 'subject_user.id', '=', 'subject_staff.user_id')
             ->leftJoin('hr_attendance_daily_results as current_result', fn ($join) => $join->on('current_result.id', '=', 'correction.current_result_id')->on('current_result.staff_id', '=', 'correction.staff_id'))
             ->whereIn('correction.staff_id', $staffIds)
+            ->when($data['selected_id'] ?? null, fn ($query, $id) => $query->where('correction.id', $id))
             ->select(['correction.id', 'subject_staff.code as staff_code', 'subject_user.first_name as staff_first_name', 'subject_user.last_name as staff_last_name', 'correction.work_date', 'correction.correction_type', 'correction.reason', 'correction.status', 'correction.requested_by', 'correction.requested_values', 'correction.evidence_references', 'correction.mapping_snapshot', 'current_result.day_status as current_day_status', 'current_result.first_in_at as current_first_in_at', 'current_result.last_out_at as current_last_out_at', 'current_result.worked_minutes as current_worked_minutes', 'current_result.late_minutes as current_late_minutes', 'current_result.early_leave_minutes as current_early_leave_minutes', 'current_result.payable_minutes as current_payable_minutes'])
             ->when($data['status'] ?? null, fn($q, $v) => $q->where('correction.status', $v))->latest('correction.created_at');
         $rows = $query->paginate($this->paginationSize($request, 50));

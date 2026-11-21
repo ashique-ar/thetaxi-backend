@@ -14,48 +14,48 @@
     <div class="grid grid-cols-1 gap-4 sm:grid-cols-2">
         <div>
             <label for="v2-first-name" class="mb-1.5 block text-xs font-semibold uppercase tracking-wider text-slate-700">First name <span class="text-checkout-accent">*</span></label>
-            <input id="v2-first-name" name="first_name" type="text" required autocomplete="given-name" value="{{ old('first_name', $tourCheckoutCustomer?->user?->first_name) }}" placeholder="Enter your first name" class="w-full rounded-xl border-slate-200 px-3.5 py-2.5 text-sm focus:border-checkout-accent focus:ring-checkout-accent">
-            @error('first_name') <p class="mt-1 text-xs text-red-600">{{ $message }}</p> @enderror
+            <input id="v2-first-name" name="first_name" type="text" required autocomplete="given-name" value="{{ old('first_name', $tourCheckoutCustomer?->user?->first_name) }}" placeholder="Enter your first name" aria-invalid="{{ $errors->has('first_name') ? 'true' : 'false' }}" @if ($errors->has('first_name')) aria-describedby="v2-first-name-error" @endif class="w-full rounded-xl border-slate-200 px-3.5 py-2.5 text-sm focus:border-checkout-accent focus:ring-checkout-accent">
+            @error('first_name') <p id="v2-first-name-error" class="mt-1 text-xs text-red-600" role="alert">{{ $message }}</p> @enderror
         </div>
         <div>
             <label for="v2-last-name" class="mb-1.5 block text-xs font-semibold uppercase tracking-wider text-slate-700">Last name</label>
-            <input id="v2-last-name" name="last_name" type="text" autocomplete="family-name" value="{{ old('last_name', $tourCheckoutCustomer?->user?->last_name) }}" placeholder="Enter your last name" class="w-full rounded-xl border-slate-200 px-3.5 py-2.5 text-sm focus:border-checkout-accent focus:ring-checkout-accent">
-            @error('last_name') <p class="mt-1 text-xs text-red-600">{{ $message }}</p> @enderror
+            <input id="v2-last-name" name="last_name" type="text" autocomplete="family-name" value="{{ old('last_name', $tourCheckoutCustomer?->user?->last_name) }}" placeholder="Enter your last name" aria-invalid="{{ $errors->has('last_name') ? 'true' : 'false' }}" @if ($errors->has('last_name')) aria-describedby="v2-last-name-error" @endif class="w-full rounded-xl border-slate-200 px-3.5 py-2.5 text-sm focus:border-checkout-accent focus:ring-checkout-accent">
+            @error('last_name') <p id="v2-last-name-error" class="mt-1 text-xs text-red-600" role="alert">{{ $message }}</p> @enderror
         </div>
         <div id="checkout-phone-field">
             <label for="phone-input" class="mb-1.5 block text-xs font-semibold uppercase tracking-wider text-slate-700">Mobile number <span class="checkout-contact-required text-checkout-accent">*</span></label>
-            <input id="phone-input" name="phone" type="tel" required autocomplete="tel" value="{{ old('phone', Auth::user()?->phone ?? $tourCheckoutCustomer?->user?->phone) }}" placeholder="Mobile number" class="w-full rounded-xl border-slate-200 py-2.5 text-sm focus:border-checkout-accent focus:ring-checkout-accent">
+            <input id="phone-input" name="phone" type="tel" required autocomplete="tel" value="{{ old('phone', Auth::user()?->phone ?? $tourCheckoutCustomer?->user?->phone) }}" placeholder="Mobile number" aria-invalid="{{ $errors->has('phone') ? 'true' : 'false' }}" @if ($errors->has('phone')) aria-describedby="phone-validation-error" @endif class="w-full rounded-xl border-slate-200 py-2.5 text-sm focus:border-checkout-accent focus:ring-checkout-accent">
             <input id="phone-country-code" name="phone_country_code" type="hidden" value="{{ old('phone_country_code') }}">
             <input id="phone-international" name="phone_international" type="hidden" value="{{ old('phone_international') }}">
             <div id="phone-error" class="mt-1 text-xs text-red-600" style="display:none"></div><div id="phone-valid" class="mt-1 text-xs text-emerald-700" style="display:none"></div>
-            @error('phone') <p class="mt-1 text-xs text-red-600">{{ $message }}</p> @enderror
+            @error('phone') <p id="phone-validation-error" class="mt-1 text-xs text-red-600" role="alert">{{ $message }}</p> @enderror
         </div>
         <div id="checkout-email-field">
             <label for="v2-email" class="mb-1.5 block text-xs font-semibold uppercase tracking-wider text-slate-700">Email address <span class="checkout-contact-required text-checkout-accent">*</span></label>
-            <input id="v2-email" name="email" type="email" required autocomplete="email" value="{{ old('email', Auth::user()?->email ?? $tourCheckoutCustomer?->user?->email) }}" placeholder="Enter email address" class="w-full rounded-xl border-slate-200 px-3.5 py-2.5 text-sm focus:border-checkout-accent focus:ring-checkout-accent">
-            @error('email') <p class="mt-1 text-xs text-red-600">{{ $message }}</p> @enderror
+            <input id="v2-email" name="email" type="email" required autocomplete="email" value="{{ old('email', Auth::user()?->email ?? $tourCheckoutCustomer?->user?->email) }}" placeholder="Enter email address" aria-invalid="{{ $errors->has('email') ? 'true' : 'false' }}" @if ($errors->has('email')) aria-describedby="v2-email-error" @endif class="w-full rounded-xl border-slate-200 px-3.5 py-2.5 text-sm focus:border-checkout-accent focus:ring-checkout-accent">
+            @error('email') <p id="v2-email-error" class="mt-1 text-xs text-red-600" role="alert">{{ $message }}</p> @enderror
         </div>
         @foreach (['address' => ['Street address', 'street-address'], 'city' => ['City', 'address-level2']] as $field => [$label, $autocomplete])
             <div>
                 <label for="v2-{{ $field }}" class="mb-1.5 block text-xs font-semibold uppercase tracking-wider text-slate-700">{{ $label }} <span class="normal-case text-slate-400">(optional)</span></label>
-                <input id="v2-{{ $field }}" name="{{ $field }}" type="text" autocomplete="{{ $autocomplete }}" value="{{ old($field) }}" class="w-full rounded-xl border-slate-200 px-3.5 py-2.5 text-sm focus:border-checkout-accent focus:ring-checkout-accent">
-                @error($field) <p class="mt-1 text-xs text-red-600">{{ $message }}</p> @enderror
+                <input id="v2-{{ $field }}" name="{{ $field }}" type="text" autocomplete="{{ $autocomplete }}" value="{{ old($field) }}" aria-invalid="{{ $errors->has($field) ? 'true' : 'false' }}" @if ($errors->has($field)) aria-describedby="v2-{{ $field }}-error" @endif class="w-full rounded-xl border-slate-200 px-3.5 py-2.5 text-sm focus:border-checkout-accent focus:ring-checkout-accent">
+                @error($field) <p id="v2-{{ $field }}-error" class="mt-1 text-xs text-red-600" role="alert">{{ $message }}</p> @enderror
             </div>
         @endforeach
         <div>
             <label for="country-select" class="mb-1.5 block text-xs font-semibold uppercase tracking-wider text-slate-700">Country <span class="text-checkout-accent">*</span></label>
-            <select id="country-select" name="country" required class="no-nice w-full rounded-xl border-slate-200 px-3.5 py-2.5 text-sm focus:border-checkout-accent focus:ring-checkout-accent">
+            <select id="country-select" name="country" required autocomplete="country-name" aria-invalid="{{ $errors->has('country') ? 'true' : 'false' }}" @if ($errors->has('country')) aria-describedby="country-select-error" @endif class="no-nice w-full rounded-xl border-slate-200 px-3.5 py-2.5 text-sm focus:border-checkout-accent focus:ring-checkout-accent">
                 <option value="">Select Country</option>
                 @foreach ($countries as $country)
                     <option value="{{ $country->name }}" @selected(old('country', $checkoutDefaultCountryName) === $country->name)>{{ $country->name }} @if ($country->callcode) (+{{ $country->callcode }}) @endif</option>
                 @endforeach
             </select>
-            @error('country') <p class="mt-1 text-xs text-red-600">{{ $message }}</p> @enderror
+            @error('country') <p id="country-select-error" class="mt-1 text-xs text-red-600" role="alert">{{ $message }}</p> @enderror
         </div>
         <div>
             <label for="v2-identification" class="mb-1.5 block text-xs font-semibold uppercase tracking-wider text-slate-700">National ID / Passport</label>
-            <input id="v2-identification" name="identification" type="text" value="{{ old('identification') }}" placeholder="ID/Passport number (optional)" class="w-full rounded-xl border-slate-200 px-3.5 py-2.5 text-sm focus:border-checkout-accent focus:ring-checkout-accent">
-            @error('identification') <p class="mt-1 text-xs text-red-600">{{ $message }}</p> @enderror
+            <input id="v2-identification" name="identification" type="text" autocomplete="off" value="{{ old('identification') }}" placeholder="ID/Passport number (optional)" aria-invalid="{{ $errors->has('identification') ? 'true' : 'false' }}" @if ($errors->has('identification')) aria-describedby="v2-identification-error" @endif class="w-full rounded-xl border-slate-200 px-3.5 py-2.5 text-sm focus:border-checkout-accent focus:ring-checkout-accent">
+            @error('identification') <p id="v2-identification-error" class="mt-1 text-xs text-red-600" role="alert">{{ $message }}</p> @enderror
         </div>
         @if ($hasAirportTransfer)
             <div class="border-t border-slate-100 pt-4 sm:col-span-2"><h3 class="text-sm font-bold text-slate-900">Flight details (optional)</h3><p class="mt-1 text-xs text-slate-500">Provide details for airport pickup.</p></div>
@@ -65,7 +65,8 @@
         @endif
         <div class="sm:col-span-2">
             <label for="checkoutAdditionalNotes" class="mb-1.5 block text-xs font-semibold uppercase tracking-wider text-slate-700">Anything else we should know? <span class="normal-case text-slate-400">(optional)</span></label>
-            <textarea id="checkoutAdditionalNotes" name="additional_notes" maxlength="1000" rows="3" class="w-full rounded-xl border-slate-200 px-3.5 py-2.5 text-sm focus:border-checkout-accent focus:ring-checkout-accent">{{ old('additional_notes', old('special_notes')) }}</textarea>
+            <textarea id="checkoutAdditionalNotes" name="additional_notes" maxlength="1000" rows="3" aria-invalid="{{ $errors->has('additional_notes') ? 'true' : 'false' }}" @if ($errors->has('additional_notes')) aria-describedby="checkout-notes-error" @endif class="w-full rounded-xl border-slate-200 px-3.5 py-2.5 text-sm focus:border-checkout-accent focus:ring-checkout-accent">{{ old('additional_notes', old('special_notes')) }}</textarea>
+            @error('additional_notes') <p id="checkout-notes-error" class="mt-1 text-xs text-red-600" role="alert">{{ $message }}</p> @enderror
         </div>
     </div>
     @include('checkout.v2.terms')

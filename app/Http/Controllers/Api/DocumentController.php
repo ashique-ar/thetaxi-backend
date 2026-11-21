@@ -495,7 +495,7 @@ class DocumentController extends Controller
             'document_type' => $document->document_type,
             'document_number' => $document->document_number,
             'expiry_date' => $document->expiry_date?->toDateString(),
-            'file_url' => $isRestrictedDocument ? null : $this->storageUrl($document->disk, $document->path),
+            'file_url' => $isRestrictedDocument || !trim((string) $document->path) ? null : $this->storageUrl($document->disk, $document->path),
             'download_url' => $isRestrictedDocument ? "/api/documents/{$document->id}/download" : null,
             'file_name' => $document->file_name,
             'file_size' => $document->file_size,
