@@ -8,9 +8,12 @@ use App\Models\Customer;
 use App\Models\Inquiry;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Illuminate\Database\Eloquent\Relations\HasMany;
+use App\Traits\RecordsBookingHistoryAtomically;
 
 class SalesOpportunity extends BaseModel
 {
+    use RecordsBookingHistoryAtomically;
+
     protected $fillable = [
         'owner_sales_profile_id', 'customer_id', 'inquiry_id', 'source_phone_call_id',
         'opportunity_number', 'name', 'prospect_name', 'prospect_company', 'prospect_email', 'prospect_phone',

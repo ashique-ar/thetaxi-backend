@@ -105,7 +105,7 @@
         {!! $metaStack !!}
     @endif
     @php($favicon = $settings['brand_favicon'] ?? $settings['favicon'] ?? null)
-    <link rel="icon" href="{{ $favicon ? s3_asset($favicon) : asset('assets/img/favicon.ico') }}" type="image/x-icon">
+    @if ($favicon)<link rel="icon" href="{{ s3_asset($favicon) }}" type="image/x-icon">@endif
 
     @if (!empty($settings['google_tag_manager_id']))
         <!-- Google Tag Manager -->

@@ -14,7 +14,7 @@ class BookingHistoryService
 {
     private const TRACKED_FIELDS = [
         'status', 'payment_status', 'payment_collection_status',
-        'customer_id', 'agent_id', 'passenger_count', 'luggage_count',
+        'customer_id', 'agent_id', 'passenger_count', 'luggage_count', 'driver_hire_settlement_id', 'issued_date', 'issued_by',
         'special_requirements', 'emergency_contact_name', 'emergency_contact_phone',
         'review_notes', 'base_amount', 'total_estimated', 'total_actual', 'driver_cost',
         'distance_cost', 'addons_cost',
@@ -39,9 +39,12 @@ class BookingHistoryService
         'discount_amount', 'original_amount', 'final_amount', 'discount_name', 'discount_type',
         'approval_status', 'is_active', 'qc_status', 'inspection_completed_at',
         'interior_condition', 'exterior_condition', 'mechanical_condition', 'cleanliness_rating',
-        'damages_found', 'actual_start_time', 'actual_return_time', 'distance_km', 'waiting_minutes',
+        'damages_found', 'booking_qc_id', 'interval_km', 'interval_days', 'next_due_date', 'next_due_mileage',
+        'actual_start_time', 'actual_return_time', 'distance_km', 'waiting_minutes',
         'calculated_amount', 'applied_rate', 'rate_type', 'hours_calculated', 'days_calculated',
         'minimum_charge_applied', 'includes_fuel', 'includes_driver', 'accepted_at',
+        'log_date', 'start_km', 'end_km', 'total_km', 'entry_source', 'assigned_by', 'assigned_at',
+        'submitted_by', 'submitted_at', 'revision_number', 'verified_by', 'verified_at',
         'delta_source_amount', 'delta_lkr_amount', 'previous_effective_source_amount', 'previous_effective_lkr_amount',
         'resulting_effective_source_amount', 'resulting_effective_lkr_amount', 'counts_as_new_sales_adjustment',
         'additional_charge', 'charge_currency', 'requested_end_at', 'current_end_at',
@@ -62,6 +65,11 @@ class BookingHistoryService
         'approved_expenses_total', 'iou_total', 'final_balance', 'cash_collected_unsettled',
         'paid_at', 'settlement_recorded_at', 'status', 'frozen_at', 'service_date',
         'activity_type', 'outcome', 'next_action', 'next_action_at', 'occurred_at',
+        'included_count', 'service_date', 'direction', 'route_id', 'shift_id', 'program_id',
+        'incident_id', 'state', 'cause', 'started_at', 'reported_at', 'recovered_at',
+        'stage', 'expected_value_source', 'expected_value_lkr', 'probability_percent', 'expected_close_date',
+        'won_booking_id', 'won_at', 'closed_at', 'lost_reason_code', 'confidentiality', 'state_version',
+        'due_at', 'remind_at', 'reminder_dispatched_at', 'escalate_at', 'escalated_at',
         'adjustment_type', 'direction', 'adjustment_effective_at',
         'approval_type', 'priority', 'override_reasons', 'justification', 'comments',
         'rejected_at', 'auto_approved', 'approval_level', 'approver_id',
@@ -219,6 +227,7 @@ class BookingHistoryService
             ? (string) $model->getKey()
             : (string) ($model->getAttribute('booking_id')
                 ?? $model->getAttribute('linked_booking_id')
+                ?? $model->getAttribute('won_booking_id')
                 ?? $model->receipt?->booking_id
                 ?? $model->schedule?->booking_id
                 ?? $model->rule?->booking_id
@@ -300,6 +309,14 @@ class BookingHistoryService
     {
         $class = class_basename($model);
         if (isset($changes['trip_phase'])) return 'booking_trip_phase_changed';
+        if ($model instanceof \App\Models\Driver\DriverTrackingIncident) return 'booking_tracking_incident_' . (isset($changes['state']) ? 'state_changed' : $operation);
+        if ($model instanceof \App\Models\Driver\DriverLog) return 'booking_driver_log_' . (isset($changes['status']) ? 'status_changed' : $operation);
+        if ($model instanceof \App\Models\Driver\DriverIouAdvance) return 'booking_driver_iou_' . $operation;
+        if ($model instanceof \App\Models\Vehicle\VehicleMaintenanceSchedule) return 'booking_maintenance_schedule_' . (isset($changes['status']) ? 'status_changed' : $operation);
+        if ($model instanceof \App\Models\Corporate\CorporateTransportGenerationLog) return 'booking_transport_generation_' . (isset($changes['status']) ? 'status_changed' : $operation);
+        if ($model instanceof \App\Models\Sales\SalesOpportunity) return 'booking_sales_opportunity_' . $operation;
+        if ($model instanceof \App\Models\Sales\SalesTask) return 'booking_sales_task_' . (isset($changes['status']) ? 'status_changed' : $operation);
+        if ($model instanceof \App\Models\Vehicle\VehiclePricing\BookingPriceAdjustmentHistory) return 'booking_price_adjustment_recorded';
         if ($model instanceof \App\Models\Booking\BookingPaymentReceiptFinalityEvent) return 'payment_receipt_finality_changed';
         if ($model instanceof \App\Models\Booking\BookingCollectionSubmission) {
             return isset($changes['status']) ? 'collection_submission_decided' : 'collection_submission_recorded';

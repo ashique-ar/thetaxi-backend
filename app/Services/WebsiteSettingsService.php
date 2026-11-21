@@ -18,7 +18,6 @@ class WebsiteSettingsService
     private const CACHE_DURATION = 3600; // 1 hour
     private const DEFAULT_BRAND_NAME = 'Company';
     private const DEFAULT_TAGLINE = 'Your Trusted Transport Partner';
-    private const DEFAULT_LOGO = 'assets/img/header-logo.png';
     private const BUSINESS_OWNED_KEYS = [
         'site_name',
         'site_tagline',
@@ -1565,7 +1564,7 @@ class WebsiteSettingsService
         $companyName = $this->firstFilled($settings, ['company_name', 'brand_name', 'site_name'], $brandName);
         $tagline = $this->firstFilled($settings, ['brand_tagline', 'site_tagline'], self::DEFAULT_TAGLINE);
         $shortName = $this->firstFilled($settings, ['brand_short_name', 'brand_name', 'site_name'], $brandName);
-        $primaryLogo = $this->firstFilled($settings, ['brand_logo_primary', 'logo_header', 'portal_logo'], self::DEFAULT_LOGO);
+        $primaryLogo = $this->firstFilled($settings, ['brand_logo_primary', 'logo_header', 'portal_logo'], '');
         $favicon = $this->firstFilled($settings, ['brand_favicon', 'favicon', 'favicon_url'], 'favicon.ico');
 
         $settings['brand_name'] = $brandName;

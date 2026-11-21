@@ -112,6 +112,8 @@ it('replays only the original opportunity transition and transfer command', func
     $link = ['booking_id' => $booking->id, 'idempotency_key' => 'opportunity-booking-idem-1'];
     actingAs($actor, 'api')->postJson('/api/sales/opportunities/'.$first->id.'/link-booking', $link)
         ->assertOk()->assertJsonPath('data.version', 5);
+    actingAs($actor, 'api')->getJson('/api/sales/opportunities/'.$first->id)
+        ->assertOk()->assertJsonPath('data.linked_booking.id', (string) $booking->id);
     actingAs($actor, 'api')->postJson('/api/sales/opportunities/'.$first->id.'/link-booking', $link)
         ->assertOk()->assertJsonPath('data.version', 5);
     actingAs($actor, 'api')->postJson('/api/sales/opportunities/'.$first->id.'/link-booking', [

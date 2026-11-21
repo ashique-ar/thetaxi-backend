@@ -3,9 +3,12 @@
 namespace App\Models\Driver;
 
 use App\Models\NonSoftDeletableTrackedModel;
+use App\Traits\RecordsBookingHistoryAtomically;
 
 class DriverTrackingIncident extends NonSoftDeletableTrackedModel
 {
+    use RecordsBookingHistoryAtomically;
+
     protected $table = 'driver_tracking_incidents';
 
     protected $fillable = [

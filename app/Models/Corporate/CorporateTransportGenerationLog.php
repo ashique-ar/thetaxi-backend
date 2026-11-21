@@ -4,9 +4,12 @@ namespace App\Models\Corporate;
 
 use App\Models\BaseModel;
 use App\Models\Booking\Booking;
+use App\Traits\RecordsBookingHistoryAtomically;
 
 class CorporateTransportGenerationLog extends BaseModel
 {
+    use RecordsBookingHistoryAtomically;
+
     protected $table = 'corporate_transport_generation_logs';
 
     protected $fillable = [

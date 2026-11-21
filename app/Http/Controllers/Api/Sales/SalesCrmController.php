@@ -809,6 +809,14 @@ class SalesCrmController extends Controller
         if (! $detail) return $payload;
         $wonBookingNumber = null;
         $wonBookingCancelled = false;
+        $linkedBookingQuery = DB::table('sales_opportunities as linked_opportunity')
+            ->join('bookings as linked_booking', function ($join) {
+                $join->on('linked_booking.sales_opportunity_id', '=', 'linked_opportunity.id')
+                    ->orOn('linked_booking.id', '=', 'linked_opportunity.won_booking_id');
+            })
+            ->where('linked_opportunity.id', $row->id);
+        $this->constrainBookingOwnerToOpportunity($linkedBookingQuery, 'linked_booking', 'linked_opportunity');
+        $linkedBooking = $linkedBookingQuery->first(['linked_booking.id', 'linked_booking.booking_number', 'linked_booking.status']);
         if ($row->won_booking_id) {
             $booking = DB::table('sales_opportunities as won_opportunity')
                 ->join('bookings as won_booking', 'won_booking.id', '=', 'won_opportunity.won_booking_id')
@@ -828,6 +836,11 @@ class SalesCrmController extends Controller
             'won_booking' => $row->won_booking_id
                 ? ['booking_number' => $wonBookingNumber, 'is_cancelled' => $wonBookingCancelled]
                 : null,
+            'linked_booking' => $linkedBooking ? [
+                'id' => (string) $linkedBooking->id,
+                'booking_number' => $linkedBooking->booking_number,
+                'is_cancelled' => in_array(strtolower((string) $linkedBooking->status), ['cancelled', 'canceled', 'booking_cancelled'], true),
+            ] : null,
             'stage_events' => $row->stageEvents->sortByDesc('occurred_at')->map(fn ($event) => [
                 'from_stage' => $event->from_stage,
                 'from_stage_label' => $event->from_stage ? (data_get($event->snapshot, 'stage_labels.'.$event->from_stage) ?? SalesPolicySettingsService::STAGE_LABEL_DEFAULTS[$event->from_stage] ?? $event->from_stage) : 'Created',

@@ -4,10 +4,13 @@ namespace App\Models\Driver;
 
 use App\Models\BaseModel;
 use App\Models\Booking\Booking;
+use App\Traits\RecordsBookingHistoryAtomically;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 
 class DriverIouAdvance extends BaseModel
 {
+    use RecordsBookingHistoryAtomically;
+
     protected $fillable = [
         'driver_hire_settlement_id',
         'booking_id',

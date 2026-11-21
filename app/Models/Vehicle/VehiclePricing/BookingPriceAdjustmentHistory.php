@@ -6,10 +6,12 @@ use App\Models\BaseModel;
 use App\Models\Booking\Booking;
 use App\Models\Booking\BookingItem;
 use App\Models\User;
+use App\Traits\RecordsBookingHistoryAtomically;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 
 class BookingPriceAdjustmentHistory extends BaseModel
 {
+    use RecordsBookingHistoryAtomically;
 
     protected $table = 'booking_price_adjustment_history';
     

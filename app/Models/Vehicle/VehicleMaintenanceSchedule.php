@@ -5,6 +5,7 @@ namespace App\Models\Vehicle;
 use App\Models\BaseModel;
 use App\Models\Booking\Booking;
 use App\Traits\UUID;
+use App\Traits\RecordsBookingHistoryAtomically;
 use App\Models\User;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Illuminate\Database\Eloquent\Relations\HasMany;
@@ -34,6 +35,8 @@ use Illuminate\Database\Eloquent\Relations\HasMany;
  */
 class VehicleMaintenanceSchedule extends BaseModel
 {
+    use RecordsBookingHistoryAtomically;
+
     
 
     /**

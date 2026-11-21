@@ -832,8 +832,8 @@ class BookingObservabilityService
     {
         $changes = is_array($history->changes) ? $history->changes : [];
         unset($changes['transaction_id']);
-        $priceFields = ['unit_price', 'total_price', 'base_amount', 'total_estimated', 'total_actual', 'driver_cost', 'distance_cost', 'addons_cost', 'discount_amount', 'tax_amount', 'currency', 'price', 'rate', 'original_value', 'custom_value', 'original_amount', 'final_amount', 'calculated_amount', 'applied_rate', 'delta_source_amount', 'delta_lkr_amount', 'previous_effective_source_amount', 'previous_effective_lkr_amount', 'resulting_effective_source_amount', 'resulting_effective_lkr_amount', 'contract_value_source', 'contract_value_lkr', 'subtotal', 'total_amount', 'commission_amount_lkr', 'eligible_lkr_amount', 'amount_spent', 'redemption_value', 'value', 'applied_amount'];
-        $paymentFields = ['amount', 'refunded_amount', 'payment_method', 'payment_stage', 'payment_purpose', 'source_amount', 'source_currency', 'lkr_amount', 'additional_charges', 'late_return_fee', 'refund_method', 'allocated_amount', 'driver_company_settled_amount', 'driver_company_settlement_status', 'driver_company_settled_at', 'payments_total', 'refunds_total', 'adjustments_total', 'outstanding_total', 'settled_at', 'fx_rate_to_lkr', 'fx_rate_at', 'fx_source', 'reference', 'received_via', 'received_at', 'received_by', 'commission_amount', 'receipt_amount', 'eligible_amount', 'commission_rate', 'charge_amount', 'paid_before_amount', 'refund_amount', 'adjustment_amount', 'outstanding_amount', 'base_batta_amount', 'night_batta_rate', 'night_batta_amount', 'manual_adjustment_amount', 'approved_batta_amount', 'approved_expenses_total', 'iou_total', 'final_balance', 'cash_collected_unsettled'];
+        $priceFields = ['unit_price', 'total_price', 'base_amount', 'total_estimated', 'total_actual', 'driver_cost', 'distance_cost', 'addons_cost', 'discount_amount', 'tax_amount', 'currency', 'price', 'rate', 'original_value', 'custom_value', 'original_amount', 'final_amount', 'calculated_amount', 'applied_rate', 'delta_source_amount', 'delta_lkr_amount', 'previous_effective_source_amount', 'previous_effective_lkr_amount', 'resulting_effective_source_amount', 'resulting_effective_lkr_amount', 'contract_value_source', 'contract_value_lkr', 'expected_value_source', 'expected_value_lkr', 'source_currency', 'subtotal', 'total_amount', 'commission_amount_lkr', 'eligible_lkr_amount', 'amount_spent', 'redemption_value', 'value', 'applied_amount'];
+        $paymentFields = ['amount', 'currency', 'refunded_amount', 'payment_method', 'payment_stage', 'payment_purpose', 'source_amount', 'source_currency', 'lkr_amount', 'additional_charges', 'late_return_fee', 'refund_method', 'allocated_amount', 'driver_company_settled_amount', 'driver_company_settlement_status', 'driver_company_settled_at', 'payments_total', 'refunds_total', 'adjustments_total', 'outstanding_total', 'settled_at', 'fx_rate_to_lkr', 'fx_rate_at', 'fx_source', 'reference', 'received_via', 'received_at', 'received_by', 'commission_amount', 'receipt_amount', 'eligible_amount', 'commission_rate', 'charge_amount', 'paid_before_amount', 'refund_amount', 'adjustment_amount', 'outstanding_amount', 'base_batta_amount', 'night_batta_rate', 'night_batta_amount', 'manual_adjustment_amount', 'approved_batta_amount', 'approved_expenses_total', 'iou_total', 'final_balance', 'cash_collected_unsettled'];
         if (!auth()->user()?->can('bookings.price_override')) {
             foreach ($priceFields as $field) unset($changes[$field]);
         }
@@ -841,13 +841,22 @@ class BookingObservabilityService
             foreach ($paymentFields as $field) unset($changes[$field]);
         }
         $status = $changes['status'] ?? $changes['dispatch_status'] ?? null;
-        $source = $history->source === 'financial_audit_events' || $history->entity_type === 'FinancialAuditEvent' || str_contains($history->event_type, 'payment')
-            || str_contains($history->event_type, 'refund') || str_contains($history->event_type, 'adjustment')
-            || str_contains($history->event_type, 'price') ? 'finance'
-            : ($history->entity_type === 'BookingApproval' ? 'approval'
-                : ($history->entity_type === 'BookingDispatch' ? 'dispatch'
-            : (str_contains($history->event_type, 'assignment') || $history->entity_type === 'VehicleAssignment' ? 'assignment'
-                : (str_contains($history->event_type, 'status') ? 'lifecycle' : 'booking'))));
+        $source = 'booking';
+        if ($history->source === 'financial_audit_events' || in_array($history->entity_type, ['FinancialAuditEvent', 'DriverIouAdvance'], true)
+            || str_contains($history->event_type, 'payment') || str_contains($history->event_type, 'refund')
+            || str_contains($history->event_type, 'adjustment') || str_contains($history->event_type, 'price')) {
+            $source = 'finance';
+        } elseif ($history->entity_type === 'BookingApproval') {
+            $source = 'approval';
+        } elseif ($history->entity_type === 'BookingDispatch') {
+            $source = 'dispatch';
+        } elseif (str_contains($history->event_type, 'incident') || $history->entity_type === 'DriverTrackingIncident') {
+            $source = 'tracking';
+        } elseif (str_contains($history->event_type, 'assignment') || $history->entity_type === 'VehicleAssignment') {
+            $source = 'assignment';
+        } elseif (str_contains($history->event_type, 'status')) {
+            $source = 'lifecycle';
+        }
         $title = str($history->event_type)->replace('_', ' ')->title()->toString();
 
         return [

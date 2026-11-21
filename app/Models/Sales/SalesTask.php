@@ -5,10 +5,11 @@ namespace App\Models\Sales;
 use Illuminate\Database\Eloquent\Concerns\HasUuids;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
+use App\Traits\RecordsBookingHistoryAtomically;
 
 class SalesTask extends Model
 {
-    use HasUuids;
+    use HasUuids, RecordsBookingHistoryAtomically;
 
     protected $hidden = ['creation_idempotency_key'];
 

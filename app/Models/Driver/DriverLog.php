@@ -6,6 +6,7 @@ use App\Models\BaseModel;
 use App\Traits\UUID;
 use App\Models\User;
 use App\Models\Booking\Booking;
+use App\Traits\RecordsBookingHistoryAtomically;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 
 /**
@@ -39,6 +40,8 @@ use Illuminate\Database\Eloquent\Relations\BelongsTo;
  */
 class DriverLog extends BaseModel
 {
+    use RecordsBookingHistoryAtomically;
+
     //create log model with migration and let them print logbook for particular driver
     
     
