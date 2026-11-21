@@ -800,9 +800,8 @@ class BookingPaymentLedgerService
                 $this->allocateReceiptToSchedule($booking, $receipt, $legacyAmount, $actorUserId);
             }
             $afterChecksum = $this->legacyRepairStateChecksum($booking->fresh());
-            DB::table('booking_payment_receipts')->where('id', $receipt->id)->update([
-                'legacy_repair_state_checksum_v2' => $afterChecksum,
-            ]);
+            $receipt->legacy_repair_state_checksum_v2 = $afterChecksum;
+            $receipt->save();
             FinancialAuditEvent::create([
                 'subject_type' => 'booking_payment', 'subject_id' => $receipt->id, 'booking_id' => $booking->id,
                 'event_type' => 'legacy_payment_receipt_repaired', 'amount' => $legacyAmount,

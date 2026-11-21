@@ -3,10 +3,12 @@
 namespace App\Models\Booking;
 
 use App\Models\BaseModel;
+use App\Traits\RecordsBookingHistoryAtomically;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 
 class BookingCollectionWorkItem extends BaseModel
 {
+    use RecordsBookingHistoryAtomically;
     protected $fillable = [
         'booking_id', 'booking_payment_schedule_id', 'assigned_sales_profile_id',
         'work_type', 'status', 'due_at', 'reminder_offset_days', 'last_reminded_at',

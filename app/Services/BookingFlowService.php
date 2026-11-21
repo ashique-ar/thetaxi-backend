@@ -3611,7 +3611,10 @@ class BookingFlowService
             // Handle multi-group booking items creation
             if ($draft) {
                 // saveBookingDraft already synchronized the canonical booking items for this ID.
-                $booking->bookingItems()->update(['status' => $booking->status]);
+                $booking->bookingItems()->get()->each(function (BookingItem $item) use ($booking): void {
+                    $item->status = $booking->status;
+                    $item->save();
+                });
                 if (!empty($params['selected_addons'])) {
                     $this->syncBookingAddons($booking, $params['selected_addons']);
                 }
@@ -4286,7 +4289,7 @@ class BookingFlowService
                         $retainedBookingItemIds !== [],
                         fn($query) => $query->whereNotIn('id', $retainedBookingItemIds)
                     )
-                    ->delete();
+                    ->get()->each(fn (BookingItem $item) => $item->delete());
                 $booking->unsetRelation('bookingItems');
 
                 // Booking-level discounts are separate from per-item pricing.
@@ -4563,10 +4566,11 @@ class BookingFlowService
                 $booking->save();
             }
 
-            $booking->bookingItems()->update([
-                'status' => $booking->status,
-                'requires_approval' => (bool) $booking->requires_approval,
-            ]);
+            $booking->bookingItems()->get()->each(function (BookingItem $item) use ($booking): void {
+                $item->status = $booking->status;
+                $item->requires_approval = (bool) $booking->requires_approval;
+                $item->save();
+            });
 
             $this->recordPortalPromoUsage($booking, $params);
             $actor = Auth::user();
@@ -12346,16 +12350,27 @@ class BookingFlowService
 
     private function cancelBookingRecord(Booking $booking, string $userId, string $reason): void
     {
-        $booking->update([
-            'status' => 'cancelled',
-            'cancelled_at' => now(),
-            'cancelled_by' => $userId,
-            'cancellation_reason' => $reason,
-        ]);
+        DB::transaction(function () use ($booking, $userId, $reason): void {
+            $booking->update([
+                'status' => 'cancelled',
+                'cancelled_at' => now(),
+                'cancelled_by' => $userId,
+                'cancellation_reason' => $reason,
+            ]);
 
-        $booking->bookingItems()->update(['status' => 'cancelled']);
-        $booking->vehicleAssignments()->update(['status' => 'cancelled']);
-        $booking->driverAssignments()->update(['status' => 'cancelled']);
+            $booking->bookingItems()->get()->each(function (BookingItem $item): void {
+                $item->status = 'cancelled';
+                $item->save();
+            });
+            $booking->vehicleAssignments()->get()->each(function (VehicleAssignment $assignment): void {
+                $assignment->status = 'cancelled';
+                $assignment->save();
+            });
+            $booking->driverAssignments()->get()->each(function (DriverAssignment $assignment): void {
+                $assignment->status = 'cancelled';
+                $assignment->save();
+            });
+        });
 
         // booking_dispatches currently has no cancelled database state; assignment release is handled above.
     }
@@ -12371,7 +12386,7 @@ class BookingFlowService
         $canDelete = $booking->status === 'draft';
 
         if ($canDelete) {
-            $booking->delete();
+            DB::transaction(fn () => $booking->delete());
 
             return [
                 'deleted' => true,
@@ -12400,33 +12415,39 @@ class BookingFlowService
      */
     public function updateBookingStatus(string $bookingId, string $status, ?string $reason, string $userId): array
     {
-        $booking = Booking::findOrFail($bookingId);
-        $previousStatus = (string) $booking->status;
+        [$booking, $previousStatus] = DB::transaction(function () use ($bookingId, $status, $reason, $userId): array {
+            $booking = Booking::query()->lockForUpdate()->findOrFail($bookingId);
+            $previousStatus = (string) $booking->status;
 
-        if ($status === 'cancelled') {
-            if (!$booking->canBeCancelled()) {
-                throw ValidationException::withMessages([
-                    'booking' => [$booking->cancellationBlockReason() ?: 'This booking cannot be cancelled.'],
-                ]);
-            }
-            $this->cancelBookingRecord($booking, $userId, $reason ?: 'Cancelled by user');
-        } else {
-            $changes = ['status' => $status];
-            if ($status === 'confirmed' && $previousStatus !== 'confirmed') {
-                $changes['confirmed'] = true;
-                $changes['confirmed_at'] = now();
-                $changes['workflow_step'] = 'confirmed';
-                if (!$booking->confirmation_number && method_exists(Booking::class, 'generateConfirmationNumber')) {
-                    $changes['confirmation_number'] = Booking::generateConfirmationNumber();
+            if ($status === 'cancelled') {
+                if (!$booking->canBeCancelled()) {
+                    throw ValidationException::withMessages([
+                        'booking' => [$booking->cancellationBlockReason() ?: 'This booking cannot be cancelled.'],
+                    ]);
+                }
+                $this->cancelBookingRecord($booking, $userId, $reason ?: 'Cancelled by user');
+            } else {
+                $changes = ['status' => $status];
+                if ($status === 'confirmed' && $previousStatus !== 'confirmed') {
+                    $changes['confirmed'] = true;
+                    $changes['confirmed_at'] = now();
+                    $changes['workflow_step'] = 'confirmed';
+                    if (!$booking->confirmation_number && method_exists(Booking::class, 'generateConfirmationNumber')) {
+                        $changes['confirmation_number'] = Booking::generateConfirmationNumber();
+                    }
+                }
+                $booking->update($changes);
+                if ($status === 'confirmed' && $previousStatus !== 'confirmed') {
+                    $booking->bookingItems()->whereNotIn('status', ['cancelled', 'completed'])
+                        ->get()->each(function (BookingItem $item): void {
+                            $item->status = 'confirmed';
+                            $item->save();
+                        });
                 }
             }
-            $booking->update($changes);
-            if ($status === 'confirmed' && $previousStatus !== 'confirmed') {
-                $booking->bookingItems()->whereNotIn('status', ['cancelled', 'completed'])->update(['status' => 'confirmed']);
-            }
-        }
 
-        $booking->refresh();
+            return [$booking->fresh(), $previousStatus];
+        });
 
         if ($status === 'confirmed' && $previousStatus !== 'confirmed') {
             if (!$booking->skip_all_emails) {
@@ -14146,12 +14167,14 @@ class BookingFlowService
                 VehicleAssignment::where('booking_id', $booking->id)
                     ->where('vehicle_id', $original->vehicle_id)
                     ->whereNull('actual_end')
-                    ->update([
+                    ->get()->each(function (VehicleAssignment $assignment): void {
+                        $assignment->update([
                         'actual_end' => now(),
                         'status' => 'completed',
                         'ended_by' => Auth::id(),
                         'end_reason' => 'vehicle_changed',
-                    ]);
+                        ]);
+                    });
 
                 // Log vehicle change
                 $this->logAssignmentActivity($booking, 'vehicle_unassigned', [
@@ -14170,12 +14193,14 @@ class BookingFlowService
                 DriverAssignment::where('booking_id', $booking->id)
                     ->where('driver_id', $original->driver_id)
                     ->whereNull('actual_end')
-                    ->update([
+                    ->get()->each(function (DriverAssignment $assignment): void {
+                        $assignment->update([
                         'actual_end' => now(),
                         'status' => 'completed',
                         'ended_by' => Auth::id(),
                         'end_reason' => 'driver_changed',
-                    ]);
+                        ]);
+                    });
 
                 // Log driver change
                 $this->logAssignmentActivity($booking, 'driver_unassigned', [
@@ -14518,7 +14543,7 @@ class BookingFlowService
                         $retainedBookingItemIds !== [],
                         fn($query) => $query->whereNotIn('id', $retainedBookingItemIds)
                     )
-                    ->delete();
+                    ->get()->each(fn (BookingItem $item) => $item->delete());
                 $booking->unsetRelation('bookingItems');
             }
 
@@ -14629,7 +14654,12 @@ class BookingFlowService
                 'workflow_data' => array_merge($workflowData, ['request_origin' => $origin, 'inquiry_created_by' => $actorUserId]),
                 'updated_user_id' => $actorUserId,
             ])->save();
-            $booking->bookingItems()->update(['status' => 'inquiry', 'vehicle_id' => null, 'driver_id' => null]);
+            $booking->bookingItems()->get()->each(function (BookingItem $item): void {
+                $item->status = 'inquiry';
+                $item->vehicle_id = null;
+                $item->driver_id = null;
+                $item->save();
+            });
             BookingStatus::query()->create([
                 'booking_id' => $booking->id,
                 'old_status' => null,
@@ -14674,14 +14704,18 @@ class BookingFlowService
                         ->where('connection_id', $source->connection_id)->where('id', '!=', $source->id)
                         ->where('external_conversation_id', $source->external_conversation_id)
                         ->where('status', 'received')->whereNull('linked_inquiry_id')->whereNull('linked_booking_id')
-                        ->update([
-                            'linked_booking_id' => $booking->id,
-                            'status' => 'processed',
-                            'resolution_code' => 'booking_request',
-                            'processed_by_user_id' => $actorUserId,
-                            'processed_at' => now(),
-                            'updated_at' => now(),
-                        ]);
+                        ->orderBy('id')->chunkById(100, function ($events) use ($booking, $actorUserId): void {
+                            foreach ($events as $event) {
+                                $event->update([
+                                    'linked_booking_id' => $booking->id,
+                                    'status' => 'processed',
+                                    'resolution_code' => 'booking_request',
+                                    'processed_by_user_id' => $actorUserId,
+                                    'processed_at' => now(),
+                                    'updated_at' => now(),
+                                ]);
+                            }
+                        });
                 }
             }
 

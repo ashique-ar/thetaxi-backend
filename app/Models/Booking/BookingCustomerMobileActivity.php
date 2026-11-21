@@ -3,12 +3,14 @@
 namespace App\Models\Booking;
 
 use App\Models\BaseModel;
+use App\Traits\RecordsBookingHistoryAtomically;
 use App\Models\Customer;
 use App\Models\User;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 
 class BookingCustomerMobileActivity extends BaseModel
 {
+    use RecordsBookingHistoryAtomically;
 
     protected $fillable = [
         'booking_id',

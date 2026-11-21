@@ -5,6 +5,7 @@ namespace App\Models\Booking;
 use App\Models\BaseModel;
 use App\Traits\UUID;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
+use App\Traits\RecordsBookingHistoryAtomically;
 
 /**
  * App\Models\Booking\BookingVariableCustomization
@@ -27,6 +28,7 @@ use Illuminate\Database\Eloquent\Relations\BelongsTo;
  */
 class BookingVariableCustomization extends BaseModel
 {
+    use RecordsBookingHistoryAtomically;
     use UUID;
 
     protected $fillable = [

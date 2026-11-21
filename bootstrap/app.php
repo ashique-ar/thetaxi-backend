@@ -32,7 +32,10 @@ return Application::configure(basePath: dirname(__DIR__))
             Broadcast::routes(['middleware' => ['auth:api']]);
         }
     )
-    ->withCommands([\App\Console\Commands\GenerateEmailImageVariants::class])
+    ->withCommands([
+        \App\Console\Commands\GenerateEmailImageVariants::class,
+        \App\Console\Commands\BackfillBookingHistory::class,
+    ])
     ->withMiddleware(function (Middleware $middleware): void {
         // API clients and Echo channel authorization must receive a 401 response.
         // They must never be redirected to the website's (non-existent) named

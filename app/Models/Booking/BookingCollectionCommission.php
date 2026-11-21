@@ -3,12 +3,14 @@
 namespace App\Models\Booking;
 
 use App\Models\BaseModel;
+use App\Traits\RecordsBookingHistoryAtomically;
 use App\Models\Staff;
 use App\Models\Sales\SalesCommissionDecision;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 
 class BookingCollectionCommission extends BaseModel
 {
+    use RecordsBookingHistoryAtomically;
     protected $fillable = [
         'booking_id', 'booking_payment_receipt_id', 'staff_id', 'receipt_amount',
         'eligible_amount', 'commission_rate', 'commission_amount', 'status',

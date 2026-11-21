@@ -3,6 +3,7 @@
 namespace App\Models\Driver;
 
 use App\Models\BaseModel;
+use App\Traits\RecordsBookingHistoryAtomically;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Illuminate\Database\Eloquent\Relations\HasMany;
 use Illuminate\Database\Eloquent\Relations\HasOne;
@@ -37,6 +38,7 @@ use Illuminate\Database\Eloquent\Relations\HasOne;
  */
 class DriverSession extends BaseModel
 {
+    use RecordsBookingHistoryAtomically;
     /**
      * The table associated with the model.
      */

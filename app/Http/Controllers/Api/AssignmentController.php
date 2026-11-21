@@ -16,8 +16,10 @@ use App\Enums\BookingLifecycleStatus;
 use App\Models\Driver\RoutePoint;
 use App\Models\Driver\DriverSession;
 use App\Models\Driver\Driver;
+use App\Models\DriverAssignment;
 use App\Services\Driver\NotificationTriggerService;
 use App\Models\Vehicle\VehicleAddon;
+use App\Models\Vehicle\VehicleAssignment;
 use App\Notifications\BookingLifecycleNotification;
 use App\Models\Booking\BookingAddon;
 use Illuminate\Http\Request;
@@ -2021,7 +2023,10 @@ class AssignmentController extends Controller
                     $booking->vehicleAssignments()
                         ->where('vehicle_id', $oldVehicleId)
                         ->where('status', 'active')
-                        ->update(['actual_end' => $swapTime]);
+                        ->get()->each(function (VehicleAssignment $assignment) use ($swapTime): void {
+                            $assignment->actual_end = $swapTime;
+                            $assignment->save();
+                        });
                 }
 
                 if ($oldDriverId && ($request->swap_type === 'driver' || $request->swap_type === 'both')) {
@@ -2033,7 +2038,8 @@ class AssignmentController extends Controller
                             fn($query) => $query->where('booking_item_id', $selectedBookingItem->id)
                         );
 
-                    $driverAssignments->update([
+                    $driverAssignments->get()->each(function (DriverAssignment $assignment) use ($swapTime, $handoff): void {
+                        $assignment->update([
                         'actual_end' => $swapTime,
                         'trip_completed_at' => $swapTime,
                         'trip_phase' => 'completed',
@@ -2042,7 +2048,8 @@ class AssignmentController extends Controller
                             'final_latitude' => $handoff['latitude'],
                             'final_longitude' => $handoff['longitude'],
                         ] : []),
-                    ]);
+                        ]);
+                    });
                 }
 
                 // Calculate remaining period from now to original end
@@ -2064,7 +2071,7 @@ class AssignmentController extends Controller
                         'assignment_type' => 'primary',
                         'status' => 'active',
                         'requires_approval' => false,
-                        'assignment_notes' => "Swap from vehicle {$oldVehicleId}. Reason: {$reason}",
+                        'assignment_notes' => trim("Swap from vehicle {$oldVehicleId}. Reason: {$reason}. " . ($request->input('notes') ?: '')),
                     ]);
                     if ($newVehicleAssignment->requires_approval) {
                         throw new \Symfony\Component\HttpKernel\Exception\HttpException(409, 'The selected vehicle is no longer available. No replacement was applied.');
@@ -2100,7 +2107,7 @@ class AssignmentController extends Controller
                         'assignment_type' => 'primary',
                         'status' => 'active',
                         'requires_approval' => false,
-                        'assignment_notes' => "Swap from driver {$oldDriverId}. Reason: {$reason}",
+                        'assignment_notes' => trim("Swap from driver {$oldDriverId}. Reason: {$reason}. " . ($request->input('notes') ?: '')),
                         'special_requirements' => [
                             'replacement_handoff' => $isMidTripHandoff,
                             'handoff_location' => $isMidTripHandoff ? $handoff : null,

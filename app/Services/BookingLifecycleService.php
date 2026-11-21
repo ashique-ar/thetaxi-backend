@@ -2026,7 +2026,7 @@ class BookingLifecycleService
                 if ($assignmentIds->isNotEmpty()) {
                     DriverSession::query()
                         ->whereIn('assignment_id', $assignmentIds)
-                        ->update(['assignment_id' => null]);
+                        ->get()->each(fn (DriverSession $session) => $session->update(['assignment_id' => null]));
                 }
 
                 $vehicleId = $dispatch?->vehicle_id ?: $context['vehicle_id'];
@@ -2103,7 +2103,7 @@ class BookingLifecycleService
             if ($assignmentIds->isNotEmpty()) {
                 DriverSession::query()
                     ->whereIn('assignment_id', $assignmentIds)
-                    ->update(['assignment_id' => null]);
+                    ->get()->each(fn (DriverSession $session) => $session->update(['assignment_id' => null]));
             }
         });
     }

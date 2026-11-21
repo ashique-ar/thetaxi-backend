@@ -3,9 +3,11 @@
 namespace App\Models;
 
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
+use App\Traits\RecordsBookingHistoryAtomically;
 
 class DriverAssignmentStop extends BaseModel
 {
+    use RecordsBookingHistoryAtomically;
     protected $table = 'driver_assignment_stops';
 
     protected $fillable = [

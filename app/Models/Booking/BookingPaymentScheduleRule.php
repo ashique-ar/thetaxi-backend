@@ -3,11 +3,13 @@
 namespace App\Models\Booking;
 
 use App\Models\BaseModel;
+use App\Traits\RecordsBookingHistoryAtomically;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Illuminate\Database\Eloquent\Relations\HasMany;
 
 class BookingPaymentScheduleRule extends BaseModel
 {
+    use RecordsBookingHistoryAtomically;
 
     protected $fillable = [
         'booking_id', 'contract_basis', 'frequency', 'frequency_months',

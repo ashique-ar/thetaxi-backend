@@ -4,6 +4,7 @@ namespace App\Models\Booking;
 
 use App\Models\BaseModel;
 use App\Traits\UUID;
+use App\Traits\RecordsBookingHistoryAtomically;
 use App\Models\User;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 
@@ -29,7 +30,7 @@ use Illuminate\Database\Eloquent\Relations\BelongsTo;
  */
 class BookingStatus extends BaseModel
 {
-    
+    use RecordsBookingHistoryAtomically;
 
     /**
      * The table associated with the model.

@@ -228,7 +228,7 @@ class MobileAssignmentService
 
             DriverSession::query()
                 ->whereIn('assignment_id', $assignments->pluck('id'))
-                ->update(['assignment_id' => null]);
+                ->get()->each(fn (DriverSession $session) => $session->update(['assignment_id' => null]));
             $driver->unsetRelation('activeSession');
 
             Log::warning('Reconciled stale driver assignments for completed bookings', [
@@ -564,10 +564,11 @@ class MobileAssignmentService
             // only when it still points at the declining driver so a concurrent
             // staff reassignment can never be overwritten by this response.
             if ($locked->booking_item_id) {
-                BookingItem::query()
+                $bookingItem = BookingItem::query()
                     ->whereKey($locked->booking_item_id)
                     ->where('driver_id', $driver->id)
-                    ->update(['driver_id' => null]);
+                    ->lockForUpdate()->first();
+                if ($bookingItem) $bookingItem->update(['driver_id' => null]);
             }
 
             return $locked->fresh(['booking', 'bookingItem', 'driver.user']);

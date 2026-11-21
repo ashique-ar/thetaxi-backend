@@ -3,12 +3,14 @@
 namespace App\Models\Sales;
 
 use App\Models\NonSoftDeletableModel;
+use App\Traits\RecordsBookingHistoryAtomically;
 use App\Models\Booking\Booking;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Illuminate\Database\Eloquent\Relations\HasOne;
 
 class SalesCommissionDecision extends NonSoftDeletableModel
 {
+    use RecordsBookingHistoryAtomically;
     protected $fillable = [
         'booking_id', 'root_attribution_id', 'booking_attribution_id', 'receipt_id',
         'receipt_component_id', 'beneficiary_sales_profile_id', 'beneficiary_staff_id',

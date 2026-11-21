@@ -3,11 +3,13 @@
 namespace App\Models\Sales;
 
 use App\Models\BaseModel;
+use App\Traits\RecordsBookingHistoryAtomically;
 use App\Models\Booking\Booking;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 
 class SalesBookingAttribution extends BaseModel
 {
+    use RecordsBookingHistoryAtomically;
     protected $fillable = [
         'booking_id', 'root_attribution_id', 'acquisition_sales_profile_id', 'collection_sales_profile_id',
         'customer_id', 'commission_category', 'business_classification', 'classification_source',

@@ -3,9 +3,11 @@
 namespace App\Models\Booking;
 
 use App\Models\BaseModel;
+use App\Traits\RecordsBookingHistoryAtomically;
 
 class BookingPaymentAdjustment extends BaseModel
 {
+    use RecordsBookingHistoryAtomically;
     protected $fillable = [
         'booking_id', 'receipt_id', 'receipt_component_id', 'impact_dimension',
         'adjustment_type', 'direction', 'source_amount', 'source_currency', 'lkr_amount', 'fx_rate_to_lkr',

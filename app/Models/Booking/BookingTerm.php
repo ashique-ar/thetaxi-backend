@@ -3,9 +3,11 @@
 namespace App\Models\Booking;
 
 use App\Models\BaseModel;
+use App\Traits\RecordsBookingHistoryAtomically;
 
 class BookingTerm extends BaseModel
 {
+    use RecordsBookingHistoryAtomically;
     protected $table = 'booking_terms';
 
     protected $fillable = [

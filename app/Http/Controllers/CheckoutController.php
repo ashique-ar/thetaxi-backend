@@ -2731,8 +2731,10 @@ class CheckoutController extends Controller
                     return back()->with('error', 'Keep at least one vehicle before continuing to payment.');
                 }
                 \Illuminate\Support\Facades\DB::transaction(function () use ($booking, $keepIds, $allIds, $amount, $link, $paymentLinkData) {
-                    $booking->bookingItems()->withTrashed()->whereIn('id', $keepIds)->restore();
-                    $booking->bookingItems()->whereNotIn('id', $keepIds)->delete();
+                    $booking->bookingItems()->withTrashed()->whereIn('id', $keepIds)->get()
+                        ->each(fn ($item) => $item->restore());
+                    $booking->bookingItems()->whereNotIn('id', $keepIds)->get()
+                        ->each(fn ($item) => $item->delete());
                     $isOriginalSelection = count($keepIds) === count($allIds);
                     if ($isOriginalSelection) {
                         $pricing = $paymentLinkData['context']['pricing'] ?? [];

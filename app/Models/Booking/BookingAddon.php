@@ -2,6 +2,7 @@
 namespace App\Models\Booking;
 
 use App\Models\BaseModel;
+use App\Traits\RecordsBookingHistoryAtomically;
 
 /**
  * App\Models\Booking\BookingAddon
@@ -28,6 +29,7 @@ use App\Models\BaseModel;
  */
 class BookingAddon extends BaseModel
 {
+    use RecordsBookingHistoryAtomically;
     /**
      * The attributes that are mass assignable.
      *

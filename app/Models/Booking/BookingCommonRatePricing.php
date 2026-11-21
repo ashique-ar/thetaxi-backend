@@ -3,6 +3,7 @@
 namespace App\Models\Booking;
 
 use App\Models\BaseModel;
+use App\Traits\RecordsBookingHistoryAtomically;
 use App\Models\Vehicle\VehiclePricing\VehiclePricingCommonRateDefinition;
 use App\Models\Vehicle\VehiclePricing\VehicleGroupCommonRatePricing;
 use App\Traits\UUID;
@@ -27,7 +28,7 @@ use Illuminate\Database\Eloquent\Relations\BelongsTo;
  */
 class BookingCommonRatePricing extends BaseModel
 {
-    
+    use RecordsBookingHistoryAtomically;
 
     protected $table = 'booking_common_rate_pricings';
 

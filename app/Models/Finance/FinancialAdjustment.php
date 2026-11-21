@@ -1,8 +1,10 @@
 <?php
 namespace App\Models\Finance;
 use App\Models\BaseModel;
+use App\Traits\RecordsBookingHistoryAtomically;
 class FinancialAdjustment extends BaseModel
 {
+    use RecordsBookingHistoryAtomically;
     protected $fillable = ['settlement_id', 'settlement_item_id', 'booking_id', 'type', 'amount', 'reason', 'reference', 'metadata', 'created_user_id'];
     protected $casts = ['amount' => 'decimal:4', 'metadata' => 'array'];
     public function settlement() { return $this->belongsTo(FinancialAccountSettlement::class, 'settlement_id'); }

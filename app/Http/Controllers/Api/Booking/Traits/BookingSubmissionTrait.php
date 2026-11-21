@@ -293,6 +293,7 @@ trait BookingSubmissionTrait
 
             $rules = [
                 'customer_id' => 'nullable|string',
+                'change_reason' => 'nullable|string|max:1000',
                 'is_corporate_booking' => 'sometimes|boolean',
                 'corporate_account_id' => 'nullable|uuid|exists:corporates,id',
                 'employee_id' => $this->bookingEmployeeIdRules(),

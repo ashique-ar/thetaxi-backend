@@ -4,10 +4,12 @@ use App\Models\User;
 use Illuminate\Database\Eloquent\Concerns\HasUuids;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
+use App\Traits\RecordsBookingHistoryAtomically;
 
 class FinancialAuditEvent extends Model
 {
     use HasUuids;
+    use RecordsBookingHistoryAtomically;
     public $timestamps = true;
 
     protected $fillable = ['subject_type','subject_id','booking_id','event_type','from_status','to_status','amount','metadata','performed_by','occurred_at'];

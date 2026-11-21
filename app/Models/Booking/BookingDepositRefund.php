@@ -3,10 +3,12 @@
 namespace App\Models\Booking;
 
 use App\Models\BaseModel;
+use App\Traits\RecordsBookingHistoryAtomically;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 
 class BookingDepositRefund extends BaseModel
 {
+    use RecordsBookingHistoryAtomically;
     protected $fillable = ['booking_payment_receipt_id', 'booking_id', 'amount', 'refund_method', 'reference', 'refunded_at', 'refunded_by', 'notes'];
     protected $casts = ['amount' => 'decimal:2', 'refunded_at' => 'datetime'];
 

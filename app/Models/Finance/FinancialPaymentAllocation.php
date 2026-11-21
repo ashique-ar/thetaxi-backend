@@ -2,9 +2,11 @@
 namespace App\Models\Finance;
 
 use App\Models\BaseModel;
+use App\Traits\RecordsBookingHistoryAtomically;
 
 class FinancialPaymentAllocation extends BaseModel
 {
+    use RecordsBookingHistoryAtomically;
     protected $fillable = ['settlement_id','settlement_item_id','booking_id','payment_receipt_id','amount','allocated_by','allocated_at'];
     protected $casts = ['amount'=>'decimal:4','allocated_at'=>'datetime'];
 

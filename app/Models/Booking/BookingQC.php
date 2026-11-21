@@ -3,6 +3,7 @@
 namespace App\Models\Booking;
 
 use App\Models\BaseModel;
+use App\Traits\RecordsBookingHistoryAtomically;
 use App\Models\User;
 use App\Models\Vehicle\Vehicle;
 use App\Enums\QCStatus;
@@ -16,6 +17,7 @@ use Illuminate\Database\Eloquent\Relations\HasMany;
  */
 class BookingQC extends BaseModel
 {
+    use RecordsBookingHistoryAtomically;
     protected $table = 'booking_qcs';
 
     protected $fillable = [

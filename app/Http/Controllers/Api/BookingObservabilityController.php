@@ -28,6 +28,12 @@ class BookingObservabilityController extends Controller
         $itemId = $this->validatedItemId($request, $booking, false);
         $validated = $request->validate([
             'filter' => ['nullable', 'in:all,operations,journey,recovery,finance,communications,documents,administration,exceptions'],
+            'actor_id' => ['nullable', 'uuid'],
+            'entity_type' => ['nullable', 'string', 'max:100'],
+            'entity_id' => ['nullable', 'string', 'max:100'],
+            'event_type' => ['nullable', 'string', 'max:100'],
+            'from' => ['nullable', 'date'],
+            'to' => ['nullable', 'date', 'after_or_equal:from'],
         ]);
         $limit = max(1, min((int) $request->query('limit', 50), 100));
         return response()->json(['status' => 'success', 'data' => $this->observability->trace(
@@ -35,7 +41,8 @@ class BookingObservabilityController extends Controller
             $itemId,
             $request->query('cursor'),
             $limit,
-            $validated['filter'] ?? 'all'
+            $validated['filter'] ?? 'all',
+            $validated,
         )]);
     }
 

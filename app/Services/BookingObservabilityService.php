@@ -7,6 +7,8 @@ use App\Models\Booking\Booking;
 use App\Models\Booking\BookingDispatch;
 use App\Models\Booking\BookingPaymentReceipt;
 use App\Models\Booking\BookingActivity;
+use App\Models\Booking\BookingHistoryEvent;
+use App\Models\Booking\BookingStatus;
 use App\Models\Vehicle\VehicleAssignment;
 use App\Models\User;
 use App\Models\Sms\SmsMessage;
@@ -27,7 +29,7 @@ class BookingObservabilityService
 {
     public function __construct(private readonly RouteEvidenceService $routeEvidence) {}
 
-    public function trace(Booking $booking, ?string $bookingItemId, ?string $cursor = null, int $limit = 50, string $filter = 'all'): array
+    public function trace(Booking $booking, ?string $bookingItemId, ?string $cursor = null, int $limit = 50, string $filter = 'all', array $filters = []): array
     {
         $decodedCursor = $cursor ? $this->decodeCursor($cursor) : null;
         $query = AuditLog::query()
@@ -54,16 +56,50 @@ class BookingObservabilityService
         if ($decodedCursor) {
             $query->where('timestamp', '<=', $decodedCursor[0]);
         }
+        $query->when($filters['actor_id'] ?? null, fn ($scope, $value) => $scope->where('user_id', $value))
+            ->when($filters['entity_type'] ?? null, fn ($scope, $value) => $scope->where('entity', $value))
+            ->when($filters['entity_id'] ?? null, fn ($scope, $value) => $scope->where('entity_id', $value))
+            ->when($filters['event_type'] ?? null, fn ($scope, $value) => $scope->where('action', $value));
+        $this->applyTraceDateFilters($query, 'timestamp', $filters);
 
         $logs = $query->orderByDesc('timestamp')->orderByDesc('id')->limit($limit + 1)->get();
         $events = $logs->map(fn(AuditLog $log): array => $this->mapAuditEvent($booking, $log));
 
+        $historyEvents = BookingHistoryEvent::query()
+            ->where('booking_id', $booking->id)
+            ->when($bookingItemId, fn ($scope) => $scope->where(fn ($items) => $items
+                ->whereNull('booking_item_id')->orWhere('booking_item_id', $bookingItemId)))
+            ->when($filters['actor_id'] ?? null, fn ($scope, $value) => $scope->where('actor_user_id', $value))
+            ->when($filters['entity_type'] ?? null, fn ($scope, $value) => $scope->where('entity_type', $value))
+            ->when($filters['entity_id'] ?? null, fn ($scope, $value) => $scope->where('entity_id', $value))
+            ->when($filters['event_type'] ?? null, fn ($scope, $value) => $scope->where('event_type', $value))
+            ->when($decodedCursor, fn ($scope) => $scope->where('occurred_at', '<=', $decodedCursor[0]))
+            ->tap(fn ($scope) => $this->applyTraceDateFilters($scope, 'occurred_at', $filters))
+            ->orderByDesc('occurred_at')->orderByDesc('id')->limit($limit + 1)->get()
+            ->map(fn (BookingHistoryEvent $event): array => $this->mapBookingHistoryEvent($event));
+
+        $bookingStatusEvents = BookingStatus::withTrashed()->with('createdBy:id,first_name,last_name')
+            ->where('booking_id', $booking->id)
+            ->when($filters['actor_id'] ?? null, fn ($query, $value) => $query->where('created_user_id', $value))
+            ->when(isset($filters['entity_type']) && strcasecmp($filters['entity_type'], 'BookingStatus') !== 0, fn ($query) => $query->whereRaw('1 = 0'))
+            ->when($filters['entity_id'] ?? null, fn ($query, $value) => $query->whereKey($value))
+            ->when(isset($filters['event_type']) && strcasecmp($filters['event_type'], 'booking_status_changed') !== 0, fn ($query) => $query->whereRaw('1 = 0'))
+            ->when($decodedCursor, fn ($query) => $query->where('created_at', '<=', $decodedCursor[0]))
+            ->tap(fn ($query) => $this->applyTraceDateFilters($query, 'created_at', $filters))
+            ->orderByDesc('created_at')->orderByDesc('id')->limit($limit + 1)->get()
+            ->map(fn (BookingStatus $status): array => $this->mapBookingStatus($status));
+
         $bookingActivities = BookingActivity::query()
             ->where('booking_id', $booking->id)
             ->whereIn('event_key', ['booking_updated', 'booking_vehicle_changed'])
+            ->when($filters['actor_id'] ?? null, fn ($query, $value) => $query->where('meta->actor_user_id', $value))
+            ->when(isset($filters['entity_type']) && strcasecmp($filters['entity_type'], 'BookingActivity') !== 0, fn ($query) => $query->whereRaw('1 = 0'))
+            ->when($filters['entity_id'] ?? null, fn ($query, $value) => $query->whereKey($value))
+            ->when($filters['event_type'] ?? null, fn ($query, $value) => $query->where('event_key', $value))
             ->when($bookingItemId, fn ($query) => $query->where(fn ($scope) => $scope
                 ->whereNull('booking_item_id')->orWhere('booking_item_id', $bookingItemId)))
             ->when($decodedCursor, fn ($query) => $query->where('event_at', '<=', $decodedCursor[0]))
+            ->tap(fn ($query) => $this->applyTraceDateFilters($query, 'event_at', $filters))
             ->orderByDesc('event_at')->orderByDesc('id')->limit($limit + 1)->get();
         $activityActors = User::query()->whereIn('id', $bookingActivities->pluck('meta.actor_user_id')->filter()->unique())
             ->get(['id', 'first_name', 'last_name'])->keyBy('id');
@@ -73,7 +109,12 @@ class BookingObservabilityService
         $vehicleAssignments = $bookingItemId ? collect() : VehicleAssignment::query()
             ->with(['vehicle:id,title,license_plate', 'assignedBy:id,first_name,last_name'])
             ->where('booking_id', $booking->id)
+            ->when($filters['actor_id'] ?? null, fn ($query, $value) => $query->where('assigned_by', $value))
+            ->when(isset($filters['entity_type']) && strcasecmp($filters['entity_type'], 'VehicleAssignment') !== 0, fn ($query) => $query->whereRaw('1 = 0'))
+            ->when($filters['entity_id'] ?? null, fn ($query, $value) => $query->whereKey($value))
+            ->when(isset($filters['event_type']) && strcasecmp($filters['event_type'], 'vehicle_assigned') !== 0, fn ($query) => $query->whereRaw('1 = 0'))
             ->when($decodedCursor, fn ($query) => $query->where('created_at', '<=', $decodedCursor[0]))
+            ->tap(fn ($query) => $this->applyTraceDateFilters($query, 'created_at', $filters))
             ->orderByDesc('created_at')->orderByDesc('id')->limit($limit + 1)->get();
         $vehicleAssignmentEvents = $vehicleAssignments->map(fn (VehicleAssignment $assignment): array =>
             $this->mapVehicleAssignment($booking, $assignment));
@@ -99,6 +140,11 @@ class BookingObservabilityService
         if ($decodedCursor) {
             $financialQuery->where('occurred_at', '<=', $decodedCursor[0]);
         }
+        $financialQuery->when($filters['actor_id'] ?? null, fn ($query, $value) => $query->where('performed_by', $value))
+            ->when($filters['entity_type'] ?? null, fn ($query, $value) => $query->where('subject_type', $value))
+            ->when($filters['entity_id'] ?? null, fn ($query, $value) => $query->where('subject_id', $value))
+            ->when($filters['event_type'] ?? null, fn ($query, $value) => $query->where('event_type', $value));
+        $this->applyTraceDateFilters($financialQuery, 'occurred_at', $filters);
         $financialEvents = $financialQuery->orderByDesc('occurred_at')->orderByDesc('id')
             ->limit($limit + 1)->get()
             ->map(fn(FinancialAuditEvent $event): array => $this->mapFinancialEvent($booking, $event));
@@ -119,7 +165,7 @@ class BookingObservabilityService
             ->when(!$bookingItemId, fn(Collection $items) => $items->whereNull('booking_item_id'))
             ->map(fn (array $event): array => $this->mapDocumentTraceEvent($booking, $event));
 
-        $events = $events->concat($bookingActivityEvents)->concat($vehicleAssignmentEvents)
+        $events = $events->concat($historyEvents)->concat($bookingStatusEvents)->concat($bookingActivityEvents)->concat($vehicleAssignmentEvents)
             ->concat($deletedActivities)->concat($financialEvents)->concat($tripEvents)
             ->concat($tripStopEvents)
             ->concat($recoveryEvents)
@@ -127,6 +173,7 @@ class BookingObservabilityService
             ->map(fn (array $event): array => $this->withTraceIntegrity($event))
             ->unique('deduplication_key')
             ->filter(fn (array $event): bool => $this->matchesTraceFilter($event, $filter))
+            ->filter(fn (array $event): bool => $this->matchesHistoryFilters($event, $filters))
             ->when($decodedCursor, fn(Collection $items) => $items->filter(
                 fn (array $event): bool => $this->isBeforeCursor($event, $decodedCursor)
             ))
@@ -140,6 +187,7 @@ class BookingObservabilityService
             'booking_id' => (string) $booking->id,
             'selected_booking_item_id' => $bookingItemId,
             'selected_filter' => $filter,
+            'selected_history_filters' => collect($filters)->only(['actor_id', 'entity_type', 'entity_id', 'event_type', 'from', 'to'])->filter()->all(),
             'events' => $events->all(),
             'next_cursor' => $hasMore && $last
                 ? $this->encodeCursor($last['occurred_at'], $last['id'])
@@ -713,6 +761,8 @@ class BookingObservabilityService
             'metadata' => $metadata,
             'evidence' => null,
             'actor_display_snapshot' => $actorSnapshot,
+            'entity_type' => $log->entity,
+            'entity_id' => $log->entity_id ? (string) $log->entity_id : null,
         ];
     }
 
@@ -738,6 +788,97 @@ class BookingObservabilityService
             'metadata' => [],
             'evidence' => null,
             'actor_display_snapshot' => null,
+            'entity_type' => 'BookingActivity',
+            'entity_id' => (string) $activity->id,
+        ];
+    }
+
+    private function mapBookingHistoryEvent(BookingHistoryEvent $history): array
+    {
+        $changes = is_array($history->changes) ? $history->changes : [];
+        $priceFields = ['unit_price', 'total_price', 'base_amount', 'total_estimated', 'total_actual', 'driver_cost', 'distance_cost', 'addons_cost', 'discount_amount', 'tax_amount', 'currency', 'price', 'rate', 'original_value', 'custom_value', 'original_amount', 'final_amount', 'calculated_amount', 'applied_rate', 'delta_source_amount', 'delta_lkr_amount', 'previous_effective_source_amount', 'previous_effective_lkr_amount', 'resulting_effective_source_amount', 'resulting_effective_lkr_amount', 'contract_value_source', 'contract_value_lkr', 'subtotal', 'total_amount', 'commission_amount_lkr', 'eligible_lkr_amount'];
+        $paymentFields = ['amount', 'refunded_amount', 'payment_method', 'payment_stage', 'payment_purpose', 'source_amount', 'source_currency', 'lkr_amount', 'additional_charges', 'late_return_fee', 'refund_method', 'allocated_amount', 'driver_company_settled_amount', 'fx_rate_to_lkr', 'fx_rate_at', 'fx_source', 'reference', 'received_via', 'received_at', 'received_by', 'commission_amount', 'receipt_amount', 'eligible_amount', 'commission_rate'];
+        if (!auth()->user()?->can('bookings.price_override')) {
+            foreach ($priceFields as $field) unset($changes[$field]);
+        }
+        if (!auth()->user()?->can('payments.view')) {
+            foreach ($paymentFields as $field) unset($changes[$field]);
+        }
+        $status = $changes['status'] ?? $changes['dispatch_status'] ?? null;
+        $source = $history->source === 'financial_audit_events' || $history->entity_type === 'FinancialAuditEvent' || str_contains($history->event_type, 'payment')
+            || str_contains($history->event_type, 'refund') || str_contains($history->event_type, 'adjustment')
+            || str_contains($history->event_type, 'price') ? 'finance'
+            : ($history->entity_type === 'BookingApproval' ? 'approval'
+                : ($history->entity_type === 'BookingDispatch' ? 'dispatch'
+            : (str_contains($history->event_type, 'assignment') || $history->entity_type === 'VehicleAssignment' ? 'assignment'
+                : (str_contains($history->event_type, 'status') ? 'lifecycle' : 'booking'))));
+        $title = str($history->event_type)->replace('_', ' ')->title()->toString();
+
+        return [
+            'id' => 'booking-history:' . $history->id,
+            'booking_id' => (string) $history->booking_id,
+            'booking_item_id' => $history->booking_item_id ? (string) $history->booking_item_id : null,
+            'occurred_at' => $history->occurred_at?->utc()->toIso8601String(),
+            'source' => $source,
+            'event_type' => $history->event_type,
+            'title' => $title,
+            'description' => null,
+            'actor' => [
+                'id' => $history->actor_user_id ? (string) $history->actor_user_id : null,
+                'name' => $history->actor_display_snapshot
+                    ?: ($history->actor_user_id ? 'User ' . $history->actor_user_id : 'System'),
+                'type' => $history->actor_type ?: 'system',
+            ],
+            'from_status' => $status['from'] ?? null,
+            'to_status' => $status['to'] ?? null,
+            'severity' => str_contains($history->event_type, 'deleted') ? 'warning' : 'info',
+            'correlation_id' => $history->correlation_id ?: 'booking-history:' . $history->id,
+            'metadata' => [
+                'reason' => $history->reason,
+                'changes' => $changes,
+                'entity_type' => $history->entity_type,
+                'entity_id' => $history->entity_id,
+                'context' => $history->context ?? [],
+                'provenance' => $history->provenance,
+            ],
+            'evidence' => null,
+            'actor_display_snapshot' => $history->actor_display_snapshot,
+            'reason' => $history->reason,
+            'changes' => $changes,
+            'entity_type' => $history->entity_type,
+            'entity_id' => $history->entity_id,
+            'affected_entity' => [
+                'type' => $history->entity_type,
+                'id' => (string) $history->entity_id,
+            ],
+            'provenance' => $history->provenance,
+        ];
+    }
+
+    private function mapBookingStatus(BookingStatus $status): array
+    {
+        $actorName = trim((string) ($status->createdBy?->first_name ?? '') . ' ' . (string) ($status->createdBy?->last_name ?? ''));
+
+        return [
+            'id' => 'booking-status:' . $status->id,
+            'booking_id' => (string) $status->booking_id,
+            'booking_item_id' => null,
+            'occurred_at' => $status->created_at?->utc()->toIso8601String(),
+            'source' => 'lifecycle',
+            'event_type' => 'booking_status_changed',
+            'title' => 'Booking status changed',
+            'description' => null,
+            'actor' => ['id' => $status->created_user_id ? (string) $status->created_user_id : null, 'name' => $actorName ?: ($status->created_user_id ? 'User ' . $status->created_user_id : 'System'), 'type' => $status->created_user_id ? 'user' : 'system'],
+            'from_status' => $status->old_status,
+            'to_status' => $status->new_status,
+            'severity' => 'info',
+            'correlation_id' => 'booking-status:' . $status->id,
+            'metadata' => ['entity_type' => 'BookingStatus', 'entity_id' => (string) $status->id, 'provenance' => 'reconstructed'],
+            'evidence' => null,
+            'actor_display_snapshot' => null,
+            'entity_type' => 'BookingStatus',
+            'entity_id' => (string) $status->id,
+            'provenance' => 'reconstructed',
         ];
     }
 
@@ -773,6 +914,8 @@ class BookingObservabilityService
             ])->filter()->all(),
             'evidence' => null,
             'actor_display_snapshot' => null,
+            'entity_type' => 'VehicleAssignment',
+            'entity_id' => (string) $assignment->id,
         ];
     }
 
@@ -844,6 +987,8 @@ class BookingObservabilityService
             'metadata' => $metadata,
             'evidence' => ['section' => 'payments', 'label' => 'View payments'],
             'actor_display_snapshot' => $actorSnapshot,
+            'entity_type' => (string) $event->subject_type,
+            'entity_id' => (string) $event->subject_id,
         ];
     }
 
@@ -1231,16 +1376,45 @@ class BookingObservabilityService
     private function matchesTraceFilter(array $event, string $filter): bool
     {
         return match ($filter) {
-            'operations' => in_array($event['source'], ['lifecycle', 'trip', 'assignment'], true),
+            'operations' => in_array($event['source'], ['booking', 'lifecycle', 'trip', 'assignment', 'dispatch'], true),
             'journey' => in_array($event['source'], ['trip', 'tracking'], true),
             'recovery' => $event['source'] === 'tracking' && str_starts_with($event['event_type'], 'recovery_'),
             'finance' => $event['source'] === 'finance',
             'communications' => $event['source'] === 'communication',
             'documents' => $event['source'] === 'document',
-            'administration' => in_array($event['source'], ['system', 'approval'], true),
+            'administration' => in_array($event['source'], ['system', 'approval', 'lifecycle', 'assignment'], true),
             'exceptions' => in_array($event['severity'], ['warning', 'danger'], true),
             default => true,
         };
+    }
+
+    private function matchesHistoryFilters(array $event, array $filters): bool
+    {
+        $actorId = data_get($event, 'actor.id');
+        $entityType = $event['entity_type'] ?? data_get($event, 'metadata.entity_type');
+        $entityId = $event['entity_id'] ?? data_get($event, 'metadata.entity_id');
+        $occurredAt = $event['occurred_at'] ?? null;
+        if (!empty($filters['actor_id']) && (string) $actorId !== (string) $filters['actor_id']) return false;
+        if (!empty($filters['entity_type']) && strcasecmp((string) $entityType, (string) $filters['entity_type']) !== 0) return false;
+        if (!empty($filters['entity_id']) && (string) $entityId !== (string) $filters['entity_id']) return false;
+        if (!empty($filters['event_type']) && strcasecmp((string) ($event['event_type'] ?? ''), (string) $filters['event_type']) !== 0) return false;
+        if (!$occurredAt && (!empty($filters['from']) || !empty($filters['to']))) return false;
+
+        $time = $occurredAt ? Carbon::parse($occurredAt)->utc() : null;
+        if (!empty($filters['from']) && $time->lt(Carbon::parse($filters['from'])->utc()->startOfDay())) return false;
+        if (!empty($filters['to']) && $time->gt(Carbon::parse($filters['to'])->utc()->endOfDay())) return false;
+
+        return true;
+    }
+
+    private function applyTraceDateFilters($query, string $column, array $filters): void
+    {
+        if (!empty($filters['from'])) {
+            $query->where($column, '>=', Carbon::parse($filters['from'])->utc()->startOfDay());
+        }
+        if (!empty($filters['to'])) {
+            $query->where($column, '<=', Carbon::parse($filters['to'])->utc()->endOfDay());
+        }
     }
 
     private function withTraceIntegrity(array $event): array
@@ -1257,7 +1431,9 @@ class BookingObservabilityService
             'attribution' => [
                 'actor_id' => $hasPersistedActorId ? 'persisted_foreign_key' : 'system_or_unrecorded',
                 'actor_display' => $hasActorSnapshot ? 'event_time_snapshot'
-                    : ($hasPersistedActorId ? 'current_directory_display' : 'system_label'),
+                    : ($hasPersistedActorId && ($event['provenance'] ?? null) === 'reconstructed'
+                        ? 'source_identifier'
+                        : ($hasPersistedActorId ? 'current_directory_display' : 'system_label')),
                 'actor_display_immutable' => $hasActorSnapshot || !$hasPersistedActorId,
                 'timestamp' => 'persisted_source_timestamp',
                 'source' => 'canonical_persisted_record',

@@ -14,9 +14,11 @@ use App\Models\Driver\Driver;
 use App\Models\Service\ServiceType;
 use App\Models\User;
 use Carbon\Carbon;
+use App\Traits\RecordsBookingHistoryAtomically;
 
 class BookingItem extends BaseModel
 {
+    use RecordsBookingHistoryAtomically;
 
     protected $fillable = [
         'booking_id',

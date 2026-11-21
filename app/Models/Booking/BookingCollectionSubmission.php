@@ -3,10 +3,12 @@
 namespace App\Models\Booking;
 
 use App\Models\BaseModel;
+use App\Traits\RecordsBookingHistoryAtomically;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 
 class BookingCollectionSubmission extends BaseModel
 {
+    use RecordsBookingHistoryAtomically;
     private const IMMUTABLE_SUBMISSION_FIELDS = [
         'booking_id', 'booking_payment_schedule_id', 'submitted_by_sales_profile_id',
         'submitted_by_staff_id', 'submitted_by_user_id',

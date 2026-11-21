@@ -3,12 +3,14 @@
 namespace App\Models\Booking;
 
 use App\Models\BaseModel;
+use App\Traits\RecordsBookingHistoryAtomically;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use App\Models\Driver\Driver;
 use Illuminate\Database\Eloquent\Relations\HasMany;
 
 class BookingPaymentReceipt extends BaseModel
 {
+    use RecordsBookingHistoryAtomically;
 
     private const IMMUTABLE_EVIDENCE_FIELDS = [
         'booking_id', 'amount', 'payment_method', 'payment_stage', 'payment_purpose',

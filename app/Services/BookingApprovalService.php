@@ -3,6 +3,7 @@
 namespace App\Services;
 
 use App\Models\Booking\Booking;
+use App\Models\Booking\BookingApproval;
 use App\Models\User;
 use App\Services\Sms\SmsAutomationService;
 use Carbon\Carbon;
@@ -124,9 +125,18 @@ class BookingApprovalService
             'total_steps' => count($approvers),
         ];
 
-        $approvalId = DB::table('booking_approvals')->insertGetId($approvalData);
+            $approval = BookingApproval::query()->create([
+                'booking_id' => $booking->id,
+                'requested_by' => $booking->created_user_id,
+                'status' => 'pending',
+                'approval_level' => (int) $approvalLevel,
+                'justification' => $this->generateApprovalReason($booking),
+                'priority' => 'normal',
+                'conditions' => ['approvers' => $approvers],
+                'requested_at' => now(),
+            ]);
         
-        $approvalData['id'] = $approvalId;
+        $approvalData['id'] = $approval->id;
         $approvalData['approvers'] = $approvers;
         
         return $approvalData;
@@ -145,14 +155,19 @@ class BookingApprovalService
         ]);
 
         // Create approval record for audit trail
-        DB::table('booking_approvals')->insert([
-            'booking_id' => $booking->id,
-            'approval_level' => 'auto',
+        BookingApproval::query()->create([
+            'requested_by' => auth()->id(),
             'status' => 'approved',
+            'approval_level' => 1,
+            'approval_type' => 'auto',
+            'auto_approved' => true,
+            'override_reasons' => [],
+            'conditions' => ['trigger' => 'meets_standard_criteria'],
+            'booking_id' => $booking->id,
             'requested_at' => now(),
             'approved_at' => now(),
-            'approved_by' => 'system',
-            'approval_reason' => 'Auto-approved: meets standard criteria',
+            'approver_id' => auth()->id(),
+            'comments' => 'Auto-approved: meets standard criteria',
         ]);
 
         $this->smsAutomation->queueBookingConfirmation($booking);
@@ -390,12 +405,16 @@ class BookingApprovalService
     /**
      * Process approval decision
      */
-    public function processApprovalDecision(int $approvalId, string $decision, string $userId, string $comments = null): array
+    public function processApprovalDecision(int $approvalId, string $decision, string $userId, ?string $comments = null): array
     {
+        if ($decision === 'rejected' && (trim((string) $comments) === '' || mb_strlen(trim((string) $comments)) < 3)) {
+            throw new \InvalidArgumentException('A rejection reason of at least 3 characters is required.');
+        }
+
         DB::beginTransaction();
         
         try {
-            $approval = DB::table('booking_approvals')->where('id', $approvalId)->first();
+            $approval = BookingApproval::query()->whereKey($approvalId)->first();
             if (!$approval) {
                 throw new \Exception('Approval request not found');
             }
@@ -415,12 +434,8 @@ class BookingApprovalService
 
             if ($decision === 'rejected') {
                 // Reject the booking
-                DB::table('booking_approvals')->where('id', $approvalId)->update([
-                    'status' => 'rejected',
-                    'rejected_at' => now(),
-                    'rejected_by' => $userId,
-                    'rejection_reason' => $comments,
-                ]);
+                $approval->reject($userId, $comments);
+                app(BookingHistoryService::class)->recordBookingApprovalDecision((string) $booking->id, (string) $approval->id, 'rejected', $comments, $userId);
 
                 $booking->update([
                     'status' => 'rejected',
@@ -447,11 +462,8 @@ class BookingApprovalService
                 // Current step is complete, move to next step or finalize
                 if ($approval->current_step >= $approval->total_steps) {
                     // All steps complete - approve the booking
-                    DB::table('booking_approvals')->where('id', $approvalId)->update([
-                        'status' => 'approved',
-                        'approved_at' => now(),
-                        'approved_by' => $userId,
-                    ]);
+                    $approval->approve($userId, $comments);
+                    app(BookingHistoryService::class)->recordBookingApprovalDecision((string) $booking->id, (string) $approval->id, 'approved', $comments, $userId);
 
                     $booking->update([
                         'status' => 'confirmed',
@@ -471,9 +483,9 @@ class BookingApprovalService
                 } else {
                     // Move to next step
                     $nextStep = $approval->current_step + 1;
-                    DB::table('booking_approvals')->where('id', $approvalId)->update([
-                        'current_step' => $nextStep,
-                    ]);
+                    $approval->approval_level = $nextStep;
+                    $approval->save();
+                    app(BookingHistoryService::class)->recordBookingApprovalDecision((string) $booking->id, (string) $approval->id, 'step_advanced', $comments, $userId);
 
                     // Notify next step approvers
                     $nextStepApprovers = collect($approvers)->where('step', $nextStep);

@@ -6,11 +6,13 @@ use App\Models\BaseModel;
 use App\Models\Booking\Booking;
 use App\Models\User;
 use App\Services\TimezoneService;
+use App\Traits\RecordsBookingHistoryAtomically;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Illuminate\Database\Eloquent\Relations\HasMany;
 
 class VehicleAssignment extends BaseModel
 {
+    use RecordsBookingHistoryAtomically;
 
     protected $fillable = [
         'vehicle_id',

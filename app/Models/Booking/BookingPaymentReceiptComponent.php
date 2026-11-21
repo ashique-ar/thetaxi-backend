@@ -3,10 +3,12 @@
 namespace App\Models\Booking;
 
 use App\Models\BaseModel;
+use App\Traits\RecordsBookingHistoryAtomically;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 
 class BookingPaymentReceiptComponent extends BaseModel
 {
+    use RecordsBookingHistoryAtomically;
 
     protected $fillable = [
         'receipt_id', 'component_type', 'source_amount', 'lkr_amount', 'is_allocatable',

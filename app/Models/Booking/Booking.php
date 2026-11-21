@@ -9,6 +9,7 @@ use App\Enums\BookingLifecycleStatus;
 use App\Enums\DispatchStatus;
 use App\Enums\QCStatus;
 use Carbon\Carbon;
+use App\Traits\RecordsBookingHistoryAtomically;
 
 /**
  * App\Models\Booking\Booking
@@ -128,6 +129,7 @@ use Carbon\Carbon;
  */
 class Booking extends BaseModel
 {
+    use RecordsBookingHistoryAtomically;
     /**
      * Accepted T&C for this booking (booking_terms)
      */

@@ -3,9 +3,16 @@
 namespace App\Models\Booking;
 
 use App\Models\BaseModel;
+use App\Traits\RecordsBookingHistoryAtomically;
 
 class BookingPaymentReceiptFinalityEvent extends BaseModel
 {
+    use RecordsBookingHistoryAtomically;
+
+    protected function bookingHistoryConnectionName(): ?string
+    {
+        return $this->getConnectionName() ?? (new BookingPaymentReceipt)->getConnectionName();
+    }
     protected $fillable = [
         'booking_id', 'booking_payment_receipt_id', 'finality_policy_id', 'from_status', 'to_status',
         'reason', 'evidence_reference', 'idempotency_key', 'performed_by', 'occurred_at',

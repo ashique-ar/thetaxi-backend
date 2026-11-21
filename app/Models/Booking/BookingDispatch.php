@@ -9,6 +9,7 @@ use App\Models\Driver\Driver;
 use App\Enums\DispatchStatus;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Illuminate\Support\Carbon;
+use App\Traits\RecordsBookingHistoryAtomically;
 
 /**
  * Booking Dispatch Model
@@ -18,6 +19,7 @@ use Illuminate\Support\Carbon;
  */
 class BookingDispatch extends BaseModel
 {
+    use RecordsBookingHistoryAtomically;
     protected $table = 'booking_dispatches';
 
     protected $fillable = [

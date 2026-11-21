@@ -9,6 +9,7 @@ use App\Models\Booking\Booking;
 use App\Models\Sales\SalesTask;
 use App\Models\Sales\SalesOpportunity;
 use App\Traits\UUID;
+use App\Traits\RecordsBookingHistoryAtomically;
 
 /**
  * Phone Call Model
@@ -32,7 +33,7 @@ use App\Traits\UUID;
  */
 class PhoneCall extends BaseModel
 {
-    
+    use RecordsBookingHistoryAtomically;
 
     /**
      * The table associated with the model.

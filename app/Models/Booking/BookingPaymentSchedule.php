@@ -3,12 +3,14 @@
 namespace App\Models\Booking;
 
 use App\Models\BaseModel;
+use App\Traits\RecordsBookingHistoryAtomically;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Illuminate\Database\Eloquent\Relations\HasMany;
 use App\Models\Sales\SalesProfile;
 
 class BookingPaymentSchedule extends BaseModel
 {
+    use RecordsBookingHistoryAtomically;
     protected $fillable = [
         'booking_id', 'sequence', 'label', 'period_start', 'period_end',
         'due_date', 'amount', 'status', 'notes', 'reminder_sent_at',

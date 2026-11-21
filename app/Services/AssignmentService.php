@@ -264,12 +264,16 @@ class AssignmentService
                 VehicleAssignment::query()->where('booking_id', $bookingId)
                     ->whereIn('status', ['pending', 'pending_approval'])
                     ->where('assigned_from', '<', $toDate)->where('assigned_to', '>', $fromDate)
-                    ->update(['status' => 'cancelled', 'requires_approval' => false]);
+                    ->get()->each(function (VehicleAssignment $assignment): void {
+                        $assignment->update(['status' => 'cancelled', 'requires_approval' => false]);
+                    });
                 DriverAssignment::query()->where('booking_id', $bookingId)
                     ->when($bookingItem && Schema::hasColumn('driver_assignments', 'booking_item_id'), fn ($query) => $query->where('booking_item_id', $bookingItem->id))
                     ->whereIn('status', ['pending', 'pending_approval'])
                     ->where('assigned_from', '<', $toDate)->where('assigned_to', '>', $fromDate)
-                    ->update(['status' => 'cancelled', 'requires_approval' => false]);
+                    ->get()->each(function (DriverAssignment $assignment): void {
+                        $assignment->update(['status' => 'cancelled', 'requires_approval' => false]);
+                    });
             }
 
             $assignments = [];

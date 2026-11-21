@@ -4,9 +4,11 @@ namespace App\Models\Booking;
 
 use App\Models\BaseModel;
 use App\Models\User;
+use App\Traits\RecordsBookingHistoryAtomically;
 
 class BookingApproval extends BaseModel
 {
+    use RecordsBookingHistoryAtomically;
 
     protected $fillable = [
         'booking_id',
@@ -23,6 +25,11 @@ class BookingApproval extends BaseModel
         'auto_approved',
         'approval_level',
         'conditions',
+        'approval_type',
+        'requested_at',
+        'processed_at',
+        'processed_by',
+        'notes',
     ];
 
     protected $casts = [

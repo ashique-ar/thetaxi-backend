@@ -3,11 +3,13 @@
 namespace App\Models\Booking;
 
 use App\Models\BaseModel;
+use App\Traits\RecordsBookingHistoryAtomically;
 use App\Models\User;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 
 class BookingExtensionRequest extends BaseModel
 {
+    use RecordsBookingHistoryAtomically;
     protected $fillable = [
         'booking_id', 'booking_item_id', 'current_end_at', 'requested_end_at',
         'reason', 'notes', 'status', 'additional_charge', 'charge_currency', 'requested_by', 'reviewed_by', 'reviewed_at', 'review_notes',

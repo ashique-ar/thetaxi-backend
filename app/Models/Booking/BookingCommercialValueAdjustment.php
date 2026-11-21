@@ -3,9 +3,11 @@
 namespace App\Models\Booking;
 
 use App\Models\BaseModel;
+use App\Traits\RecordsBookingHistoryAtomically;
 
 class BookingCommercialValueAdjustment extends BaseModel
 {
+    use RecordsBookingHistoryAtomically;
     protected $fillable = [
         'booking_id', 'attribution_id', 'acquisition_sales_profile_id',
         'adjustment_type', 'delta_source_amount', 'source_currency', 'delta_lkr_amount',

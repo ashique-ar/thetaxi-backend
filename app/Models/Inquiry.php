@@ -4,6 +4,7 @@ namespace App\Models;
 
 use App\Models\Website\CmsContent;
 use App\Models\Booking\Booking;
+use App\Traits\RecordsBookingHistoryAtomically;
 use App\Models\Sales\SalesPolicySetting;
 use App\Services\Sales\InquiryFirstResponseDeadlineService;
 use App\Traits\UUID;
@@ -38,6 +39,7 @@ use Illuminate\Support\Facades\Schema;
  */
 class Inquiry extends BaseModel
 {
+    use RecordsBookingHistoryAtomically;
     protected static function booted(): void
     {
         static::creating(function (Inquiry $inquiry): void {

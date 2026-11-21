@@ -5,6 +5,7 @@ namespace App\Models;
 use App\Models\Booking\Booking;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Illuminate\Database\Eloquent\Builder;
+use App\Traits\RecordsBookingHistoryAtomically;
 
 /**
  * PromoCodeUsage model for tracking promo code redemptions.
@@ -25,6 +26,7 @@ use Illuminate\Database\Eloquent\Builder;
  */
 class PromoCodeUsage extends BaseModel
 {
+    use RecordsBookingHistoryAtomically;
     /**
      * The table associated with the model.
      *

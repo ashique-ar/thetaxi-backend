@@ -3,6 +3,7 @@
 namespace App\Models\Booking;
 
 use App\Models\BaseModel;
+use App\Traits\RecordsBookingHistoryAtomically;
 use App\Models\Vehicle\VehiclePricing\VehiclePricingSlabDefinition;
 use App\Models\Vehicle\VehiclePricing\VehicleGroupPricing;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
@@ -29,6 +30,7 @@ use Illuminate\Database\Eloquent\Relations\BelongsTo;
  */
 class BookingPricing extends BaseModel
 {
+    use RecordsBookingHistoryAtomically;
     protected $table = 'booking_pricings';
 
     protected $fillable = [

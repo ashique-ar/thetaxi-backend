@@ -6,10 +6,11 @@ use Illuminate\Database\Eloquent\Concerns\HasUuids;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
+use App\Traits\RecordsBookingHistoryAtomically;
 
 class IntegrationWebhookEvent extends Model
 {
-    use HasUuids;
+    use HasUuids, RecordsBookingHistoryAtomically;
 
     protected $fillable = ['connection_id', 'provider', 'event_type', 'message_direction', 'external_contact_id', 'external_conversation_id', 'external_message_id', 'linked_booking_id', 'payload_hash', 'payload', 'status', 'received_at', 'outbound_message', 'outbound_status', 'outbound_message_id', 'outbound_sent_at', 'outbound_by_user_id'];
     protected $hidden = ['payload_hash'];

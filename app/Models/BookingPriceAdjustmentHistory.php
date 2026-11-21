@@ -5,12 +5,13 @@ namespace App\Models;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Illuminate\Database\Eloquent\SoftDeletes;
+use App\Traits\RecordsBookingHistoryAtomically;
 use Spatie\Activitylog\Models\Concerns\LogsActivity;
 use Spatie\Activitylog\Support\LogOptions;
 
 class BookingPriceAdjustmentHistory extends BaseModel
 {
-    use SoftDeletes, LogsActivity;
+    use SoftDeletes, LogsActivity, RecordsBookingHistoryAtomically;
 
     protected $fillable = [
         'booking_id',

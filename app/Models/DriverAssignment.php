@@ -9,11 +9,13 @@ use App\Models\Driver\Driver;
 use App\Models\Driver\RoutePoint;
 use App\Models\DriverAssignmentStop;
 use App\Services\TimezoneService;
+use App\Traits\RecordsBookingHistoryAtomically;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Illuminate\Database\Eloquent\Relations\HasMany;
 
 class DriverAssignment extends BaseModel
 {
+    use RecordsBookingHistoryAtomically;
     public const TERMINAL_BOOKING_STATUSES = ['completed', 'cancelled', 'canceled', 'booking_cancelled', 'inquiry_cancelled', 'inquiry_canceled', 'booking_rejected', 'rejected'];
     public const TERMINAL_ITEM_STATUSES = ['completed', 'returned', 'cancelled', 'canceled', 'booking_cancelled', 'rejected'];
 

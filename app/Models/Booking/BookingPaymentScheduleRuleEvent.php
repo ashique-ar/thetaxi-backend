@@ -3,10 +3,12 @@
 namespace App\Models\Booking;
 
 use App\Models\BaseModel;
+use App\Traits\RecordsBookingHistoryAtomically;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 
 class BookingPaymentScheduleRuleEvent extends BaseModel
 {
+    use RecordsBookingHistoryAtomically;
 
     protected $fillable = [
         'booking_payment_schedule_rule_id', 'version', 'event_type', 'from_status', 'to_status',

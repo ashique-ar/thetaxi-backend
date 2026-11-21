@@ -3,9 +3,11 @@
 namespace App\Models\Booking;
 
 use App\Models\BaseModel;
+use App\Traits\RecordsBookingHistoryAtomically;
 
 class BookingPaymentScheduleRevision extends BaseModel
 {
+    use RecordsBookingHistoryAtomically;
 
     protected $fillable = [
         'booking_id', 'revision_number', 'effective_at', 'contract_basis',
