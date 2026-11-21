@@ -431,11 +431,17 @@ class BookingApprovalService
                 'step' => $approval->current_step,
                 'decided_at' => now(),
             ]);
+            app(BookingHistoryService::class)->recordBookingApprovalDecision(
+                (string) $booking->id,
+                (string) $approval->id,
+                $decision,
+                $comments,
+                $userId,
+            );
 
             if ($decision === 'rejected') {
                 // Reject the booking
                 $approval->reject($userId, $comments);
-                app(BookingHistoryService::class)->recordBookingApprovalDecision((string) $booking->id, (string) $approval->id, 'rejected', $comments, $userId);
 
                 $booking->update([
                     'status' => 'rejected',
@@ -463,7 +469,6 @@ class BookingApprovalService
                 if ($approval->current_step >= $approval->total_steps) {
                     // All steps complete - approve the booking
                     $approval->approve($userId, $comments);
-                    app(BookingHistoryService::class)->recordBookingApprovalDecision((string) $booking->id, (string) $approval->id, 'approved', $comments, $userId);
 
                     $booking->update([
                         'status' => 'confirmed',

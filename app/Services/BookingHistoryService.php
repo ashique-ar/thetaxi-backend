@@ -58,7 +58,7 @@ class BookingHistoryService
         'stop_type', 'route_order', 'completed_at', 'completed_action', 'skip_reason',
         'assignment_id', 'start_time', 'end_time', 'total_distance_km', 'linked_booking_id',
         'call_status', 'follow_up_due_at', 'follow_up_completed_at',
-        'exception_type', 'resolved_by', 'resolved_at', 'detected_at',
+        'exception_type', 'details', 'resolved_by', 'resolved_at', 'detected_at',
         'booking_collection_work_item_id', 'recipient_user_id', 'reminder_type', 'channel',
         'schedule_due_date', 'outstanding_amount', 'source_currency', 'database_notification_id', 'dispatched_at',
         'points', 'balance_before', 'balance_after', 'amount_spent', 'earning_rate',
@@ -86,7 +86,7 @@ class BookingHistoryService
         'additional_charges', 'late_return_fee', 'documents_generated', 'agreements_signed',
         'quantity', 'addon_id', 'price', 'variable_name',
         'variable_type', 'original_value', 'custom_value', 'customization_reason',
-        'qty', 'rate', 'is_insurance', 'is_milage', 'label',
+        'context', 'qty', 'rate', 'is_insurance', 'is_milage', 'label',
         'decision', 'actor_type', 'effective_at', 'current_step', 'total_steps',
         'booking_payment_schedule_id', 'booking_payment_receipt_id', 'receipt_id', 'allocated_at',
         'verified_at', 'submitted_by_staff_id', 'submitted_by_user_id', 'assigned_sales_profile_id', 'collection_sales_profile_id',
@@ -272,7 +272,10 @@ class BookingHistoryService
                 $old = $before[$field] ?? null;
                 $new = $model->getAttribute($field);
                 if (in_array($operation, ['created', 'deleted', 'restored'], true) || $old !== $new) {
-                    $redact = in_array($field, ['special_requirements', 'emergency_contact_name', 'emergency_contact_phone'], true);
+                    $redact = in_array($field, [
+                        'special_requirements', 'emergency_contact_name', 'emergency_contact_phone',
+                        'details', 'context',
+                    ], true);
                     $changes[$field] = [
                         'from' => $operation === 'created' || $operation === 'restored'
                             ? null
