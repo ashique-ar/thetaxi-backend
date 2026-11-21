@@ -182,7 +182,7 @@ class DriverAuthService
     public function mobileProfileRelations(): array
     {
         return [
-            'user', 'country', 'state', 'licenseType', 'documents', 'profilePhotoDocument',
+            'user', 'licenseType', 'documents', 'profilePhotoDocument',
             'defaultVehicle.make', 'defaultVehicle.model', 'defaultVehicle.group.make',
             'defaultVehicle.group.model', 'defaultVehicle.documents',
         ];
