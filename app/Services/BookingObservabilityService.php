@@ -56,9 +56,7 @@ class BookingObservabilityService
         if ($decodedCursor) {
             $query->where('timestamp', '<=', $decodedCursor[0]);
         }
-        $query->when($filter === 'operations', fn ($scope) => $scope->where('action', 'like', '%lifecycle%'))
-            ->when($filter === 'exceptions', fn ($scope) => $scope->where('action', 'like', '%force%'))
-            ->when($filters['actor_id'] ?? null, fn ($scope, $value) => $scope->where('user_id', $value))
+        $query->when($filters['actor_id'] ?? null, fn ($scope, $value) => $scope->where('user_id', $value))
             ->when($filters['entity_type'] ?? null, fn ($scope, $value) => $scope->where('entity', $value))
             ->when($filters['entity_id'] ?? null, fn ($scope, $value) => $scope->where('entity_id', $value))
             ->when($filters['event_type'] ?? null, fn ($scope, $value) => $scope->where('action', $value));
@@ -75,34 +73,6 @@ class BookingObservabilityService
             ->when($filters['entity_type'] ?? null, fn ($scope, $value) => $scope->where('entity_type', $value))
             ->when($filters['entity_id'] ?? null, fn ($scope, $value) => $scope->where('entity_id', $value))
             ->when($filters['event_type'] ?? null, fn ($scope, $value) => $scope->where('event_type', $value))
-            ->when($filter === 'finance', fn ($scope) => $scope->where(function ($finance) {
-                $finance->where('source', 'financial_audit_events')
-                    ->orWhereIn('entity_type', ['FinancialAuditEvent', 'DriverIouAdvance'])
-                    ->orWhere('event_type', 'like', '%payment%')
-                    ->orWhere('event_type', 'like', '%refund%')
-                    ->orWhere('event_type', 'like', '%adjustment%')
-                    ->orWhere('event_type', 'like', '%price%');
-            }))
-            ->when($filter === 'operations', fn ($scope) => $scope
-                ->where(function ($source) {
-                    $source->whereNull('source')->orWhere('source', '!=', 'financial_audit_events');
-                })
-                ->whereNotIn('entity_type', ['FinancialAuditEvent', 'DriverIouAdvance', 'BookingApproval', 'DriverTrackingIncident'])
-                ->where('event_type', 'not like', '%payment%')
-                ->where('event_type', 'not like', '%refund%')
-                ->where('event_type', 'not like', '%adjustment%')
-                ->where('event_type', 'not like', '%price%')
-                ->where('event_type', 'not like', '%incident%'))
-            ->when($filter === 'administration', fn ($scope) => $scope->where(function ($admin) {
-                $admin->where('entity_type', 'BookingApproval')
-                    ->orWhere('event_type', 'like', '%status%')
-                    ->orWhere('event_type', 'like', '%assignment%');
-            }))
-            ->when($filter === 'journey', fn ($scope) => $scope->where(function ($journey) {
-                $journey->where('entity_type', 'DriverTrackingIncident')
-                    ->orWhere('event_type', 'like', '%incident%');
-            }))
-            ->when($filter === 'exceptions', fn ($scope) => $scope->where('event_type', 'like', '%deleted%'))
             ->when($decodedCursor, fn ($scope) => $scope->where('occurred_at', '<=', $decodedCursor[0]))
             ->tap(fn ($scope) => $this->applyTraceDateFilters($scope, 'occurred_at', $filters))
             ->orderByDesc('occurred_at')->orderByDesc('id')->limit($limit + 1)->get()
@@ -141,19 +111,6 @@ class BookingObservabilityService
             ->when(isset($filters['entity_type']) && strcasecmp($filters['entity_type'], 'BookingActivity') !== 0, fn ($query) => $query->whereRaw('1 = 0'))
             ->when($filters['entity_id'] ?? null, fn ($query, $value) => $query->whereKey($value))
             ->when($filters['event_type'] ?? null, fn ($query, $value) => $query->where('event_key', $value))
-            ->when($filter === 'finance', fn ($query) => $query->whereIn('event_key', ['trip_price_changed', 'additional_rental_charge_added']))
-            ->when($filter === 'operations', fn ($query) => $query->whereIn('event_key', [
-                'booking_updated', 'booking_vehicle_changed', 'resource_swap_completed',
-                'booking_responsible_user_changed', 'rental_return_no_show', 'replacement_requested',
-                'replacement_request_closed', 'rental_extension_requested', 'rental_extension_approved',
-                'rental_extension_rejected',
-            ]))
-            ->when($filter === 'administration', fn ($query) => $query->whereIn('event_key', [
-                'booking_vehicle_changed', 'resource_swap_completed', 'booking_responsible_user_changed',
-                'rental_return_no_show', 'replacement_requested', 'replacement_request_closed',
-                'rental_extension_requested', 'rental_extension_approved', 'rental_extension_rejected',
-            ]))
-            ->when($filter === 'exceptions', fn ($query) => $query->whereRaw('1 = 0'))
             ->when($bookingItemId, fn ($query) => $query->where(fn ($scope) => $scope
                 ->whereNull('booking_item_id')->orWhere('booking_item_id', $bookingItemId)))
             ->when($decodedCursor, fn ($query) => $query->where('event_at', '<=', $decodedCursor[0]))
@@ -231,7 +188,6 @@ class BookingObservabilityService
         $financialQuery = FinancialAuditEvent::query()
             ->with('performedBy:id,first_name,last_name')
             ->where('booking_id', $booking->id)
-            ->when($filter === 'exceptions', fn ($query) => $query->whereIn('event_type', ['disputed', 'refund', 'security_deposit_refunded']))
             ->whereNotExists(fn ($query) => $query->selectRaw('1')
                 ->from('booking_history_events as financial_history')
                 ->whereColumn('financial_history.booking_id', 'financial_audit_events.booking_id')
@@ -248,14 +204,14 @@ class BookingObservabilityService
             ->limit($limit + 1)->get()
             ->map(fn(FinancialAuditEvent $event): array => $this->mapFinancialEvent($booking, $event));
 
-        $tripEvents = $bookingItemId && $filter !== 'exceptions'
+        $tripEvents = $bookingItemId
             ? $this->tripMilestoneEvents($booking, $bookingItemId, $decodedCursor, $limit + 1)
             : collect();
         $tripStopEvents = $bookingItemId
-            ? $this->tripStopEvents($booking, $bookingItemId, $decodedCursor, $limit + 1, $filter)
+            ? $this->tripStopEvents($booking, $bookingItemId, $decodedCursor, $limit + 1)
             : collect();
         $recoveryEvents = $bookingItemId
-            ? $this->hireRecoveryEvents($booking, $bookingItemId, $decodedCursor, $limit + 1, $filter)
+            ? $this->hireRecoveryEvents($booking, $bookingItemId, $decodedCursor, $limit + 1)
             : collect();
         $communicationEvents = $this->communicationItems($booking, $bookingItemId)
             ->when(!$bookingItemId, fn(Collection $items) => $items->whereNull('booking_item_id'))
@@ -1301,7 +1257,7 @@ class BookingObservabilityService
         })->values();
     }
 
-    private function hireRecoveryEvents(Booking $booking, string $bookingItemId, ?array $cursor, int $limit, string $filter): Collection
+    private function hireRecoveryEvents(Booking $booking, string $bookingItemId, ?array $cursor, int $limit): Collection
     {
         $assignments = DriverAssignment::query()
             ->with('driver.user:id,first_name,last_name')
@@ -1312,7 +1268,6 @@ class BookingObservabilityService
 
         return DB::table('driver_hire_recovery_events')
             ->whereIn('assignment_id', $assignments->pluck('id'))
-            ->when($filter === 'exceptions', fn ($query) => $query->whereIn('outcome', ['failed', 'uncertain', 'error']))
             ->when($cursor, fn ($query) => $query->where('occurred_at', '<=', $cursor[0]))
             ->orderByDesc('occurred_at')->orderByDesc('event_id')->limit($limit)->get()
             ->map(function ($event) use ($booking, $bookingItemId, $assignments): array {
@@ -1350,13 +1305,12 @@ class BookingObservabilityService
             });
     }
 
-    private function tripStopEvents(Booking $booking, string $bookingItemId, ?array $cursor, int $limit, string $filter): Collection
+    private function tripStopEvents(Booking $booking, string $bookingItemId, ?array $cursor, int $limit): Collection
     {
         return DriverAssignment::query()
             ->with(['driver.user:id,first_name,last_name', 'stops'])
             ->where('booking_id', $booking->id)
             ->where('booking_item_id', $bookingItemId)
-            ->when($filter === 'exceptions', fn ($query) => $query->whereHas('stops', fn ($stops) => $stops->where('status', 'skipped')))
             ->when($cursor, fn ($query) => $query->where('created_at', '<=', $cursor[0]))
             ->orderByDesc('created_at')->orderByDesc('id')->limit($limit)->get()
             ->flatMap(function (DriverAssignment $assignment) use ($booking, $bookingItemId): array {
