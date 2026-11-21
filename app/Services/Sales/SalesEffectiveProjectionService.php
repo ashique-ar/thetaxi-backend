@@ -3,12 +3,13 @@
 namespace App\Services\Sales;
 
 use App\Models\Sales\SalesBookingAttribution;
+use App\Models\Sales\SalesAttributionException;
 use App\Models\Sales\SalesProfile;
 use App\Models\Booking\BookingCollectionWorkItem;
 use App\Models\Booking\BookingPaymentSchedule;
+use App\Services\BookingHistoryService;
 use Carbon\CarbonImmutable;
 use Illuminate\Support\Facades\DB;
-use Illuminate\Support\Str;
 
 class SalesEffectiveProjectionService
 {
@@ -111,11 +112,11 @@ class SalesEffectiveProjectionService
             && $this->profileEligibility->isEligibleAt($acquisition, ['acquisition'], $attribution->secured_at)
             && $eligibleTarget;
 
-        $attribution->update([
+        app(BookingHistoryService::class)->withReasonContext($event->reason, fn () => $attribution->update([
             'collection_sales_profile_id' => $eligibleTarget?->id,
             'status' => $active ? 'active' : 'held',
             'updated_user_id' => $event->actor_user_id,
-        ]);
+        ]));
         BookingPaymentSchedule::query()
             ->where('booking_id', $attribution->booking_id)
             ->whereNull('deleted_at')
@@ -134,20 +135,19 @@ class SalesEffectiveProjectionService
             ])->save());
 
         if (! $eligibleTarget) {
-            DB::table('sales_attribution_exceptions')->insertOrIgnore([
-                'id' => (string) Str::uuid(),
+            SalesAttributionException::firstOrCreate([
                 'booking_id' => $attribution->booking_id,
                 'exception_type' => $event->to_sales_profile_id
                     ? 'collection_handler_ineligible'
                     : 'collection_handler_unassigned',
                 'status' => 'open',
+            ], [
                 'details' => 'The effective collection-handler transfer could not resolve an eligible current owner.',
                 'detected_at' => now(),
-                'created_at' => now(),
-                'updated_at' => now(),
+                'created_user_id' => $event->actor_user_id,
             ]);
         } else {
-            DB::table('sales_attribution_exceptions')
+            SalesAttributionException::query()
                 ->where('booking_id', $attribution->booking_id)
                 ->whereIn('exception_type', [
                     'collection_handler_missing',
@@ -155,13 +155,12 @@ class SalesEffectiveProjectionService
                     'collection_handler_unassigned',
                 ])
                 ->where('status', 'open')
-                ->update([
+                ->get()->each(fn (SalesAttributionException $exception) => $exception->update([
                     'status' => 'resolved',
                     'resolved_by' => $event->actor_user_id,
                     'resolved_at' => now(),
                     'resolution' => $event->reason,
-                    'updated_at' => now(),
-                ]);
+                ]));
         }
 
         DB::table('sales_booking_attribution_events')->where('id', $event->id)->update([

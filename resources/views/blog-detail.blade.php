@@ -299,20 +299,20 @@
                                     <div class="row g-4 mb-50">
                                         <div class="col-md-6">
                                             <div class="form-inner two">
-                                                <label>Full Name</label>
-                                                <input type="text" placeholder="Mr. Daniel">
+                                                <label for="blog-comment-name">Full Name</label>
+                                                <input id="blog-comment-name" type="text" autocomplete="name" placeholder="Mr. Daniel">
                                             </div>
                                         </div>
                                         <div class="col-md-6">
                                             <div class="form-inner two">
-                                                <label>Your Email</label>
-                                                <input type="email" placeholder="info@example.com">
+                                                <label for="blog-comment-email">Your Email</label>
+                                                <input id="blog-comment-email" type="email" autocomplete="email" placeholder="info@example.com">
                                             </div>
                                         </div>
                                         <div class="col-md-12">
                                             <div class="form-inner two">
-                                                <label>Message</label>
-                                                <textarea placeholder="Write comment"></textarea>
+                                                <label for="blog-comment-message">Message</label>
+                                                <textarea id="blog-comment-message" placeholder="Write comment"></textarea>
                                             </div>
                                         </div>
                                         <div class="col-md-12">

@@ -341,9 +341,12 @@ class CollectionScheduleWorkflowService
                 BookingCollectionWorkItem::query()->where('booking_payment_schedule_id', $schedule->id)
                     ->where('booking_id', $booking->id)
                     ->whereIn('status', ['open', 'upcoming', 'due', 'overdue'])
-                    ->update($schedule->status === 'paid'
-                        ? ['status' => 'completed', 'completed_at' => now(), 'updated_at' => now()]
-                        : ['completed_at' => null, 'updated_at' => now()]);
+                    ->get()->each(fn (BookingCollectionWorkItem $workItem) => $workItem->forceFill([
+                        ...($schedule->status === 'paid'
+                            ? ['status' => 'completed', 'completed_at' => now()]
+                            : ['completed_at' => null]),
+                        'updated_user_id' => $actorUserId,
+                    ])->save());
             }
 
             return $submission;

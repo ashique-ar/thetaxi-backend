@@ -5,6 +5,7 @@ namespace App\Services\Sales;
 use App\Contracts\Foundation\DomainEventPublisher;
 use App\Models\Booking\Booking;
 use App\Models\Sales\SalesBookingAttribution;
+use App\Models\Sales\SalesAttributionException;
 use App\Models\Sales\SalesProfile;
 use App\Models\Staff;
 use Carbon\CarbonInterface;
@@ -96,15 +97,14 @@ class BookingAttributionService
                 $currency,
             );
             if ($stageUnownedHistorical && ! $this->hasHistoricalOwnerSource($booking)) {
-                DB::table('sales_attribution_exceptions')->insertOrIgnore([
-                    'id' => (string) Str::uuid(),
+                SalesAttributionException::firstOrCreate([
                     'booking_id' => $booking->id,
                     'exception_type' => 'historical_owner_review_required',
                     'status' => 'open',
+                ], [
                     'details' => 'Historical booking ownership must be reviewed before assigning a salesperson.',
                     'detected_at' => now(),
-                    'created_at' => now(),
-                    'updated_at' => now(),
+                    'created_user_id' => $booking->updated_user_id ?? $booking->created_user_id,
                 ]);
             }
             $attribution = $this->commissionPlans->freezeFamilyForAttribution($attribution) ?? $attribution;
@@ -318,15 +318,14 @@ class BookingAttributionService
         ]);
 
         foreach ($exceptions as $type => $details) {
-            DB::table('sales_attribution_exceptions')->insertOrIgnore([
-                'id' => (string) Str::uuid(),
+            SalesAttributionException::firstOrCreate([
                 'booking_id' => $booking->id,
                 'exception_type' => $type,
                 'status' => 'open',
+            ], [
                 'details' => $details,
                 'detected_at' => now(),
-                'created_at' => now(),
-                'updated_at' => now(),
+                'created_user_id' => $booking->updated_user_id ?? $booking->created_user_id,
             ]);
         }
     }

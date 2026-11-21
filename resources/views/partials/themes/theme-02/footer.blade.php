@@ -9,7 +9,7 @@
             <div class="row align-items-center">
                 <div class="col-lg-6">
                     <div class="newsletter-content">
-                        <h4>{{ $settings['theme02_newsletter_heading'] ?? $settings['footer_newsletter_heading'] ?? 'Subscribe to Our Newsletter' }}</h4>
+                        <h4 id="t2-newsletter-title">{{ $settings['theme02_newsletter_heading'] ?? $settings['footer_newsletter_heading'] ?? 'Subscribe to Our Newsletter' }}</h4>
                         <p>{{ $settings['theme02_newsletter_subheading'] ?? $settings['footer_newsletter_subheading'] ?? 'Get the latest updates and offers.' }}</p>
                     </div>
                 </div>
@@ -17,7 +17,8 @@
                     <form class="newsletter-form" action="{{ $settings['footer_newsletter_action'] ?? '#' }}" method="POST">
                         @csrf
                         <div class="input-group">
-                            <input type="email" name="email" class="form-control" placeholder="{{ $settings['footer_newsletter_placeholder'] ?? 'Enter your email' }}" required>
+                            <label class="visually-hidden" for="t2-newsletter-email">Email address</label>
+                            <input id="t2-newsletter-email" type="email" name="email" class="form-control" placeholder="{{ $settings['footer_newsletter_placeholder'] ?? 'Enter your email' }}" autocomplete="email" required>
                             <button type="submit" class="btn btn-primary">{{ $settings['footer_newsletter_button'] ?? 'Subscribe' }}</button>
                         </div>
                     </form>

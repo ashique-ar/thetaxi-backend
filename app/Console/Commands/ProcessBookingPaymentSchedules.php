@@ -3,6 +3,7 @@
 namespace App\Console\Commands;
 
 use App\Models\Booking\BookingCollectionWorkItem;
+use App\Models\Booking\BookingCollectionReminderDelivery;
 use App\Models\Booking\Booking;
 use App\Models\Booking\BookingPaymentSchedule;
 use App\Models\Booking\BookingPaymentScheduleRule;
@@ -180,8 +181,7 @@ class ProcessBookingPaymentSchedules extends Command
                             'notifiable_id' => $user->id,
                             'data' => $payload,
                         ]);
-                        DB::table('booking_collection_reminder_deliveries')->insert([
-                            'id' => (string) Str::uuid(),
+                        BookingCollectionReminderDelivery::create([
                             'booking_id' => $lockedSchedule->booking_id,
                             'booking_payment_schedule_id' => $lockedSchedule->id,
                             'booking_collection_work_item_id' => $workItem->id,
@@ -200,8 +200,6 @@ class ProcessBookingPaymentSchedules extends Command
                                 ['notification' => $payload, 'delivery' => $deliveryFacts],
                                 JSON_THROW_ON_ERROR | JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE,
                             )),
-                            'created_at' => now(),
-                            'updated_at' => now(),
                         ]);
 
                         $lockedSchedule->update([

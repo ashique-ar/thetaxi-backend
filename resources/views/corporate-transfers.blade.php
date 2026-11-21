@@ -59,13 +59,13 @@
                                         <path d="M2 2h14v14H2V2zm2 2v10h10V4H4zm2 2h6v1H6V6zm0 2h6v1H6V8zm0 2h4v1H6v-1z" />
                                     </svg>
                                     <div class="custom-select-dropdown">
-                                        <input type="text" name="company_name"
+                                        <input id="corporate-company-name" type="text" name="company_name"
                                             placeholder="{{ $settings['corporate_form_company_placeholder'] ?? 'Company Name' }}"
                                             class="@error('company_name') is-invalid @enderror"
-                                            value="{{ old('company_name') }}" required autocomplete="off">
+                                            value="{{ old('company_name') }}" required autocomplete="organization" aria-label="Company name" aria-invalid="{{ $errors->has('company_name') ? 'true' : 'false' }}" @if ($errors->has('company_name')) aria-describedby="corporate-company-name-error" @endif>
                                     </div>
                                     @error('company_name')
-                                        <span class="text-danger small">{{ $message }}</span>
+                                        <span id="corporate-company-name-error" class="text-danger small" role="alert">{{ $message }}</span>
                                     @enderror
                                 </div>
 
@@ -77,13 +77,13 @@
                                             d="M9 9c2.5 0 4.5-2 4.5-4.5S11.5 0 9 0 4.5 2 4.5 4.5 6.5 9 9 9zm0 1.5c-3 0-9 1.5-9 4.5V18h18v-3c0-3-6-4.5-9-4.5z" />
                                     </svg>
                                     <div class="custom-select-dropdown">
-                                        <input type="text" name="contact_person"
+                                        <input id="corporate-contact-person" type="text" name="contact_person"
                                             placeholder="{{ $settings['corporate_form_contact_placeholder'] ?? 'Contact Person' }}"
                                             class="@error('contact_person') is-invalid @enderror"
-                                            value="{{ old('contact_person') }}" required autocomplete="off">
+                                            value="{{ old('contact_person') }}" required autocomplete="name" aria-label="Contact person" aria-invalid="{{ $errors->has('contact_person') ? 'true' : 'false' }}" @if ($errors->has('contact_person')) aria-describedby="corporate-contact-person-error" @endif>
                                     </div>
                                     @error('contact_person')
-                                        <span class="text-danger small">{{ $message }}</span>
+                                        <span id="corporate-contact-person-error" class="text-danger small" role="alert">{{ $message }}</span>
                                     @enderror
                                 </div>
 
@@ -95,13 +95,13 @@
                                             d="M16 2H2c-1.1 0-2 .9-2 2v10c0 1.1.9 2 2 2h14c1.1 0 2-.9 2-2V4c0-1.1-.9-2-2-2zm0 2l-7 4.5L2 4h14zm0 10H2V6l7 4.5L16 6v8z" />
                                     </svg>
                                     <div class="custom-select-dropdown">
-                                        <input type="email" name="email"
+                                        <input id="corporate-email" type="email" name="email"
                                             placeholder="{{ $settings['corporate_form_email_placeholder'] ?? 'Email Address' }}"
                                             class="@error('email') is-invalid @enderror" value="{{ old('email') }}"
-                                            required autocomplete="off">
+                                            required autocomplete="email" aria-label="Email address" aria-invalid="{{ $errors->has('email') ? 'true' : 'false' }}" @if ($errors->has('email')) aria-describedby="corporate-email-error" @endif>
                                     </div>
                                     @error('email')
-                                        <span class="text-danger small">{{ $message }}</span>
+                                        <span id="corporate-email-error" class="text-danger small" role="alert">{{ $message }}</span>
                                     @enderror
                                 </div>
 
@@ -116,10 +116,10 @@
                                     <input type="tel" id="corporate-mobile" name="phone"
                                         placeholder="{{ $settings['corporate_form_phone_placeholder'] ?? 'Mobile Number' }}"
                                         class="@error('phone') is-invalid @enderror" value="{{ old('phone') }}" required
-                                        autocomplete="off">
+                                        autocomplete="tel" aria-label="Mobile number" aria-invalid="{{ $errors->has('phone') ? 'true' : 'false' }}" @if ($errors->has('phone')) aria-describedby="corporate-phone-error" @endif>
                                     {{-- </div> --}}
                                     @error('phone')
-                                        <span class="text-danger small">{{ $message }}</span>
+                                        <span id="corporate-phone-error" class="text-danger small" role="alert">{{ $message }}</span>
                                     @enderror
                                 </div>
 
@@ -129,7 +129,8 @@
                                         xmlns="http://www.w3.org/2000/svg">
                                         <path d="M9 1L2 4v6c0 5.55 3.84 10.74 9 12 5.16-1.26 9-6.45 9-12V4L9 1z" />
                                     </svg>
-                                    <select name="service_type_select" id="service-type-select"
+                                    <select name="service_type_select" id="service-type-select" aria-label="Service type"
+                                        aria-invalid="{{ $errors->has('service_type_select') ? 'true' : 'false' }}" @if ($errors->has('service_type_select')) aria-describedby="corporate-service-type-error" @endif
                                         class="form-select @error('service_type_select') is-invalid @enderror" required>
                                         <option value="">Select Service Type</option>
                                         <option value="airport_transfer"
@@ -149,7 +150,7 @@
                                         </option>
                                     </select>
                                     @error('service_type_select')
-                                        <span class="text-danger small">{{ $message }}</span>
+                                        <span id="corporate-service-type-error" class="text-danger small" role="alert">{{ $message }}</span>
                                     @enderror
                                 </div>
 
@@ -162,9 +163,9 @@
                                     <input type="text" id="other-service-input" name="other_service_type"
                                         placeholder="Specify the service type"
                                         class="@error('other_service_type') is-invalid @enderror"
-                                        value="{{ old('other_service_type') }}" autocomplete="off">
+                                        value="{{ old('other_service_type') }}" autocomplete="off" aria-label="Other service type" aria-invalid="{{ $errors->has('other_service_type') ? 'true' : 'false' }}" @if ($errors->has('other_service_type')) aria-describedby="corporate-other-service-error" @endif>
                                     @error('other_service_type')
-                                        <span class="text-danger small">{{ $message }}</span>
+                                        <span id="corporate-other-service-error" class="text-danger small" role="alert">{{ $message }}</span>
                                     @enderror
                                 </div>
 
@@ -175,7 +176,8 @@
                                         <path
                                             d="M9 9c2.5 0 4.5-2 4.5-4.5S11.5 0 9 0 4.5 2 4.5 4.5 6.5 9 9 9zm0 1.5c-3 0-9 1.5-9 4.5V18h18v-3c0-3-6-4.5-9-4.5z" />
                                     </svg>
-                                    <select name="employee_strength" id="employee-strength"
+                                    <select name="employee_strength" id="employee-strength" aria-label="Employee strength"
+                                        aria-invalid="{{ $errors->has('employee_strength') ? 'true' : 'false' }}" @if ($errors->has('employee_strength')) aria-describedby="corporate-employee-strength-error" @endif
                                         class="form-select @error('employee_strength') is-invalid @enderror" required>
                                         <option value="">Select Employee Strength</option>
                                         <option value="1-10" {{ old('employee_strength') == '1-10' ? 'selected' : '' }}>
@@ -195,7 +197,7 @@
                                         </option>
                                     </select>
                                     @error('employee_strength')
-                                        <span class="text-danger small">{{ $message }}</span>
+                                        <span id="corporate-employee-strength-error" class="text-danger small" role="alert">{{ $message }}</span>
                                     @enderror
                                 </div>
 
@@ -206,22 +208,22 @@
                                         <path d="M9 1L2 4v6c0 5.55 3.84 10.74 9 12 5.16-1.26 9-6.45 9-12V4L9 1z" />
                                     </svg>
                                     <div class="custom-select-dropdown">
-                                        <input type="text" name="city_name" placeholder="City Name"
+                                        <input type="text" id="corporate-city-name" name="city_name" placeholder="City Name"
                                             class="nice-select @error('city_name') is-invalid @enderror"
-                                            value="{{ old('city_name') }}" required autocomplete="off">
+                                            value="{{ old('city_name') }}" required autocomplete="address-level2" aria-label="City" aria-invalid="{{ $errors->has('city_name') ? 'true' : 'false' }}" @if ($errors->has('city_name')) aria-describedby="corporate-city-name-error" @endif>
                                     </div>
                                     @error('city_name')
-                                        <span class="text-danger small">{{ $message }}</span>
+                                        <span id="corporate-city-name-error" class="text-danger small" role="alert">{{ $message }}</span>
                                     @enderror
                                 </div>
 
                                 <!-- Service Requirements - Full Width -->
                                 <div class="corporate-requirements-field">
-                                    <textarea name="requirements"
+                                    <textarea id="corporate-requirements" name="requirements" aria-label="Transport requirements"
                                         placeholder="{{ $settings['corporate_form_requirements_placeholder'] ?? 'Describe your corporate transport requirements...' }}"
-                                        class="@error('requirements') is-invalid @enderror" rows="4" required>{{ old('requirements') }}</textarea>
+                                        class="@error('requirements') is-invalid @enderror" rows="4" required aria-invalid="{{ $errors->has('requirements') ? 'true' : 'false' }}" @if ($errors->has('requirements')) aria-describedby="corporate-requirements-error" @endif>{{ old('requirements') }}</textarea>
                                     @error('requirements')
-                                        <span class="text-danger small">{{ $message }}</span>
+                                        <span id="corporate-requirements-error" class="text-danger small" role="alert">{{ $message }}</span>
                                     @enderror
                                 </div>
 

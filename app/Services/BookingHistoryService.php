@@ -58,6 +58,9 @@ class BookingHistoryService
         'stop_type', 'route_order', 'completed_at', 'completed_action', 'skip_reason',
         'assignment_id', 'start_time', 'end_time', 'total_distance_km', 'linked_booking_id',
         'call_status', 'follow_up_due_at', 'follow_up_completed_at',
+        'exception_type', 'resolved_by', 'resolved_at', 'detected_at',
+        'booking_collection_work_item_id', 'recipient_user_id', 'reminder_type', 'channel',
+        'schedule_due_date', 'outstanding_amount', 'source_currency', 'database_notification_id', 'dispatched_at',
         'points', 'balance_before', 'balance_after', 'amount_spent', 'earning_rate',
         'redemption_value', 'redemption_rate', 'expired_at', 'processed_at',
         'charge_amount', 'paid_before_amount', 'refund_amount', 'adjustment_amount',
@@ -83,11 +86,29 @@ class BookingHistoryService
         'additional_charges', 'late_return_fee', 'documents_generated', 'agreements_signed',
         'quantity', 'addon_id', 'price', 'variable_name',
         'variable_type', 'original_value', 'custom_value', 'customization_reason',
-        'context', 'qty', 'rate', 'is_insurance', 'is_milage', 'label',
+        'qty', 'rate', 'is_insurance', 'is_milage', 'label',
         'decision', 'actor_type', 'effective_at', 'current_step', 'total_steps',
         'booking_payment_schedule_id', 'booking_payment_receipt_id', 'receipt_id', 'allocated_at',
         'verified_at', 'submitted_by_staff_id', 'submitted_by_user_id', 'assigned_sales_profile_id', 'collection_sales_profile_id',
     ];
+
+    public function withReasonContext(?string $reason, callable $callback): mixed
+    {
+        $request = request();
+        $hadReason = $request->attributes->has('booking_history_reason');
+        $previousReason = $request->attributes->get('booking_history_reason');
+        $request->attributes->set('booking_history_reason', $reason);
+
+        try {
+            return $callback();
+        } finally {
+            if ($hadReason) {
+                $request->attributes->set('booking_history_reason', $previousReason);
+            } else {
+                $request->attributes->remove('booking_history_reason');
+            }
+        }
+    }
 
     public function recordFinancialAuditEvent(FinancialAuditEvent $event, string $provenance = 'live'): void
     {
@@ -268,7 +289,11 @@ class BookingHistoryService
         $request = request();
         $actor = Auth::user();
         if (!$actor) {
-            $actorId = $model->getAttribute('updated_user_id') ?? ($before['updated_user_id'] ?? null);
+            $actorId = $model->getAttribute('updated_user_id')
+                ?? ($operation === 'created' ? $model->getAttribute('created_user_id') : null)
+                ?? ($model instanceof \App\Models\Booking\BookingPaymentScheduleRevision ? $model->getAttribute('approved_by') : null)
+                ?? $model->getAttribute('resolved_by')
+                ?? ($before['updated_user_id'] ?? null);
             $actor = $actorId ? User::query()->find($actorId) : null;
         }
         $requestReason = $reasonOverride;
@@ -281,6 +306,7 @@ class BookingHistoryService
                 ?? data_get($model->getAttribute('meta'), 'reason')
                 ?? $model->getAttribute('approval_note')
                 ?? $model->getAttribute('approval_justification')
+                ?? $model->getAttribute('resolution')
                 ?? $model->getAttribute('price_override_reason')
                 ?? $model->getAttribute('justification')
                 ?? $model->getAttribute('customization_reason')
@@ -340,12 +366,16 @@ class BookingHistoryService
         if ($model instanceof \App\Models\Vehicle\VehicleMaintenanceSchedule) return 'booking_maintenance_schedule_' . (isset($changes['status']) ? 'status_changed' : $operation);
         if ($model instanceof \App\Models\Corporate\CorporateTransportGenerationLog) return 'booking_transport_generation_' . (isset($changes['status']) ? 'status_changed' : $operation);
         if ($model instanceof \App\Models\Sales\SalesOpportunity) return 'booking_sales_opportunity_' . $operation;
+        if ($model instanceof \App\Models\Sales\SalesAttributionException) {
+            return $model->status === 'resolved' ? 'booking_sales_attribution_exception_resolved' : 'booking_sales_attribution_exception_' . $operation;
+        }
         if ($model instanceof \App\Models\Sales\SalesTask) return 'booking_sales_task_' . (isset($changes['status']) ? 'status_changed' : $operation);
         if ($model instanceof \App\Models\Vehicle\VehiclePricing\BookingPriceAdjustmentHistory) return 'booking_price_adjustment_recorded';
         if ($model instanceof \App\Models\Booking\BookingPaymentReceiptFinalityEvent) return 'payment_receipt_finality_changed';
         if ($model instanceof \App\Models\Booking\BookingCollectionSubmission) {
             return isset($changes['status']) ? 'collection_submission_decided' : 'collection_submission_recorded';
         }
+        if ($model instanceof \App\Models\Booking\BookingCollectionReminderDelivery) return 'booking_collection_reminder_dispatched';
         if ($model instanceof \App\Models\Booking\BookingPaymentScheduleRuleEvent) return 'collection_schedule_rule_changed';
         if ($model instanceof \App\Models\Booking\BookingPaymentScheduleRevision) return 'collection_schedule_revised';
         if ($model instanceof \App\Models\Booking\BookingPaymentAdjustment) return 'booking_payment_adjustment_recorded';
@@ -392,7 +422,7 @@ class BookingHistoryService
         if ($value instanceof \BackedEnum) return $value->value;
         if ($value instanceof \DateTimeInterface) return $value->format(DATE_ATOM);
         if (is_scalar($value) || $value === null) return $value;
-        if (is_array($value)) return $value;
+        if (is_array($value)) return '[redacted]';
 
         return (string) $value;
     }

@@ -21,20 +21,20 @@
                     @csrf
                     <fieldset class="mb-4">
                         <legend class="form-label">Choose a rating from 1 to 5</legend>
-                        <div class="d-flex flex-wrap gap-3" role="radiogroup" aria-label="Trip rating">
+                        <div class="d-flex flex-wrap gap-3" role="radiogroup" aria-label="Trip rating" aria-required="true" aria-invalid="{{ $errors->has('rating') ? 'true' : 'false' }}" @if ($errors->has('rating')) aria-describedby="feedback-rating-error" @endif>
                             @foreach (range(1, 5) as $rating)
                                 <label class="d-flex align-items-center gap-2 border rounded px-3 py-2">
-                                    <input type="radio" name="rating" value="{{ $rating }}" @checked((string) old('rating') === (string) $rating) required>
+                                    <input type="radio" name="rating" value="{{ $rating }}" @checked((string) old('rating') === (string) $rating) aria-invalid="{{ $errors->has('rating') ? 'true' : 'false' }}" @if ($errors->has('rating')) aria-describedby="feedback-rating-error" @endif required>
                                     <span>{{ $rating }} {{ $rating === 1 ? 'star' : 'stars' }}</span>
                                 </label>
                             @endforeach
                         </div>
-                        @error('rating')<div class="text-danger mt-2" role="alert">Please choose a rating.</div>@enderror
+                        @error('rating')<div id="feedback-rating-error" class="text-danger mt-2" role="alert">Please choose a rating.</div>@enderror
                     </fieldset>
                     <div class="mb-4">
                         <label for="comment" class="form-label">Anything you would like us to know? <span class="text-muted">(optional)</span></label>
-                        <textarea id="comment" name="comment" class="form-control" rows="4" maxlength="1000">{{ old('comment') }}</textarea>
-                        @error('comment')<div class="text-danger mt-2" role="alert">{{ $message }}</div>@enderror
+                        <textarea id="comment" name="comment" class="form-control @error('comment') is-invalid @enderror" rows="4" maxlength="1000" aria-invalid="{{ $errors->has('comment') ? 'true' : 'false' }}" @if ($errors->has('comment')) aria-describedby="feedback-comment-error" @endif>{{ old('comment') }}</textarea>
+                        @error('comment')<div id="feedback-comment-error" class="invalid-feedback" role="alert">{{ $message }}</div>@enderror
                     </div>
                     <button class="btn btn-primary" type="submit">Send feedback</button>
                 </form>

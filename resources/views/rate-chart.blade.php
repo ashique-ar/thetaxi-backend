@@ -890,20 +890,20 @@
 
                     <div class="row g-3">
                         <div class="col-md-6">
-                            <label class="form-label">First Name *</label>
-                            <input type="text" class="form-control" name="first_name" required>
+                            <label class="form-label" for="quotation-first-name">First Name *</label>
+                            <input id="quotation-first-name" type="text" class="form-control" name="first_name" autocomplete="given-name" required>
                         </div>
                         <div class="col-md-6">
-                            <label class="form-label">Last Name *</label>
-                            <input type="text" class="form-control" name="last_name">
+                            <label class="form-label" for="quotation-last-name">Last Name</label>
+                            <input id="quotation-last-name" type="text" class="form-control" name="last_name" autocomplete="family-name">
                         </div>
                         <div class="col-md-6">
-                            <label class="form-label">Email *</label>
-                            <input type="email" class="form-control" name="email" required>
+                            <label class="form-label" for="quotation-email">Email *</label>
+                            <input id="quotation-email" type="email" class="form-control" name="email" autocomplete="email" required>
                         </div>
                         <div class="col-md-6">
-                            <label class="form-label">Country *</label>
-                            <select class="form-select no-nice quotation-phone-country-select" name="phone_country" required>
+                            <label class="form-label" for="quotation-phone-country">Country *</label>
+                            <select id="quotation-phone-country" class="form-select no-nice quotation-phone-country-select" name="phone_country" autocomplete="country" required>
                                 <option value="">Select Country</option>
                                 @foreach ($quotationCountries as $country)
                                     <option value="{{ strtolower($country->code ?? '') }}"
@@ -917,14 +917,14 @@
                             </select>
                         </div>
                         <div class="col-md-6">
-                            <label class="form-label">Phone *</label>
-                            <input type="tel" class="form-control quotation-phone-input" name="phone" required>
+                            <label class="form-label" for="quotation-phone">Phone *</label>
+                            <input id="quotation-phone" type="tel" class="form-control quotation-phone-input" name="phone" autocomplete="tel-national" required>
                             <input type="hidden" name="phone_country_code" class="quotation-phone-country-code">
                             <input type="hidden" name="phone_international" class="quotation-phone-international">
                         </div>
                         <div class="col-12">
-                            <label class="form-label">Additional Requirements</label>
-                            <textarea class="form-control" name="requirements" rows="3"
+                            <label class="form-label" for="quotation-requirements">Additional Requirements</label>
+                            <textarea id="quotation-requirements" class="form-control" name="requirements" rows="3"
                                 placeholder="Please describe preferred dates, rental duration, pickup location, or other requirements..."></textarea>
                         </div>
                     </div>

@@ -4,7 +4,9 @@ namespace App\Services\Sales;
 
 use App\Contracts\Foundation\DomainEventPublisher;
 use App\Models\Sales\SalesBookingAttribution;
+use App\Models\Sales\SalesAttributionException;
 use App\Models\Sales\SalesProfile;
+use App\Services\BookingHistoryService;
 use App\Support\Foundation\CanonicalJson;
 use Carbon\CarbonImmutable;
 use Carbon\CarbonInterface;
@@ -275,7 +277,7 @@ class BookingAttributionMutationService
                 $projection[$field] = $target?->id;
                 $projection['status'] = $this->projectionStatus($locked, $field, $target, $profiles);
             }
-            $locked->update($projection);
+            app(BookingHistoryService::class)->withReasonContext($reason, fn () => $locked->update($projection));
 
             $this->events->record(
                 'sales',
@@ -303,15 +305,14 @@ class BookingAttributionMutationService
                     $actorUserId,
                 );
             } elseif ($effectiveAt->lte(now()) && $field === 'collection_sales_profile_id') {
-                DB::table('sales_attribution_exceptions')->insertOrIgnore([
-                    'id' => (string) Str::uuid(),
+                SalesAttributionException::firstOrCreate([
                     'booking_id' => $locked->booking_id,
                     'exception_type' => 'collection_handler_unassigned',
                     'status' => 'open',
+                ], [
                     'details' => 'The collection portfolio was explicitly left unassigned by an audited transfer.',
                     'detected_at' => now(),
-                    'created_at' => now(),
-                    'updated_at' => now(),
+                    'created_user_id' => $actorUserId,
                 ]);
             }
 
@@ -321,17 +322,16 @@ class BookingAttributionMutationService
 
     private function resolveExceptions(string $bookingId, array $types, string $reason, string $actorUserId): void
     {
-        DB::table('sales_attribution_exceptions')
+        SalesAttributionException::query()
             ->where('booking_id', $bookingId)
             ->whereIn('exception_type', $types)
             ->where('status', 'open')
-            ->update([
+            ->get()->each(fn (SalesAttributionException $exception) => $exception->update([
                 'status' => 'resolved',
                 'resolved_by' => $actorUserId,
                 'resolved_at' => now(),
                 'resolution' => $reason,
-                'updated_at' => now(),
-            ]);
+            ]));
     }
 
     private function projectionStatus(

@@ -151,14 +151,38 @@ class CommissionStatementController extends Controller
         $page = $query
             ->when($data['status'] ?? null, fn ($q, $status) => $q->where('status', $status))
             ->latest('paid_at')->paginate($this->paginationSize($request, 25));
-        $page->getCollection()->transform(static fn (SalesCommissionPayout $payout): array => [
+        $payouts = $page->getCollection();
+        $payoutIds = $payouts->pluck('id')->all();
+        $visibleStatementIds = (clone $visibleStatements)->select('id');
+        $allocations = $payoutIds === [] ? collect() : DB::table('sales_commission_payout_allocations as allocation')
+            ->join('sales_commission_statements as statement', 'statement.id', '=', 'allocation.statement_id')
+            ->whereIn('allocation.payout_id', $payoutIds)->whereIn('allocation.statement_id', $visibleStatementIds)
+            ->orderBy('statement.period_end')->get([
+                'allocation.payout_id', 'statement.id as statement_id', 'statement.statement_number',
+                'statement.period_start', 'statement.period_end', 'allocation.amount_lkr',
+            ])->groupBy('payout_id');
+        $reversedPayoutIds = $payouts->pluck('reverses_payout_id')->filter()->unique()->all();
+        $reversedPayoutNumbers = $reversedPayoutIds === [] ? [] : SalesCommissionPayout::query()
+            ->whereIn('id', $reversedPayoutIds)->pluck('payout_number', 'id')->all();
+        $payouts->transform(static fn (SalesCommissionPayout $payout): array => [
             'id' => (string) $payout->id,
             'payout_number' => $payout->payout_number,
             'amount_lkr' => $payout->amount_lkr,
             'payment_reference' => $payout->payment_reference,
+            'paid_at' => $payout->paid_at,
             'status' => $payout->status,
             'accounting_status' => $payout->accounting_status,
             'evidence_file_id' => $payout->evidence_file_id,
+            'reason' => $payout->reason,
+            'reverses_payout_id' => $payout->reverses_payout_id,
+            'reverses_payout_number' => $reversedPayoutNumbers[$payout->reverses_payout_id] ?? null,
+            'allocations' => ($allocations[$payout->id] ?? collect())->map(static fn ($allocation): array => [
+                'statement_id' => (string) $allocation->statement_id,
+                'statement_number' => $allocation->statement_number,
+                'period_start' => $allocation->period_start,
+                'period_end' => $allocation->period_end,
+                'amount_lkr' => $allocation->amount_lkr,
+            ])->values()->all(),
         ]);
         return response()->json(['status' => 'success', 'data' => $page]);
     }
