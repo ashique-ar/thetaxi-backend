@@ -866,7 +866,10 @@ trait BookingSubmissionTrait
 
     public function assignResponsibleUser(Request $request, string $bookingId): JsonResponse
     {
-        $data = $request->validate(['responsible_user_id' => ['present', 'nullable', 'uuid']]);
+        $data = $request->validate([
+            'responsible_user_id' => ['present', 'nullable', 'uuid'],
+            'change_reason' => ['nullable', 'string', 'max:1000'],
+        ]);
         $booking = DB::transaction(function () use ($bookingId, $data, $request) {
             $bookingQuery = Booking::query()->whereKey($bookingId);
             $booking = $bookingQuery->lockForUpdate()->firstOrFail();
@@ -887,19 +890,11 @@ trait BookingSubmissionTrait
 
             $previousOwnerId = $booking->responsible_user_id;
             if ($previousOwnerId !== $newOwnerId) {
-                $booking->forceFill(['responsible_user_id' => $newOwnerId, 'updated_user_id' => $request->user()->id])->save();
-                BookingActivity::create([
-                    'booking_id' => $booking->id,
-                    'event_key' => 'booking_responsible_user_changed',
-                    'channel' => 'system',
-                    'result_status' => 'completed',
-                    'source' => 'portal',
-                    'title' => $newOwnerId ? 'Booking owner assigned' : 'Booking owner cleared',
-                    'detail' => 'Responsible employee changed.',
-                    'idempotency_key' => 'booking-owner-'.\Illuminate\Support\Str::uuid(),
-                    'meta' => ['from_user_id' => $previousOwnerId, 'to_user_id' => $newOwnerId, 'actor_user_id' => (string) $request->user()->id],
-                    'event_at' => now(),
+                $booking->forceFill([
+                    'responsible_user_id' => $newOwnerId,
+                    'updated_user_id' => $request->user()->id,
                 ]);
+                app(\App\Services\BookingHistoryService::class)->withReasonContext($data['change_reason'] ?? null, fn () => $booking->save());
                 if ($newOwnerId) {
                     app(\App\Services\BookingResponsibilityService::class)->notifyResponsibleEmployee($booking);
                 }

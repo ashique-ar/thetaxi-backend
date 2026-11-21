@@ -804,6 +804,29 @@ class SalesCrmService
                 $this->taskEvent($locked, 'status_changed', $from, $data['to_status'], $locked->owner_sales_profile_id,
                     $locked->owner_sales_profile_id, $data['reason'] ?? null, $data['idempotency_key'], $actorUserId,
                     $data['expected_version']);
+                if ($data['to_status'] === 'completed') {
+                    $activity = SalesActivity::create([
+                        'sales_profile_id' => $locked->owner_sales_profile_id,
+                        'opportunity_id' => $locked->opportunity_id,
+                        'customer_id' => $locked->customer_id,
+                        'inquiry_id' => $locked->inquiry_id,
+                        'booking_id' => $locked->booking_id,
+                        'activity_type' => 'follow_up',
+                        'subject' => $locked->title,
+                        'notes' => trim((string) $data['reason']),
+                        'source_system' => 'sales_task_completion',
+                        'source_reference' => $data['idempotency_key'],
+                        'occurred_at' => now(),
+                        'created_user_id' => $actorUserId,
+                    ]);
+                    $this->facts->record([
+                        'sales_profile_id' => $locked->owner_sales_profile_id,
+                        'metric_type' => 'sales_activity', 'quantity' => 1, 'amount_lkr' => 0,
+                        'occurred_on' => $activity->occurred_at->toDateString(), 'occurred_at' => $activity->occurred_at,
+                        'source_type' => 'sales_activity', 'source_id' => $activity->id, 'source_event' => 'recorded',
+                        'dimensions' => ['activity_type' => 'follow_up', 'outcome' => trim((string) $data['reason'])],
+                    ]);
+                }
                 if ($locked->opportunity_id) $this->syncOpportunityNextAction((string) $locked->opportunity_id, $actorUserId);
                 return $locked->refresh();
             });

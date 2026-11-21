@@ -376,7 +376,7 @@ class SalesCrmController extends Controller
             ->latest('occurred_at')->paginate($this->paginationSize($request, 25));
         $rows->setCollection($rows->getCollection()->map(fn (SalesActivity $activity): array => [
             'activity_type' => $activity->activity_type, 'subject' => $activity->subject,
-            'outcome' => $activity->outcome, 'next_action' => $activity->next_action,
+            'outcome' => $activity->outcome, 'notes' => $activity->notes, 'next_action' => $activity->next_action,
             'record_label' => $activity->opportunity_id ? 'Opportunity ' . $activity->opportunity_reference
                 : ($activity->booking_id ? 'Booking ' . ($activity->booking_reference ?: '—')
                     : ($activity->inquiry_id ? 'Inquiry ' . $activity->inquiry_reference

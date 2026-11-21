@@ -1148,7 +1148,9 @@ class BookingLifecycleService
                             }
                             $this->availabilityEnforcement->checkPostTripMaintenanceTriggers(
                                 $vehicleForMaintenance,
-                                $mileageIn
+                                $mileageIn,
+                                (string) $booking->id,
+                                $bookingItem?->id ? (string) $bookingItem->id : null,
                             );
                         }
                     } catch (\Throwable $e) {

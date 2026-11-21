@@ -5,7 +5,6 @@ namespace App\Services;
 use App\Models\Staff;
 use App\Models\User;
 use App\Models\Booking\Booking;
-use App\Models\Booking\BookingActivity;
 use App\Models\PhoneCall;
 use App\Models\PhoneCallAssignment;
 use App\Models\Sales\SalesTask;
@@ -428,20 +427,7 @@ class StaffIdentityService
                     continue;
                 }
 
-                $now = now();
                 $locked->forceFill(['responsible_user_id' => null, 'updated_user_id' => $actor->id])->save();
-                BookingActivity::create([
-                    'booking_id' => $locked->id,
-                    'event_key' => 'booking_responsible_user_changed',
-                    'channel' => 'system',
-                    'result_status' => 'completed',
-                    'source' => 'system',
-                    'title' => 'Booking returned to assignment queue',
-                    'detail' => 'Booking responsibility was cleared after staff termination.',
-                    'idempotency_key' => "staff-termination:{$staff->id}:booking:{$locked->id}",
-                    'meta' => ['from_user_id' => $departingUser->id, 'to_user_id' => null, 'actor_user_id' => (string) $actor->id],
-                    'event_at' => $now,
-                ]);
                 $bookingId = (string) $locked->id;
                 DB::afterCommit(static function () use ($bookingId): void {
                     $booking = Booking::query()->find($bookingId);

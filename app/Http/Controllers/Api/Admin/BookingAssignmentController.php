@@ -267,6 +267,7 @@ class BookingAssignmentController extends Controller
         $request->validate([
             'vehicle_id' => 'nullable|uuid|exists:vehicles,id',
             'driver_id' => 'nullable|uuid|exists:drivers,id',
+            'change_reason' => 'nullable|string|max:1000',
         ]);
 
         if (!$request->vehicle_id && !$request->driver_id) {

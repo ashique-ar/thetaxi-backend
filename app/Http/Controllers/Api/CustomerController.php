@@ -834,10 +834,27 @@ class CustomerController extends Controller
                 ->selectRaw("CONCAT('booking-status:', status.id) as id, 'booking_status' as event_type, 'Booking status changed' as title, status.new_status as status, status.created_at as occurred_at, NULL as reference, status.booking_id as booking_id, CONCAT(COALESCE(status.old_status, 'New'), ' → ', COALESCE(status.new_status, 'Unknown')) as detail");
             $events->unionAll($bookingStatusEvents);
 
+            $bookingOwnerHistoryEvents = DB::table('booking_history_events as history')
+                ->join('bookings as linked_booking', 'linked_booking.id', '=', 'history.booking_id')
+                ->where('history.entity_type', 'Booking')
+                ->where('history.event_type', 'booking_responsible_user_changed')
+                ->where('linked_booking.customer_id', $customer->id)->whereNull('linked_booking.deleted_at')
+                ->selectRaw("CONCAT('booking-owner-history:', history.id) as id, 'booking_assignment' as event_type, CASE WHEN history.changes->'responsible_user_id'->>'to' IS NULL THEN 'Booking owner cleared' ELSE 'Booking owner assigned' END as title, CASE WHEN history.changes->'responsible_user_id'->>'to' IS NULL THEN 'unassigned' ELSE 'assigned' END as status, history.occurred_at as occurred_at, NULL as reference, history.booking_id as booking_id, CONCAT(COALESCE((SELECT NULLIF(CONCAT_WS(' ', owner_from.first_name, owner_from.last_name), '') FROM users as owner_from WHERE owner_from.id::text = history.changes->'responsible_user_id'->>'from'), 'Unassigned'), ' → ', COALESCE((SELECT NULLIF(CONCAT_WS(' ', owner_to.first_name, owner_to.last_name), '') FROM users as owner_to WHERE owner_to.id::text = history.changes->'responsible_user_id'->>'to'), 'Unassigned'), ' · by ', COALESCE(history.actor_display_snapshot, 'System'), CASE WHEN COALESCE(history.reason, '') = '' THEN '' ELSE CONCAT(' · ', history.reason) END) as detail");
+            $events->unionAll($bookingOwnerHistoryEvents);
+
             $bookingOwnerEvents = DB::table('booking_activities as activity')
                 ->join('bookings as linked_booking', 'linked_booking.id', '=', 'activity.booking_id')
                 ->where('activity.event_key', 'booking_responsible_user_changed')->whereNull('activity.deleted_at')
                 ->where('linked_booking.customer_id', $customer->id)->whereNull('linked_booking.deleted_at')
+                ->whereNotExists(function ($history) {
+                    $history->selectRaw('1')->from('booking_history_events as owner_history')
+                        ->whereColumn('owner_history.booking_id', 'activity.booking_id')
+                        ->where('owner_history.entity_type', 'Booking')
+                        ->where('owner_history.event_type', 'booking_responsible_user_changed')
+                        ->whereRaw("owner_history.changes->'responsible_user_id'->>'from' IS NOT DISTINCT FROM activity.meta->>'from_user_id'")
+                        ->whereRaw("owner_history.changes->'responsible_user_id'->>'to' IS NOT DISTINCT FROM activity.meta->>'to_user_id'")
+                        ->whereRaw('ABS(EXTRACT(EPOCH FROM (owner_history.occurred_at - activity.event_at))) <= 2');
+                })
 
                 ->selectRaw("CONCAT('booking-owner:', activity.id) as id, 'booking_assignment' as event_type, CASE WHEN activity.meta->>'to_user_id' IS NULL THEN 'Booking owner cleared' ELSE 'Booking owner assigned' END as title, CASE WHEN activity.meta->>'to_user_id' IS NULL THEN 'unassigned' ELSE 'assigned' END as status, activity.event_at as occurred_at, NULL as reference, activity.booking_id as booking_id, CONCAT(COALESCE((SELECT NULLIF(CONCAT_WS(' ', owner_from.first_name, owner_from.last_name), '') FROM users as owner_from WHERE owner_from.id::text = activity.meta->>'from_user_id'), 'Unassigned'), ' → ', COALESCE((SELECT NULLIF(CONCAT_WS(' ', owner_to.first_name, owner_to.last_name), '') FROM users as owner_to WHERE owner_to.id::text = activity.meta->>'to_user_id'), 'Unassigned'), ' · by ', COALESCE((SELECT NULLIF(CONCAT_WS(' ', event_actor.first_name, event_actor.last_name), '') FROM users as event_actor WHERE event_actor.id::text = activity.meta->>'actor_user_id'), 'System')) as detail");
             $events->unionAll($bookingOwnerEvents);

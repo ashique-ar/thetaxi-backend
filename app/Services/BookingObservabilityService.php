@@ -53,16 +53,13 @@ class BookingObservabilityService
                 }
             });
 
-        if ($decodedCursor) {
-            $query->where('timestamp', '<=', $decodedCursor[0]);
-        }
         $query->when($filters['actor_id'] ?? null, fn ($scope, $value) => $scope->where('user_id', $value))
             ->when($filters['entity_type'] ?? null, fn ($scope, $value) => $scope->where('entity', $value))
             ->when($filters['entity_id'] ?? null, fn ($scope, $value) => $scope->where('entity_id', $value))
             ->when($filters['event_type'] ?? null, fn ($scope, $value) => $scope->where('action', $value));
         $this->applyTraceDateFilters($query, 'timestamp', $filters);
 
-        $logs = $query->orderByDesc('timestamp')->orderByDesc('id')->limit($limit + 1)->get();
+        $logs = $query->orderByDesc('timestamp')->orderByDesc('id')->get();
         $events = $logs->map(fn(AuditLog $log): array => $this->mapAuditEvent($booking, $log));
 
         $historyEvents = BookingHistoryEvent::query()
@@ -73,9 +70,8 @@ class BookingObservabilityService
             ->when($filters['entity_type'] ?? null, fn ($scope, $value) => $scope->where('entity_type', $value))
             ->when($filters['entity_id'] ?? null, fn ($scope, $value) => $scope->where('entity_id', $value))
             ->when($filters['event_type'] ?? null, fn ($scope, $value) => $scope->where('event_type', $value))
-            ->when($decodedCursor, fn ($scope) => $scope->where('occurred_at', '<=', $decodedCursor[0]))
             ->tap(fn ($scope) => $this->applyTraceDateFilters($scope, 'occurred_at', $filters))
-            ->orderByDesc('occurred_at')->orderByDesc('id')->limit($limit + 1)->get()
+            ->orderByDesc('occurred_at')->orderByDesc('id')->get()
             ->map(fn (BookingHistoryEvent $event): array => $this->mapBookingHistoryEvent($event));
 
         $bookingStatusEvents = BookingStatus::withTrashed()->with('createdBy:id,first_name,last_name')
@@ -90,9 +86,8 @@ class BookingObservabilityService
             ->when(isset($filters['entity_type']) && strcasecmp($filters['entity_type'], 'BookingStatus') !== 0, fn ($query) => $query->whereRaw('1 = 0'))
             ->when($filters['entity_id'] ?? null, fn ($query, $value) => $query->whereKey($value))
             ->when(isset($filters['event_type']) && strcasecmp($filters['event_type'], 'booking_status_changed') !== 0, fn ($query) => $query->whereRaw('1 = 0'))
-            ->when($decodedCursor, fn ($query) => $query->where('created_at', '<=', $decodedCursor[0]))
             ->tap(fn ($query) => $this->applyTraceDateFilters($query, 'created_at', $filters))
-            ->orderByDesc('created_at')->orderByDesc('id')->limit($limit + 1)->get()
+            ->orderByDesc('created_at')->orderByDesc('id')->get()
             ->map(fn (BookingStatus $status): array => $this->mapBookingStatus($status));
 
         $bookingActivities = BookingActivity::query()
@@ -113,9 +108,8 @@ class BookingObservabilityService
             ->when($filters['event_type'] ?? null, fn ($query, $value) => $query->where('event_key', $value))
             ->when($bookingItemId, fn ($query) => $query->where(fn ($scope) => $scope
                 ->whereNull('booking_item_id')->orWhere('booking_item_id', $bookingItemId)))
-            ->when($decodedCursor, fn ($query) => $query->where('event_at', '<=', $decodedCursor[0]))
             ->tap(fn ($query) => $this->applyTraceDateFilters($query, 'event_at', $filters))
-            ->orderByDesc('event_at')->orderByDesc('id')->limit($limit + 1)->get();
+            ->orderByDesc('event_at')->orderByDesc('id')->get();
         $activityActorIds = $bookingActivities->flatMap(fn (BookingActivity $activity) => [
             data_get($activity->meta, 'actor_user_id'),
             data_get($activity->meta, 'initiated_by'),
@@ -140,9 +134,8 @@ class BookingObservabilityService
             ->when(isset($filters['entity_type']) && strcasecmp($filters['entity_type'], 'VehicleAssignment') !== 0, fn ($query) => $query->whereRaw('1 = 0'))
             ->when($filters['entity_id'] ?? null, fn ($query, $value) => $query->whereKey($value))
             ->when(isset($filters['event_type']) && strcasecmp($filters['event_type'], 'vehicle_assigned') !== 0, fn ($query) => $query->whereRaw('1 = 0'))
-            ->when($decodedCursor, fn ($query) => $query->where('created_at', '<=', $decodedCursor[0]))
             ->tap(fn ($query) => $this->applyTraceDateFilters($query, 'created_at', $filters))
-            ->orderByDesc('created_at')->orderByDesc('id')->limit($limit + 1)->get();
+            ->orderByDesc('created_at')->orderByDesc('id')->get();
         $vehicleAssignmentEvents = $vehicleAssignments->map(fn (VehicleAssignment $assignment): array =>
             $this->mapVehicleAssignment($booking, $assignment));
 
@@ -157,8 +150,7 @@ class BookingObservabilityService
                 $prefix = 'booking_attribution_';
                 $type = str_starts_with($value, $prefix) ? substr($value, strlen($prefix)) : $value;
                 return $query->where('event.event_type', $type);
-            })
-            ->when($decodedCursor, fn ($query) => $query->where('event.created_at', '<=', $decodedCursor[0]));
+            });
         $this->applyTraceDateFilters($salesAttributionQuery, 'event.created_at', $filters);
         $salesAttributionEvents = $salesAttributionQuery
             ->select([
@@ -167,7 +159,7 @@ class BookingObservabilityService
                 'event.reason', 'event.idempotency_key', 'event.actor_user_id', 'event.created_at',
                 'actor.first_name as actor_first_name', 'actor.last_name as actor_last_name',
             ])
-            ->orderByDesc('event.created_at')->orderByDesc('event.id')->limit($limit + 1)->get()
+            ->orderByDesc('event.created_at')->orderByDesc('event.id')->get()
             ->map(fn (object $event): array => $this->mapSalesAttributionEvent($booking, $event));
 
         $deletedActivities = ActivityLog::query()
@@ -178,10 +170,8 @@ class BookingObservabilityService
                 $query->where('event', 'deleted')
                     ->orWhere(fn ($query) => $query->whereNull('event')->where('description', 'deleted'));
             })
-            ->when($decodedCursor, fn ($query) => $query->where('created_at', '<=', $decodedCursor[0]))
             ->orderByDesc('created_at')
             ->orderByDesc('id')
-            ->limit($limit + 1)
             ->get()
             ->map(fn (ActivityLog $activity): array => $this->mapDeletedActivity($booking, $activity));
 
@@ -192,26 +182,23 @@ class BookingObservabilityService
                 ->from('booking_history_events as financial_history')
                 ->whereColumn('financial_history.booking_id', 'financial_audit_events.booking_id')
                 ->whereRaw("financial_history.context->>'financial_audit_event_id' = CAST(financial_audit_events.id AS VARCHAR)"));
-        if ($decodedCursor) {
-            $financialQuery->where('occurred_at', '<=', $decodedCursor[0]);
-        }
         $financialQuery->when($filters['actor_id'] ?? null, fn ($query, $value) => $query->where('performed_by', $value))
             ->when($filters['entity_type'] ?? null, fn ($query, $value) => $query->where('subject_type', $value))
             ->when($filters['entity_id'] ?? null, fn ($query, $value) => $query->where('subject_id', $value))
             ->when($filters['event_type'] ?? null, fn ($query, $value) => $query->where('event_type', $value));
         $this->applyTraceDateFilters($financialQuery, 'occurred_at', $filters);
         $financialEvents = $financialQuery->orderByDesc('occurred_at')->orderByDesc('id')
-            ->limit($limit + 1)->get()
+            ->get()
             ->map(fn(FinancialAuditEvent $event): array => $this->mapFinancialEvent($booking, $event));
 
         $tripEvents = $bookingItemId
-            ? $this->tripMilestoneEvents($booking, $bookingItemId, $decodedCursor, $limit + 1)
+            ? $this->tripMilestoneEvents($booking, $bookingItemId)
             : collect();
         $tripStopEvents = $bookingItemId
-            ? $this->tripStopEvents($booking, $bookingItemId, $decodedCursor, $limit + 1)
+            ? $this->tripStopEvents($booking, $bookingItemId)
             : collect();
         $recoveryEvents = $bookingItemId
-            ? $this->hireRecoveryEvents($booking, $bookingItemId, $decodedCursor, $limit + 1)
+            ? $this->hireRecoveryEvents($booking, $bookingItemId)
             : collect();
         $communicationEvents = $this->communicationItems($booking, $bookingItemId)
             ->when(!$bookingItemId, fn(Collection $items) => $items->whereNull('booking_item_id'))
@@ -220,6 +207,7 @@ class BookingObservabilityService
             ->when(!$bookingItemId, fn(Collection $items) => $items->whereNull('booking_item_id'))
             ->map(fn (array $event): array => $this->mapDocumentTraceEvent($booking, $event));
 
+        // shortcut: materialize all booking candidates for global cursors; bound source reads after profiling real booking histories.
         $events = $events->concat($historyEvents)->concat($bookingStatusEvents)->concat($bookingActivityEvents)->concat($vehicleAssignmentEvents)
             ->concat($salesAttributionEvents)->concat($deletedActivities)->concat($financialEvents)->concat($tripEvents)
             ->concat($tripStopEvents)
@@ -1183,14 +1171,13 @@ class BookingObservabilityService
         ];
     }
 
-    private function tripMilestoneEvents(Booking $booking, string $bookingItemId, ?array $cursor, int $limit): Collection
+    private function tripMilestoneEvents(Booking $booking, string $bookingItemId): Collection
     {
         $assignments = DriverAssignment::query()
             ->with(['driver.user:id,first_name,last_name', 'assignedBy:id,first_name,last_name', 'confirmedBy:id,first_name,last_name'])
             ->where('booking_id', $booking->id)
             ->where('booking_item_id', $bookingItemId)
-            ->when($cursor, fn($query) => $query->where('created_at', '<=', $cursor[0]))
-            ->orderByDesc('created_at')->orderByDesc('id')->limit($limit)->get();
+            ->orderByDesc('created_at')->orderByDesc('id')->get();
 
         return $assignments->flatMap(function (DriverAssignment $assignment) use ($booking, $bookingItemId): array {
             $milestones = [
@@ -1257,7 +1244,7 @@ class BookingObservabilityService
         })->values();
     }
 
-    private function hireRecoveryEvents(Booking $booking, string $bookingItemId, ?array $cursor, int $limit): Collection
+    private function hireRecoveryEvents(Booking $booking, string $bookingItemId): Collection
     {
         $assignments = DriverAssignment::query()
             ->with('driver.user:id,first_name,last_name')
@@ -1268,8 +1255,7 @@ class BookingObservabilityService
 
         return DB::table('driver_hire_recovery_events')
             ->whereIn('assignment_id', $assignments->pluck('id'))
-            ->when($cursor, fn ($query) => $query->where('occurred_at', '<=', $cursor[0]))
-            ->orderByDesc('occurred_at')->orderByDesc('event_id')->limit($limit)->get()
+            ->orderByDesc('occurred_at')->orderByDesc('event_id')->get()
             ->map(function ($event) use ($booking, $bookingItemId, $assignments): array {
                 $assignment = $assignments->firstWhere('id', $event->assignment_id);
                 $driver = $assignment?->driver;
@@ -1305,14 +1291,13 @@ class BookingObservabilityService
             });
     }
 
-    private function tripStopEvents(Booking $booking, string $bookingItemId, ?array $cursor, int $limit): Collection
+    private function tripStopEvents(Booking $booking, string $bookingItemId): Collection
     {
         return DriverAssignment::query()
             ->with(['driver.user:id,first_name,last_name', 'stops'])
             ->where('booking_id', $booking->id)
             ->where('booking_item_id', $bookingItemId)
-            ->when($cursor, fn ($query) => $query->where('created_at', '<=', $cursor[0]))
-            ->orderByDesc('created_at')->orderByDesc('id')->limit($limit)->get()
+            ->orderByDesc('created_at')->orderByDesc('id')->get()
             ->flatMap(function (DriverAssignment $assignment) use ($booking, $bookingItemId): array {
                 $driverName = trim((string) (($assignment->driver?->user?->first_name ?? '') . ' ' . ($assignment->driver?->user?->last_name ?? '')));
                 return $assignment->stops->flatMap(function ($stop) use ($assignment, $booking, $bookingItemId, $driverName): array {

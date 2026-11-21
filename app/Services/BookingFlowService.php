@@ -2778,13 +2778,14 @@ class BookingFlowService
 
     public function submitBookingForApproval(array $params): Booking
     {
+        $deferStaffApproval = (bool) ($params['_defer_staff_approval'] ?? false);
         $this->assertGroupPricedBookingPath($params);
         $this->assertCanOverrideTripPrices($params);
         $params = $this->sanitizeCorporateRequestPayload($params);
         $params = $this->normalizeCorporateEmployeeReferences($params);
         $params = $this->validateAndPricePromoDiscounts($params);
 
-        return DB::transaction(function () use ($params) {
+        return DB::transaction(function () use ($params, $deferStaffApproval) {
             $draft = $this->prepareDraftForTransition($params);
             $this->lockBookingCapacityGroups($params, $draft);
             $this->assertBookingGroupCapacityAvailable($params, $draft);
@@ -2847,7 +2848,7 @@ class BookingFlowService
 
             $booking->workflow_step = $requiresApproval ? 'pending_approval' : 'confirmed';
             $workflowParams = $params;
-            unset($workflowParams['_trusted_tour_quote'], $workflowParams['_tour_itinerary_id']);
+            unset($workflowParams['_trusted_tour_quote'], $workflowParams['_tour_itinerary_id'], $workflowParams['_defer_staff_approval']);
             $booking->workflow_data = array_merge(is_array($booking->workflow_data) ? $booking->workflow_data : [], [
                 ($requiresApproval ? 'submitted_at' : 'confirmed_at') => now()->toISOString(),
                 ($requiresApproval ? 'submitted_by' : 'confirmed_by') => Auth::id(),
@@ -2869,7 +2870,7 @@ class BookingFlowService
                 }
                 $this->syncBookingTotalsFromItems($booking);
             }
-            if ($booking->wasRecentlyCreated && !$requiresApproval) {
+            if ($booking->wasRecentlyCreated && !$requiresApproval && !$deferStaffApproval) {
                 app(BookingResponsibilityService::class)->notifyBookingCreated($booking);
             }
 
@@ -2889,7 +2890,7 @@ class BookingFlowService
             $this->createBookingAssignments($booking, $params, $requiresApproval ? 'pending_approval' : 'active');
 
             // 7) Open approval record + notify when approval is required
-            if ($requiresApproval) {
+            if ($requiresApproval && !$deferStaffApproval) {
                 $approval = new BookingApproval;
                 $approval->booking_id = $booking->id;
                 $approval->requested_by = Auth::id();

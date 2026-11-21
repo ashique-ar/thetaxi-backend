@@ -56,14 +56,14 @@ class CorporateBookingNotificationService
             );
 
             // Keep booking alerts inside the business that owns the booking.
-            $dispatchUsers = User::permission('bookings.dispatch')
+            $approvers = User::permission('bookings.approve')
                 ->where('is_active', true)
                 ->whereNull('deleted_at')
                 ->whereHas('staff', fn ($query) => $query
                     ->whereNull('deleted_at')
                     ->where(fn ($employment) => $employment->whereNull('employment_ended_at')->orWhere('employment_ended_at', '>', now())))
                 ->get();
-            Notification::send($dispatchUsers, $notification);
+            Notification::send($approvers, $notification);
 
             $businessEmail = $this->businessNotificationEmail();
             if (filter_var($businessEmail, FILTER_VALIDATE_EMAIL)) {

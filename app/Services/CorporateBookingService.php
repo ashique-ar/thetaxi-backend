@@ -43,10 +43,10 @@ class CorporateBookingService
         $data['defer_confirmation'] = true;
 
         $creditApprovalRequired = $this->requiresCreditApproval($corporate, $data);
+        $corporateApprovalRequired = (bool) $corporate->approval_required;
 
-        return DB::transaction(function () use ($employee, $corporate, $data, $creditApprovalRequired) {
-            $needsApproval = ($this->approvalPolicyEnabled('approval_corporate_booking_enabled') && $corporate->approval_required)
-                || ($this->approvalPolicyEnabled('approval_credit_limit_enabled') && $creditApprovalRequired);
+        return DB::transaction(function () use ($employee, $corporate, $data, $creditApprovalRequired, $corporateApprovalRequired) {
+            $needsApproval = $corporateApprovalRequired;
 
             $params = array_merge($data, [
                 'customer_id' => $this->resolveCustomerIdForEmployee($employee),
@@ -56,6 +56,7 @@ class CorporateBookingService
                 'corporate_department_id' => $employee->department_id,
                 'corporate_division_id' => $employee->division_id,
                 'created_by_user_id' => Auth::id(),
+                '_defer_staff_approval' => $corporateApprovalRequired,
             ]);
 
             if ($needsApproval) {
@@ -64,9 +65,7 @@ class CorporateBookingService
                 $booking = $this->bookingFlowService->confirmBooking($params);
             }
 
-            $needsApproval = $needsApproval || (bool) $booking->requires_approval;
-
-            $this->applyCorporateRequestStatus($booking, $needsApproval, Auth::id());
+            $this->applyCorporateRequestStatus($booking, $corporateApprovalRequired, Auth::id());
 
             // Ensure corporate fields are set on the booking
             $booking->update([
@@ -81,13 +80,11 @@ class CorporateBookingService
             $this->logAudit('corporate_booking_created', 'Booking', $booking->id, [
                 'corporate_id' => $corporate->id,
                 'employee_id' => $employee->user_id,
-                'needs_approval' => $needsApproval,
+                'needs_corporate_approval' => $corporateApprovalRequired,
                 'credit_limit_approval_required' => $creditApprovalRequired,
             ]);
 
-            $this->notifyPortalBookingState($booking, $employee, $needsApproval ? 'approval_requested' : 'received');
-
-            $this->corporateBookingNotifications->notifyInternalTeam($booking);
+            $this->notifyPortalBookingState($booking, $employee, $corporateApprovalRequired ? 'approval_requested' : 'received');
 
             return $booking->fresh();
         });
@@ -103,11 +100,11 @@ class CorporateBookingService
         $data['defer_confirmation'] = true;
 
         $creditApprovalRequired = $this->requiresCreditApproval($corporate, $data);
+        $corporateApprovalRequired = (bool) $corporate->approval_required
+            && !((bool) $corporate->exempt_coordinator_from_approval && $requester->role === 'transport_coordinator');
 
-        return DB::transaction(function () use ($requester, $corporate, $data, $creditApprovalRequired) {
-            $needsApproval = ($this->approvalPolicyEnabled('approval_corporate_booking_enabled')
-                    && $corporate->approval_required && ! $corporate->exempt_coordinator_from_approval)
-                || ($this->approvalPolicyEnabled('approval_credit_limit_enabled') && $creditApprovalRequired);
+        return DB::transaction(function () use ($requester, $corporate, $data, $creditApprovalRequired, $corporateApprovalRequired) {
+            $needsApproval = $corporateApprovalRequired;
             $params = array_merge($data, [
                 'customer_id' => null,
                 'is_corporate_booking' => true,
@@ -116,15 +113,14 @@ class CorporateBookingService
                 'corporate_department_id' => null,
                 'corporate_division_id' => null,
                 'created_by_user_id' => $requester->user_id,
+                '_defer_staff_approval' => $corporateApprovalRequired,
             ]);
 
             $booking = $needsApproval
                 ? $this->bookingFlowService->submitBookingForApproval($params)
                 : $this->bookingFlowService->confirmBooking($params);
 
-            $needsApproval = $needsApproval || (bool) $booking->requires_approval;
-
-            $this->applyCorporateRequestStatus($booking, $needsApproval, $requester->user_id);
+            $this->applyCorporateRequestStatus($booking, $corporateApprovalRequired, $requester->user_id);
             $booking->update([
                 'is_corporate_booking' => true,
                 'corporate_account_id' => $corporate->id,
@@ -137,14 +133,12 @@ class CorporateBookingService
             $this->logAudit('general_corporate_booking_created', 'Booking', $booking->id, [
                 'corporate_id' => $corporate->id,
                 'coordinator_id' => $requester->user_id,
-                'needs_approval' => $needsApproval,
+                'needs_corporate_approval' => $corporateApprovalRequired,
                 'credit_limit_approval_required' => $creditApprovalRequired,
                 'passenger' => data_get($data, 'corporate_contact.name'),
             ]);
 
-            $this->notifyPortalBookingState($booking, $requester, $needsApproval ? 'approval_requested' : 'received');
-
-            $this->corporateBookingNotifications->notifyInternalTeam($booking);
+            $this->notifyPortalBookingState($booking, $requester, $corporateApprovalRequired ? 'approval_requested' : 'received');
 
             return $booking->fresh();
         });
@@ -170,11 +164,11 @@ class CorporateBookingService
         $data['defer_confirmation'] = true;
 
         $creditApprovalRequired = $this->requiresCreditApproval($corporate, $data);
+        $corporateApprovalRequired = (bool) $corporate->approval_required
+            && !((bool) $corporate->exempt_coordinator_from_approval && (string) $coordinator->user_id !== (string) $targetEmployee->user_id);
 
-        return DB::transaction(function () use ($coordinator, $targetEmployee, $corporate, $data, $creditApprovalRequired) {
-            $needsApproval = ($this->approvalPolicyEnabled('approval_corporate_booking_enabled')
-                    && $corporate->approval_required && ! $corporate->exempt_coordinator_from_approval)
-                || ($this->approvalPolicyEnabled('approval_credit_limit_enabled') && $creditApprovalRequired);
+        return DB::transaction(function () use ($coordinator, $targetEmployee, $corporate, $data, $creditApprovalRequired, $corporateApprovalRequired) {
+            $needsApproval = $corporateApprovalRequired;
 
             $params = array_merge($data, [
                 'customer_id' => $this->resolveCustomerIdForEmployee($targetEmployee),
@@ -184,6 +178,7 @@ class CorporateBookingService
                 'corporate_department_id' => $targetEmployee->department_id,
                 'corporate_division_id' => $targetEmployee->division_id,
                 'created_by_user_id' => $coordinator->user_id,
+                '_defer_staff_approval' => $corporateApprovalRequired,
             ]);
 
             if ($needsApproval) {
@@ -192,9 +187,7 @@ class CorporateBookingService
                 $booking = $this->bookingFlowService->confirmBooking($params);
             }
 
-            $needsApproval = $needsApproval || (bool) $booking->requires_approval;
-
-            $this->applyCorporateRequestStatus($booking, $needsApproval, $coordinator->user_id);
+            $this->applyCorporateRequestStatus($booking, $corporateApprovalRequired, $coordinator->user_id);
 
             // Ensure corporate fields are set on the booking
             $booking->update([
@@ -210,17 +203,15 @@ class CorporateBookingService
                 'corporate_id' => $corporate->id,
                 'coordinator_id' => $coordinator->user_id,
                 'target_employee_id' => $targetEmployee->user_id,
-                'needs_approval' => $needsApproval,
+                'needs_corporate_approval' => $corporateApprovalRequired,
                 'credit_limit_approval_required' => $creditApprovalRequired,
                 'coordinator_exempt' => $corporate->exempt_coordinator_from_approval,
             ]);
 
-            $this->notifyPortalBookingState($booking, $targetEmployee, $needsApproval ? 'approval_requested' : 'received');
+            $this->notifyPortalBookingState($booking, $targetEmployee, $corporateApprovalRequired ? 'approval_requested' : 'received');
             if ((string) $coordinator->user_id !== (string) $targetEmployee->user_id) {
                 $this->notifyPortalBookingState($booking, $coordinator, 'submitted_for_employee');
             }
-
-            $this->corporateBookingNotifications->notifyInternalTeam($booking);
 
             return $booking->fresh();
         });
@@ -426,7 +417,7 @@ class CorporateBookingService
         }
     }
 
-    private function applyCorporateRequestStatus(Booking $booking, bool $requiresApproval, ?string $actorId): void
+    private function applyCorporateRequestStatus(Booking $booking, bool $corporateApprovalRequired, ?string $actorId): void
     {
         // Fetched (not query-builder-mass-updated) so every sibling occurrence's
         // update goes through Eloquent's created/updated events — a mass
@@ -440,67 +431,70 @@ class CorporateBookingService
                 ->get()
             : collect();
 
-        if ($requiresApproval) {
-            $attributes = [
-                'status' => 'pending_approval',
-                'confirmed' => false,
-                'confirmed_at' => null,
-                'requires_approval' => true,
-                'approval_status' => 'pending',
-                'approval_requested_by' => $actorId,
-                'approval_requested_at' => $booking->approval_requested_at ?? now(),
-                'workflow_step' => 'pending_approval',
-            ];
-
-            $booking->update($attributes);
-            $siblings->each(fn (Booking $sibling) => $sibling->update($attributes));
-
-            BookingApproval::firstOrCreate(
-                [
-                    'booking_id' => $booking->id,
-                    'status' => BookingApproval::STATUS_PENDING,
-                ],
-                [
-                    'requested_by' => $actorId,
-                    'override_reasons' => $booking->override_reasons ?? [],
-                    'justification' => $booking->approval_justification,
-                    'priority' => $booking->approval_priority ?? 'normal',
-                    'conditions' => $this->approvalStepSnapshot(),
-                ]
-            );
-
-            $siblings->each(function (Booking $sibling) use ($actorId, $booking) {
-                BookingApproval::firstOrCreate(
-                    [
-                        'booking_id' => $sibling->id,
-                        'status' => BookingApproval::STATUS_PENDING,
-                    ],
-                    [
-                        'requested_by' => $actorId,
-                        'override_reasons' => $booking->override_reasons ?? [],
-                        'justification' => $booking->approval_justification,
-                        'priority' => $booking->approval_priority ?? 'normal',
-                        'conditions' => $this->approvalStepSnapshot(),
-                    ]
-                );
-            });
-
-            return;
-        }
-
         $attributes = [
-            'status' => 'approved',
+            'status' => $corporateApprovalRequired ? 'pending' : 'pending_approval',
             'confirmed' => false,
             'confirmed_at' => null,
-            'requires_approval' => false,
-            'approval_status' => 'approved',
-            'approval_by' => $actorId,
-            'approval_at' => now(),
-            'workflow_step' => 'approved',
+            'requires_approval' => !$corporateApprovalRequired,
+            'approval_status' => $corporateApprovalRequired ? 'not_required' : 'pending',
+            'approval_requested_by' => $corporateApprovalRequired ? null : $actorId,
+            'approval_requested_at' => $corporateApprovalRequired ? null : ($booking->approval_requested_at ?? now()),
+            'workflow_step' => $corporateApprovalRequired ? 'awaiting_corporate_approval' : 'pending_approval',
+            'corporate_approval_status' => $corporateApprovalRequired ? 'pending' : 'approved',
+            'corporate_approval_by' => $corporateApprovalRequired ? null : $actorId,
+            'corporate_approval_at' => $corporateApprovalRequired ? null : now(),
+            'corporate_approval_step' => 0,
+            'corporate_approval_history' => [],
         ];
 
         $booking->update($attributes);
         $siblings->each(fn (Booking $sibling) => $sibling->update($attributes));
+
+        if ($corporateApprovalRequired) {
+            foreach (collect([$booking])->merge($siblings) as $staffReviewBooking) {
+                BookingApproval::query()->where('booking_id', $staffReviewBooking->id)
+                    ->where('status', BookingApproval::STATUS_PENDING)->delete();
+            }
+            return;
+        }
+
+        $this->startInternalStaffApproval($booking, $actorId, $siblings);
+    }
+
+    public function startInternalStaffApproval(Booking $booking, ?string $actorId, $siblings = null): void
+    {
+        $siblings ??= $booking->recurring_series_id
+            ? Booking::query()->where('recurring_series_id', $booking->recurring_series_id)
+                ->where('id', '!=', $booking->id)->get()
+            : collect();
+
+        $attributes = [
+            'status' => 'pending_approval',
+            'confirmed' => false,
+            'confirmed_at' => null,
+            'requires_approval' => true,
+            'approval_status' => 'pending',
+            'approval_requested_by' => $actorId,
+            'approval_requested_at' => now(),
+            'workflow_step' => 'pending_approval',
+        ];
+        $booking->update($attributes);
+        $siblings->each(fn (Booking $sibling) => $sibling->update($attributes));
+
+        foreach (collect([$booking])->merge($siblings) as $staffReviewBooking) {
+            BookingApproval::firstOrCreate(
+                ['booking_id' => $staffReviewBooking->id, 'status' => BookingApproval::STATUS_PENDING],
+                [
+                    'requested_by' => $actorId,
+                    'override_reasons' => $staffReviewBooking->override_reasons ?? [],
+                    'justification' => $staffReviewBooking->approval_justification,
+                    'priority' => $staffReviewBooking->approval_priority ?? 'normal',
+                    'conditions' => $this->approvalStepSnapshot(),
+                ]
+            );
+        }
+
+        $this->corporateBookingNotifications->notifyInternalTeam($booking);
     }
 
     // ─── Booking Queries & Filters ────────────────────────────────────
@@ -568,7 +562,7 @@ class CorporateBookingService
     public function getApprovalQueue(string $corporateId, array $filters = []): LengthAwarePaginator
     {
         $query = Booking::where('corporate_account_id', $corporateId)
-            ->where('status', 'pending_approval');
+            ->where('corporate_approval_status', 'pending');
 
         $this->applyBookingFilters($query, $filters);
 
@@ -851,6 +845,9 @@ class CorporateBookingService
             'allowed_actions' => $lifecycleContract['allowed_actions'] ?? [],
             'blocking_reasons' => $lifecycleContract['blocking_reasons'] ?? [],
             'approval_status' => $booking?->approval_status,
+            'corporate_approval_status' => $booking?->corporate_approval_status,
+            'corporate_approval_step' => $booking?->corporate_approval_step ?? 0,
+            'corporate_approval_history' => $booking?->corporate_approval_history ?? [],
             'requires_approval' => (bool) ($item->requires_approval ?: $booking?->requires_approval),
             'service_type_id' => $item->service_type_id,
             'service_type_name' => $item->serviceType?->name,
@@ -872,7 +869,7 @@ class CorporateBookingService
                 'name' => $item->driver->name ?? trim(($item->driver->user?->first_name ?? '') . ' ' . ($item->driver->user?->last_name ?? '')),
                 'phone' => $item->driver->phone ?? $item->driver->user?->phone,
             ] : null,
-            'approval' => $approval ? [
+            'approval' => $booking->corporate_approval_status !== 'pending' && $approval ? [
                 'id' => $approval->id,
                 'booking_id' => $approval->booking_id,
                 'status' => $approval->status,
@@ -916,6 +913,9 @@ class CorporateBookingService
     {
         $employeeUser = $booking->employee?->user ?: $booking->employeeUser;
         $approval = $booking->latestApproval;
+        $corporateApprovalHistory = $booking->corporate_approval_history ?: (data_get($approval?->conditions, 'step_decisions') ?? []);
+        $corporateApprovalStep = (int) ($booking->corporate_approval_step ?: count($corporateApprovalHistory));
+        $corporateApprovalSteps = max(1, min(3, (int) (data_get($approval?->conditions, 'required_steps') ?? app(WebsiteSettingsService::class)->get('booking_approval_steps', 1))));
         $lifecycleContract = app(BookingLifecycleService::class)->getLifecycleContract($booking);
 
         $payload = [
@@ -940,6 +940,9 @@ class CorporateBookingService
             'allowed_actions' => $lifecycleContract['allowed_actions'],
             'blocking_reasons' => $lifecycleContract['blocking_reasons'],
             'approval_status' => $booking->approval_status,
+            'corporate_approval_status' => $booking->corporate_approval_status,
+            'corporate_approval_step' => $booking->corporate_approval_step ?? 0,
+            'corporate_approval_history' => $booking->corporate_approval_history ?? [],
             'requires_approval' => (bool) $booking->requires_approval,
             'is_recurring' => (bool) $booking->is_recurring,
             'recurrence_pattern' => $booking->recurrence_pattern,
@@ -964,6 +967,14 @@ class CorporateBookingService
                 'name' => $booking->driver->name,
                 'phone' => $booking->driver->phone,
             ] : null,
+            'corporate_approval' => [
+                'status' => $booking->corporate_approval_status,
+                'current_step' => $corporateApprovalStep + 1,
+                'total_steps' => $corporateApprovalSteps,
+                'step_decisions' => $corporateApprovalHistory,
+                'comments' => $booking->corporate_approval_note,
+                'approved_at' => optional($booking->corporate_approval_at)->toISOString(),
+            ],
             'approval' => $approval ? [
                 'id' => $approval->id,
                 'booking_id' => $approval->booking_id,
@@ -1097,6 +1108,12 @@ class CorporateBookingService
             ->groupBy('status')
             ->pluck('count', 'status')
             ->toArray();
+        $byCorporateApprovalStatus = (clone $query)
+            ->select('corporate_approval_status')
+            ->selectRaw('count(*) as count')
+            ->groupBy('corporate_approval_status')
+            ->pluck('count', 'corporate_approval_status')
+            ->toArray();
 
         $byDepartment = (clone $query)
             ->leftJoin('corporate_departments', 'bookings.corporate_department_id', '=', 'corporate_departments.id')
@@ -1130,6 +1147,7 @@ class CorporateBookingService
             'unfinalized_booking_count' => max(0, $totalCount - $finalizedBookingCount),
             'currency_totals' => $currencyTotals,
             'by_status' => $byStatus,
+            'by_corporate_approval_status' => $byCorporateApprovalStatus,
             'by_department' => $byDepartment,
             'bookings_by_status' => $byStatus,
             'bookings_by_department' => $byDepartment,
@@ -1303,13 +1321,6 @@ class CorporateBookingService
     }
 
     // ─── Audit Logging ────────────────────────────────────────────────
-
-    private function approvalPolicyEnabled(string $setting): bool
-    {
-        $settings = app(WebsiteSettingsService::class);
-        return filter_var($settings->get('booking_approvals_enabled', false), FILTER_VALIDATE_BOOLEAN)
-            && filter_var($settings->get($setting, false), FILTER_VALIDATE_BOOLEAN);
-    }
 
     private function approvalStepSnapshot(): array
     {

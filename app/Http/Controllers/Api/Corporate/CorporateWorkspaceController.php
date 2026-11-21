@@ -24,7 +24,7 @@ class CorporateWorkspaceController extends Controller
 
         $tasks = [];
         if ($can('approve_bookings')) {
-            $tasks[] = ['key' => 'approvals', 'label' => 'Bookings awaiting approval', 'count' => (clone $base)->where('status', 'pending_approval')->count(), 'route' => '/corporate/approvals'];
+            $tasks[] = ['key' => 'approvals', 'label' => 'Bookings awaiting approval', 'count' => (clone $base)->where('corporate_approval_status', 'pending')->count(), 'route' => '/corporate/approvals'];
         }
         $tasks[] = ['key' => 'upcoming', 'label' => 'Upcoming trips', 'count' => (clone $base)->whereHas('bookingItems', fn ($q) => $q->whereDate('from_date', '>=', today()))->count(), 'route' => $all ? '/corporate/bookings' : '/employee/bookings'];
         if ($can('view_payments')) {

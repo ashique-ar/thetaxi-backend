@@ -38,8 +38,8 @@ class NewCorporateBookingNotification extends Notification implements ShouldQueu
         return [
             'title' => 'New corporate booking',
             'message' => ($this->booking->corporateAccount?->name ?? 'A corporate customer')
-                .' submitted booking '.$this->reference().'.',
-            'type' => 'corporate_booking_received',
+                .' submitted booking '.$this->reference().($this->booking->status === 'pending_approval' ? ' for staff approval.' : '.'),
+            'type' => $this->booking->status === 'pending_approval' ? 'booking_approval_requested' : 'corporate_booking_received',
             'url' => $this->internalPath(),
             'data' => [
                 'booking_id' => (string) $this->booking->id,

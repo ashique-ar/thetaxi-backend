@@ -551,10 +551,11 @@ class WorkforceController extends Controller
             ->when($data['date_from'] ?? null, fn($query, $date) => $query->whereDate('fact.effective_date', '>=', $date))
             ->when($data['date_to'] ?? null, fn($query, $date) => $query->whereDate('fact.effective_date', '<=', $date))
             ->latest('fact.effective_date')->select([
-                'fact.id', 'fact.staff_id', 'staff.code as staff_code', 'users.first_name as staff_first_name',
+                'fact.id', 'fact.staff_id', 'fact.source_type', 'fact.source_id', 'fact.fact_checksum',
+                'staff.code as staff_code', 'users.first_name as staff_first_name',
                 'users.last_name as staff_last_name', 'fact.fact_kind', 'fact.effective_date', 'fact.quantity_minutes',
                 'fact.quantity_units', 'fact.rate_category', 'fact.status', 'fact.created_at', 'fact.updated_at',
-            ]);
+            ])->selectRaw("CASE WHEN fact.source_type = 'leave_extension' THEN (SELECT leave_request_id FROM hr_leave_request_events WHERE id = fact.source_id) ELSE fact.source_id END AS source_reference_id");
         if ($data['export'] ?? false) {
             abort_if((clone $q)->count() > 10000, 422, 'Narrow the export filters to 10,000 payroll inputs or fewer.');
             return response()->json(['status' => 'success', 'data' => $q->limit(10000)->get()]);

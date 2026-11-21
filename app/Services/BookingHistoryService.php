@@ -126,6 +126,28 @@ class BookingHistoryService
         }
     }
 
+    public function withBookingContext(string $bookingId, ?string $bookingItemId, callable $callback): mixed
+    {
+        $request = request();
+        $attributes = [
+            'booking_history_booking_id' => $bookingId,
+            'booking_history_booking_item_id' => $bookingItemId,
+        ];
+        $previous = [];
+        foreach ($attributes as $key => $value) {
+            $previous[$key] = [$request->attributes->has($key), $request->attributes->get($key)];
+            $request->attributes->set($key, $value);
+        }
+
+        try {
+            return $callback();
+        } finally {
+            foreach ($previous as $key => [$existed, $value]) {
+                $existed ? $request->attributes->set($key, $value) : $request->attributes->remove($key);
+            }
+        }
+    }
+
     public function recordFinancialAuditEvent(FinancialAuditEvent $event, string $provenance = 'live'): void
     {
         if (!$event->booking_id) return;
@@ -280,7 +302,15 @@ class BookingHistoryService
             $linkedAssignment = $assignmentId ? \App\Models\DriverAssignment::withTrashed()->find($assignmentId) : null;
             $bookingId = (string) ($linkedAssignment?->booking_id ?? '');
         }
+        $bookingId = (string) request()->attributes->get('booking_history_booking_id', $bookingId);
         if ($bookingId === '') return;
+        $bookingItemId = request()->attributes->has('booking_history_booking_item_id')
+            ? request()->attributes->get('booking_history_booking_item_id')
+            : ($model instanceof \App\Models\Booking\BookingItem
+                ? (string) $model->getKey()
+                : ($model->getAttribute('booking_item_id')
+                    ? (string) $model->getAttribute('booking_item_id')
+                    : ($linkedAssignment?->booking_item_id ? (string) $linkedAssignment->booking_item_id : null)));
 
         $changes = [];
         foreach (self::TRACKED_FIELDS as $field) {
@@ -359,11 +389,7 @@ class BookingHistoryService
         DB::table('booking_history_events')->insert([
             'id' => $id,
             'booking_id' => $bookingId,
-            'booking_item_id' => $model instanceof \App\Models\Booking\BookingItem
-                ? (string) $model->getKey()
-                : ($model->getAttribute('booking_item_id')
-                    ? (string) $model->getAttribute('booking_item_id')
-                    : ($linkedAssignment?->booking_item_id ? (string) $linkedAssignment->booking_item_id : null)),
+            'booking_item_id' => $bookingItemId,
             'entity_type' => class_basename($model),
             'entity_id' => (string) $model->getKey(),
             'event_type' => $this->eventType($model, $operation, $changes),
@@ -396,6 +422,7 @@ class BookingHistoryService
     {
         $class = class_basename($model);
         if ($model instanceof \App\Models\Booking\Booking && isset($changes['status'])) return 'booking_status_changed';
+        if ($model instanceof \App\Models\Booking\Booking && isset($changes['responsible_user_id'])) return 'booking_responsible_user_changed';
         if ($model instanceof \App\Models\Booking\Booking && $operation === 'created') return 'booking_created';
         if ($model instanceof BookingStatus) return 'booking_status_record_' . $operation;
         if (isset($changes['trip_phase'])) return 'booking_trip_phase_changed';

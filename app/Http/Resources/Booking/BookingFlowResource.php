@@ -20,6 +20,7 @@ class BookingFlowResource extends JsonResource
             'confirmation_number' => $this->confirmation_number,
             'status' => $this->status,
             'approval_status' => $this->approval_status,
+            'corporate_approval_status' => $this->corporate_approval_status,
             'requires_approval' => $this->requires_approval,
 
             // Customer information

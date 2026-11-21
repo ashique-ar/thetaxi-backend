@@ -35,6 +35,24 @@ it('directs the internal team to the booking list with the corporate reference',
         ->and($mail->actionUrl)->toBe('https://portal.example.test/bookings/list');
 });
 
+it('marks pending corporate bookings as staff approval requests', function () {
+    $booking = new Booking();
+    $booking->forceFill([
+        'id' => '10000000-0000-4000-8000-000000000001',
+        'booking_number' => 'CB-100',
+        'corporate_account_id' => '20000000-0000-4000-8000-000000000001',
+        'status' => 'pending_approval',
+    ]);
+    $corporate = new Corporate();
+    $corporate->forceFill(['name' => 'Example Corporate']);
+    $booking->setRelation('corporateAccount', $corporate);
+
+    $data = (new NewCorporateBookingNotification($booking))->toArray((object) []);
+
+    expect($data['type'])->toBe('booking_approval_requested')
+        ->and($data['message'])->toContain('for staff approval');
+});
+
 it('routes corporate booking email to the business setting when configured', function () {
     Notification::fake();
     BusinessSetting::setSetting('corporate_booking_notification_email', 'corporate-bookings@example.test');

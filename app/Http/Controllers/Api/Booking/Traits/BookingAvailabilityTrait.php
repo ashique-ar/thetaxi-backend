@@ -530,6 +530,7 @@ trait BookingAvailabilityTrait
             'driver_id' => 'nullable|string|exists:drivers,id',
             'booking_id' => 'required|string|exists:bookings,id',
             'booking_item_id' => 'nullable|string|exists:booking_items,id',
+            'change_reason' => 'nullable|string|max:1000',
             'assignment_type' => 'required|string|in:primary,concurrent,override',
             'from_date' => 'required',
             'to_date' => 'required',

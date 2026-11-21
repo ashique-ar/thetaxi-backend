@@ -225,7 +225,7 @@ class AssignmentService
      */
     public function processAssignmentConfirmation(array $params): array
     {
-        return DB::transaction(function () use ($params) {
+        return app(BookingHistoryService::class)->withReasonContext($params['change_reason'] ?? null, fn () => DB::transaction(function () use ($params) {
             $vehicleId = $params['vehicle_id'] ?? null;
             $driverId = $params['driver_id'] ?? null;
             $bookingId = $params['booking_id'];
@@ -369,7 +369,7 @@ class AssignmentService
                     'Assignments created and submitted for approval' : 
                     'Assignments created successfully',
             ];
-        });
+        }));
     }
 
     /**

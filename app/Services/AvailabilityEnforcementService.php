@@ -5,6 +5,7 @@ namespace App\Services;
 use App\Models\Customer;
 use App\Models\Driver\Driver;
 use App\Models\Vehicle\Vehicle;
+use App\Models\Vehicle\VehicleMaintenanceSchedule;
 use App\Models\Website\WebsiteSetting;
 use Carbon\Carbon;
 use Illuminate\Support\Facades\DB;
@@ -459,7 +460,7 @@ class AvailabilityEnforcementService
      * Check if a vehicle needs maintenance after a trip (mileage/time triggers).
      * Returns list of triggered schedules that should be activated.
      */
-    public function checkPostTripMaintenanceTriggers(Vehicle $vehicle, int $currentMileage): array
+    public function checkPostTripMaintenanceTriggers(Vehicle $vehicle, int $currentMileage, string $bookingId, ?string $bookingItemId): array
     {
         $triggered = [];
 
@@ -467,7 +468,7 @@ class AvailabilityEnforcementService
             return $triggered;
         }
 
-        $schedulesQuery = DB::table('vehicle_maintenance_schedules')
+        $schedulesQuery = VehicleMaintenanceSchedule::query()
             ->where('vehicle_id', $vehicle->id)
             ->whereNotNull('trigger_mileage')
             ->where('trigger_mileage', '<=', $currentMileage);
@@ -499,10 +500,11 @@ class AvailabilityEnforcementService
                 $update['status'] = 'due';
             }
 
-            // Mark schedule as due
-            DB::table('vehicle_maintenance_schedules')
-                ->where('id', $schedule->id)
-                ->update($update);
+            app(BookingHistoryService::class)->withBookingContext(
+                $bookingId,
+                $bookingItemId,
+                fn () => $schedule->forceFill($update)->save(),
+            );
         }
 
         if (!empty($triggered)) {
