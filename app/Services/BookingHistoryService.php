@@ -14,7 +14,7 @@ class BookingHistoryService
 {
     private const TRACKED_FIELDS = [
         'status', 'payment_status', 'payment_collection_status',
-        'customer_id', 'agent_id', 'passenger_count', 'luggage_count', 'driver_hire_settlement_id', 'issued_date', 'issued_by',
+        'customer_id', 'agent_id', 'responsible_user_id', 'passenger_count', 'luggage_count', 'driver_hire_settlement_id', 'issued_date', 'issued_by',
         'special_requirements', 'emergency_contact_name', 'emergency_contact_phone',
         'review_notes', 'base_amount', 'total_estimated', 'total_actual', 'driver_cost',
         'distance_cost', 'addons_cost',
@@ -228,8 +228,11 @@ class BookingHistoryService
         $bookingId = $model instanceof \App\Models\Booking\Booking
             ? (string) $model->getKey()
             : (string) ($model->getAttribute('booking_id')
+                ?? ($before['booking_id'] ?? null)
                 ?? $model->getAttribute('linked_booking_id')
+                ?? ($before['linked_booking_id'] ?? null)
                 ?? $model->getAttribute('won_booking_id')
+                ?? ($before['won_booking_id'] ?? null)
                 ?? $model->receipt?->booking_id
                 ?? $model->schedule?->booking_id
                 ?? $model->rule?->booking_id
@@ -265,7 +268,7 @@ class BookingHistoryService
             ?? $model->getAttribute('price_override_reason')
             ?? $model->getAttribute('justification')
             ?? $model->getAttribute('customization_reason')
-            ?? $model->getAttribute('reason')
+            ?? (in_array(class_basename($model), ['Booking', 'BookingItem'], true) ? null : $model->getAttribute('reason'))
             ?? $request->input('reason')
             ?? $model->getAttribute('assignment_notes');
         $reason = is_string($requestReason) ? trim($requestReason) : null;

@@ -91,9 +91,17 @@ class BookingObservabilityService
 
         $bookingActivities = BookingActivity::query()
             ->where('booking_id', $booking->id)
-            ->whereIn('event_key', ['booking_updated', 'booking_vehicle_changed', 'resource_swap_completed'])
+            ->whereIn('event_key', [
+                'booking_updated', 'booking_vehicle_changed', 'resource_swap_completed',
+                'booking_responsible_user_changed', 'rental_return_no_show',
+                'replacement_requested', 'replacement_request_closed',
+                'rental_extension_requested', 'rental_extension_approved', 'rental_extension_rejected',
+                'trip_price_changed', 'additional_rental_charge_added',
+            ])
             ->when($filters['actor_id'] ?? null, fn ($query, $value) => $query->where(fn ($actors) => $actors
-                ->where('meta->actor_user_id', $value)->orWhere('meta->initiated_by', $value)))
+                ->where('meta->actor_user_id', $value)->orWhere('meta->initiated_by', $value)
+                ->orWhere('meta->changed_by', $value)->orWhere('meta->requested_by', $value)
+                ->orWhere('meta->reviewed_by', $value)->orWhere('meta->closed_by', $value)))
             ->when(isset($filters['entity_type']) && strcasecmp($filters['entity_type'], 'BookingActivity') !== 0, fn ($query) => $query->whereRaw('1 = 0'))
             ->when($filters['entity_id'] ?? null, fn ($query, $value) => $query->whereKey($value))
             ->when($filters['event_type'] ?? null, fn ($query, $value) => $query->where('event_key', $value))
@@ -795,6 +803,28 @@ class BookingObservabilityService
                 ];
             }
         }
+        if ($activity->event_key === 'booking_responsible_user_changed') {
+            $changes['responsible_user_id'] = [
+                'from' => data_get($activity->meta, 'from_user_id'),
+                'to' => data_get($activity->meta, 'to_user_id'),
+            ];
+        }
+        if ($activity->event_key === 'trip_price_changed') {
+            $changes['total_price'] = [
+                'from' => data_get($activity->meta, 'previous_price'),
+                'to' => data_get($activity->meta, 'final_price'),
+            ];
+            $changes['currency'] = [
+                'from' => data_get($activity->meta, 'previous_currency'),
+                'to' => data_get($activity->meta, 'currency'),
+            ];
+        }
+        if ($activity->event_key === 'additional_rental_charge_added') {
+            $changes['charge_amount'] = [
+                'from' => null,
+                'to' => data_get($activity->meta, 'amount'),
+            ];
+        }
 
         return [
             'id' => 'booking-activity:' . $activity->id,
@@ -802,13 +832,16 @@ class BookingObservabilityService
             'booking_item_id' => $activity->booking_item_id ? (string) $activity->booking_item_id : null,
             'occurred_at' => $activity->event_at?->utc()->toIso8601String(),
             'source' => match ($activity->event_key) {
-                'resource_swap_completed', 'booking_vehicle_changed' => 'assignment',
+                'resource_swap_completed', 'booking_vehicle_changed', 'booking_responsible_user_changed' => 'assignment',
+                'trip_price_changed', 'additional_rental_charge_added' => 'finance',
+                'rental_return_no_show', 'replacement_requested', 'replacement_request_closed',
+                'rental_extension_requested', 'rental_extension_approved', 'rental_extension_rejected' => 'lifecycle',
                 'booking_updated' => 'booking',
                 default => 'system',
             },
             'event_type' => $activity->event_key,
             'title' => $activity->title ?: 'Booking details updated',
-            'description' => $isSwap ? null : $activity->detail,
+            'description' => null,
             'actor' => [
                 'id' => $actorId ? (string) $actorId : null,
                 'name' => data_get($activity->meta, 'actor_display_snapshot') ?: ($actorName ?: 'System'),
@@ -821,7 +854,8 @@ class BookingObservabilityService
             'metadata' => [],
             'evidence' => null,
             'actor_display_snapshot' => data_get($activity->meta, 'actor_display_snapshot'),
-            'reason' => $isSwap ? data_get($activity->meta, 'reason') : null,
+            'reason' => data_get($activity->meta, 'reason')
+                ?? ($activity->event_key === 'trip_price_changed' ? $activity->detail : null),
             'changes' => $changes,
             'entity_type' => 'BookingActivity',
             'entity_id' => (string) $activity->id,

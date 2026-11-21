@@ -5,6 +5,7 @@ namespace App\Models\Website;
 use App\Models\BaseModel;
 use App\Models\Booking\Booking;
 use App\Traits\RecordsBookingHistoryAtomically;
+use Spatie\Activitylog\Support\LogOptions;
 
 class PendingPaymentLink extends BaseModel
 {
@@ -45,6 +46,16 @@ class PendingPaymentLink extends BaseModel
         'revision_history' => 'array',
         'amount_due' => 'decimal:2',
     ];
+
+    public function getActivitylogOptions(): LogOptions
+    {
+        return LogOptions::defaults()
+            ->logOnly(['type', 'expires_at', 'invalidated_at', 'accepted_at', 'revision_number'])
+            ->logOnlyDirty()
+            ->dontLogEmptyChanges()
+            ->dontLogIfAttributesChangedOnly(['updated_at', 'created_at'])
+            ->useLogName('PendingPaymentLink');
+    }
 
     /**
      * Relationship to Booking

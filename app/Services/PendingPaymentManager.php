@@ -98,9 +98,11 @@ class PendingPaymentManager
             }
 
             $now = Carbon::now();
-            PendingPaymentLink::query()->where('booking_id', $lockedBooking->id)
-                ->where('type', 'payment_reminder')->whereNull('invalidated_at')
-                ->update(['invalidated_at' => $now, 'expires_at' => $now->copy()->subMinute()]);
+            self::updateLinks(
+                PendingPaymentLink::query()->where('booking_id', $lockedBooking->id)
+                    ->where('type', 'payment_reminder')->whereNull('invalidated_at'),
+                ['invalidated_at' => $now, 'expires_at' => $now->copy()->subMinute()],
+            );
 
             $workflowData = is_array($lockedBooking->workflow_data) ? $lockedBooking->workflow_data : [];
             $lastAttemptAmount = data_get($workflowData, 'gateway_payment.booking_amount');
@@ -131,12 +133,16 @@ class PendingPaymentManager
             $lockedBooking = Booking::query()->with('bookingItems')->lockForUpdate()->findOrFail($booking->id);
             $now = Carbon::now();
 
-            PendingPaymentLink::query()->where('booking_id', $lockedBooking->id)->where('type', 'payment_reminder')
-                ->whereNull('invalidated_at')->where('expires_at', '>', $now)
-                ->update(['invalidated_at' => $now]);
-            PendingPaymentLink::query()->where('booking_id', $lockedBooking->id)->where('type', 'quotation_conversion')
-                ->whereNull('accepted_at')->whereNull('invalidated_at')
-                ->update(['invalidated_at' => $now]);
+            self::updateLinks(
+                PendingPaymentLink::query()->where('booking_id', $lockedBooking->id)->where('type', 'payment_reminder')
+                    ->whereNull('invalidated_at')->where('expires_at', '>', $now),
+                ['invalidated_at' => $now],
+            );
+            self::updateLinks(
+                PendingPaymentLink::query()->where('booking_id', $lockedBooking->id)->where('type', 'quotation_conversion')
+                    ->whereNull('accepted_at')->whereNull('invalidated_at'),
+                ['invalidated_at' => $now],
+            );
 
             $snapshot = \App\Helpers\BookingLinkHelper::quotationSnapshot($lockedBooking);
             $displaySnapshot = \App\Helpers\BookingLinkHelper::quotationDisplaySnapshot($lockedBooking);
@@ -564,22 +570,19 @@ class PendingPaymentManager
      */
     public static function invalidatePaymentLink(string $token): void
     {
-        PendingPaymentLink::where('token', $token)
-            ->update([
-                'expires_at' => Carbon::now()->subMinute(),
-                'invalidated_at' => Carbon::now(),
-            ]);
+        self::updateLinks(PendingPaymentLink::where('token', $token), [
+            'expires_at' => Carbon::now()->subMinute(),
+            'invalidated_at' => Carbon::now(),
+        ]);
     }
 
     /** Invalidate every outstanding resume URL after its booking is paid. */
     public static function invalidateLinksForBooking(string $bookingId): void
     {
-        PendingPaymentLink::where('booking_id', $bookingId)
-            ->whereNull('invalidated_at')
-            ->update([
-                'expires_at' => Carbon::now()->subMinute(),
-                'invalidated_at' => Carbon::now(),
-            ]);
+        self::updateLinks(PendingPaymentLink::where('booking_id', $bookingId)->whereNull('invalidated_at'), [
+            'expires_at' => Carbon::now()->subMinute(),
+            'invalidated_at' => Carbon::now(),
+        ]);
     }
 
     /**
@@ -602,8 +605,21 @@ class PendingPaymentManager
      */
     public static function cleanupExpiredLinks(): int
     {
-        return PendingPaymentLink::where('expires_at', '<', Carbon::now())
-            ->where('invalidated_at', null)
-            ->delete();
+        $deleted = 0;
+        PendingPaymentLink::where('expires_at', '<', Carbon::now())
+            ->whereNull('invalidated_at')->chunkById(100, function ($links) use (&$deleted): void {
+                foreach ($links as $link) {
+                    if ($link->delete()) $deleted++;
+                }
+            });
+
+        return $deleted;
+    }
+
+    private static function updateLinks($query, array $changes): void
+    {
+        $query->chunkById(100, function ($links) use ($changes): void {
+            foreach ($links as $link) $link->update($changes);
+        });
     }
 }

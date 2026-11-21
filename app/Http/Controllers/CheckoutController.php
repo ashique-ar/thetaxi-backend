@@ -3232,7 +3232,7 @@ class CheckoutController extends Controller
                 ])->save();
                 PendingPaymentLink::query()->where('booking_id', $booking->id)->where('type', 'quotation_conversion')
                     ->where('id', '!=', $quote->id)->whereNull('accepted_at')->whereNull('invalidated_at')
-                    ->update(['invalidated_at' => $now]);
+                    ->get()->each(fn (PendingPaymentLink $otherQuote) => $otherQuote->update(['invalidated_at' => $now]));
             }
 
             return [$paymentLink, null];
