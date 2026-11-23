@@ -96,7 +96,7 @@ class InquiryController extends Controller
                 new InquiryConfirmationMail($inquiry, $meta['label'], $meta['intro'])
             );
 
-            return back()->with('success', $meta['success_message']);
+            return back()->with('success', $meta['success_message'])->with('inquiry_saved', true);
         } catch (\Exception $e) {
             Log::error('Inquiry submission failed', [
                 'type' => $type,
@@ -438,6 +438,7 @@ class InquiryController extends Controller
             $inquiry->update(['payload' => $payload]);
 
             return back()->withFragment($isCms ? 'service-inquiry' : '')->with('success', $meta['success_message'])
+                ->with('inquiry_saved', true)
                 ->with('inquiry_reference', $inquiry->inquiry_number);
         } catch (\Exception $e) {
             Log::error('Dynamic inquiry submission failed', [

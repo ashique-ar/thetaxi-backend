@@ -569,6 +569,13 @@ $themeContentType = request()->route('contentType');
         @if (session('success'))
             window.showSuccessNotification(@json(session('success')), 5000);
         @endif
+        window.trackInquirySuccess = function () {
+            window.dataLayer = window.dataLayer || [];
+            window.dataLayer.push({ event: 'inquiry_success_new' });
+        };
+        @if (session('inquiry_saved'))
+            window.trackInquirySuccess();
+        @endif
     </script>
 
     <!-- AOS Animation JS -->

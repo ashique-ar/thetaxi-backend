@@ -445,6 +445,7 @@
                 data: $form.serialize(),
                 success: function(response) {
                     if (response.success) {
+                        if (typeof window.trackInquirySuccess === 'function') window.trackInquirySuccess();
                         // Close modal and show success
                         $('#requestQuotationModal').modal('hide');
                         showSuccessNotification(

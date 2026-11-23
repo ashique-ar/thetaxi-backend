@@ -2465,7 +2465,8 @@ class BookingController extends Controller
             }
 
             return redirect()->back()
-                ->with('success', 'Your quotation request has been submitted successfully! Our team will contact you within 2 business hours with a detailed quote.');
+                ->with('success', 'Your quotation request has been submitted successfully! Our team will contact you within 2 business hours with a detailed quote.')
+                ->with('inquiry_saved', true);
 
         } catch (\Exception $e) {
             Log::error('Error processing quotation request', [
