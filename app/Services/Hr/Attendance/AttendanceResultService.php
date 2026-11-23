@@ -3,6 +3,7 @@
 namespace App\Services\Hr\Attendance;
 
 use App\Models\Hr\Attendance\AttendanceDailyResult;
+use App\Models\Hr\PayrollInputFact;
 use App\Models\User;
 use Carbon\CarbonImmutable;
 use Illuminate\Support\Facades\DB;
@@ -160,6 +161,42 @@ class AttendanceResultService
                 DB::table('hr_attendance_exceptions')->insert(['id' => (string) Str::uuid(), 'staff_id' => $result->staff_id, 'daily_result_id' => $result->id] + $exception + ['status' => 'open', 'evidence' => json_encode($resultData, JSON_THROW_ON_ERROR), 'created_at' => now(), 'updated_at' => now()]);
             }
             DB::table('hr_attendance_correction_requests')->where('id', $correction->id)->update(['status' => 'approved', 'decided_by' => $actorUserId, 'decided_at' => now(), 'decision_note' => $decisionNote, 'result_id' => $result->id, 'updated_at' => now()]);
+            if ($field === 'payable_minutes') {
+                $minutesDelta = (int) $result->payable_minutes - (int) $current->payable_minutes;
+                if ($minutesDelta !== 0) {
+                    $payrollSnapshot = [
+                        'attendance_correction_id' => $correction->id,
+                        'request_checksum' => $correction->request_checksum,
+                        'mapping_policy_id' => $policy->id,
+                        'superseded_result_id' => $current->id,
+                        'approved_result_id' => $result->id,
+                        'previous_payable_minutes' => (int) $current->payable_minutes,
+                        'approved_payable_minutes' => (int) $result->payable_minutes,
+                        'delta_minutes' => $minutesDelta,
+                    ];
+                    $payrollPayload = [
+                        'staff' => $correction->staff_id,
+                        'kind' => 'attendance_payable_minutes_adjustment',
+                        'date' => CarbonImmutable::parse($correction->work_date)->toDateString(),
+                        'minutes' => $minutesDelta,
+                        'source_type' => 'attendance_correction',
+                        'source_id' => $correction->id,
+                        'snapshot' => $payrollSnapshot,
+                    ];
+                    PayrollInputFact::create([
+                        'staff_id' => $correction->staff_id,
+                        'fact_kind' => 'attendance_payable_minutes_adjustment',
+                        'effective_date' => CarbonImmutable::parse($correction->work_date)->toDateString(),
+                        'quantity_minutes' => $minutesDelta,
+                        'source_type' => 'attendance_correction',
+                        'source_id' => $correction->id,
+                        'status' => 'staged',
+                        'source_snapshot' => $payrollSnapshot,
+                        'fact_checksum' => hash('sha256', json_encode($payrollPayload, JSON_UNESCAPED_SLASHES | JSON_THROW_ON_ERROR)),
+                        'created_by' => $actorUserId,
+                    ]);
+                }
+            }
             activity('hr-attendance')->causedBy(User::query()->findOrFail($actorUserId))->withProperties(['correction_id' => $correction->id, 'staff_id' => $correction->staff_id, 'result_id' => $result->id, 'supersedes_id' => $current->id, 'field' => $field, 'mapping_policy_id' => $policy->id])->log('attendance_correction_approved');
             return $result;
         });

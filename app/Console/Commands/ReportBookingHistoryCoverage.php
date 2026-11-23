@@ -4,6 +4,7 @@ namespace App\Console\Commands;
 
 use Illuminate\Console\Command;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Schema;
 
 class ReportBookingHistoryCoverage extends Command
 {
@@ -42,6 +43,12 @@ class ReportBookingHistoryCoverage extends Command
             ->get()
             ->count();
 
+        $sourceParity = collect([
+            $this->sourceParity('booking_statuses', 'booking-status:', 'booking_statuses', 'booking_status_changed'),
+            $this->sourceParity('financial_audit_events', 'financial-audit:', 'financial_audit_events'),
+            $this->sourceParity('booking_activities', 'legacy:booking-price:', 'legacy:booking_activities', 'booking_price_changed', 'trip_price_changed'),
+        ])->filter()->values();
+
         $this->table(['Measure', 'Count'], [
             ['Coverage start', config('booking_history.coverage_start') ?: 'unknown'],
             ['Total events', (int) ($totals->total_events ?? 0)],
@@ -52,8 +59,43 @@ class ReportBookingHistoryCoverage extends Command
             ['Duplicate idempotency keys', $duplicateIdempotencyKeys],
         ]);
         $this->table(['Event type', 'Source', 'Provenance', 'Count'], $groups->all());
-        $this->line('Failed capture attempts are not retained; model-observed mutations use atomic wrappers, while unverified writers require separate coverage checks.');
+        $this->table(['Verifiable source rows currently present', 'Rows', 'Matched ledger rows', 'Unmatched rows'], $sourceParity->all());
+        $this->line('Source-row parity covers only the listed retained records; it does not prove complete historical capture. Failed capture attempts are not retained.');
 
         return self::SUCCESS;
+    }
+
+    private function sourceParity(
+        string $table,
+        string $keyPrefix,
+        string $ledgerSource,
+        ?string $ledgerEventType = null,
+        ?string $sourceEventKey = null,
+    ): ?array {
+        if (!Schema::hasTable($table)) return null;
+
+        $source = DB::table($table . ' as source')->whereNotNull('source.booking_id');
+        if ($sourceEventKey !== null) $source->where('source.event_key', $sourceEventKey);
+        $sourceRows = (clone $source)->count();
+        $matched = (clone $source)->whereExists(function ($query) use ($keyPrefix, $ledgerSource, $ledgerEventType): void {
+            $query->selectRaw('1')->from('booking_history_events as history')
+                ->where('history.source', $ledgerSource)
+                ->when($ledgerEventType, fn ($history) => $history->where('history.event_type', $ledgerEventType))
+                ->whereRaw($this->sourceIdempotencyMatchSql($keyPrefix));
+        })->count();
+
+        return [$table, $sourceRows, $matched, max(0, $sourceRows - $matched)];
+    }
+
+    private function sourceIdempotencyMatchSql(string $keyPrefix): string
+    {
+        $driver = DB::connection()->getDriverName();
+        $id = match ($driver) {
+            'pgsql' => "'" . $keyPrefix . "' || CAST(source.id AS TEXT)",
+            'mysql' => "CONCAT('" . $keyPrefix . "', CAST(source.id AS CHAR))",
+            default => "'" . $keyPrefix . "' || CAST(source.id AS TEXT)",
+        };
+
+        return 'history.idempotency_key = ' . $id;
     }
 }

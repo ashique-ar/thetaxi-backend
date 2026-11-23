@@ -88,7 +88,9 @@ class BookingObservabilityService
             ->when($filters['entity_id'] ?? null, fn ($query, $value) => $query->whereKey($value))
             ->when(isset($filters['event_type']) && strcasecmp($filters['event_type'], 'booking_status_changed') !== 0, fn ($query) => $query->whereRaw('1 = 0'))
             ->tap(fn ($query) => $this->applyTraceDateFilters($query, 'created_at', $filters))
-            ->orderByDesc('created_at')->orderByDesc('id')->get()
+            ->orderByDesc('created_at')
+            ->orderByDesc('id')
+            ->get()
             ->map(fn (BookingStatus $status): array => $this->mapBookingStatus($status));
 
         $bookingActivities = BookingActivity::query()
@@ -175,9 +177,7 @@ class BookingObservabilityService
                 $query->where('event', 'deleted')
                     ->orWhere(fn ($query) => $query->whereNull('event')->where('description', 'deleted'));
             })
-            ->orderByDesc('created_at')
-            ->orderByDesc('id')
-            ->get()
+            ->orderByDesc('created_at')->orderByDesc('id')->get()
             ->map(fn (ActivityLog $activity): array => $this->mapDeletedActivity($booking, $activity));
 
         $financialQuery = FinancialAuditEvent::query()
@@ -212,7 +212,7 @@ class BookingObservabilityService
             ->when(!$bookingItemId, fn(Collection $items) => $items->whereNull('booking_item_id'))
             ->map(fn (array $event): array => $this->mapDocumentTraceEvent($booking, $event));
 
-        // shortcut: materialize all booking candidates for global cursors; bound source reads after profiling real booking histories.
+        // Apply the cursor after global deduplication so ties remain stable across event sources.
         $events = $events->concat($historyEvents)->concat($bookingStatusEvents)->concat($bookingActivityEvents)->concat($vehicleAssignmentEvents)
             ->concat($salesAttributionEvents)->concat($deletedActivities)->concat($financialEvents)->concat($tripEvents)
             ->concat($tripStopEvents)
@@ -1427,6 +1427,8 @@ class BookingObservabilityService
             ->whereNotNull('email_sent_at')->get()
             ->map(fn(Invoice $invoice): array => [
                 'id' => 'invoice-email-' . $invoice->id,
+                'entity_type' => 'Invoice',
+                'entity_id' => (string) $invoice->id,
                 'booking_item_id' => null,
                 'channel' => 'email',
                 'direction' => 'outbound',
@@ -1442,6 +1444,8 @@ class BookingObservabilityService
             ->whereNotNull('trigger_delivered_at')->get()
             ->map(fn(BookingDispatch $dispatch): array => [
                 'id' => 'dispatch-trigger-' . $dispatch->id,
+                'entity_type' => 'BookingDispatch',
+                'entity_id' => (string) $dispatch->id,
                 'booking_item_id' => $dispatch->booking_item_id ? (string) $dispatch->booking_item_id : null,
                 'channel' => $dispatch->trigger_delivery_channel ?: 'system',
                 'direction' => 'outbound',
@@ -1460,6 +1464,8 @@ class BookingObservabilityService
             ->get()
             ->map(fn(SmsMessage $message): array => [
                 'id' => 'sms-' . $message->id,
+                'entity_type' => 'SmsMessage',
+                'entity_id' => (string) $message->id,
                 'sms_message_id' => (string) $message->id,
                 'booking_item_id' => $message->booking_item_id ? (string) $message->booking_item_id : null,
                 'driver_assignment_id' => $message->driver_assignment_id ? (string) $message->driver_assignment_id : null,
@@ -1486,6 +1492,8 @@ class BookingObservabilityService
             ->get()
             ->map(fn(BookingActivity $activity): array => [
                 'id' => 'booking-activity-' . $activity->id,
+                'entity_type' => 'BookingActivity',
+                'entity_id' => (string) $activity->id,
                 'sms_message_id' => null,
                 'booking_item_id' => $activity->booking_item_id ? (string) $activity->booking_item_id : null,
                 'driver_assignment_id' => $activity->driver_assignment_id ? (string) $activity->driver_assignment_id : null,
@@ -1520,6 +1528,8 @@ class BookingObservabilityService
         $items = Invoice::query()->where('booking_id', $booking->id)->get()
             ->map(fn(Invoice $invoice): array => [
                 'id' => 'invoice-' . $invoice->id,
+                'entity_type' => 'Invoice',
+                'entity_id' => (string) $invoice->id,
                 'booking_item_id' => null,
                 'type' => 'invoice',
                 'title' => 'Invoice ' . $invoice->invoice_number,
@@ -1532,6 +1542,8 @@ class BookingObservabilityService
         $receipts = BookingPaymentReceipt::query()->where('booking_id', $booking->id)->get()
             ->map(fn(BookingPaymentReceipt $receipt): array => [
                 'id' => 'receipt-' . $receipt->id,
+                'entity_type' => 'BookingPaymentReceipt',
+                'entity_id' => (string) $receipt->id,
                 'booking_item_id' => null,
                 'type' => 'payment_receipt',
                 'title' => 'Payment receipt',
@@ -1548,6 +1560,8 @@ class BookingObservabilityService
                     $value = is_array($document) ? ($document['name'] ?? $document['title'] ?? 'Generated document') : $document;
                     return [
                         'id' => 'dispatch-document-' . $dispatch->id . '-' . $index,
+                        'entity_type' => 'BookingDispatch',
+                        'entity_id' => (string) $dispatch->id,
                         'booking_item_id' => $dispatch->booking_item_id ? (string) $dispatch->booking_item_id : null,
                         'type' => 'dispatch_document',
                         'title' => basename((string) $value),
@@ -1582,6 +1596,8 @@ class BookingObservabilityService
             'correlation_id' => 'communication:' . $event['id'],
             'metadata' => collect($event)->only(['channel', 'direction'])->all(),
             'evidence' => ['section' => 'communication', 'label' => 'View communication'],
+            'entity_type' => $event['entity_type'],
+            'entity_id' => $event['entity_id'],
         ];
     }
 
@@ -1603,6 +1619,8 @@ class BookingObservabilityService
             'correlation_id' => 'document:' . $event['id'],
             'metadata' => collect($event)->only(['type', 'reference'])->filter()->all(),
             'evidence' => ['section' => 'documents', 'label' => 'View documents'],
+            'entity_type' => $event['entity_type'],
+            'entity_id' => $event['entity_id'],
         ];
     }
 
