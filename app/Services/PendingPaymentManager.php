@@ -147,6 +147,7 @@ class PendingPaymentManager
             $snapshot = \App\Helpers\BookingLinkHelper::quotationSnapshot($lockedBooking);
             $displaySnapshot = \App\Helpers\BookingLinkHelper::quotationDisplaySnapshot($lockedBooking);
             $terms = self::quotationTermsSnapshot($lockedBooking);
+            $options = data_get($lockedBooking->workflow_data, 'quotation_options', []);
             $revision = (int) PendingPaymentLink::query()->where('booking_id', $lockedBooking->id)
                 ->where('type', 'quotation_conversion')->max('revision_number') + 1;
 
@@ -160,6 +161,7 @@ class PendingPaymentManager
                     'display_snapshot' => $displaySnapshot,
                     'terms' => $terms,
                     'terms_hash' => hash('sha256', \App\Support\Foundation\CanonicalJson::encode($terms)),
+                    'options' => is_array($options) ? array_values($options) : [],
                     'issued_at' => $now->copy()->utc()->toIso8601String(),
                 ]],
                 'amount_due' => self::calculateAmountDue($lockedBooking),

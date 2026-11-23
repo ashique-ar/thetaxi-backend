@@ -12179,6 +12179,14 @@ class BookingFlowService
 
             // NEW: Include booking items array
             'booking_items' => $bookingItems,
+            'quotation_options' => collect(data_get($booking->workflow_data, 'quotation_options', []))
+                ->map(fn (array $option): array => [
+                    'id' => (string) ($option['id'] ?? ''),
+                    'vehicle_group_names' => $option['vehicle_group_names'] ?? [],
+                    'total_amount' => (float) data_get($option, 'totals.total_estimated', 0),
+                    'currency' => (string) data_get($option, 'pricing.currency', $booking->currency),
+                ])->values()->all(),
+            'accepted_quotation_option' => data_get($booking->workflow_data, 'accepted_quotation_option'),
 
             'pricing' => $pricing,
             'addons' => $addons,
@@ -14999,6 +15007,14 @@ class BookingFlowService
     public function requestBookingQuotation(array $params): Booking
     {
         return DB::transaction(function () use ($params) {
+            $quotationItems = $params['booking_items'] ?? [];
+            if (isset($params['quotation_options'])) {
+                foreach ($quotationItems as $index => &$item) {
+                    $item['metadata'] = array_merge($item['metadata'] ?? [], ['_quotation_trip_index' => $index]);
+                }
+                unset($item);
+                $params['booking_items'] = $quotationItems;
+            }
             $booking = $this->saveBookingDraft($params);
             if (!str_starts_with((string) $booking->booking_number, 'QT')) {
                 $booking->booking_number = Booking::generateQuotationNumber();
@@ -15006,18 +15022,73 @@ class BookingFlowService
             $booking->payment_status = 'not_required';
             $workflowData = is_array($booking->workflow_data) ? $booking->workflow_data : [];
 
-            $booking->loadMissing(['bookingItems.serviceType', 'bookingItems.vehicleGroup']);
-            foreach ($booking->bookingItems as $item) {
-                $requiresDeposit = (bool) ($item->workflow_config_snapshot['requires_refundable_deposit']
-                    ?? $item->serviceType?->requires_refundable_deposit);
-                $item->metadata = array_merge($item->metadata ?? [], [
-                    'requires_refundable_deposit' => $requiresDeposit,
-                    'refundable_deposit_lkr' => $requiresDeposit
-                        ? max(0, (float) $item->vehicleGroup?->refundable_deposit) * max(1, (int) $item->quantity)
-                        : 0,
-                ]);
-                $item->save();
+            if (isset($params['quotation_options'])) {
+                $sourceItems = $quotationItems;
+                $persistedItems = $booking->bookingItems()->get()->keyBy(fn (BookingItem $item) => (string) data_get($item->metadata, '_quotation_trip_index'));
+                $options = [];
+                $seen = [];
+                foreach ($params['quotation_options'] as $optionIndex => $inputOption) {
+                    $groupIds = array_values(array_map('strval', $inputOption['vehicle_group_ids'] ?? []));
+                    if (count($groupIds) !== count($sourceItems) || count(array_unique($groupIds)) < 1) {
+                        throw ValidationException::withMessages([
+                            'quotation_options' => 'Each vehicle choice must include one vehicle group for every trip.',
+                        ]);
+                    }
+                    $fingerprint = implode('|', $groupIds);
+                    if (isset($seen[$fingerprint])) {
+                        throw ValidationException::withMessages(['quotation_options' => 'Vehicle choices must be different.']);
+                    }
+                    $seen[$fingerprint] = true;
+
+                    $optionItems = [];
+                    foreach ($sourceItems as $itemIndex => $sourceItem) {
+                        $optionItem = $sourceItem;
+                        $persisted = !empty($optionItem['id'])
+                            ? $persistedItems->first(fn (BookingItem $candidate) => (string) $candidate->id === (string) $optionItem['id'])
+                            : $persistedItems->get((string) $itemIndex);
+                        abort_unless($persisted, 422, 'A trip in the quotation could not be matched to its saved booking item.');
+                        $optionItem['id'] = (string) $persisted->id;
+                        unset($optionItem['metadata']['_quotation_trip_index']);
+                        $optionItem['vehicle_group_id'] = $groupIds[$itemIndex];
+                        unset($optionItem['vehicle_id'], $optionItem['driver_id'], $optionItem['final_price'], $optionItem['price_adjustment_reason']);
+                        $optionItems[] = $optionItem;
+                    }
+                    $optionParams = array_merge($params, ['booking_items' => $optionItems]);
+                    unset($optionParams['quotation_options'], $optionParams['send_quotation_sms'], $optionParams['send_quotation_email']);
+                    $pricing = $this->calculatePricing($optionParams);
+                    $totals = $this->extractTotalsFromPricing($pricing);
+                    abort_unless($totals['total_estimated'] > 0, 422, 'Every quotation choice must have a valid price.');
+                    $groups = VehicleGroup::query()->whereIn('id', $groupIds)->get(['id', 'name'])->keyBy(fn ($group) => (string) $group->id);
+                    abort_unless($groups->count() === count(array_unique($groupIds)), 422, 'One or more selected vehicle groups are invalid.');
+                    $options[] = [
+                        'id' => (string) Str::uuid(),
+                        'option_number' => count($options) + 1,
+                        'vehicle_group_ids' => $groupIds,
+                        'vehicle_group_names' => array_map(fn ($id) => (string) $groups[$id]->name, $groupIds),
+                        'trip_choices' => array_map(fn ($id, $index) => [
+                            'trip_number' => $index + 1,
+                            'vehicle_group_name' => (string) $groups[$id]->name,
+                        ], $groupIds, array_keys($groupIds)),
+                        'booking_items' => $optionItems,
+                        'pricing' => $pricing,
+                        'totals' => $totals,
+                    ];
+                }
+                if (count($options) < 2) {
+                    throw ValidationException::withMessages(['quotation_options' => 'Add at least two different vehicle choices.']);
+                }
+                $workflowData['quotation_options'] = $options;
+                foreach (($workflowData['frontend_data']['booking_items'] ?? []) as &$frontendItem) {
+                    unset($frontendItem['metadata']['_quotation_trip_index']);
+                }
+                unset($frontendItem);
+                $booking->workflow_data = $workflowData;
+                $booking->save();
+                $this->applyQuotationOption($booking, $options[0]);
+                $booking->refresh();
             }
+
+            $this->snapshotQuotationDeposits($booking);
 
             $booking->status = 'quotation_requested';
             $booking->workflow_step = 'quotation_requested';
@@ -15029,6 +15100,56 @@ class BookingFlowService
 
             return $booking->fresh(['customer', 'bookingItems']);
         });
+    }
+
+    public function applyQuotationOption(Booking $booking, array $option): void
+    {
+        DB::transaction(function () use ($booking, $option): void {
+            $locked = Booking::query()->lockForUpdate()->findOrFail($booking->id);
+            $items = $option['booking_items'] ?? [];
+            $pricing = $option['pricing'] ?? [];
+            abort_unless(count($items) === $locked->bookingItems()->count(), 409, 'This vehicle choice no longer matches the trips in the quotation.');
+            $existing = $locked->bookingItems()->get()->keyBy(fn (BookingItem $item) => (string) $item->id);
+            foreach ($items as $itemData) {
+                $itemId = (string) ($itemData['id'] ?? '');
+                $item = $existing->get($itemId);
+                abort_unless($item, 409, 'A trip in this quotation could not be found.');
+                $itemPricing = $pricing['items'][$itemId] ?? $pricing;
+                $item->price_override_amount = null;
+                $item->price_override_reason = null;
+                $item->price_overridden_by = null;
+                $item->price_overridden_at = null;
+                $item->save();
+                $this->createSingleGroupBookingItem($locked, $itemData, $itemPricing, $item);
+            }
+            $this->snapshotQuotationDeposits($locked);
+            $totals = $option['totals'] ?? $this->extractTotalsFromPricing($pricing);
+            $locked->pricing_snapshot = $totals['pricing_snapshot'] ?? $pricing;
+            $locked->base_amount = $totals['base_amount'] ?? 0;
+            $locked->addons_cost = $totals['addons_cost'] ?? 0;
+            $locked->discount_amount = $totals['discount_amount'] ?? 0;
+            $locked->tax_amount = $totals['tax_amount'] ?? 0;
+            $locked->total_estimated = $totals['total_estimated'] ?? 0;
+            $locked->total_actual = $locked->total_estimated;
+            $locked->amount_to_pay = max(0, (float) $locked->total_estimated - (float) ($locked->amount_paid ?? 0));
+            $locked->save();
+        }, 3);
+    }
+
+    private function snapshotQuotationDeposits(Booking $booking): void
+    {
+        $booking->load(['bookingItems.serviceType', 'bookingItems.vehicleGroup']);
+        foreach ($booking->bookingItems as $item) {
+            $requiresDeposit = (bool) ($item->workflow_config_snapshot['requires_refundable_deposit']
+                ?? $item->serviceType?->requires_refundable_deposit);
+            $item->metadata = array_merge($item->metadata ?? [], [
+                'requires_refundable_deposit' => $requiresDeposit,
+                'refundable_deposit_lkr' => $requiresDeposit
+                    ? max(0, (float) $item->vehicleGroup?->refundable_deposit) * max(1, (int) $item->quantity)
+                    : 0,
+            ]);
+            $item->save();
+        }
     }
 
     private function resolveBookingCustomerId(array $params, ?Booking $booking = null): ?string

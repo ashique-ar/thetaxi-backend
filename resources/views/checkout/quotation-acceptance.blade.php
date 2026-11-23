@@ -56,7 +56,7 @@
                 @endphp
                 <div class="border rounded p-3 mb-3">
                     <strong>{{ ($item['service_name'] ?? '') ?: 'Rental / taxi service' }}</strong>
-                    @if (!empty($item['vehicle_group_name']))
+                    @if (empty($quotation['options']) && !empty($item['vehicle_group_name']))
                         <div>{{ $item['vehicle_group_name'] }}</div>
                     @endif
                     <div class="text-muted">{{ !empty($item['is_self_driven']) ? 'Self-drive' : 'With driver' }}</div>
@@ -65,14 +65,17 @@
                     @if ($pickup || $dropoff)
                         <div class="text-muted">{{ $pickup ?: 'Pickup not set' }} → {{ $dropoff ?: 'Drop-off not set' }}</div>
                     @endif
+                    @if (empty($quotation['options']))
                     <div class="text-muted">{{ $item['quantity'] ?? 1 }} ×
                         {{ number_format((float) ($item['unit_price'] ?? 0), 2) }} {{ $currency }}</div>
                     <div class="fw-semibold">{{ number_format((float) ($item['total_price'] ?? 0), 2) }} {{ $currency }}</div>
+                    @endif
                 </div>
             @empty
                 <p class="text-muted">No item details were saved for this quotation. Contact our team before accepting.</p>
             @endforelse
 
+            @if (empty($quotation['options']))
             <div class="d-flex justify-content-between border-top pt-3">
                 <strong>Total</strong>
                 <strong>{{ number_format($total, 2) }} {{ $currency }}</strong>
@@ -86,6 +89,7 @@
                 <span>Due after acceptance</span><strong>{{ number_format($amountDue, 2) }} {{ $currency }}</strong>
             </div>
             <x-booking-refundable-deposit :booking="$booking" :currency="$currency" />
+            @endif
         </section>
 
         <section class="card p-4 mb-4">
@@ -104,9 +108,27 @@
         <form method="POST" action="{{ route('checkout.quotation-accept', ['token' => $token]) }}" class="card p-4">
             @csrf
             <input type="hidden" name="terms_hash" value="{{ $termsHash }}">
+            @if (!empty($quotation['options']))
+                <fieldset class="mb-3">
+                    <legend class="h5">Choose one vehicle option</legend>
+                    @foreach ($quotation['options'] as $option)
+                        <label class="d-flex align-items-start gap-2 border rounded p-3 mb-2">
+                            <input type="radio" name="quotation_option_id" value="{{ $option['id'] }}" required @checked(old('quotation_option_id') === ($option['id'] ?? null))>
+                            <span class="flex-grow-1">
+                                <strong>Option {{ $option['option_number'] ?? $loop->iteration }}</strong>
+                                @foreach (($option['trip_choices'] ?? []) as $tripChoice)
+                                    <span class="d-block">Trip {{ $tripChoice['trip_number'] }}: {{ $tripChoice['vehicle_group_name'] }}</span>
+                                @endforeach
+                                <span class="d-block">{{ number_format((float) data_get($option, 'totals.total_estimated', 0), 2) }} {{ $currency }}</span>
+                            </span>
+                        </label>
+                    @endforeach
+                </fieldset>
+                @error('quotation_option_id')<p class="text-danger" role="alert">{{ $message }}</p>@enderror
+            @endif
             <label class="d-flex align-items-start gap-2 mb-3">
                 <input id="accept-quotation-terms" type="checkbox" name="accept_terms" value="1" required aria-invalid="{{ $errors->has('accept_terms') ? 'true' : 'false' }}" @if ($errors->has('accept_terms')) aria-describedby="accept-quotation-terms-error" @endif style="margin-top: 5px;">
-                <span>I have reviewed this quotation and the terms above. I accept this offer and understand that I will
+                <span>I have reviewed my selected quotation option and the terms above. I accept this offer and understand that I will
                     continue to payment.</span>
             </label>
             @error('accept_terms')

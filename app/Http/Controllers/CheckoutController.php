@@ -3050,6 +3050,13 @@ class CheckoutController extends Controller
                 if (! $booking || (string) $booking->status !== (string) config('booking.status.quotation_requested')) {
                     return redirect()->route('home')->with('error', 'This quotation is no longer awaiting acceptance. Please contact our team.');
                 }
+                $acceptedOptionId = data_get($quote->acceptance_evidence, 'selected_quotation_option_id');
+                if ($acceptedOptionId) {
+                    $paymentLink = PendingPaymentLink::query()->where('booking_id', $booking->id)
+                        ->where('type', 'payment_reminder')->whereNull('invalidated_at')
+                        ->where('expires_at', '>', now())->first();
+                    if ($paymentLink) return redirect()->route('checkout.payment-resume', ['token' => $paymentLink->token]);
+                }
                 $snapshotHash = (string) data_get($quotation, 'snapshot_hash', '');
                 if ($snapshotHash === '' || ! BookingLinkHelper::matchesQuotationSnapshot($booking, $snapshotHash)) {
                     return redirect()->route('home')->with('error', 'This quotation has changed. Please contact our team for an updated offer.');
@@ -3141,6 +3148,7 @@ class CheckoutController extends Controller
         $data = $request->validate([
             'accept_terms' => ['required', 'accepted'],
             'terms_hash' => ['required', 'string', 'size:64'],
+            'quotation_option_id' => ['nullable', 'string', 'max:64'],
         ]);
         $issuedQuote = PendingPaymentLink::query()->where('token', $token)->where('type', 'quotation_conversion')->exists();
 
@@ -3171,10 +3179,15 @@ class CheckoutController extends Controller
                 return [null, 'This quotation has no valid saved total. Please contact our team.'];
             }
 
+            $selectedOption = null;
             if ($quote) {
                 $quotation = data_get($quote->booking_context, 'quotation', []);
                 $snapshotHash = (string) ($quotation['snapshot_hash'] ?? '');
-                if ($snapshotHash === '' || ! BookingLinkHelper::matchesQuotationSnapshot($booking, $snapshotHash)) {
+                $alreadySelected = data_get($quote->acceptance_evidence, 'selected_quotation_option_id');
+                if ($alreadySelected && (string) $alreadySelected !== (string) ($data['quotation_option_id'] ?? '')) {
+                    return [null, 'This quotation option has already been accepted. Contact our team if you need to change it.'];
+                }
+                if (! $alreadySelected && ($snapshotHash === '' || ! BookingLinkHelper::matchesQuotationSnapshot($booking, $snapshotHash))) {
                     return [null, 'This quotation has changed. Please contact our team for an updated offer.'];
                 }
                 $terms = is_array($quotation['terms'] ?? null)
@@ -3185,6 +3198,14 @@ class CheckoutController extends Controller
                     return [null, 'The quotation terms could not be verified. Please contact our team.'];
                 }
                 if (! hash_equals($termsHash, $data['terms_hash'])) return [null, 'The terms changed. Review the current offer and accept again.'];
+                $options = is_array($quotation['options'] ?? null) ? $quotation['options'] : [];
+                $selectedOption = null;
+                if ($options !== []) {
+                    $selectedOption = collect($options)->first(fn ($option) => (string) ($option['id'] ?? '') === (string) ($data['quotation_option_id'] ?? ''));
+                    if (! $selectedOption || ! is_array($selectedOption['booking_items'] ?? null) || ! is_array($selectedOption['pricing'] ?? null)) {
+                        return [null, 'Choose one vehicle option before accepting this quotation.'];
+                    }
+                }
             } else {
                 $terms = \App\Services\PendingPaymentManager::quotationTermsSnapshot($booking);
                 $termsHash = hash('sha256', \App\Support\Foundation\CanonicalJson::encode($terms));
@@ -3202,6 +3223,20 @@ class CheckoutController extends Controller
                 }
             }
 
+            if ($selectedOption !== null && ! data_get($quote->acceptance_evidence, 'selected_quotation_option_id')) {
+                app(\App\Services\BookingFlowService::class)->applyQuotationOption($booking, $selectedOption);
+                $workflowData = is_array($booking->workflow_data) ? $booking->workflow_data : [];
+                $workflowData['accepted_quotation_option'] = [
+                    'id' => (string) $selectedOption['id'],
+                    'vehicle_group_ids' => $selectedOption['vehicle_group_ids'] ?? [],
+                    'vehicle_group_names' => $selectedOption['vehicle_group_names'] ?? [],
+                    'accepted_at' => now()->utc()->toIso8601String(),
+                ];
+                $booking->workflow_data = $workflowData;
+                $booking->save();
+                $booking->refresh();
+            }
+
             $paymentLink = \App\Services\PendingPaymentManager::createPaymentLink($booking);
             if (! is_numeric($paymentLink->amount_due) || (float) $paymentLink->amount_due <= 0) {
                 return [null, 'Quotation amount is invalid. Please contact our team.'];
@@ -3214,6 +3249,7 @@ class CheckoutController extends Controller
                     'accepted_at' => ($quote->accepted_at ?: $now)->copy()->utc()->toIso8601String(),
                     'accepted_terms' => $terms,
                     'accepted_terms_hash' => $termsHash,
+                    ...($selectedOption !== null ? ['selected_quotation_option_id' => (string) $selectedOption['id']] : []),
                     'accepted_quote_snapshot_hash' => $snapshotHash ?? data_get($quote->booking_context, 'quotation.snapshot_hash'),
                     'revision_number' => (int) ($quote->revision_number ?: 1),
                     'user_id' => Auth::id() ? (string) Auth::id() : null,

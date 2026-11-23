@@ -16,6 +16,7 @@
         $customerName = trim((string) ($checkoutContact['first_name'] ?? '') . ' ' . (string) ($checkoutContact['last_name'] ?? ''))
             ?: ($booking->customer?->full_name ?: 'Valued Customer');
         $cartItems = $workflowData['cart_items'] ?? [];
+        $quotationOptions = $workflowData['quotation_options'] ?? [];
         $pickupLocation = is_string($booking->pickup_location)
             ? json_decode($booking->pickup_location, true)
             : $booking->pickup_location;
@@ -103,6 +104,22 @@
         </table>
     </div>
 
+    @if ($staffRequested && count($quotationOptions) > 1)
+        <div class="section">
+            <h2 class="section-title"><span class="icon">🚘</span> Vehicle options</h2>
+            <p>Choose one option when you review your quotation. You will pay for the option you select.</p>
+            @foreach ($quotationOptions as $option)
+                <div class="highlight-box info" style="margin-bottom:10px;">
+                    <strong>Option {{ $option['option_number'] ?? $loop->iteration }}</strong>
+                    @foreach (($option['trip_choices'] ?? []) as $tripChoice)
+                        <div>Trip {{ $tripChoice['trip_number'] }}: {{ $tripChoice['vehicle_group_name'] }}</div>
+                    @endforeach
+                    <span style="float:right;">{{ number_format((float) data_get($option, 'totals.total_estimated', 0), 2) }} {{ $currencyCode }}</span>
+                </div>
+            @endforeach
+        </div>
+    @endif
+
     <!-- Booking item details -->
     <div class="section">
         <h2 class="section-title">
@@ -113,7 +130,15 @@
             // Keep all persisted checkout amounts paired with their snapshot currency.
             $currencyCode = getBookingDisplayCurrency($booking);
         @endphp
-        @if ($booking->bookingItems->count() > 0)
+        @if (count($quotationOptions) > 1)
+            @foreach ($booking->bookingItems as $item)
+                <div class="highlight-box info" style="margin-bottom:10px;">
+                    <strong>{{ $item->serviceType?->name ?? 'Trip' }}</strong>
+                    <div>{{ $item->from_date?->format('M j, Y') ?? 'Date not set' }} {{ $item->from_time ?? '' }} — {{ $item->to_date?->format('M j, Y') ?? '' }} {{ $item->to_time ?? '' }}</div>
+                    <div>{{ data_get($item->pickup_location, 'address', 'Pickup not set') }} → {{ data_get($item->dropoff_location, 'address', 'Drop-off not set') }}</div>
+                </div>
+            @endforeach
+        @elseif ($booking->bookingItems->count() > 0)
             @foreach ($booking->bookingItems as $index => $item)
                 <x-booking-item-email :item="$item" :index="$index" :currency="$currencyCode" />
             @endforeach
@@ -121,12 +146,14 @@
     </div>
 
     <!-- Payment Summary Section -->
+    @if (count($quotationOptions) < 2)
     <div class="section">
         <h2 class="section-title">
             <span class="icon">💳</span> Quotation Summary
         </h2>
         <x-booking-payment-summary :booking="$booking" :currency="$currencyCode" :show_method="false" />
     </div>
+    @endif
     @if ($booking->special_requirements)
         <div class="section">
             <h2 class="section-title">

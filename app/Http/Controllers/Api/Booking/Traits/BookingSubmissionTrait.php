@@ -635,6 +635,10 @@ trait BookingSubmissionTrait
         $request->validate([
             'customer_id' => 'required|string|exists:customers,id',
             'booking_items' => 'required|array|min:1',
+            'quotation_options' => 'sometimes|array|min:2|max:20',
+            'quotation_options.*.id' => 'sometimes|string|max:64',
+            'quotation_options.*.vehicle_group_ids' => 'required|array|min:1',
+            'quotation_options.*.vehicle_group_ids.*' => 'required|string',
             'send_quotation_sms' => ['sometimes', 'boolean'],
             'send_quotation_email' => ['sometimes', 'boolean'],
         ]);

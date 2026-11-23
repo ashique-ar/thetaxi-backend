@@ -95,6 +95,7 @@ class BookingLinkHelper
             'total_estimated' => $money($booking->total_estimated),
             'amount_to_pay' => $money($booking->amount_to_pay),
             'amount_paid' => $money($booking->amount_paid),
+            'quotation_options_hash' => hash('sha256', \App\Support\Foundation\CanonicalJson::encode(data_get($booking->workflow_data, 'quotation_options', []))),
             'items' => $booking->bookingItems->sortBy('id')->map(fn ($item) => [
                 'id' => (string) $item->id,
                 'vehicle_group_id' => (string) ($item->vehicle_group_id ?? ''),
