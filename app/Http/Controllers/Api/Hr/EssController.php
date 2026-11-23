@@ -42,6 +42,7 @@ class EssController extends Controller
 
     public function inbox(Request $r): JsonResponse
     {
+        $data = $r->validate(['selected_id' => ['nullable', 'uuid']]);
         $staff = $this->currentStaff($r);
         $delegations = DB::table('hr_approval_delegations as delegation')
             ->join('staff as delegator', 'delegator.id', '=', 'delegation.delegator_staff_id')
@@ -61,6 +62,7 @@ class EssController extends Controller
         $query = DB::table('hr_request_index')->leftJoin('staff as requester_staff', 'requester_staff.id', '=', 'hr_request_index.requester_staff_id')
             ->leftJoin('users as requester_user', 'requester_user.id', '=', 'requester_staff.user_id')
             ->whereIn('hr_request_index.status', ['pending', 'pending_approval', 'returned'])
+            ->when($data['selected_id'] ?? null, fn ($query, $id) => $query->where('hr_request_index.id', $id))
             ->where(function ($q) use ($staff, $delegatedOwnersByType) {
                 $q->where('hr_request_index.current_owner_staff_id', $staff->id);
                 foreach ($delegatedOwnersByType as $type => $owners) {

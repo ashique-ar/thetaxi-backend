@@ -64,7 +64,7 @@ class MyWorkController extends Controller
                 foreach ((clone $inbox)->orderByRaw('due_at asc nulls last')->limit(5)->get(['id', 'request_type', 'summary', 'due_at']) as $row) {
                     $attention[] = ['id' => 'hr-approval:'.$row->id, 'group' => 'mine', 'type' => 'HR approval',
                         'title' => $row->summary ?: str_replace('_', ' ', $row->request_type), 'detail' => ucfirst(str_replace('_', ' ', $row->status)),
-                        'when' => $row->due_at, 'link' => '/hr/self-service/approvals'];
+                        'when' => $row->due_at, 'link' => '/hr/self-service/approvals?selected_id='.$row->id];
                 }
             }
         }
