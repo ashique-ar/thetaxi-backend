@@ -10948,17 +10948,22 @@ class BookingFlowService
                         : $bookingQuery->where('bookings.created_at', '<=', now()->subMinutes($targetMinutes));
                     }
                 }),
-            'needs_approval' => $query->where(function ($approvalQueue) {
-                $approvalQueue->whereHas('booking', function ($bookingQuery) {
+            'needs_approval' => $query
+                ->whereIn('booking_items.status', ['pending', 'pending_approval'])
+                ->whereHas('booking', function ($bookingQuery) {
                     $bookingQuery->where('status', 'pending_approval')
-                    ->orWhere(function ($approvalQuery) {
-                        $approvalQuery->where('requires_approval', true)
-                        ->whereIn('approval_status', ['pending', 'required']);
-                    });
-                })->orWhereHas('booking.approvals', fn ($approvalQuery) => $approvalQuery
-                    ->where('approval_type', 'resource_swap')
-                    ->where('status', BookingApproval::STATUS_PENDING));
-            }),
+                        ->where('requires_approval', true)
+                        ->whereIn('approval_status', ['pending', 'required'])
+                        ->where(function ($corporateApprovalQuery) {
+                            $corporateApprovalQuery->whereNull('corporate_approval_status')
+                                ->orWhere('corporate_approval_status', '!=', 'pending');
+                        })
+                        ->whereHas('approvals', fn ($approvalQuery) => $approvalQuery
+                            ->where('status', BookingApproval::STATUS_PENDING)
+                            ->where(function ($typeQuery) {
+                                $typeQuery->whereNull('approval_type')->orWhere('approval_type', '!=', 'resource_swap');
+                            }));
+                }),
             'needs_assignment' => $query->whereHas('booking', function ($bookingQuery) {
                     $bookingQuery->whereIn('status', ['approved', 'confirmed', 'allocated'])
                     ->whereDoesntHave('dispatches', function ($dispatchQuery) {

@@ -3,6 +3,7 @@
 namespace App\Services;
 
 use App\Models\Booking\Booking;
+use App\Models\Booking\BookingApproval;
 use App\Models\BusinessSetting;
 use App\Models\User;
 use App\Notifications\NewCorporateBookingNotification;
@@ -10,6 +11,7 @@ use App\Notifications\CorporatePortalBookingNotification;
 use App\Notifications\CorporateAccountBookingNotification;
 use App\Notifications\CorporatePassengerBookingNotification;
 use App\Notifications\CorporateApprovalRequested;
+use App\Notifications\BookingApprovalRequested;
 use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Facades\Notification;
 
@@ -88,7 +90,15 @@ class CorporateBookingNotificationService
                     ->whereNull('deleted_at')
                     ->where(fn ($employment) => $employment->whereNull('employment_ended_at')->orWhere('employment_ended_at', '>', now())))
                 ->get();
-            Notification::send($approvers, $notification);
+            $pendingApproval = $booking->status === 'pending_approval'
+                ? BookingApproval::query()->where('booking_id', $booking->id)->where('status', BookingApproval::STATUS_PENDING)->latest()->first()
+                : null;
+            if ($pendingApproval) {
+                $pendingCount = Booking::query()->where('status', 'pending_approval')->where('requires_approval', true)->count();
+                Notification::send($approvers, new BookingApprovalRequested($booking, $pendingApproval, $pendingCount));
+            } else {
+                Notification::send($approvers, $notification);
+            }
 
             $businessEmail = $this->businessNotificationEmail();
             if (filter_var($businessEmail, FILTER_VALIDATE_EMAIL)) {
