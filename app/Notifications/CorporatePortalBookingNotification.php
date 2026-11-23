@@ -22,7 +22,7 @@ class CorporatePortalBookingNotification extends Notification implements ShouldQ
 
     public function via(object $notifiable): array
     {
-        $channels = ['database'];
+        $channels = ['database', 'broadcast'];
         if (($this->booking->notification_email ?? true)
             && ! ($this->booking->skip_all_emails ?? false)
             && filled($notifiable->email)) {
@@ -57,7 +57,9 @@ class CorporatePortalBookingNotification extends Notification implements ShouldQ
         return [
             'title' => $title,
             'message' => $message,
-            'type' => 'corporate_booking_'.$this->state,
+            'type' => $this->state === 'approval_requested'
+                ? 'corporate_booking_approval_pending'
+                : 'corporate_booking_'.$this->state,
             'data' => [
                 'booking_id' => (string) $this->booking->id,
                 'booking_number' => $this->reference(),

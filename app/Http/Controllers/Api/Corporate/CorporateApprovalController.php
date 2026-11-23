@@ -76,7 +76,7 @@ class CorporateApprovalController extends Controller
     public function reject(Request $request, string $bookingId): JsonResponse
     {
         $request->validate([
-            'reason'   => ['required', 'string', 'max:1000'],
+            'reason'   => ['nullable', 'string', 'max:1000'],
             'comments' => ['nullable', 'string', 'max:1000'],
         ]);
 
@@ -85,7 +85,7 @@ class CorporateApprovalController extends Controller
                 $bookingId,
                 $request->user()->id,
                 $request->corporate_id,
-                $request->reason,
+                $request->reason ?? '',
                 $request->comments
             );
         } catch (\Symfony\Component\HttpKernel\Exception\HttpException $e) {

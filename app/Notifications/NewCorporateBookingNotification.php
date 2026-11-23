@@ -20,7 +20,7 @@ class NewCorporateBookingNotification extends Notification implements ShouldQueu
 
     public function via(object $notifiable): array
     {
-        return $notifiable instanceof AnonymousNotifiable ? ['mail'] : ['database'];
+        return $notifiable instanceof AnonymousNotifiable ? ['mail'] : ['database', 'broadcast'];
     }
 
     public function toMail(object $notifiable): MailMessage

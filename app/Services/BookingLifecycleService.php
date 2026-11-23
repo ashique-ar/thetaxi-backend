@@ -1633,7 +1633,9 @@ class BookingLifecycleService
      */
     public function completeBooking(string $bookingId, array $completionData = [], ?string $bookingItemId = null): Booking
     {
-        return DB::transaction(function () use ($bookingId, $completionData, $bookingItemId) {
+        return app(\App\Services\BookingHistoryService::class)->withReasonContext(
+            $completionData['change_reason'] ?? null,
+            fn () => DB::transaction(function () use ($bookingId, $completionData, $bookingItemId) {
             $booking = Booking::query()
                 ->lockForUpdate()
                 ->with(['dispatches', 'dispatch', 'bookingItems'])
@@ -1861,7 +1863,8 @@ class BookingLifecycleService
             }
 
             return $booking;
-        });
+            })
+        );
     }
 
     /**
@@ -1874,6 +1877,14 @@ class BookingLifecycleService
         array $completionData = [],
         ?string $bookingItemId = null
     ): Booking {
+        return app(\App\Services\BookingHistoryService::class)->withReasonContext(
+            $completionData['change_reason'] ?? null,
+            fn () => $this->forceCompleteBookingWithReason($bookingId, $completionData, $bookingItemId)
+        );
+    }
+
+    private function forceCompleteBookingWithReason(string $bookingId, array $completionData, ?string $bookingItemId): Booking
+    {
         $bookingForStatus = Booking::query()
             ->with(['bookingItems', 'dispatch', 'dispatches', 'qc', 'qcs'])
             ->findOrFail($bookingId);

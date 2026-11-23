@@ -9,11 +9,36 @@ use App\Notifications\NewCorporateBookingNotification;
 use App\Notifications\CorporatePortalBookingNotification;
 use App\Notifications\CorporateAccountBookingNotification;
 use App\Notifications\CorporatePassengerBookingNotification;
+use App\Notifications\CorporateApprovalRequested;
 use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Facades\Notification;
 
 class CorporateBookingNotificationService
 {
+    public function notifyCorporateApprovers(Booking $booking): void
+    {
+        try {
+            $employees = \App\Models\Corporate\CorporateEmployee::query()
+                ->where('corporate_id', $booking->corporate_account_id)
+                ->where('is_active', true)
+                ->with(['user', 'userContext.roles.permissions'])
+                ->get();
+            $approvers = $employees
+                ->filter(fn ($employee) => CorporatePortalPermission::employeeAllows($employee, 'approve_bookings'))
+                ->pluck('user')->filter()->unique('id');
+            $pendingCount = Booking::query()->where('corporate_account_id', $booking->corporate_account_id)
+                ->where('corporate_approval_status', 'pending')->count();
+
+            Notification::send($approvers, new CorporateApprovalRequested($booking, $pendingCount));
+        } catch (\Throwable $exception) {
+            Log::warning('Corporate booking approvers could not be notified', [
+                'booking_id' => $booking->id,
+                'corporate_id' => $booking->corporate_account_id,
+                'error' => $exception->getMessage(),
+            ]);
+        }
+    }
+
     public function notifyPortalUser(?User $user, Booking $booking, string $state, ?string $reason = null): void
     {
         if (! $user) {

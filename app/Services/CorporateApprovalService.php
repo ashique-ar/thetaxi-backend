@@ -124,7 +124,7 @@ class CorporateApprovalService
                 abort(422, 'Booking is not in pending approval status.');
             }
 
-            $rejectionNote = $reason . ($comments ? " — {$comments}" : '');
+            $rejectionNote = implode(' — ', array_filter([trim($reason), trim((string) $comments)]));
             BookingApproval::query()->where('booking_id', $bookingId)
                 ->where('status', BookingApproval::STATUS_PENDING)->latest()->first()
                 ?->reject($approverId, $rejectionNote);

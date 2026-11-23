@@ -49,7 +49,6 @@ use App\Services\Sms\SmsAutomationService;
 use Carbon\Carbon;
 use Illuminate\Auth\Access\AuthorizationException;
 use Illuminate\Database\QueryException;
-use Illuminate\Notifications\DatabaseNotification;
 use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\DB;
@@ -57,8 +56,8 @@ use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Facades\Schema;
 use Illuminate\Support\Str;
 use Illuminate\Validation\ValidationException;
-use Ramsey\Uuid\Uuid;
 use Spatie\Activitylog\Models\Activity;
+use App\Notifications\BookingApprovalRequested;
 
 class BookingFlowService
 {
@@ -8601,12 +8600,6 @@ class BookingFlowService
      */
     public function processApproval(string $bookingId, string $action, ?string $note, string $userId): array
     {
-        if ($action === 'reject' && mb_strlen(trim((string) $note)) < 3) {
-            throw ValidationException::withMessages([
-                'comments' => 'Enter a rejection reason of at least 3 characters.',
-            ]);
-        }
-
         return DB::transaction(function () use ($bookingId, $action, $note, $userId): array {
             $booking = Booking::query()->whereKey($bookingId)->lockForUpdate()->firstOrFail();
             $approval = BookingApproval::query()->where('booking_id', $bookingId)
@@ -8618,7 +8611,7 @@ class BookingFlowService
                 $decisions = is_array($conditions['step_decisions'] ?? null) ? $conditions['step_decisions'] : [];
                 $decisionStep = count($decisions) + 1;
                 if ($action === 'reject') {
-                    $approval->reject($userId, $note ?? 'Rejected');
+                    $approval->reject($userId, $note ?? '');
                     $this->recordApprovalHistoryDecision($booking, $approval, $action, $note, $userId, $decisionStep);
                     return ['booking' => $booking, 'action' => 'reject', 'status' => 'rejected', 'approval_type' => 'resource_swap', 'message' => 'Resource swap rejected. Current assignments were left in place.'];
                 }
@@ -8658,7 +8651,7 @@ class BookingFlowService
                     $approval->conditions = array_merge($conditions, ['required_steps' => $requiredSteps, 'step_decisions' => $decisions]);
                     $approval->approve($userId, $note);
                 } else {
-                    $approval->reject($userId, $note ?? 'Rejected');
+                    $approval->reject($userId, $note ?? '');
                 }
             }
 
@@ -9348,6 +9341,7 @@ class BookingFlowService
             // Notify every installation user with booking approval permission.
             $approvers = User::permission('bookings.approve')
                 ->get();
+            $pendingCount = Booking::query()->where('status', 'pending_approval')->where('requires_approval', true)->count();
 
             $bookingNumber = $booking->booking_number ?? (string) $booking->id;
             $subject = "Booking #{$bookingNumber} Requires Approval";
@@ -9380,25 +9374,10 @@ class BookingFlowService
                     }
                 }
 
-                // Create in-app database notification
                 try {
-                    DatabaseNotification::create([
-                        'id' => Uuid::uuid4()->toString(),
-                        'type' => 'App\Notifications\BookingApprovalRequested',
-                        'notifiable_type' => 'App\Models\User',
-                        'notifiable_id' => $approver->id,
-                        'data' => [
-                            'booking_id' => (string) $booking->id,
-                            'booking_number' => $bookingNumber,
-                            'approval_id' => (string) $approval->id,
-                            'notification_type' => 'booking_approval_requested',
-                            'title' => "Booking #{$bookingNumber} awaiting approval",
-                            'message' => 'Priority: ' . ($approval->priority ?? 'normal'),
-                        ],
-                        'read_at' => null,
-                    ]);
+                    $approver->notify(new BookingApprovalRequested($booking, $approval, $pendingCount));
                 } catch (\Throwable $e) {
-                    Log::warning('Failed to create in-app approval notification', [
+                    Log::warning('Failed to send real-time approval notification', [
                         'approver_id' => $approver->id,
                         'error' => $e->getMessage(),
                     ]);
@@ -12543,12 +12522,6 @@ class BookingFlowService
      */
     public function bulkOperations(string $operation, array $bookingIds, array $data, string $userId, ?string $reason = null): array
     {
-        if ($operation === 'reject' && mb_strlen(trim((string) $reason)) < 3) {
-            throw ValidationException::withMessages([
-                'reason' => 'Enter a rejection reason of at least 3 characters.',
-            ]);
-        }
-
         $results = [
             'success' => [],
             'failed' => [],

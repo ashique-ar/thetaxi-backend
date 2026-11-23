@@ -4,12 +4,31 @@ namespace App\Http\Controllers\Api\Corporate;
 
 use App\Http\Controllers\Controller;
 use App\Models\Booking\Booking;
+use App\Models\Corporate\Corporate;
+use App\Services\CorporateService;
 use App\Services\CorporatePortalPermission;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 
 class CorporateWorkspaceController extends Controller
 {
+    public function updateProfile(Request $request, CorporateService $corporateService): JsonResponse
+    {
+        abort_unless(CorporatePortalPermission::allows($request, 'manage_employees'), 403);
+        $data = $request->validate(['approval_required' => ['required', 'boolean']]);
+        $corporate = Corporate::findOrFail($request->corporate_id);
+        $corporate = $corporateService->updateCorporate($corporate, [
+            'approval_required' => $data['approval_required'],
+            'updated_user_id' => $request->user()->id,
+        ]);
+
+        return response()->json([
+            'status' => 'success',
+            'message' => 'Company booking settings updated.',
+            'data' => ['corporate' => $corporate],
+        ]);
+    }
+
     public function dashboard(Request $request): JsonResponse
     {
         $user = $request->user();

@@ -312,6 +312,9 @@ class BookingHistoryService
                 ?? $model->receipt?->booking_id
                 ?? $model->schedule?->booking_id
                 ?? $model->rule?->booking_id
+                ?? $model->rollingRule?->booking_id
+                ?? $model->schedule?->booking_id
+                ?? $model->receipt?->booking_id
                 ?? '');
         if ($bookingId === '' && $model instanceof \App\Models\Driver\DriverSession) {
             $assignmentId = $model->assignment_id ?? ($before['assignment_id'] ?? null);

@@ -26,6 +26,34 @@ class MyWorkController extends Controller
         $employeeWorkload = [];
         $activeBookingStatuses = array_merge(['inquiry', 'inquiry_qualified'], BookingLifecycleStatus::activeOperationalValues());
 
+        if ($request->user()->can('hr.mss.approve')) {
+            $staffId = DB::table('staff')->where('user_id', $userId)->whereNull('deleted_at')->value('id');
+            $delegatedLeaveOwners = [];
+            if ($staffId) {
+                foreach (DB::table('hr_approval_delegations as delegation')
+                    ->join('staff as delegator', 'delegator.id', '=', 'delegation.delegator_staff_id')
+                    ->join('staff as delegate', 'delegate.id', '=', 'delegation.delegate_staff_id')
+                    ->join('staff as approver', function ($join) { $join->on('approver.id', '=', 'delegation.approved_by_staff_id')->on('approver.user_id', '=', 'delegation.approved_by'); })
+                    ->where('delegate.id', $staffId)->where('delegation.status', 'approved')
+                    ->whereNotNull('delegation.approved_at')->whereDate('delegation.effective_from', '<=', now())
+                    ->whereDate('delegation.effective_until', '>=', now())->get(['delegation.delegator_staff_id', 'delegation.request_types']) as $delegation) {
+                    if (in_array('leave', json_decode($delegation->request_types, true) ?: [], true)) $delegatedLeaveOwners[] = $delegation->delegator_staff_id;
+                }
+            }
+            $inbox = DB::table('hr_request_index')->whereIn('status', ['pending', 'pending_approval', 'returned'])
+                ->where(function ($query) use ($staffId, $delegatedLeaveOwners) {
+                    $query->where('current_owner_staff_id', $staffId);
+                    if ($delegatedLeaveOwners) $query->orWhere(fn ($delegated) => $delegated->where('request_type', 'leave')->whereIn('current_owner_staff_id', $delegatedLeaveOwners));
+                });
+            $queues[] = ['group' => 'mine', 'title' => 'HR approvals', 'help' => 'Employee requests awaiting your decision', 'icon' => 'how_to_reg',
+                'link' => '/hr/self-service/approvals', 'count' => (int) (clone $inbox)->count()];
+            foreach ((clone $inbox)->orderByRaw('due_at asc nulls last')->limit(5)->get(['id', 'request_type', 'summary', 'due_at']) as $row) {
+                $attention[] = ['id' => 'hr-approval:'.$row->id, 'group' => 'mine', 'type' => 'HR approval',
+                    'title' => $row->summary ?: str_replace('_', ' ', $row->request_type), 'detail' => ucfirst(str_replace('_', ' ', $row->status)),
+                    'when' => $row->due_at, 'link' => '/hr/self-service/approvals'];
+            }
+        }
+
         if ($request->user()->canAny(['bookings.view', 'bookings.view-assigned']) && !Schema::hasColumn('bookings', 'responsible_user_id')) {
             return response()->json([
                 'status' => 'error',

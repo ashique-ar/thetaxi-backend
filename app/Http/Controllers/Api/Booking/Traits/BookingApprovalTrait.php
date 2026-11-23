@@ -39,12 +39,6 @@ trait BookingApprovalTrait
         ]);
         $comments = trim((string) ($validated['note'] ?? ''));
         if ($comments === '') $comments = trim((string) ($validated['comments'] ?? ''));
-        if ($validated['action'] === 'reject' && mb_strlen($comments) < 3) {
-            throw \Illuminate\Validation\ValidationException::withMessages([
-                'comments' => 'Enter a rejection reason of at least 3 characters.',
-            ]);
-        }
-
         try {
             $result = $this->bookingFlowService->processApproval(
                 $request->booking_id,

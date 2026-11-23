@@ -8,6 +8,7 @@ use App\Models\Booking\BookingStatus;
 use App\Http\Requests\Booking\BookingStatus\CreateBookingStatusRequest;
 use App\Http\Requests\Booking\BookingStatus\UpdateBookingStatusRequest;
 use App\Http\Resources\Booking\BookingStatusResource;
+use App\Services\BookingHistoryService;
 use Illuminate\Http\Request;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Resources\Json\AnonymousResourceCollection;
@@ -31,9 +32,13 @@ class BookingStatusController extends Controller
     public function store(CreateBookingStatusRequest $request): JsonResponse
     {
         $data = $request->validated();
+        $changeReason = $data['change_reason'] ?? null;
         unset($data['change_reason']);
         $data['created_user_id'] = $request->user()->id;
-        $st = BookingStatus::create($data);
+        $st = app(BookingHistoryService::class)->withReasonContext(
+            $changeReason,
+            fn () => BookingStatus::create($data)
+        );
 
         return response()->json([
             'status' => 'success',
@@ -53,9 +58,13 @@ class BookingStatusController extends Controller
     public function update(UpdateBookingStatusRequest $request, BookingStatus $bookingStatus): JsonResponse
     {
         $data = $request->validated();
+        $changeReason = $data['change_reason'] ?? null;
         unset($data['change_reason']);
         $data['updated_user_id'] = $request->user()->id;
-        $bookingStatus->update($data);
+        app(BookingHistoryService::class)->withReasonContext(
+            $changeReason,
+            fn () => $bookingStatus->update($data)
+        );
 
         return response()->json([
             'status' => 'success',
@@ -66,8 +75,12 @@ class BookingStatusController extends Controller
 
     public function destroy(Request $request, BookingStatus $bookingStatus): JsonResponse
     {
-        $request->validate(['change_reason' => ['nullable', 'string', 'max:1000']]);
-        $bookingStatus->delete();
+        $validated = $request->validate(['change_reason' => ['nullable', 'string', 'max:1000']]);
+        $bookingStatus->updated_user_id = $request->user()->id;
+        app(BookingHistoryService::class)->withReasonContext(
+            $validated['change_reason'] ?? null,
+            fn () => $bookingStatus->delete()
+        );
         return response()->json([
             'status' => 'success',
             'message' => 'Booking status deleted'

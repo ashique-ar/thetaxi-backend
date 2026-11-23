@@ -43,7 +43,8 @@ class CorporateBookingService
         $data['defer_confirmation'] = true;
 
         $creditApprovalRequired = $this->requiresCreditApproval($corporate, $data);
-        $corporateApprovalRequired = (bool) $corporate->approval_required;
+        $corporateApprovalRequired = (bool) $corporate->approval_required
+            && ! CorporatePortalPermission::employeeAllows($employee, 'approve_bookings');
 
         return DB::transaction(function () use ($employee, $corporate, $data, $creditApprovalRequired, $corporateApprovalRequired) {
             $needsApproval = $corporateApprovalRequired;
@@ -101,6 +102,7 @@ class CorporateBookingService
 
         $creditApprovalRequired = $this->requiresCreditApproval($corporate, $data);
         $corporateApprovalRequired = (bool) $corporate->approval_required
+            && ! CorporatePortalPermission::employeeAllows($requester, 'approve_bookings')
             && !((bool) $corporate->exempt_coordinator_from_approval && $requester->role === 'transport_coordinator');
 
         return DB::transaction(function () use ($requester, $corporate, $data, $creditApprovalRequired, $corporateApprovalRequired) {
@@ -165,6 +167,7 @@ class CorporateBookingService
 
         $creditApprovalRequired = $this->requiresCreditApproval($corporate, $data);
         $corporateApprovalRequired = (bool) $corporate->approval_required
+            && ! CorporatePortalPermission::employeeAllows($coordinator, 'approve_bookings')
             && !((bool) $corporate->exempt_coordinator_from_approval && (string) $coordinator->user_id !== (string) $targetEmployee->user_id);
 
         return DB::transaction(function () use ($coordinator, $targetEmployee, $corporate, $data, $creditApprovalRequired, $corporateApprovalRequired) {
@@ -451,6 +454,7 @@ class CorporateBookingService
         $siblings->each(fn (Booking $sibling) => $sibling->update($attributes));
 
         if ($corporateApprovalRequired) {
+            $this->corporateBookingNotifications->notifyCorporateApprovers($booking);
             foreach (collect([$booking])->merge($siblings) as $staffReviewBooking) {
                 BookingApproval::query()->where('booking_id', $staffReviewBooking->id)
                     ->where('status', BookingApproval::STATUS_PENDING)->get()

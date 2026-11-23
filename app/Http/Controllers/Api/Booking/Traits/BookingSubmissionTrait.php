@@ -1161,12 +1161,6 @@ trait BookingSubmissionTrait
             'data' => 'nullable|array',
             'reason' => 'nullable|string|max:500'
         ]);
-        if (($validated['operation'] ?? null) === 'reject' && mb_strlen(trim((string) ($validated['reason'] ?? ''))) < 3) {
-            throw \Illuminate\Validation\ValidationException::withMessages([
-                'reason' => 'Enter a rejection reason of at least 3 characters.',
-            ]);
-        }
-
         try {
             $result = $this->bookingFlowService->bulkOperations(
                 $request->operation,

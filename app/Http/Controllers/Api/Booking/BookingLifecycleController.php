@@ -173,6 +173,7 @@ class BookingLifecycleController extends Controller
             'pickup_waiting_minutes' => 'nullable|integer|min:0',
             'hire_waiting_minutes' => 'nullable|integer|min:0',
             'activity_source' => 'nullable|string|in:customer_mobile,driver_mobile,system_return,system_completion',
+            'change_reason' => 'nullable|string|max:1000',
             'damages' => 'nullable|array',
             'damages.*.type' => 'required_with:damages|string',
             'damages.*.description' => 'required_with:damages|string',
@@ -569,6 +570,7 @@ class BookingLifecycleController extends Controller
                     'hire_waiting_minutes',
                     'charges',
                     'activity_source',
+                    'change_reason',
                 ]), ['completed_by' => Auth::id()]),
                 $request->input('booking_item_id')
             );
@@ -664,6 +666,7 @@ class BookingLifecycleController extends Controller
             'notes' => 'nullable|string|max:2000',
             'send_customer_sms' => 'nullable|boolean',
             'send_customer_email' => 'nullable|boolean',
+            'change_reason' => 'nullable|string|max:1000',
         ]);
 
         try {
