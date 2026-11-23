@@ -410,7 +410,7 @@
             $hasFreeKmPerPackage =
                 isset($distanceDetails['free_km_per_package']) && $distanceDetails['free_km_per_package'] > 0;
             $hasAllowedKm = isset($distanceDetails['allowed_total_km']) && $distanceDetails['allowed_total_km'] > 0;
-            $hasExtraKmPrice = isset($distanceDetails['extra_km_price']) && floor(max(0, (float) $distanceDetails['extra_km_price'])) > 0;
+            $hasExtraKmPrice = isset($distanceDetails['extra_km_price']) && (float) $distanceDetails['extra_km_price'] > 0;
             $hasExtraHourPrice =
                 $serviceType === 'day_rental' &&
                 isset($distanceDetails['extra_hour_price']) &&
@@ -464,7 +464,7 @@
                         <small class="pricing-detail-item">
                             <i class="bi bi-lightning-fill"></i> Extra:
                             <small class="currency-code">{{ getCurrencySymbol() }}</small>
-                            {{ number_format(floor(max(0, $distanceDetails['extra_km_price'])), 0) }}/km
+                            {{ number_format(max(0, (float) $distanceDetails['extra_km_price']), 2) }}/km
                         </small>
                     @endif
 
