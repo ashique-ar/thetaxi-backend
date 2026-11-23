@@ -37,6 +37,7 @@ class StoreCorporateRequest extends FormRequest
             'approval_required' => ['boolean'],
             'exempt_coordinator_from_approval' => ['boolean'],
             'coordinator_can_view_payments' => ['boolean'],
+            'booking_vehicle_display' => ['sometimes', 'required', 'in:vehicle_class,vehicle_group'],
             'default_payment_arrangement' => ['nullable', 'in:monthly_invoice,cash_to_driver,online,advance_then_balance,deposit_then_balance,pay_at_end,account_credit,bank_transfer,card,complimentary'],
         ];
     }

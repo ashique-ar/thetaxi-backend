@@ -724,7 +724,7 @@
                 Base fare
             </td>
             <td style="padding: 4px 0; color: #555; font-weight: 600;">
-                {{ $displayCurrencyLabel }} {{ number_format(floor(max(0, $displayBaseItemTotal)), 0) }}
+                {{ $displayCurrencyLabel }} {{ number_format(max(0, $displayBaseItemTotal), 2) }}
                 @if ($isReturnTrip && !empty($returnDiscountPct) && $returnDiscountPct > 0)
                     <small class="text-success" style="margin-left: 8px;">({{ $returnDiscountPct }}% return discount applied)</small>
                 @endif
@@ -735,7 +735,7 @@
                 Booking item total
             </td>
             <td style="padding: 10px; color: #7f1d1d; font-weight: 800; font-size: 18px; border-top: 2px solid #fecaca;">
-                {{ $displayCurrencyLabel }} {{ number_format(floor(max(0, $displayItemGrandTotal)), 0) }}
+                {{ $displayCurrencyLabel }} {{ number_format(max(0, $displayItemGrandTotal), 2) }}
                 @if ($addonsTotal > 0 || $extraKmTotal > 0)
                     <small style="display:block; color:#7f1d1d; font-size:12px; font-weight:400; margin-top:2px;">Includes add-ons and extra kilometers</small>
                 @endif

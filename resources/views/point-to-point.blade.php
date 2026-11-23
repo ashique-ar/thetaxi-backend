@@ -49,14 +49,14 @@
                                             d="M9 0C4.037 0 0 4.037 0 9c0 6.75 9 9 9 9s9-2.25 9-9c0-4.963-4.037-9-9-9zm0 12.75c-2.07 0-3.75-1.68-3.75-3.75S6.93 5.25 9 5.25s3.75 1.68 3.75 3.75-1.68 3.75-3.75 3.75z" />
                                     </svg>
                                     <div class="custom-select-dropdown">
-                                        <input type="text" name="pickup" placeholder="Pick up location"
+                                        <input type="text" name="pickup" aria-label="Pick up location" aria-invalid="{{ $errors->has('pickup') ? 'true' : 'false' }}" @if ($errors->has('pickup')) aria-describedby="point-pickup-error" @endif placeholder="Pick up location"
                                             class="nice-select custom-location-search @error('pickup') is-invalid @enderror"
                                             value="{{ old('pickup', 'Colombo, Sri Lanka') }}" required autocomplete="off">
                                         <input type="hidden" name="pickup_lat" value="{{ old('pickup_lat', '6.9271') }}">
                                         <input type="hidden" name="pickup_lng" value="{{ old('pickup_lng', '79.8612') }}">
                                     </div>
                                     @error('pickup')
-                                        <span class="text-danger small">{{ $message }}</span>
+                                        <span id="point-pickup-error" class="text-danger small" role="alert">{{ $message }}</span>
                                     @enderror
                                 </div>
 
@@ -68,7 +68,7 @@
                                             d="M9 0C4.037 0 0 4.037 0 9c0 6.75 9 9 9 9s9-2.25 9-9c0-4.963-4.037-9-9-9zm0 12.75c-2.07 0-3.75-1.68-3.75-3.75S6.93 5.25 9 5.25s3.75 1.68 3.75 3.75-1.68 3.75-3.75 3.75z" />
                                     </svg>
                                     <div class="custom-select-dropdown">
-                                        <input type="text" name="dropoff" placeholder="Drop off location"
+                                        <input type="text" name="dropoff" aria-label="Drop off location" aria-invalid="{{ $errors->has('dropoff') ? 'true' : 'false' }}" @if ($errors->has('dropoff')) aria-describedby="point-dropoff-error" @endif placeholder="Drop off location"
                                             class="nice-select custom-location-search @error('dropoff') is-invalid @enderror"
                                             value="{{ old('dropoff', 'Galle, Sri Lanka') }}" required autocomplete="off">
                                         <input type="hidden" name="dropoff_lat" value="{{ old('dropoff_lat', '6.0535') }}">
@@ -76,7 +76,7 @@
                                             value="{{ old('dropoff_lng', '80.221') }}">
                                     </div>
                                     @error('dropoff')
-                                        <span class="text-danger small">{{ $message }}</span>
+                                        <span id="point-dropoff-error" class="text-danger small" role="alert">{{ $message }}</span>
                                     @enderror
                                 </div>
 
@@ -87,11 +87,11 @@
                                         <path
                                             d="M14 2h-1V1a1 1 0 0 0-2 0v1H7V1a1 1 0 0 0-2 0v1H4a2 2 0 0 0-2 2v10a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2V4a2 2 0 0 0-2-2zM4 4h1v1a1 1 0 0 0 2 0V4h4v1a1 1 0 0 0 2 0V4h1v2H4V4zm0 4h10v6H4V8z" />
                                     </svg>
-                                    <input type="text" name="date" placeholder="DD/MM/YYYY"
+                                    <input type="text" name="date" aria-label="Pickup date" inputmode="numeric" aria-invalid="{{ $errors->has('date') ? 'true' : 'false' }}" @if ($errors->has('date')) aria-describedby="point-date-error" @endif placeholder="DD/MM/YYYY"
                                         class="nice-select custom-datepicker @error('date') is-invalid @enderror"
                                         value="{{ old('date', date('d/m/Y')) }}" required autocomplete="off">
                                     @error('date')
-                                        <span class="text-danger small">{{ $message }}</span>
+                                        <span id="point-date-error" class="text-danger small" role="alert">{{ $message }}</span>
                                     @enderror
                                 </div>
 
@@ -103,7 +103,7 @@
                                             d="M9 0C4.037 0 0 4.037 0 9s4.037 9 9 9 9-4.037 9-9S13.963 0 9 0zm4.5 9.75h-4.5a.75.75 0 0 1-.75-.75V4.5a.75.75 0 0 1 1.5 0v3.75h3.75a.75.75 0 0 1 0 1.5z" />
                                     </svg>
                                     <div class="custom-select-dropdown">
-                                        <select name="time" class="nice-select @error('time') is-invalid @enderror"
+                                        <select name="time" aria-label="Pickup time" aria-invalid="{{ $errors->has('time') ? 'true' : 'false' }}" @if ($errors->has('time')) aria-describedby="point-time-error" @endif class="nice-select @error('time') is-invalid @enderror"
                                             required>
                                             <option value="">Select time</option>
                                             @for ($hour = 0; $hour < 24; $hour++)
@@ -119,7 +119,7 @@
                                         </select>
                                     </div>
                                     @error('time')
-                                        <span class="text-danger small">{{ $message }}</span>
+                                        <span id="point-time-error" class="text-danger small" role="alert">{{ $message }}</span>
                                     @enderror
                                 </div>
 
@@ -150,11 +150,11 @@
                                             <path
                                                 d="M14 2h-1V1a1 1 0 0 0-2 0v1H7V1a1 1 0 0 0-2 0v1H4a2 2 0 0 0-2 2v10a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2V4a2 2 0 0 0-2-2zM4 4h1v1a1 1 0 0 0 2 0V4h4v1a1 1 0 0 0 2 0V4h1v2H4V4zm0 4h10v6H4V8z" />
                                         </svg>
-                                        <input type="text" name="return_date" placeholder="DD/MM/YYYY"
+                                        <input type="text" name="return_date" aria-label="Return date" inputmode="numeric" aria-invalid="{{ $errors->has('return_date') ? 'true' : 'false' }}" @if ($errors->has('return_date')) aria-describedby="point-return-date-error" @endif placeholder="DD/MM/YYYY"
                                             class="nice-select custom-datepicker @error('return_date') is-invalid @enderror"
                                             value="{{ old('return_date') }}" autocomplete="off">
                                         @error('return_date')
-                                            <span class="text-danger small">{{ $message }}</span>
+                                            <span id="point-return-date-error" class="text-danger small" role="alert">{{ $message }}</span>
                                         @enderror
                                     </div>
 
@@ -166,7 +166,7 @@
                                                 d="M9 0C4.037 0 0 4.037 0 9s4.037 9 9 9 9-4.037 9-9S13.963 0 9 0zm4.5 9.75h-4.5a.75.75 0 0 1-.75-.75V4.5a.75.75 0 0 1 1.5 0v3.75h3.75a.75.75 0 0 1 0 1.5z" />
                                         </svg>
                                         <div class="custom-select-dropdown">
-                                            <select name="return_time"
+                                            <select name="return_time" aria-label="Return time" aria-invalid="{{ $errors->has('return_time') ? 'true' : 'false' }}" @if ($errors->has('return_time')) aria-describedby="point-return-time-error" @endif
                                                 class="nice-select @error('return_time') is-invalid @enderror">
                                                 <option value="">Select return time</option>
                                                 @for ($hour = 0; $hour < 24; $hour++)
@@ -182,7 +182,7 @@
                                             </select>
                                         </div>
                                         @error('return_time')
-                                            <span class="text-danger small">{{ $message }}</span>
+                                            <span id="point-return-time-error" class="text-danger small" role="alert">{{ $message }}</span>
                                         @enderror
                                     </div>
                                 </div>
@@ -195,7 +195,7 @@
                                             d="M9 9c2.21 0 4-1.79 4-4s-1.79-4-4-4-4 1.79-4 4 1.79 4 4 4zm0 2c-2.67 0-8 1.34-8 4v2h16v-2c0-2.66-5.33-4-8-4z" />
                                     </svg>
                                     <div class="custom-select-dropdown">
-                                        <select name="passengers"
+                                        <select name="passengers" aria-label="Passengers" aria-invalid="{{ $errors->has('passengers') ? 'true' : 'false' }}" @if ($errors->has('passengers')) aria-describedby="point-passengers-error" @endif
                                             class="nice-select @error('passengers') is-invalid @enderror" required>
                                             <option value="">Passengers</option>
                                             @for ($i = 1; $i <= 15; $i++)
@@ -207,7 +207,7 @@
                                         </select>
                                     </div>
                                     @error('passengers')
-                                        <span class="text-danger small">{{ $message }}</span>
+                                        <span id="point-passengers-error" class="text-danger small" role="alert">{{ $message }}</span>
                                     @enderror
                                 </div>
 

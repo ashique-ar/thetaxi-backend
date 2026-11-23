@@ -15,12 +15,12 @@
                 </div>
                 <div class="col-lg-6">
                     @if (session('newsletter_success'))<p role="status">{{ session('newsletter_success') }}</p>@endif
-                    @error('email', 'newsletter')<p role="alert">{{ $message }}</p>@enderror
+                    @error('email', 'newsletter')<p id="t2-newsletter-email-error" role="alert">{{ $message }}</p>@enderror
                     <form class="newsletter-form" action="{{ ($settings['footer_newsletter_action'] ?? '#') === '#' ? route('newsletter.subscribe') : $settings['footer_newsletter_action'] }}" method="POST">
                         @csrf
                         <div class="input-group">
                             <label class="visually-hidden" for="t2-newsletter-email">Email address</label>
-                            <input id="t2-newsletter-email" type="email" name="email" class="form-control" placeholder="{{ $settings['footer_newsletter_placeholder'] ?? 'Enter your email' }}" autocomplete="email" required>
+                            <input id="t2-newsletter-email" type="email" name="email" value="{{ old('email') }}" class="form-control @if ($errors->newsletter->has('email')) is-invalid @endif" placeholder="{{ $settings['footer_newsletter_placeholder'] ?? 'Enter your email' }}" autocomplete="email" aria-invalid="{{ $errors->newsletter->has('email') ? 'true' : 'false' }}" @if ($errors->newsletter->has('email')) aria-describedby="t2-newsletter-email-error" @endif required>
                             <button type="submit" class="btn btn-primary">{{ $settings['footer_newsletter_button'] ?? 'Subscribe' }}</button>
                         </div>
                     </form>

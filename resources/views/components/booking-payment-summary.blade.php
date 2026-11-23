@@ -171,7 +171,7 @@
 <table class="info-table booking-payment-summary" style="width: 100%; border-collapse: collapse; table-layout: fixed;">
     <tr>
         <td>Subtotal</td>
-        <td>{{ $currency }} {{ number_format(floor(max(0, $convertDisplayAmount($booking->base_amount ?? 0))), 0) }}</td>
+        <td>{{ $currency }} {{ number_format(max(0, $convertDisplayAmount($booking->base_amount ?? 0)), 2) }}</td>
     </tr>
     @if ($normalAddonCharges > 0)
         <tr>
@@ -212,7 +212,7 @@
     <tr class="price-total booking-payment-total-row" style="background-color: #fff7f7; border-top: 2px solid #BF2629; border-bottom: 2px solid #BF2629;">
         <td style="font-size: 16px; font-weight: 800; padding: 12px 0;">{{ $totalLabel }}</td>
         <td style="font-size: 22px; font-weight: 900; color: #BF2629; padding: 12px 0; text-align: right;">
-            {{ $currency }} {{ number_format(floor(max(0, $totalEstimated)), 0) }}
+            {{ $currency }} {{ number_format(max(0, $totalEstimated), 2) }}
         </td>
     </tr>
 

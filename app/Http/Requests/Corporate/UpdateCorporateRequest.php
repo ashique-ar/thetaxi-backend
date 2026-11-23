@@ -33,6 +33,7 @@ class UpdateCorporateRequest extends FormRequest
             'approval_required' => ['boolean'],
             'exempt_coordinator_from_approval' => ['boolean'],
             'coordinator_can_view_payments' => ['boolean'],
+            'booking_vehicle_display' => ['sometimes', 'required', 'in:vehicle_class,vehicle_group'],
             'default_payment_arrangement' => ['sometimes', 'required', 'in:monthly_invoice,cash_to_driver,online,advance_then_balance,deposit_then_balance,pay_at_end,account_credit,bank_transfer,card,complimentary'],
             'booking_number_prefix' => ['sometimes', 'required', 'string', 'alpha_num', 'max:12'],
             'booking_number_start' => ['sometimes', 'required', 'integer', 'min:1', 'max:999999999999'],

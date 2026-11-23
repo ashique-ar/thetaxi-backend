@@ -8680,6 +8680,11 @@ class BookingFlowService
 
             $booking->save();
 
+            DB::table('notifications')
+                ->where('type', BookingApprovalRequested::class)
+                ->where('data->data->booking_id', (string) $booking->id)
+                ->update(['read_at' => now(), 'data->resolved' => true, 'updated_at' => now()]);
+
             $this->notifyBookingCustomer(
                 $booking,
                 $action === 'approve' ? 'Booking approved' : 'Booking rejected',
@@ -8688,6 +8693,53 @@ class BookingFlowService
             );
 
             return ['booking' => $booking, 'action' => $action, 'status' => $action === 'approve' ? 'approved' : 'rejected', 'message' => 'Booking ' . $action . 'd successfully'];
+        });
+    }
+
+    public function dismissApprovalNotification(string $notificationId, string $reason, string $userId): array
+    {
+        return DB::transaction(function () use ($notificationId, $reason, $userId): array {
+            $notification = DB::table('notifications')
+                ->where('id', $notificationId)
+                ->where('notifiable_id', $userId)
+                ->where('type', BookingApprovalRequested::class)
+                ->lockForUpdate()
+                ->first();
+            abort_unless($notification, 404, 'Pending booking approval notification not found.');
+
+            $data = is_array($notification->data) ? $notification->data : json_decode((string) $notification->data, true);
+            abort_unless(is_array($data) && empty($data['resolved']), 409, 'This booking approval has already been decided.');
+            $bookingId = (string) data_get($data, 'data.booking_id', '');
+            $booking = Booking::query()->whereKey($bookingId)->lockForUpdate()->firstOrFail();
+            $approval = BookingApproval::query()->where('booking_id', $bookingId)
+                ->where('status', BookingApproval::STATUS_PENDING)->latest()->lockForUpdate()->first();
+            abort_unless($approval || $booking->requiresApproval() || $booking->status === 'pending_approval', 409, 'This booking is no longer awaiting approval.');
+
+            $actor = User::query()->findOrFail($userId);
+            app(BookingHistoryService::class)->recordBookingApprovalDecision(
+                $bookingId,
+                (string) ($approval?->id ?? $bookingId),
+                'dismissed',
+                $reason,
+                $userId,
+                $notificationId,
+                'booking-approval-dismissal:' . $notificationId,
+                'booking_approvals',
+                'BookingApprovalDismissal',
+                ['notification_id' => $notificationId],
+            );
+
+            $data['dismissed'] = true;
+            $data['dismissed_by_id'] = $userId;
+            $data['dismissed_by_name'] = trim((string) $actor->first_name . ' ' . (string) $actor->last_name);
+            $data['dismissed_reason'] = trim($reason);
+            DB::table('notifications')->where('id', $notificationId)->update([
+                'read_at' => now(),
+                'data' => json_encode($data, JSON_THROW_ON_ERROR),
+                'updated_at' => now(),
+            ]);
+
+            return ['booking_id' => $bookingId, 'booking_number' => $booking->booking_number, 'dismissed_by' => $data['dismissed_by_name']];
         });
     }
 

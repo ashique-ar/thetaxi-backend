@@ -157,7 +157,7 @@
                                 <table class="info-table">
                                     <tr>
                                         <td>Name</td>
-                                        <td>{{ $booking->customer?->user?->full_name ?? 'N/A' }}</td>
+                                        <td>{{ $customerName }}</td>
                                     </tr>
                                     <tr>
                                         <td>Email</td>
@@ -200,7 +200,6 @@
                                     <span class="icon">💳</span> Payment Summary
                                 </h2>
                                 <x-booking-payment-summary :booking="$booking" :currency="$currencyCode" :source_currency="$bookingCurrencyCode" :advance_percentage="$advancePercentage" />
-                                <x-booking-refundable-deposit :booking="$booking" :currency="$currencyCode" />
                             </div>
                             @if ($booking->special_requirements)
                                 <div class="section">

@@ -66,6 +66,22 @@ trait BookingApprovalTrait
         }
     }
 
+    public function dismissBookingApproval(Request $request): JsonResponse
+    {
+        $validated = $request->validate([
+            'notification_id' => 'required|uuid',
+            'reason' => 'required|string|min:3|max:1000',
+        ]);
+
+        $result = $this->bookingFlowService->dismissApprovalNotification(
+            $validated['notification_id'],
+            trim($validated['reason']),
+            Auth::id(),
+        );
+
+        return response()->json(['status' => 'success', 'data' => $result]);
+    }
+
     public function getApprovalStatus(string $bookingId): JsonResponse
     {
         try {

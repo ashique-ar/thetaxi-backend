@@ -51,6 +51,18 @@
     <!-- Email-style Payment Resume Page -->
     <div class="checkout-success {{ theme_class('payment-resume') }} pt-100 mb-100">
         <div class="container">
+            @if (session('error') || $errors->any())
+                <div class="alert alert-danger" role="alert">
+                    @if (session('error'))<p class="mb-1">{{ session('error') }}</p>@endif
+                    @foreach ($errors->all() as $error)<p class="mb-1">{{ $error }}</p>@endforeach
+                </div>
+            @endif
+            @if (session('success'))
+                <div class="alert alert-success" role="status">{{ session('success') }}</div>
+            @endif
+            @if (session('info'))
+                <div class="alert alert-info" role="status">{{ session('info') }}</div>
+            @endif
             <div class="row justify-content-center">
                 <!-- Content -->
                 <div class="col-lg-10 card p-4">

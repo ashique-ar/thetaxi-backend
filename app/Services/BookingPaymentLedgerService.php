@@ -200,7 +200,7 @@ class BookingPaymentLedgerService
         $adjustments = (float)($settlementItem?->adjustment_amount ?? 0);
         $arrangement = $booking->payment_arrangement_status ?: $this->resolveArrangementStatus($booking);
         $due = $arrangement === 'complimentary' ? 0.0 : max(0, $money($total + $adjustments - $refunds - $paid));
-        $status = $this->resolvePaymentStatus($booking, $paid, $due);
+        $status = $this->resolvePaymentStatus($booking, $paid, $due, $total);
         $payer = $this->resolvePayer($booking);
         $driverReceipts = $receipts->where('received_via', 'driver')->where('finality_status', 'confirmed');
         $driverCashCollected = $money((float) $driverReceipts->sum('amount'));
@@ -220,7 +220,7 @@ class BookingPaymentLedgerService
             $due = $arrangement === 'complimentary'
                 ? 0.0
                 : max(0, $money($scheduledAmount + $adjustments - $refunds - $paid));
-            $status = $this->resolvePaymentStatus($booking, $paid, $due);
+            $status = $this->resolvePaymentStatus($booking, $paid, $due, $scheduledAmount);
         }
         $today = now()->toDateString();
         $paymentSchedule = $scheduleRows->map(function (BookingPaymentSchedule $schedule) use ($today, $money) {
@@ -1328,10 +1328,10 @@ class BookingPaymentLedgerService
         };
     }
 
-    private function resolvePaymentStatus(Booking $booking, float $paid, float $due): string
+    private function resolvePaymentStatus(Booking $booking, float $paid, float $due, float $total): string
     {
         if ($this->resolveArrangementStatus($booking) === 'complimentary') return 'waived';
-        if ($due <= 0) return 'paid';
+        if ($due <= 0 && ($paid > 0 || $total > 0)) return 'paid';
         if ($paid > 0) return 'partially_paid';
         return match ($this->resolveArrangementStatus($booking)) {
             'corporate_credit' => 'corporate_account',

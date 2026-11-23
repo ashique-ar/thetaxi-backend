@@ -700,10 +700,11 @@
                 <div class="row align-items-center">
                     <div class="col-lg-6 col-md-12">
                         <div class="search-box">
-                            <input type="text" name="search"
+                            <label class="visually-hidden" for="cms-content-search">Search {{ $contentType->title }}</label>
+                            <input id="cms-content-search" type="search" name="search"
                                 placeholder="Search {{ strtolower($contentType->title) }}..."
                                 value="{{ request('search') }}" class="form-control">
-                            <button type="submit" class="search-btn">
+                            <button type="submit" class="search-btn" aria-label="Search {{ $contentType->title }}">
                                 <i class="bi bi-search"></i>
                             </button>
                         </div>

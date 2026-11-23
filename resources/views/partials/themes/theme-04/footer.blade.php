@@ -104,11 +104,11 @@
                 <h3 id="t4-newsletter-title">{{ $settings['footer_newsletter_heading'] ?? 'Newsletter' }}</h3>
                 <p>{{ $settings['footer_newsletter_subheading'] ?? 'Get travel tips, special offers and updates.' }}</p>
                 @if (session('newsletter_success'))<p role="status">{{ session('newsletter_success') }}</p>@endif
-                @error('email', 'newsletter')<p role="alert">{{ $message }}</p>@enderror
+                @error('email', 'newsletter')<p id="t4-newsletter-email-error" role="alert">{{ $message }}</p>@enderror
                 <form action="{{ route('newsletter.subscribe') }}" method="POST">
                     @csrf
                     <label class="visually-hidden" for="t4-newsletter-email">Email address</label>
-                    <input id="t4-newsletter-email" type="email" name="email" value="{{ old('email') }}" placeholder="{{ $settings['footer_newsletter_placeholder'] ?? 'Your email address' }}" required>
+                    <input id="t4-newsletter-email" type="email" name="email" value="{{ old('email') }}" placeholder="{{ $settings['footer_newsletter_placeholder'] ?? 'Your email address' }}" autocomplete="email" aria-invalid="{{ $errors->newsletter->has('email') ? 'true' : 'false' }}" @if ($errors->newsletter->has('email')) aria-describedby="t4-newsletter-email-error" @endif required>
                     <button type="submit" aria-label="Subscribe to newsletter"><span aria-hidden="true">→</span></button>
                 </form>
             </section>
