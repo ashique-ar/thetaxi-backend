@@ -38,11 +38,12 @@ class BookingHistoryObserver
 
     public function updated(Model $model): void
     {
-        if ($model instanceof BookingActivity && !app(BookingHistoryService::class)->shouldRecordBookingActivity($model)) {
+        $before = $this->before[spl_object_id($model)] ?? [];
+        if ($model instanceof BookingActivity && !app(BookingHistoryService::class)->shouldRecordBookingActivity($model, $before['event_key'] ?? null)) {
             unset($this->before[spl_object_id($model)]);
             return;
         }
-        $this->record($model, 'updated', $this->before[spl_object_id($model)] ?? []);
+        $this->record($model, 'updated', $before);
         unset($this->before[spl_object_id($model)]);
     }
 

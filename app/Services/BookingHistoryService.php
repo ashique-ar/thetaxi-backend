@@ -324,10 +324,12 @@ class BookingHistoryService
         ]);
     }
 
-    public function shouldRecordBookingActivity(BookingActivity $activity): bool
+    public function shouldRecordBookingActivity(BookingActivity $activity, ?string $previousEventKey = null): bool
     {
-        return (bool) $activity->booking_id
-            && in_array($activity->event_key, self::BOOKING_ACTIVITY_EVENT_KEYS, true);
+        return (bool) $activity->booking_id && (
+            in_array($activity->event_key, self::BOOKING_ACTIVITY_EVENT_KEYS, true)
+            || in_array($previousEventKey, self::BOOKING_ACTIVITY_EVENT_KEYS, true)
+        );
     }
 
     public function recordBookingApprovalDecision(
