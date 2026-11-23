@@ -27,7 +27,18 @@ class MyWorkController extends Controller
         $activeBookingStatuses = array_merge(['inquiry', 'inquiry_qualified'], BookingLifecycleStatus::activeOperationalValues());
 
         if ($request->user()->can('hr.mss.approve')) {
-            $staffId = DB::table('staff')->where('user_id', $userId)->whereNull('deleted_at')->value('id');
+            $staffContexts = DB::table('user_contexts as context')->join('staff', 'staff.id', '=', 'context.context_id')
+                ->where('context.user_id', $userId)->where('context.context_type', 'staff')->where('context.is_active', true)
+                ->whereNull('context.deleted_at')->where('staff.user_id', $userId)->whereNull('staff.deleted_at')
+                ->where(fn ($employment) => $employment->whereNull('staff.employment_ended_at')->orWhere('staff.employment_ended_at', '>', now()));
+            if ($request->header('X-Active-Context-Type') === 'staff') {
+                $contextId = $request->header('X-Active-Context-Id');
+                if ($contextId) $staffContexts->where('context.id', $contextId);
+            } elseif ($request->header('X-Active-Context-Type') !== null && $request->header('X-Active-Context-Type') !== 'internal') {
+                $staffContexts->whereRaw('1 = 0');
+            }
+            $staffIds = $staffContexts->pluck('staff.id');
+            $staffId = $staffIds->count() === 1 ? $staffIds->first() : null;
             $delegatedLeaveOwners = [];
             if ($staffId) {
                 foreach (DB::table('hr_approval_delegations as delegation')
@@ -40,17 +51,19 @@ class MyWorkController extends Controller
                     if (in_array('leave', json_decode($delegation->request_types, true) ?: [], true)) $delegatedLeaveOwners[] = $delegation->delegator_staff_id;
                 }
             }
-            $inbox = DB::table('hr_request_index')->whereIn('status', ['pending', 'pending_approval', 'returned'])
-                ->where(function ($query) use ($staffId, $delegatedLeaveOwners) {
-                    $query->where('current_owner_staff_id', $staffId);
-                    if ($delegatedLeaveOwners) $query->orWhere(fn ($delegated) => $delegated->where('request_type', 'leave')->whereIn('current_owner_staff_id', $delegatedLeaveOwners));
-                });
-            $queues[] = ['group' => 'mine', 'title' => 'HR approvals', 'help' => 'Employee requests awaiting your decision', 'icon' => 'how_to_reg',
-                'link' => '/hr/self-service/approvals', 'count' => (int) (clone $inbox)->count()];
-            foreach ((clone $inbox)->orderByRaw('due_at asc nulls last')->limit(5)->get(['id', 'request_type', 'summary', 'due_at']) as $row) {
-                $attention[] = ['id' => 'hr-approval:'.$row->id, 'group' => 'mine', 'type' => 'HR approval',
-                    'title' => $row->summary ?: str_replace('_', ' ', $row->request_type), 'detail' => ucfirst(str_replace('_', ' ', $row->status)),
-                    'when' => $row->due_at, 'link' => '/hr/self-service/approvals'];
+            if ($staffId) {
+                $inbox = DB::table('hr_request_index')->whereIn('status', ['pending', 'pending_approval', 'returned'])
+                    ->where(function ($query) use ($staffId, $delegatedLeaveOwners) {
+                        $query->where('current_owner_staff_id', $staffId);
+                        if ($delegatedLeaveOwners) $query->orWhere(fn ($delegated) => $delegated->where('request_type', 'leave')->whereIn('current_owner_staff_id', $delegatedLeaveOwners));
+                    });
+                $queues[] = ['group' => 'mine', 'title' => 'HR approvals', 'help' => 'Employee requests awaiting your decision', 'icon' => 'how_to_reg',
+                    'link' => '/hr/self-service/approvals', 'count' => (int) (clone $inbox)->count()];
+                foreach ((clone $inbox)->orderByRaw('due_at asc nulls last')->limit(5)->get(['id', 'request_type', 'summary', 'due_at']) as $row) {
+                    $attention[] = ['id' => 'hr-approval:'.$row->id, 'group' => 'mine', 'type' => 'HR approval',
+                        'title' => $row->summary ?: str_replace('_', ' ', $row->request_type), 'detail' => ucfirst(str_replace('_', ' ', $row->status)),
+                        'when' => $row->due_at, 'link' => '/hr/self-service/approvals'];
+                }
             }
         }
 

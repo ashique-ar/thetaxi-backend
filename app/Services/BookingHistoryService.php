@@ -106,7 +106,10 @@ class BookingHistoryService
         'variable_type', 'original_value', 'custom_value', 'customization_reason',
         'context', 'qty', 'rate', 'is_insurance', 'is_milage', 'label',
         'decision', 'actor_type', 'effective_at', 'current_step', 'total_steps',
-        'booking_payment_schedule_id', 'booking_payment_receipt_id', 'receipt_id', 'allocated_at',
+        'booking_payment_schedule_id', 'booking_payment_receipt_id', 'booking_payment_schedule_rule_id',
+        'receipt_id', 'allocated_at', 'component_type', 'is_allocatable', 'is_collection_target_eligible',
+        'is_commission_eligible', 'allocated_source_amount', 'adjusted_source_amount', 'version', 'from_status',
+        'to_status', 'effective_at',
         'verified_at', 'submitted_by_staff_id', 'submitted_by_user_id', 'assigned_sales_profile_id', 'collection_sales_profile_id',
     ];
 
@@ -313,8 +316,6 @@ class BookingHistoryService
                 ?? $model->schedule?->booking_id
                 ?? $model->rule?->booking_id
                 ?? $model->rollingRule?->booking_id
-                ?? $model->schedule?->booking_id
-                ?? $model->receipt?->booking_id
                 ?? '');
         if ($bookingId === '' && $model instanceof \App\Models\Driver\DriverSession) {
             $assignmentId = $model->assignment_id ?? ($before['assignment_id'] ?? null);
