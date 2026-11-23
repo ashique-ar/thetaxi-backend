@@ -139,8 +139,16 @@ class PermissionEvaluator
             ->where('user_id', $user->id)
             ->pluck('role_id');
 
-        return $userRoles->filter(fn ($role) => $directRoleIds->contains($role->id)
-                || ! $contextRoleIds->contains($role->id))
+        return $userRoles->filter(function ($role) use ($directRoleIds, $contextRoleIds) {
+            $contextTypes = $role->context_types;
+            if (is_string($contextTypes)) {
+                $contextTypes = json_decode($contextTypes, true);
+            }
+
+            return $directRoleIds->contains($role->id)
+                || ! $contextRoleIds->contains($role->id)
+                || (is_array($contextTypes) && in_array('internal', $contextTypes, true));
+        })
             ->unique('id')
             ->values();
     }
