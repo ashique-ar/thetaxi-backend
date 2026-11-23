@@ -34,6 +34,7 @@ class BookingApprovalRequested extends Notification implements ShouldQueue
             'title' => "Booking #{$reference} awaiting approval",
             'message' => 'Priority: '.($this->approval->priority ?? 'normal'),
             'type' => 'booking_approval_requested',
+            'corporate_name' => $this->booking->corporateAccount?->name,
             'url' => '/bookings/list?operations_queue=needs_approval&status=pending_approval&requires_approval=true',
             'pending_count' => $this->pendingCount,
             'data' => [

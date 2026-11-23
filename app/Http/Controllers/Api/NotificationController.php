@@ -4,6 +4,7 @@ namespace App\Http\Controllers\Api;
 
 use App\Http\Controllers\Controller;
 use App\Models\User;
+use App\Models\Booking\Booking;
 use App\Models\NotificationLog;
 use App\Services\MailDispatchService;
 use Illuminate\Http\Request;
@@ -48,6 +49,30 @@ class NotificationController extends Controller
 
         $notifications = $query->latest()
             ->paginate($limit);
+
+        $approvalBookingIds = collect($notifications->items())
+            ->filter(fn ($notification) => data_get($notification->data, 'type') === 'booking_approval_requested')
+            ->map(fn ($notification) => data_get($notification->data, 'data.booking_id'))
+            ->filter()
+            ->unique()
+            ->values();
+        if ($approvalBookingIds->isNotEmpty()) {
+            $corporateNames = Booking::query()
+                ->with('corporateAccount:id,name')
+                ->whereIn('id', $approvalBookingIds)
+                ->get()
+                ->mapWithKeys(fn (Booking $booking) => [(string) $booking->id => $booking->corporateAccount?->name]);
+
+            $notifications->getCollection()->transform(function ($notification) use ($corporateNames) {
+                $data = $notification->data;
+                $bookingId = (string) data_get($data, 'data.booking_id', '');
+                if (!empty($corporateNames[$bookingId])) {
+                    $data['corporate_name'] = $corporateNames[$bookingId];
+                    $notification->data = $data;
+                }
+                return $notification;
+            });
+        }
 
         return response()->json([
             'status' => 'success',

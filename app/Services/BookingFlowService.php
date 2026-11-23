@@ -9390,8 +9390,13 @@ class BookingFlowService
     private function notifyApprovalRequested(Booking $booking, BookingApproval $approval): void
     {
         try {
-            // Notify every installation user with booking approval permission.
+            // Operational approval notifications belong to active staff accounts only.
             $approvers = User::permission('bookings.approve')
+                ->where('is_active', true)
+                ->whereNull('deleted_at')
+                ->whereHas('staff', fn ($query) => $query
+                    ->whereNull('deleted_at')
+                    ->where(fn ($employment) => $employment->whereNull('employment_ended_at')->orWhere('employment_ended_at', '>', now())))
                 ->get();
             $pendingCount = Booking::query()->where('status', 'pending_approval')->where('requires_approval', true)->count();
 
