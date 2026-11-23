@@ -185,11 +185,13 @@ class WorkforceController extends Controller
         $data = $r->validate([
             'search' => ['nullable', 'string', 'max:120'],
             'selected_id' => ['nullable', 'uuid'],
+            'include_former' => ['nullable', 'boolean'],
             'page' => ['nullable', 'integer', 'min:1'],
             'per_page' => ['nullable', 'integer', 'min:1', 'max:50'],
         ]);
+        abort_unless(empty($data['include_former']) || $r->user()->can('hr.payroll-inputs.view'), 403);
         $query = $access->scope(Staff::query()->with('user:id,first_name,last_name,email')
-            ->whereNull('employment_ended_at'), $r->user());
+            ->when(empty($data['include_former']), fn($staff) => $staff->whereNull('employment_ended_at')), $r->user());
         if (!empty($data['selected_id'])) {
             $query->whereKey($data['selected_id']);
         } elseif (!empty($data['search'])) {
@@ -203,9 +205,9 @@ class WorkforceController extends Controller
             $name = trim(($staff->user?->first_name ?? '') . ' ' . ($staff->user?->last_name ?? ''));
             return [
                 'value' => (string) $staff->id,
-                'label' => $name !== '' ? $name . ' · ' . $staff->code : $staff->code,
+                'label' => ($name !== '' ? $name . ' · ' . $staff->code : $staff->code) . ($staff->employment_ended_at ? ' · Former' : ''),
                 'metadata' => ['code' => $staff->code, 'email' => $staff->user?->email],
-                'status' => 'active',
+                'status' => $staff->employment_ended_at ? 'former' : 'active',
             ];
         });
         return response()->json(['status' => 'success', 'data' => $rows]);

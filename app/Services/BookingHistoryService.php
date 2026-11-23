@@ -158,7 +158,10 @@ class BookingHistoryService
         if (!$event->booking_id) return;
         $metadata = is_array($event->metadata) ? $event->metadata : [];
         $actor = $event->performed_by ? User::query()->find($event->performed_by) : null;
-        $reason = $metadata['reason'] ?? request()->input('change_reason', request()->input('reason'));
+        $request = request();
+        $reason = $metadata['reason']
+            ?? $request->attributes->get('booking_history_reason')
+            ?? $request->input('change_reason', $request->input('reason'));
         $occurredAt = $event->occurred_at?->utc() ?? now()->utc();
         $correlationId = 'financial-audit:' . $event->getKey();
         DB::table('booking_history_events')->insertOrIgnore([
@@ -204,7 +207,9 @@ class BookingHistoryService
 
         $actor = $status->created_user_id ? User::query()->find($status->created_user_id) : null;
         $request = request();
-        $reason = $request->input('change_reason') ?? $request->input('reason');
+        $reason = $request->attributes->get('booking_history_reason')
+            ?? $request->input('change_reason')
+            ?? $request->input('reason');
         $occurredAt = $status->created_at?->utc() ?? now()->utc();
         DB::table('booking_history_events')->insertOrIgnore([
             'id' => (string) Str::uuid(),

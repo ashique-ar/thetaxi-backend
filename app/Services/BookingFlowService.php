@@ -8658,6 +8658,7 @@ class BookingFlowService
             $this->recordApprovalHistoryDecision($booking, $approval, $action, $note, $userId, $decisionStep ?? 1);
 
             $booking->approval_status = $action === 'approve' ? 'approved' : 'rejected';
+            $booking->requires_approval = false;
             $booking->approval_by = $userId;
             $booking->approval_at = now();
             $booking->approval_note = $note;
@@ -8680,13 +8681,15 @@ class BookingFlowService
 
             $booking->save();
 
-            $booking->bookingItems()->whereIn('status', ['pending', 'pending_approval'])->lockForUpdate()->get()
-                ->each(fn (BookingItem $item) => $item->update([
-                    'status' => $action === 'approve' ? 'confirmed' : 'rejected',
-                    'requires_approval' => false,
-                    'approved_at' => now(),
-                    'approved_by' => $userId,
-                ]));
+            $booking->bookingItems()->lockForUpdate()->get()->each(function (BookingItem $item) use ($action, $userId): void {
+                $updates = ['requires_approval' => false];
+                if (in_array($item->status, ['pending', 'pending_approval'], true)) {
+                    $updates['status'] = $action === 'approve' ? 'confirmed' : 'rejected';
+                    $updates['approved_at'] = now();
+                    $updates['approved_by'] = $userId;
+                }
+                $item->update($updates);
+            });
 
             foreach ([
                 VehicleAssignment::query()->where('booking_id', $booking->id),
@@ -9952,7 +9955,7 @@ class BookingFlowService
                 'override_reasons' => (array) ($booking->override_reasons ?? []),
                 'concurrent_assignments' => (array) ($booking->concurrent_assignments ?? []),
                 'approval_status' => $booking->approval_status ?? null,
-                'requires_approval' => (bool) ($booking->requires_approval ?? $booking->requiresApproval()),
+                'requires_approval' => $booking->requiresApproval(),
             ],
 
             // Approval info
@@ -11312,7 +11315,11 @@ class BookingFlowService
         $pendingSwap = $booking?->approvals?->first();
         if ($pendingSwap) $approvalTriggers[] = 'resource_swap';
         $approvalTriggerLabels = $this->formatApprovalTriggerLabels($approvalTriggers);
-        $requiresApproval = (bool) ($pendingSwap || ($booking?->requires_approval ?? false) || (($booking?->status ?? null) === 'pending_approval'));
+        $requiresApproval = (bool) ($pendingSwap || (
+            $booking
+            && $booking->status === 'pending_approval'
+            && ($booking->requires_approval || in_array($booking->approval_status, ['pending', 'required'], true))
+        ));
         if ($requiresApproval && empty($approvalTriggerLabels)) {
             $approvalTriggerLabels = ['Manager approval required'];
         }
@@ -11780,7 +11787,7 @@ class BookingFlowService
             'reviewed_at' => optional($firstApproval->approved_at)->toISOString(),
             'notes' => $firstApproval->notes ?? null,
             'justification' => $firstApproval->justification ?? ($booking->approval_justification ?? null),
-            'requires_approval' => (bool) ($booking->requires_approval ?? false),
+            'requires_approval' => $booking->requiresApproval(),
             'approval_reason' => $booking->approval_reason ?? null,
         ] : (($booking->requires_approval ?? false) ? [
                 'status' => $booking->approval_status ?? 'pending',
@@ -11961,7 +11968,7 @@ class BookingFlowService
                 'currency' => $item->currency ?? $this->currencyService->getBookingBaseCurrency(),
                 'exchange_rate' => (float) ($item->exchange_rate ?? 1),
                 'status' => $item->status ?? 'pending',
-                'requires_approval' => (bool) $item->requires_approval,
+                'requires_approval' => $booking->requiresApproval() && (bool) $item->requires_approval,
                 'signed_agreement_required' => array_key_exists('signed_agreement_required', $item->workflow_config_snapshot ?? [])
                     ? (bool) $item->workflow_config_snapshot['signed_agreement_required']
                     : true,
@@ -12129,7 +12136,7 @@ class BookingFlowService
             'allowed_actions' => $lifecycleContract['allowed_actions'],
             'blocking_reasons' => $lifecycleContract['blocking_reasons'],
             'workflow_step' => (string) ($booking->workflow_step ?? 'pending_approval'),
-            'requires_approval' => (bool) ($booking->requires_approval ?? false),
+            'requires_approval' => $booking->requiresApproval(),
             'is_recurring' => (bool) $booking->is_recurring,
             'recurrence_pattern' => $booking->recurrence_pattern,
             'recurrence_end_date' => optional($booking->recurrence_end_date)->format('Y-m-d'),
