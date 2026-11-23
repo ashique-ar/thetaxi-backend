@@ -6,6 +6,7 @@ use App\Enums\BookingLifecycleStatus;
 use App\Http\Controllers\Controller;
 use App\Services\BookingResponsibilityService;
 use App\Services\InquiryAssignmentService;
+use App\Services\Sales\SalesAccessScope;
 use App\Services\Sales\SalesPolicySettingsService;
 use App\Services\Sales\InquiryFirstResponseDeadlineService;
 use App\Services\WebsiteSettingsService;
@@ -393,6 +394,44 @@ class MyWorkController extends Controller
                     $attention[] = ['id' => 'task:'.$row->id, 'group' => 'mine', 'type' => 'Follow-up', 'title' => $row->title,
                         'detail' => 'Due', 'when' => $row->due_at, 'link' => '/sales/work?task_id='.$row->id,
                         'sort_at' => strtotime((string) $row->due_at) ?: PHP_INT_MAX];
+                }
+            }
+        }
+
+        if ($request->user()->can('sales.collections.view')
+            && Schema::hasTable('booking_collection_work_item_follow_ups')
+            && Schema::hasTable('booking_payment_schedule_allocations')) {
+            $profileIds = app(SalesAccessScope::class)->actorProfiles($request->user())->pluck('id')->all();
+            if ($profileIds !== []) {
+                $dueFollowUps = DB::table('booking_collection_work_item_follow_ups as follow_up')
+                    ->join('booking_collection_work_items as work_item', 'work_item.id', '=', 'follow_up.booking_collection_work_item_id')
+                    ->join('booking_payment_schedules as schedule', 'schedule.id', '=', 'work_item.booking_payment_schedule_id')
+                    ->join('bookings as booking', 'booking.id', '=', 'work_item.booking_id')
+                    ->whereIn('schedule.collection_sales_profile_id', $profileIds)
+                    ->whereColumn('work_item.assigned_sales_profile_id', 'schedule.collection_sales_profile_id')
+                    ->whereIn('work_item.status', ['open', 'upcoming', 'due', 'overdue'])
+                    ->whereNull('schedule.deleted_at')->whereNull('schedule.superseded_at')
+                    ->where('schedule.status', '!=', 'superseded')->whereNull('booking.deleted_at')
+                    ->where('follow_up.next_follow_up_at', '<=', now())
+                    ->whereNotExists(fn ($newer) => $newer->selectRaw('1')
+                        ->from('booking_collection_work_item_follow_ups as newer')
+                        ->whereColumn('newer.booking_collection_work_item_id', 'follow_up.booking_collection_work_item_id')
+                        ->where(fn ($time) => $time->whereColumn('newer.occurred_at', '>', 'follow_up.occurred_at')
+                            ->orWhere(fn ($sameTime) => $sameTime->whereColumn('newer.occurred_at', '=', 'follow_up.occurred_at')
+                                ->whereColumn('newer.id', '>', 'follow_up.id'))))
+                    ->whereRaw('COALESCE(schedule.source_amount, schedule.amount, 0) - COALESCE((SELECT SUM(allocation.amount) FROM booking_payment_schedule_allocations allocation WHERE allocation.booking_payment_schedule_id = schedule.id AND allocation.deleted_at IS NULL), 0) > 0.00005');
+
+                $queues[] = ['group' => 'mine', 'title' => 'Collection follow-ups due',
+                    'help' => 'Customer payment promises that are ready for their next contact', 'icon' => 'payments',
+                    'link' => '/sales/collections', 'count' => (int) (clone $dueFollowUps)->count('follow_up.id')];
+                foreach ((clone $dueFollowUps)->orderBy('follow_up.next_follow_up_at')->limit(5)
+                    ->get(['work_item.id', 'booking.booking_number', 'follow_up.next_follow_up_at']) as $row) {
+                    $attention[] = ['id' => 'collection-follow-up:'.$row->id, 'group' => 'mine',
+                        'type' => 'Collection follow-up', 'title' => $row->booking_number ?: 'Booking',
+                        'detail' => 'Contact the customer about the recorded payment promise',
+                        'when' => $row->next_follow_up_at,
+                        'link' => '/sales/collections?work_item_id='.$row->id,
+                        'sort_at' => strtotime((string) $row->next_follow_up_at) ?: PHP_INT_MAX];
                 }
             }
         }

@@ -737,6 +737,8 @@ Route::middleware(['auth:api'])->group(function () {
             ->whereUuid('booking')->middleware('permission:sales.collection-schedules.revise');
         Route::get('collection-work-items', [CollectionScheduleWorkflowController::class, 'workItems'])
             ->middleware('permission:sales.collections.view');
+        Route::post('collection-work-items/{workItem}/follow-up', [CollectionScheduleWorkflowController::class, 'recordFollowUp'])
+            ->whereUuid('workItem')->middleware('permission:sales.collections.submit');
         Route::post('bookings/{booking}/collection-submissions', [CollectionScheduleWorkflowController::class, 'submit'])
             ->whereUuid('booking')->middleware('permission:sales.collections.submit');
         Route::post('evidence-files', [SalesEvidenceController::class, 'store'])

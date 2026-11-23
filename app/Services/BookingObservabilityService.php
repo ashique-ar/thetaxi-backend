@@ -20,6 +20,7 @@ use App\Models\DriverAssignment;
 use App\Models\Finance\FinancialAuditEvent;
 use App\Models\Invoice;
 use App\Services\Driver\RouteEvidenceService;
+use App\Services\PermissionEvaluator;
 use Carbon\Carbon;
 use Illuminate\Support\Collection;
 use Illuminate\Support\Facades\Cache;
@@ -102,7 +103,8 @@ class BookingObservabilityService
             ->when($filters['actor_id'] ?? null, fn ($query, $value) => $query->where(fn ($actors) => $actors
                 ->where('meta->actor_user_id', $value)->orWhere('meta->initiated_by', $value)
                 ->orWhere('meta->changed_by', $value)->orWhere('meta->requested_by', $value)
-                ->orWhere('meta->reviewed_by', $value)->orWhere('meta->closed_by', $value)))
+                ->orWhere('meta->reviewed_by', $value)->orWhere('meta->closed_by', $value)
+                ->orWhere('created_user_id', $value)->orWhere('updated_user_id', $value)))
             ->when(isset($filters['entity_type']) && strcasecmp($filters['entity_type'], 'BookingActivity') !== 0, fn ($query) => $query->whereRaw('1 = 0'))
             ->when($filters['entity_id'] ?? null, fn ($query, $value) => $query->whereKey($value))
             ->when($filters['event_type'] ?? null, fn ($query, $value) => $query->where('event_key', $value))
@@ -117,6 +119,8 @@ class BookingObservabilityService
             data_get($activity->meta, 'requested_by'),
             data_get($activity->meta, 'reviewed_by'),
             data_get($activity->meta, 'closed_by'),
+            $activity->created_user_id,
+            $activity->updated_user_id,
         ])->filter()->unique();
         $activityActors = User::query()->whereIn('id', $activityActorIds)
             ->get(['id', 'first_name', 'last_name'])->keyBy('id');
@@ -125,6 +129,7 @@ class BookingObservabilityService
                 data_get($activity->meta, 'actor_user_id') ?? data_get($activity->meta, 'initiated_by')
                     ?? data_get($activity->meta, 'changed_by') ?? data_get($activity->meta, 'requested_by')
                     ?? data_get($activity->meta, 'reviewed_by') ?? data_get($activity->meta, 'closed_by')
+                    ?? $activity->created_user_id ?? $activity->updated_user_id
             )));
 
         $vehicleAssignments = $bookingItemId ? collect() : VehicleAssignment::query()
@@ -816,7 +821,8 @@ class BookingObservabilityService
             ?: (string) data_get($activity->meta, 'changed_by_name', '');
         $actorId = data_get($activity->meta, 'actor_user_id') ?? data_get($activity->meta, 'initiated_by')
             ?? data_get($activity->meta, 'changed_by') ?? data_get($activity->meta, 'requested_by')
-            ?? data_get($activity->meta, 'reviewed_by') ?? data_get($activity->meta, 'closed_by');
+            ?? data_get($activity->meta, 'reviewed_by') ?? data_get($activity->meta, 'closed_by')
+            ?? $activity->created_user_id ?? $activity->updated_user_id;
         $isSwap = $activity->event_key === 'resource_swap_completed';
         $changes = [];
         if ($isSwap) {
@@ -857,8 +863,9 @@ class BookingObservabilityService
             ];
         }
         $canViewPrice = auth()->user()?->can('bookings.price_override') ?? false;
+        $canViewPayments = $this->canViewPayments();
         if (!$canViewPrice) unset($changes['total_price'], $changes['currency']);
-        if (!auth()->user()?->can('payments.view')) unset($changes['charge_amount']);
+        if (!$canViewPayments) unset($changes['charge_amount']);
 
         return [
             'id' => 'booking-activity:' . $activity->id,
@@ -895,7 +902,12 @@ class BookingObservabilityService
             'actor_display_snapshot' => data_get($activity->meta, 'actor_display_snapshot'),
             'reason' => $activity->event_key === 'trip_price_changed'
                 ? ($canViewPrice ? (data_get($activity->meta, 'reason') ?? $activity->detail) : null)
-                : data_get($activity->meta, 'reason'),
+                : ($activity->event_key === 'additional_rental_charge_added'
+                    ? ($canViewPayments ? data_get($activity->meta, 'change_reason') : null)
+                    : (data_get($activity->meta, 'reason')
+                    ?? data_get($activity->meta, 'change_reason')
+                    ?? data_get($activity->meta, 'resolution_reason')
+                    ?? data_get($activity->meta, 'review_notes'))),
             'changes' => $changes,
             'entity_type' => 'BookingActivity',
             'entity_id' => (string) $activity->id,
@@ -964,7 +976,7 @@ class BookingObservabilityService
         $priceFields = ['unit_price', 'total_price', 'base_amount', 'total_estimated', 'total_actual', 'driver_cost', 'distance_cost', 'addons_cost', 'discount_amount', 'tax_amount', 'currency', 'price', 'rate', 'original_value', 'custom_value', 'original_amount', 'final_amount', 'calculated_amount', 'applied_rate', 'delta_source_amount', 'delta_lkr_amount', 'previous_effective_source_amount', 'previous_effective_lkr_amount', 'resulting_effective_source_amount', 'resulting_effective_lkr_amount', 'contract_value_source', 'contract_value_lkr', 'expected_value_source', 'expected_value_lkr', 'source_currency', 'subtotal', 'total_amount', 'commission_amount_lkr', 'eligible_lkr_amount', 'amount_spent', 'redemption_value', 'value', 'applied_amount', 'price_override_amount', 'price_override_reason', 'estimated_repair_cost'];
         $paymentFields = ['amount', 'amount_due', 'revision_amount_due', 'revision_total', 'currency', 'refunded_amount', 'payment_method', 'payment_stage', 'payment_purpose', 'source_amount', 'source_currency', 'lkr_amount', 'additional_charges', 'late_return_fee', 'refund_method', 'allocated_amount', 'driver_company_settled_amount', 'driver_company_settlement_status', 'driver_company_settled_at', 'payments_total', 'refunds_total', 'adjustments_total', 'outstanding_total', 'settled_at', 'fx_rate_to_lkr', 'fx_rate_at', 'fx_source', 'reference', 'received_via', 'received_at', 'received_by', 'commission_amount', 'receipt_amount', 'eligible_amount', 'commission_rate', 'charge_amount', 'paid_before_amount', 'refund_amount', 'adjustment_amount', 'outstanding_amount', 'base_batta_amount', 'night_batta_rate', 'night_batta_amount', 'manual_adjustment_amount', 'approved_batta_amount', 'approved_expenses_total', 'iou_total', 'final_balance', 'cash_collected_unsettled'];
         $canViewPrice = auth()->user()?->can('bookings.price_override') ?? false;
-        $canViewPayments = auth()->user()?->can('payments.view') ?? false;
+        $canViewPayments = $this->canViewPayments();
         if (!$canViewPrice) {
             foreach ($priceFields as $field) unset($changes[$field]);
         }
@@ -982,7 +994,7 @@ class BookingObservabilityService
             || str_contains($history->event_type, 'payment') || str_contains($history->event_type, 'refund')
             || str_contains($history->event_type, 'adjustment') || str_contains($history->event_type, 'price')) {
             $source = 'finance';
-        } elseif ($history->entity_type === 'BookingApproval') {
+        } elseif (in_array($history->entity_type, ['BookingApproval', 'BookingApprovalDecision'], true)) {
             $source = 'approval';
         } elseif ($history->entity_type === 'BookingDispatch') {
             $source = 'dispatch';
@@ -1003,6 +1015,12 @@ class BookingObservabilityService
             $reason = null;
         }
         $title = str($history->event_type)->replace('_', ' ')->title()->toString();
+        $evidence = match ($source) {
+            'approval' => ['section' => 'overview', 'label' => 'View approval status'],
+            'assignment', 'dispatch', 'lifecycle' => ['section' => 'operations', 'label' => 'View booking operations'],
+            'finance' => $canViewPayments ? ['section' => 'payments', 'label' => 'View finance records'] : null,
+            default => null,
+        };
 
         return [
             'id' => 'booking-history:' . $history->id,
@@ -1034,7 +1052,7 @@ class BookingObservabilityService
                 'context' => $history->context ?? [],
                 'provenance' => $history->provenance,
             ],
-            'evidence' => null,
+            'evidence' => $evidence,
             'actor_display_snapshot' => $history->actor_display_snapshot,
             'reason' => $reason,
             'changes' => $changes,
@@ -1143,15 +1161,16 @@ class BookingObservabilityService
 
     private function mapFinancialEvent(Booking $booking, FinancialAuditEvent $event): array
     {
-        $metadata = collect(is_array($event->metadata) ? $event->metadata : [])->only([
+        $canViewPayments = $this->canViewPayments();
+        $metadata = $canViewPayments ? collect(is_array($event->metadata) ? $event->metadata : [])->only([
             'method',
             'stage',
             'purpose',
             'received_via',
             'invoice_number',
             'reason',
-        ])->all();
-        if ($event->amount !== null) {
+        ])->all() : [];
+        if ($canViewPayments && $event->amount !== null) {
             $metadata['amount'] = (float) $event->amount;
         }
         $actorSnapshot = ($event->metadata ?? [])['actor_display_snapshot'] ?? null;
@@ -1178,11 +1197,35 @@ class BookingObservabilityService
             'severity' => in_array($event->event_type, ['disputed', 'refund', 'security_deposit_refunded'], true) ? 'warning' : 'info',
             'correlation_id' => 'financial-audit:' . $event->id,
             'metadata' => $metadata,
-            'evidence' => ['section' => 'payments', 'label' => 'View payments'],
+            'evidence' => $canViewPayments ? ['section' => 'payments', 'label' => 'View payments'] : null,
             'actor_display_snapshot' => $actorSnapshot,
             'entity_type' => (string) $event->subject_type,
             'entity_id' => (string) $event->subject_id,
         ];
+    }
+
+    private function canViewPayments(): bool
+    {
+        $request = request();
+        if ($request->attributes->has('booking_history_can_view_payments')) {
+            return (bool) $request->attributes->get('booking_history_can_view_payments');
+        }
+
+        $user = auth()->user();
+        if (!$user) {
+            $request->attributes->set('booking_history_can_view_payments', false);
+            return false;
+        }
+
+        $allowed = app(PermissionEvaluator::class)->userHasAnyForRequest(
+            $user,
+            ['payments.view', 'payments.transactions', 'view_payments'],
+            $request->attributes->get('resolved_active_context_type', $request->header('X-Active-Context-Type')),
+            $request->attributes->get('resolved_active_context_id', $request->header('X-Active-Context-Id')),
+        );
+        $request->attributes->set('booking_history_can_view_payments', $allowed);
+
+        return $allowed;
     }
 
     private function tripMilestoneEvents(Booking $booking, string $bookingItemId): Collection

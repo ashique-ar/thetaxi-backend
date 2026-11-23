@@ -544,6 +544,7 @@ class AssignmentController extends Controller
             'booking_item_id' => ['required', 'uuid'],
             'category' => ['required', 'in:extra_km,extra_hour,fuel,damage,toll,waiting,other'],
             'description' => ['required', 'string', 'max:1000'],
+            'change_reason' => ['nullable', 'string', 'max:1000'],
             'amount' => ['required', 'numeric', 'gt:0'],
             'idempotency_key' => ['required', 'uuid'],
         ]);
@@ -557,7 +558,8 @@ class AssignmentController extends Controller
                     $existing->booking_item_id === $item->id
                     && ($existing->meta['category'] ?? null) === $data['category']
                     && (float) ($existing->meta['amount'] ?? 0) === round((float) $data['amount'], 2)
-                    && ($existing->detail ?? '') === trim($data['description']),
+                    && ($existing->detail ?? '') === trim($data['description'])
+                    && ($existing->meta['change_reason'] ?? null) === (isset($data['change_reason']) && trim($data['change_reason']) !== '' ? trim($data['change_reason']) : null),
                     409,
                     'This charge request key was already used for different charge details.',
                 );
@@ -603,7 +605,9 @@ class AssignmentController extends Controller
                 'title' => 'Additional rental charge added',
                 'detail' => trim($data['description']),
                 'idempotency_key' => 'additional-rental-charge-' . $data['idempotency_key'],
-                'meta' => ['category' => $data['category'], 'amount' => $amount, 'currency' => $booking->currency],
+                'meta' => ['category' => $data['category'], 'amount' => $amount, 'currency' => $booking->currency,
+                    'change_reason' => isset($data['change_reason']) && trim($data['change_reason']) !== '' ? trim($data['change_reason']) : null,
+                    'actor_user_id' => (string) $request->user()->id],
                 'event_at' => now(),
             ]);
             return $summary;

@@ -13,7 +13,7 @@ class BackfillBookingHistory extends Command
 {
     protected $signature = 'booking-history:backfill {--before= : Reconstruct only source events before this UTC timestamp} {--commit : Write reconstructed history rows}';
 
-    protected $description = 'Backfill booking status, price, and financial history from verifiable legacy records.';
+    protected $description = 'Backfill booking status, approval decision, price, and financial history from verifiable legacy records.';
 
     public function handle(BookingHistoryService $history): int
     {
@@ -34,11 +34,92 @@ class BackfillBookingHistory extends Command
         $commit = (bool) $this->option('commit');
         $this->line(($commit ? 'Writing' : 'Previewing') . ' reconstructed booking history before ' . $before->toIso8601String());
         $statusCount = $this->backfillStatusEvents($before, $commit);
+        $approvalCount = $this->backfillApprovalDecisionEvents($before, $commit);
         $priceCount = $this->backfillPriceEvents($before, $commit);
         $financialCount = $this->backfillFinancialEvents($before, $commit, $history);
-        $this->info("Booking status: {$statusCount}; trip price: {$priceCount}; financial: {$financialCount} source event(s)." . ($commit ? ' Existing idempotency keys were preserved.' : ' Run again with --commit and --before=<same timestamp> to write them.'));
+        $this->info("Booking status: {$statusCount}; approval decision: {$approvalCount}; trip price: {$priceCount}; financial: {$financialCount} source event(s)." . ($commit ? ' Existing idempotency keys were preserved.' : ' Run again with --commit and --before=<same timestamp> to write them.'));
 
         return self::SUCCESS;
+    }
+
+    private function backfillApprovalDecisionEvents(CarbonImmutable $before, bool $commit): int
+    {
+        $count = 0;
+        DB::table('booking_approvals')->whereNotNull('booking_id')->orderBy('id')->chunkById(200, function ($rows) use ($before, $commit, &$count): void {
+            foreach ($rows as $row) {
+                $conditions = is_array($row->conditions)
+                    ? $row->conditions
+                    : (json_decode((string) ($row->conditions ?? ''), true) ?: []);
+                $decisions = is_array($conditions['step_decisions'] ?? null) ? $conditions['step_decisions'] : [];
+                foreach ($decisions as $decision) {
+                    if (empty($decision['user_id']) || empty($decision['decided_at'])) continue;
+                    try {
+                        $decidedAt = CarbonImmutable::parse($decision['decided_at'])->utc();
+                    } catch (\Throwable) {
+                        continue;
+                    }
+                    if ($decidedAt->greaterThanOrEqualTo($before)) continue;
+                    $step = max(1, (int) ($decision['step'] ?? 1));
+                    $userId = (string) $decision['user_id'];
+                    $idempotencyKey = 'booking-approval-decision:' . $row->id . ':' . $step . ':' . $userId;
+                    $count++;
+                    if (!$commit) continue;
+                    $this->insertLegacy([
+                        'booking_id' => (string) $row->booking_id,
+                        'booking_item_id' => null,
+                        'entity_type' => 'BookingApprovalDecision',
+                        'entity_id' => (string) $row->id . ':' . $step . ':' . $userId,
+                        'event_type' => 'booking_approval_approved',
+                        'actor_type' => 'user',
+                        'actor_user_id' => $userId,
+                        'actor_display_snapshot' => null,
+                        'source' => 'legacy:booking_approvals.conditions.step_decisions',
+                        'reason' => $decision['comments'] ?? null,
+                        'changes' => ['decision' => ['from' => null, 'to' => 'approved']],
+                        'context' => ['approval_id' => (string) $row->id, 'approval_type' => $row->approval_type ?? null, 'step' => $step],
+                        'correlation_id' => $idempotencyKey,
+                        'idempotency_key' => $idempotencyKey,
+                        'occurred_at' => $decidedAt,
+                    ]);
+                }
+
+                $status = (string) ($row->status ?? '');
+                $decidedAtValue = $status === 'rejected' ? ($row->rejected_at ?? null) : ($status === 'approved' ? ($row->approved_at ?? null) : null);
+                $approverId = $row->approver_id ?? null;
+                if (!in_array($status, ['approved', 'rejected'], true) || !$decidedAtValue || !$approverId) continue;
+                try {
+                    $decidedAt = CarbonImmutable::parse($decidedAtValue)->utc();
+                } catch (\Throwable) {
+                    continue;
+                }
+                if ($decidedAt->greaterThanOrEqualTo($before)) continue;
+                $decisionName = $status === 'approved' ? 'approved' : 'rejected';
+                $step = max(1, count($decisions) + 1);
+                $idempotencyKey = 'booking-approval-decision:' . $row->id . ':' . $step . ':' . $approverId;
+                if ($status === 'approved' && collect($decisions)->contains(fn ($decision) => (string) ($decision['user_id'] ?? '') === (string) $approverId)) continue;
+                $count++;
+                if (!$commit) continue;
+                $this->insertLegacy([
+                    'booking_id' => (string) $row->booking_id,
+                    'booking_item_id' => null,
+                    'entity_type' => 'BookingApprovalDecision',
+                    'entity_id' => (string) $row->id . ':' . $step . ':' . $approverId,
+                    'event_type' => 'booking_approval_' . $decisionName,
+                    'actor_type' => 'user',
+                    'actor_user_id' => (string) $approverId,
+                    'actor_display_snapshot' => null,
+                    'source' => 'legacy:booking_approvals',
+                    'reason' => $row->comments,
+                    'changes' => ['decision' => ['from' => null, 'to' => $decisionName]],
+                    'context' => ['approval_id' => (string) $row->id, 'approval_type' => $row->approval_type ?? null, 'step' => $step],
+                    'correlation_id' => $idempotencyKey,
+                    'idempotency_key' => $idempotencyKey,
+                    'occurred_at' => $decidedAt,
+                ]);
+            }
+        });
+
+        return $count;
     }
 
     private function backfillStatusEvents(CarbonImmutable $before, bool $commit): int

@@ -525,27 +525,6 @@ class BookingPaymentLedgerService
                     throw ValidationException::withMessages([
                         'booking' => ['Legacy paid-state evidence must be reconciled through the controlled repair workflow before recording another receipt.'],
                     ]);
-                    $openingReceipt = BookingPaymentReceipt::create([
-                        'booking_id' => $booking->id,
-                        'amount' => $legacy,
-                        'payment_method' => $booking->payment_method ?: 'legacy',
-                        'payment_stage' => 'opening_balance',
-                        'reference' => $booking->payment_reference,
-                        'received_at' => $booking->payment_collected_at ?: $booking->updated_at,
-                        'received_by' => $userId,
-                        'notes' => 'Opening balance from the existing booking payment record.',
-                        'metadata' => ['opening_balance' => true],
-                        'received_via' => $booking->payment_collected_by_driver_id ? 'driver' : 'company',
-                        'driver_id' => $booking->payment_collected_by_driver_id,
-                        'driver_company_settlement_status' => $booking->payment_collected_by_driver_id ? 'unsettled' : 'not_applicable',
-                        ...$this->canonicalReceiptFields($booking, [
-                            'amount' => $legacy,
-                            'payment_method' => $booking->payment_method ?: 'legacy',
-                            'received_at' => $booking->payment_collected_at ?: $booking->updated_at,
-                        ]),
-                    ]);
-                    $this->createReceiptComponent($openingReceipt, 'booking_payment', $legacy);
-                    $this->allocateReceiptToSchedule($booking, $openingReceipt, $legacy, $userId);
                 }
             }
 

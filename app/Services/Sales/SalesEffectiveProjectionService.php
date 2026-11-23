@@ -6,6 +6,7 @@ use App\Models\Sales\SalesBookingAttribution;
 use App\Models\Sales\SalesAttributionException;
 use App\Models\Sales\SalesProfile;
 use App\Models\Booking\BookingCollectionWorkItem;
+use App\Models\Booking\Booking;
 use App\Models\Booking\BookingPaymentSchedule;
 use App\Services\BookingHistoryService;
 use Carbon\CarbonImmutable;
@@ -33,6 +34,11 @@ class SalesEffectiveProjectionService
                 if (! $candidate) {
                     return 0;
                 }
+                $attributionCandidate = SalesBookingAttribution::query()->find($candidate->attribution_id);
+                if (! $attributionCandidate) {
+                    return 0;
+                }
+                Booking::query()->lockForUpdate()->find($attributionCandidate->booking_id);
                 $attribution = SalesBookingAttribution::query()->lockForUpdate()->find($candidate->attribution_id);
                 $event = DB::table('sales_booking_attribution_events')->where('id', $eventId)->lockForUpdate()->first();
                 if (! $attribution || ! $event || $event->projected_at !== null
@@ -122,17 +128,21 @@ class SalesEffectiveProjectionService
             ->whereNull('deleted_at')
             ->whereNull('superseded_at')
             ->whereNotIn('status', ['paid', 'cancelled', 'superseded'])
-            ->get()->each(fn (BookingPaymentSchedule $schedule) => $schedule->forceFill([
+            ->lockForUpdate()
+            ->get()->each(fn (BookingPaymentSchedule $schedule) => app(BookingHistoryService::class)
+                ->withReasonContext($event->reason, fn () => $schedule->forceFill([
                 'collection_sales_profile_id' => $eligibleTarget?->id,
                 'updated_user_id' => $event->actor_user_id,
-            ])->save());
+            ])->save()));
         BookingCollectionWorkItem::query()
             ->where('booking_id', $attribution->booking_id)
             ->whereIn('status', ['open', 'due', 'overdue'])
-            ->get()->each(fn (BookingCollectionWorkItem $workItem) => $workItem->forceFill([
+            ->lockForUpdate()
+            ->get()->each(fn (BookingCollectionWorkItem $workItem) => app(BookingHistoryService::class)
+                ->withReasonContext($event->reason, fn () => $workItem->forceFill([
                 'assigned_sales_profile_id' => $eligibleTarget?->id,
                 'updated_user_id' => $event->actor_user_id,
-            ])->save());
+            ])->save()));
 
         if (! $eligibleTarget) {
             SalesAttributionException::firstOrCreate([

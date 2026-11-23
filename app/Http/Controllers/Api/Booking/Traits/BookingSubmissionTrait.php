@@ -980,6 +980,7 @@ trait BookingSubmissionTrait
     {
         $validated = $request->validate([
             'notes' => ['nullable', 'string', 'max:2000'],
+            'change_reason' => ['nullable', 'string', 'max:1000'],
         ]);
 
         return response()->json([
@@ -988,7 +989,8 @@ trait BookingSubmissionTrait
                 $bookingId,
                 $bookingItemId,
                 trim((string) ($validated['notes'] ?? '')) ?: null,
-                $request->user()
+                $request->user(),
+                $validated['change_reason'] ?? null
             ),
             'message' => 'Operations notes updated successfully',
         ]);
@@ -1152,13 +1154,18 @@ trait BookingSubmissionTrait
 
     public function bulkOperations(Request $request): JsonResponse
     {
-        $request->validate([
+        $validated = $request->validate([
             'operation' => 'required|string|in:delete,approve,reject,assign_vehicle,assign_driver,change_status',
             'booking_ids' => 'required|array|min:1',
             'booking_ids.*' => 'uuid|exists:bookings,id',
             'data' => 'nullable|array',
             'reason' => 'nullable|string|max:500'
         ]);
+        if (($validated['operation'] ?? null) === 'reject' && mb_strlen(trim((string) ($validated['reason'] ?? ''))) < 3) {
+            throw \Illuminate\Validation\ValidationException::withMessages([
+                'reason' => 'Enter a rejection reason of at least 3 characters.',
+            ]);
+        }
 
         try {
             $result = $this->bookingFlowService->bulkOperations(
@@ -1236,9 +1243,10 @@ trait BookingSubmissionTrait
             'final_price' => ['required', 'numeric', 'min:0', 'decimal:0,2'],
             'reason' => ['required', 'string', 'max:500'],
         ]);
-        $booking = Booking::findOrFail($bookingId);
+        return DB::transaction(function () use ($bookingId, $bookingItemId, $validated): JsonResponse {
+        $booking = Booking::query()->lockForUpdate()->findOrFail($bookingId);
         abort_unless(Gate::allows('update', $booking) && Auth::user()?->can('bookings.price_override'), 403);
-        $item = $booking->bookingItems()->whereKey($bookingItemId)->firstOrFail();
+        $item = $booking->bookingItems()->whereKey($bookingItemId)->lockForUpdate()->firstOrFail();
         $previousPrice = (float) $item->total_price;
         $finalPrice = round((float) $validated['final_price'], 2);
         $calculatedPrice = (float) (BookingActivity::query()
@@ -1289,6 +1297,7 @@ trait BookingSubmissionTrait
             'final_price' => $finalPrice,
             'booking_total' => $total,
         ]]);
+        });
     }
 
     public function cloneBooking(string $bookingId): JsonResponse

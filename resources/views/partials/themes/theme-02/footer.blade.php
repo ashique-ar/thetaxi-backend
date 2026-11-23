@@ -14,7 +14,9 @@
                     </div>
                 </div>
                 <div class="col-lg-6">
-                    <form class="newsletter-form" action="{{ $settings['footer_newsletter_action'] ?? '#' }}" method="POST">
+                    @if (session('newsletter_success'))<p role="status">{{ session('newsletter_success') }}</p>@endif
+                    @error('email', 'newsletter')<p role="alert">{{ $message }}</p>@enderror
+                    <form class="newsletter-form" action="{{ ($settings['footer_newsletter_action'] ?? '#') === '#' ? route('newsletter.subscribe') : $settings['footer_newsletter_action'] }}" method="POST">
                         @csrf
                         <div class="input-group">
                             <label class="visually-hidden" for="t2-newsletter-email">Email address</label>

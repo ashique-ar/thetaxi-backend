@@ -6,6 +6,9 @@ use App\Contracts\Foundation\DomainEventPublisher;
 use App\Models\Sales\SalesBookingAttribution;
 use App\Models\Sales\SalesAttributionException;
 use App\Models\Sales\SalesProfile;
+use App\Models\Booking\Booking;
+use App\Models\Booking\BookingCollectionWorkItem;
+use App\Models\Booking\BookingPaymentSchedule;
 use App\Services\BookingHistoryService;
 use App\Support\Foundation\CanonicalJson;
 use Carbon\CarbonImmutable;
@@ -202,9 +205,8 @@ class BookingAttributionMutationService
             }
         }
 
-        $lockedCandidate = SalesBookingAttribution::query()->findOrFail($attribution->id);
-
         return DB::transaction(function () use ($attribution, $field, $toProfile, $eventType, $effectiveAt, $reason, $idempotencyKey, $actorUserId) {
+            Booking::query()->lockForUpdate()->findOrFail($attribution->booking_id);
             $locked = SalesBookingAttribution::query()->lockForUpdate()->findOrFail($attribution->id);
             $existing = DB::table('sales_booking_attribution_events')
                 ->where('attribution_id', $locked->id)
@@ -268,6 +270,7 @@ class BookingAttributionMutationService
                 'reason' => $reason,
                 'idempotency_key' => $idempotencyKey,
                 'actor_user_id' => $actorUserId,
+                'projected_at' => $effectiveAt->lte(now()) ? now() : null,
                 'created_at' => now(),
                 'updated_at' => now(),
             ]);
@@ -278,6 +281,31 @@ class BookingAttributionMutationService
                 $projection['status'] = $this->projectionStatus($locked, $field, $target, $profiles);
             }
             app(BookingHistoryService::class)->withReasonContext($reason, fn () => $locked->update($projection));
+
+            if ($field === 'collection_sales_profile_id' && $effectiveAt->lte(now())) {
+                BookingPaymentSchedule::query()
+                    ->where('booking_id', $locked->booking_id)
+                    ->whereNull('deleted_at')
+                    ->whereNull('superseded_at')
+                    ->whereNotIn('status', ['paid', 'cancelled', 'superseded'])
+                    ->lockForUpdate()
+                    ->get()
+                    ->each(fn (BookingPaymentSchedule $schedule) => app(BookingHistoryService::class)
+                        ->withReasonContext($reason, fn () => $schedule->forceFill([
+                            'collection_sales_profile_id' => $target?->id,
+                            'updated_user_id' => $actorUserId,
+                        ])->save()));
+                BookingCollectionWorkItem::query()
+                    ->where('booking_id', $locked->booking_id)
+                    ->whereIn('status', ['open', 'due', 'overdue'])
+                    ->lockForUpdate()
+                    ->get()
+                    ->each(fn (BookingCollectionWorkItem $workItem) => app(BookingHistoryService::class)
+                        ->withReasonContext($reason, fn () => $workItem->forceFill([
+                            'assigned_sales_profile_id' => $target?->id,
+                            'updated_user_id' => $actorUserId,
+                        ])->save()));
+            }
 
             $this->events->record(
                 'sales',

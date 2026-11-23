@@ -38,15 +38,20 @@
                 <span class="t3-kicker">Private dispatches</span>
                 <h2 id="t3-newsletter-title">{{ $settings['footer_newsletter_heading'] ?? 'Subscribe to Our Newsletter' }}</h2>
                 <p>{{ $settings['footer_newsletter_subheading'] ?? 'Get the latest updates and offers.' }}</p>
+                @if (session('newsletter_success'))<p role="status">{{ session('newsletter_success') }}</p>@endif
+                @error('email', 'newsletter')<p id="t3-newsletter-email-error" role="alert">{{ $message }}</p>@enderror
             </div>
-            <form action="{{ $settings['footer_newsletter_action'] ?? '#' }}" method="POST">
+            <form action="{{ ($settings['footer_newsletter_action'] ?? '#') === '#' ? route('newsletter.subscribe') : $settings['footer_newsletter_action'] }}" method="POST">
                 @csrf
                 <label class="visually-hidden" for="t3-newsletter-email">Email address</label>
                 <input
                     id="t3-newsletter-email"
                     type="email"
                     name="email"
+                    value="{{ old('email') }}"
                     placeholder="{{ $settings['footer_newsletter_placeholder'] ?? 'Enter your email' }}"
+                    aria-invalid="{{ $errors->newsletter->has('email') ? 'true' : 'false' }}"
+                    @if ($errors->newsletter->has('email')) aria-describedby="t3-newsletter-email-error" @endif
                     required>
                 <button type="submit">{{ $settings['footer_newsletter_button'] ?? 'Subscribe' }}</button>
             </form>

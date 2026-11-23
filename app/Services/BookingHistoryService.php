@@ -73,6 +73,8 @@ class BookingHistoryService
         'call_status', 'follow_up_due_at', 'follow_up_completed_at',
         'exception_type', 'details', 'resolved_by', 'resolved_at', 'detected_at',
         'booking_collection_work_item_id', 'recipient_user_id', 'reminder_type', 'channel',
+        'actor_user_id', 'assigned_sales_profile_id', 'promised_payment_date', 'next_follow_up_at',
+        'request_payload_checksum', 'occurred_at',
         'schedule_due_date', 'outstanding_amount', 'source_currency', 'database_notification_id', 'dispatched_at',
         'points', 'balance_before', 'balance_after', 'amount_spent', 'earning_rate',
         'redemption_value', 'redemption_rate', 'expired_at', 'processed_at',
@@ -229,18 +231,31 @@ class BookingHistoryService
         ]);
     }
 
-    public function recordBookingApprovalDecision(string $bookingId, string $approvalId, string $decision, ?string $comments, string $userId): void
+    public function recordBookingApprovalDecision(
+        string $bookingId,
+        string $approvalId,
+        string $decision,
+        ?string $comments,
+        string $userId,
+        ?string $decisionId = null,
+        ?string $idempotencyKey = null,
+        string $source = 'booking_approval_decisions',
+        string $entityType = 'BookingApprovalDecision',
+        array $context = [],
+    ): void
     {
+        $entityId = $decisionId ?: $approvalId;
         $this->recordDirectChange(
             $bookingId,
-            'BookingApprovalDecision',
-            $approvalId,
+            $entityType,
+            $entityId,
             'booking_approval_' . $decision,
             ['decision' => ['from' => null, 'to' => $decision]],
             $comments,
             $userId,
-            'booking_approval_decisions',
-            'booking-approval-decision:' . $approvalId . ':' . $userId . ':' . $decision,
+            $source,
+            $idempotencyKey ?: 'booking-approval-decision:' . $entityId,
+            $context,
         );
     }
 
@@ -254,6 +269,7 @@ class BookingHistoryService
         ?string $actorUserId,
         string $source,
         ?string $idempotencyKey = null,
+        array $context = [],
     ): void {
         $actor = $actorUserId ? User::query()->find($actorUserId) : null;
         $now = now()->utc();
@@ -272,7 +288,7 @@ class BookingHistoryService
             'source' => $source,
             'reason' => $reason !== null && trim($reason) !== '' ? Str::limit(trim($reason), 1000) : null,
             'changes' => json_encode($changes, JSON_THROW_ON_ERROR),
-            'context' => json_encode([], JSON_THROW_ON_ERROR),
+            'context' => json_encode($context, JSON_THROW_ON_ERROR),
             'correlation_id' => $idempotencyKey,
             'idempotency_key' => $idempotencyKey,
             'occurred_at' => $now,
@@ -326,7 +342,7 @@ class BookingHistoryService
                         'latitude', 'longitude', 'accept_latitude', 'accept_longitude', 'final_latitude',
                         'final_longitude', 'pickup_arrival_latitude', 'pickup_arrival_longitude',
                         'trip_start_latitude', 'trip_start_longitude', 'driver_name_snapshot',
-                        'assigned_by_name_snapshot', 'confirmed_by_name_snapshot',
+                        'assigned_by_name_snapshot', 'confirmed_by_name_snapshot', 'notes', 'request_payload_checksum',
                     ], true);
                     $changes[$field] = [
                         'from' => $operation === 'created' || $operation === 'restored'
@@ -360,7 +376,10 @@ class BookingHistoryService
         if (!$actor) {
             $actorId = $model->getAttribute('updated_user_id')
                 ?? ($operation === 'created' ? $model->getAttribute('created_user_id') : null)
+                ?? ($operation === 'created' && $model instanceof \App\Models\Booking\BookingCollectionWorkItemFollowUp ? $model->getAttribute('actor_user_id') : null)
                 ?? ($model instanceof \App\Models\Booking\BookingPaymentScheduleRevision ? $model->getAttribute('approved_by') : null)
+                ?? ($model instanceof \App\Models\Booking\BookingDispatch && $model->getAttribute('returned_by') !== ($before['returned_by'] ?? null) ? $model->getAttribute('returned_by') : null)
+                ?? ($model instanceof \App\Models\Booking\BookingDispatch && $model->getAttribute('dispatched_by') !== ($before['dispatched_by'] ?? null) ? $model->getAttribute('dispatched_by') : null)
                 ?? $model->getAttribute('resolved_by')
                 ?? ($before['updated_user_id'] ?? null);
             $actor = $actorId ? User::query()->find($actorId) : null;
@@ -369,7 +388,8 @@ class BookingHistoryService
         if ($requestReason === null && $request->attributes->has('booking_history_reason')) {
             $requestReason = $request->attributes->get('booking_history_reason');
         } elseif ($requestReason === null) {
-            $requestReason = $request->input('change_reason')
+            $requestReason = $model->getAttribute('change_reason')
+                ?? $request->input('change_reason')
                 ?? data_get($model->getAttribute('workflow_data'), 'cancellation_reason')
                 ?? data_get($model->getAttribute('workflow_data'), 'approval_reason')
                 ?? data_get($model->getAttribute('meta'), 'reason')
@@ -380,8 +400,7 @@ class BookingHistoryService
                 ?? $model->getAttribute('justification')
                 ?? $model->getAttribute('customization_reason')
                 ?? (in_array(class_basename($model), ['Booking', 'BookingItem'], true) ? null : $model->getAttribute('reason'))
-                ?? $request->input('reason')
-                ?? $model->getAttribute('assignment_notes');
+                ?? $request->input('reason');
         }
         $reason = is_string($requestReason) ? trim($requestReason) : null;
         $id = (string) Str::uuid();
@@ -442,6 +461,7 @@ class BookingHistoryService
             return isset($changes['status']) ? 'collection_submission_decided' : 'collection_submission_recorded';
         }
         if ($model instanceof \App\Models\Booking\BookingCollectionReminderDelivery) return 'booking_collection_reminder_dispatched';
+        if ($model instanceof \App\Models\Booking\BookingCollectionWorkItemFollowUp) return 'booking_collection_follow_up_recorded';
         if ($model instanceof \App\Models\Booking\BookingPaymentScheduleRuleEvent) return 'collection_schedule_rule_changed';
         if ($model instanceof \App\Models\Booking\BookingPaymentScheduleRevision) return 'collection_schedule_revised';
         if ($model instanceof \App\Models\Booking\BookingPaymentAdjustment) return 'booking_payment_adjustment_recorded';

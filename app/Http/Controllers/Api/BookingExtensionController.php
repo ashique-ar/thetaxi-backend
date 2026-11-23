@@ -95,6 +95,8 @@ class BookingExtensionController extends Controller
                 'idempotency_key' => 'booking-extension-request-'.$extension->id,
                 'meta' => [
                     'extension_request_id' => $extension->id,
+                    'reason' => $data['reason'],
+                    'requested_by' => (string) $request->user()->id,
                     'current_end_at' => $currentEnd->toIso8601String(),
                     'requested_end_at' => $requestedEnd->toIso8601String(),
                 ],
@@ -195,7 +197,7 @@ class BookingExtensionController extends Controller
             }
 
             $extension->update(['status' => $data['decision'], 'additional_charge' => $data['decision'] === 'approved' ? round((float) $data['additional_charge'], 2) : null, 'charge_currency' => $data['decision'] === 'approved' ? (strtoupper((string) $booking->currency) ?: null) : null, 'review_notes' => trim($data['review_notes']), 'reviewed_by' => (string) $request->user()->id, 'reviewed_at' => now()]);
-            BookingActivity::create(['booking_id' => $booking->id, 'booking_item_id' => $item->id, 'event_key' => 'rental_extension_'.$data['decision'], 'channel' => 'system', 'result_status' => $data['decision'], 'source' => 'portal', 'title' => 'Rental extension '.$data['decision'], 'detail' => trim($data['review_notes']), 'idempotency_key' => 'booking-extension-decision-'.$extension->id, 'meta' => ['extension_request_id' => $extension->id, 'previous_end_at' => $currentEnd->toIso8601String(), 'requested_end_at' => $extension->requested_end_at->toIso8601String(), 'additional_charge' => $extension->additional_charge], 'event_at' => now()]);
+            BookingActivity::create(['booking_id' => $booking->id, 'booking_item_id' => $item->id, 'event_key' => 'rental_extension_'.$data['decision'], 'channel' => 'system', 'result_status' => $data['decision'], 'source' => 'portal', 'title' => 'Rental extension '.$data['decision'], 'detail' => trim($data['review_notes']), 'idempotency_key' => 'booking-extension-decision-'.$extension->id, 'meta' => ['extension_request_id' => $extension->id, 'reason' => trim($data['review_notes']), 'reviewed_by' => (string) $request->user()->id, 'previous_end_at' => $currentEnd->toIso8601String(), 'requested_end_at' => $extension->requested_end_at->toIso8601String(), 'additional_charge' => $extension->additional_charge], 'event_at' => now()]);
             return $extension->fresh();
         });
         return response()->json(['status' => 'success', 'data' => $extension]);

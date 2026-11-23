@@ -49,6 +49,9 @@ class SalesCrmService
                 abort_unless($sourceUserIds !== null && $sourceOwnerId
                     && in_array((string) $sourceOwnerId, $sourceUserIds, true), 403,
                     'The Inquiry source is outside your authorised Sales scope.');
+                abort_unless(empty($inquiry->customer_id) || empty($data['customer_id'])
+                    || (string) $inquiry->customer_id === (string) $data['customer_id'], 422,
+                    'The matched Customer must agree with the selected Inquiry.');
                 $data['source'] = $inquiry->source ?: 'inquiry';
                 $data['customer_id'] = $data['customer_id'] ?? $inquiry->customer_id;
                 $data['prospect_name'] = $data['prospect_name'] ?? $inquiry->name;
@@ -62,6 +65,16 @@ class SalesCrmService
                 $data['source'] = 'phone_call';
                 $data['prospect_name'] = $data['prospect_name'] ?? $phoneCall->client_name;
                 $data['prospect_phone'] = $data['prospect_phone'] ?? $phoneCall->phone;
+            }
+            if (! empty($data['customer_id']) && (empty($data['inquiry_id']) || empty($inquiry->customer_id))) {
+                $assignment = DB::table('customer_relationship_owner_assignments')
+                    ->where('customer_id', $data['customer_id'])->whereNull('ended_at')
+                    ->lockForUpdate()->first(['owner_sales_profile_id']);
+                abort_unless($assignment?->owner_sales_profile_id, 403,
+                    'Assign this Customer to a Sales employee before linking it to an opportunity.');
+                $customerOwner = $this->lockActiveSalesProfile((string) $assignment->owner_sales_profile_id);
+                abort_unless($authorizedProfileIds === null || in_array($customerOwner->id, $authorizedProfileIds, true), 403,
+                    'Customer is outside your authorized Sales scope.');
             }
             $this->assertNoSilentCustomerDuplicate($data);
             if ($followUpTask) {
@@ -344,7 +357,11 @@ class SalesCrmService
                     abort_unless($lockedOpportunity->customer_id === $lockedBooking->customer_id, 422, 'Opportunity and booking Customers must match.');
                 }
                 $linkedCustomerId = $lockedOpportunity->customer_id ?: $lockedBooking->customer_id;
-                $lockedBooking->update(['sales_opportunity_id' => $lockedOpportunity->id, 'updated_user_id' => $actorUserId]);
+                $bookingChanges = ['sales_opportunity_id' => $lockedOpportunity->id, 'updated_user_id' => $actorUserId];
+                if (! $lockedBooking->customer_id && $linkedCustomerId) {
+                    $bookingChanges['customer_id'] = $linkedCustomerId;
+                }
+                $lockedBooking->update($bookingChanges);
                 $opportunityChanges = ['state_version' => $lockedOpportunity->state_version + 1, 'updated_user_id' => $actorUserId];
                 if (! $lockedOpportunity->customer_id && $linkedCustomerId) {
                     $opportunityChanges['customer_id'] = $linkedCustomerId;
@@ -385,9 +402,11 @@ class SalesCrmService
             && $event->from_stage === $event->to_stage
             && $event->from_owner_sales_profile_id === $event->to_owner_sales_profile_id
             && (string) ($event->snapshot['booking_id'] ?? '') === (string) $booking->id
-            && (! isset($event->snapshot['customer_id']) || (string) $event->snapshot['customer_id'] === (string) $booking->customer_id)
+            && (! isset($event->snapshot['customer_id'])
+                || (string) $event->snapshot['customer_id'] === (string) $booking->customer_id
+                || (! $booking->customer_id && (string) $event->snapshot['customer_id'] === (string) $opportunity->customer_id))
             && $bookingStaff && (string) ($event->snapshot['booking_owner_staff_id'] ?? '') === (string) $bookingStaff->id
-            && (! $opportunity->customer_id || (string) $opportunity->customer_id === (string) $booking->customer_id)
+            && (! $opportunity->customer_id || ! $booking->customer_id || (string) $opportunity->customer_id === (string) $booking->customer_id)
             && ($booking->sales_opportunity_id === $opportunity->id || $opportunity->won_booking_id === $booking->id),
             409, 'The opportunity booking-link key was already used for a different command.');
     }

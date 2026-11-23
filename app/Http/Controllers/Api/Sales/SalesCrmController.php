@@ -163,13 +163,13 @@ class SalesCrmController extends Controller
                     ->orWhere('source.name', 'like', $term)->orWhere('source.subject', 'like', $term));
             });
             $columns = ['source.id', 'source.inquiry_number', 'source.name', 'source.subject', 'source.status', 'source.created_at'];
-            if ($selected) array_push($columns, 'source.email', 'source.phone');
+            if ($selected) array_push($columns, 'source.email', 'source.phone', 'source.customer_id');
             $rows = $query->orderByDesc('source.created_at')->select($columns)->paginate($data['per_page'] ?? 25);
             $rows->getCollection()->transform(fn ($row) => [
                 'value' => (string) $row->id,
                 'label' => trim(($row->inquiry_number ?: 'Inquiry').' · '.($row->name ?: $row->subject ?: 'No name')),
                 'metadata' => ['type' => 'Inquiry'],
-                'record' => $selected ? ['name' => $row->name, 'email' => $row->email, 'phone' => $row->phone,
+                'record' => $selected ? ['name' => $row->name, 'email' => $row->email, 'phone' => $row->phone, 'customer_id' => $row->customer_id,
                     'subject' => $row->subject, 'inquiry_number' => $row->inquiry_number] : null,
                 'status' => $row->status,
             ]);
@@ -685,7 +685,8 @@ class SalesCrmController extends Controller
         $rows->getCollection()->transform(fn ($customer) => [
             'value' => (string) $customer->id,
             'label' => trim(($customer->code ? $customer->code.' - ' : '').trim($customer->first_name.' '.$customer->last_name)),
-            'metadata' => ['phone' => $customer->phone, 'email' => $customer->email],
+            'metadata' => ['first_name' => $customer->first_name, 'last_name' => $customer->last_name,
+                'phone' => $customer->phone, 'email' => $customer->email],
             'status' => 'available',
         ]);
 
@@ -846,6 +847,8 @@ class SalesCrmController extends Controller
             $wonBookingCancelled = in_array(strtolower((string) ($wonBooking?->status ?? '')), ['cancelled', 'canceled', 'booking_cancelled'], true);
         }
         return $payload + [
+            'customer_id' => $row->customer_id ? (string) $row->customer_id : null,
+            'opportunity_owner_user_id' => $ownerUser?->id ? (string) $ownerUser->id : null,
             'owner_sales_profile_id' => (string) $row->owner_sales_profile_id,
             'state_version' => $row->state_version,
             'crm_enabled' => $this->policySettings->featureEnabled('crm'),

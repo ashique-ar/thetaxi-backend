@@ -6,6 +6,7 @@ use App\Contracts\Foundation\DomainEventPublisher;
 use App\Models\Booking\Booking;
 use App\Models\Booking\BookingCollectionSubmission;
 use App\Models\Booking\BookingCollectionWorkItem;
+use App\Models\Booking\BookingCollectionWorkItemFollowUp;
 use App\Models\Booking\BookingPaymentReceipt;
 use App\Models\Booking\BookingPaymentSchedule;
 use App\Models\Booking\BookingPaymentScheduleRule;
@@ -25,6 +26,49 @@ class CollectionScheduleWorkflowService
         private readonly DomainEventPublisher $events,
         private readonly BookingPaymentLedgerService $ledger,
     ) {}
+
+    public function recordWorkItemFollowUp(BookingCollectionWorkItem $workItem, SalesProfile $profile, array $data, string $actorUserId): BookingCollectionWorkItemFollowUp
+    {
+        return DB::transaction(function () use ($workItem, $profile, $data, $actorUserId): BookingCollectionWorkItemFollowUp {
+            $workItem = BookingCollectionWorkItem::query()->lockForUpdate()->findOrFail($workItem->id);
+            $facts = [
+                'booking_collection_work_item_id' => (string) $workItem->id,
+                'promised_payment_date' => $data['promised_payment_date'] ?? null,
+                'next_follow_up_at' => Carbon::parse($data['next_follow_up_at'])->utc()->toISOString(),
+                'notes' => $data['notes'] ?? null,
+                'change_reason' => isset($data['change_reason']) && trim($data['change_reason']) !== '' ? trim($data['change_reason']) : null,
+            ];
+            $checksum = hash('sha256', json_encode($facts, JSON_THROW_ON_ERROR));
+            $duplicate = BookingCollectionWorkItemFollowUp::query()
+                ->where('booking_collection_work_item_id', $workItem->id)
+                ->where('idempotency_key', $data['idempotency_key'])->first();
+            if ($duplicate) {
+                abort_unless(hash_equals($duplicate->request_payload_checksum, $checksum)
+                    && (string) $duplicate->booking_collection_work_item_id === (string) $workItem->id
+                    && (string) $duplicate->assigned_sales_profile_id === (string) $profile->id
+                    && (string) $duplicate->actor_user_id === $actorUserId,
+                    422, 'This follow-up key was already used with different facts or ownership.');
+                return $duplicate;
+            }
+            abort_unless(in_array($workItem->status, ['open', 'upcoming', 'due', 'overdue'], true)
+                && (string) $workItem->assigned_sales_profile_id === (string) $profile->id,
+                409, 'Collection work changed; reload it before recording a follow-up.');
+
+            return BookingCollectionWorkItemFollowUp::create([
+                ...$facts,
+                'booking_id' => $workItem->booking_id,
+                'assigned_sales_profile_id' => $profile->id,
+                'actor_user_id' => $actorUserId,
+                'promised_payment_date' => $facts['promised_payment_date'],
+                'next_follow_up_at' => $facts['next_follow_up_at'],
+                'notes' => $facts['notes'],
+                'change_reason' => $facts['change_reason'],
+                'idempotency_key' => $data['idempotency_key'],
+                'request_payload_checksum' => $checksum,
+                'occurred_at' => now(),
+            ]);
+        }, 3);
+    }
 
     public function previewFutureUnpaidRevision(Booking $booking, array $data): array
     {

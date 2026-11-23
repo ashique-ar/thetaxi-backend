@@ -240,6 +240,7 @@ class CollectionScheduleWorkflowController extends Controller
             'status' => ['nullable', Rule::in(['open', 'upcoming', 'due', 'overdue', 'completed', 'cancelled'])],
             'from' => ['nullable', 'date'],
             'to' => ['nullable', 'date', 'after_or_equal:from'],
+            'work_item_id' => ['nullable', 'uuid'],
             'per_page' => ['nullable', 'integer', 'min:1', 'max:100'],
         ]);
         $profileIds = $this->scheduleProfileIds($request);
@@ -252,6 +253,7 @@ class CollectionScheduleWorkflowController extends Controller
                 'booking.customer.user:id,first_name,last_name,email,phone',
                 'booking.salesAttribution:id,booking_id,collection_sales_profile_id',
                 'paymentSchedule' => fn ($schedule) => $schedule->withSum('allocations', 'amount'),
+                'latestFollowUp',
             ])
             ->addSelect([
                 'last_submission_at' => BookingCollectionSubmission::query()
@@ -265,6 +267,7 @@ class CollectionScheduleWorkflowController extends Controller
         $canViewCustomerContact = $request->user()->can('sales.collections.customer-contact.view');
 
         $rows = $query
+            ->when($data['work_item_id'] ?? null, fn ($q, $id) => $q->whereKey($id))
             ->when($data['status'] ?? null, fn ($q, $status) => $q->where('status', $status))
             ->when($data['from'] ?? null, fn ($q, $from) => $q->where('due_at', '>=', $from))
             ->when($data['to'] ?? null, fn ($q, $to) => $q->where('due_at', '<=', $to))
@@ -298,6 +301,12 @@ class CollectionScheduleWorkflowController extends Controller
                 'aging_bucket' => $aging['aging_bucket'], 'last_activity_at' => $lastActivityAt,
                 'reminder_offset_days' => $row->reminder_offset_days,
                 'last_reminded_at' => $row->last_reminded_at,
+                'follow_up' => $row->latestFollowUp ? [
+                    'promised_payment_date' => $row->latestFollowUp->promised_payment_date?->toDateString(),
+                    'next_follow_up_at' => $row->latestFollowUp->next_follow_up_at,
+                    'notes' => $row->latestFollowUp->notes,
+                    'occurred_at' => $row->latestFollowUp->occurred_at,
+                ] : null,
                 'booking_management_path' => '/bookings/'.$row->booking_id,
                 'customer' => $row->booking?->customer ? [
                     'id' => $row->booking->customer->id,
@@ -347,6 +356,33 @@ class CollectionScheduleWorkflowController extends Controller
         return response()->json(['status' => 'success', 'data' => [
             'id' => (string) $submission->id,
             'status' => $submission->status,
+        ]], 201);
+    }
+
+    public function recordFollowUp(Request $request, BookingCollectionWorkItem $workItem): JsonResponse
+    {
+        $data = $request->validate([
+            'promised_payment_date' => ['nullable', 'date'],
+            'next_follow_up_at' => ['required', 'date', 'after:now'],
+            'notes' => ['nullable', 'string', 'max:2000'],
+            'change_reason' => ['nullable', 'string', 'max:1000'],
+            'idempotency_key' => ['required', 'uuid'],
+        ]);
+        $this->assertCollectionPageReferences(collect([$workItem]));
+        $profile = $this->actorProfile($request, $workItem->booking);
+        abort_unless($profile && (string) $workItem->assigned_sales_profile_id === (string) $profile->id, 403,
+            'Only the assigned collector can record this follow-up.');
+        abort_unless(in_array($workItem->status, ['open', 'upcoming', 'due', 'overdue'], true), 409,
+            'Follow-ups can only be recorded on active collection work.');
+
+        $followUp = $this->workflow->recordWorkItemFollowUp($workItem, $profile, $data, (string) $request->user()->id);
+        return response()->json(['status' => 'success', 'data' => [
+            'id' => (string) $followUp->id,
+            'promised_payment_date' => $followUp->promised_payment_date?->toDateString(),
+            'next_follow_up_at' => $followUp->next_follow_up_at,
+            'notes' => $followUp->notes,
+            'change_reason' => $followUp->change_reason,
+            'occurred_at' => $followUp->occurred_at,
         ]], 201);
     }
 

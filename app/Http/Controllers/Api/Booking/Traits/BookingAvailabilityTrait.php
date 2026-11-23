@@ -564,12 +564,14 @@ trait BookingAvailabilityTrait
     {
         $request->validate([
             'booking_id' => 'required|string|exists:bookings,id',
+            'change_reason' => 'nullable|string|max:1000',
         ]);
 
         try {
             $result = app(\App\Services\BookingLifecycleService::class)->approveAssignments(
                 $request->booking_id,
-                (string) \Illuminate\Support\Facades\Auth::id()
+                (string) \Illuminate\Support\Facades\Auth::id(),
+                $request->input('change_reason')
             );
 
             return response()->json([

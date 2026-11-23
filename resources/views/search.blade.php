@@ -1491,12 +1491,12 @@
                                         <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
                                     </div>
                                     <div class="modal-body">
-                                        <form id="newSearchForm">
+                                        <form id="newSearchForm" action="{{ route('search') }}" method="GET">
                                             <div class="row g-3">
                                                 <!-- Service Type -->
                                                 <div class="col-md-12">
-                                                    <label class="form-label">Service Type</label>
-                                                    <select name="service_type" class="form-select" required>
+                                                    <label class="form-label" for="new-search-service-type">Service Type</label>
+                                                    <select id="new-search-service-type" name="service_type" class="form-select" required>
                                                         <option value="point_to_point">Point to Point</option>
                                                         <option value="ride_now">Ride Now</option>
                                                         <option value="day_rental">Day Rental</option>
@@ -1508,46 +1508,46 @@
 
                                                 <!-- Pickup Location -->
                                                 <div class="col-md-6">
-                                                    <label class="form-label">Pickup Location</label>
-                                                    <input type="text" name="pickup_location" class="form-control" required>
+                                                    <label class="form-label" for="new-search-pickup-location">Pickup Location</label>
+                                                    <input id="new-search-pickup-location" type="text" name="pickup_location" class="form-control" required autocomplete="street-address">
                                                 </div>
 
                                                 <!-- Dropoff Location -->
                                                 <div class="col-md-6">
-                                                    <label class="form-label">Dropoff Location</label>
-                                                    <input type="text" name="dropoff_location" class="form-control">
+                                                    <label class="form-label" for="new-search-dropoff-location">Dropoff Location</label>
+                                                    <input id="new-search-dropoff-location" type="text" name="dropoff_location" class="form-control">
                                                 </div>
 
                                                 <!-- Pickup Date -->
                                                 <div class="col-md-6">
-                                                    <label class="form-label">Pickup Date</label>
-                                                    <input type="date" name="pickup_date" class="form-control" 
+                                                    <label class="form-label" for="new-search-pickup-date">Pickup Date</label>
+                                                    <input id="new-search-pickup-date" type="date" name="pickup_date" class="form-control"
                                                            min="{{ date('Y-m-d') }}" value="{{ date('Y-m-d') }}" required>
                                                 </div>
 
                                                 <!-- Return Date -->
                                                 <div class="col-md-6">
-                                                    <label class="form-label">Return Date</label>
-                                                    <input type="date" name="return_date" class="form-control" 
+                                                    <label class="form-label" for="new-search-return-date">Return Date</label>
+                                                    <input id="new-search-return-date" type="date" name="return_date" class="form-control"
                                                            min="{{ date('Y-m-d') }}" value="{{ date('Y-m-d', strtotime('+1 day')) }}">
                                                 </div>
 
                                                 <!-- Times -->
                                                 <div class="col-md-6">
-                                                    <label class="form-label">Pickup Time</label>
-                                                    <input type="time" name="pickup_time" class="form-control" value="10:00">
+                                                    <label class="form-label" for="new-search-pickup-time">Pickup Time</label>
+                                                    <input id="new-search-pickup-time" type="time" name="pickup_time" class="form-control" value="10:00">
                                                 </div>
 
                                                 <div class="col-md-6">
-                                                    <label class="form-label">Return Time</label>
-                                                    <input type="time" name="return_time" class="form-control" value="18:00">
+                                                    <label class="form-label" for="new-search-return-time">Return Time</label>
+                                                    <input id="new-search-return-time" type="time" name="return_time" class="form-control" value="18:00">
                                                 </div>
                                             </div>
                                         </form>
                                     </div>
                                     <div class="modal-footer">
                                         <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancel</button>
-                                        <button type="button" class="btn btn-primary" id="submitNewSearch">
+                                        <button type="submit" form="newSearchForm" class="btn btn-primary" id="submitNewSearch">
                                             <i class="bi bi-search"></i> Search Vehicles
                                         </button>
                                     </div>
@@ -1559,9 +1559,10 @@
             $('body').append(modal);
             $('#newSearchModal').modal('show');
 
-            // Handle form submission
-            $('#submitNewSearch').on('click', function() {
-                const formData = new FormData($('#newSearchForm')[0]);
+            // Handle form submission after browser validation.
+            $('#newSearchForm').on('submit', function(event) {
+                event.preventDefault();
+                const formData = new FormData(this);
                 const searchParams = new URLSearchParams();
 
                 for (const [key, value] of formData.entries()) {

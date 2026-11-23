@@ -8601,6 +8601,12 @@ class BookingFlowService
      */
     public function processApproval(string $bookingId, string $action, ?string $note, string $userId): array
     {
+        if ($action === 'reject' && mb_strlen(trim((string) $note)) < 3) {
+            throw ValidationException::withMessages([
+                'comments' => 'Enter a rejection reason of at least 3 characters.',
+            ]);
+        }
+
         return DB::transaction(function () use ($bookingId, $action, $note, $userId): array {
             $booking = Booking::query()->whereKey($bookingId)->lockForUpdate()->firstOrFail();
             $approval = BookingApproval::query()->where('booking_id', $bookingId)
@@ -8610,8 +8616,10 @@ class BookingFlowService
                 $conditions = is_array($approval->conditions) ? $approval->conditions : [];
                 $requiredSteps = max(1, min(3, (int) ($conditions['required_steps'] ?? app(WebsiteSettingsService::class)->get('booking_approval_steps', 1))));
                 $decisions = is_array($conditions['step_decisions'] ?? null) ? $conditions['step_decisions'] : [];
+                $decisionStep = count($decisions) + 1;
                 if ($action === 'reject') {
                     $approval->reject($userId, $note ?? 'Rejected');
+                    $this->recordApprovalHistoryDecision($booking, $approval, $action, $note, $userId, $decisionStep);
                     return ['booking' => $booking, 'action' => 'reject', 'status' => 'rejected', 'approval_type' => 'resource_swap', 'message' => 'Resource swap rejected. Current assignments were left in place.'];
                 }
                 abort_if(collect($decisions)->contains(fn ($decision) => (string) ($decision['user_id'] ?? '') === $userId), 409, 'Each approval step requires a different approver.');
@@ -8620,9 +8628,11 @@ class BookingFlowService
                 if (count($decisions) < $requiredSteps) {
                     $approval->approval_level = count($decisions) + 1;
                     $approval->save();
+                    $this->recordApprovalHistoryDecision($booking, $approval, $action, $note, $userId, $decisionStep);
                     return ['booking' => $booking, 'action' => 'approve', 'status' => 'pending', 'approval_type' => 'resource_swap', 'current_step' => $approval->approval_level, 'total_steps' => $requiredSteps, 'message' => 'Approval recorded; another authorized approver must review this swap.'];
                 }
                 $approval->approve($userId, $note);
+                $this->recordApprovalHistoryDecision($booking, $approval, $action, $note, $userId, $decisionStep);
                 return ['booking' => $booking, 'action' => 'approve', 'status' => 'approved', 'approval_type' => 'resource_swap', 'message' => 'Resource swap approved and ready to apply.'];
             }
             if (!$booking->requiresApproval()) {
@@ -8634,6 +8644,7 @@ class BookingFlowService
                 $conditions = is_array($approval->conditions) ? $approval->conditions : [];
                 $requiredSteps = max(1, min(3, (int) ($conditions['required_steps'] ?? app(WebsiteSettingsService::class)->get('booking_approval_steps', 1))));
                 $decisions = is_array($conditions['step_decisions'] ?? null) ? $conditions['step_decisions'] : [];
+                $decisionStep = count($decisions) + 1;
                 if ($action === 'approve') {
                     abort_if(collect($decisions)->contains(fn ($decision) => (string) ($decision['user_id'] ?? '') === $userId), 409, 'Each approval step requires a different approver.');
                     $decisions[] = ['step' => count($decisions) + 1, 'user_id' => $userId, 'comments' => $note, 'decided_at' => now()->toISOString()];
@@ -8641,6 +8652,7 @@ class BookingFlowService
                         $approval->conditions = array_merge($conditions, ['required_steps' => $requiredSteps, 'step_decisions' => $decisions]);
                         $approval->approval_level = count($decisions) + 1;
                         $approval->save();
+                        $this->recordApprovalHistoryDecision($booking, $approval, $action, $note, $userId, $decisionStep);
                         return ['booking' => $booking, 'action' => 'approve', 'status' => 'pending', 'current_step' => $approval->approval_level, 'total_steps' => $requiredSteps, 'message' => 'Approval recorded; another authorized approver must review this booking.'];
                     }
                     $approval->conditions = array_merge($conditions, ['required_steps' => $requiredSteps, 'step_decisions' => $decisions]);
@@ -8649,6 +8661,8 @@ class BookingFlowService
                     $approval->reject($userId, $note ?? 'Rejected');
                 }
             }
+
+            $this->recordApprovalHistoryDecision($booking, $approval, $action, $note, $userId, $decisionStep ?? 1);
 
             $booking->approval_status = $action === 'approve' ? 'approved' : 'rejected';
             $booking->approval_by = $userId;
@@ -8682,6 +8696,31 @@ class BookingFlowService
 
             return ['booking' => $booking, 'action' => $action, 'status' => $action === 'approve' ? 'approved' : 'rejected', 'message' => 'Booking ' . $action . 'd successfully'];
         });
+    }
+
+    private function recordApprovalHistoryDecision(
+        Booking $booking,
+        ?BookingApproval $approval,
+        string $action,
+        ?string $note,
+        string $userId,
+        int $step,
+    ): void {
+        $approvalId = (string) ($approval?->id ?? $booking->id);
+        $idempotencyKey = 'booking-approval-decision:' . $approvalId . ':' . $step . ':' . $userId;
+
+        app(BookingHistoryService::class)->recordBookingApprovalDecision(
+            (string) $booking->id,
+            $approvalId,
+            $action === 'approve' ? 'approved' : 'rejected',
+            $note,
+            $userId,
+            (string) Str::uuid(),
+            $idempotencyKey,
+            'booking_approvals',
+            'BookingApprovalDecision',
+            ['approval_id' => $approval?->id, 'approval_type' => $approval?->approval_type, 'step' => $step],
+        );
     }
 
     private function approvalStepSnapshot(): array
@@ -10777,32 +10816,36 @@ class BookingFlowService
         ];
     }
 
-    public function updateOperationsNotes(string $bookingId, string $bookingItemId, ?string $notes, ?User $user): array
+    public function updateOperationsNotes(string $bookingId, string $bookingItemId, ?string $notes, ?User $user, ?string $changeReason = null): array
     {
-        $item = BookingItem::query()
-            ->where('booking_id', $bookingId)
-            ->findOrFail($bookingItemId);
-        $previous = $item->notes;
+        return app(\App\Services\BookingHistoryService::class)->withReasonContext($changeReason, fn () => DB::transaction(function () use ($bookingId, $bookingItemId, $notes, $user): array {
+            $item = BookingItem::query()
+                ->where('booking_id', $bookingId)
+                ->whereKey($bookingItemId)
+                ->lockForUpdate()
+                ->firstOrFail();
+            $previous = $item->notes;
 
-        if ($previous !== $notes) {
-            $item->update(['notes' => $notes]);
+            if ($previous !== $notes) {
+                $item->update(['notes' => $notes]);
 
-            activity()
-                ->performedOn($item->booking)
-                ->causedBy($user)
-                ->event('operations_note_updated')
-                ->withProperties([
-                    'booking_item_id' => (string) $item->id,
-                    'previous_note' => $previous,
-                    'note' => $notes,
-                ])
-                ->log('Operations note updated');
-        }
+                activity()
+                    ->performedOn($item->booking)
+                    ->causedBy($user)
+                    ->event('operations_note_updated')
+                    ->withProperties([
+                        'booking_item_id' => (string) $item->id,
+                        'previous_note' => $previous,
+                        'note' => $notes,
+                    ])
+                    ->log('Operations note updated');
+            }
 
-        return [
-            'notes' => $item->notes,
-            'history' => $this->operationsNoteHistory($bookingId, $bookingItemId),
-        ];
+            return [
+                'notes' => $item->notes,
+                'history' => $this->operationsNoteHistory($bookingId, $bookingItemId),
+            ];
+        }));
     }
 
     private function operationsNoteHistory(string $bookingId, string $bookingItemId): array
@@ -12500,6 +12543,12 @@ class BookingFlowService
      */
     public function bulkOperations(string $operation, array $bookingIds, array $data, string $userId, ?string $reason = null): array
     {
+        if ($operation === 'reject' && mb_strlen(trim((string) $reason)) < 3) {
+            throw ValidationException::withMessages([
+                'reason' => 'Enter a rejection reason of at least 3 characters.',
+            ]);
+        }
+
         $results = [
             'success' => [],
             'failed' => [],

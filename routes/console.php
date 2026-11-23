@@ -34,6 +34,10 @@ Schedule::command('bookings:process-payment-schedules')
     ->dailyAt('07:00')
     ->withoutOverlapping();
 
+Schedule::command('bookings:process-payment-schedules --follow-ups-only')
+    ->hourly()
+    ->withoutOverlapping();
+
 //until we go for production will comment this out if not corporates will aget mails
 // Schedule::command('corporate:generate-monthly-billing --months=12 --issue')
 //     ->dailyAt('05:30')

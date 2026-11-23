@@ -30,6 +30,7 @@ use App\Models\Booking\BookingPaymentReceiptFinalityEvent;
 use App\Models\Booking\BookingCollectionSubmission;
 use App\Models\Booking\BookingCollectionWorkItem;
 use App\Models\Booking\BookingCollectionReminderDelivery;
+use App\Models\Booking\BookingCollectionWorkItemFollowUp;
 use App\Models\Booking\BookingPaymentScheduleRule;
 use App\Models\Booking\BookingCollectionCommission;
 use App\Models\Booking\BookingCommonRatePricing;
@@ -178,6 +179,7 @@ class AppServiceProvider extends ServiceProvider
         BookingPaymentReceiptFinalityEvent::observe(BookingHistoryObserver::class);
         BookingCollectionSubmission::observe(BookingHistoryObserver::class);
         BookingCollectionWorkItem::observe(BookingHistoryObserver::class);
+        BookingCollectionWorkItemFollowUp::observe(BookingHistoryObserver::class);
         BookingCollectionReminderDelivery::observe(BookingHistoryObserver::class);
         BookingPaymentScheduleRule::observe(BookingHistoryObserver::class);
         BookingCollectionCommission::observe(BookingHistoryObserver::class);

@@ -537,7 +537,9 @@ class BookingLifecycleService
      */
     public function dispatchVehicle(string $bookingId, array $dispatchData): BookingDispatch
     {
-        return DB::transaction(function () use ($bookingId, $dispatchData) {
+        return app(\App\Services\BookingHistoryService::class)->withReasonContext(
+            $dispatchData['change_reason'] ?? null,
+            fn () => DB::transaction(function () use ($bookingId, $dispatchData) {
             $booking = Booking::query()
                 ->lockForUpdate()
                 ->with(['dispatches', 'qc.repairItems', 'bookingItems.vehicle', 'bookingItems.driver.user'])
@@ -679,7 +681,8 @@ class BookingLifecycleService
             });
 
             return $dispatch;
-        });
+            })
+        );
     }
 
     private function triggerDriverDispatchNotification(string $bookingId, ?string $driverId, ?string $bookingItemId = null, array $notificationContext = []): void
@@ -1033,7 +1036,10 @@ class BookingLifecycleService
      */
     public function processReturn(string $bookingId, array $returnData): BookingDispatch
     {
-        return DB::transaction(function () use ($bookingId, $returnData) {
+        return app(\App\Services\BookingHistoryService::class)->withReasonContext(
+            $returnData['change_reason'] ?? null,
+            fn () => DB::transaction(function () use ($bookingId, $returnData) {
+            // Return reason context must cover the dispatch, item, pricing, and QC writes below.
             $booking = Booking::query()
                 ->lockForUpdate()
                 ->with(['dispatches', 'bookingItems'])
@@ -1288,7 +1294,8 @@ class BookingLifecycleService
             }
 
             return $dispatch;
-        });
+            })
+        );
     }
 
     // ========================
@@ -4481,9 +4488,9 @@ class BookingLifecycleService
         return $booking->getLifecycleStatus();
     }
 
-    public function approveAssignments(string $bookingId, string $approverId): array
+    public function approveAssignments(string $bookingId, string $approverId, ?string $changeReason = null): array
     {
-        return DB::transaction(function () use ($bookingId, $approverId) {
+        return app(\App\Services\BookingHistoryService::class)->withReasonContext($changeReason, fn () => DB::transaction(function () use ($bookingId, $approverId) {
             $booking = Booking::query()->lockForUpdate()->findOrFail($bookingId);
             $fromStatus = $booking->getLifecycleStatus();
             $result = $this->assignmentService->approveAssignments($bookingId, $approverId);
@@ -4496,7 +4503,7 @@ class BookingLifecycleService
             }
 
             return $result;
-        });
+        }));
     }
 
     private function hasPendingAssignmentApproval(Booking $booking, ?BookingItem $bookingItem): bool

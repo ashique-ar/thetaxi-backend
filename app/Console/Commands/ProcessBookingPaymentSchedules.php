@@ -18,7 +18,7 @@ use Illuminate\Support\Str;
 
 class ProcessBookingPaymentSchedules extends Command
 {
-    protected $signature = 'bookings:process-payment-schedules {--dry-run}';
+    protected $signature = 'bookings:process-payment-schedules {--dry-run} {--follow-ups-only}';
     protected $description = 'Progress collection work and dispatch idempotent handler reminders';
 
     public function __construct(
@@ -43,6 +43,15 @@ class ProcessBookingPaymentSchedules extends Command
         }
 
         $dryRun = (bool) $this->option('dry-run');
+        if ($this->option('follow-ups-only')) {
+            if (! Schema::hasTable('booking_collection_work_item_follow_ups')) {
+                $this->warn('Collection follow-up records are not deployed. Run the reviewed migration first.');
+                return self::SUCCESS;
+            }
+            $dispatched = $this->dispatchDueFollowUps($dryRun);
+            $this->info("Dispatched {$dispatched} due customer follow-up reminder(s).");
+            return self::SUCCESS;
+        }
         $today = now()->startOfDay();
         [$rollingRules, $rollingOccurrences, $rollingFailures] = $this->extendRollingHorizons($today, $dryRun);
         $progressed = 0;
@@ -214,6 +223,137 @@ class ProcessBookingPaymentSchedules extends Command
         $this->info("Extended {$rollingRules} rolling rule(s) by {$rollingOccurrences} occurrence(s); progressed {$progressed} collection task(s); dispatched {$dispatched} handler reminder(s).");
 
         return $rollingFailures === 0 ? self::SUCCESS : self::FAILURE;
+    }
+
+    private function dispatchDueFollowUps(bool $dryRun): int
+    {
+        if (! Schema::hasTable('booking_collection_work_item_follow_ups')) return 0;
+
+        $dispatched = 0;
+        BookingCollectionWorkItem::query()
+            ->with([
+                'latestFollowUp',
+                'paymentSchedule' => fn ($query) => $query->withSum('allocations', 'amount')
+                    ->with('collectionSalesProfile.staff.user'),
+            ])
+            ->whereIn('status', ['open', 'upcoming', 'due', 'overdue'])
+            ->whereHas('latestFollowUp', fn ($query) => $query->where('next_follow_up_at', '<=', now()))
+            ->orderBy('id')->chunkById(100, function ($items) use ($dryRun, &$dispatched): void {
+                foreach ($items as $item) {
+                    $followUp = $item->latestFollowUp;
+                    $schedule = $item->paymentSchedule;
+                    $profile = $schedule?->collectionSalesProfile;
+                    $staff = $profile?->staff;
+                    $user = $staff?->user;
+                    if (! $followUp || ! $schedule || ! $profile || ! $staff || ! $user
+                        || (string) $item->assigned_sales_profile_id !== (string) $profile->id
+                        || ! $this->activeCollectionOwner($profile, $staff)
+                        || now()->lt($followUp->next_follow_up_at)) {
+                        continue;
+                    }
+
+                    $outstanding = $this->aging->derive(
+                        (float) ($schedule->source_amount ?? $schedule->amount),
+                        (float) ($schedule->allocations_sum_amount ?? 0),
+                        $schedule->due_date,
+                        now(),
+                        (int) $item->reminder_offset_days,
+                    )['outstanding_amount'];
+                    if ($outstanding <= 0) continue;
+
+                    $idempotencyKey = 'collection-follow-up:'.$followUp->id.':'.$profile->id;
+                    if (DB::table('booking_collection_reminder_deliveries')->where('idempotency_key', $idempotencyKey)->exists()) {
+                        continue;
+                    }
+                    $dispatched++;
+                    if ($dryRun) continue;
+
+                    DB::transaction(function () use ($item, $followUp, $profile, $user, $idempotencyKey): void {
+                        Booking::query()->lockForUpdate()->findOrFail($item->booking_id);
+                        $workItem = BookingCollectionWorkItem::query()->lockForUpdate()
+                            ->with(['latestFollowUp', 'paymentSchedule' => fn ($query) => $query->withSum('allocations', 'amount')])
+                            ->findOrFail($item->id);
+                        $schedule = $workItem->paymentSchedule;
+                        $currentFollowUp = $workItem->latestFollowUp;
+                        if (! $schedule || ! $currentFollowUp
+                            || (string) $currentFollowUp->id !== (string) $followUp->id
+                            || $currentFollowUp->next_follow_up_at->isFuture()
+                            || ! in_array($workItem->status, ['open', 'upcoming', 'due', 'overdue'], true)
+                            || (string) $workItem->assigned_sales_profile_id !== (string) $profile->id
+                            || (string) $schedule->collection_sales_profile_id !== (string) $profile->id
+                            || DB::table('booking_collection_reminder_deliveries')->where('idempotency_key', $idempotencyKey)->exists()) {
+                            return;
+                        }
+                        $owner = DB::table('sales_profiles as profile')->join('staff', 'staff.id', '=', 'profile.staff_id')
+                            ->where('profile.id', $profile->id)->where('staff.user_id', $user->id)
+                            ->whereNull('profile.deleted_at')->where('profile.status', 'active')
+                            ->where('profile.collection_eligible', true)->whereNotNull('profile.reporting_currency')
+                            ->whereNotNull('profile.staff_category_snapshot')->where('profile.effective_from', '<=', now())
+                            ->where(fn ($query) => $query->whereNull('profile.effective_until')->orWhere('profile.effective_until', '>', now()))
+                            ->whereNull('staff.deleted_at')
+                            ->where(fn ($query) => $query->whereNull('staff.employment_ended_at')->orWhere('staff.employment_ended_at', '>', now()))
+                            ->exists();
+                        if (! $owner) return;
+                        $outstanding = $this->aging->derive(
+                            (float) ($schedule->source_amount ?? $schedule->amount),
+                            (float) ($schedule->allocations_sum_amount ?? 0),
+                            $schedule->due_date,
+                            now(),
+                            (int) $workItem->reminder_offset_days,
+                        )['outstanding_amount'];
+                        if ($outstanding <= 0) return;
+
+                        $notificationId = (string) Str::uuid();
+                        $payload = [
+                            'notification_type' => 'booking_collection_follow_up_due',
+                            'collection_work_item_id' => $workItem->id,
+                            'title' => 'Customer follow-up is due',
+                            'message' => 'Contact the customer about the recorded payment promise.',
+                            'link' => '/sales/collections?work_item_id='.$workItem->id,
+                            'useRouter' => true,
+                        ];
+                        DatabaseNotification::create([
+                            'id' => $notificationId,
+                            'type' => 'App\\Notifications\\BookingPaymentScheduleNotice',
+                            'notifiable_type' => 'App\\Models\\User',
+                            'notifiable_id' => $user->id,
+                            'data' => $payload,
+                        ]);
+                        BookingCollectionReminderDelivery::create([
+                            'booking_id' => $schedule->booking_id,
+                            'booking_payment_schedule_id' => $schedule->id,
+                            'booking_collection_work_item_id' => $workItem->id,
+                            'assigned_sales_profile_id' => $profile->id,
+                            'recipient_user_id' => $user->id,
+                            'reminder_type' => 'follow_up',
+                            'channel' => 'database',
+                            'schedule_due_date' => $schedule->due_date->toDateString(),
+                            'outstanding_amount' => $outstanding,
+                            'source_currency' => strtoupper((string) ($schedule->source_currency ?: 'LKR')),
+                            'status' => 'dispatched',
+                            'database_notification_id' => $notificationId,
+                            'dispatched_at' => now(),
+                            'idempotency_key' => $idempotencyKey,
+                            'payload_checksum' => hash('sha256', json_encode(
+                                ['notification' => $payload, 'follow_up_id' => $currentFollowUp->id],
+                                JSON_THROW_ON_ERROR | JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE,
+                            )),
+                        ]);
+                    }, 3);
+                }
+            });
+
+        return $dispatched;
+    }
+
+    private function activeCollectionOwner($profile, $staff): bool
+    {
+        return ! $staff->trashed()
+            && $profile->status === 'active' && $profile->collection_eligible
+            && $profile->reporting_currency && $profile->staff_category_snapshot
+            && $profile->effective_from?->lte(now())
+            && (! $profile->effective_until || $profile->effective_until->gt(now()))
+            && (! $staff->employment_ended_at || $staff->employment_ended_at->gt(now()));
     }
 
     private function extendRollingHorizons($asOf, bool $dryRun): array

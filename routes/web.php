@@ -50,7 +50,9 @@ Route::middleware('tours.schema')->group(function (): void {
 });
 Route::post('/newsletter/subscribe', function (Request $request, WebsiteSettingsService $settingsService) {
     $email = $request->validateWithBag('newsletter', ['email' => 'required|email:rfc|max:255'])['email'];
-    if (!filter_var($settingsService->get('footer_newsletter_enabled', true), FILTER_VALIDATE_BOOLEAN)) {
+    $enabled = filter_var($settingsService->get('footer_newsletter_enabled', true), FILTER_VALIDATE_BOOLEAN)
+        || filter_var($settingsService->get('theme02_footer_newsletter_enabled', false), FILTER_VALIDATE_BOOLEAN);
+    if (!$enabled) {
         abort(404);
     }
     DB::table('newsletter_subscribers')->insertOrIgnore([

@@ -31,18 +31,25 @@ trait BookingApprovalTrait
 
     public function processBookingApproval(Request $request): JsonResponse
     {
-        $request->validate([
+        $validated = $request->validate([
             'booking_id' => 'required|uuid|exists:bookings,id',
             'action' => 'required|in:approve,reject',
             'note' => 'nullable|string|max:1000',
             'comments' => 'nullable|string|max:1000',
         ]);
+        $comments = trim((string) ($validated['note'] ?? ''));
+        if ($comments === '') $comments = trim((string) ($validated['comments'] ?? ''));
+        if ($validated['action'] === 'reject' && mb_strlen($comments) < 3) {
+            throw \Illuminate\Validation\ValidationException::withMessages([
+                'comments' => 'Enter a rejection reason of at least 3 characters.',
+            ]);
+        }
 
         try {
             $result = $this->bookingFlowService->processApproval(
                 $request->booking_id,
                 $request->action,
-                $request->input('note') ?? $request->input('comments'),
+                $comments !== '' ? $comments : null,
                 Auth::id()
             );
 

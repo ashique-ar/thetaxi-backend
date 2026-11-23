@@ -80,6 +80,7 @@ class BookingLifecycleController extends Controller
             'vehicle_condition_out' => 'nullable|array',
             'vehicle_condition_out.notes' => 'nullable|string|max:2000',
             'dispatch_notes' => 'nullable|string',
+            'change_reason' => 'nullable|string|max:1000',
             'agreements_signed' => 'nullable|boolean',
             'notes' => 'nullable|string',
             'condition' => 'nullable|array',
@@ -108,7 +109,8 @@ class BookingLifecycleController extends Controller
                     'booking_item_id' => $request->input('booking_item_id'),
                     'allow_repeat_dispatch_for_testing' => $request->boolean('allow_repeat_dispatch_for_testing'),
                 ], [
-                    'dispatched_by' => Auth::id()
+                    'change_reason' => $request->input('change_reason'),
+                    'dispatched_by' => Auth::id(),
                 ])
             );
 
@@ -162,6 +164,7 @@ class BookingLifecycleController extends Controller
             'fuel_level' => 'nullable|numeric|min:0|max:100',
             'mileage' => 'nullable|integer|min:0',
             'return_notes' => 'nullable|string',
+            'change_reason' => 'nullable|string|max:1000',
             'actual_return_time' => 'nullable|date',
             'actual_start_time' => 'nullable|date',
             'actual_distance' => 'nullable|numeric|min:0',
@@ -218,6 +221,7 @@ class BookingLifecycleController extends Controller
                     'fuel_level',
                     'mileage',
                     'return_notes',
+                    'change_reason',
                     'actual_return_time',
                     'actual_start_time',
                     'actual_distance',
@@ -296,7 +300,7 @@ class BookingLifecycleController extends Controller
                     'source' => 'portal',
                     'title' => 'Scheduled return missed',
                     'detail' => $data['notes'],
-                    'meta' => ['reason' => $data['reason'], 'scheduled_return_at' => $scheduledReturn->toIso8601String()],
+                    'meta' => ['reason' => $data['reason'], 'actor_user_id' => (string) $request->user()->id, 'scheduled_return_at' => $scheduledReturn->toIso8601String()],
                     'event_at' => now(),
                 ]
             );
@@ -314,6 +318,7 @@ class BookingLifecycleController extends Controller
             'booking_id' => 'required|string',
             'booking_item_id' => 'nullable|string',
             'inspector_id' => 'nullable|uuid',
+            'change_reason' => 'nullable|string|max:1000',
         ]);
 
         try {
@@ -323,10 +328,13 @@ class BookingLifecycleController extends Controller
                 $this->lifecycleService->assertAvailableInspector($request->user(), $inspectorId);
             }
 
-            $qc = $this->lifecycleService->startQCInspection(
-                $request->booking_id,
-                $inspectorId,
-                $request->input('booking_item_id')
+            $qc = app(\App\Services\BookingHistoryService::class)->withReasonContext(
+                $request->input('change_reason'),
+                fn () => $this->lifecycleService->startQCInspection(
+                    $request->booking_id,
+                    $inspectorId,
+                    $request->input('booking_item_id')
+                )
             );
 
             DB::commit();
@@ -395,17 +403,21 @@ class BookingLifecycleController extends Controller
             'qc_notes' => 'nullable|string',
             'requires_maintenance' => 'nullable|boolean',
             'next_maintenance_due' => 'nullable|date',
+            'change_reason' => 'nullable|string|max:1000',
         ]);
 
         try {
             DB::beginTransaction();
 
-            $qc = $this->lifecycleService->completeQCInspection(
-                $request->booking_id,
-                array_merge($request->except(['booking_id', 'booking_item_id']), [
-                    'completed_by' => Auth::id()
-                ]),
-                $request->input('booking_item_id')
+            $qc = app(\App\Services\BookingHistoryService::class)->withReasonContext(
+                $request->input('change_reason'),
+                fn () => $this->lifecycleService->completeQCInspection(
+                    $request->booking_id,
+                    array_merge($request->except(['booking_id', 'booking_item_id']), [
+                        'completed_by' => Auth::id()
+                    ]),
+                    $request->input('booking_item_id')
+                )
             );
 
             DB::commit();
@@ -441,15 +453,19 @@ class BookingLifecycleController extends Controller
         $request->validate([
             'booking_id' => 'required|string',
             'booking_item_id' => 'nullable|string',
+            'change_reason' => 'nullable|string|max:1000',
         ]);
 
         try {
             DB::beginTransaction();
 
-            $qc = $this->lifecycleService->completeRepairs(
-                $request->booking_id,
-                ['completed_by' => Auth::id()],
-                $request->input('booking_item_id')
+            $qc = app(\App\Services\BookingHistoryService::class)->withReasonContext(
+                $request->input('change_reason'),
+                fn () => $this->lifecycleService->completeRepairs(
+                    $request->booking_id,
+                    ['completed_by' => Auth::id()],
+                    $request->input('booking_item_id')
+                )
             );
 
             DB::commit();
