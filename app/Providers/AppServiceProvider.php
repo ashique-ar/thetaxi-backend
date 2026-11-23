@@ -223,6 +223,7 @@ class AppServiceProvider extends ServiceProvider
         SalesOpportunity::observe(BookingHistoryObserver::class);
         SalesTask::observe(BookingHistoryObserver::class);
         BookingApproval::observe(BookingHistoryObserver::class);
+        BookingApproval::observe(BookingApprovalNotificationObserver::class);
         BookingDispatch::observe(BookingHistoryObserver::class);
         BookingAddon::observe(BookingHistoryObserver::class);
         BookingVariableCustomization::observe(BookingHistoryObserver::class);

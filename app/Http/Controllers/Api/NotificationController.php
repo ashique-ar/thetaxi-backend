@@ -119,10 +119,11 @@ class NotificationController extends Controller
                 $staffApprovalPending = $booking->status === 'pending_approval'
                     && (bool) $booking->requires_approval
                     && in_array($booking->approval_status, ['pending', 'required'], true)
-                    && $booking->corporate_approval_status !== 'pending';
+                    && $booking->corporate_approval_status !== 'pending'
+                    && $pendingApproval !== null;
                 $notificationApprovalId = (string) data_get($data, 'data.approval_id', '');
-                $notificationBelongsToCurrentRequest = !$pendingApproval
-                    || ($notificationApprovalId !== ''
+                $notificationBelongsToCurrentRequest = $pendingApproval !== null
+                    && ($notificationApprovalId !== ''
                         ? $notificationApprovalId === (string) $pendingApproval->id
                         : $notification->created_at >= $pendingApproval->created_at);
                 $resolved = !empty($data['resolved']) || !$staffApprovalPending || !$notificationBelongsToCurrentRequest;
