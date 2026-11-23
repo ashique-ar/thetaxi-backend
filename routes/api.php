@@ -2902,6 +2902,7 @@ Route::middleware(['auth:api'])->group(function () {
     Route::prefix('notifications')->group(function () {
         Route::get('/', [NotificationController::class, 'getUserNotifications']);
         Route::post('mark-read/{id}', [NotificationController::class, 'markAsRead']);
+        Route::post('{id}/dismiss', [NotificationController::class, 'dismiss']);
         Route::post('mark-all-read', [NotificationController::class, 'markAllAsRead']);
         Route::delete('{id}', [NotificationController::class, 'deleteNotification']);
         Route::get('unread-count', [NotificationController::class, 'getUnreadCount']);

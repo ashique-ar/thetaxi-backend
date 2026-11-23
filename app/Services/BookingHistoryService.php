@@ -262,6 +262,22 @@ class BookingHistoryService
         );
     }
 
+    public function recordNotificationDismissal(string $bookingId, string $notificationId, string $userId): void
+    {
+        $this->recordDirectChange(
+            $bookingId,
+            'UserNotification',
+            $notificationId,
+            'notification_dismissed',
+            ['dismissed' => ['from' => false, 'to' => true]],
+            'Recipient dismissed the actionable notification in the portal.',
+            $userId,
+            'notifications',
+            'notification-dismissal:' . $notificationId,
+            ['notification_id' => $notificationId],
+        );
+    }
+
     private function recordDirectChange(
         string $bookingId,
         string $entityType,
@@ -468,6 +484,7 @@ class BookingHistoryService
         if ($model instanceof \App\Models\Booking\BookingCollectionWorkItemFollowUp) return 'booking_collection_follow_up_recorded';
         if ($model instanceof \App\Models\Booking\BookingPaymentScheduleRuleEvent) return 'collection_schedule_rule_changed';
         if ($model instanceof \App\Models\Booking\BookingPaymentScheduleRevision) return 'collection_schedule_revised';
+        if ($model instanceof \App\Models\Booking\BookingPaymentReceiptComponent) return 'booking_payment_receipt_component_' . $operation;
         if ($model instanceof \App\Models\Booking\BookingPaymentAdjustment) return 'booking_payment_adjustment_recorded';
         if ($model instanceof \App\Models\Booking\BookingPaymentScheduleAllocation) return 'payment_allocated_to_schedule';
         if ($model instanceof \App\Models\Booking\BookingDiscount) return 'booking_discount_' . $operation;

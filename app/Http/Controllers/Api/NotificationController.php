@@ -7,11 +7,13 @@ use App\Models\User;
 use App\Models\Booking\Booking;
 use App\Models\Booking\BookingApproval;
 use App\Models\NotificationLog;
+use App\Services\BookingHistoryService;
 use App\Services\MailDispatchService;
 use Illuminate\Http\Request;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Support\Facades\Validator;
 use Illuminate\Support\Facades\Notification;
+use Illuminate\Support\Facades\DB;
 use Illuminate\Notifications\DatabaseNotification;
 
 class NotificationController extends Controller
@@ -193,6 +195,36 @@ class NotificationController extends Controller
             'status' => 'success',
             'message' => 'Notification marked as read'
         ]);
+    }
+
+    public function dismiss(Request $request, string $id): JsonResponse
+    {
+        $user = $request->user();
+
+        return DB::transaction(function () use ($user, $id): JsonResponse {
+            $notification = $user->notifications()->whereKey($id)->lockForUpdate()->first();
+            abort_unless($notification, 404, 'Notification not found.');
+
+            $data = $notification->data;
+            $notificationType = data_get($data, 'type') ?: data_get($data, 'notification_type');
+            abort_unless(in_array($notificationType, ['booking_approval_requested', 'corporate_booking_approval_requested'], true), 422, 'This notification cannot be dismissed from the popup.');
+
+            if (empty(data_get($data, 'dismissed_at'))) {
+                $bookingId = (string) (data_get($data, 'booking_id') ?: data_get($data, 'data.booking_id', ''));
+                $actorName = trim((string) $user->first_name . ' ' . (string) $user->last_name);
+                $data['dismissed'] = true;
+                $data['dismissed_at'] = now()->toIso8601String();
+                $data['dismissed_by_id'] = (string) $user->id;
+                $data['dismissed_by_name'] = $actorName !== '' ? $actorName : (string) $user->id;
+                $notification->forceFill(['data' => $data, 'read_at' => $notification->read_at ?? now()])->save();
+
+                if ($bookingId !== '') {
+                    app(BookingHistoryService::class)->recordNotificationDismissal($bookingId, (string) $notification->id, (string) $user->id);
+                }
+            }
+
+            return response()->json(['status' => 'success', 'data' => ['dismissed' => true, 'dismissed_at' => data_get($data, 'dismissed_at'), 'dismissed_by_id' => data_get($data, 'dismissed_by_id'), 'dismissed_by_name' => data_get($data, 'dismissed_by_name')]]);
+        });
     }
 
     /**

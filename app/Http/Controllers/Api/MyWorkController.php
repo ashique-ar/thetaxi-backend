@@ -25,8 +25,9 @@ class MyWorkController extends Controller
         $attention = [];
         $employeeWorkload = [];
         $activeBookingStatuses = array_merge(['inquiry', 'inquiry_qualified'], BookingLifecycleStatus::activeOperationalValues());
+        $bookingAssignmentAvailable = Schema::hasColumn('bookings', 'responsible_user_id');
 
-        if ($request->user()->can('hr.mss.approve')) {
+        if ($request->user()->can('hr.mss.approve') && $request->user()->can('hr.leave.approve')) {
             $staffContexts = DB::table('user_contexts as context')->join('staff', 'staff.id', '=', 'context.context_id')
                 ->where('context.user_id', $userId)->where('context.context_type', 'staff')->where('context.is_active', true)
                 ->whereNull('context.deleted_at')->where('staff.user_id', $userId)->whereNull('staff.deleted_at')
@@ -34,6 +35,7 @@ class MyWorkController extends Controller
             if ($request->header('X-Active-Context-Type') === 'staff') {
                 $contextId = $request->header('X-Active-Context-Id');
                 if ($contextId) $staffContexts->where('context.id', $contextId);
+                else $staffContexts->whereRaw('1 = 0');
             } elseif ($request->header('X-Active-Context-Type') !== null && $request->header('X-Active-Context-Type') !== 'internal') {
                 $staffContexts->whereRaw('1 = 0');
             }
@@ -67,7 +69,7 @@ class MyWorkController extends Controller
             }
         }
 
-        if ($request->user()->canAny(['bookings.view', 'bookings.view-assigned']) && !Schema::hasColumn('bookings', 'responsible_user_id')) {
+        if ($request->user()->canAny(['bookings.view', 'bookings.view-assigned']) && ! $bookingAssignmentAvailable && ! $request->user()->can('hr.mss.approve')) {
             return response()->json([
                 'status' => 'error',
                 'code' => 'WORKSPACE_SETUP_REQUIRED',
@@ -75,7 +77,7 @@ class MyWorkController extends Controller
             ], 503);
         }
 
-        if ($request->user()->canAny(['bookings.view', 'bookings.view-assigned'])) {
+        if ($bookingAssignmentAvailable && $request->user()->canAny(['bookings.view', 'bookings.view-assigned'])) {
             $bookings = DB::table('bookings as booking')->whereNull('booking.deleted_at')
                 ->where('booking.responsible_user_id', $userId)
                 ->whereIn('booking.status', array_merge(['draft'], $activeBookingStatuses));
@@ -92,6 +94,7 @@ class MyWorkController extends Controller
         }
 
         if ($request->user()->canAny(['bookings.view', 'bookings.view-assigned'])
+            && $bookingAssignmentAvailable
             && Schema::hasTable('booking_dispatches')
             && Schema::hasColumn('booking_items', 'workflow_config_snapshot')
             && Schema::hasColumn('booking_dispatches', 'booking_item_id')) {
@@ -155,7 +158,7 @@ class MyWorkController extends Controller
             }
         }
 
-        if ($request->user()->can('bookings.view') && $request->user()->can('bookings.assign')) {
+        if ($bookingAssignmentAvailable && $request->user()->can('bookings.view') && $request->user()->can('bookings.assign')) {
             $employeeWorkload = app(BookingResponsibilityService::class)
                 ->eligibleEmployeesWithOpenBookingCounts();
             $eligibleOwners = collect($employeeWorkload)->pluck('id')->all();
@@ -385,7 +388,7 @@ class MyWorkController extends Controller
             }
         }
 
-        if ($request->user()->canAny(['bookings.view', 'bookings.view-assigned']) && Schema::hasTable('booking_activities')) {
+        if ($bookingAssignmentAvailable && $request->user()->canAny(['bookings.view', 'bookings.view-assigned']) && Schema::hasTable('booking_activities')) {
             $quotes = DB::table('bookings as booking')->whereNull('booking.deleted_at')
                 ->where('booking.status', 'quotation_requested')
                 ->where(fn ($owner) => $owner->where('booking.responsible_user_id', $userId)
