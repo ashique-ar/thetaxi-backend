@@ -15,14 +15,10 @@ class CorporateWorkspaceController extends Controller
     public function updateProfile(Request $request, CorporateService $corporateService): JsonResponse
     {
         abort_unless(CorporatePortalPermission::allows($request, 'manage_employees'), 403);
-        $data = $request->validate([
-            'approval_required' => ['sometimes', 'required', 'boolean'],
-            'booking_vehicle_display' => ['sometimes', 'required', 'in:vehicle_class,vehicle_group'],
-        ]);
-        abort_if($data === [], 422, 'Provide a corporate setting to update.');
+        $data = $request->validate(['approval_required' => ['required', 'boolean']]);
         $corporate = Corporate::findOrFail($request->corporate_id);
         $corporate = $corporateService->updateCorporate($corporate, [
-            ...$data,
+            'approval_required' => $data['approval_required'],
             'updated_user_id' => $request->user()->id,
         ]);
 
