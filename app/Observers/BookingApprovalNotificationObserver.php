@@ -21,8 +21,14 @@ class BookingApprovalNotificationObserver
 
         $userIds = DB::table('notifications')
             ->where('notifiable_type', User::class)
-            ->whereIn('data->type', ['booking_approval_requested', 'corporate_booking_approval_requested'])
-            ->where('data->data->booking_id', $bookingId)
+            ->where(function ($query) {
+                $query->whereIn('data->type', ['booking_approval_requested', 'corporate_booking_approval_requested'])
+                    ->orWhereIn('data->notification_type', ['booking_approval_requested', 'corporate_booking_approval_requested']);
+            })
+            ->where(function ($query) use ($bookingId) {
+                $query->where('data->booking_id', $bookingId)
+                    ->orWhere('data->data->booking_id', $bookingId);
+            })
             ->pluck('notifiable_id')
             ->unique()
             ->values();

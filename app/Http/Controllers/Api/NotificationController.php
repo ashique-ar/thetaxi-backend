@@ -46,11 +46,19 @@ class NotificationController extends Controller
         $contextType = $request->attributes->get('resolved_active_context_type', $request->header('X-Active-Context-Type'));
         if ($contextType === 'internal') {
             $query->where(function ($notifications) {
-                $notifications->whereNull('data->type')->orWhere('data->type', '!=', 'corporate_booking_approval_requested');
+                $notifications->where(function ($type) {
+                    $type->whereNull('data->type')->orWhere('data->type', '!=', 'corporate_booking_approval_requested');
+                })->where(function ($type) {
+                    $type->whereNull('data->notification_type')->orWhere('data->notification_type', '!=', 'corporate_booking_approval_requested');
+                });
             });
         } elseif ($contextType) {
             $query->where(function ($notifications) {
-                $notifications->whereNull('data->type')->orWhere('data->type', '!=', 'booking_approval_requested');
+                $notifications->where(function ($type) {
+                    $type->whereNull('data->type')->orWhere('data->type', '!=', 'booking_approval_requested');
+                })->where(function ($type) {
+                    $type->whereNull('data->notification_type')->orWhere('data->notification_type', '!=', 'booking_approval_requested');
+                });
             });
         }
 
@@ -62,11 +70,11 @@ class NotificationController extends Controller
             ->paginate($limit);
 
         $approvalBookingIds = collect($notifications->items())
-            ->filter(fn ($notification) => in_array(data_get($notification->data, 'type'), [
+            ->filter(fn ($notification) => in_array(data_get($notification->data, 'type') ?: data_get($notification->data, 'notification_type'), [
                 'booking_approval_requested',
                 'corporate_booking_approval_requested',
             ], true))
-            ->map(fn ($notification) => data_get($notification->data, 'data.booking_id'))
+            ->map(fn ($notification) => data_get($notification->data, 'booking_id') ?: data_get($notification->data, 'data.booking_id'))
             ->filter()
             ->unique()
             ->values();
@@ -74,7 +82,7 @@ class NotificationController extends Controller
             $approvalBookings = Booking::query()
                 ->with('corporateAccount:id,name')
                 ->whereIn('id', $approvalBookingIds)
-                ->get(['id', 'corporate_account_id', 'status', 'requires_approval', 'approval_status', 'corporate_approval_status'])
+                ->get(['id', 'booking_number', 'corporate_account_id', 'status', 'requires_approval', 'approval_status', 'corporate_approval_status'])
                 ->keyBy(fn (Booking $booking) => (string) $booking->id);
             $pendingApprovals = BookingApproval::query()
                 ->whereIn('booking_id', $approvalBookingIds)
@@ -86,7 +94,7 @@ class NotificationController extends Controller
 
             $notifications->getCollection()->transform(function ($notification) use ($approvalBookings, $pendingApprovals) {
                 $data = $notification->data;
-                $bookingId = (string) data_get($data, 'data.booking_id', '');
+                $bookingId = (string) (data_get($data, 'booking_id') ?: data_get($data, 'data.booking_id', ''));
                 $booking = $approvalBookings->get($bookingId);
                 if (!$booking) {
                     return $notification;
@@ -96,11 +104,12 @@ class NotificationController extends Controller
                     $data['corporate_name'] = $booking->corporateAccount->name;
                 }
 
-                if (data_get($data, 'type') === 'corporate_booking_approval_requested') {
+                $notificationType = data_get($data, 'type') ?: data_get($data, 'notification_type');
+                if ($notificationType === 'corporate_booking_approval_requested') {
                     $resolved = !empty($data['resolved']) || $booking->corporate_approval_status !== 'pending';
                     $data['resolved'] = $resolved;
                     if ($resolved) {
-                        $reference = data_get($data, 'data.booking_number') ?: $booking->booking_number ?: $bookingId;
+                        $reference = data_get($data, 'booking_number') ?: data_get($data, 'data.booking_number') ?: $booking->booking_number ?: $bookingId;
                         $approvalStatus = ucwords(str_replace('_', ' ', (string) $booking->corporate_approval_status));
                         $data['title'] = "Booking #{$reference} · {$approvalStatus}";
                         $data['message'] = "Corporate approval is {$approvalStatus}. This approval request is closed.";
@@ -121,14 +130,14 @@ class NotificationController extends Controller
                     && in_array($booking->approval_status, ['pending', 'required'], true)
                     && $booking->corporate_approval_status !== 'pending'
                     && $pendingApproval !== null;
-                $notificationApprovalId = (string) data_get($data, 'data.approval_id', '');
+                $notificationApprovalId = (string) (data_get($data, 'approval_id') ?: data_get($data, 'data.approval_id', ''));
                 $notificationBelongsToCurrentRequest = $pendingApproval !== null
                     && ($notificationApprovalId !== ''
                         ? $notificationApprovalId === (string) $pendingApproval->id
                         : $notification->created_at >= $pendingApproval->created_at);
                 $resolved = !empty($data['resolved']) || !$staffApprovalPending || !$notificationBelongsToCurrentRequest;
                 $data['resolved'] = $resolved;
-                $reference = data_get($data, 'data.booking_number') ?: $booking->booking_number ?: $bookingId;
+                $reference = data_get($data, 'booking_number') ?: data_get($data, 'data.booking_number') ?: $booking->booking_number ?: $bookingId;
                 $bookingStatus = ucwords(str_replace('_', ' ', (string) $booking->status));
                 if (!$staffApprovalPending) {
                     $data['title'] = "Booking #{$reference} · {$bookingStatus}";
