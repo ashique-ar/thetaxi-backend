@@ -131,9 +131,19 @@ class WorkforceWorkflowService
                 $payload = array_intersect_key($entry, array_flip(['work_date', 'started_at', 'ended_at', 'minutes', 'entry_mode', 'cost_centre_code', 'project_code', 'booking_id', 'job_reference', 'activity_code', 'billable', 'notes']));
                 DB::table('hr_timesheet_entries')->insert($payload + ['id' => (string) Str::uuid(), 'timesheet_id' => $sheet->id, 'entry_checksum' => hash('sha256', json_encode($payload, JSON_UNESCAPED_SLASHES | JSON_THROW_ON_ERROR)), 'created_at' => now(), 'updated_at' => now()]);
             }
+            $version = ! empty($data['update_id']) ? $sheet->version + 1 : $sheet->version;
+            $savedEntries = DB::table('hr_timesheet_entries')->where('timesheet_id', $sheet->id)->orderBy('work_date')->orderBy('id')->get();
+            $checksum = hash('sha256', json_encode($savedEntries, JSON_UNESCAPED_SLASHES | JSON_THROW_ON_ERROR));
             DB::table('hr_timesheets')->where('id', $sheet->id)->update([
-                'version' => ! empty($data['update_id']) ? $sheet->version + 1 : $sheet->version,
+                'version' => $version,
+                'content_checksum' => $checksum,
                 'updated_at' => now(),
+            ]);
+            DB::table('hr_timesheet_events')->insert([
+                'id' => (string) Str::uuid(), 'timesheet_id' => $sheet->id,
+                'event_type' => 'draft_saved', 'from_status' => $sheet->status, 'to_status' => $sheet->status,
+                'version' => $version, 'reason' => 'Timesheet draft entries saved.', 'content_checksum' => $checksum,
+                'actor_user_id' => $actor, 'occurred_at' => now(), 'created_at' => now(), 'updated_at' => now(),
             ]);
             return DB::table('hr_timesheets')->find($sheet->id);
         });

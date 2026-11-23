@@ -324,6 +324,50 @@ class BookingHistoryService
         ]);
     }
 
+    public function recordSalesAttributionEvent(object $event, string $bookingId): void
+    {
+        $actor = $event->actor_user_id ? User::query()->find($event->actor_user_id) : null;
+        $field = $event->field_name ?? null;
+        $changes = $field !== null ? [$field => [
+            'from' => $event->from_value ?? null,
+            'to' => $event->to_value ?? null,
+        ]] : [];
+        $eventType = (string) ($event->event_type ?? 'changed');
+        $reason = $eventType === 'confirmed' ? null : ($event->reason ?? null);
+        $occurredAt = isset($event->effective_at) ? Carbon\CarbonImmutable::parse($event->effective_at)->utc() : now()->utc();
+        $sourceEventId = (string) $event->id;
+
+        DB::table('booking_history_events')->insertOrIgnore([
+            'id' => (string) Str::uuid(),
+            'booking_id' => $bookingId,
+            'booking_item_id' => null,
+            'entity_type' => 'SalesBookingAttributionEvent',
+            'entity_id' => $sourceEventId,
+            'event_type' => 'booking_attribution_' . $eventType,
+            'actor_type' => $actor ? 'user' : 'system',
+            'actor_user_id' => $event->actor_user_id ?? null,
+            'actor_display_snapshot' => $actor
+                ? (trim((string) $actor->first_name . ' ' . $actor->last_name) ?: 'User ' . $actor->id)
+                : 'System',
+            'source' => 'sales_booking_attribution_events',
+            'reason' => is_string($reason) && trim($reason) !== '' ? Str::limit(trim($reason), 1000) : null,
+            'changes' => json_encode($changes, JSON_THROW_ON_ERROR),
+            'context' => json_encode(array_filter([
+                'source_attribution_event_id' => $sourceEventId,
+                'attribution_id' => $event->attribution_id ?? null,
+                'version' => $event->version ?? null,
+                'effective_at' => isset($event->effective_at) ? Carbon\CarbonImmutable::parse($event->effective_at)->utc()->toIso8601String() : null,
+                'trigger' => $eventType === 'confirmed' ? 'booking_confirmation' : null,
+            ], fn ($value) => $value !== null), JSON_THROW_ON_ERROR),
+            'correlation_id' => $event->idempotency_key ?? null,
+            'idempotency_key' => 'sales-attribution-event:' . $sourceEventId,
+            'occurred_at' => $occurredAt,
+            'provenance' => 'live',
+            'created_at' => $occurredAt,
+            'updated_at' => $occurredAt,
+        ]);
+    }
+
     public function shouldRecordBookingActivity(BookingActivity $activity, ?string $previousEventKey = null): bool
     {
         return (bool) $activity->booking_id && (

@@ -522,7 +522,7 @@ class WorkforceController extends Controller
             ];
             if ($r->input('selected_id') === $row->id) {
                 $timesheet['entries'] = DB::table('hr_timesheet_entries')->where('timesheet_id', $row->id)
-                    ->orderBy('work_date')->orderBy('id')->get(['work_date', 'minutes', 'activity_code', 'billable', 'cost_centre_code', 'project_code', 'notes'])
+                    ->orderBy('work_date')->orderBy('id')->get(['work_date', 'started_at', 'ended_at', 'minutes', 'entry_mode', 'cost_centre_code', 'project_code', 'booking_id', 'job_reference', 'activity_code', 'billable', 'notes'])
                     ->map(fn ($entry) => (array) $entry)->all();
             }
             return $timesheet;
