@@ -3,6 +3,7 @@
 namespace App\Services;
 
 use App\Models\Finance\FinancialAuditEvent;
+use App\Models\Booking\BookingActivity;
 use App\Models\Booking\BookingStatus;
 use App\Models\User;
 use Illuminate\Database\Eloquent\Model;
@@ -12,6 +13,14 @@ use Illuminate\Support\Str;
 
 class BookingHistoryService
 {
+    private const BOOKING_ACTIVITY_EVENT_KEYS = [
+        'booking_updated', 'booking_vehicle_changed', 'resource_swap_completed',
+        'booking_responsible_user_changed', 'rental_return_no_show',
+        'replacement_requested', 'replacement_request_closed',
+        'rental_extension_requested', 'rental_extension_approved', 'rental_extension_rejected',
+        'trip_price_changed', 'additional_rental_charge_added',
+    ];
+
     private const TRACKED_FIELDS = [
         'status', 'old_status', 'new_status', 'payment_status', 'payment_collection_status',
         'booking_channel_id', 'booking_source', 'booking_origin', 'booking_date', 'booked_at', 'created_from',
@@ -65,7 +74,7 @@ class BookingHistoryService
         'contract_value_lkr', 'new_customer_status', 'commission_category', 'business_classification',
         'invoice_number', 'subtotal', 'total_amount', 'issue_date', 'due_date',
         'discount_name', 'type', 'value', 'adjustment_type', 'applied_amount',
-        'event_type', 'source', 'message_direction', 'outbound_status',
+        'event_type', 'event_key', 'result_status', 'channel', 'source', 'message_direction', 'outbound_status',
         'stop_type', 'route_order', 'completed_at', 'completed_action', 'skip_reason',
         'type_sequence', 'arrived_at', 'address', 'location', 'latitude', 'longitude',
         'arrived_latitude', 'arrived_longitude', 'completed_latitude', 'completed_longitude',
@@ -237,6 +246,88 @@ class BookingHistoryService
             'created_at' => $occurredAt,
             'updated_at' => $occurredAt,
         ]);
+    }
+
+    public function recordBookingActivity(BookingActivity $activity): void
+    {
+        if (!$this->shouldRecordBookingActivity($activity)) return;
+
+        $meta = is_array($activity->meta) ? $activity->meta : [];
+        $actorId = data_get($meta, 'actor_user_id') ?? data_get($meta, 'initiated_by')
+            ?? data_get($meta, 'changed_by') ?? data_get($meta, 'requested_by')
+            ?? data_get($meta, 'reviewed_by') ?? data_get($meta, 'closed_by')
+            ?? $activity->created_user_id;
+        $actor = $actorId ? User::query()->find($actorId) : null;
+        $changes = match ($activity->event_key) {
+            'resource_swap_completed' => array_filter([
+                'vehicle_id' => ['from' => data_get($meta, 'old_vehicle_id'), 'to' => data_get($meta, 'new_vehicle_id')],
+                'driver_id' => ['from' => data_get($meta, 'old_driver_id'), 'to' => data_get($meta, 'new_driver_id')],
+            ], fn (array $change): bool => $change['from'] !== null || $change['to'] !== null),
+            'booking_vehicle_changed' => ['vehicle_id' => [
+                'from' => data_get($meta, 'previous_vehicle_id'), 'to' => data_get($meta, 'new_vehicle_id'),
+            ]],
+            'booking_responsible_user_changed' => ['responsible_user_id' => [
+                'from' => data_get($meta, 'from_user_id'), 'to' => data_get($meta, 'to_user_id'),
+            ]],
+            'trip_price_changed' => array_filter([
+                'total_price' => ['from' => data_get($meta, 'previous_price'), 'to' => data_get($meta, 'final_price')],
+                'currency' => ['from' => data_get($meta, 'previous_currency'), 'to' => data_get($meta, 'currency')],
+            ], fn (array $change): bool => $change['from'] !== null || $change['to'] !== null),
+            'additional_rental_charge_added' => array_filter([
+                'charge_amount' => ['from' => null, 'to' => data_get($meta, 'amount')],
+                'currency' => ['from' => null, 'to' => data_get($meta, 'currency')],
+            ], fn (array $change): bool => $change['to'] !== null),
+            'rental_extension_requested' => array_filter([
+                'to_date' => ['from' => data_get($meta, 'current_end_at'), 'to' => data_get($meta, 'requested_end_at')],
+                'charge_amount' => ['from' => null, 'to' => data_get($meta, 'additional_charge')],
+            ], fn (array $change): bool => $change['from'] !== null || $change['to'] !== null),
+            'rental_extension_approved', 'rental_extension_rejected' => [
+                'decision' => ['from' => null, 'to' => str_replace('rental_extension_', '', (string) $activity->event_key)],
+            ],
+            'replacement_requested' => ['replacement_request_status' => ['from' => null, 'to' => 'pending']],
+            'replacement_request_closed' => ['replacement_request_status' => ['from' => 'pending', 'to' => 'closed']],
+            default => [],
+        };
+        $reason = data_get($meta, 'reason') ?? data_get($meta, 'change_reason')
+            ?? data_get($meta, 'resolution_reason') ?? data_get($meta, 'review_notes')
+            ?? request()->attributes->get('booking_history_reason');
+        $occurredAt = $activity->event_at?->utc() ?? $activity->created_at?->utc() ?? now()->utc();
+
+        DB::table('booking_history_events')->insertOrIgnore([
+            'id' => (string) Str::uuid(),
+            'booking_id' => (string) $activity->booking_id,
+            'booking_item_id' => $activity->booking_item_id ? (string) $activity->booking_item_id : null,
+            'entity_type' => 'BookingActivity',
+            'entity_id' => (string) $activity->getKey(),
+            'event_type' => (string) $activity->event_key,
+            'actor_type' => $actor ? 'user' : 'system',
+            'actor_user_id' => $actor?->getAuthIdentifier(),
+            'actor_display_snapshot' => data_get($meta, 'actor_display_snapshot')
+                ?: ($actor ? (trim((string) $actor->first_name . ' ' . $actor->last_name) ?: 'User ' . $actor->id) : 'System'),
+            'source' => 'booking_activities',
+            'reason' => is_string($reason) && trim($reason) !== '' ? Str::limit(trim($reason), 1000) : null,
+            'changes' => json_encode($changes, JSON_THROW_ON_ERROR),
+            'context' => json_encode(array_filter([
+                'source_activity_id' => (string) $activity->getKey(),
+                'activity_source' => $activity->source,
+                'activity_status' => $activity->result_status,
+                'swap_type' => data_get($meta, 'swap_type'),
+                'category' => data_get($meta, 'category'),
+                'changed_fields' => data_get($meta, 'changed_fields'),
+            ], fn ($value) => $value !== null), JSON_THROW_ON_ERROR),
+            'correlation_id' => $activity->idempotency_key ?: 'booking-activity:' . $activity->getKey(),
+            'idempotency_key' => 'booking-activity:' . $activity->getKey(),
+            'occurred_at' => $occurredAt,
+            'provenance' => 'live',
+            'created_at' => $occurredAt,
+            'updated_at' => $occurredAt,
+        ]);
+    }
+
+    public function shouldRecordBookingActivity(BookingActivity $activity): bool
+    {
+        return (bool) $activity->booking_id
+            && in_array($activity->event_key, self::BOOKING_ACTIVITY_EVENT_KEYS, true);
     }
 
     public function recordBookingApprovalDecision(

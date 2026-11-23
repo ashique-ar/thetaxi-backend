@@ -98,7 +98,15 @@ class WorkforceWorkflowService
         return DB::transaction(function () use ($data, $actor) {
             $staff = DB::table('staff')->where('id', $data['staff_id'])->lockForUpdate()->first();
             abort_unless($staff && $staff->employment_ended_at === null && $staff->deleted_at === null, 422, 'Staff is no longer active.');
-            $sheet = DB::table('hr_timesheets')->where('staff_id', $data['staff_id'])->where('period_start', $data['period_start'])->where('period_end', $data['period_end'])->lockForUpdate()->first();
+            if (! empty($data['update_id'])) {
+                $sheet = DB::table('hr_timesheets')->where('id', $data['update_id'])->lockForUpdate()->first();
+                abort_unless($sheet && $sheet->staff_id === $data['staff_id'], 404, 'Timesheet is unavailable.');
+                abort_unless($sheet->period_start === $data['period_start'] && $sheet->period_end === $data['period_end'], 409, 'Timesheet period cannot change while editing.');
+                abort_unless((int) $sheet->version === (int) $data['expected_version'], 409, 'Timesheet changed; reload it before saving again.');
+            } else {
+                $sheet = DB::table('hr_timesheets')->where('staff_id', $data['staff_id'])->where('period_start', $data['period_start'])->where('period_end', $data['period_end'])->lockForUpdate()->first();
+                abort_if($sheet && ! empty($data['create_only']), 409, 'A timesheet already exists for this employee and period. Open its draft to edit it.');
+            }
             if (! $sheet) {
                 $id = (string) Str::uuid();
                 DB::table('hr_timesheets')->insert(['id' => $id, 'staff_id' => $data['staff_id'], 'period_start' => $data['period_start'], 'period_end' => $data['period_end'], 'status' => 'draft', 'version' => 1, 'created_at' => now(), 'updated_at' => now()]);
@@ -123,7 +131,10 @@ class WorkforceWorkflowService
                 $payload = array_intersect_key($entry, array_flip(['work_date', 'started_at', 'ended_at', 'minutes', 'entry_mode', 'cost_centre_code', 'project_code', 'booking_id', 'job_reference', 'activity_code', 'billable', 'notes']));
                 DB::table('hr_timesheet_entries')->insert($payload + ['id' => (string) Str::uuid(), 'timesheet_id' => $sheet->id, 'entry_checksum' => hash('sha256', json_encode($payload, JSON_UNESCAPED_SLASHES | JSON_THROW_ON_ERROR)), 'created_at' => now(), 'updated_at' => now()]);
             }
-            DB::table('hr_timesheets')->where('id', $sheet->id)->update(['updated_at' => now()]);
+            DB::table('hr_timesheets')->where('id', $sheet->id)->update([
+                'version' => ! empty($data['update_id']) ? $sheet->version + 1 : $sheet->version,
+                'updated_at' => now(),
+            ]);
             return DB::table('hr_timesheets')->find($sheet->id);
         });
     }

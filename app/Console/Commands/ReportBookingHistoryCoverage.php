@@ -44,9 +44,12 @@ class ReportBookingHistoryCoverage extends Command
             ->count();
 
         $sourceParity = collect([
-            $this->sourceParity('booking_statuses', 'booking-status:', 'booking_statuses', 'booking_status_changed'),
-            $this->sourceParity('financial_audit_events', 'financial-audit:', 'financial_audit_events'),
-            $this->sourceParity('booking_activities', 'legacy:booking-price:', 'legacy:booking_activities', 'booking_price_changed', 'trip_price_changed'),
+            $this->sourceParity('booking_statuses', [['prefix' => 'booking-status:', 'source' => 'booking_statuses', 'event_type' => 'booking_status_changed']]),
+            $this->sourceParity('financial_audit_events', [['prefix' => 'financial-audit:', 'source' => 'financial_audit_events']]),
+            $this->sourceParity('booking_activities', [
+                ['prefix' => 'booking-activity:', 'source' => 'booking_activities', 'event_type' => 'trip_price_changed'],
+                ['prefix' => 'legacy:booking-price:', 'source' => 'legacy:booking_activities', 'event_type' => 'booking_price_changed'],
+            ], 'trip_price_changed'),
         ])->filter()->values();
 
         $this->table(['Measure', 'Count'], [
@@ -67,9 +70,7 @@ class ReportBookingHistoryCoverage extends Command
 
     private function sourceParity(
         string $table,
-        string $keyPrefix,
-        string $ledgerSource,
-        ?string $ledgerEventType = null,
+        array $ledgerIdentities,
         ?string $sourceEventKey = null,
     ): ?array {
         if (!Schema::hasTable($table)) return null;
@@ -77,11 +78,17 @@ class ReportBookingHistoryCoverage extends Command
         $source = DB::table($table . ' as source')->whereNotNull('source.booking_id');
         if ($sourceEventKey !== null) $source->where('source.event_key', $sourceEventKey);
         $sourceRows = (clone $source)->count();
-        $matched = (clone $source)->whereExists(function ($query) use ($keyPrefix, $ledgerSource, $ledgerEventType): void {
+        $matched = (clone $source)->whereExists(function ($query) use ($ledgerIdentities): void {
             $query->selectRaw('1')->from('booking_history_events as history')
-                ->where('history.source', $ledgerSource)
-                ->when($ledgerEventType, fn ($history) => $history->where('history.event_type', $ledgerEventType))
-                ->whereRaw($this->sourceIdempotencyMatchSql($keyPrefix));
+                ->where(function ($matches) use ($ledgerIdentities): void {
+                    foreach ($ledgerIdentities as $identity) {
+                        $matches->orWhere(function ($match) use ($identity): void {
+                            $match->where('history.source', $identity['source'])
+                                ->when($identity['event_type'] ?? null, fn ($match, $eventType) => $match->where('history.event_type', $eventType))
+                                ->whereRaw($this->sourceIdempotencyMatchSql($identity['prefix']));
+                        });
+                    }
+                });
         })->count();
 
         return [$table, $sourceRows, $matched, max(0, $sourceRows - $matched)];

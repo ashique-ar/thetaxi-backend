@@ -990,7 +990,8 @@ class BookingObservabilityService
         $sourceActivityId = data_get($history->context, 'source_record_id');
         $status = $changes['status'] ?? $changes['dispatch_status'] ?? null;
         $source = 'booking';
-        if ($history->source === 'financial_audit_events' || in_array($history->entity_type, ['FinancialAuditEvent', 'DriverIouAdvance', 'BookingPaymentReceiptComponent', 'BookingPaymentScheduleRuleEvent'], true)
+        if (in_array($history->event_type, ['trip_price_changed', 'additional_rental_charge_added'], true)
+            || $history->source === 'financial_audit_events' || in_array($history->entity_type, ['FinancialAuditEvent', 'DriverIouAdvance', 'BookingPaymentReceiptComponent', 'BookingPaymentScheduleRuleEvent'], true)
             || str_contains($history->event_type, 'payment') || str_contains($history->event_type, 'refund')
             || str_contains($history->event_type, 'adjustment') || str_contains($history->event_type, 'price')) {
             $source = 'finance';
@@ -1000,10 +1001,16 @@ class BookingObservabilityService
             $source = 'dispatch';
         } elseif (str_contains($history->event_type, 'incident') || $history->entity_type === 'DriverTrackingIncident') {
             $source = 'tracking';
-        } elseif (str_contains($history->event_type, 'assignment') || $history->entity_type === 'VehicleAssignment') {
+        } elseif (in_array($history->event_type, ['resource_swap_completed', 'booking_vehicle_changed', 'booking_responsible_user_changed'], true)
+            || str_contains($history->event_type, 'assignment') || $history->entity_type === 'VehicleAssignment') {
             $source = 'assignment';
-        } elseif (str_contains($history->event_type, 'status')) {
+        } elseif (in_array($history->event_type, [
+            'rental_return_no_show', 'replacement_requested', 'replacement_request_closed',
+            'rental_extension_requested', 'rental_extension_approved', 'rental_extension_rejected',
+        ], true) || str_contains($history->event_type, 'status')) {
             $source = 'lifecycle';
+        } elseif ($history->event_type === 'booking_updated') {
+            $source = 'booking';
         }
         $reason = $history->reason;
         if (!$canViewPrice && (array_intersect($rawChangeFields, $priceFields) !== [] || str_contains($history->event_type, 'price'))) {
@@ -1041,9 +1048,11 @@ class BookingObservabilityService
             'to_status' => $status['to'] ?? null,
             'severity' => str_contains($history->event_type, 'deleted') ? 'warning' : 'info',
             'correlation_id' => $correlationId,
-            'deduplication_key' => $history->source === 'legacy:booking_activities' && $sourceActivityId
-                ? 'booking-price-activity:' . $sourceActivityId
-                : 'booking-history:' . $history->id,
+            'deduplication_key' => match (true) {
+                $history->source === 'legacy:booking_activities' && $sourceActivityId => 'booking-price-activity:' . $sourceActivityId,
+                $history->source === 'booking_activities' && $sourceActivityId => 'booking-activity:' . $sourceActivityId,
+                default => 'booking-history:' . $history->id,
+            },
             'metadata' => [
                 'reason' => $reason,
                 'changes' => $changes,

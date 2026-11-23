@@ -496,27 +496,43 @@ class WorkforceController extends Controller
 
     public function timesheets(Request $r, StaffAccessService $access): JsonResponse
     {
-        $data = $r->validate(['selected_id' => ['nullable', 'uuid']]);
+        $data = $r->validate(['selected_id' => ['nullable', 'uuid'], 'staff_id' => ['nullable', 'uuid'], 'period_start' => ['nullable', 'date'], 'period_end' => ['nullable', 'date', 'after_or_equal:period_start']]);
         $staff = $access->scope(Staff::query(), $r->user())->select('id');
-        $rows = DB::table('hr_timesheets as timesheet')->whereIn('timesheet.staff_id', $staff)
+        $rows = DB::table('hr_timesheets as timesheet')->join('staff', 'staff.id', '=', 'timesheet.staff_id')
+            ->leftJoin('users', 'users.id', '=', 'staff.user_id')->whereIn('timesheet.staff_id', $staff)
             ->when($data['selected_id'] ?? null, fn($query, $id) => $query->where('timesheet.id', $id))
-            ->select(['timesheet.id', 'timesheet.submitted_by', 'timesheet.period_start', 'timesheet.period_end', 'timesheet.status', 'timesheet.version', 'timesheet.submitted_at'])
+            ->when($data['staff_id'] ?? null, fn($query, $id) => $query->where('timesheet.staff_id', $id))
+            ->when($data['period_start'] ?? null, fn($query, $date) => $query->whereDate('timesheet.period_start', $date))
+            ->when($data['period_end'] ?? null, fn($query, $date) => $query->whereDate('timesheet.period_end', $date))
+            ->select(['timesheet.id', 'timesheet.staff_id', 'staff.code as staff_code', 'users.first_name as staff_first_name', 'users.last_name as staff_last_name', 'timesheet.submitted_by', 'timesheet.period_start', 'timesheet.period_end', 'timesheet.status', 'timesheet.version', 'timesheet.submitted_at'])
             ->latest('timesheet.period_start')->paginate($this->paginationSize($r, 50));
-        $rows->getCollection()->transform(fn($row) => [
-            'id' => $row->id,
-            'period_start' => $row->period_start,
-            'period_end' => $row->period_end,
-            'status' => $row->status,
-            'version' => $row->version,
-            'submitted_at' => $row->submitted_at,
-            'can_decide' => $row->submitted_by !== $r->user()->id,
-        ]);
+        $rows->getCollection()->transform(function ($row) use ($r) {
+            $timesheet = [
+                'id' => $row->id,
+                'staff_id' => $row->staff_id,
+                'staff_code' => $row->staff_code,
+                'staff_first_name' => $row->staff_first_name,
+                'staff_last_name' => $row->staff_last_name,
+                'period_start' => $row->period_start,
+                'period_end' => $row->period_end,
+                'status' => $row->status,
+                'version' => $row->version,
+                'submitted_at' => $row->submitted_at,
+                'can_decide' => $row->submitted_by !== $r->user()->id,
+            ];
+            if ($r->input('selected_id') === $row->id) {
+                $timesheet['entries'] = DB::table('hr_timesheet_entries')->where('timesheet_id', $row->id)
+                    ->orderBy('work_date')->orderBy('id')->get(['work_date', 'minutes', 'activity_code', 'billable', 'cost_centre_code', 'project_code', 'notes'])
+                    ->map(fn ($entry) => (array) $entry)->all();
+            }
+            return $timesheet;
+        });
 
         return response()->json(['status' => 'success', 'data' => $rows]);
     }
     public function saveTimesheet(Request $r, WorkforceWorkflowService $service, StaffAccessService $access, HrDomainRequestProjectionService $projection): JsonResponse
     {
-        $d = $r->validate(['staff_id' => ['required', 'uuid'], 'period_start' => ['required', 'date'], 'period_end' => ['required', 'date', 'after_or_equal:period_start'], 'entries' => ['required', 'array', 'min:1'], 'entries.*.work_date' => ['required', 'date'], 'entries.*.started_at' => ['nullable', 'date'], 'entries.*.ended_at' => ['nullable', 'date'], 'entries.*.minutes' => ['nullable', 'integer', 'min:1'], 'entries.*.entry_mode' => ['required', Rule::in(['manual', 'timer'])], 'entries.*.cost_centre_code' => ['nullable', 'string', 'max:80'], 'entries.*.project_code' => ['nullable', 'string', 'max:80'], 'entries.*.booking_id' => ['nullable', 'uuid', 'exists:bookings,id'], 'entries.*.job_reference' => ['nullable', 'string', 'max:120'], 'entries.*.activity_code' => ['required', 'string', 'max:80'], 'entries.*.billable' => ['required', 'boolean'], 'entries.*.notes' => ['nullable', 'string', 'max:2000']]);
+        $d = $r->validate(['staff_id' => ['required', 'uuid'], 'period_start' => ['required', 'date'], 'period_end' => ['required', 'date', 'after_or_equal:period_start'], 'create_only' => ['nullable', 'boolean'], 'update_id' => ['nullable', 'uuid'], 'expected_version' => ['required_with:update_id', 'integer', 'min:1'], 'entries' => ['required', 'array', 'min:1'], 'entries.*.work_date' => ['required', 'date'], 'entries.*.started_at' => ['nullable', 'date'], 'entries.*.ended_at' => ['nullable', 'date'], 'entries.*.minutes' => ['nullable', 'integer', 'min:1'], 'entries.*.entry_mode' => ['required', Rule::in(['manual', 'timer'])], 'entries.*.cost_centre_code' => ['nullable', 'string', 'max:80'], 'entries.*.project_code' => ['nullable', 'string', 'max:80'], 'entries.*.booking_id' => ['nullable', 'uuid', 'exists:bookings,id'], 'entries.*.job_reference' => ['nullable', 'string', 'max:120'], 'entries.*.activity_code' => ['required', 'string', 'max:80'], 'entries.*.billable' => ['required', 'boolean'], 'entries.*.notes' => ['nullable', 'string', 'max:2000']]);
         $staff = Staff::query()->findOrFail($d['staff_id']);
         $access->authorize($r->user(), $staff, 'view');
         $row = $service->saveTimesheet($d, $r->user()->id);

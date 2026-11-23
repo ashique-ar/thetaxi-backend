@@ -19,6 +19,7 @@ use Illuminate\Support\Facades\Gate;
 use App\Models\Booking\Booking;
 use App\Observers\BookingApprovalNotificationObserver;
 use App\Models\Booking\BookingItem;
+use App\Models\Booking\BookingActivity;
 use App\Models\Booking\BookingStatus;
 use App\Models\Booking\BookingPaymentReceipt;
 use App\Models\Booking\BookingPaymentAdjustment;
@@ -170,6 +171,7 @@ class AppServiceProvider extends ServiceProvider
         Booking::observe(BookingHistoryObserver::class);
         Booking::observe(BookingApprovalNotificationObserver::class);
         BookingItem::observe(BookingHistoryObserver::class);
+        BookingActivity::observe(BookingHistoryObserver::class);
         BookingStatus::observe(BookingHistoryObserver::class);
         BookingPaymentReceipt::observe(BookingHistoryObserver::class);
         BookingPaymentAdjustment::observe(BookingHistoryObserver::class);

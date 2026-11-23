@@ -17,6 +17,7 @@ use Illuminate\Support\Collection;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Validation\Rule;
 use Illuminate\Validation\ValidationException;
+use Symfony\Component\HttpKernel\Exception\HttpException;
 use Spatie\Permission\Models\Permission;
 use Spatie\Permission\Models\Role;
 
@@ -607,7 +608,13 @@ class RoleController extends Controller
 
         $role->users()->chunk(100, function ($users) use ($role, $actorUserId) {
             foreach ($users as $user) {
-                $this->contextService->syncContextsForAssignedRoles($user, [$role], $actorUserId);
+                try {
+                    $this->contextService->syncContextsForAssignedRoles($user, [$role], $actorUserId);
+                } catch (HttpException $e) {
+                    if ($e->getStatusCode() !== 409 || !str_contains($e->getMessage(), 'Former Staff access can only be restored')) {
+                        throw $e;
+                    }
+                }
             }
         });
     }

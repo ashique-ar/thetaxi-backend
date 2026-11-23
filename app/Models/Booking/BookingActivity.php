@@ -3,13 +3,13 @@
 namespace App\Models\Booking;
 
 use App\Models\BaseModel;
-use Illuminate\Database\Eloquent\Concerns\HasUuids;
-use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
+use App\Traits\RecordsBookingHistoryAtomically;
 use App\Models\Sms\SmsMessage;
 
 class BookingActivity extends BaseModel
 {
+    use RecordsBookingHistoryAtomically;
 
     protected $fillable = [
         'booking_id', 'booking_item_id', 'driver_assignment_id', 'inquiry_id',
