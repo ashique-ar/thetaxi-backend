@@ -569,6 +569,13 @@ class CorporateBookingService
         $query = Booking::where('corporate_account_id', $corporateId)
             ->where('corporate_approval_status', 'pending');
 
+        $corporate = Corporate::find($corporateId);
+        if (($corporate?->approval_mode ?? 'role') === 'employee' && !empty($corporate?->approval_employee_ids)) {
+            if (!in_array((string) ($filters['approver_employee_id'] ?? ''), array_map('strval', $corporate->approval_employee_ids), true)) $query->whereRaw('1 = 0');
+        } elseif (!empty($corporate?->approval_role_ids)) {
+            if (!array_intersect(array_map('strval', $filters['approver_role_ids'] ?? []), array_map('strval', $corporate->approval_role_ids))) $query->whereRaw('1 = 0');
+        }
+
         $this->applyBookingFilters($query, $filters);
 
         $paginator = $query

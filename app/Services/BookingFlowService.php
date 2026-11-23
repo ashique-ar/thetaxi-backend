@@ -8680,8 +8680,30 @@ class BookingFlowService
 
             $booking->save();
 
+            $booking->bookingItems()->whereIn('status', ['pending', 'pending_approval'])->lockForUpdate()->get()
+                ->each(fn (BookingItem $item) => $item->update([
+                    'status' => $action === 'approve' ? 'confirmed' : 'rejected',
+                    'requires_approval' => false,
+                    'approved_at' => now(),
+                    'approved_by' => $userId,
+                ]));
+
+            foreach ([
+                VehicleAssignment::query()->where('booking_id', $booking->id),
+                DriverAssignment::query()->where('booking_id', $booking->id),
+            ] as $assignmentQuery) {
+                $assignmentQuery->whereIn('status', ['pending', 'pending_approval'])->lockForUpdate()->get()
+                    ->each(function ($assignment) use ($action, $userId): void {
+                        if ($action === 'reject') {
+                            $assignment->update(['status' => 'cancelled', 'requires_approval' => false, 'updated_user_id' => $userId]);
+                        } elseif (!$assignment->requires_approval || (!$assignment->overlap_type && empty($assignment->overlap_details))) {
+                            $assignment->update(['status' => 'active', 'requires_approval' => false, 'updated_user_id' => $userId]);
+                        }
+                    });
+            }
+
             DB::table('notifications')
-                ->where('type', BookingApprovalRequested::class)
+                ->where('data->type', 'booking_approval_requested')
                 ->where('data->data->booking_id', (string) $booking->id)
                 ->update(['read_at' => now(), 'data->resolved' => true, 'updated_at' => now()]);
 
@@ -12597,18 +12619,18 @@ class BookingFlowService
                         break;
 
                     case 'approve':
-                        $this->approveBooking($bookingId, $userId, $reason);
+                        $result = $this->processApproval($bookingId, 'approve', $reason, $userId);
                         $results['success'][] = [
                             'booking_id' => $bookingId,
-                            'result' => 'approved',
+                            'result' => $result['status'] ?? 'approved',
                         ];
                         break;
 
                     case 'reject':
-                        $this->rejectBooking($bookingId, $userId, $reason);
+                        $result = $this->processApproval($bookingId, 'reject', $reason, $userId);
                         $results['success'][] = [
                             'booking_id' => $bookingId,
-                            'result' => 'rejected',
+                            'result' => $result['status'] ?? 'rejected',
                         ];
                         break;
 
@@ -13408,36 +13430,6 @@ class BookingFlowService
             throw ValidationException::withMessages(['status' => 'The requested booking status is invalid.']);
         }
         $this->updateBookingStatus((string) $bookingId, (string) $status, $reason, (string) $userId);
-    }
-
-    /**
-     * Approve booking
-     */
-    private function approveBooking(string $bookingId, string $userId, ?string $reason = null): void
-    {
-        Booking::query()->findOrFail($bookingId)->update([
-            'status' => 'approved',
-            'approval_status' => 'approved',
-            'approval_at' => now(),
-            'approval_by' => $userId,
-            'approval_note' => $reason,
-            'updated_user_id' => $userId,
-        ]);
-    }
-
-    /**
-     * Reject booking
-     */
-    private function rejectBooking(string $bookingId, string $userId, ?string $reason = null): void
-    {
-        Booking::query()->findOrFail($bookingId)->update([
-            'status' => 'rejected',
-            'approval_status' => 'rejected',
-            'approval_at' => now(),
-            'approval_by' => $userId,
-            'approval_note' => $reason,
-            'updated_user_id' => $userId,
-        ]);
     }
 
     /**
@@ -14282,7 +14274,7 @@ class BookingFlowService
             'assigned_to' => $this->bookingDateTime($bookingItem->to_date, $bookingItem->to_time),
             'assignment_type' => $this->determineAssignmentType($params),
             'status' => $status,
-            'requires_approval' => $status === 'pending_approval' || $booking->requires_approval,
+            'requires_approval' => false,
             'override_reasons' => $params['override_reasons'] ?? [],
             'assigned_by' => Auth::id() ?? ($params['assigned_by'] ?? ($params['created_user_id'] ?? null)),
             'created_user_id' => Auth::id() ?? ($params['assigned_by'] ?? ($params['created_user_id'] ?? null)),

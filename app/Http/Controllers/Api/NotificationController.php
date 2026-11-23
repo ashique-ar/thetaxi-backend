@@ -5,6 +5,7 @@ namespace App\Http\Controllers\Api;
 use App\Http\Controllers\Controller;
 use App\Models\User;
 use App\Models\Booking\Booking;
+use App\Models\Booking\BookingApproval;
 use App\Models\NotificationLog;
 use App\Services\MailDispatchService;
 use Illuminate\Http\Request;
@@ -42,6 +43,16 @@ class NotificationController extends Controller
         $unreadOnly = $request->get('unread_only', false);
 
         $query = $user->notifications();
+        $contextType = $request->attributes->get('resolved_active_context_type', $request->header('X-Active-Context-Type'));
+        if ($contextType === 'internal') {
+            $query->where(function ($notifications) {
+                $notifications->whereNull('data->type')->orWhere('data->type', '!=', 'corporate_booking_approval_requested');
+            });
+        } elseif ($contextType) {
+            $query->where(function ($notifications) {
+                $notifications->whereNull('data->type')->orWhere('data->type', '!=', 'booking_approval_requested');
+            });
+        }
 
         if ($unreadOnly) {
             $query->whereNull('read_at');
@@ -51,25 +62,87 @@ class NotificationController extends Controller
             ->paginate($limit);
 
         $approvalBookingIds = collect($notifications->items())
-            ->filter(fn ($notification) => data_get($notification->data, 'type') === 'booking_approval_requested')
+            ->filter(fn ($notification) => in_array(data_get($notification->data, 'type'), [
+                'booking_approval_requested',
+                'corporate_booking_approval_requested',
+            ], true))
             ->map(fn ($notification) => data_get($notification->data, 'data.booking_id'))
             ->filter()
             ->unique()
             ->values();
         if ($approvalBookingIds->isNotEmpty()) {
-            $corporateNames = Booking::query()
+            $approvalBookings = Booking::query()
                 ->with('corporateAccount:id,name')
                 ->whereIn('id', $approvalBookingIds)
+                ->get(['id', 'corporate_account_id', 'status', 'requires_approval', 'approval_status', 'corporate_approval_status'])
+                ->keyBy(fn (Booking $booking) => (string) $booking->id);
+            $pendingApprovals = BookingApproval::query()
+                ->whereIn('booking_id', $approvalBookingIds)
+                ->where('status', BookingApproval::STATUS_PENDING)
+                ->latest()
                 ->get()
-                ->mapWithKeys(fn (Booking $booking) => [(string) $booking->id => $booking->corporateAccount?->name]);
+                ->unique('booking_id')
+                ->keyBy(fn (BookingApproval $approval) => (string) $approval->booking_id);
 
-            $notifications->getCollection()->transform(function ($notification) use ($corporateNames) {
+            $notifications->getCollection()->transform(function ($notification) use ($approvalBookings, $pendingApprovals) {
                 $data = $notification->data;
                 $bookingId = (string) data_get($data, 'data.booking_id', '');
-                if (!empty($corporateNames[$bookingId])) {
-                    $data['corporate_name'] = $corporateNames[$bookingId];
-                    $notification->data = $data;
+                $booking = $approvalBookings->get($bookingId);
+                if (!$booking) {
+                    return $notification;
                 }
+
+                if ($booking->corporateAccount?->name) {
+                    $data['corporate_name'] = $booking->corporateAccount->name;
+                }
+
+                if (data_get($data, 'type') === 'corporate_booking_approval_requested') {
+                    $resolved = !empty($data['resolved']) || $booking->corporate_approval_status !== 'pending';
+                    $data['resolved'] = $resolved;
+                    if ($resolved) {
+                        $reference = data_get($data, 'data.booking_number') ?: $booking->booking_number ?: $bookingId;
+                        $approvalStatus = ucwords(str_replace('_', ' ', (string) $booking->corporate_approval_status));
+                        $data['title'] = "Booking #{$reference} · {$approvalStatus}";
+                        $data['message'] = "Corporate approval is {$approvalStatus}. This approval request is closed.";
+                        $notification->forceFill([
+                            'data' => $data,
+                            'read_at' => $notification->read_at ?? now(),
+                        ])->save();
+                    } elseif ($data !== $notification->data) {
+                        $notification->forceFill(['data' => $data])->save();
+                    }
+
+                    return $notification;
+                }
+
+                $pendingApproval = $pendingApprovals->get($bookingId);
+                $staffApprovalPending = $booking->status === 'pending_approval'
+                    && (bool) $booking->requires_approval
+                    && in_array($booking->approval_status, ['pending', 'required'], true)
+                    && $booking->corporate_approval_status !== 'pending';
+                $notificationApprovalId = (string) data_get($data, 'data.approval_id', '');
+                $notificationBelongsToCurrentRequest = !$pendingApproval
+                    || ($notificationApprovalId !== ''
+                        ? $notificationApprovalId === (string) $pendingApproval->id
+                        : $notification->created_at >= $pendingApproval->created_at);
+                $resolved = !empty($data['resolved']) || !$staffApprovalPending || !$notificationBelongsToCurrentRequest;
+                $data['resolved'] = $resolved;
+                $reference = data_get($data, 'data.booking_number') ?: $booking->booking_number ?: $bookingId;
+                $bookingStatus = ucwords(str_replace('_', ' ', (string) $booking->status));
+                if (!$staffApprovalPending) {
+                    $data['title'] = "Booking #{$reference} · {$bookingStatus}";
+                    $data['message'] = "Current booking status: {$bookingStatus}. This approval request is closed.";
+                } elseif (!$notificationBelongsToCurrentRequest) {
+                    $data['title'] = "Older approval request for booking #{$reference}";
+                    $data['message'] = 'A newer staff approval request is now pending.';
+                }
+
+                if ($data !== $notification->data || ($resolved && !$notification->read_at)) {
+                    $attributes = ['data' => $data];
+                    if ($resolved) $attributes['read_at'] = $notification->read_at ?? now();
+                    $notification->forceFill($attributes)->save();
+                }
+
                 return $notification;
             });
         }

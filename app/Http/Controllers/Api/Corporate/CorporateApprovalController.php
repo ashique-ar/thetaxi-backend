@@ -28,6 +28,9 @@ class CorporateApprovalController extends Controller
     {
         $filters = $request->only(['date_from', 'date_to', 'page', 'per_page']);
         $filters['can_view_payments'] = CorporatePortalPermission::allows($request, 'view_payments');
+        $employee = $request->attributes->get('corporate_employee');
+        $filters['approver_role_ids'] = $employee?->userContext?->roles?->pluck('id')->all() ?? [];
+        $filters['approver_employee_id'] = $employee?->id;
 
         $queue = $this->bookingService->getApprovalQueue(
             $request->corporate_id,

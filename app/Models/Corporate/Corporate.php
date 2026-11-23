@@ -25,6 +25,9 @@ class Corporate extends BaseModel
         'billing_address',
         'is_active',
         'approval_required',
+        'approval_mode',
+        'approval_role_ids',
+        'approval_employee_ids',
         'exempt_coordinator_from_approval',
         'coordinator_can_view_payments',
         'booking_vehicle_display',
@@ -44,6 +47,8 @@ class Corporate extends BaseModel
     protected $casts = [
         'is_active' => 'boolean',
         'approval_required' => 'boolean',
+        'approval_role_ids' => 'array',
+        'approval_employee_ids' => 'array',
         'exempt_coordinator_from_approval' => 'boolean',
         'coordinator_can_view_payments' => 'boolean',
         'booking_vehicle_display' => 'string',

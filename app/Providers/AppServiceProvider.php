@@ -17,6 +17,7 @@ use Laravel\Passport\Passport;
 use Dedoc\Scramble\Scramble;
 use Illuminate\Support\Facades\Gate;
 use App\Models\Booking\Booking;
+use App\Observers\BookingApprovalNotificationObserver;
 use App\Models\Booking\BookingItem;
 use App\Models\Booking\BookingStatus;
 use App\Models\Booking\BookingPaymentReceipt;
@@ -167,6 +168,7 @@ class AppServiceProvider extends ServiceProvider
         Booking::observe(BookingPaymentObserver::class);
         Booking::observe(BookingSalesObserver::class);
         Booking::observe(BookingHistoryObserver::class);
+        Booking::observe(BookingApprovalNotificationObserver::class);
         BookingItem::observe(BookingHistoryObserver::class);
         BookingStatus::observe(BookingHistoryObserver::class);
         BookingPaymentReceipt::observe(BookingHistoryObserver::class);

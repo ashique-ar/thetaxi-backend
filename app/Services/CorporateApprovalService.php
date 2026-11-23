@@ -5,6 +5,7 @@ namespace App\Services;
 use App\Models\AuditLog;
 use App\Models\Booking\Booking;
 use App\Models\Booking\BookingApproval;
+use App\Models\Corporate\CorporateEmployee;
 use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
@@ -30,6 +31,7 @@ class CorporateApprovalService
             if ($booking->corporate_approval_status !== 'pending') {
                 abort(422, 'Booking is not in pending approval status.');
             }
+            abort_unless($this->isConfiguredApprover($booking->corporateAccount, $approverId), 403, 'You are not assigned to approve company bookings.');
 
             $legacyApproval = BookingApproval::query()->where('booking_id', $bookingId)
                 ->where('status', BookingApproval::STATUS_PENDING)->lockForUpdate()->latest()->first();
@@ -123,6 +125,7 @@ class CorporateApprovalService
             if ($booking->corporate_approval_status !== 'pending') {
                 abort(422, 'Booking is not in pending approval status.');
             }
+            abort_unless($this->isConfiguredApprover($booking->corporateAccount, $approverId), 403, 'You are not assigned to approve company bookings.');
 
             $rejectionNote = implode(' — ', array_filter([trim($reason), trim((string) $comments)]));
             BookingApproval::query()->where('booking_id', $bookingId)
@@ -187,6 +190,21 @@ class CorporateApprovalService
     }
 
     // ─── Audit Logging ────────────────────────────────────────────────
+
+    public function isConfiguredApprover($corporate, string $userId): bool
+    {
+        $mode = $corporate?->approval_mode ?? 'role';
+        $roleIds = $mode === 'role' ? ($corporate?->approval_role_ids ?? []) : [];
+        $employeeIds = $mode === 'employee' ? ($corporate?->approval_employee_ids ?? []) : [];
+        if (!$roleIds && !$employeeIds) return true;
+        $employee = CorporateEmployee::query()->where('corporate_id', $corporate->id)
+            ->where('user_id', $userId)->where('is_active', true)->with('userContext.roles')->first();
+        if (!$employee) return false;
+        if (in_array((string) $employee->id, array_map('strval', $employeeIds), true)) return true;
+        return $employee->userContext?->roles?->contains(
+            fn ($role) => in_array((string) $role->id, array_map('strval', $roleIds), true)
+        ) ?? false;
+    }
 
     private function logAudit(string $action, string $entity, ?string $entityId, array $details = []): void
     {

@@ -152,6 +152,7 @@ use App\Http\Controllers\Api\StaffSensitivePaymentMethodController;
 use App\Http\Controllers\Api\StateController;
 use App\Http\Controllers\Api\SystemBackupController;
 use App\Http\Controllers\Api\BackgroundTaskController;
+use App\Http\Controllers\Api\BookingExtensionController;
 use App\Http\Controllers\Api\SystemController;
 use App\Http\Controllers\Api\TermsController;
 use App\Http\Controllers\Api\UserContextController;
@@ -204,6 +205,7 @@ use App\Http\Middleware\RedactCustomerPortalBookingData;
 use App\Http\Controllers\Api\StaffController;
 use App\Http\Controllers\Api\StaffWorkloadController;
 use App\Http\Controllers\Api\MyWorkController;
+use App\Http\Controllers\Api\Service\ServiceVehicleClassController;
 use App\Http\Controllers\BookingController;
 use App\Http\Controllers\CartController;
 use App\Http\Resources\ServiceTypeResource;
@@ -1673,9 +1675,9 @@ Route::middleware(['auth:api'])->group(function () {
         Route::apiResource('website-settings', WebsiteSettingController::class);
         Route::apiResource('vip-types', VipTypeController::class);
         Route::post('service-types/workflow-preview', [ServiceTypeController::class, 'previewWorkflow'])->middleware('pricing.context');
-        Route::get('service-types/{serviceType}/vehicle-classes', [\App\Http\Controllers\Api\Service\ServiceVehicleClassController::class, 'index'])
+        Route::get('service-types/{serviceType}/vehicle-classes', [ServiceVehicleClassController::class, 'index'])
             ->middleware(['ensure.internal', 'pricing.context']);
-        Route::put('service-types/{serviceType}/vehicle-classes/{vehicleClass}', [\App\Http\Controllers\Api\Service\ServiceVehicleClassController::class, 'update'])
+        Route::put('service-types/{serviceType}/vehicle-classes/{vehicleClass}', [ServiceVehicleClassController::class, 'update'])
             ->middleware(['ensure.internal', 'pricing.context']);
         Route::get('service-types/{serviceType}/workflow-revisions', [ServiceTypeController::class, 'workflowRevisions'])->middleware(['pricing.context', 'permission:service-types.view|service-types.edit']);
         Route::post('service-types/{serviceType}/workflow-revisions/{revision}/review', [ServiceTypeController::class, 'reviewWorkflowRevision'])->middleware('pricing.context');
@@ -2195,7 +2197,7 @@ Route::middleware(['auth:api'])->group(function () {
         Route::get('drivers/locations', [DriverController::class, 'locations']);
         Route::get('drivers/realtime-status', [DriverController::class, 'realTimeStatus']);
         Route::get('drivers/list-summary', [DriverController::class, 'listSummary']);
-        Route::get('drivers/with-status', [\App\Http\Controllers\Api\Admin\BookingAssignmentController::class, 'driversWithStatus']);
+        Route::get('drivers/with-status', [BookingAssignmentController::class, 'driversWithStatus']);
         Route::get('driver-assignments/dashboard-stats', [DriverController::class, 'driverAssignmentDashboardStats']);
         Route::get('driver-assignments/active', [DriverController::class, 'activeDriverAssignments']);
         Route::get('driver-assignments/recent', [DriverController::class, 'recentDriverAssignments']);
@@ -2649,7 +2651,7 @@ Route::middleware(['auth:api'])->group(function () {
                 ->middleware('permission:bookings.view');
             Route::get('route-replay', [BookingObservabilityController::class, 'routeReplay'])
                 ->middleware('permission:bookings.tracking_replay');
-            Route::get('route-replay/export', [\App\Http\Controllers\Api\BookingObservabilityController::class, 'exportRouteReplay'])
+            Route::get('route-replay/export', [BookingObservabilityController::class, 'exportRouteReplay'])
                 ->middleware('permission:bookings.tracking_export');
             Route::get('communications', [BookingObservabilityController::class, 'communications'])
                 ->middleware('permission:bookings.view');
@@ -2686,11 +2688,11 @@ Route::middleware(['auth:api'])->group(function () {
 
         // Booking Lifecycle Management Routes
         Route::group(['prefix' => 'booking-lifecycle', 'middleware' => 'booking.operations.telemetry'], function () {
-            Route::get('extension-requests', [\App\Http\Controllers\Api\BookingExtensionController::class, 'index'])
+            Route::get('extension-requests', [BookingExtensionController::class, 'index'])
                 ->middleware(['permission:bookings.view', 'permission:bookings.assign']);
-            Route::post('extension-requests/{extensionId}/decision', [\App\Http\Controllers\Api\BookingExtensionController::class, 'decide'])
+            Route::post('extension-requests/{extensionId}/decision', [BookingExtensionController::class, 'decide'])
                 ->middleware('permission:bookings.assign');
-            Route::post('booking-items/{bookingItemId}/extension-requests', [\App\Http\Controllers\Api\BookingExtensionController::class, 'store'])
+            Route::post('booking-items/{bookingItemId}/extension-requests', [BookingExtensionController::class, 'store'])
                 ->middleware('permission:bookings.update');
             Route::get('{bookingId}/summary', [BookingLifecycleController::class, 'getLifecycleSummary'])
                 ->middleware('permission:bookings.view');
@@ -2999,15 +3001,15 @@ Route::middleware(['auth:api'])->group(function () {
         Route::delete('divisions/{id}', [CorporateDivisionController::class, 'destroy']);
 
         // Employee Management
-        Route::get('employees', [\App\Http\Controllers\Api\Corporate\CorporateEmployeeController::class, 'index']);
-        Route::get('employee-reference-options', [\App\Http\Controllers\Api\Corporate\CorporateEmployeeController::class, 'referenceOptions']);
-        Route::post('employees', [\App\Http\Controllers\Api\Corporate\CorporateEmployeeController::class, 'store'])->middleware('permission:manage_employees');
-        Route::get('employees/{id}', [\App\Http\Controllers\Api\Corporate\CorporateEmployeeController::class, 'show']);
-        Route::put('employees/{id}', [\App\Http\Controllers\Api\Corporate\CorporateEmployeeController::class, 'update']);
-        Route::post('employees/{id}/activate', [\App\Http\Controllers\Api\Corporate\CorporateEmployeeController::class, 'activate']);
-        Route::post('employees/{id}/deactivate', [\App\Http\Controllers\Api\Corporate\CorporateEmployeeController::class, 'deactivate']);
-        Route::post('employees/{id}/role', [\App\Http\Controllers\Api\Corporate\CorporateEmployeeController::class, 'assignRole']);
-        Route::post('employees/{id}/access-link', [\App\Http\Controllers\Api\Corporate\CorporateEmployeeController::class, 'sendAccessLink'])->middleware(['permission:manage_employees', 'throttle:5,1']);
+        Route::get('employees', [CorporateEmployeeController::class, 'index']);
+        Route::get('employee-reference-options', [CorporateEmployeeController::class, 'referenceOptions']);
+        Route::post('employees', [CorporateEmployeeController::class, 'store'])->middleware('permission:manage_employees');
+        Route::get('employees/{id}', [CorporateEmployeeController::class, 'show']);
+        Route::put('employees/{id}', [CorporateEmployeeController::class, 'update']);
+        Route::post('employees/{id}/activate', [CorporateEmployeeController::class, 'activate']);
+        Route::post('employees/{id}/deactivate', [CorporateEmployeeController::class, 'deactivate']);
+        Route::post('employees/{id}/role', [CorporateEmployeeController::class, 'assignRole']);
+        Route::post('employees/{id}/access-link', [CorporateEmployeeController::class, 'sendAccessLink'])->middleware(['permission:manage_employees', 'throttle:5,1']);
 
         // Role Management
         Route::get('roles', [CorporateRoleController::class, 'index']);
@@ -3031,6 +3033,9 @@ Route::middleware(['auth:api'])->group(function () {
                         'billing_address' => $corporate->billing_address,
                         'is_active' => $corporate->is_active,
                         'approval_required' => $corporate->approval_required,
+                        'approval_mode' => $corporate->approval_mode ?? 'role',
+                        'approval_role_ids' => $corporate->approval_role_ids ?? [],
+                        'approval_employee_ids' => $corporate->approval_employee_ids ?? [],
                         'exempt_coordinator_from_approval' => $corporate->exempt_coordinator_from_approval,
                         'coordinator_can_view_payments' => $corporate->coordinator_can_view_payments,
                         'booking_vehicle_display' => $corporate->booking_vehicle_display ?? 'vehicle_class',
@@ -3041,6 +3046,8 @@ Route::middleware(['auth:api'])->group(function () {
             ]);
         });
         Route::patch('profile', [CorporateWorkspaceController::class, 'updateProfile'])
+            ->middleware('permission:manage_employees');
+        Route::get('approval-options', [CorporateWorkspaceController::class, 'approvalOptions'])
             ->middleware('permission:manage_employees');
 
         Route::get('service-types', function (Request $request) {
@@ -3056,12 +3063,12 @@ Route::middleware(['auth:api'])->group(function () {
 
         // Staff Transport
         Route::prefix('staff-transport')->group(function () {
-            Route::get('setup-status', [\App\Http\Controllers\Api\Corporate\CorporateStaffTransportController::class, 'setupStatus']);
-            Route::get('locations', [\App\Http\Controllers\Api\Corporate\CorporateStaffTransportController::class, 'locations']);
-            Route::post('locations', [\App\Http\Controllers\Api\Corporate\CorporateStaffTransportController::class, 'storeLocation']);
-            Route::get('programs', [\App\Http\Controllers\Api\Corporate\CorporateStaffTransportController::class, 'programs']);
-            Route::post('programs', [\App\Http\Controllers\Api\Corporate\CorporateStaffTransportController::class, 'storeProgram']);
-            Route::put('programs/{program}', [\App\Http\Controllers\Api\Corporate\CorporateStaffTransportController::class, 'updateProgram']);
+            Route::get('setup-status', [CorporateStaffTransportController::class, 'setupStatus']);
+            Route::get('locations', [CorporateStaffTransportController::class, 'locations']);
+            Route::post('locations', [CorporateStaffTransportController::class, 'storeLocation']);
+            Route::get('programs', [CorporateStaffTransportController::class, 'programs']);
+            Route::post('programs', [CorporateStaffTransportController::class, 'storeProgram']);
+            Route::put('programs/{program}', [CorporateStaffTransportController::class, 'updateProgram']);
 
             Route::get('programs/{program}/shifts', [CorporateStaffTransportController::class, 'shifts']);
             Route::post('programs/{program}/shifts', [CorporateStaffTransportController::class, 'storeShift']);
@@ -3078,14 +3085,14 @@ Route::middleware(['auth:api'])->group(function () {
             Route::put('programs/{program}/routes/{route}/members/{member}', [CorporateStaffTransportController::class, 'updateMember']);
             Route::delete('programs/{program}/routes/{route}/members/{member}', [CorporateStaffTransportController::class, 'deleteMember']);
 
-            Route::post('roster/build', [\App\Http\Controllers\Api\Corporate\CorporateStaffTransportController::class, 'buildRoster']);
-            Route::get('roster', [\App\Http\Controllers\Api\Corporate\CorporateStaffTransportController::class, 'roster']);
-            Route::get('my-calendar', [\App\Http\Controllers\Api\Corporate\CorporateStaffTransportController::class, 'myCalendar']);
-            Route::post('my-calendar/{participation}/status', [\App\Http\Controllers\Api\Corporate\CorporateStaffTransportController::class, 'setMyParticipation']);
-            Route::post('roster/{participation}/status', [\App\Http\Controllers\Api\Corporate\CorporateStaffTransportController::class, 'setParticipation']);
-            Route::post('generate', [\App\Http\Controllers\Api\Corporate\CorporateStaffTransportController::class, 'generate']);
-            Route::get('logs', [\App\Http\Controllers\Api\Corporate\CorporateStaffTransportController::class, 'logs']);
-            Route::get('generated-bookings/{booking}', [\App\Http\Controllers\Api\Corporate\CorporateStaffTransportController::class, 'generatedBooking']);
+            Route::post('roster/build', [CorporateStaffTransportController::class, 'buildRoster']);
+            Route::get('roster', [CorporateStaffTransportController::class, 'roster']);
+            Route::get('my-calendar', [CorporateStaffTransportController::class, 'myCalendar']);
+            Route::post('my-calendar/{participation}/status', [CorporateStaffTransportController::class, 'setMyParticipation']);
+            Route::post('roster/{participation}/status', [CorporateStaffTransportController::class, 'setParticipation']);
+            Route::post('generate', [CorporateStaffTransportController::class, 'generate']);
+            Route::get('logs', [CorporateStaffTransportController::class, 'logs']);
+            Route::get('generated-bookings/{booking}', [CorporateStaffTransportController::class, 'generatedBooking']);
         });
 
         // Booking Management
@@ -3164,21 +3171,21 @@ Route::middleware(['auth:api'])->group(function () {
         Route::post('{corporate}/initial-admin', [CorporateController::class, 'createInitialAdmin']);
 
         Route::middleware('ensure.internal')->group(function () {
-            Route::get('{corporate}/billing/terms', [\App\Http\Controllers\Api\Corporate\CorporateMonthlyBillingController::class, 'terms'])->middleware('permission:corporates.view');
-            Route::post('{corporate}/billing/terms', [\App\Http\Controllers\Api\Corporate\CorporateMonthlyBillingController::class, 'storeTerms'])->middleware('permission:corporates.manage');
-            Route::patch('{corporate}/billing/terms/{term}/end', [\App\Http\Controllers\Api\Corporate\CorporateMonthlyBillingController::class, 'endTerms'])->whereUuid('term')->middleware('permission:corporates.manage');
-            Route::post('{corporate}/billing/preview', [\App\Http\Controllers\Api\Corporate\CorporateMonthlyBillingController::class, 'preview'])->middleware('permission:bookings.view');
-            Route::post('{corporate}/billing/generate', [\App\Http\Controllers\Api\Corporate\CorporateMonthlyBillingController::class, 'generate'])->middleware('permission:bookings.update');
-            Route::post('{corporate}/billing/settlements/{settlement}/issue', [\App\Http\Controllers\Api\Corporate\CorporateMonthlyBillingController::class, 'issue'])->whereUuid('settlement')->middleware('permission:bookings.update');
-            Route::get('{corporate}/distance-pricing-policy', [\App\Http\Controllers\Api\Corporate\CorporateDistancePolicyController::class, 'show']);
-            Route::put('{corporate}/distance-pricing-policy', [\App\Http\Controllers\Api\Corporate\CorporateDistancePolicyController::class, 'update']);
-            Route::get('{corporate}/distance-pricing-policy/services', [\App\Http\Controllers\Api\Corporate\CorporateDistancePolicyController::class, 'services']);
-            Route::get('{corporate}/distance-pricing-policy/locations', [\App\Http\Controllers\Api\Corporate\CorporateDistancePolicyController::class, 'locations']);
-            Route::get('{corporate}/distance-pricing-policy/location-options', [\App\Http\Controllers\Api\Corporate\CorporateDistancePolicyController::class, 'locationOptions']);
-            Route::post('{corporate}/distance-pricing-policy/locations', [\App\Http\Controllers\Api\Corporate\CorporateDistancePolicyController::class, 'storeLocation']);
-            Route::put('{corporate}/distance-pricing-policy/locations/{location}', [\App\Http\Controllers\Api\Corporate\CorporateDistancePolicyController::class, 'updateLocation']);
-            Route::post('{corporate}/distance-pricing-policy/preview', [\App\Http\Controllers\Api\Corporate\CorporateDistancePolicyController::class, 'preview']);
-            Route::put('{corporate}/distance-pricing-policy/services/{serviceType}', [\App\Http\Controllers\Api\Corporate\CorporateDistancePolicyController::class, 'updateService']);
+            Route::get('{corporate}/billing/terms', [CorporateMonthlyBillingController::class, 'terms'])->middleware('permission:corporates.view');
+            Route::post('{corporate}/billing/terms', [CorporateMonthlyBillingController::class, 'storeTerms'])->middleware('permission:corporates.manage');
+            Route::patch('{corporate}/billing/terms/{term}/end', [CorporateMonthlyBillingController::class, 'endTerms'])->whereUuid('term')->middleware('permission:corporates.manage');
+            Route::post('{corporate}/billing/preview', [CorporateMonthlyBillingController::class, 'preview'])->middleware('permission:bookings.view');
+            Route::post('{corporate}/billing/generate', [CorporateMonthlyBillingController::class, 'generate'])->middleware('permission:bookings.update');
+            Route::post('{corporate}/billing/settlements/{settlement}/issue', [CorporateMonthlyBillingController::class, 'issue'])->whereUuid('settlement')->middleware('permission:bookings.update');
+            Route::get('{corporate}/distance-pricing-policy', [CorporateDistancePolicyController::class, 'show']);
+            Route::put('{corporate}/distance-pricing-policy', [CorporateDistancePolicyController::class, 'update']);
+            Route::get('{corporate}/distance-pricing-policy/services', [CorporateDistancePolicyController::class, 'services']);
+            Route::get('{corporate}/distance-pricing-policy/locations', [CorporateDistancePolicyController::class, 'locations']);
+            Route::get('{corporate}/distance-pricing-policy/location-options', [CorporateDistancePolicyController::class, 'locationOptions']);
+            Route::post('{corporate}/distance-pricing-policy/locations', [CorporateDistancePolicyController::class, 'storeLocation']);
+            Route::put('{corporate}/distance-pricing-policy/locations/{location}', [CorporateDistancePolicyController::class, 'updateLocation']);
+            Route::post('{corporate}/distance-pricing-policy/preview', [CorporateDistancePolicyController::class, 'preview']);
+            Route::put('{corporate}/distance-pricing-policy/services/{serviceType}', [CorporateDistancePolicyController::class, 'updateService']);
         });
 
         // Admin sub-resource routes for departments, divisions, employees, bookings
@@ -3201,34 +3208,34 @@ Route::middleware(['auth:api'])->group(function () {
         Route::post('{corporate}/employees/{id}/deactivate', [AdminCorporateEmployeeController::class, 'deactivate']);
         Route::post('{corporate}/employees/{id}/role', [AdminCorporateEmployeeController::class, 'assignRole']);
         Route::delete('{corporate}/employees/{id}', [AdminCorporateEmployeeController::class, 'destroy']);
-        Route::post('{corporate}/employees/{id}/access-link', [\App\Http\Controllers\Api\Corporate\AdminCorporateEmployeeController::class, 'sendAccessLink'])->middleware('throttle:5,1');
+        Route::post('{corporate}/employees/{id}/access-link', [AdminCorporateEmployeeController::class, 'sendAccessLink'])->middleware('throttle:5,1');
 
         Route::post('{corporate}/bookings/for-employee', [AdminCorporateBookingController::class, 'storeForEmployee']);
 
         Route::prefix('{corporate}/staff-transport')->group(function () {
-            Route::get('programs', [\App\Http\Controllers\Api\Corporate\CorporateStaffTransportController::class, 'programs']);
-            Route::post('programs', [\App\Http\Controllers\Api\Corporate\CorporateStaffTransportController::class, 'storeProgram']);
-            Route::put('programs/{program}', [\App\Http\Controllers\Api\Corporate\CorporateStaffTransportController::class, 'updateProgram']);
-            Route::get('programs/{program}/shifts', [\App\Http\Controllers\Api\Corporate\CorporateStaffTransportController::class, 'shifts']);
-            Route::post('programs/{program}/shifts', [\App\Http\Controllers\Api\Corporate\CorporateStaffTransportController::class, 'storeShift']);
-            Route::put('programs/{program}/shifts/{shift}', [\App\Http\Controllers\Api\Corporate\CorporateStaffTransportController::class, 'updateShift']);
-            Route::delete('programs/{program}/shifts/{shift}', [\App\Http\Controllers\Api\Corporate\CorporateStaffTransportController::class, 'deleteShift']);
-            Route::get('programs/{program}/routes', [\App\Http\Controllers\Api\Corporate\CorporateStaffTransportController::class, 'routes']);
-            Route::post('programs/{program}/routes', [\App\Http\Controllers\Api\Corporate\CorporateStaffTransportController::class, 'storeRoute']);
-            Route::put('programs/{program}/routes/{route}', [\App\Http\Controllers\Api\Corporate\CorporateStaffTransportController::class, 'updateRoute']);
-            Route::delete('programs/{program}/routes/{route}', [\App\Http\Controllers\Api\Corporate\CorporateStaffTransportController::class, 'deleteRoute']);
-            Route::get('programs/{program}/routes/{route}/members', [\App\Http\Controllers\Api\Corporate\CorporateStaffTransportController::class, 'members']);
-            Route::post('programs/{program}/routes/{route}/members', [\App\Http\Controllers\Api\Corporate\CorporateStaffTransportController::class, 'storeMember']);
-            Route::put('programs/{program}/routes/{route}/members/{member}', [\App\Http\Controllers\Api\Corporate\CorporateStaffTransportController::class, 'updateMember']);
-            Route::delete('programs/{program}/routes/{route}/members/{member}', [\App\Http\Controllers\Api\Corporate\CorporateStaffTransportController::class, 'deleteMember']);
-            Route::post('roster/build', [\App\Http\Controllers\Api\Corporate\CorporateStaffTransportController::class, 'buildRoster']);
-            Route::get('roster', [\App\Http\Controllers\Api\Corporate\CorporateStaffTransportController::class, 'roster']);
-            Route::get('my-calendar', [\App\Http\Controllers\Api\Corporate\CorporateStaffTransportController::class, 'myCalendar']);
-            Route::post('my-calendar/{participation}/status', [\App\Http\Controllers\Api\Corporate\CorporateStaffTransportController::class, 'setMyParticipation']);
-            Route::post('roster/{participation}/status', [\App\Http\Controllers\Api\Corporate\CorporateStaffTransportController::class, 'setParticipation']);
-            Route::post('generate', [\App\Http\Controllers\Api\Corporate\CorporateStaffTransportController::class, 'generate']);
-            Route::get('logs', [\App\Http\Controllers\Api\Corporate\CorporateStaffTransportController::class, 'logs']);
-            Route::get('generated-bookings/{booking}', [\App\Http\Controllers\Api\Corporate\CorporateStaffTransportController::class, 'generatedBooking']);
+            Route::get('programs', [CorporateStaffTransportController::class, 'programs']);
+            Route::post('programs', [CorporateStaffTransportController::class, 'storeProgram']);
+            Route::put('programs/{program}', [CorporateStaffTransportController::class, 'updateProgram']);
+            Route::get('programs/{program}/shifts', [CorporateStaffTransportController::class, 'shifts']);
+            Route::post('programs/{program}/shifts', [CorporateStaffTransportController::class, 'storeShift']);
+            Route::put('programs/{program}/shifts/{shift}', [CorporateStaffTransportController::class, 'updateShift']);
+            Route::delete('programs/{program}/shifts/{shift}', [CorporateStaffTransportController::class, 'deleteShift']);
+            Route::get('programs/{program}/routes', [CorporateStaffTransportController::class, 'routes']);
+            Route::post('programs/{program}/routes', [CorporateStaffTransportController::class, 'storeRoute']);
+            Route::put('programs/{program}/routes/{route}', [CorporateStaffTransportController::class, 'updateRoute']);
+            Route::delete('programs/{program}/routes/{route}', [CorporateStaffTransportController::class, 'deleteRoute']);
+            Route::get('programs/{program}/routes/{route}/members', [CorporateStaffTransportController::class, 'members']);
+            Route::post('programs/{program}/routes/{route}/members', [CorporateStaffTransportController::class, 'storeMember']);
+            Route::put('programs/{program}/routes/{route}/members/{member}', [CorporateStaffTransportController::class, 'updateMember']);
+            Route::delete('programs/{program}/routes/{route}/members/{member}', [CorporateStaffTransportController::class, 'deleteMember']);
+            Route::post('roster/build', [CorporateStaffTransportController::class, 'buildRoster']);
+            Route::get('roster', [CorporateStaffTransportController::class, 'roster']);
+            Route::get('my-calendar', [CorporateStaffTransportController::class, 'myCalendar']);
+            Route::post('my-calendar/{participation}/status', [CorporateStaffTransportController::class, 'setMyParticipation']);
+            Route::post('roster/{participation}/status', [CorporateStaffTransportController::class, 'setParticipation']);
+            Route::post('generate', [CorporateStaffTransportController::class, 'generate']);
+            Route::get('logs', [CorporateStaffTransportController::class, 'logs']);
+            Route::get('generated-bookings/{booking}', [CorporateStaffTransportController::class, 'generatedBooking']);
         });
     });
 });
@@ -3293,7 +3300,7 @@ Route::middleware(['auth:api'])->group(function () {
             Route::get('booking-form-tabs', [BookingFormTabController::class, 'index']);
             Route::get('booking-form-tabs/{id}', [BookingFormTabController::class, 'show']);
         });
-        Route::put('booking-form-tabs/{id}', [\App\Http\Controllers\Api\Admin\BookingFormTabController::class, 'update'])
+        Route::put('booking-form-tabs/{id}', [BookingFormTabController::class, 'update'])
             ->middleware('permission:settings.edit');
         Route::post('booking-form-tabs/{id}/toggle', [BookingFormTabController::class, 'toggle'])
             ->middleware('permission:settings.edit');

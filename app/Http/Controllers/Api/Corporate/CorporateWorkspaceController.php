@@ -5,20 +5,65 @@ namespace App\Http\Controllers\Api\Corporate;
 use App\Http\Controllers\Controller;
 use App\Models\Booking\Booking;
 use App\Models\Corporate\Corporate;
+use App\Models\Corporate\CorporateEmployee;
 use App\Services\CorporateService;
 use App\Services\CorporatePortalPermission;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
+use Spatie\Permission\Models\Role;
+use Illuminate\Support\Str;
 
 class CorporateWorkspaceController extends Controller
 {
+    public function approvalOptions(Request $request): JsonResponse
+    {
+        abort_unless(CorporatePortalPermission::allows($request, 'manage_employees'), 403);
+        $corporateId = $request->corporate_id;
+        $corporate = Corporate::findOrFail($corporateId);
+        app(\App\Services\CorporateRoleStarterService::class)->provision($corporate);
+        $roles = Role::query()->where('guard_name', 'api')->where('name', 'like', 'Corporate_'.$corporateId.'_%')
+            ->whereHas('permissions', fn ($q) => $q->where('name', 'approve_bookings'))
+            ->get(['id', 'name'])->map(fn (Role $role) => [
+                'id' => $role->id,
+                'name' => Str::after($role->name, 'Corporate_'.$corporateId.'_'),
+            ]);
+        $employees = CorporateEmployee::query()->where('corporate_id', $corporateId)->where('is_active', true)
+            ->whereHas('userContext', fn ($q) => $q->where('is_active', true)->whereHas('roles.permissions', fn ($permission) => $permission->where('name', 'approve_bookings')))
+            ->with('user:id,first_name,last_name,email')->get()
+            ->map(fn (CorporateEmployee $employee) => [
+                'id' => $employee->id,
+                'name' => trim(($employee->user?->first_name ?? '').' '.($employee->user?->last_name ?? '')),
+                'email' => $employee->user?->email,
+            ]);
+        return response()->json(['status' => 'success', 'data' => ['roles' => $roles, 'employees' => $employees]]);
+    }
+
     public function updateProfile(Request $request, CorporateService $corporateService): JsonResponse
     {
         abort_unless(CorporatePortalPermission::allows($request, 'manage_employees'), 403);
-        $data = $request->validate(['approval_required' => ['required', 'boolean']]);
+        $data = $request->validate([
+            'approval_required' => ['required', 'boolean'],
+            'approval_mode' => ['required', 'in:role,employee'],
+            'approval_role_ids' => ['present', 'array'],
+            'approval_role_ids.*' => ['integer', 'distinct'],
+            'approval_employee_ids' => ['present', 'array'],
+            'approval_employee_ids.*' => ['uuid', 'distinct'],
+        ]);
         $corporate = Corporate::findOrFail($request->corporate_id);
+        $roleIds = $data['approval_mode'] === 'role' ? $data['approval_role_ids'] : [];
+        $employeeIds = $data['approval_mode'] === 'employee' ? $data['approval_employee_ids'] : [];
+        abort_if($data['approval_required'] && !$roleIds && !$employeeIds, 422, 'Select at least one company approver before enabling company approval.');
+        $prefix = 'Corporate_'.$corporate->id.'_';
+        abort_if($roleIds && Role::query()->whereIn('id', $roleIds)->where('guard_name', 'api')
+            ->where('name', 'like', $prefix.'%')->whereHas('permissions', fn ($q) => $q->where('name', 'approve_bookings'))->count() !== count($roleIds), 422, 'Choose company roles with booking approval permission.');
+        abort_if($employeeIds && CorporateEmployee::query()->whereIn('id', $employeeIds)->where('corporate_id', $corporate->id)->where('is_active', true)
+            ->whereHas('userContext', fn ($q) => $q->where('is_active', true)->whereHas('roles.permissions', fn ($permission) => $permission->where('name', 'approve_bookings')))
+            ->count() !== count($employeeIds), 422, 'Choose active employees with booking approval permission.');
         $corporate = $corporateService->updateCorporate($corporate, [
             'approval_required' => $data['approval_required'],
+            'approval_mode' => $data['approval_mode'],
+            'approval_role_ids' => $roleIds,
+            'approval_employee_ids' => $employeeIds,
             'updated_user_id' => $request->user()->id,
         ]);
 
