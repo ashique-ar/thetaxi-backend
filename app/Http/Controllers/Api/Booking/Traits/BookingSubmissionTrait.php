@@ -786,6 +786,13 @@ trait BookingSubmissionTrait
 
     public function getBookingsList(Request $request): JsonResponse
     {
+        foreach (['requires_approval', 'has_overrides', 'mine_only', 'work_only', 'is_self_driven'] as $booleanFilter) {
+            $value = $request->input($booleanFilter);
+            if (is_string($value) && in_array(strtolower($value), ['true', 'false'], true)) {
+                $request->merge([$booleanFilter => filter_var($value, FILTER_VALIDATE_BOOLEAN)]);
+            }
+        }
+
         $request->validate([
             'page' => 'nullable|integer|min:1',
             'per_page' => 'nullable|integer|min:1|max:100',
