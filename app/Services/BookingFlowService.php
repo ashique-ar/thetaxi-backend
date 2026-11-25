@@ -15027,7 +15027,7 @@ class BookingFlowService
 
             if (isset($params['quotation_options'])) {
                 $sourceItems = $quotationItems;
-                $persistedItems = $booking->bookingItems()->get()->keyBy(fn (BookingItem $item) => (string) data_get($item->metadata, '_quotation_trip_index'));
+                $persistedItems = $booking->bookingItems()->with('serviceType')->get()->keyBy(fn (BookingItem $item) => (string) data_get($item->metadata, '_quotation_trip_index'));
                 $options = [];
                 $seen = [];
                 foreach ($params['quotation_options'] as $optionIndex => $inputOption) {
@@ -15063,40 +15063,46 @@ class BookingFlowService
                     abort_unless($totals['total_estimated'] > 0, 422, 'Every quotation choice must have a valid price.');
                     $groups = VehicleGroup::query()->whereIn('id', $groupIds)->get(['id', 'name'])->keyBy(fn ($group) => (string) $group->id);
                     abort_unless($groups->count() === count(array_unique($groupIds)), 422, 'One or more selected vehicle groups are invalid.');
-                    $optionPricing = $pricing;
                     foreach ($optionItems as $itemIndex => &$optionItem) {
                         $source = !empty($sourceItems[$itemIndex]['id'])
                             ? $persistedItems->first(fn (BookingItem $candidate) => (string) $candidate->id === (string) $sourceItems[$itemIndex]['id'])
                             : $persistedItems->get((string) $itemIndex);
                         abort_unless($source, 422, 'A trip in the quotation could not be matched to its saved booking item.');
-                        $optionItem['metadata'] = array_merge($optionItem['metadata'] ?? [], [
-                            '_quotation_option_id' => (string) ($inputOption['id'] ?? $optionIndex),
-                            '_quotation_trip_index' => $itemIndex,
-                        ]);
                         $optionItem['id'] = (string) $source->id;
-                        if ($optionIndex > 0) {
-                            $sourceItemId = (string) $source->id;
-                            unset($optionItem['id']);
-                            $optionItem['metadata']['_quotation_trip_index'] = $itemIndex;
-                            $newItem = $this->createSingleGroupBookingItem($booking, $optionItem, $pricing['items'][$source->id] ?? $pricing);
-                            $optionItem['id'] = (string) $newItem->id;
-                            if (isset($pricing['items'][$sourceItemId])) {
-                                $optionPricing['items'][$newItem->id] = $pricing['items'][$sourceItemId];
-                            }
-                        }
                     }
                     unset($optionItem);
+                    $tripChoices = [];
+                    foreach ($optionItems as $itemIndex => $optionItem) {
+                        $source = !empty($sourceItems[$itemIndex]['id'])
+                            ? $persistedItems->first(fn (BookingItem $candidate) => (string) $candidate->id === (string) $sourceItems[$itemIndex]['id'])
+                            : $persistedItems->get((string) $itemIndex);
+                        $tripChoices[] = [
+                            'trip_number' => $itemIndex + 1,
+                            'service_name' => (string) ($source->serviceType?->name ?? 'Trip'),
+                            'vehicle_group_name' => (string) $groups[$groupIds[$itemIndex]]->name,
+                            'from_date' => (string) ($source->getRawOriginal('from_date') ?? ''),
+                            'from_time' => (string) ($source->from_time ?? ''),
+                            'to_date' => (string) ($source->getRawOriginal('to_date') ?? ''),
+                            'to_time' => (string) ($source->to_time ?? ''),
+                            'pickup_location' => $source->pickup_location ?? [],
+                            'dropoff_location' => $source->dropoff_location ?? [],
+                            'route' => implode(' → ', array_values(array_filter([
+                                data_get($source->pickup_location, 'address'),
+                                ...collect(data_get($source->metadata, 'multi_route_stop_order', []))
+                                    ->sortBy('route_order')->pluck('address')->all(),
+                                data_get($source->dropoff_location, 'address'),
+                            ]))),
+                        ];
+                    }
                     $options[] = [
                         'id' => (string) Str::uuid(),
+                        'format_version' => 2,
                         'option_number' => count($options) + 1,
                         'vehicle_group_ids' => $groupIds,
                         'vehicle_group_names' => array_map(fn ($id) => (string) $groups[$id]->name, $groupIds),
-                        'trip_choices' => array_map(fn ($id, $index) => [
-                            'trip_number' => $index + 1,
-                            'vehicle_group_name' => (string) $groups[$id]->name,
-                        ], $groupIds, array_keys($groupIds)),
+                        'trip_choices' => $tripChoices,
                         'booking_items' => $optionItems,
-                        'pricing' => $optionPricing,
+                        'pricing' => $pricing,
                         'totals' => $totals,
                     ];
                 }
@@ -15139,7 +15145,10 @@ class BookingFlowService
             $existing = $locked->bookingItems()->get()->keyBy(fn (BookingItem $item) => (string) $item->id);
             $selectedIds = collect($items)->map(fn ($item) => (string) ($item['id'] ?? ''))->all();
             abort_unless(count($items) > 0 && count($selectedIds) === count(array_unique($selectedIds)), 409, 'This vehicle choice no longer matches the trips in the quotation.');
-            if ($pruneAlternatives) {
+            $isCombinationOption = (int) ($option['format_version'] ?? 0) >= 2;
+            if ($isCombinationOption) {
+                abort_unless(count($items) === $existing->count() && collect($selectedIds)->every(fn ($id) => $existing->has($id)), 409, 'This vehicle choice no longer matches the trips in the quotation.');
+            } elseif ($pruneAlternatives) {
                 foreach ($existing as $id => $item) {
                     if (!in_array((string) $id, $selectedIds, true)) {
                         $item->delete();

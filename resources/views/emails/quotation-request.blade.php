@@ -112,7 +112,9 @@
                 <div class="highlight-box info" style="margin-bottom:10px;">
                     <strong>Option {{ $option['option_number'] ?? $loop->iteration }}</strong>
                     @foreach (($option['trip_choices'] ?? []) as $tripChoice)
-                        <div>Trip {{ $tripChoice['trip_number'] }}: {{ $tripChoice['vehicle_group_name'] }}</div>
+                        <div style="margin-top:6px;">Trip {{ $tripChoice['trip_number'] }} — {{ $tripChoice['service_name'] ?? 'Trip' }} / {{ $tripChoice['vehicle_group_name'] }}</div>
+                        <div>{{ $tripChoice['from_date'] ?? '' }} {{ $tripChoice['from_time'] ?? '' }} — {{ $tripChoice['to_date'] ?? '' }} {{ $tripChoice['to_time'] ?? '' }}</div>
+                        @if (!empty($tripChoice['route']))<div>{{ $tripChoice['route'] }}</div>@endif
                     @endforeach
                     <span style="float:right;">{{ number_format((float) data_get($option, 'totals.total_estimated', 0), 2) }} {{ $currencyCode }}</span>
                 </div>
@@ -121,6 +123,7 @@
     @endif
 
     <!-- Booking item details -->
+    @if (count($quotationOptions) < 2)
     <div class="section">
         <h2 class="section-title">
             <span class="icon">{{ $booking->bookingItems->contains(fn ($item) => filled(data_get($item->metadata, 'tour_itinerary_id'))) ? '🗺️' : '🚗' }}</span>
@@ -130,20 +133,13 @@
             // Keep all persisted checkout amounts paired with their snapshot currency.
             $currencyCode = getBookingDisplayCurrency($booking);
         @endphp
-        @if (count($quotationOptions) > 1)
-            @foreach ($booking->bookingItems as $item)
-                <div class="highlight-box info" style="margin-bottom:10px;">
-                    <strong>{{ $item->serviceType?->name ?? 'Trip' }}</strong>
-                    <div>{{ $item->from_date?->format('M j, Y') ?? 'Date not set' }} {{ $item->from_time ?? '' }} — {{ $item->to_date?->format('M j, Y') ?? '' }} {{ $item->to_time ?? '' }}</div>
-                    <div>{{ data_get($item->pickup_location, 'address', 'Pickup not set') }} → {{ data_get($item->dropoff_location, 'address', 'Drop-off not set') }}</div>
-                </div>
-            @endforeach
-        @elseif ($booking->bookingItems->count() > 0)
+        @if ($booking->bookingItems->count() > 0)
             @foreach ($booking->bookingItems as $index => $item)
                 <x-booking-item-email :item="$item" :index="$index" :currency="$currencyCode" />
             @endforeach
         @endif
     </div>
+    @endif
 
     <!-- Payment Summary Section -->
     @if (count($quotationOptions) < 2)

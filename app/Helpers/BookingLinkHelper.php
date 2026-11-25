@@ -125,6 +125,12 @@ class BookingLinkHelper
         foreach ($booking->bookingItems->sortBy('id')->values() as $index => $item) {
             $snapshot['items'][$index]['service_name'] = (string) ($item->serviceType?->name ?? '');
             $snapshot['items'][$index]['vehicle_group_name'] = (string) ($item->vehicleGroup?->name ?? '');
+            $snapshot['items'][$index]['route'] = implode(' → ', array_values(array_filter([
+                data_get($item->pickup_location, 'address'),
+                ...collect(data_get($item->metadata, 'multi_route_stop_order', []))
+                    ->sortBy('route_order')->pluck('address')->all(),
+                data_get($item->dropoff_location, 'address'),
+            ])));
         }
 
         return $snapshot;

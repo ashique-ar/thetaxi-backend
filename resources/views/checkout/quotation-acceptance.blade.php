@@ -62,8 +62,8 @@
                     <div class="text-muted">{{ !empty($item['is_self_driven']) ? 'Self-drive' : 'With driver' }}</div>
                     <div>{{ $item['from_date'] ?? 'Date not set' }} {{ $item['from_time'] ?? '' }} –
                         {{ $item['to_date'] ?? '' }} {{ $item['to_time'] ?? '' }}</div>
-                    @if ($pickup || $dropoff)
-                        <div class="text-muted">{{ $pickup ?: 'Pickup not set' }} → {{ $dropoff ?: 'Drop-off not set' }}</div>
+                    @if (!empty($item['route']) || $pickup || $dropoff)
+                        <div class="text-muted">{{ $item['route'] ?? (($pickup ?: 'Pickup not set') . ' → ' . ($dropoff ?: 'Drop-off not set')) }}</div>
                     @endif
                     @if (empty($quotation['options']))
                     <div class="text-muted">{{ $item['quantity'] ?? 1 }} ×
@@ -110,14 +110,16 @@
             <input type="hidden" name="terms_hash" value="{{ $termsHash }}">
             @if (!empty($quotation['options']))
                 <fieldset class="mb-3">
-                    <legend class="h5">Choose one vehicle option</legend>
+                    <legend class="h5">Choose one complete trip option</legend>
                     @foreach ($quotation['options'] as $option)
                         <label class="d-flex align-items-start gap-2 border rounded p-3 mb-2">
                             <input type="radio" name="quotation_option_id" value="{{ $option['id'] }}" required @checked(old('quotation_option_id') === ($option['id'] ?? null))>
                             <span class="flex-grow-1">
                                 <strong>Option {{ $option['option_number'] ?? $loop->iteration }}</strong>
                                 @foreach (($option['trip_choices'] ?? []) as $tripChoice)
-                                    <span class="d-block">Trip {{ $tripChoice['trip_number'] }}: {{ $tripChoice['vehicle_group_name'] }}</span>
+                                    <span class="d-block mt-2"><strong>Trip {{ $tripChoice['trip_number'] }}:</strong> {{ $tripChoice['service_name'] ?? 'Trip' }} — {{ $tripChoice['vehicle_group_name'] }}</span>
+                                    <span class="d-block text-muted">{{ $tripChoice['from_date'] ?? '' }} {{ $tripChoice['from_time'] ?? '' }} – {{ $tripChoice['to_date'] ?? '' }} {{ $tripChoice['to_time'] ?? '' }}</span>
+                                    @if (!empty($tripChoice['route']))<span class="d-block text-muted">{{ $tripChoice['route'] }}</span>@endif
                                 @endforeach
                                 <span class="d-block">{{ number_format((float) data_get($option, 'totals.total_estimated', 0), 2) }} {{ $currency }}</span>
                             </span>
