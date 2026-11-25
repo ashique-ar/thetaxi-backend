@@ -3052,7 +3052,8 @@ Route::middleware(['auth:api'])->group(function () {
     */
 
     Route::prefix('corporate')->middleware(['ensure.corporate'])->group(function () {
-        Route::get('workspace', [CorporateWorkspaceController::class, 'dashboard']);
+        Route::get('workspace', [CorporateWorkspaceController::class, 'dashboard'])
+            ->middleware('permission:corporate.view');
         // Department Management
         Route::get('departments', [CorporateDepartmentController::class, 'index']);
         Route::post('departments', [CorporateDepartmentController::class, 'store'])->middleware('permission:manage_departments');
