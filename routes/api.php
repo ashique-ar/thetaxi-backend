@@ -3109,7 +3109,7 @@ Route::middleware(['auth:api'])->group(function () {
                     ],
                 ],
             ]);
-        });
+        })->middleware('permission:manage_employees');
         Route::patch('profile', [CorporateWorkspaceController::class, 'updateProfile'])
             ->middleware('permission:manage_employees');
         Route::get('approval-options', [CorporateWorkspaceController::class, 'approvalOptions'])
@@ -3125,7 +3125,7 @@ Route::middleware(['auth:api'])->group(function () {
                 ->get();
 
             return ServiceTypeResource::collection($serviceTypes);
-        });
+        })->middleware('permission:staff-transport.view');
 
         // Staff Transport
         Route::prefix('staff-transport')->group(function () {
@@ -3212,7 +3212,7 @@ Route::middleware(['auth:api'])->group(function () {
                 'status' => 'success',
                 'data' => ['vehicle_groups' => $vehicleGroups],
             ]);
-        });
+        })->middleware('permission:staff-transport.view');
     });
 
     /*

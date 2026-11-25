@@ -5,7 +5,7 @@ namespace App\Http\Controllers\Api\Corporate;
 use App\Http\Controllers\Controller;
 use App\Models\Corporate\CorporateEmployee;
 use App\Services\CorporateRoleStarterService;
-use App\Services\PermissionRegistry;
+use App\Services\CorporatePortalPermission;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Str;
@@ -35,6 +35,7 @@ class CorporateRoleController extends Controller
         'corporate.view',
         'bookings.view',
         'bookings.create',
+        'staff-transport.self.view',
         'staff-transport.view',
         'staff-transport.manage',
         'staff-transport.override',
@@ -216,8 +217,12 @@ class CorporateRoleController extends Controller
         );
     }
 
-    public function permissions(): JsonResponse
+    public function permissions(Request $request): JsonResponse
     {
+        if (! $this->canManageCorporateRoles($request)) {
+            return $this->forbiddenResponse();
+        }
+
         $this->ensureCorporatePermissions(self::CORPORATE_PERMISSIONS);
 
         $permissions = Permission::where('guard_name', 'api')
@@ -232,24 +237,7 @@ class CorporateRoleController extends Controller
 
     private function canManageCorporateRoles(Request $request): bool
     {
-        $context = $request->user()?->contexts()
-            ->where('context_type', 'corporate')
-            ->where('is_active', true)
-            ->when($request->header('X-Active-Context-Id'), fn ($q, $id) => $q->where('id', $id))
-            ->with('roles.permissions')
-            ->first();
-
-        if (! $context) {
-            return false;
-        }
-
-        $registry = app(PermissionRegistry::class);
-        $manageRolesPermission = $registry->resolveKey('manage-roles');
-
-        return $context->roles
-            ->flatMap(fn (Role $role) => $role->permissions->pluck('name'))
-            ->map(fn (string $permission) => $registry->resolveKey($permission))
-            ->contains($manageRolesPermission);
+        return CorporatePortalPermission::allows($request, 'roles.manage');
     }
 
     private function forbiddenResponse(): JsonResponse

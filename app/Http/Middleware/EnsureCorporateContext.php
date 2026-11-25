@@ -104,6 +104,8 @@ class EnsureCorporateContext
             'corporate_employee_id' => $corporateEmployee->id,
         ]);
         $request->attributes->set('corporate_employee', $corporateEmployee);
+        $request->attributes->set('resolved_active_context_type', 'corporate');
+        $request->attributes->set('resolved_active_context_id', (string) $corporateContext->id);
         return $next($request);
     }
 }

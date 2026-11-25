@@ -9,6 +9,7 @@ use Illuminate\Database\Schema\Blueprint;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Schema;
 use Illuminate\Support\Str;
+use Spatie\Permission\Models\Permission;
 use Spatie\Permission\Models\Role;
 
 beforeEach(function () {
@@ -18,6 +19,7 @@ beforeEach(function () {
     }
     Schema::create('corporates', function (Blueprint $table) {
         $table->uuid('id')->primary(); $table->string('name'); $table->string('contact_email')->nullable();
+        $table->json('booking_notification_emails')->nullable();
         $table->boolean('is_active')->default(true); $table->timestamps(); $table->softDeletes();
     });
     Schema::create('corporate_employees', function (Blueprint $table) {
@@ -60,7 +62,7 @@ beforeEach(function () {
         $table->bigIncrements('id'); $table->string('log_name')->nullable(); $table->text('description');
         $table->string('subject_type')->nullable(); $table->uuid('subject_id')->nullable();
         $table->string('causer_type')->nullable(); $table->uuid('causer_id')->nullable();
-        $table->json('properties')->nullable(); $table->string('event')->nullable();
+        $table->json('attribute_changes')->nullable(); $table->json('properties')->nullable(); $table->string('event')->nullable();
         $table->uuid('batch_uuid')->nullable(); $table->timestamps();
     });
 });
@@ -76,6 +78,10 @@ it('creates four separate roles per corporate and preserves changed permissions'
     $firstRoles = Role::where('name', 'like', 'Corporate_'.$first->id.'_%')->get();
     $secondRoles = Role::where('name', 'like', 'Corporate_'.$second->id.'_%')->get();
     $employeeRole = $service->resolve($first, 'Corporate_Employee');
+    expect($employeeRole->permissions->pluck('name')->all())
+        ->toContain('staff-transport.self.view')
+        ->not->toContain('staff-transport.view');
+
     $employeeRole->syncPermissions(['corporate.view']);
 
     $rerun = $service->provision($first);
@@ -119,4 +125,22 @@ it('moves a legacy shared assignment to the matching company role', function () 
     $this->assertDatabaseHas('activity_log', [
         'log_name' => 'user-access', 'subject_id' => $userId, 'description' => 'context_roles_assigned',
     ]);
+});
+
+it('moves existing employee starter roles from management transport access to personal calendar access', function () {
+    $corporate = Corporate::create(['name' => 'Transport Scope Company', 'contact_email' => 'transport@example.test', 'is_active' => true]);
+    $service = app(CorporateRoleStarterService::class);
+    $service->provision($corporate);
+    $employeeRole = $service->resolve($corporate, 'Corporate_Employee');
+    $employeeRole->syncPermissions([
+        'corporate.view',
+        Permission::findOrCreate('staff-transport.view', 'api'),
+    ]);
+
+    (require database_path('migrations/2026_11_25_000002_scope_corporate_employee_staff_transport_permissions.php'))->up();
+    $employeeRole->refresh()->load('permissions');
+
+    expect($employeeRole->permissions->pluck('name')->all())
+        ->toContain('staff-transport.self.view')
+        ->not->toContain('staff-transport.view');
 });

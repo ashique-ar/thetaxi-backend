@@ -8,5 +8,5 @@ it('shows permission keys without exposing their database IDs', function () {
         ->toContain('permission.name')
         ->not->toContain('matColumnDef="id"')
         ->not->toContain('{{ permission.id }}')
-        ->and($component)->toContain("['name', 'guard_name', 'created_at', 'actions']");
+        ->and($component)->toContain("['name', 'module', 'created_at', 'actions']");
 });

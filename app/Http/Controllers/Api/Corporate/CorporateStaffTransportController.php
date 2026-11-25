@@ -36,6 +36,7 @@ class CorporateStaffTransportController extends Controller
         $this->middleware('permission:staff-transport.manage')->only(['storeProgram', 'updateProgram', 'storeShift', 'updateShift', 'deleteShift', 'storeRoute', 'updateRoute', 'deleteRoute', 'storeMember', 'updateMember', 'deleteMember', 'buildRoster', 'storeLocation']);
         $this->middleware('permission:staff-transport.override')->only(['setParticipation']);
         $this->middleware('permission:staff-transport.generate')->only(['generate']);
+        $this->middleware('permission:staff-transport.view|staff-transport.self.view')->only(['myCalendar', 'setMyParticipation']);
     }
 
     public function setupStatus(Request $request): JsonResponse

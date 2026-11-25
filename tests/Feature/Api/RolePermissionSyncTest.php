@@ -2,6 +2,7 @@
 
 use Illuminate\Database\Schema\Blueprint;
 use Illuminate\Auth\Middleware\Authenticate;
+use App\Http\Middleware\EnsureInternalContext;
 use Illuminate\Support\Facades\Schema;
 use Illuminate\Support\Facades\DB;
 use App\Models\User;
@@ -68,11 +69,24 @@ beforeEach(function () {
         $table->primary(['user_id', 'permission_id']);
     });
 
+    Schema::create('activity_log', function (Blueprint $table) {
+        $table->bigIncrements('id');
+        $table->string('log_name')->nullable();
+        $table->text('description');
+        $table->string('subject_type')->nullable();
+        $table->string('subject_id')->nullable();
+        $table->string('causer_type')->nullable();
+        $table->string('causer_id')->nullable();
+        $table->json('properties')->nullable();
+        $table->json('attribute_changes')->nullable();
+        $table->timestamps();
+    });
+
     app(PermissionRegistrar::class)->forgetCachedPermissions();
 });
 
 it('syncs a role to only the requested permissions', function () {
-    $this->withoutMiddleware([Authenticate::class, PermissionMiddleware::class]);
+    $this->withoutMiddleware([Authenticate::class, EnsureInternalContext::class, PermissionMiddleware::class]);
 
     $role = Role::create(['name' => 'operations', 'guard_name' => 'api']);
 
@@ -110,7 +124,7 @@ it('syncs a role to only the requested permissions', function () {
 });
 
 it('merges role grants and revokes against the locked current permission set', function () {
-    $this->withoutMiddleware([Authenticate::class, PermissionMiddleware::class]);
+    $this->withoutMiddleware([Authenticate::class, EnsureInternalContext::class, PermissionMiddleware::class]);
 
     $role = Role::create(['name' => 'operations', 'guard_name' => 'api']);
     $view = Permission::create(['name' => 'bookings.view', 'guard_name' => 'api']);
@@ -161,7 +175,7 @@ it('clears the permission cache only after a role permission transaction commits
 });
 
 it('rejects permissions that do not exist for the role guard', function () {
-    $this->withoutMiddleware([Authenticate::class, PermissionMiddleware::class]);
+    $this->withoutMiddleware([Authenticate::class, EnsureInternalContext::class, PermissionMiddleware::class]);
 
     $role = Role::create(['name' => 'operations', 'guard_name' => 'api']);
     Permission::create(['name' => 'addons.view', 'guard_name' => 'web']);
@@ -181,11 +195,13 @@ it('does not write role permissions for an unresolved role model', function () {
 })->throws(\InvalidArgumentException::class, 'Cannot sync permissions for an unsaved role.');
 
 it('preserves untracked legacy direct grants when a role loses the same permission', function () {
-    $this->withoutMiddleware([Authenticate::class, PermissionMiddleware::class]);
+    $this->withoutMiddleware([Authenticate::class, EnsureInternalContext::class, PermissionMiddleware::class]);
 
     $role = Role::create(['name' => 'operations', 'guard_name' => 'api']);
     $permission = Permission::create(['name' => 'addons.view', 'guard_name' => 'api']);
-    $user = User::factory()->create();
+    $user = new User();
+    $user->id = (string) \Illuminate\Support\Str::uuid();
+    $user->exists = true;
     DB::table('role_has_permissions')->insert(['role_id' => $role->id, 'permission_id' => $permission->id]);
     DB::table('model_has_roles')->insert([
         'role_id' => $role->id,

@@ -243,6 +243,7 @@ class AllPermissionsSeeder extends Seeder
         'uploads.delete-any',
         'staff-transport.generate',
         'staff-transport.override',
+        'staff-transport.self.view',
         'staff-sensitive-documents.view',
         'staff-sensitive-documents.create',
         'staff-sensitive-documents.verify',

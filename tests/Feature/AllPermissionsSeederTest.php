@@ -99,7 +99,8 @@ it('can run repeatedly without duplicates or removing client assignments', funct
         $admin = Role::where(['name' => 'admin', 'guard_name' => $guard])->firstOrFail();
         $masterAdmin = Role::where(['name' => 'super-admin', 'guard_name' => $guard])->firstOrFail();
 
-        expect($masterAdmin->permissions()->count())->toBe(count(AllPermissionsSeeder::allPermissionNames()))
+        expect($masterAdmin->permissions()->count())->toBe(count(AllPermissionsSeeder::allPermissionNames()) + 1)
+            ->and($masterAdmin->hasPermissionTo('client.custom-workflow'))->toBeTrue()
             ->and($admin->permissions()->count())->toBeLessThan(count(AllPermissionsSeeder::allPermissionNames()))
             ->and($admin->permissions()->whereIn('name', ['roles.manage', 'permissions.manage', 'documents.view', 'hr.medical-records.view', 'uploads.delete-any'])->count())->toBe(5)
             ->and($admin->permissions()->whereIn('name', ['system.manage', 'website-settings.manage', 'view_audit_log'])->exists())->toBeFalse()

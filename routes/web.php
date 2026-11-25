@@ -77,7 +77,7 @@ Route::get('/robots.txt', function () {
     
     if ($indexable) {
         // Allow indexing for production sites
-        $content = "User-agent: *\nDisallow:\n\nSitemap: " . url('/sitemap.xml');
+        $content = "User-agent: *\nDisallow: /v/\nDisallow: /shared-vehicles/\n\nSitemap: " . url('/sitemap.xml');
     } else {
         // Block all indexing for dev/staging sites
         $content = "User-agent: *\nDisallow: /";

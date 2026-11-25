@@ -20,10 +20,14 @@ class CorporatePortalPermission
     public static function employeeAllows(CorporateEmployee $employee, string $permission): bool
     {
         $context = $employee->userContext;
+        $user = $context?->user;
 
-        return $context && $context->is_active && $employee->is_active && $employee->corporate?->is_active
-            && $context->roles()
-            ->whereHas('permissions', fn ($query) => $query->where('name', $permission))
-            ->exists();
+        return $context && $user && $context->is_active && $employee->is_active && $employee->corporate?->is_active
+            && app(PermissionEvaluator::class)->userHasAnyForRequest(
+                $user,
+                [$permission],
+                'corporate',
+                (string) $context->id,
+            );
     }
 }

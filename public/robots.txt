@@ -1,6 +1,0 @@
-User-agent: *
-Disallow: /v/
-Disallow: /shared-vehicles/
-
-# Sitemap location (update if deploying to a subfolder)
-Sitemap: /sitemap.xml

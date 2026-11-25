@@ -44,7 +44,7 @@ class CorporateRoleStarterService
             'key' => 'Employee',
             'permissions' => [
                 'corporate.view', 'create_bookings', 'bookings.view',
-                'bookings.create', 'staff-transport.view',
+                'bookings.create', 'staff-transport.self.view',
             ],
         ],
     ];

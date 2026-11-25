@@ -1,8 +1,14 @@
 <?php
 
 use App\Models\User;
+use App\Models\UserContext;
+use App\Models\Corporate\Corporate;
+use App\Models\Corporate\CorporateEmployee;
+use App\Http\Middleware\EnsureCorporateContext;
+use App\Services\CorporatePortalPermission;
 use App\Services\PermissionEvaluator;
 use Illuminate\Database\Schema\Blueprint;
+use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Schema;
 
@@ -49,6 +55,18 @@ it('uses only the selected corporate context when a user belongs to two companie
         $table->string('model_type');
         $table->string('model_id');
     });
+    Schema::create('corporates', function (Blueprint $table) {
+        $table->uuid('id')->primary();
+        $table->boolean('is_active');
+        $table->softDeletes();
+    });
+    Schema::create('corporate_employees', function (Blueprint $table) {
+        $table->uuid('id')->primary();
+        $table->uuid('user_id');
+        $table->uuid('corporate_id');
+        $table->boolean('is_active');
+        $table->softDeletes();
+    });
 
     $userId = '10000000-0000-4000-8000-000000000001';
     $financeContext = '20000000-0000-4000-8000-000000000001';
@@ -57,20 +75,36 @@ it('uses only the selected corporate context when a user belongs to two companie
         ['id' => $financeContext, 'user_id' => $userId, 'context_type' => 'corporate', 'context_id' => '30000000-0000-4000-8000-000000000001', 'is_active' => true],
         ['id' => $employeeContext, 'user_id' => $userId, 'context_type' => 'corporate', 'context_id' => '30000000-0000-4000-8000-000000000002', 'is_active' => true],
     ]);
+    DB::table('corporates')->insert([
+        ['id' => '30000000-0000-4000-8000-000000000001', 'is_active' => true],
+        ['id' => '30000000-0000-4000-8000-000000000002', 'is_active' => true],
+    ]);
+    DB::table('corporate_employees')->insert([
+        ['id' => '30000000-0000-4000-8000-000000000001', 'user_id' => $userId, 'corporate_id' => '30000000-0000-4000-8000-000000000001', 'is_active' => true],
+        ['id' => '30000000-0000-4000-8000-000000000002', 'user_id' => $userId, 'corporate_id' => '30000000-0000-4000-8000-000000000002', 'is_active' => true],
+    ]);
     DB::table('roles')->insert([
         ['id' => 1, 'name' => 'Corporate_Master_Admin', 'guard_name' => 'api'],
         ['id' => 2, 'name' => 'Corporate_Employee', 'guard_name' => 'api'],
     ]);
-    DB::table('permissions')->insert(['id' => 1, 'name' => 'view_payments', 'guard_name' => 'api']);
+    DB::table('permissions')->insert([
+        ['id' => 1, 'name' => 'view_payments', 'guard_name' => 'api'],
+        ['id' => 2, 'name' => 'manage_employees', 'guard_name' => 'api'],
+        ['id' => 3, 'name' => 'manage-roles', 'guard_name' => 'api'],
+        ['id' => 4, 'name' => 'global_only_permission', 'guard_name' => 'api'],
+    ]);
     DB::table('user_context_roles')->insert([
         ['user_context_id' => $financeContext, 'role_id' => 1],
         ['user_context_id' => $employeeContext, 'role_id' => 2],
     ]);
     DB::table('role_has_permissions')->insert(['role_id' => 1, 'permission_id' => 1]);
     DB::table('model_has_permissions')->insert([
-        'permission_id' => 1,
-        'model_type' => User::class,
-        'model_id' => $userId,
+        ['permission_id' => 1, 'model_type' => User::class, 'model_id' => $userId],
+        ['permission_id' => 4, 'model_type' => User::class, 'model_id' => $userId],
+    ]);
+    DB::table('user_context_permission_grants')->insert([
+        ['user_context_id' => $financeContext, 'permission_id' => 2],
+        ['user_context_id' => $financeContext, 'permission_id' => 3],
     ]);
 
     $user = new User();
@@ -80,6 +114,34 @@ it('uses only the selected corporate context when a user belongs to two companie
 
     expect($evaluator->userHasAnyForRequest($user, ['view_payments'], 'corporate', $financeContext))->toBeTrue()
         ->and($evaluator->userHasAnyForRequest($user, ['view_payments'], 'corporate', $employeeContext))->toBeFalse();
+
+    $context = new UserContext(['id' => $financeContext, 'is_active' => true]);
+    $context->setRelation('user', $user);
+    $employee = new CorporateEmployee(['is_active' => true]);
+    $employee->setRelation('userContext', $context);
+    $employee->setRelation('corporate', new Corporate(['is_active' => true]));
+
+    expect(CorporatePortalPermission::employeeAllows($employee, 'manage_employees'))->toBeTrue()
+        ->and(CorporatePortalPermission::employeeAllows($employee, 'view_payments'))->toBeTrue()
+        ->and(CorporatePortalPermission::employeeAllows($employee, 'roles.manage'))->toBeTrue();
+
+    $context->id = $employeeContext;
+    expect(CorporatePortalPermission::employeeAllows($employee, 'manage_employees'))->toBeFalse();
+
+    $request = Request::create('/api/corporate/workspace');
+    $request->setUserResolver(fn () => $user);
+    (new EnsureCorporateContext())->handle($request, function (Request $request) use ($financeContext, $employeeContext, $user, $evaluator): \Symfony\Component\HttpFoundation\Response {
+        expect($request->attributes->get('resolved_active_context_type'))->toBe('corporate')
+            ->and($request->attributes->get('resolved_active_context_id'))->toBeIn([$financeContext, $employeeContext])
+            ->and($evaluator->userHasAnyForRequest(
+                $user,
+                ['global_only_permission'],
+                $request->attributes->get('resolved_active_context_type'),
+                $request->attributes->get('resolved_active_context_id'),
+            ))->toBeFalse();
+
+        return response('', 204);
+    });
 
     expect(fn () => DB::table('user_contexts')->insert([
         'id' => '20000000-0000-4000-8000-000000000003',
