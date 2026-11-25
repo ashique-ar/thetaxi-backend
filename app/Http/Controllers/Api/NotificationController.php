@@ -54,7 +54,7 @@ class NotificationController extends Controller
                     $type->whereNull('data->notification_type')->orWhere('data->notification_type', '!=', 'corporate_booking_approval_requested');
                 });
             });
-        } elseif ($contextType) {
+        } elseif ($contextType && $contextType !== 'staff') {
             $query->where(function ($notifications) {
                 $notifications->where(function ($type) {
                     $type->whereNull('data->type')->orWhere('data->type', '!=', 'booking_approval_requested');
