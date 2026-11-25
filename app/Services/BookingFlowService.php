@@ -10396,7 +10396,7 @@ class BookingFlowService
     {
         $bookingStatuses = $this->normalizeFilterValues(
             $filters['status'] ?? null,
-            ['draft', 'inquiry', 'inquiry_qualified', 'pending_approval', 'approved', 'confirmed', 'allocated', 'in_progress', 'completed', 'cancelled']
+            ['draft', 'inquiry', 'inquiry_qualified', 'quotation_requested', 'pending_approval', 'approved', 'confirmed', 'allocated', 'in_progress', 'completed', 'cancelled']
         );
         $itemStatuses = $this->normalizeFilterValues(
             $filters['item_status'] ?? null,
@@ -10565,6 +10565,8 @@ class BookingFlowService
             $query->whereHas('booking', function ($bookingQuery) use ($bookingStatuses) {
                 $bookingQuery->whereIn('status', $bookingStatuses);
             });
+        } elseif (!empty($filters['exclude_quotation_requested'])) {
+            $query->whereHas('booking', fn ($bookingQuery) => $bookingQuery->where('status', '!=', 'quotation_requested'));
         }
 
         if (!empty($itemStatuses)) {
@@ -15011,6 +15013,7 @@ class BookingFlowService
             if (isset($params['quotation_options'])) {
                 foreach ($quotationItems as $index => &$item) {
                     $item['metadata'] = array_merge($item['metadata'] ?? [], ['_quotation_trip_index' => $index]);
+                    unset($item['metadata']['_quotation_vehicle_group_ids']);
                 }
                 unset($item);
                 $params['booking_items'] = $quotationItems;
@@ -15060,6 +15063,29 @@ class BookingFlowService
                     abort_unless($totals['total_estimated'] > 0, 422, 'Every quotation choice must have a valid price.');
                     $groups = VehicleGroup::query()->whereIn('id', $groupIds)->get(['id', 'name'])->keyBy(fn ($group) => (string) $group->id);
                     abort_unless($groups->count() === count(array_unique($groupIds)), 422, 'One or more selected vehicle groups are invalid.');
+                    $optionPricing = $pricing;
+                    foreach ($optionItems as $itemIndex => &$optionItem) {
+                        $source = !empty($sourceItems[$itemIndex]['id'])
+                            ? $persistedItems->first(fn (BookingItem $candidate) => (string) $candidate->id === (string) $sourceItems[$itemIndex]['id'])
+                            : $persistedItems->get((string) $itemIndex);
+                        abort_unless($source, 422, 'A trip in the quotation could not be matched to its saved booking item.');
+                        $optionItem['metadata'] = array_merge($optionItem['metadata'] ?? [], [
+                            '_quotation_option_id' => (string) ($inputOption['id'] ?? $optionIndex),
+                            '_quotation_trip_index' => $itemIndex,
+                        ]);
+                        $optionItem['id'] = (string) $source->id;
+                        if ($optionIndex > 0) {
+                            $sourceItemId = (string) $source->id;
+                            unset($optionItem['id']);
+                            $optionItem['metadata']['_quotation_trip_index'] = $itemIndex;
+                            $newItem = $this->createSingleGroupBookingItem($booking, $optionItem, $pricing['items'][$source->id] ?? $pricing);
+                            $optionItem['id'] = (string) $newItem->id;
+                            if (isset($pricing['items'][$sourceItemId])) {
+                                $optionPricing['items'][$newItem->id] = $pricing['items'][$sourceItemId];
+                            }
+                        }
+                    }
+                    unset($optionItem);
                     $options[] = [
                         'id' => (string) Str::uuid(),
                         'option_number' => count($options) + 1,
@@ -15070,7 +15096,7 @@ class BookingFlowService
                             'vehicle_group_name' => (string) $groups[$id]->name,
                         ], $groupIds, array_keys($groupIds)),
                         'booking_items' => $optionItems,
-                        'pricing' => $pricing,
+                        'pricing' => $optionPricing,
                         'totals' => $totals,
                     ];
                 }
@@ -15084,11 +15110,13 @@ class BookingFlowService
                 unset($frontendItem);
                 $booking->workflow_data = $workflowData;
                 $booking->save();
-                $this->applyQuotationOption($booking, $options[0]);
+                $this->applyQuotationOption($booking, $options[0], false);
                 $booking->refresh();
             }
 
-            $this->snapshotQuotationDeposits($booking);
+            if (!isset($params['quotation_options'])) {
+                $this->snapshotQuotationDeposits($booking);
+            }
 
             $booking->status = 'quotation_requested';
             $booking->workflow_step = 'quotation_requested';
@@ -15102,14 +15130,22 @@ class BookingFlowService
         });
     }
 
-    public function applyQuotationOption(Booking $booking, array $option): void
+    public function applyQuotationOption(Booking $booking, array $option, bool $pruneAlternatives = true): void
     {
-        DB::transaction(function () use ($booking, $option): void {
+        DB::transaction(function () use ($booking, $option, $pruneAlternatives): void {
             $locked = Booking::query()->lockForUpdate()->findOrFail($booking->id);
             $items = $option['booking_items'] ?? [];
             $pricing = $option['pricing'] ?? [];
-            abort_unless(count($items) === $locked->bookingItems()->count(), 409, 'This vehicle choice no longer matches the trips in the quotation.');
             $existing = $locked->bookingItems()->get()->keyBy(fn (BookingItem $item) => (string) $item->id);
+            $selectedIds = collect($items)->map(fn ($item) => (string) ($item['id'] ?? ''))->all();
+            abort_unless(count($items) > 0 && count($selectedIds) === count(array_unique($selectedIds)), 409, 'This vehicle choice no longer matches the trips in the quotation.');
+            if ($pruneAlternatives) {
+                foreach ($existing as $id => $item) {
+                    if (!in_array((string) $id, $selectedIds, true)) {
+                        $item->delete();
+                    }
+                }
+            }
             foreach ($items as $itemData) {
                 $itemId = (string) ($itemData['id'] ?? '');
                 $item = $existing->get($itemId);

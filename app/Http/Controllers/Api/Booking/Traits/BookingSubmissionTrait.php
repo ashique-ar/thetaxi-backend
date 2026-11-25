@@ -803,6 +803,7 @@ trait BookingSubmissionTrait
             'search' => 'nullable|string|max:255',
             'status' => 'nullable',
             'status.*' => 'string|in:draft,quotation_requested,pending_approval,approved,confirmed,allocated,in_progress,completed,cancelled',
+            'quotation_view' => 'nullable|boolean',
             'item_status' => 'nullable',
             'item_status.*' => 'string|in:pending,confirmed,cancelled,completed',
             'service_type' => 'nullable|string',
@@ -844,6 +845,20 @@ trait BookingSubmissionTrait
 
         try {
             $filters = $request->all();
+            if ($request->boolean('quotation_view')) {
+                $filters['status'] = ['quotation_requested'];
+                $filters['exclude_quotation_requested'] = false;
+            } else {
+                $requestedStatuses = $filters['status'] ?? [];
+                $requestedStatuses = is_array($requestedStatuses)
+                    ? $requestedStatuses
+                    : explode(',', (string) $requestedStatuses);
+                $filters['status'] = array_values(array_filter(
+                    $requestedStatuses,
+                    fn ($status) => $status !== 'quotation_requested'
+                ));
+                $filters['exclude_quotation_requested'] = true;
+            }
             if ($request->boolean('work_only')) {
                 $filters['assigned_to'] = $request->user()->id;
                 $filters['status'] = array_merge(['draft', 'inquiry', 'inquiry_qualified'], BookingLifecycleStatus::activeOperationalValues());
