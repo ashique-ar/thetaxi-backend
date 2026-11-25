@@ -29,10 +29,13 @@ class VehiclePricingCommonRateDefinitionController extends Controller
     public function __construct()
     {
         $this->middleware('permission:vehicle-pricing-common-rates.view')->only(['index', 'show']);
+        $this->middleware('permission:vehicle-pricing-common-rates.view')->only(['getByServiceType', 'getStats']);
         $this->middleware('permission:vehicle-pricing-common-rates.create')->only(['store']);
         $this->middleware('permission:vehicle-pricing-common-rates.edit')->only(['update', 'reorder', 'toggleStatus', 'bulkToggleStatus']);
         $this->middleware('permission:vehicle-pricing-common-rates.delete')->only(['destroy', 'bulkDelete']);
         $this->middleware('permission:vehicle-pricing-common-rates.manage')->only(['export', 'import']);
+        $this->middleware('permission:vehicle-pricing-common-rates.create|vehicle-pricing-common-rates.edit')->only(['calculatePreview', 'validateName']);
+        $this->middleware('permission:vehicle-pricing-common-rates.manage')->only(['downloadTemplate']);
     }
 
     /**

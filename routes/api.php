@@ -356,6 +356,8 @@ Route::post('observability/frontend-log', [ObservabilityController::class, 'fron
 
 Route::middleware(['auth:api'])->group(function () {
 
+    Route::get('website-settings/driver-mobile/settings', [WebsiteSettingController::class, 'driverMobile']);
+
     Route::post('customer-portal/tours/suggestions', [TourCatalogueController::class, 'suggestItinerary'])->middleware(['tours.schema', 'throttle:3,1']);
 
     Route::prefix('tours')->middleware('tours.schema')->group(function (): void {
@@ -1579,8 +1581,8 @@ Route::middleware(['auth:api'])->group(function () {
             ->middleware(['permission:users.manage', 'throttle:5,1'])->whereUuid('customer');
         Route::post('customers/{customer}/activate-portal', [CustomerController::class, 'activateVerifiedPortal'])
             ->middleware('permission:users.manage')->whereUuid('customer');
-        Route::apiResource('customers', CustomerController::class)->whereUuid('customer');
     });
+    Route::apiResource('customers', CustomerController::class)->whereUuid('customer');
 
     /*
     |--------------------------------------------------------------------------
@@ -1828,7 +1830,8 @@ Route::middleware(['auth:api'])->group(function () {
         ->middleware('permission:vehicles.edit')->middleware('throttle:10,1');
     Route::post('fleet-tracking/vehicles/{vehicle}/commands/{commandId}', [FleetTrackingController::class, 'executeCommand'])
         ->whereNumber('commandId')->middleware('permission:vehicles.edit')->middleware('throttle:6,1');
-    Route::get('vehicles/vehicle-groups', [VehicleGroupController::class, 'index']);
+    Route::get('vehicles/vehicle-groups', [VehicleGroupController::class, 'index'])
+        ->middleware('permission:vehicle-groups.view');
     Route::middleware(['permission:vehicles.view'])->group(function () {
         Route::get('fleet-tracking', [FleetTrackingController::class, 'index'])->middleware('throttle:60,1');
         Route::get('fleet-tracking/vehicles/{vehicle}/telemetry', [FleetTrackingController::class, 'telemetry'])->middleware('throttle:60,1');
@@ -1839,7 +1842,7 @@ Route::middleware(['auth:api'])->group(function () {
         Route::post('fleet-tracking/vehicles/{vehicle}/reports', [FleetTrackingController::class, 'runReport'])->middleware('throttle:12,1');
         Route::get('fleet-tracking/vehicles/{vehicle}/position', [FleetTrackingController::class, 'position'])->middleware('throttle:60,1');
         Route::get('fleet-tracking/units/{unitId}/messages', [FleetTrackingController::class, 'messages'])->whereNumber('unitId')->middleware('throttle:30,1');
-        Route::prefix('vehicles')->group(function () {
+        Route::prefix('vehicles')->withoutMiddleware('permission:vehicles.view')->group(function () {
             // Vehicle Addons - Extended routes
             Route::prefix('vehicle-addons')->middleware('pricing.context')->group(function () {
                 Route::get('stats', [VehicleAddonController::class, 'stats']);
@@ -1910,7 +1913,8 @@ Route::middleware(['auth:api'])->group(function () {
                 Route::post('/', [VehicleGroupPricingController::class, 'store']);
                 Route::post('/bulk-store', [VehicleGroupPricingController::class, 'bulkStore']);
                 Route::post('/bulk-save', [VehicleGroupPricingController::class, 'bulkSavePricing']);
-                Route::post('/pricing-matrix', [VehicleGroupPricingController::class, 'getPricingMatrix']);
+                Route::post('/pricing-matrix', [VehicleGroupPricingController::class, 'getPricingMatrix'])
+                    ->middleware('permission:vehicle-group-pricing.view');
                 Route::get('/matrix', [VehicleGroupPricingController::class, 'matrix']);
                 Route::get('/unified-pricing', [VehicleGroupPricingController::class, 'unifiedPricing']);
                 Route::get('/class-matrix', [VehicleGroupPricingController::class, 'classPricingMatrix']);
@@ -1943,7 +1947,8 @@ Route::middleware(['auth:api'])->group(function () {
                 Route::post('/validate-name', [VehiclePricingCommonRateDefinitionController::class, 'validateName']);
                 Route::get('/export/data', [VehiclePricingCommonRateDefinitionController::class, 'export']);
                 Route::post('/import/data', [VehiclePricingCommonRateDefinitionController::class, 'import']);
-                Route::get('/import/template', [VehiclePricingCommonRateDefinitionController::class, 'downloadTemplate']);
+                Route::get('/import/template', [VehiclePricingCommonRateDefinitionController::class, 'downloadTemplate'])
+                    ->middleware('permission:vehicle-pricing-common-rates.manage');
             });
 
             // Calculation Definitions Management
@@ -2015,7 +2020,8 @@ Route::middleware(['auth:api'])->group(function () {
 
             // Quick Pricing Calculator
             Route::prefix('pricing')->group(function () {
-                Route::get('/analytics', [VehicleGroupPricingController::class, 'getPriceAnalytics']);
+                Route::get('/analytics', [VehicleGroupPricingController::class, 'getPriceAnalytics'])
+                    ->middleware('permission:vehicle-group-pricing.view');
 
                 // Bulk Operations
                 Route::post('/bulk-update', [VehicleGroupPricingController::class, 'bulkUpdate']);
@@ -2029,11 +2035,13 @@ Route::middleware(['auth:api'])->group(function () {
                 // Import/Export
                 Route::post('/import', [VehicleGroupPricingController::class, 'importPricing']);
                 Route::get('/export/{format}', [VehicleGroupPricingController::class, 'exportPricing']);
-                Route::get('/template/download', [VehicleGroupPricingController::class, 'downloadTemplate']);
+                Route::get('/template/download', [VehicleGroupPricingController::class, 'downloadTemplate'])
+                    ->middleware('permission:vehicle-group-pricing.manage');
             });
 
-            Route::get('/available', [VehicleController::class, 'getAvailableVehicles']);
-            Route::post('/{id}/complete-maintenance', [VehicleController::class, 'completeMaintenanceSchedule']);
+            Route::get('/available', [VehicleController::class, 'getAvailableVehicles'])->middleware('permission:vehicles.view');
+            Route::post('/{id}/complete-maintenance', [VehicleController::class, 'completeMaintenanceSchedule'])
+                ->middleware('permission:vehicle-maintenance-schedules.edit');
         });
 
         Route::get('/vehicles/available', [VehicleController::class, 'getAvailableVehicles']);
@@ -2194,7 +2202,6 @@ Route::middleware(['auth:api'])->group(function () {
         ->middleware(['business.module:driver', 'permission:drivers.onboarding.view', 'permission:drivers.onboarding.manage']);
 
     Route::middleware(['business.module:driver', 'permission:drivers.view'])->group(function () {
-        Route::get('website-settings/driver-mobile/settings', [WebsiteSettingController::class, 'driverMobile']);
         Route::get('driving-license-types', [DrivingLicenseTypeController::class, 'index']);
         // Driver status and location endpoints (place specific routes before resource registration)
         Route::get('drivers/locations', [DriverController::class, 'locations']);

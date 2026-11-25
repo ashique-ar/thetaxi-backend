@@ -17,7 +17,7 @@ class VehicleAddonController extends Controller
 {
     public function __construct(private readonly PricingContextPolicyService $pricingContextPolicy)
     {
-        $this->middleware('permission:vehicle-addons.view')->only(['index', 'show', 'stats', 'available', 'forService']);
+        $this->middleware('permission:vehicle-addons.view')->only(['index', 'show', 'stats', 'available', 'forService', 'calculatePrice', 'calculateMultiple', 'checkAvailability']);
         $this->middleware('permission:vehicle-addons.create')->only(['store']);
         $this->middleware('permission:vehicle-addons.edit')->only(['update', 'toggleStatus', 'bulkUpdateStatus']);
         $this->middleware('permission:vehicle-addons.delete')->only(['destroy']);

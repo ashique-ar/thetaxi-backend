@@ -27,7 +27,7 @@ class VehicleGroupPricingController extends Controller
 {
     public function __construct()
     {
-        $this->middleware('permission:vehicle-group-pricing.view')->only(['index', 'show', 'matrix', 'unifiedPricing', 'classPricingMatrix', 'getClassPricingHistory', 'getBulkOperations', 'getBulkOperationStatus', 'downloadBulkOperationReport']);
+        $this->middleware('permission:vehicle-group-pricing.view')->only(['index', 'show', 'matrix', 'unifiedPricing', 'classPricingMatrix', 'getClassPricingHistory', 'getBulkOperations', 'getBulkOperationStatus', 'downloadBulkOperationReport', 'getPricingMatrix', 'getVehicleGroupPricingHistory', 'getPriceAnalytics']);
         $this->middleware('permission:vehicle-group-pricing.create')->only(['store', 'bulkStore']);
         $this->middleware('permission:vehicle-group-pricing.edit')->only(['update', 'toggleStatus', 'bulkUpdate', 'copyRates', 'saveVehicleGroupPricing', 'cancelBulkOperation', 'retryBulkOperation']);
         $this->middleware('permission:vehicle-group-pricing.create|vehicle-group-pricing.edit')->only('bulkSavePricing');
@@ -36,6 +36,7 @@ class VehicleGroupPricingController extends Controller
         $this->middleware('permission:vehicle-group-pricing.manage')->only('exportClassPricingMatrix');
         $this->middleware('permission:vehicle-group-pricing.delete')->only(['destroy', 'bulkDelete']);
         $this->middleware('permission:vehicle-group-pricing.manage')->only(['syncCommonRates', 'exportPricing', 'importPricing']);
+        $this->middleware('permission:vehicle-group-pricing.manage')->only(['downloadTemplate']);
     }
 
     public function index(Request $request): JsonResponse
