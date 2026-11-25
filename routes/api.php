@@ -3125,7 +3125,7 @@ Route::middleware(['auth:api'])->group(function () {
                 ->get();
 
             return ServiceTypeResource::collection($serviceTypes);
-        })->middleware('permission:staff-transport.view');
+        })->middleware('permission:staff-transport.view|staff-transport.manage|staff-transport.override|staff-transport.generate|view_all_bookings');
 
         // Staff Transport
         Route::prefix('staff-transport')->group(function () {
@@ -3212,7 +3212,7 @@ Route::middleware(['auth:api'])->group(function () {
                 'status' => 'success',
                 'data' => ['vehicle_groups' => $vehicleGroups],
             ]);
-        })->middleware('permission:staff-transport.view');
+        })->middleware('permission:staff-transport.view|staff-transport.manage|staff-transport.override|staff-transport.generate|view_all_bookings');
     });
 
     /*

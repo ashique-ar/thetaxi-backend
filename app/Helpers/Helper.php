@@ -118,6 +118,11 @@ if (!function_exists('s3_asset')) {
             return app('url')->asset(ltrim($path, '/'), $secure);
         }
 
+        $publicMediaPath = ltrim($path, '/');
+        if (preg_match('#^media/(?:general|vehicles|gallery/images|branding|logos|banners|breadcrumbs|sliders|team|vectors|icons|sections|heroes|maps|popups/media|seo|videos|favicons)/#', $publicMediaPath)) {
+            return route('resources.assets', ['path' => $publicMediaPath]);
+        }
+
         return resource_proxy_url($path, 's3', now()->addYears(10));
     }
 }

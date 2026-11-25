@@ -381,7 +381,7 @@ class FileUploadController extends Controller
     public function assets(Request $request, string $path): \Illuminate\Http\Response
     {
         $media = UserMedia::query()->where('full_path', $path)->first();
-        $publicCategories = ['general', 'vehicles', 'gallery', 'branding', 'logos', 'banners', 'breadcrumbs', 'sliders', 'team', 'vectors', 'icons', 'sections', 'heroes', 'maps', 'popups', 'seo', 'videos'];
+        $publicCategories = ['general', 'vehicles', 'gallery', 'branding', 'logos', 'banners', 'breadcrumbs', 'sliders', 'team', 'vectors', 'icons', 'sections', 'heroes', 'maps', 'popups', 'seo', 'videos', 'favicons'];
         $isPublicMedia = $media
             && in_array($media->category, $publicCategories, true)
             && ($media->is_image || str_starts_with($media->mime_type, 'video/') || ($media->category === 'sections' && $media->mime_type === 'application/pdf'));
@@ -452,6 +452,7 @@ class FileUploadController extends Controller
             'popups' => 'popups/media',
             'seo' => 'seo',
             'videos' => 'videos',
+            'favicons' => 'favicons',
             'signatures' => 'general/signatures',
         ];
 
