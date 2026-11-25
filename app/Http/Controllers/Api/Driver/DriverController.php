@@ -47,7 +47,7 @@ class DriverController extends Controller
         $this->websiteSettingsService = $websiteSettingsService;
         $this->middleware('permission:drivers.view')->only(['index', 'show', 'status', 'activity', 'sessions', 'sessionRoute', 'movementMap', 'locations', 'analytics', 'devices']);
         $this->middleware('permission:drivers.create')->only(['store']);
-        $this->middleware('permission:drivers.edit')->only(['update', 'deactivateDevice', 'testNotification', 'sendCustomNotification', 'sendBulkCustomNotifications']);
+        $this->middleware('permission:drivers.edit')->only(['update', 'updateStatus', 'deactivateDevice', 'testNotification', 'sendCustomNotification', 'sendBulkCustomNotifications']);
         $this->middleware('permission:drivers.delete')->only(['destroy']);
         $this->middleware('permission:drivers.delete')->only(['removeDevice']);
     }
@@ -445,6 +445,19 @@ class DriverController extends Controller
                 'error' => $e->getMessage()
             ], 500);
         }
+    }
+
+    public function updateStatus(Request $request, Driver $driver): JsonResponse
+    {
+        $data = $request->validate([
+            'status' => ['required', 'string', 'in:available,busy,on_break,offline'],
+        ]);
+        $driver->update(['availability_status' => $data['status']]);
+
+        return response()->json([
+            'status' => 'success',
+            'data' => ['driver' => new DriverResource($driver->fresh(['user', 'licenseType']))],
+        ]);
     }
 
     public function destroy(Driver $driver): JsonResponse
@@ -936,6 +949,19 @@ class DriverController extends Controller
                 'point_count' => $routePoints->count(),
             ]
         ]);
+    }
+
+    public function session(Driver $driver, DriverSession $session): JsonResponse
+    {
+        abort_unless($session->driver_id === $driver->id, 404);
+
+        if (!$this->websiteSettingsService->isDriverMobileAppEnabled()) {
+            return response()->json(['status' => 'success', 'data' => null]);
+        }
+
+        $session->loadMissing(['device' => fn ($query) => $query->where('driver_id', $driver->id)]);
+
+        return response()->json(['status' => 'success', 'data' => new DriverSessionResource($session)]);
     }
 
     /**

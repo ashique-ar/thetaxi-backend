@@ -1621,14 +1621,13 @@ Route::middleware(['auth:api'])->group(function () {
     |--------------------------------------------------------------------------
     */
 
-    Route::middleware(['permission:system.view'])->group(function () {
-        Route::get('system/health', [SystemController::class, 'health']);
-        Route::get('system/info', [SystemController::class, 'info']);
-        Route::get('system/stats', [SystemController::class, 'stats']);
-        Route::get('system/performance', [SystemController::class, 'performance']);
-        Route::get('system/cache-clear-users', [SystemController::class, 'cacheClearUserOptions']);
-        Route::post('system/clear-cache', [SystemController::class, 'clearCache']);
-        Route::post('system/optimize-database', [SystemController::class, 'optimizeDatabase']);
+        Route::get('system/health', [SystemController::class, 'health'])->middleware('permission:system.view');
+        Route::get('system/info', [SystemController::class, 'info'])->middleware('permission:system.view');
+        Route::get('system/stats', [SystemController::class, 'stats'])->middleware('permission:system.view');
+        Route::get('system/performance', [SystemController::class, 'performance'])->middleware('permission:system.view');
+        Route::get('system/cache-clear-users', [SystemController::class, 'cacheClearUserOptions'])->middleware('permission:system.view');
+        Route::post('system/clear-cache', [SystemController::class, 'clearCache'])->middleware('permission:system.view');
+        Route::post('system/optimize-database', [SystemController::class, 'optimizeDatabase'])->middleware('permission:system.view');
         Route::apiResource('audit-logs', AuditLogController::class)->only(['index', 'show']);
 
         Route::apiResource('countries', CountryController::class);
@@ -1722,7 +1721,6 @@ Route::middleware(['auth:api'])->group(function () {
 
         Route::apiResource('driving-license-types', DrivingLicenseTypeController::class)->except(['index']);
         Route::apiResource('driving-licenses', DrivingLicenseController::class);
-    });
 
     Route::middleware(['permission:system.manage'])->group(function () {
         Route::post('system/manage-cache-clear', [SystemController::class, 'manageCacheClear']);
@@ -2207,6 +2205,7 @@ Route::middleware(['auth:api'])->group(function () {
         Route::get('driver-assignments/active', [DriverController::class, 'activeDriverAssignments']);
         Route::get('driver-assignments/recent', [DriverController::class, 'recentDriverAssignments']);
         Route::get('drivers/{driver}/status', [DriverController::class, 'status']);
+        Route::put('drivers/{driver}/status', [DriverController::class, 'updateStatus']);
         Route::post('drivers/{driver}/test-notification', [DriverController::class, 'testNotification']);
         Route::post('drivers/{driver}/notifications/custom', [DriverController::class, 'sendCustomNotification'])
             ->middleware('permission:drivers.edit');
@@ -2238,6 +2237,7 @@ Route::middleware(['auth:api'])->group(function () {
         Route::post('driver-hire-settlements/{driverHireSettlement}/mark-recovered', [DriverHireSettlementController::class, 'markRecovered']);
         Route::apiResource('driver-hire-settlements', DriverHireSettlementController::class);
         Route::get('drivers/{driver}/sessions', [DriverController::class, 'sessions']);
+        Route::get('drivers/{driver}/sessions/{session}', [DriverController::class, 'session']);
         Route::get('drivers/{driver}/sessions/{session}/route', [DriverController::class, 'sessionRoute']);
         Route::get('drivers/{driver}/movement-map', [DriverController::class, 'movementMap']);
         Route::get('drivers/{driver}/analytics', [DriverController::class, 'analytics']);
@@ -2288,18 +2288,17 @@ Route::middleware(['auth:api'])->group(function () {
     Route::put('phone-calls/{phoneCall}/assignment', [PhoneCallController::class, 'assign'])
         ->middleware('permission:phone-calls.edit');
 
-    Route::middleware(['permission:system.view'])->group(function () {
-        Route::get('galleries/stats', [ImageGalleryController::class, 'stats']);
-        Route::get('galleries/search', [ImageGalleryController::class, 'search']);
-        Route::get('galleries/categories', [ImageGalleryController::class, 'categories']);
+        Route::get('galleries/stats', [ImageGalleryController::class, 'stats'])->middleware('permission:image-galleries.view');
+        Route::get('galleries/search', [ImageGalleryController::class, 'search'])->middleware('permission:image-galleries.view');
+        Route::get('galleries/categories', [ImageGalleryController::class, 'categories'])->middleware('permission:image-galleries.view');
         Route::apiResource('galleries', ImageGalleryController::class)->parameters(['galleries' => 'imageGallery']);
         Route::apiResource('image-galleries', ImageGalleryController::class);
         Route::post('notifications/send-bulk', [NotificationLogController::class, 'sendBulk']);
         Route::apiResource('notification-logs', NotificationLogController::class);
-        Route::post('notification-templates/{notification_template}/preview', [NotificationTemplateController::class, 'preview']);
+        Route::post('notification-templates/{notification_template}/preview', [NotificationTemplateController::class, 'preview'])
+            ->middleware('permission:notification-templates.view');
         Route::post('notification-templates/{notification_template}/send-test', [NotificationTemplateController::class, 'sendTest']);
         Route::apiResource('notification-templates', NotificationTemplateController::class);
-    });
 
     Route::middleware(['permission:agreements.view'])->group(function () {
         Route::get('agreements/stats', [AgreementController::class, 'stats']);
