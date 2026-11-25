@@ -671,6 +671,10 @@ Route::middleware(['auth:api'])->group(function () {
         ->whereUuid('change')
         ->middleware('permission:staff-sensitive-payment-methods.approve');
 
+    Route::middleware('ensure.internal')->prefix('staff-payment-links')->group(function () {
+        Route::post('/', [\App\Http\Controllers\StaffPaymentLinkController::class, 'store'])->middleware('throttle:20,1');
+    });
+
     Route::prefix('sales')->middleware(['ensure.internal', 'business.module:sales'])->group(function () {
         Route::get('me', [SalesProfileController::class, 'me'])->middleware('permission:sales.self.view');
         Route::get('profiles', [SalesProfileController::class, 'index'])->middleware('permission:sales.profiles.view');

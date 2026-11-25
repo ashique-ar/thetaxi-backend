@@ -202,7 +202,7 @@
             <h2 class="section-title"><span class="icon">📜</span> Terms &amp; Conditions</h2>
             @foreach ($terms as $term)
                 <h4 style="margin-top:8px;">{{ $term['title'] }}</h4>
-                <div style="color:#555;text-align:left;">{!! nl2br(e(\App\Services\PendingPaymentManager::quotationTermText($term['content']))) !!}</div>
+                <div style="color:#555;text-align:left;white-space:pre-wrap;line-height:1.55;">{{ \App\Services\PendingPaymentManager::quotationTermText($term['content']) }}</div>
             @endforeach
         </div>
     @endif

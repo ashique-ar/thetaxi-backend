@@ -185,7 +185,7 @@
                         <small class="text-muted">({{ $t->service_name }})</small>
                     @endif
                 </h4>
-                <div style="color:#555;text-align: left;">{!! $t->content !!}</div>
+                <div style="color:#555;text-align:left;white-space:pre-wrap;line-height:1.55;">{{ \App\Services\PendingPaymentManager::quotationTermText((string) $t->content) }}</div>
             @endforeach
         </div>
     @endif
@@ -239,7 +239,7 @@
                     <h6 style="margin:0; font-weight:700">{{ $tc->title ?? 'Terms' }} <small
                             style="font-weight:400; font-size:12px">v{{ $bt->terms_version ?? ($tc->version ?? '1') }}</small>
                     </h6>
-                    <div style="color:#555; margin-top:6px">{!! $tc->content ?? '' !!}</div>
+                    <div style="color:#555;margin-top:6px;white-space:pre-wrap;line-height:1.55">{{ \App\Services\PendingPaymentManager::quotationTermText((string) ($tc->content ?? '')) }}</div>
                 </div>
             @endforeach
         </div>

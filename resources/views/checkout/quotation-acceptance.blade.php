@@ -37,7 +37,7 @@
             <div class="alert alert-danger" role="alert">Please accept the quotation terms to continue.</div>
         @endif
 
-        <section class="card p-4 mb-4">
+        <section class="card p-4 mb-4 quotation-summary-card">
             <div class="d-flex flex-wrap justify-content-between gap-3">
                 <div>
                     <p class="text-muted mb-1">Quotation reference</p>
@@ -60,7 +60,7 @@
                     $dropoff = is_array($item['dropoff_location'] ?? null) ? ($item['dropoff_location']['address'] ?? '') : ($item['dropoff_location'] ?? '');
                     $tripIndex = $loop->index;
                 @endphp
-                <div class="border rounded p-3 mb-3">
+                <article class="border rounded p-3 mb-3 quotation-trip-card">
                     <strong>{{ ($item['service_name'] ?? '') ?: 'Rental / taxi service' }}</strong>
                     @if (empty($quotation['options']) && !empty($item['vehicle_group_name']))
                         <div>{{ $item['vehicle_group_name'] }}</div>
@@ -80,8 +80,8 @@
                         <fieldset class="mt-3">
                             <legend class="fw-semibold">Choose a vehicle for Trip {{ $tripIndex + 1 }}</legend>
                             @foreach (($tripOptionGroups[$tripIndex + 1] ?? []) as $choice)
-                                <label class="d-flex align-items-center justify-content-between gap-3 border rounded p-2 mb-2">
-                                    <span class="d-flex align-items-center gap-2">
+                                <label class="d-flex align-items-center justify-content-between gap-3 border rounded p-2 mb-2 quotation-vehicle-option">
+                                    <span class="d-flex align-items-center gap-2 quotation-vehicle-option__main">
                                         <input type="radio" form="accept-quotation-form"
                                             name="quotation_trip_vehicle_group[{{ $tripIndex }}]"
                                             value="{{ $choice['vehicle_group_id'] }}"
@@ -89,14 +89,14 @@
                                             required
                                             @checked(($defaultGroupIds[$tripIndex] ?? null) === $choice['vehicle_group_id'])>
                                         <img src="{{ $choice['image'] }}" alt="{{ $choice['vehicle_group_name'] }}" width="80" height="54" class="rounded" style="width:80px;height:54px;object-fit:cover">
-                                        <span>{{ $choice['vehicle_group_name'] }}</span>
+                                        <span class="quotation-vehicle-option__name">{{ $choice['vehicle_group_name'] }}</span>
                                     </span>
-                                    <strong>{{ number_format($choice['price'], 2) }} {{ $currency }}</strong>
+                                    <strong class="quotation-vehicle-option__price"><small>Trip price</small>{{ number_format($choice['price'], 2) }} {{ $currency }}</strong>
                                 </label>
                             @endforeach
                         </fieldset>
                     @endif
-                </div>
+                </article>
             @empty
                 <p class="text-muted">No item details were saved for this quotation. Contact our team before accepting.</p>
             @endforelse
@@ -118,25 +118,29 @@
             @endif
         </section>
 
-        <section class="card p-4 mb-4">
+        <section class="card p-4 mb-4 quotation-terms-card">
             <h3 class="h5">Terms for this offer</h3>
             @forelse ($terms as $term)
-                <article class="border rounded p-3 mb-3">
+                <article class="border rounded p-3 mb-3 quotation-term-card">
                     <h4 class="h6 mb-1">{{ $term['title'] }}</h4>
                     <p class="text-muted mb-2">Version {{ ($term['version'] ?? '') ?: 'current at issue' }}</p>
-                    <div style="white-space: pre-wrap;">{{ \App\Services\PendingPaymentManager::quotationTermText($term['content']) }}</div>
+                    <div class="transaction-terms-content">{{ \App\Services\PendingPaymentManager::quotationTermText($term['content']) }}</div>
                 </article>
             @empty
                 <p class="text-muted">No additional service terms apply to this quotation.</p>
             @endforelse
         </section>
 
-        <form id="accept-quotation-form" method="POST" action="{{ route('checkout.quotation-accept', ['token' => $token]) }}" class="card p-4">
+        <form id="accept-quotation-form" method="POST" action="{{ route('checkout.quotation-accept', ['token' => $token]) }}" class="card p-4 quotation-acceptance-form">
             @csrf
             <input type="hidden" name="terms_hash" value="{{ $termsHash }}">
             @if (!empty($quotationOptions))
                 <input id="quotation-option-id" type="hidden" name="quotation_option_id" value="{{ $defaultOption['id'] ?? '' }}">
-                <p class="mb-3">Combined total for your choices: <strong id="quotation-combined-total">{{ number_format((float) data_get($defaultOption, 'totals.total_estimated', 0), 2) }} {{ $currency }}</strong></p>
+                <div class="quotation-selected-total" aria-live="polite">
+                    <span>Selected vehicle combination</span>
+                    <strong id="quotation-combined-total">{{ number_format((float) data_get($defaultOption, 'totals.total_estimated', 0), 2) }} {{ $currency }}</strong>
+                    <small>The total updates as you choose one vehicle for each trip.</small>
+                </div>
                 @error('quotation_option_id')<p class="text-danger" role="alert">{{ $message }}</p>@enderror
             @endif
             <label class="d-flex align-items-start gap-2 mb-3">
@@ -181,6 +185,8 @@
 @endsection
 
 @push('styles')
+    <link rel="stylesheet" href="{{ assetVersion(theme_asset('checkout_stylesheet') ?? 'assets/css/checkout-theme-01.css') }}">
+    <link rel="stylesheet" href="{{ assetVersion('assets/css/customer-transaction-pages.css') }}">
     <style>
         .quotation-review-hero { padding: 36px 0 30px !important; }
         .quotation-review-hero .banner-content { max-width: 900px; }

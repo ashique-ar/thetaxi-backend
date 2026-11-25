@@ -32,7 +32,7 @@
                         </div>
                         <button type="button" class="term-toggle shrink-0 font-semibold text-checkout-accent" aria-expanded="true">Hide</button>
                     </div>
-                    <div class="term-body mt-2 overflow-hidden break-words">{!! $term->content !!}</div>
+                    <div class="term-body transaction-terms-content mt-2 break-words">{{ \App\Services\PendingPaymentManager::quotationTermText((string) $term->content) }}</div>
                 </div>
             @endforeach
         </div>

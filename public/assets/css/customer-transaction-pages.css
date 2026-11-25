@@ -1,0 +1,395 @@
+/* Shared public booking, quotation, and payment pages. */
+body.theme-default {
+    --transaction-accent: var(--primary-color1, #bf2629);
+    --transaction-ink: #20252b;
+    --transaction-muted: #68717c;
+    --transaction-page: #f5f6f8;
+    --transaction-surface: #fff;
+    --transaction-line: #dfe3e8;
+    --transaction-radius: 8px;
+    --transaction-shadow: none;
+}
+
+body.theme-theme-02 {
+    --transaction-accent: var(--primary-color1, #bf2629);
+    --transaction-ink: #20252b;
+    --transaction-muted: #68717c;
+    --transaction-page: #f7f7f7;
+    --transaction-surface: #fff;
+    --transaction-line: #e3e5e8;
+    --transaction-radius: 14px;
+    --transaction-shadow: 0 3px 14px rgb(20 27 35 / 5%);
+}
+
+body.theme-theme-03 {
+    --transaction-accent: var(--t3-accent, #8c3f32);
+    --transaction-ink: var(--t3-text, #2f2924);
+    --transaction-muted: #6f6257;
+    --transaction-page: var(--t3-paper, #f4ede2);
+    --transaction-surface: #fffdf8;
+    --transaction-line: var(--t3-line, #d9cdbd);
+    --transaction-radius: 0;
+    --transaction-shadow: 5px 5px 0 rgb(54 45 37 / 9%);
+}
+
+body.theme-theme-04 {
+    --transaction-accent: var(--t4-accent, #b40f16);
+    --transaction-ink: var(--t4-text, #20252b);
+    --transaction-muted: #68717c;
+    --transaction-page: var(--t4-surface-soft, #f4f5f6);
+    --transaction-surface: #fff;
+    --transaction-line: var(--t4-line, #dfe3e8);
+    --transaction-radius: 6px;
+    --transaction-shadow: 0 2px 8px rgb(17 24 39 / 5%);
+}
+
+body :is(.quotation-review-page, .checkout-success, .checkout-v2-transaction) {
+    color: var(--transaction-ink, #20252b);
+}
+
+body :is(.quotation-review-hero, .checkout-result-hero, .payment-resume-hero) {
+    padding: 34px 0 28px !important;
+    background: var(--transaction-page, #f5f6f8) !important;
+    background-image: none !important;
+    color: var(--transaction-ink, #20252b) !important;
+}
+
+body :is(.quotation-review-hero, .checkout-result-hero, .payment-resume-hero) .banner-content {
+    max-width: 900px;
+}
+
+body :is(.quotation-review-hero, .checkout-result-hero, .payment-resume-hero) .banner-content h1 {
+    margin: 0 0 6px !important;
+    color: var(--transaction-ink, #20252b) !important;
+    font-size: clamp(24px, 3vw, 34px) !important;
+    line-height: 1.2;
+}
+
+body :is(.quotation-review-hero, .checkout-result-hero, .payment-resume-hero) .banner-content .subtitle,
+body :is(.quotation-review-hero, .checkout-result-hero, .payment-resume-hero) .banner-content .lead {
+    margin: 0;
+    color: var(--transaction-muted, #68717c) !important;
+    font-size: 15px !important;
+    line-height: 1.55;
+}
+
+body .quotation-review-page {
+    max-width: 900px !important;
+    padding-top: 28px !important;
+    padding-bottom: 40px !important;
+    font-size: 14px;
+    line-height: 1.55;
+}
+
+body .quotation-review-page > :is(.card, form.card),
+body .checkout-success > .container > .row > .card {
+    border: 1px solid var(--transaction-line, #dfe3e8) !important;
+    border-radius: var(--transaction-radius, 8px) !important;
+    background: var(--transaction-surface, #fff) !important;
+    box-shadow: var(--transaction-shadow, none) !important;
+}
+
+body .quotation-review-page > :is(.card, form.card) {
+    padding: clamp(16px, 2.5vw, 24px) !important;
+}
+
+body .quotation-review-page h2,
+body .quotation-review-page h3,
+body .quotation-review-page h4,
+body .checkout-success .section-title {
+    color: var(--transaction-ink, #20252b);
+}
+
+body .quotation-review-page hr {
+    margin: 16px 0;
+    border-color: var(--transaction-line, #dfe3e8);
+    opacity: 1;
+}
+
+body .quotation-trip-card,
+body .quotation-term-card {
+    border-color: var(--transaction-line, #dfe3e8) !important;
+    border-radius: var(--transaction-radius, 8px) !important;
+    background: var(--transaction-surface, #fff);
+}
+
+body .quotation-trip-card > strong {
+    display: block;
+    margin-bottom: 3px;
+    color: var(--transaction-ink, #20252b);
+    font-size: 15px;
+}
+
+body .quotation-trip-card > .text-muted {
+    color: var(--transaction-muted, #68717c) !important;
+}
+
+body .quotation-trip-card fieldset {
+    min-width: 0;
+    padding: 0;
+    border: 0;
+}
+
+body .quotation-trip-card legend {
+    margin: 14px 0 8px;
+    color: var(--transaction-ink, #20252b);
+    font-size: 14px;
+}
+
+body .quotation-vehicle-option {
+    min-height: 74px;
+    padding: 9px 12px !important;
+    border-color: var(--transaction-line, #dfe3e8) !important;
+    border-radius: var(--transaction-radius, 8px) !important;
+    background: var(--transaction-surface, #fff);
+    color: var(--transaction-ink, #20252b);
+    cursor: pointer;
+    transition: border-color .15s ease, background-color .15s ease, box-shadow .15s ease;
+}
+
+body .quotation-vehicle-option:hover,
+body .quotation-vehicle-option:focus-within {
+    border-color: var(--transaction-accent, #bf2629) !important;
+}
+
+body .quotation-vehicle-option:has(input:checked) {
+    border-color: var(--transaction-accent, #bf2629) !important;
+    background: color-mix(in srgb, var(--transaction-accent, #bf2629) 5%, var(--transaction-surface, #fff));
+    box-shadow: inset 0 0 0 1px var(--transaction-accent, #bf2629);
+}
+
+body .quotation-vehicle-option input[type="radio"] {
+    flex: 0 0 auto;
+    accent-color: var(--transaction-accent, #bf2629);
+}
+
+body .quotation-vehicle-option img {
+    flex: 0 0 80px;
+    border: 1px solid var(--transaction-line, #dfe3e8);
+    background: #fff;
+    object-fit: contain !important;
+}
+
+body .quotation-vehicle-option__main {
+    min-width: 0;
+}
+
+body .quotation-vehicle-option__name {
+    color: var(--transaction-ink, #20252b);
+    font-weight: 600;
+    overflow-wrap: anywhere;
+}
+
+body .quotation-vehicle-option__price {
+    display: grid;
+    flex: 0 0 auto;
+    justify-items: end;
+    color: var(--transaction-ink, #20252b);
+    font-size: 14px;
+    white-space: nowrap;
+}
+
+body .quotation-vehicle-option__price small {
+    color: var(--transaction-muted, #68717c);
+    font-size: 11px;
+    font-weight: 500;
+}
+
+body .transaction-terms-content {
+    color: var(--transaction-ink, #20252b);
+    font-size: 14px;
+    line-height: 1.65;
+    white-space: pre-wrap;
+    overflow-wrap: anywhere;
+    word-break: normal;
+}
+
+body .quotation-selected-total {
+    display: grid;
+    gap: 3px;
+    margin: 0 0 16px;
+    padding: 14px 16px;
+    border: 1px solid var(--transaction-line, #dfe3e8);
+    border-radius: var(--transaction-radius, 8px);
+    background: var(--transaction-page, #f5f6f8);
+}
+
+body .quotation-selected-total > span {
+    color: var(--transaction-muted, #68717c);
+    font-size: 12px;
+    font-weight: 600;
+}
+
+body .quotation-selected-total > strong {
+    color: var(--transaction-ink, #20252b);
+    font-size: 20px;
+}
+
+body .quotation-selected-total > small {
+    color: var(--transaction-muted, #68717c);
+    line-height: 1.45;
+}
+
+body .quotation-acceptance-form .btn-primary {
+    min-height: 48px;
+    border-color: var(--transaction-accent, #bf2629);
+    background: var(--transaction-accent, #bf2629);
+    font-weight: 700;
+}
+
+body .quotation-acceptance-form .btn-primary:disabled {
+    cursor: not-allowed;
+    opacity: .55;
+}
+
+body .quotation-next-steps {
+    margin: 10px 0 0;
+    padding-left: 1.4rem;
+}
+
+body .quotation-next-steps li {
+    padding: 3px 0 3px 4px;
+    line-height: 1.55;
+}
+
+body .checkout-success--quotation .reference-box,
+body .payment-resume-page .reference-box {
+    border-color: color-mix(in srgb, var(--transaction-accent, #bf2629) 20%, var(--transaction-line, #dfe3e8));
+    border-left-color: var(--transaction-accent, #bf2629);
+    border-radius: var(--transaction-radius, 8px);
+    background: var(--transaction-page, #f5f6f8);
+}
+
+body .checkout-success--quotation .reference-number,
+body .payment-resume-page .reference-number {
+    color: var(--transaction-accent, #bf2629);
+}
+
+body .checkout-success--quotation .highlight-box.info {
+    border-color: var(--transaction-line, #dfe3e8);
+    border-radius: var(--transaction-radius, 8px);
+    background: var(--transaction-page, #f5f6f8);
+}
+
+body .checkout-success--quotation .section-title,
+body .payment-resume-page .section-title {
+    border-color: var(--transaction-accent, #bf2629);
+    color: var(--transaction-accent, #bf2629);
+}
+
+body .payment-resume-page {
+    padding-top: 36px !important;
+    padding-bottom: 48px !important;
+}
+
+body .payment-resume-page .booking-item-email {
+    border: 1px solid var(--transaction-line, #dfe3e8);
+    border-radius: var(--transaction-radius, 8px);
+    box-shadow: var(--transaction-shadow, none);
+}
+
+body .payment-resume-page .section {
+    margin-bottom: 22px;
+}
+
+body .payment-resume-page .section-title {
+    gap: 9px;
+    padding-bottom: 8px;
+    border-bottom: 1px solid var(--transaction-line, #dfe3e8);
+    font-size: 17px;
+    line-height: 1.35;
+}
+
+body .payment-resume-page .info-table td {
+    padding: 8px 4px;
+    line-height: 1.45;
+}
+
+body .payment-resume-page .price-total td {
+    border-color: var(--transaction-line, #dfe3e8) !important;
+}
+
+body .payment-resume-page .vehicle-header h3 {
+    color: var(--transaction-ink, #20252b);
+}
+
+body .payment-resume-page :is(input, select, textarea, button, .btn) {
+    max-width: 100%;
+}
+
+body .payment-resume-page .btn-new,
+body .payment-resume-page .btn-primary {
+    min-height: 44px;
+    border-radius: var(--transaction-radius, 8px);
+}
+
+body .payment-resume-page .submit-btn {
+    min-height: 50px;
+    padding: 12px 30px;
+    border: 0;
+    border-radius: var(--transaction-radius, 8px);
+    background: var(--transaction-accent, #bf2629);
+    box-shadow: none;
+    font-weight: 700;
+}
+
+body .payment-resume-page .submit-btn:hover {
+    background: color-mix(in srgb, var(--transaction-accent, #bf2629) 86%, #000);
+}
+
+body.theme-theme-03 :is(.quotation-review-hero, .checkout-result-hero, .payment-resume-hero) .banner-content h1,
+body.theme-theme-03 .quotation-review-page :is(h2, h3, h4),
+body.theme-theme-03 .checkout-success .section-title,
+body.theme-theme-03 .payment-resume-page .section-title {
+    font-family: Georgia, "Times New Roman", serif;
+}
+
+body.theme-theme-04 .quotation-review-page,
+body.theme-theme-04 .checkout-success,
+body.theme-theme-04 .payment-resume-page {
+    letter-spacing: .005em;
+}
+
+@media (max-width: 576px) {
+    body :is(.quotation-review-hero, .checkout-result-hero, .payment-resume-hero) {
+        padding: 26px 0 22px !important;
+    }
+
+    body .quotation-review-page {
+        padding-top: 18px !important;
+        padding-bottom: 28px !important;
+    }
+
+    body .quotation-review-page > :is(.card, form.card) {
+        padding: 15px !important;
+    }
+
+    body .quotation-vehicle-option {
+        flex-wrap: wrap;
+        gap: 8px 12px !important;
+    }
+
+    body .quotation-vehicle-option__main {
+        flex: 1 1 100%;
+    }
+
+    body .quotation-vehicle-option__price {
+        margin-left: 32px;
+        justify-items: start;
+    }
+
+    body .payment-resume-page {
+        padding-top: 24px !important;
+        padding-bottom: 32px !important;
+    }
+
+    body .payment-resume-page .email-content {
+        padding: 22px 16px;
+    }
+}
+
+@media (prefers-reduced-motion: reduce) {
+    body .quotation-vehicle-option {
+        transition: none;
+    }
+}

@@ -58,7 +58,7 @@
     @endphp
 
     <!-- Breadcrumb section -->
-    <div class="breadcrumb-section"
+    <div class="breadcrumb-section checkout-result-hero"
         style="background-image:linear-gradient(rgba(0, 0, 0, 0.3), rgba(0, 0, 0, 0.3)), url({{ asset('assets/img/innerpages/breadcrumb-bg.jpg') }});">
         <div class="container banner-content">
             <div class="">
@@ -102,7 +102,7 @@
 
 
     <!-- Email-style Success Page -->
-    <div class="checkout-success {{ theme_class('checkout-success') }} py-5">
+    <div class="checkout-success checkout-success--{{ $isQuotation ? 'quotation' : ($isPaid ? 'paid' : 'booking') }} {{ theme_class('checkout-success') }} py-5">
         <div class="container">
             <div class="row justify-content-center">
                 <div class="col-lg-10 card p-4">
@@ -226,7 +226,7 @@
                                                 {{-- <small
                                                     style="font-weight:400; font-size:12px">v{{ $bt->terms_version ?? ($tc->version ?? '1') }}</small> --}}
                                             </h6>
-                                            <div style="color:#555; margin-top:6px">{!! $tc->content ?? '' !!}</div>
+                                            <div class="transaction-terms-content" style="margin-top:6px">{{ \App\Services\PendingPaymentManager::quotationTermText((string) ($tc->content ?? '')) }}</div>
                                         </div>
                                     @endforeach
                                 </div>
@@ -241,13 +241,12 @@
                                 @if ($isQuotation)
                                     <div class="highlight-box info">
                                         <h3>Your Request is Being Processed</h3>
-                                        <p><strong>Step 1:</strong> Our team will review your quotation request</p>
-                                        <p><strong>Step 2:</strong> We'll contact you at
-                                            <strong>{{ $booking->customer->phone ?? 'your provided number' }}</strong>
-                                            as soon as possible
-                                        </p>
-                                        <p><strong>Step 3:</strong> The prices in your quotation are valid for 7 days.</p>
-                                        <p style="margin-bottom: 0;"><strong>Step 4:</strong> The secure checkout link sent by email expires 7 days after it is issued. Please contact us if the quotation or link has expired.</p>
+                                        <ol class="quotation-next-steps">
+                                            <li>Our team will review your quotation request.</li>
+                                            <li>We’ll contact you at <strong>{{ $booking->customer->phone ?? 'your provided number' }}</strong> as soon as possible.</li>
+                                            <li>The prices in your quotation are valid for 7 days.</li>
+                                            <li>The secure checkout link sent by email expires 7 days after it is issued. Contact us if the quotation or link has expired.</li>
+                                        </ol>
                                     </div>
                                 @elseif($isAdvancePayment)
                                     <div class="highlight-box success">
@@ -738,6 +737,7 @@
     </style>
     <link rel="stylesheet"
         href="{{ assetVersion(theme_asset('checkout_stylesheet') ?? 'assets/css/checkout-theme-01.css') }}">
+    <link rel="stylesheet" href="{{ assetVersion('assets/css/customer-transaction-pages.css') }}">
 @endpush
 
 @push('scripts')

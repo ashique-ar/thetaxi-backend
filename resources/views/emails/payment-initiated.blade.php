@@ -129,7 +129,7 @@
                         <small class="text-muted">({{ $t->service_name }})</small>
                     @endif
                 </h4>
-                <div style="color:#555;text-align: left;">{!! $t->content !!}</div>
+                <div style="color:#555;text-align:left;white-space:pre-wrap;line-height:1.55;">{{ \App\Services\PendingPaymentManager::quotationTermText((string) $t->content) }}</div>
             @endforeach
         </div>
     @endif

@@ -187,6 +187,14 @@ Route::match(['get', 'post'], '/checkout/webxpay/corporate/callback', [\App\Http
     ->name('checkout.webxpay.corporate.callback');
 Route::post('/checkout/webxpay/corporate/notify', [\App\Http\Controllers\CorporateWebXPayController::class, 'notify'])
     ->name('checkout.webxpay.corporate.notify');
+Route::get('/checkout/staff-payment-links/{link}/redirect', [\App\Http\Controllers\StaffPaymentLinkController::class, 'redirect'])
+    ->middleware('signed')->whereUuid('link')->name('checkout.staff-payment-link.redirect');
+Route::get('/checkout/staff-payment-links/{link}/cancel', [\App\Http\Controllers\StaffPaymentLinkController::class, 'cancel'])
+    ->middleware('signed')->whereUuid('link')->name('checkout.staff-payment-link.cancel');
+Route::match(['get', 'post'], '/checkout/staff-payment-links/callback', [\App\Http\Controllers\StaffPaymentLinkController::class, 'callback'])
+    ->name('checkout.staff-payment-link.callback');
+Route::post('/checkout/staff-payment-links/notify', [\App\Http\Controllers\StaffPaymentLinkController::class, 'notify'])
+    ->name('checkout.staff-payment-link.notify');
 
 // Service-specific pages
 Route::get('/point-to-point', [BookingController::class, 'pointToPoint'])->name('point-to-point');

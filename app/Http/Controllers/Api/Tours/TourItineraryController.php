@@ -649,7 +649,12 @@ class TourItineraryController extends Controller
             'distance_km' => (float) $quote->distance_km,
             'route' => $quote->route_snapshot,
             'breakdown' => $quote->pricing_snapshot['breakdown'] ?? [],
-            'terms_snapshot' => $quote->terms_snapshot ?? [],
+            'terms_snapshot' => collect($quote->terms_snapshot ?? [])->map(function ($term) {
+                if (is_array($term)) {
+                    $term['content'] = \App\Services\PendingPaymentManager::quotationTermText((string) ($term['content'] ?? ''));
+                }
+                return $term;
+            })->all(),
             'accepted_at' => $quote->accepted_at?->toIso8601String(),
         ];
     }

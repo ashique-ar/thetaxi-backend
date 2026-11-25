@@ -62,6 +62,18 @@ it('renders terms as readable text with line breaks and decoded entities', funct
     ))->toBe("Deposit & balance\nBring ID\nbefore collection");
 });
 
+it('keeps ordered and nested list structure in quotation terms', function () {
+    expect(PendingPaymentManager::quotationTermText(
+        '<p>Payment terms</p><ol start="2" type="A"><li>Pay the rental fee<ul><li>Before pickup</li><li>Keep the receipt</li></ul></li><li>Bring ID</li></ol>'
+    ))->toBe("Payment terms\nB. Pay the rental fee\n  • Before pickup\n  • Keep the receipt\nC. Bring ID");
+});
+
+it('keeps list numbering and indentation in quotation terms', function () {
+    expect(PendingPaymentManager::quotationTermText(
+        '<p>Payment terms</p><ol start="2" type="A"><li>Pay the rental fee<ul><li>Before pickup</li><li>Keep the receipt</li></ul></li><li>Bring ID</li></ol>'
+    ))->toBe("Payment terms\nB. Pay the rental fee\n  • Before pickup\n  • Keep the receipt\nC. Bring ID");
+});
+
 it('binds the saved refundable deposit amount to the quotation snapshot', function () {
     $item = new BookingItem(['metadata' => ['refundable_deposit_lkr' => 2500.50]]);
     $booking = new class extends Booking {

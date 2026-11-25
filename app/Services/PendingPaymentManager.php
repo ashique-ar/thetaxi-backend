@@ -202,10 +202,136 @@ class PendingPaymentManager
     public static function quotationTermText(string $content): string
     {
         $content = html_entity_decode($content, ENT_QUOTES | ENT_HTML5, 'UTF-8');
-        $content = preg_replace('~<(script|style)\b[^>]*>.*?</\1\s*>~is', '', $content);
-        $content = preg_replace('~<br\b[^>]*>|</(?:p|div|li|h[1-6]|tr)\s*>~i', "\n", $content);
+        if (!class_exists(\DOMDocument::class) || !str_contains($content, '<')) {
+            $content = preg_replace('~<br\b[^>]*>|</(?:p|div|li|h[1-6]|tr)\s*>~i', "\n", $content);
+            return trim(strip_tags($content));
+        }
 
-        return trim(strip_tags($content));
+        $previousErrorMode = libxml_use_internal_errors(true);
+        $document = new \DOMDocument('1.0', 'UTF-8');
+        $document->loadHTML('<?xml encoding="UTF-8"><div>' . $content . '</div>', LIBXML_HTML_NOIMPLIED | LIBXML_HTML_NODEFDTD | LIBXML_NONET);
+        libxml_clear_errors();
+        libxml_use_internal_errors($previousErrorMode);
+
+        $output = '';
+        $root = $document->getElementsByTagName('div')->item(0);
+        if ($root) {
+            foreach ($root->childNodes as $node) {
+                $output .= self::quotationTermNodeText($node);
+            }
+        }
+
+        $lines = preg_split('/\R/u', $output) ?: [];
+        $normalizedLines = [];
+        $blankLineAdded = false;
+        foreach ($lines as $line) {
+            $indent = strspn($line, " \t");
+            $text = preg_replace('/[ \t]+/u', ' ', trim(substr($line, $indent)));
+            if ($text === '') {
+                if ($normalizedLines && !$blankLineAdded) {
+                    $normalizedLines[] = '';
+                    $blankLineAdded = true;
+                }
+                continue;
+            }
+            $normalizedLines[] = str_repeat(' ', min($indent, 12)) . $text;
+            $blankLineAdded = false;
+        }
+
+        return trim(implode("\n", $normalizedLines));
+    }
+
+    private static function quotationTermNodeText(\DOMNode $node, int $listDepth = 0): string
+    {
+        if ($node instanceof \DOMText) {
+            return $node->nodeValue ?? '';
+        }
+
+        if (!$node instanceof \DOMElement) {
+            $text = '';
+            foreach ($node->childNodes ?? [] as $child) {
+                $text .= self::quotationTermNodeText($child, $listDepth);
+            }
+            return $text;
+        }
+
+        $tag = strtolower($node->tagName);
+        if (in_array($tag, ['script', 'style'], true)) {
+            return '';
+        }
+        if (in_array($tag, ['ul', 'ol'], true)) {
+            $items = [];
+            foreach ($node->childNodes as $child) {
+                if ($child instanceof \DOMElement && strtolower($child->tagName) === 'li') {
+                    $items[] = $child;
+                }
+            }
+            $number = $node->hasAttribute('reversed') ? count($items) : (int) ($node->getAttribute('start') ?: 1);
+            $step = $node->hasAttribute('reversed') ? -1 : 1;
+            $text = '';
+            foreach ($items as $item) {
+                $label = '';
+                $nested = '';
+                foreach ($item->childNodes as $child) {
+                    if ($child instanceof \DOMElement && in_array(strtolower($child->tagName), ['ul', 'ol'], true)) {
+                        $nested .= self::quotationTermNodeText($child, $listDepth + 1);
+                    } else {
+                        $label .= self::quotationTermNodeText($child, $listDepth + 1);
+                    }
+                }
+                $marker = $tag === 'ol' ? self::quotationOrderedListMarker($number, $node->getAttribute('type')) : '•';
+                $text .= str_repeat('  ', $listDepth) . $marker . ' ' . trim(preg_replace('/\s+/u', ' ', $label)) . "\n" . $nested;
+                $number += $step;
+            }
+            return $text;
+        }
+
+        if ($tag === 'br') {
+            return "\n";
+        }
+
+        $text = '';
+        foreach ($node->childNodes as $child) {
+            $text .= self::quotationTermNodeText($child, $listDepth);
+        }
+
+        return in_array($tag, ['p', 'div', 'li', 'h1', 'h2', 'h3', 'h4', 'h5', 'h6', 'tr'], true)
+            ? trim($text) . "\n"
+            : $text;
+    }
+
+    private static function quotationOrderedListMarker(int $number, string $type): string
+    {
+        return match ($type) {
+            'a' => self::quotationAlphaMarker($number, false) . '.',
+            'A' => self::quotationAlphaMarker($number, true) . '.',
+            'i' => self::quotationRomanMarker($number) . '.',
+            'I' => strtoupper(self::quotationRomanMarker($number)) . '.',
+            default => $number . '.',
+        };
+    }
+
+    private static function quotationAlphaMarker(int $number, bool $uppercase): string
+    {
+        $marker = '';
+        while ($number > 0) {
+            $number--;
+            $marker = chr(($uppercase ? 65 : 97) + ($number % 26)) . $marker;
+            $number = intdiv($number, 26);
+        }
+        return $marker;
+    }
+
+    private static function quotationRomanMarker(int $number): string
+    {
+        $marker = '';
+        foreach ([1000 => 'm', 900 => 'cm', 500 => 'd', 400 => 'cd', 100 => 'c', 90 => 'xc', 50 => 'l', 40 => 'xl', 10 => 'x', 9 => 'ix', 5 => 'v', 4 => 'iv', 1 => 'i'] as $value => $numeral) {
+            while ($number >= $value) {
+                $marker .= $numeral;
+                $number -= $value;
+            }
+        }
+        return $marker;
     }
 
     /**

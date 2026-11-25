@@ -5,7 +5,7 @@
     $hideCheckoutDetails = !$showCheckoutDetails || ($customerLookupEnabled && !$verifiedCheckoutCustomer && !old('first_name') && !old('email'));
     $canShowCheckout = $canBookAsNewCustomer || Auth::check() || $customerLookupEnabled;
 @endphp
-<div id="checkout-v2" class="min-h-screen bg-slate-50 font-sans antialiased text-slate-800">
+<div id="checkout-v2" class="checkout-v2-transaction min-h-screen bg-slate-50 font-sans antialiased text-slate-800">
     <div data-popup-page="checkout"></div>
     @include('checkout.v2.header-' . $checkoutDesign)
     <main id="checkoutContentStart" class="mx-auto w-full max-w-7xl px-4 py-8 sm:px-6 lg:px-8">

@@ -67,7 +67,11 @@ class WebXPayService
         string $corporateId,
         float $amount,
         string $amountCurrency,
-        array $customer
+        array $customer,
+        ?string $returnUrl = null,
+        ?string $cancelUrl = null,
+        ?string $notifyUrl = null,
+        ?string $customFields = null,
     ): array {
         if (!$this->isEnabled()) {
             throw new \RuntimeException('WebXPay is not enabled or configured properly.');
@@ -119,16 +123,16 @@ class WebXPayService
             'fx_rate_at' => now()->toIso8601String(),
             'encrypted_payment' => $encryptedPayment,
             'secret_key' => $this->secretKey,
-            'custom_fields' => base64_encode(implode('|', [$attemptId, 'corporate_invoice', $settlementNumber, $corporateId])),
+            'custom_fields' => base64_encode($customFields ?? implode('|', [$attemptId, 'corporate_invoice', $settlementNumber, $corporateId])),
             'enc_method' => 'JCs3J+6oSz4V0LgE0zi/Bg==',
             'customer_data' => $customerData,
-            'return_url' => route('checkout.webxpay.corporate.callback'),
-            'cancel_url' => URL::temporarySignedRoute(
+            'return_url' => $returnUrl ?? route('checkout.webxpay.corporate.callback'),
+            'cancel_url' => $cancelUrl ?? URL::temporarySignedRoute(
                 'checkout.webxpay.corporate.cancel',
                 now()->addDay(),
                 ['attempt' => $attemptId],
             ),
-            'notify_url' => route('checkout.webxpay.corporate.notify'),
+            'notify_url' => $notifyUrl ?? route('checkout.webxpay.corporate.notify'),
             'method' => 'rsa_redirect',
         ];
     }

@@ -38,7 +38,7 @@
     @endphp
 
     <!-- Breadcrumb section -->
-    <div class="breadcrumb-section"
+    <div class="breadcrumb-section payment-resume-hero"
         style="background-image:linear-gradient(rgba(0, 0, 0, 0.3), rgba(0, 0, 0, 0.3)), url({{ asset('assets/img/innerpages/breadcrumb-bg.jpg') }});">
         <div class="container banner-content">
             <div class="">
@@ -49,7 +49,7 @@
     </div>
     <!-- End Breadcrumb section -->
     <!-- Email-style Payment Resume Page -->
-    <div class="checkout-success {{ theme_class('payment-resume') }} pt-100 mb-100">
+    <div class="checkout-success payment-resume-page {{ theme_class('payment-resume') }} pt-100 mb-100">
         <div class="container">
             @if (session('error') || $errors->any())
                 <div class="alert alert-danger" role="alert">
@@ -1003,6 +1003,7 @@
     </style>
     <link rel="stylesheet"
         href="{{ assetVersion(theme_asset('checkout_stylesheet') ?? 'assets/css/checkout-theme-01.css') }}">
+    <link rel="stylesheet" href="{{ assetVersion('assets/css/customer-transaction-pages.css') }}">
 @endpush
 
 @push('scripts')
