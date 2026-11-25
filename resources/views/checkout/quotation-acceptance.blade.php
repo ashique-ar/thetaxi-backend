@@ -15,16 +15,21 @@
         $total = (float) ($snapshot['total_estimated'] ?? $booking->total_estimated ?? 0);
         $amountPaid = (float) ($snapshot['amount_paid'] ?? 0);
         $amountDue = max(0, $total - $amountPaid);
+        $quotationOptions = $quotation['options'] ?? [];
+        $tripOptionGroups = \App\Helpers\BookingLinkHelper::quotationTripOptionGroups($quotationOptions);
+        $optionSelectionMap = \App\Helpers\BookingLinkHelper::quotationOptionSelectionMap($quotationOptions);
+        $defaultOption = $quotationOptions[0] ?? [];
+        $defaultGroupIds = $defaultOption['vehicle_group_ids'] ?? [];
     @endphp
 
-    <div class="breadcrumb-section">
+    <div class="breadcrumb-section quotation-review-hero">
         <div class="container banner-content">
             <h1>Review your quotation</h1>
             <p class="subtitle">Check the booking details and terms before accepting this offer.</p>
         </div>
     </div>
 
-    <main class="container pt-5 pb-5" style="max-width: 960px;">
+    <main class="container pt-5 pb-5 quotation-review-page" style="max-width: 960px;">
         @if (session('error'))
             <div class="alert alert-danger" role="alert">{{ session('error') }}</div>
         @endif
@@ -48,11 +53,12 @@
             </div>
 
             <hr>
-            <h3 class="h5">Services in this quotation</h3>
+            <h3 class="h5">Trips and vehicle choices</h3>
             @forelse (($snapshot['items'] ?? []) as $item)
                 @php
                     $pickup = is_array($item['pickup_location'] ?? null) ? ($item['pickup_location']['address'] ?? '') : ($item['pickup_location'] ?? '');
                     $dropoff = is_array($item['dropoff_location'] ?? null) ? ($item['dropoff_location']['address'] ?? '') : ($item['dropoff_location'] ?? '');
+                    $tripIndex = $loop->index;
                 @endphp
                 <div class="border rounded p-3 mb-3">
                     <strong>{{ ($item['service_name'] ?? '') ?: 'Rental / taxi service' }}</strong>
@@ -60,8 +66,8 @@
                         <div>{{ $item['vehicle_group_name'] }}</div>
                     @endif
                     <div class="text-muted">{{ !empty($item['is_self_driven']) ? 'Self-drive' : 'With driver' }}</div>
-                    <div>{{ $item['from_date'] ?? 'Date not set' }} {{ $item['from_time'] ?? '' }} –
-                        {{ $item['to_date'] ?? '' }} {{ $item['to_time'] ?? '' }}</div>
+                    <div>{{ !empty($item['from_date']) ? \Carbon\Carbon::parse($item['from_date'])->format('M j, Y') : 'Date not set' }} {{ !empty($item['from_time']) ? \Carbon\Carbon::parse($item['from_time'])->format('g:i A') : '' }} –
+                        {{ !empty($item['to_date']) ? \Carbon\Carbon::parse($item['to_date'])->format('M j, Y') : '' }} {{ !empty($item['to_time']) ? \Carbon\Carbon::parse($item['to_time'])->format('g:i A') : '' }}</div>
                     @if (!empty($item['route']) || $pickup || $dropoff)
                         <div class="text-muted">{{ $item['route'] ?? (($pickup ?: 'Pickup not set') . ' → ' . ($dropoff ?: 'Drop-off not set')) }}</div>
                     @endif
@@ -69,6 +75,25 @@
                     <div class="text-muted">{{ $item['quantity'] ?? 1 }} ×
                         {{ number_format((float) ($item['unit_price'] ?? 0), 2) }} {{ $currency }}</div>
                     <div class="fw-semibold">{{ number_format((float) ($item['total_price'] ?? 0), 2) }} {{ $currency }}</div>
+                    @endif
+                    @if (!empty($quotationOptions))
+                        <fieldset class="mt-3">
+                            <legend class="fw-semibold">Choose a vehicle for Trip {{ $tripIndex + 1 }}</legend>
+                            @foreach (($tripOptionGroups[$tripIndex + 1] ?? []) as $choice)
+                                <label class="d-flex align-items-center justify-content-between gap-3 border rounded p-2 mb-2">
+                                    <span class="d-flex align-items-center gap-2">
+                                        <input type="radio" form="accept-quotation-form"
+                                            name="quotation_trip_vehicle_group[{{ $tripIndex }}]"
+                                            value="{{ $choice['vehicle_group_id'] }}"
+                                            data-trip-index="{{ $tripIndex }}"
+                                            required
+                                            @checked(($defaultGroupIds[$tripIndex] ?? null) === $choice['vehicle_group_id'])>
+                                        <span>{{ $choice['vehicle_group_name'] }}</span>
+                                    </span>
+                                    <strong>{{ number_format($choice['price'], 2) }} {{ $currency }}</strong>
+                                </label>
+                            @endforeach
+                        </fieldset>
                     @endif
                 </div>
             @empty
@@ -105,27 +130,12 @@
             @endforelse
         </section>
 
-        <form method="POST" action="{{ route('checkout.quotation-accept', ['token' => $token]) }}" class="card p-4">
+        <form id="accept-quotation-form" method="POST" action="{{ route('checkout.quotation-accept', ['token' => $token]) }}" class="card p-4">
             @csrf
             <input type="hidden" name="terms_hash" value="{{ $termsHash }}">
-            @if (!empty($quotation['options']))
-                <fieldset class="mb-3">
-                    <legend class="h5">Choose one complete trip option</legend>
-                    @foreach ($quotation['options'] as $option)
-                        <label class="d-flex align-items-start gap-2 border rounded p-3 mb-2">
-                            <input type="radio" name="quotation_option_id" value="{{ $option['id'] }}" required @checked(old('quotation_option_id') === ($option['id'] ?? null))>
-                            <span class="flex-grow-1">
-                                <strong>Option {{ $option['option_number'] ?? $loop->iteration }}</strong>
-                                @foreach (($option['trip_choices'] ?? []) as $tripChoice)
-                                    <span class="d-block mt-2"><strong>Trip {{ $tripChoice['trip_number'] }}:</strong> {{ $tripChoice['service_name'] ?? 'Trip' }} — {{ $tripChoice['vehicle_group_name'] }}</span>
-                                    <span class="d-block text-muted">{{ $tripChoice['from_date'] ?? '' }} {{ $tripChoice['from_time'] ?? '' }} – {{ $tripChoice['to_date'] ?? '' }} {{ $tripChoice['to_time'] ?? '' }}</span>
-                                    @if (!empty($tripChoice['route']))<span class="d-block text-muted">{{ $tripChoice['route'] }}</span>@endif
-                                @endforeach
-                                <span class="d-block">{{ number_format((float) data_get($option, 'totals.total_estimated', 0), 2) }} {{ $currency }}</span>
-                            </span>
-                        </label>
-                    @endforeach
-                </fieldset>
+            @if (!empty($quotationOptions))
+                <input id="quotation-option-id" type="hidden" name="quotation_option_id" value="{{ $defaultOption['id'] ?? '' }}">
+                <p class="mb-3">Combined total for your choices: <strong id="quotation-combined-total">{{ number_format((float) data_get($defaultOption, 'totals.total_estimated', 0), 2) }} {{ $currency }}</strong></p>
                 @error('quotation_option_id')<p class="text-danger" role="alert">{{ $message }}</p>@enderror
             @endif
             <label class="d-flex align-items-start gap-2 mb-3">
@@ -137,5 +147,58 @@
             <p id="accept-quotation-terms-error" class="text-danger" role="alert">{{ $message }}</p> @enderror
             <button type="submit" class="btn btn-primary">Accept quotation &amp; continue</button>
         </form>
+        @if (!empty($quotationOptions))
+            <script>
+                (() => {
+                    const form = document.getElementById('accept-quotation-form');
+                    const optionField = document.getElementById('quotation-option-id');
+                    const totalLabel = document.getElementById('quotation-combined-total');
+                    const submitButton = form?.querySelector('button[type="submit"]');
+                    const selectionMap = @json($optionSelectionMap);
+                    const tripRadios = [...document.querySelectorAll('[data-trip-index]')];
+                    const tripIndexes = [...new Set([...document.querySelectorAll('[data-trip-index]')].map(input => input.dataset.tripIndex))]
+                        .sort((a, b) => Number(a) - Number(b));
+                    const currency = @json($currency);
+
+                    const updateSelection = () => {
+                        const selectedGroups = tripIndexes.map(index =>
+                            document.querySelector(`input[name="quotation_trip_vehicle_group[${index}]"]:checked`)?.value
+                        );
+                        const selectedOption = selectedGroups.every(Boolean)
+                            ? selectionMap[selectedGroups.join('|')]
+                            : null;
+                        optionField.value = selectedOption?.id || '';
+                        submitButton.disabled = !selectedOption;
+                        if (selectedOption) totalLabel.textContent = `${Number(selectedOption.total).toFixed(2)} ${currency}`;
+                    };
+                    tripRadios.forEach(input => input.addEventListener('change', updateSelection));
+                    updateSelection();
+                })();
+            </script>
+        @endif
     </main>
 @endsection
+
+@push('styles')
+    <style>
+        .quotation-review-hero { padding: 36px 0 30px !important; }
+        .quotation-review-hero .banner-content { max-width: 900px; }
+        .quotation-review-hero .banner-content h1 { margin: 0 0 6px !important; font-size: clamp(24px, 2.6vw, 32px) !important; line-height: 1.25; }
+        .quotation-review-hero .banner-content .subtitle { margin: 0; font-size: 15px !important; line-height: 1.5; }
+        .quotation-review-page { font-size: 14px; line-height: 1.5; }
+        .quotation-review-page > .card,
+        .quotation-review-page > form.card { padding: 20px !important; }
+        .quotation-review-page p,
+        .quotation-review-page label,
+        .quotation-review-page .border { font-size: 14px; line-height: 1.5; }
+        .quotation-review-page h3 { font-size: 18px; line-height: 1.35; }
+        .quotation-review-page h4 { font-size: 16px; line-height: 1.4; }
+        .quotation-review-page legend { font-size: 15px; line-height: 1.4; }
+        .quotation-review-page article > div { font-size: 14px; line-height: 1.5; }
+        @media (max-width: 576px) {
+            .quotation-review-hero { padding: 30px 0 24px !important; }
+            .quotation-review-page > .card,
+            .quotation-review-page > form.card { padding: 16px !important; }
+        }
+    </style>
+@endpush

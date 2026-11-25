@@ -122,18 +122,81 @@ class BookingLinkHelper
     {
         $booking->loadMissing(['bookingItems.serviceType', 'bookingItems.vehicleGroup']);
         $snapshot = self::quotationSnapshot($booking);
-        foreach ($booking->bookingItems->sortBy('id')->values() as $index => $item) {
-            $snapshot['items'][$index]['service_name'] = (string) ($item->serviceType?->name ?? '');
-            $snapshot['items'][$index]['vehicle_group_name'] = (string) ($item->vehicleGroup?->name ?? '');
-            $snapshot['items'][$index]['route'] = implode(' → ', array_values(array_filter([
+        $options = data_get($booking->workflow_data, 'quotation_options', []);
+        $items = $booking->bookingItems->sortBy('id')->values();
+        if (count($options) > 1) {
+            $firstOptionItemIds = collect(data_get($options, '0.booking_items', []))
+                ->pluck('id')->filter()->map(fn ($id) => (string) $id)->all();
+            if ($firstOptionItemIds) {
+                $items = collect($firstOptionItemIds)
+                    ->map(fn ($id) => $booking->bookingItems->firstWhere('id', $id))
+                    ->filter()->values();
+            }
+        }
+        $seenTripIndexes = [];
+        $displayItems = [];
+        foreach ($items as $item) {
+            $tripIndex = data_get($item->metadata, '_quotation_trip_index');
+            if (count($options) > 1 && $tripIndex !== null) {
+                $tripIndex = (string) $tripIndex;
+                if (isset($seenTripIndexes[$tripIndex])) continue;
+                $seenTripIndexes[$tripIndex] = true;
+            }
+
+            $displayItem = collect($snapshot['items'])->firstWhere('id', (string) $item->id) ?? [];
+            $displayItem['service_name'] = (string) ($item->serviceType?->name ?? '');
+            $displayItem['vehicle_group_name'] = (string) ($item->vehicleGroup?->name ?? '');
+            $displayItem['route'] = implode(' → ', array_values(array_filter([
                 data_get($item->pickup_location, 'address'),
                 ...collect(data_get($item->metadata, 'multi_route_stop_order', []))
                     ->sortBy('route_order')->pluck('address')->all(),
                 data_get($item->dropoff_location, 'address'),
             ])));
+            $displayItems[] = $displayItem;
         }
+        $snapshot['items'] = $displayItems;
 
         return $snapshot;
+    }
+
+    public static function quotationTripOptionGroups(array $options): array
+    {
+        $trips = [];
+        foreach ($options as $option) {
+            foreach (($option['trip_choices'] ?? []) as $index => $tripChoice) {
+                $tripNumber = (int) ($tripChoice['trip_number'] ?? $index + 1);
+                $groupId = (string) ($option['vehicle_group_ids'][$index] ?? '');
+                $itemId = (string) ($option['booking_items'][$index]['id'] ?? '');
+                $price = data_get($option, "pricing.items.{$itemId}.summary.total")
+                    ?? data_get($option, "pricing.items.{$itemId}.total_amount")
+                    ?? 0;
+                $trips[$tripNumber] ??= [];
+                $key = $groupId !== '' ? $groupId : (string) ($tripChoice['vehicle_group_name'] ?? '');
+                $trips[$tripNumber][$key] ??= [
+                    'vehicle_group_id' => $groupId,
+                    'vehicle_group_name' => (string) ($tripChoice['vehicle_group_name'] ?? 'Vehicle option'),
+                    'price' => (float) $price,
+                ];
+            }
+        }
+
+        ksort($trips);
+        return array_map(fn ($choices) => array_values($choices), $trips);
+    }
+
+    public static function quotationOptionSelectionMap(array $options): array
+    {
+        $selectionMap = [];
+        foreach ($options as $option) {
+            $groupIds = array_map('strval', $option['vehicle_group_ids'] ?? []);
+            if ($groupIds === [] || empty($option['id'])) continue;
+            $selectionMap[implode('|', $groupIds)] = [
+                'id' => (string) $option['id'],
+                'total' => (float) data_get($option, 'totals.total_estimated', 0),
+            ];
+        }
+
+        return $selectionMap;
     }
 
     /**

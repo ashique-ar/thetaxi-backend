@@ -3072,7 +3072,7 @@ class CheckoutController extends Controller
                     return redirect()->route('home')->with('error', 'The quotation terms could not be verified. Please contact our team.');
                 }
 
-                $quotation['display_snapshot'] ??= $quotation['snapshot'] ?? [];
+                $quotation['display_snapshot'] = BookingLinkHelper::quotationDisplaySnapshot($booking);
                 return $this->quotationAcceptanceView($booking, $token, $quotation, $terms, $termsHash,
                     $quote->expires_at, (int) ($quote->revision_number ?: 1));
             }

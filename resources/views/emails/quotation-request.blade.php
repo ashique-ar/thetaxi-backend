@@ -17,6 +17,10 @@
             ?: ($booking->customer?->full_name ?: 'Valued Customer');
         $cartItems = $workflowData['cart_items'] ?? [];
         $quotationOptions = $workflowData['quotation_options'] ?? [];
+        $tripOptionGroups = \App\Helpers\BookingLinkHelper::quotationTripOptionGroups($quotationOptions);
+        $quotationDisplaySnapshot = count($quotationOptions) > 1
+            ? \App\Helpers\BookingLinkHelper::quotationDisplaySnapshot($booking)
+            : [];
         $pickupLocation = is_string($booking->pickup_location)
             ? json_decode($booking->pickup_location, true)
             : $booking->pickup_location;
@@ -106,17 +110,19 @@
 
     @if ($staffRequested && count($quotationOptions) > 1)
         <div class="section">
-            <h2 class="section-title"><span class="icon">🚘</span> Vehicle options</h2>
-            <p>Choose one option when you review your quotation. You will pay for the option you select.</p>
-            @foreach ($quotationOptions as $option)
+            <h2 class="section-title"><span class="icon">🚘</span> Vehicle choices for each trip</h2>
+            <p>Choose one vehicle for each trip on the quotation page. The total will update to match your selections.</p>
+            @foreach ($tripOptionGroups as $tripNumber => $choices)
                 <div class="highlight-box info" style="margin-bottom:10px;">
-                    <strong>Option {{ $option['option_number'] ?? $loop->iteration }}</strong>
-                    @foreach (($option['trip_choices'] ?? []) as $tripChoice)
-                        <div style="margin-top:6px;">Trip {{ $tripChoice['trip_number'] }} — {{ $tripChoice['service_name'] ?? 'Trip' }} / {{ $tripChoice['vehicle_group_name'] }}</div>
-                        <div>{{ $tripChoice['from_date'] ?? '' }} {{ $tripChoice['from_time'] ?? '' }} — {{ $tripChoice['to_date'] ?? '' }} {{ $tripChoice['to_time'] ?? '' }}</div>
-                        @if (!empty($tripChoice['route']))<div>{{ $tripChoice['route'] }}</div>@endif
+                    @php $trip = $quotationDisplaySnapshot['items'][$tripNumber - 1] ?? []; @endphp
+                    <strong>Trip {{ $tripNumber }} — {{ $trip['service_name'] ?? 'Trip' }}</strong>
+                    @if (!empty($trip['from_date']))
+                        <div>{{ \Carbon\Carbon::parse($trip['from_date'])->format('M j, Y') }} {{ $trip['from_time'] ?? '' }} — {{ !empty($trip['to_date']) ? \Carbon\Carbon::parse($trip['to_date'])->format('M j, Y') : '' }} {{ $trip['to_time'] ?? '' }}</div>
+                    @endif
+                    @if (!empty($trip['route']))<div>{{ $trip['route'] }}</div>@endif
+                    @foreach ($choices as $choice)
+                        <div style="margin-top:5px;">{{ $choice['vehicle_group_name'] }} — {{ number_format($choice['price'], 2) }} {{ $currencyCode }}</div>
                     @endforeach
-                    <span style="float:right;">{{ number_format((float) data_get($option, 'totals.total_estimated', 0), 2) }} {{ $currencyCode }}</span>
                 </div>
             @endforeach
         </div>

@@ -58,6 +58,7 @@ use Illuminate\Support\Str;
 use Illuminate\Validation\ValidationException;
 use Spatie\Activitylog\Models\Activity;
 use App\Notifications\BookingApprovalRequested;
+use App\Notifications\BookingApprovalCompleted;
 
 class BookingFlowService
 {
@@ -8710,6 +8711,14 @@ class BookingFlowService
                 ->where('data->data->booking_id', (string) $booking->id)
                 ->update(['read_at' => now(), 'data->resolved' => true, 'updated_at' => now()]);
 
+            if ($action === 'approve') {
+                $this->notifyApprovalCompleted($booking, $userId);
+                if ($booking->is_corporate_booking || $booking->corporate_account_id) {
+                    app(\App\Services\CorporateBookingNotificationService::class)
+                        ->notifyPortalParticipants($booking, 'approved');
+                }
+            }
+
             $this->notifyBookingCustomer(
                 $booking,
                 $action === 'approve' ? 'Booking approved' : 'Booking rejected',
@@ -8821,6 +8830,33 @@ class BookingFlowService
             Log::warning('Booking approval notification could not be queued', [
                 'booking_id' => $booking->id,
                 'event_type' => $eventType,
+                'error' => $exception->getMessage(),
+            ]);
+        }
+    }
+
+    private function bookingApprovalRecipients()
+    {
+        return User::permission('bookings.approve')
+            ->where('is_active', true)
+            ->whereNull('deleted_at')
+            ->whereHas('staff', fn ($query) => $query
+                ->whereNull('deleted_at')
+                ->where(fn ($employment) => $employment->whereNull('employment_ended_at')->orWhere('employment_ended_at', '>', now())));
+    }
+
+    private function notifyApprovalCompleted(Booking $booking, string $userId): void
+    {
+        try {
+            $approver = User::query()->find($userId);
+            $approverName = trim(($approver?->first_name ?? '').' '.($approver?->last_name ?? '')) ?: 'A staff member';
+            foreach ($this->bookingApprovalRecipients()->get() as $recipient) {
+                $recipient->notify(new BookingApprovalCompleted($booking, $approverName));
+            }
+        } catch (\Throwable $exception) {
+            Log::warning('Booking approval completion notifications could not be queued', [
+                'booking_id' => $booking->id,
+                'approved_by' => $userId,
                 'error' => $exception->getMessage(),
             ]);
         }
@@ -9416,13 +9452,7 @@ class BookingFlowService
     {
         try {
             // Operational approval notifications belong to active staff accounts only.
-            $approvers = User::permission('bookings.approve')
-                ->where('is_active', true)
-                ->whereNull('deleted_at')
-                ->whereHas('staff', fn ($query) => $query
-                    ->whereNull('deleted_at')
-                    ->where(fn ($employment) => $employment->whereNull('employment_ended_at')->orWhere('employment_ended_at', '>', now())))
-                ->get();
+            $approvers = $this->bookingApprovalRecipients()->get();
             $pendingCount = Booking::query()->where('status', 'pending_approval')->where('requires_approval', true)->count();
 
             $bookingNumber = $booking->booking_number ?? (string) $booking->id;
