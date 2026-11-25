@@ -15,9 +15,9 @@ class StaffPaymentLinkController extends Controller
     {
         $data = $request->validate([
             'amount' => ['required', 'numeric', 'gt:0', 'max:9999999999999999'],
-            'currency' => ['required', 'string', 'size:3', 'regex:/^[A-Za-z]{3}$/'],
+            'currency' => ['sometimes', 'in:LKR'],
         ]);
-        return response()->json(['data' => $this->links->create((string) $request->user()->id, (float) $data['amount'], $data['currency'])], 201);
+        return response()->json(['data' => $this->links->create((string) $request->user()->id, (float) $data['amount'])], 201);
     }
 
     public function redirect(string $link)

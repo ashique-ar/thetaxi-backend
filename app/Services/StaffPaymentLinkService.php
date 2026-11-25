@@ -12,21 +12,22 @@ class StaffPaymentLinkService
 {
     public function __construct(private readonly WebXPayService $webXPay) {}
 
-    public function create(string $userId, float $amount, string $currency): array
+    public function create(string $userId, float $amount): array
     {
         abort_unless($this->webXPay->isEnabled(), 503, 'WebXPay is not available. Contact an administrator.');
+        abort_unless($this->webXPay->currency() === 'LKR', 503, 'Staff payment links require WebXPay to be configured for LKR.');
         $currencyService = app(CurrencyService::class);
-        $currency = strtoupper(trim($currency));
-        $amount = $currencyService->roundAmount($amount, $currency);
-        abort_unless($currencyService->isValidCurrency($currency) && is_finite($amount) && $amount > 0, 422, 'Enter a valid positive amount and currency.');
+        $amount = $currencyService->roundAmount($amount, 'LKR');
+        abort_unless(is_finite($amount) && $amount >= 1 && floor($amount) === $amount, 422, 'Enter a positive whole-number LKR amount.');
+        $currency = 'LKR';
 
-        return DB::transaction(function () use ($userId, $amount, $currency): array {
+        return DB::transaction(function () use ($userId, $amount): array {
             $id = (string) Str::uuid();
             $orderId = 'PL'.str_replace('-', '', $id);
             $redirect = URL::temporarySignedRoute('checkout.staff-payment-link.redirect', now()->addDays(30), ['link' => $id]);
             $cancel = URL::temporarySignedRoute('checkout.staff-payment-link.cancel', now()->addDays(30), ['link' => $id]);
             $gateway = $this->webXPay->createCorporateInvoicePayment(
-                $orderId, $id, $orderId, 'staff', $amount, $currency, [],
+                $orderId, $id, $orderId, 'staff', $amount, 'LKR', [],
                 route('checkout.staff-payment-link.callback'), $cancel,
                 route('checkout.staff-payment-link.notify'), implode('|', [$id, 'staff_payment_link', $orderId, $userId]),
             );
