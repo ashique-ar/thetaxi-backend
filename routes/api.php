@@ -3130,6 +3130,7 @@ Route::middleware(['auth:api'])->group(function () {
         // Staff Transport
         Route::prefix('staff-transport')->group(function () {
             Route::get('setup-status', [CorporateStaffTransportController::class, 'setupStatus']);
+            Route::get('employees', [CorporateStaffTransportController::class, 'employeeOptions']);
             Route::get('locations', [CorporateStaffTransportController::class, 'locations']);
             Route::post('locations', [CorporateStaffTransportController::class, 'storeLocation']);
             Route::get('programs', [CorporateStaffTransportController::class, 'programs']);

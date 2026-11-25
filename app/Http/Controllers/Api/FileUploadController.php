@@ -76,7 +76,7 @@ class FileUploadController extends Controller
             $extension = $file->getClientOriginalExtension();
             $isImage = str_starts_with($mimeType, 'image/');
             // Preserve animation and vector/icon formats; compress raster photos automatically.
-            $shouldProcessImage = in_array($mimeType, ['image/jpeg', 'image/png', 'image/webp'], true);
+            $shouldProcessImage = $category !== 'favicons' && in_array($mimeType, ['image/jpeg', 'image/png', 'image/webp'], true);
 
             // Generate unique filename
             $fileName = $this->generateUniqueFilename($originalName, $extension);
@@ -382,17 +382,19 @@ class FileUploadController extends Controller
     {
         $media = UserMedia::query()->where('full_path', $path)->first();
         $publicCategories = ['general', 'vehicles', 'gallery', 'branding', 'logos', 'banners', 'breadcrumbs', 'sliders', 'team', 'vectors', 'icons', 'sections', 'heroes', 'maps', 'popups', 'seo', 'videos', 'favicons'];
-        $isPublicMedia = $media
+        $isPublicMediaRecord = $media
             && in_array($media->category, $publicCategories, true)
             && ($media->is_image || str_starts_with($media->mime_type, 'video/') || ($media->category === 'sections' && $media->mime_type === 'application/pdf'));
-        abort_unless($isPublicMedia || $request->hasValidSignature(), 404, 'File not found');
 
-        $diskName = $isPublicMedia ? $media->storage_type : $request->query('disk', $this->storageDisk());
+        $isPublicPath = public_media_path($path);
+        $diskName = $isPublicMediaRecord ? $media->storage_type : $request->query('disk', $this->storageDisk());
         abort_unless(is_string($diskName) && config('filesystems.disks.' . $diskName), 404, 'File not found');
         $disk = Storage::disk($diskName);
         abort_unless($disk->exists($path), 404, 'File not found');
-        $fileContent = $disk->get($path);
         $mimeType = $disk->mimeType($path) ?: 'application/octet-stream';
+        $isPublicMedia = $isPublicMediaRecord || ($isPublicPath && (str_starts_with($mimeType, 'image/') || str_starts_with($mimeType, 'video/') || (str_starts_with($path, 'media/sections/') && $mimeType === 'application/pdf')));
+        abort_unless($isPublicMedia || $request->hasValidSignature(), 404, 'File not found');
+        $fileContent = $disk->get($path);
 
         return response($fileContent, 200, [
             'Content-Type' => $mimeType,
@@ -438,6 +440,7 @@ class FileUploadController extends Controller
             'thumbnails' => 'thumbnails',
             'thumbnail' => 'thumbnails',
             'branding' => 'branding',
+            'favicons' => 'favicons',
             'logos' => 'logos',
             'logo' => 'logos',
             'banners' => 'banners',
@@ -452,7 +455,6 @@ class FileUploadController extends Controller
             'popups' => 'popups/media',
             'seo' => 'seo',
             'videos' => 'videos',
-            'favicons' => 'favicons',
             'signatures' => 'general/signatures',
         ];
 
@@ -477,6 +479,7 @@ class FileUploadController extends Controller
             'thumbnails' => ['image', 'mimes:jpg,jpeg,png,gif,webp', 'max:' . ($sizeLimits['thumbnails'] ?? 10240)],
             'thumbnail' => ['image', 'mimes:jpg,jpeg,png,gif,webp', 'max:' . ($sizeLimits['thumbnail'] ?? ($sizeLimits['thumbnails'] ?? 10240))],
             'branding' => ['mimes:jpg,jpeg,png,gif,webp,svg,ico', 'max:10240'],
+            'favicons' => ['mimes:jpg,jpeg,png,gif,webp,ico', 'max:2048'],
             'logos' => ['mimes:jpg,jpeg,png,gif,webp,svg,ico', 'max:10240'],
             'logo' => ['mimes:jpg,jpeg,png,gif,webp,svg,ico', 'max:10240'],
             'banners' => ['mimes:jpg,jpeg,png,gif,webp,svg,mp4,webm,mov', 'max:20480'],

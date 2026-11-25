@@ -193,7 +193,7 @@ class UserMedia extends BaseModel
         $publicType = $this->is_image || str_starts_with($this->mime_type, 'video/') || ($this->category === 'sections' && $this->mime_type === 'application/pdf');
 
         return $publicCategory && $publicType
-            ? url('/resources/' . ltrim($this->full_path, '/'))
+            ? route('resources.assets', ['path' => ltrim($this->full_path, '/'), 'disk' => $disk])
             : resource_proxy_url($this->full_path, $disk);
     }
 

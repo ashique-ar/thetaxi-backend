@@ -17,7 +17,7 @@ class CorporateDepartmentController extends Controller
     public function __construct(CorporateService $corporateService)
     {
         $this->corporateService = $corporateService;
-        $this->middleware('permission:manage_departments|manage_employees|view_reports|view_all_bookings')->only(['index']);
+        $this->middleware('permission:manage_departments|manage_divisions|manage_employees|view_reports|view_all_bookings')->only(['index']);
         $this->middleware('permission:manage_departments')->except(['index']);
     }
 

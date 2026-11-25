@@ -83,8 +83,15 @@ if (!function_exists('s3_asset')) {
 
         $path = trim($path);
 
-        // Masked media URLs stay domain-independent and are served by resources.assets.
-        if (str_starts_with($path, '/resources/')) {
+        // Keep public media URLs stable; retain signed URLs for private media.
+        $urlPath = parse_url($path, PHP_URL_PATH) ?: $path;
+        if (str_starts_with($urlPath, '/resources/')) {
+            $mediaPath = substr($urlPath, strlen('/resources/'));
+            if (public_media_path($mediaPath)) {
+                parse_str(parse_url($path, PHP_URL_QUERY) ?: '', $params);
+                return route('resources.assets', ['path' => $mediaPath, 'disk' => $params['disk'] ?? 's3']);
+            }
+
             return $path;
         }
 
@@ -118,12 +125,22 @@ if (!function_exists('s3_asset')) {
             return app('url')->asset(ltrim($path, '/'), $secure);
         }
 
-        $publicSeoMediaPath = ltrim($path, '/');
-        if (preg_match('#^media/(?:branding|logos|icons|seo|favicons)/#', $publicSeoMediaPath)) {
-            return route('resources.assets', ['path' => $publicSeoMediaPath]);
+        $mediaPath = ltrim($path, '/');
+        if (public_media_path($mediaPath)) {
+            return route('resources.assets', ['path' => $mediaPath, 'disk' => 's3']);
         }
 
         return resource_proxy_url($path, 's3', now()->addYears(10));
+    }
+}
+
+if (!function_exists('public_media_path')) {
+    function public_media_path(string $path): bool
+    {
+        return !str_contains($path, '..')
+            && !str_contains($path, '\\')
+            && (preg_match('#^media/(?:general|vehicles|gallery/images|branding|logos|banners|breadcrumbs|sliders|team|vectors|icons|sections|heroes|maps|popups/media|seo|videos|favicons)/.+\.(?:avif|bmp|gif|ico|jpe?g|png|svg|webp|mp4|webm|ogg|mov)$#i', $path) === 1
+                || (str_starts_with($path, 'media/sections/') && preg_match('#\.pdf$#i', $path) === 1));
     }
 }
 

@@ -32,7 +32,7 @@ class CorporateStaffTransportController extends Controller
             return $next($request);
         });
 
-        $this->middleware('permission:staff-transport.view|staff-transport.manage|staff-transport.override|staff-transport.generate|view_all_bookings')->only(['setupStatus', 'programs', 'shifts', 'routes', 'members', 'roster', 'logs', 'generatedBooking', 'locations', 'exportRoster']);
+        $this->middleware('permission:staff-transport.view|staff-transport.manage|staff-transport.override|staff-transport.generate|view_all_bookings')->only(['setupStatus', 'programs', 'shifts', 'routes', 'members', 'roster', 'logs', 'generatedBooking', 'locations', 'exportRoster', 'employeeOptions']);
         $this->middleware('permission:staff-transport.manage')->only(['storeProgram', 'updateProgram', 'storeShift', 'updateShift', 'deleteShift', 'storeRoute', 'updateRoute', 'deleteRoute', 'storeMember', 'updateMember', 'deleteMember', 'buildRoster', 'storeLocation']);
         $this->middleware('permission:staff-transport.override')->only(['setParticipation']);
         $this->middleware('permission:staff-transport.generate')->only(['generate']);
@@ -86,6 +86,38 @@ class CorporateStaffTransportController extends Controller
                 'members' => $memberCount,
             ],
         ]]);
+    }
+
+    public function employeeOptions(Request $request): JsonResponse
+    {
+        $page = $request->validate([
+            'page' => ['sometimes', 'integer', 'min:1'],
+            'per_page' => ['sometimes', 'integer', 'min:1', 'max:100'],
+        ]);
+        $employees = CorporateEmployee::query()
+            ->where('corporate_id', $request->corporate_id)
+            ->where('is_active', true)
+            ->with('user:id,first_name,last_name')
+            ->orderBy('employee_code')
+            ->paginate($page['per_page'] ?? 100, ['id', 'employee_code', 'user_id'], 'page', $page['page'] ?? 1);
+
+        return response()->json([
+            'status' => 'success',
+            'data' => ['employees' => $employees->getCollection()->map(fn (CorporateEmployee $employee) => [
+                'id' => (string) $employee->id,
+                'employee_code' => $employee->employee_code,
+                'user' => $employee->user ? [
+                    'first_name' => $employee->user->first_name,
+                    'last_name' => $employee->user->last_name,
+                ] : null,
+            ])->values()],
+            'meta' => [
+                'current_page' => $employees->currentPage(),
+                'last_page' => $employees->lastPage(),
+                'per_page' => $employees->perPage(),
+                'total' => $employees->total(),
+            ],
+        ]);
     }
 
     public function programs(Request $request): JsonResponse
