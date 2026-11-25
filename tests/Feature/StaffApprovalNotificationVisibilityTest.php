@@ -1,14 +1,65 @@
 <?php
 
 use App\Models\User;
-use Illuminate\Foundation\Testing\RefreshDatabase;
+use Illuminate\Database\Schema\Blueprint;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Schema;
 use Illuminate\Support\Str;
 
-uses(RefreshDatabase::class);
+beforeEach(function () {
+    Schema::dropIfExists('bookings');
+    Schema::dropIfExists('booking_approvals');
+    Schema::dropIfExists('notifications');
+    Schema::dropIfExists('users');
+    Schema::create('users', function (Blueprint $table): void {
+        $table->uuid('id')->primary();
+        $table->string('email');
+        $table->string('password');
+        $table->boolean('is_active')->default(true);
+        $table->timestamps();
+        $table->softDeletes();
+    });
+    Schema::create('notifications', function (Blueprint $table): void {
+        $table->uuid('id')->primary();
+        $table->string('type');
+        $table->string('notifiable_type');
+        $table->uuid('notifiable_id');
+        $table->json('data');
+        $table->timestamp('read_at')->nullable();
+        $table->timestamps();
+    });
+    Schema::create('bookings', function (Blueprint $table): void {
+        $table->uuid('id')->primary();
+        $table->string('booking_number')->nullable();
+        $table->uuid('corporate_account_id')->nullable();
+        $table->string('status')->nullable();
+        $table->boolean('requires_approval')->default(false);
+        $table->string('approval_status')->nullable();
+        $table->string('corporate_approval_status')->nullable();
+        $table->softDeletes();
+    });
+    Schema::create('booking_approvals', function (Blueprint $table): void {
+        $table->uuid('id')->primary();
+        $table->uuid('booking_id');
+        $table->string('status');
+        $table->timestamps();
+        $table->softDeletes();
+    });
+})->afterEach(function () {
+    Schema::dropIfExists('booking_approvals');
+    Schema::dropIfExists('bookings');
+    Schema::dropIfExists('notifications');
+    Schema::dropIfExists('users');
+});
 
 it('shows internal booking approval notifications to staff contexts but not corporate contexts', function () {
-    $user = User::factory()->create();
+    $user = new User();
+    $user->forceFill([
+        'id' => (string) Str::uuid(),
+        'email' => 'staff@example.test',
+        'password' => 'unused',
+        'is_active' => true,
+    ]);
     $notificationId = (string) Str::uuid();
     DB::table('notifications')->insert([
         'id' => $notificationId,
