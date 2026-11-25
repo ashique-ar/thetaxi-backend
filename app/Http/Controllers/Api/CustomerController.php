@@ -53,11 +53,13 @@ class CustomerController extends Controller
         $filters = $request->validate(['q' => ['nullable', 'string', 'max:120']]);
         $customers = Customer::query()
             ->select(['id', 'user_id'])
-            ->with('user:id,first_name,last_name')
+            ->with('user:id,first_name,last_name,email,phone')
             ->when($filters['q'] ?? null, function ($query, $search) {
                 $query->whereHas('user', fn ($user) => $user
                     ->whereLikeInsensitive('first_name', $search)
-                    ->orWhereLikeInsensitive('last_name', $search));
+                    ->orWhereLikeInsensitive('last_name', $search)
+                    ->orWhereLikeInsensitive('email', $search)
+                    ->orWhereLikeInsensitive('phone', $search));
             })
             ->latest('customers.created_at')
             ->limit(100)
@@ -65,9 +67,13 @@ class CustomerController extends Controller
             ->map(fn ($customer) => [
                 'id' => $customer->id,
                 'name' => trim(($customer->user?->first_name ?? '') . ' ' . ($customer->user?->last_name ?? '')),
+                'email' => $customer->user?->email,
+                'phone' => $customer->user?->phone,
                 'user' => [
                     'first_name' => $customer->user?->first_name,
                     'last_name' => $customer->user?->last_name,
+                    'email' => $customer->user?->email,
+                    'phone' => $customer->user?->phone,
                 ],
             ]);
 

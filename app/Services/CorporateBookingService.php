@@ -1135,8 +1135,9 @@ class CorporateBookingService
             ->pluck('count', 'department_name')
             ->toArray();
 
+        $canViewPayments = ($filters['can_view_payments'] ?? false) === true;
         $financial = [];
-        if (($filters['can_view_payments'] ?? false) === true) {
+        if ($canViewPayments) {
             $financial = ['financial_metrics_visible' => true, ...$this->financialProjection->summarizeBookings(
                 (clone $query)->get(['bookings.id', 'bookings.total_actual', 'bookings.currency']),
                 $matchingBookingItemIds,
@@ -1150,14 +1151,14 @@ class CorporateBookingService
             'booking_count' => $totalCount,
             'trip_count' => $tripCount,
             'total_count' => $totalCount,
-            'total_cost' => $singleCurrencyTotal['estimated_value'] ?? (count($currencyTotals) === 0 ? 0.0 : null),
-            'estimated_value' => $singleCurrencyTotal['estimated_value'] ?? (count($currencyTotals) === 0 ? 0.0 : null),
-            'finalized_value' => $singleCurrencyTotal['finalized_value'] ?? (count($currencyTotals) === 0 ? 0.0 : null),
+            'total_cost' => $canViewPayments ? ($singleCurrencyTotal['estimated_value'] ?? (count($currencyTotals) === 0 ? 0.0 : null)) : null,
+            'estimated_value' => $canViewPayments ? ($singleCurrencyTotal['estimated_value'] ?? (count($currencyTotals) === 0 ? 0.0 : null)) : null,
+            'finalized_value' => $canViewPayments ? ($singleCurrencyTotal['finalized_value'] ?? (count($currencyTotals) === 0 ? 0.0 : null)) : null,
             'finalized_trip_count' => $finalizedItems->count(),
             'unpriced_trip_count' => ($filters['can_view_payments'] ?? false) ? $unpricedTripCount : null,
             'finalized_booking_count' => $finalizedBookingCount,
             'unfinalized_booking_count' => max(0, $totalCount - $finalizedBookingCount),
-            'currency_totals' => $currencyTotals,
+            'currency_totals' => $canViewPayments ? $currencyTotals : [],
             'by_status' => $byStatus,
             'by_corporate_approval_status' => $byCorporateApprovalStatus,
             'by_department' => $byDepartment,

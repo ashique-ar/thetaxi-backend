@@ -32,7 +32,7 @@ class CorporateStaffTransportController extends Controller
             return $next($request);
         });
 
-        $this->middleware('permission:staff-transport.manage|staff-transport.override|staff-transport.generate|view_all_bookings')->only(['setupStatus', 'programs', 'shifts', 'routes', 'members', 'roster', 'logs', 'generatedBooking', 'locations', 'exportRoster']);
+        $this->middleware('permission:staff-transport.view|staff-transport.manage|staff-transport.override|staff-transport.generate|view_all_bookings')->only(['setupStatus', 'programs', 'shifts', 'routes', 'members', 'roster', 'logs', 'generatedBooking', 'locations', 'exportRoster']);
         $this->middleware('permission:staff-transport.manage')->only(['storeProgram', 'updateProgram', 'storeShift', 'updateShift', 'deleteShift', 'storeRoute', 'updateRoute', 'deleteRoute', 'storeMember', 'updateMember', 'deleteMember', 'buildRoster', 'storeLocation']);
         $this->middleware('permission:staff-transport.override')->only(['setParticipation']);
         $this->middleware('permission:staff-transport.generate')->only(['generate']);

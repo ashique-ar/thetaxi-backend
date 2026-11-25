@@ -37,7 +37,7 @@ class CorporateBookingController extends Controller
         $this->middleware('permission:create_bookings')->only(['store']);
         $this->middleware('permission:create_bookings')->only(['storeForEmployee']);
         $this->middleware('permission:create_bookings_for_others')->only(['storeForEmployee']);
-        $this->middleware('permission:view_reports')->only(['stats']);
+        $this->middleware('permission:view_reports|corporate.view')->only(['stats']);
     }
 
     public function index(Request $request): JsonResponse
@@ -140,11 +140,8 @@ class CorporateBookingController extends Controller
     public function bookingEmployeeOptions(Request $request): JsonResponse
     {
         $actor = $request->attributes->get('corporate_employee');
-        $user = $request->user();
-        $canCreate = $user?->can('create_bookings')
-            || CorporatePortalPermission::allows($request, 'create_bookings');
-        $canCreateForOthers = $user?->can('create_bookings_for_others')
-            || CorporatePortalPermission::allows($request, 'create_bookings_for_others');
+        $canCreate = CorporatePortalPermission::allows($request, 'create_bookings');
+        $canCreateForOthers = CorporatePortalPermission::allows($request, 'create_bookings_for_others');
 
         if (!$actor || !$canCreate || !$canCreateForOthers) {
             return response()->json([
@@ -272,11 +269,8 @@ class CorporateBookingController extends Controller
     public function bookingEmployees(Request $request): JsonResponse
     {
         $actor = $request->attributes->get('corporate_employee');
-        $user = $request->user();
-        $canCreate = $user?->can('create_bookings')
-            || CorporatePortalPermission::allows($request, 'create_bookings');
-        $canCreateForOthers = $user?->can('create_bookings_for_others')
-            || CorporatePortalPermission::allows($request, 'create_bookings_for_others');
+        $canCreate = CorporatePortalPermission::allows($request, 'create_bookings');
+        $canCreateForOthers = CorporatePortalPermission::allows($request, 'create_bookings_for_others');
 
         if (!$actor || !$canCreate || !$canCreateForOthers) {
             return response()->json([
@@ -646,6 +640,9 @@ class CorporateBookingController extends Controller
         ]);
         $filters = $request->only(['date_from', 'date_to']);
         $filters['can_view_payments'] = $this->canViewPayments($request);
+        if (!CorporatePortalPermission::allows($request, 'view_reports')) {
+            $filters['employee_id'] = $request->attributes->get('corporate_employee')?->user_id;
+        }
 
         $stats = $this->bookingService->getBookingSummaryStats(
             $request->corporate_id,

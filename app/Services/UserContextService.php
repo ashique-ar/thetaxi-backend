@@ -1157,7 +1157,8 @@ class UserContextService
             return $this->formatPermissionCollection($permissions);
         }
 
-        if ($userContext->context_type !== 'staff' && $this->shouldFallbackToGlobalPermissions($user, $userContext)) {
+        if (!in_array($userContext->context_type, ['staff', 'corporate'], true)
+            && $this->shouldFallbackToGlobalPermissions($user, $userContext)) {
             $permissions = $user->getAllPermissions();
             if (! $isMasterAdmin) {
                 $permissions = $permissions->reject(fn ($permission) =>
