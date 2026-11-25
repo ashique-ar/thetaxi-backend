@@ -44,6 +44,11 @@ it('uses only the selected corporate context when a user belongs to two companie
         $table->uuid('user_context_id');
         $table->unsignedBigInteger('permission_id');
     });
+    Schema::create('model_has_permissions', function (Blueprint $table) {
+        $table->unsignedBigInteger('permission_id');
+        $table->string('model_type');
+        $table->string('model_id');
+    });
 
     $userId = '10000000-0000-4000-8000-000000000001';
     $financeContext = '20000000-0000-4000-8000-000000000001';
@@ -62,6 +67,11 @@ it('uses only the selected corporate context when a user belongs to two companie
         ['user_context_id' => $employeeContext, 'role_id' => 2],
     ]);
     DB::table('role_has_permissions')->insert(['role_id' => 1, 'permission_id' => 1]);
+    DB::table('model_has_permissions')->insert([
+        'permission_id' => 1,
+        'model_type' => User::class,
+        'model_id' => $userId,
+    ]);
 
     $user = new User();
     $user->id = $userId;
