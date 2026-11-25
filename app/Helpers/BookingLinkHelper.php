@@ -3,6 +3,7 @@
 namespace App\Helpers;
 
 use App\Models\Booking\Booking;
+use App\Models\Vehicle\VehicleGroup;
 use App\Services\PendingPaymentManager;
 use App\Services\UrlShortenerService;
 use Illuminate\Support\Facades\Crypt;
@@ -179,6 +180,20 @@ class BookingLinkHelper
                 ];
             }
         }
+
+        $groupIds = collect($trips)->flatten(1)->pluck('vehicle_group_id')->filter()->unique();
+        $vehicleGroups = VehicleGroup::query()->whereIn('id', $groupIds)->get(['id', 'thumbnail'])->keyBy('id');
+        foreach ($trips as &$choices) {
+            foreach ($choices as &$choice) {
+                $thumbnail = $vehicleGroups->get($choice['vehicle_group_id'])?->thumbnail;
+                $thumbnail = is_array($thumbnail) ? ($thumbnail['path'] ?? $thumbnail['url'] ?? reset($thumbnail)) : $thumbnail;
+                $choice['image'] = $thumbnail
+                    ? app(\App\Services\EmailImageVariantService::class)->url($thumbnail, 'vehicle')
+                    : asset('assets/img/default-vehicle.jpg');
+            }
+            unset($choice);
+        }
+        unset($choices);
 
         ksort($trips);
         return array_map(fn ($choices) => array_values($choices), $trips);

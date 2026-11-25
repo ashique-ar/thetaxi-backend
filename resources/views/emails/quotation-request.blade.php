@@ -121,7 +121,12 @@
                     @endif
                     @if (!empty($trip['route']))<div>{{ $trip['route'] }}</div>@endif
                     @foreach ($choices as $choice)
-                        <div style="margin-top:5px;">{{ $choice['vehicle_group_name'] }} — {{ number_format($choice['price'], 2) }} {{ $currencyCode }}</div>
+                        <table role="presentation" style="margin-top:5px; border-collapse:collapse;">
+                            <tr>
+                                <td style="padding-right:8px; vertical-align:middle;"><img src="{{ $choice['image'] }}" alt="{{ $choice['vehicle_group_name'] }}" width="80" height="54" style="display:block; width:80px; height:54px; object-fit:cover; border-radius:4px;"></td>
+                                <td style="vertical-align:middle;">{{ $choice['vehicle_group_name'] }} — {{ number_format($choice['price'], 2) }} {{ $currencyCode }}</td>
+                            </tr>
+                        </table>
                     @endforeach
                 </div>
             @endforeach

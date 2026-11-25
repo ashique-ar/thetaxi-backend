@@ -88,6 +88,7 @@
                                             data-trip-index="{{ $tripIndex }}"
                                             required
                                             @checked(($defaultGroupIds[$tripIndex] ?? null) === $choice['vehicle_group_id'])>
+                                        <img src="{{ $choice['image'] }}" alt="{{ $choice['vehicle_group_name'] }}" width="80" height="54" class="rounded" style="width:80px;height:54px;object-fit:cover">
                                         <span>{{ $choice['vehicle_group_name'] }}</span>
                                     </span>
                                     <strong>{{ number_format($choice['price'], 2) }} {{ $currency }}</strong>
