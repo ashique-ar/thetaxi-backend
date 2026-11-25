@@ -3119,6 +3119,7 @@ Route::middleware(['auth:api'])->group(function () {
             $corporate = Corporate::findOrFail($request->corporate_id);
             $serviceTypes = $corporate->serviceTypes()
                 ->where('service_types.is_active', true)
+                ->where(fn ($query) => $query->where('service_types.is_internal', false)->orWhereNull('service_types.is_internal'))
                 ->orderBy('service_types.priority')
                 ->orderBy('service_types.name')
                 ->get();
