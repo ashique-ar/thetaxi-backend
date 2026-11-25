@@ -1672,7 +1672,6 @@ Route::middleware(['auth:api'])->group(function () {
         Route::get('website-settings/security/settings', [WebsiteSettingController::class, 'security']);
         Route::get('website-settings/email/settings', [WebsiteSettingController::class, 'email']);
         Route::get('website-settings/booking/settings', [WebsiteSettingController::class, 'booking']);
-        Route::get('website-settings/driver-mobile/settings', [WebsiteSettingController::class, 'driverMobile']);
         Route::get('website-settings/appearance/settings', [WebsiteSettingController::class, 'appearance']);
         Route::get('website-settings/{section}/{key}', [WebsiteSettingController::class, 'getByKey']);
         Route::put('website-settings/{section}/{key}', [WebsiteSettingController::class, 'updateByKey']);
@@ -1721,7 +1720,7 @@ Route::middleware(['auth:api'])->group(function () {
         Route::get('services/{serviceCode}/form-config', [BookingController::class, 'getServiceFormConfig']);
         Route::get('services/{serviceCode}/validation-rules', [BookingController::class, 'getServiceValidationRules']);
 
-        Route::apiResource('driving-license-types', DrivingLicenseTypeController::class);
+        Route::apiResource('driving-license-types', DrivingLicenseTypeController::class)->except(['index']);
         Route::apiResource('driving-licenses', DrivingLicenseController::class);
     });
 
@@ -2197,6 +2196,8 @@ Route::middleware(['auth:api'])->group(function () {
         ->middleware(['business.module:driver', 'permission:drivers.onboarding.view', 'permission:drivers.onboarding.manage']);
 
     Route::middleware(['business.module:driver', 'permission:drivers.view'])->group(function () {
+        Route::get('website-settings/driver-mobile/settings', [WebsiteSettingController::class, 'driverMobile']);
+        Route::get('driving-license-types', [DrivingLicenseTypeController::class, 'index']);
         // Driver status and location endpoints (place specific routes before resource registration)
         Route::get('drivers/locations', [DriverController::class, 'locations']);
         Route::get('drivers/realtime-status', [DriverController::class, 'realTimeStatus']);

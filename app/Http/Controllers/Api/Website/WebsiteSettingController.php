@@ -43,9 +43,9 @@ class WebsiteSettingController extends Controller
             'security',
             'email',
             'booking',
-            'driverMobile',
             'appearance',
         ]);
+        $this->middleware('permission:drivers.view|website-settings.view')->only(['driverMobile']);
         $this->middleware('permission:website-settings.create')->only(['store']);
         $this->middleware('permission:website-settings.edit')->only([
             'update',
