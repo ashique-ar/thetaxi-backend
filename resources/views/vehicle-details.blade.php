@@ -332,6 +332,7 @@
                 </div>
                 <form method="POST" action="{{ route('quotation.request') }}">
                     @csrf
+                    @include('inquiry.partials.spam-protection', ['honeypotId' => 'vehicle-quotation-company-website'])
                     <div class="modal-body">
                         <input type="hidden" name="vehicle_group_id" value="{{ $vehicleGroup->id }}">
                         <input type="hidden" name="service_type" id="quotationServiceType" value="{{ $initialServiceTypeCode }}">

@@ -871,6 +871,7 @@
             </div>
             <form id="quotationRequestForm" method="POST" action="{{ route('quotation.request') }}">
                 @csrf
+                @include('inquiry.partials.spam-protection', ['honeypotId' => 'rate-chart-quotation-company-website'])
                 <div class="modal-body">
                     <input type="hidden" name="vehicle_group_id" id="quotation_vehicle_group_id">
                     <input type="hidden" name="service_type" id="quotation_service_type" value="day_rental">

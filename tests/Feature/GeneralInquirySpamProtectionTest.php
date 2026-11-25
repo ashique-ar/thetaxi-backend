@@ -1,6 +1,6 @@
 <?php
 
-use App\Http\Controllers\InquiryController;
+use App\Services\PublicInquirySpamProtection;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Crypt;
 use Illuminate\Support\Facades\Http;
@@ -12,27 +12,25 @@ beforeEach(function (): void {
 
 function generalInquirySpamCheck(array $input): bool
 {
-    $controller = (new ReflectionClass(InquiryController::class))->newInstanceWithoutConstructor();
-    $method = new ReflectionMethod(InquiryController::class, 'rejectAutomatedInquiry');
     $request = Request::create('/contact', 'POST', $input);
-
-    return $method->invoke($controller, $request);
+    return app(PublicInquirySpamProtection::class)->rejectsAutomatedSubmission($request);
 }
 
 function inquiryPayloadSpamCheck(array $meta): bool
 {
-    $controller = (new ReflectionClass(InquiryController::class))->newInstanceWithoutConstructor();
-    $method = new ReflectionMethod(InquiryController::class, 'rejectSpamOrDuplicatePayload');
-
-    return $method->invoke($controller, Request::create('/contact', 'POST', $meta), $meta);
+    return app(PublicInquirySpamProtection::class)->rejectsSpamOrDuplicate(Request::create('/contact', 'POST', $meta), $meta);
 }
 
 it('rate limits both public inquiry submission routes', function (): void {
     $contactRoute = Route::getRoutes()->getByName('contact.store');
     $bookingRoute = Route::getRoutes()->getByName('booking.enquiry');
+    $quotationRoute = Route::getRoutes()->getByName('quotation.request');
+    $legacyQuotationRoute = Route::getRoutes()->getByName('booking.request-quotation');
 
     expect($contactRoute->gatherMiddleware())->toContain('throttle:3,10')
-        ->and($bookingRoute->gatherMiddleware())->toContain('throttle:5,10');
+        ->and($bookingRoute->gatherMiddleware())->toContain('throttle:5,10')
+        ->and($quotationRoute->gatherMiddleware())->toContain('throttle:3,10')
+        ->and($legacyQuotationRoute->gatherMiddleware())->toContain('throttle:3,10');
 });
 
 it('renders the shared spam fields in every inquiry form owner', function (): void {
@@ -41,6 +39,10 @@ it('renders the shared spam fields in every inquiry form owner', function (): vo
         resource_path('views/corporate-transfers.blade.php'),
         resource_path('views/inquiry/partials/form.blade.php'),
         resource_path('views/components/dynamic-booking-form.blade.php'),
+        resource_path('views/cms/show.blade.php'),
+        resource_path('views/search.blade.php'),
+        resource_path('views/rate-chart.blade.php'),
+        resource_path('views/vehicle-details.blade.php'),
     ];
 
     foreach ($formOwners as $formOwner) {
@@ -53,6 +55,18 @@ it('discards contact submissions that fill the honeypot', function (): void {
         '_inquiry_website' => 'https://spam.example',
         '_inquiry_form_token' => Crypt::encryptString((string) (now()->timestamp - 10)),
     ]))->toBeTrue();
+});
+
+it('applies the shared form token and honeypot checks to quotation requests', function (): void {
+    expect(generalInquirySpamCheck([
+        'customer_name' => 'Valid Traveller',
+        '_inquiry_website' => '',
+    ]))->toBeTrue()
+        ->and(generalInquirySpamCheck([
+            'customer_name' => 'Valid Traveller',
+            '_inquiry_website' => 'https://spam.example',
+            '_inquiry_form_token' => Crypt::encryptString((string) (now()->timestamp - 10)),
+        ]))->toBeTrue();
 });
 
 it('discards direct posts without a valid form token', function (): void {

@@ -219,14 +219,16 @@ Route::match(['get', 'post'], '/booking/search', [BookingController::class, 'sea
 Route::post('/booking/enquiry', [InquiryController::class, 'store'])
     ->middleware('throttle:5,10')
     ->name('booking.enquiry');
-Route::post('/booking/request-quotation', [BookingController::class, 'requestQuotation'])->name('booking.request-quotation');
+Route::post('/booking/request-quotation', [BookingController::class, 'requestQuotation'])
+    ->middleware('throttle:3,10')->name('booking.request-quotation');
 Route::get('/booking/status', [CustomerBookingStatusController::class, 'show'])->name('booking.status');
 Route::post('/booking/status', [CustomerBookingStatusController::class, 'lookup'])
     ->middleware('throttle:10,1')
     ->name('booking.status.lookup');
 
 // Quotation request route (alias for search page modal)
-Route::post('/quotation/request', [BookingController::class, 'requestQuotation'])->name('quotation.request');
+Route::post('/quotation/request', [BookingController::class, 'requestQuotation'])
+    ->middleware('throttle:3,10')->name('quotation.request');
 
 // Dynamic service configuration API routes
 Route::get('/api/services/configuration', [BookingController::class, 'getServiceConfiguration'])->name('api.services.configuration');

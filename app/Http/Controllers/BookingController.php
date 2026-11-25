@@ -6,6 +6,7 @@ use App\Services\BookingFlowService;
 use App\Services\CurrencyService;
 use App\Services\DiscountService;
 use App\Services\MailDispatchService;
+use App\Services\PublicInquirySpamProtection;
 use App\Models\Booking\BookingItem;
 use App\Models\BookingSearch;
 use App\Models\BookingFormTab;
@@ -28,17 +29,20 @@ class BookingController extends Controller
     protected CurrencyService $currencyService;
     protected DiscountService $discountService;
     protected MailDispatchService $mailDispatchService;
+    protected PublicInquirySpamProtection $spamProtection;
 
     public function __construct(
         BookingFlowService $bookingFlowService,
         CurrencyService $currencyService,
         DiscountService $discountService,
-        MailDispatchService $mailDispatchService
+        MailDispatchService $mailDispatchService,
+        PublicInquirySpamProtection $spamProtection
     ) {
         $this->bookingFlowService = $bookingFlowService;
         $this->currencyService = $currencyService;
         $this->discountService = $discountService;
         $this->mailDispatchService = $mailDispatchService;
+        $this->spamProtection = $spamProtection;
     }
 
     /**
@@ -2289,6 +2293,12 @@ class BookingController extends Controller
     public function requestQuotation(Request $request)
     {
         try {
+            if ($this->spamProtection->rejectsAutomatedSubmission($request)) {
+                return $request->expectsJson() || $request->ajax()
+                    ? response()->json(['success' => true, 'message' => 'Your quotation request has been submitted successfully!'])
+                    : back()->with('success', 'Your quotation request has been submitted successfully!');
+            }
+
             if (!$request->filled('customer_name') && ($request->filled('first_name') || $request->filled('last_name'))) {
                 $request->merge([
                     'customer_name' => trim(($request->input('first_name', '') . ' ' . $request->input('last_name', ''))),
@@ -2387,6 +2397,16 @@ class BookingController extends Controller
                     ->with('error', 'Please check your information and try again.');
             }
 
+            if ($this->spamProtection->rejectsSpamOrDuplicate($request, [
+                'name' => $request->input('customer_name'),
+                'email' => $request->input('customer_email'),
+                'phone' => $request->input('customer_phone'),
+            ])) {
+                return $request->expectsJson() || $request->ajax()
+                    ? response()->json(['success' => true, 'message' => 'Your quotation request has been submitted successfully!'])
+                    : back()->with('success', 'Your quotation request has been submitted successfully!');
+            }
+
             // Get search parameters from session for context
             $searchParams = $searchContext;
             $vehicleGroup = VehicleGroup::findOrFail($request->vehicle_group_id);
@@ -2394,7 +2414,9 @@ class BookingController extends Controller
                 ->where('code', $request->service_type)
                 ->value('name')
                 ?? ucwords(str_replace(['_', '-'], ' ', $request->service_type));
-            $requestData = array_merge($request->all(), ['service_type_name' => $serviceTypeName]);
+            $requestData = array_merge($request->except([
+                '_token', '_inquiry_form_token', '_inquiry_website', 'cf-turnstile-response',
+            ]), ['service_type_name' => $serviceTypeName]);
 
             // Create inquiry with enhanced context
             $baseInquiryData = [
@@ -2411,7 +2433,9 @@ class BookingController extends Controller
                     'type' => 'quotation_request',
                     'vehicle_group_id' => $request->vehicle_group_id,
                     'vehicle_group_name' => $vehicleGroup->name,
-                    'form' => $request->except(['_token']),
+                    'form' => $request->except([
+                        '_token', '_inquiry_form_token', '_inquiry_website', 'cf-turnstile-response',
+                    ]),
                     'service_type_name' => $serviceTypeName,
                     'search_context' => $searchParams,
                 ],
@@ -2472,7 +2496,9 @@ class BookingController extends Controller
             Log::error('Error processing quotation request', [
                 'error' => $e->getMessage(),
                 'trace' => $e->getTraceAsString(),
-                'request_data' => $request->all()
+                'request_data' => $request->except([
+                    '_token', '_inquiry_form_token', '_inquiry_website', 'cf-turnstile-response',
+                ])
             ]);
 
             if ($request->expectsJson() || $request->ajax()) {

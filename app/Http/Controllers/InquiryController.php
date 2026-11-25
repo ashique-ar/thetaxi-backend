@@ -7,15 +7,13 @@ use App\Models\Inquiry;
 use App\Models\InquiryServicePage;
 use App\Models\Website\CmsContent;
 use App\Services\MailDispatchService;
+use App\Services\PublicInquirySpamProtection;
 use App\Services\Sms\SmsAutomationService;
 use Illuminate\Http\Request;
 use Illuminate\Validation\ValidationException;
 use Illuminate\Support\Arr;
-use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\Crypt;
-use Illuminate\Support\Facades\Http;
 use Illuminate\Support\Facades\Log;
-use Illuminate\Support\Str;
 
 class InquiryController extends Controller
 {
@@ -23,7 +21,8 @@ class InquiryController extends Controller
 
     public function __construct(
         MailDispatchService $mailDispatchService,
-        protected SmsAutomationService $smsAutomationService
+        protected SmsAutomationService $smsAutomationService,
+        protected PublicInquirySpamProtection $spamProtection
     )
     {
         $this->mailDispatchService = $mailDispatchService;
@@ -34,7 +33,7 @@ class InquiryController extends Controller
      */
     public function store(Request $request)
     {
-        if ($this->rejectAutomatedInquiry($request)) {
+        if ($this->spamProtection->rejectsAutomatedSubmission($request)) {
             return back()->with('success', 'Thank you for your inquiry! Our team will get back to you soon.');
         }
 
@@ -62,7 +61,7 @@ class InquiryController extends Controller
         $validated = $request->validate($this->rulesForType($type));
         $meta = $this->buildInquiryMeta($type, $validated);
 
-        if ($this->rejectSpamOrDuplicatePayload($request, $meta)) {
+        if ($this->spamProtection->rejectsSpamOrDuplicate($request, $meta)) {
             return back()->with('success', $meta['success_message']);
         }
 
@@ -111,60 +110,6 @@ class InquiryController extends Controller
     }
 
     /**
-     * Silently discard automated submissions to every public inquiry form.
-     *
-     * The encrypted page token prevents scripts from posting directly without first
-     * loading the form, while the off-screen field catches form-filling bots.
-     */
-    private function rejectAutomatedInquiry(Request $request): bool
-    {
-        $reason = null;
-
-        foreach (['name', 'contact_person', 'full_name'] as $identityField) {
-            if (!$request->filled($identityField)) {
-                continue;
-            }
-
-            $identityReason = $this->invalidInquiryIdentityReason((string) $request->input($identityField));
-            if ($identityReason !== null) {
-                $reason = $identityField . ':' . $identityReason;
-                break;
-            }
-        }
-
-        if ($reason === null && trim((string) $request->input('_inquiry_website')) !== '') {
-            $reason = 'honeypot_filled';
-        } elseif ($reason === null) {
-            try {
-                $startedAt = (int) Crypt::decryptString((string) $request->input('_inquiry_form_token'));
-                $formAge = now()->timestamp - $startedAt;
-
-                if ($startedAt <= 0 || $formAge < 2 || $formAge > 21600) {
-                    $reason = 'invalid_form_age';
-                }
-            } catch (\Throwable) {
-                $reason = 'invalid_form_token';
-            }
-        }
-
-        if ($reason === null) {
-            $reason = $this->turnstileFailureReason($request);
-        }
-
-        if ($reason === null) {
-            return false;
-        }
-
-        Log::notice('Automated public inquiry discarded', [
-            'reason' => $reason,
-            'ip_address' => $request->ip(),
-            'user_agent' => $request->userAgent(),
-        ]);
-
-        return true;
-    }
-
-    /**
      * Keep security controls out of persisted inquiry data and outgoing emails.
      *
      * @return array<string, mixed>
@@ -178,144 +123,6 @@ class InquiryController extends Controller
             'cf-turnstile-response',
             'cms_form_context',
         ]);
-    }
-
-    private function turnstileFailureReason(Request $request): ?string
-    {
-        if (!config('services.turnstile.enabled')) {
-            return null;
-        }
-
-        $secret = (string) config('services.turnstile.secret_key');
-        $responseToken = (string) $request->input('cf-turnstile-response');
-
-        if ($secret === '' || (string) config('services.turnstile.site_key') === '') {
-            Log::critical('Turnstile is enabled without complete credentials.');
-            return 'turnstile_not_configured';
-        }
-
-        if ($responseToken === '') {
-            return 'turnstile_token_missing';
-        }
-
-        try {
-            $verification = Http::asForm()
-                ->connectTimeout(2)
-                ->timeout(5)
-                ->post((string) config('services.turnstile.verify_url'), [
-                    'secret' => $secret,
-                    'response' => $responseToken,
-                    'remoteip' => $request->ip(),
-                ]);
-
-            if (!$verification->successful()) {
-                return 'turnstile_service_failure';
-            }
-
-            $result = $verification->json();
-            if (($result['success'] ?? false) !== true) {
-                return 'turnstile_rejected';
-            }
-
-            if (!empty($result['action']) && $result['action'] !== 'public_inquiry') {
-                return 'turnstile_action_mismatch';
-            }
-        } catch (\Throwable $exception) {
-            Log::warning('Turnstile verification failed closed', [
-                'error' => $exception->getMessage(),
-            ]);
-
-            return 'turnstile_unavailable';
-        }
-
-        return null;
-    }
-
-    /**
-     * Reject human-like sales spam and exact repeat submissions before any
-     * inquiry, SMS, or email is created.
-     *
-     * @param array<string, mixed> $meta
-     */
-    private function rejectSpamOrDuplicatePayload(Request $request, array $meta): bool
-    {
-        $content = Arr::flatten($request->except([
-            '_token', '_inquiry_form_token', '_inquiry_website', 'cf-turnstile-response',
-            'cms_content_id', 'cms_form_context', 'service_slug', 'inquiry_service_page_id',
-            'referrer', 'utm_source', 'utm_medium', 'utm_campaign', 'utm_term', 'utm_content',
-            'name', 'contact_person', 'full_name', 'email', 'phone',
-            'company_email', 'contact_person_email',
-        ]));
-        $message = Str::lower(implode(' ', array_filter($content, 'is_scalar')));
-        $message = preg_replace('/\b[A-Z0-9._%+-]+@[A-Z0-9.-]+\.[A-Z]{2,}\b/iu', ' ', $message) ?? $message;
-        $identityReason = $this->invalidInquiryIdentityReason((string) ($meta['name'] ?? ''));
-
-        if ($identityReason !== null) {
-            Log::notice('Inquiry with invalid identity discarded', [
-                'reason' => $identityReason,
-                'ip_address' => $request->ip(),
-                'email_domain' => Str::afterLast(Str::lower((string) ($meta['email'] ?? '')), '@'),
-            ]);
-
-            return true;
-        }
-
-        if (preg_match('/(?:https?:\/\/|www\.|\b[a-z0-9][a-z0-9.-]*\.[a-z]{2,}(?:\/|\b))/iu', $message) === 1) {
-            Log::notice('Inquiry containing an external link discarded', [
-                'ip_address' => $request->ip(),
-                'email_domain' => Str::afterLast(Str::lower((string) ($meta['email'] ?? '')), '@'),
-            ]);
-
-            return true;
-        }
-
-        $fingerprint = hash('sha256', implode('|', [
-            Str::lower(trim((string) ($meta['email'] ?? ''))),
-            preg_replace('/\D+/', '', (string) ($meta['phone'] ?? '')),
-            preg_replace('/\s+/', ' ', trim($message)),
-        ]));
-
-        if (!Cache::add('public-inquiry-submission:' . $fingerprint, true, now()->addDay())) {
-            Log::notice('Duplicate public inquiry discarded', [
-                'ip_address' => $request->ip(),
-                'fingerprint' => substr($fingerprint, 0, 12),
-            ]);
-
-            return true;
-        }
-
-        return false;
-    }
-
-    private function invalidInquiryIdentityReason(string $name): ?string
-    {
-        $name = trim($name);
-
-        if ($name === '') {
-            return null;
-        }
-
-        if (Str::length($name) > 120 || preg_match('/[\r\n]/u', $name) === 1) {
-            return 'invalid_length_or_lines';
-        }
-
-        if (preg_match('/(?:https?:\/\/|www\.|\b[a-z0-9][a-z0-9.-]*\.[a-z]{2,}(?:\/|\b))/iu', $name) === 1) {
-            return 'url_in_name';
-        }
-
-        if (preg_match('/[<>]|&#?\w+;|@/u', $name) === 1) {
-            return 'markup_or_address_in_name';
-        }
-
-        if (preg_match('/\p{N}/u', $name) === 1) {
-            return 'number_in_name';
-        }
-
-        if (preg_match('/\p{L}/u', $name) !== 1) {
-            return 'name_without_letters';
-        }
-
-        return null;
     }
 
     /**
@@ -363,7 +170,7 @@ class InquiryController extends Controller
                 ->with('error', 'Please provide a valid email address to submit your inquiry.');
         }
 
-        if ($this->rejectSpamOrDuplicatePayload($request, $meta)) {
+        if ($this->spamProtection->rejectsSpamOrDuplicate($request, $meta)) {
             return back()->with('success', $meta['success_message']);
         }
 
