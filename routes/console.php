@@ -90,6 +90,8 @@ if (config('hr.system_user_id')) {
 if (config('hr.system_user_id')) {
     Schedule::command('hr:process-scheduled-exits --commit')->dailyAt('00:45')->withoutOverlapping()
         ->when(fn () => (filter_var(app(\App\Services\WebsiteSettingsService::class)->get('feature_hr_management_enabled', true), FILTER_VALIDATE_BOOL, FILTER_NULL_ON_FAILURE) ?? true));
+    Schedule::command('hr:route-approval-owners --commit')->everyFiveMinutes()->withoutOverlapping()
+        ->when(fn () => (filter_var(app(\App\Services\WebsiteSettingsService::class)->get('feature_hr_management_enabled', true), FILTER_VALIDATE_BOOL, FILTER_NULL_ON_FAILURE) ?? true));
 }
 if (config('hr.system_user_id')) {
     Schedule::command('hr:process-report-schedules --commit')->everyFifteenMinutes()->withoutOverlapping()

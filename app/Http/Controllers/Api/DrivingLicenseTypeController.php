@@ -15,7 +15,7 @@ class DrivingLicenseTypeController extends Controller
 {
     public function __construct()
     {
-        $this->middleware('permission:drivers.view|driving-license-types.view')->only(['index']);
+        $this->middleware('permission:drivers.view|drivers.create|drivers.edit|driving-license-types.view')->only(['index']);
         $this->middleware('permission:driving-license-types.view')->only(['show']);
         $this->middleware('permission:driving-license-types.create')->only(['store']);
         $this->middleware('permission:driving-license-types.edit')->only(['update']);

@@ -49,11 +49,7 @@ class VehicleGroupController extends Controller
             ]);
         }
 
-        abort_unless(
-            $evaluator->userHasAnyForRequest($request->user(), ['vehicles.view'], $contextType, $contextId)
-            && $evaluator->userHasAnyForRequest($request->user(), ['vehicle-groups.view'], $contextType, $contextId),
-            403
-        );
+        abort_unless($evaluator->userHasAnyForRequest($request->user(), ['vehicle-groups.view'], $contextType, $contextId), 403);
 
         $q = VehicleGroup::withInactive()->with(
             'grade',
@@ -149,6 +145,22 @@ class VehicleGroupController extends Controller
 
         $results = $q->paginate($perPage);
         return VehicleGroupResource::collection($results);
+    }
+
+    public function vehicleLookup(): JsonResponse
+    {
+        return response()->json([
+            'status' => 'success',
+            'data' => VehicleGroup::query()->orderBy('name')->get(['id', 'name']),
+        ]);
+    }
+
+    public function moduleLookup(): JsonResponse
+    {
+        return response()->json([
+            'status' => 'success',
+            'data' => VehicleGroup::withInactive()->orderBy('name')->get(['id', 'name']),
+        ]);
     }
 
     public function store(CreateVehicleGroupRequest $request): JsonResponse

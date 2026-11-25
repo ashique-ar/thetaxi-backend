@@ -33,7 +33,10 @@ class VehicleResource extends JsonResource
             'usage_type' => $this->usage_type ?? 'standard_fleet',
             'payment_model' => $this->payment_model ?? 'none',
             'owner_payment_method_id' => $this->owner_payment_method_id,
-            'selected_owner_payment_method' => new \App\Http\Resources\PaymentMethodResource($this->whenLoaded('ownerPaymentMethod')),
+            'selected_owner_payment_method' => $this->when(
+                $request->user()?->can('payment-methods.view') === true,
+                fn () => new \App\Http\Resources\PaymentMethodResource($this->whenLoaded('ownerPaymentMethod'))
+            ),
             'assignment_policy' => $this->assignment_policy ?? 'any_driver',
             'agreement_start_date' => $this->agreement_start_date,
             'agreement_end_date' => $this->agreement_end_date,

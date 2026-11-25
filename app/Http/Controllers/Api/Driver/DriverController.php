@@ -70,6 +70,19 @@ class DriverController extends Controller
         return DriverResource::collection($q->paginate($request->integer('per_page', 25)));
     }
 
+    public function vehicleLookup(): JsonResponse
+    {
+        $drivers = Driver::query()->with('user:id,first_name,last_name')->orderBy('code')->get(['id', 'user_id', 'code']);
+        return response()->json(['status' => 'success', 'data' => $drivers->map(fn ($driver) => [
+            'id' => $driver->id,
+            'code' => $driver->code,
+            'user' => [
+                'first_name' => $driver->user?->first_name,
+                'last_name' => $driver->user?->last_name,
+            ],
+        ])]);
+    }
+
     private function currentAssignmentForResource($query)
     {
         return $query

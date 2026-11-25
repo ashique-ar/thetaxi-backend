@@ -6,6 +6,7 @@ use App\Models\Finance\FinancialAuditEvent;
 use App\Models\Booking\BookingActivity;
 use App\Models\Booking\BookingStatus;
 use App\Models\User;
+use Carbon\CarbonImmutable;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\DB;
@@ -18,7 +19,8 @@ class BookingHistoryService
         'booking_responsible_user_changed', 'rental_return_no_show',
         'replacement_requested', 'replacement_request_closed',
         'rental_extension_requested', 'rental_extension_approved', 'rental_extension_rejected',
-        'trip_price_changed', 'additional_rental_charge_added',
+        'trip_price_changed', 'additional_rental_charge_added', 'post_trip_maintenance',
+        'booking_inquiry_created',
     ];
 
     private const TRACKED_FIELDS = [
@@ -192,7 +194,7 @@ class BookingHistoryService
                     : null,
                 'amount' => $event->amount !== null ? ['from' => null, 'to' => (float) $event->amount] : null,
             ]), JSON_THROW_ON_ERROR),
-            'context' => json_encode([
+            'context' => json_encode(array_filter([
                 'financial_audit_event_id' => (string) $event->id,
                 'subject_type' => (string) $event->subject_type,
                 'subject_id' => (string) $event->subject_id,
@@ -200,7 +202,8 @@ class BookingHistoryService
                 'stage' => $metadata['stage'] ?? null,
                 'purpose' => $metadata['purpose'] ?? null,
                 'received_via' => $metadata['received_via'] ?? null,
-            ], JSON_THROW_ON_ERROR),
+                'source_trigger' => $request->attributes->get('booking_history_source_trigger'),
+            ], fn ($value) => $value !== null), JSON_THROW_ON_ERROR),
             'correlation_id' => $correlationId,
             'idempotency_key' => 'financial-audit:' . $event->id,
             'occurred_at' => $occurredAt,
@@ -238,7 +241,9 @@ class BookingHistoryService
                 'from' => $this->safeValue($status->old_status),
                 'to' => $this->safeValue($status->new_status),
             ]], JSON_THROW_ON_ERROR),
-            'context' => json_encode([], JSON_THROW_ON_ERROR),
+            'context' => json_encode(array_filter([
+                'source_trigger' => $request->attributes->get('booking_history_source_trigger'),
+            ], fn ($value) => $value !== null), JSON_THROW_ON_ERROR),
             'correlation_id' => 'booking-status:' . $status->getKey(),
             'idempotency_key' => 'booking-status:' . $status->getKey(),
             'occurred_at' => $occurredAt,
@@ -248,7 +253,7 @@ class BookingHistoryService
         ]);
     }
 
-    public function recordBookingActivity(BookingActivity $activity): void
+    public function recordBookingActivity(BookingActivity $activity, array $before = []): void
     {
         if (!$this->shouldRecordBookingActivity($activity)) return;
 
@@ -256,6 +261,7 @@ class BookingHistoryService
         $actorId = data_get($meta, 'actor_user_id') ?? data_get($meta, 'initiated_by')
             ?? data_get($meta, 'changed_by') ?? data_get($meta, 'requested_by')
             ?? data_get($meta, 'reviewed_by') ?? data_get($meta, 'closed_by')
+            ?? data_get($meta, 'completed_by') ?? data_get($meta, 'queued_by')
             ?? $activity->created_user_id;
         $actor = $actorId ? User::query()->find($actorId) : null;
         $changes = match ($activity->event_key) {
@@ -286,19 +292,32 @@ class BookingHistoryService
             ],
             'replacement_requested' => ['replacement_request_status' => ['from' => null, 'to' => 'pending']],
             'replacement_request_closed' => ['replacement_request_status' => ['from' => 'pending', 'to' => 'closed']],
+            'post_trip_maintenance' => ['result_status' => [
+                'from' => $before['result_status'] ?? null,
+                'to' => $activity->result_status,
+            ]],
             default => [],
         };
         $reason = data_get($meta, 'reason') ?? data_get($meta, 'change_reason')
             ?? data_get($meta, 'resolution_reason') ?? data_get($meta, 'review_notes')
             ?? request()->attributes->get('booking_history_reason');
+        [$entityType, $entityId] = match (true) {
+            $activity->event_key === 'post_trip_maintenance' && data_get($meta, 'vehicle_id')
+                => ['Vehicle', (string) data_get($meta, 'vehicle_id')],
+            $activity->event_key === 'booking_inquiry_created' && data_get($meta, 'phone_call_id')
+                => ['PhoneCall', (string) data_get($meta, 'phone_call_id')],
+            $activity->event_key === 'booking_inquiry_created' && data_get($meta, 'respond_io_event_id')
+                => ['IntegrationWebhookEvent', (string) data_get($meta, 'respond_io_event_id')],
+            default => ['BookingActivity', (string) $activity->getKey()],
+        };
         $occurredAt = $activity->event_at?->utc() ?? $activity->created_at?->utc() ?? now()->utc();
 
         DB::table('booking_history_events')->insertOrIgnore([
             'id' => (string) Str::uuid(),
             'booking_id' => (string) $activity->booking_id,
             'booking_item_id' => $activity->booking_item_id ? (string) $activity->booking_item_id : null,
-            'entity_type' => 'BookingActivity',
-            'entity_id' => (string) $activity->getKey(),
+            'entity_type' => $entityType,
+            'entity_id' => $entityId,
             'event_type' => (string) $activity->event_key,
             'actor_type' => $actor ? 'user' : 'system',
             'actor_user_id' => $actor?->getAuthIdentifier(),
@@ -312,11 +331,17 @@ class BookingHistoryService
                 'activity_source' => $activity->source,
                 'activity_status' => $activity->result_status,
                 'swap_type' => data_get($meta, 'swap_type'),
+                'vehicle_id' => data_get($meta, 'vehicle_id'),
+                'origin_entity_type' => $entityType !== 'BookingActivity' ? $entityType : null,
+                'origin_entity_id' => $entityType !== 'BookingActivity' ? $entityId : null,
                 'category' => data_get($meta, 'category'),
                 'changed_fields' => data_get($meta, 'changed_fields'),
+                'source_trigger' => request()->attributes->get('booking_history_source_trigger'),
             ], fn ($value) => $value !== null), JSON_THROW_ON_ERROR),
             'correlation_id' => $activity->idempotency_key ?: 'booking-activity:' . $activity->getKey(),
-            'idempotency_key' => 'booking-activity:' . $activity->getKey(),
+            'idempotency_key' => $activity->event_key === 'post_trip_maintenance'
+                ? 'booking-activity:' . $activity->getKey() . ':' . $activity->result_status
+                : 'booking-activity:' . $activity->getKey(),
             'occurred_at' => $occurredAt,
             'provenance' => 'live',
             'created_at' => $occurredAt,
@@ -324,17 +349,19 @@ class BookingHistoryService
         ]);
     }
 
-    public function recordSalesAttributionEvent(object $event, string $bookingId): void
+    public function recordSalesAttributionEvent(object $event, string $bookingId, string $provenance = 'live'): void
     {
         $actor = $event->actor_user_id ? User::query()->find($event->actor_user_id) : null;
-        $field = $event->field_name ?? null;
+        $eventType = (string) ($event->event_type ?? 'changed');
+        $field = $event->field_name ?? ($eventType === 'confirmed' ? 'collection_sales_profile_id' : null);
         $changes = $field !== null ? [$field => [
             'from' => $event->from_value ?? null,
-            'to' => $event->to_value ?? null,
+            'to' => $event->to_value ?? ($eventType === 'confirmed' ? ($event->to_sales_profile_id ?? null) : null),
         ]] : [];
-        $eventType = (string) ($event->event_type ?? 'changed');
         $reason = $eventType === 'confirmed' ? null : ($event->reason ?? null);
-        $occurredAt = isset($event->effective_at) ? Carbon\CarbonImmutable::parse($event->effective_at)->utc() : now()->utc();
+        $occurredAt = isset($event->created_at)
+            ? CarbonImmutable::parse($event->created_at)->utc()
+            : (isset($event->effective_at) ? CarbonImmutable::parse($event->effective_at)->utc() : now()->utc());
         $sourceEventId = (string) $event->id;
 
         DB::table('booking_history_events')->insertOrIgnore([
@@ -356,13 +383,17 @@ class BookingHistoryService
                 'source_attribution_event_id' => $sourceEventId,
                 'attribution_id' => $event->attribution_id ?? null,
                 'version' => $event->version ?? null,
-                'effective_at' => isset($event->effective_at) ? Carbon\CarbonImmutable::parse($event->effective_at)->utc()->toIso8601String() : null,
+                'field_name' => $field,
+                'from_sales_profile_id' => $event->from_sales_profile_id ?? null,
+                'to_sales_profile_id' => $event->to_sales_profile_id ?? null,
+                'effective_at' => isset($event->effective_at) ? CarbonImmutable::parse($event->effective_at)->utc()->toIso8601String() : null,
                 'trigger' => $eventType === 'confirmed' ? 'booking_confirmation' : null,
+                'source_trigger' => request()->attributes->get('booking_history_source_trigger'),
             ], fn ($value) => $value !== null), JSON_THROW_ON_ERROR),
             'correlation_id' => $event->idempotency_key ?? null,
             'idempotency_key' => 'sales-attribution-event:' . $sourceEventId,
             'occurred_at' => $occurredAt,
-            'provenance' => 'live',
+            'provenance' => $provenance,
             'created_at' => $occurredAt,
             'updated_at' => $occurredAt,
         ]);
@@ -420,6 +451,45 @@ class BookingHistoryService
         );
     }
 
+    public function recordPaymentTransactionStatusChange(
+        string $bookingId,
+        string $transactionId,
+        ?string $fromStatus,
+        string $toStatus,
+        ?string $actorUserId = null,
+    ): void {
+        $this->recordDirectChange(
+            $bookingId,
+            'PaymentTransaction',
+            $transactionId,
+            'payment_transaction_status_changed',
+            ['status' => ['from' => $fromStatus, 'to' => $toStatus]],
+            null,
+            $actorUserId,
+            'payment_transactions',
+            'payment-transaction-status:' . $transactionId . ':' . $toStatus,
+        );
+    }
+
+    public function recordPaymentGatewaySessionOutcome(
+        string $bookingId,
+        string $transactionId,
+        string $outcome,
+        ?string $actorUserId = null,
+    ): void {
+        $this->recordDirectChange(
+            $bookingId,
+            'PaymentTransaction',
+            $transactionId,
+            'payment_gateway_session_updated',
+            ['gateway_session_status' => ['from' => null, 'to' => $outcome]],
+            null,
+            $actorUserId,
+            'payment_transactions',
+            'payment-transaction-gateway-session:' . $transactionId,
+        );
+    }
+
     private function recordDirectChange(
         string $bookingId,
         string $entityType,
@@ -449,7 +519,9 @@ class BookingHistoryService
             'source' => $source,
             'reason' => $reason !== null && trim($reason) !== '' ? Str::limit(trim($reason), 1000) : null,
             'changes' => json_encode($changes, JSON_THROW_ON_ERROR),
-            'context' => json_encode($context, JSON_THROW_ON_ERROR),
+            'context' => json_encode(array_filter($context + [
+                'source_trigger' => request()->attributes->get('booking_history_source_trigger'),
+            ], fn ($value) => $value !== null), JSON_THROW_ON_ERROR),
             'correlation_id' => $idempotencyKey,
             'idempotency_key' => $idempotencyKey,
             'occurred_at' => $now,
@@ -579,7 +651,7 @@ class BookingHistoryService
             'actor_display_snapshot' => $actor
                 ? trim((string) ($actor->full_name ?? $actor->name ?? $actor->email))
                 : ($model instanceof \App\Models\IntegrationWebhookEvent ? 'Integration: ' . $model->provider : 'System'),
-            'source' => Str::limit($request->route()?->getName() ?: ($request->route()?->uri() ?: (app()->runningInConsole() ? 'console' : 'application')), 100),
+            'source' => Str::limit($request->route()?->getName() ?: ($request->route()?->uri() ?: $request->attributes->get('booking_history_source_trigger') ?: (app()->runningInConsole() ? 'console' : 'application')), 100),
             'reason' => $reason !== '' ? Str::limit($reason, 1000) : null,
             'changes' => json_encode($changes, JSON_THROW_ON_ERROR),
             'context' => json_encode(array_filter([
@@ -589,6 +661,7 @@ class BookingHistoryService
                 'item_code' => $model instanceof \App\Models\Booking\BookingItem
                     ? $model->item_code
                     : null,
+                'source_trigger' => $request->attributes->get('booking_history_source_trigger'),
             ]), JSON_THROW_ON_ERROR),
             'correlation_id' => $request->headers->get('X-Correlation-ID')
                 ?: $request->headers->get('X-Request-ID'),

@@ -151,7 +151,7 @@ class CommissionPlanResolver
             $snapshot = $preview['frozen_correction_snapshot'];
             SalesCommissionPlanAssignment::query()->whereKey($snapshot['plan_assignment_id'])->lockForUpdate()->firstOrFail();
             $version = $attribution->version + 1;
-            DB::table('sales_booking_attribution_events')->insert([
+            $attributionEvent = [
                 'id' => (string) Str::uuid(), 'attribution_id' => $attribution->id, 'version' => $version,
                 'event_type' => 'commission_plan_family_corrected', 'field_name' => 'commission_plan_family_id',
                 'from_value' => null, 'to_value' => $snapshot['plan_family_id'],
@@ -159,7 +159,12 @@ class CommissionPlanResolver
                 'effective_at' => $attribution->secured_at, 'reason' => trim($reason),
                 'idempotency_key' => $idempotencyKey, 'actor_user_id' => $actorUserId,
                 'created_at' => now(), 'updated_at' => now(),
-            ]);
+            ];
+            DB::table('sales_booking_attribution_events')->insert($attributionEvent);
+            app(\App\Services\BookingHistoryService::class)->recordSalesAttributionEvent(
+                (object) $attributionEvent,
+                (string) $attribution->booking_id,
+            );
             $attribution->update([
                 'commission_plan_family_id' => $snapshot['plan_family_id'],
                 'commission_plan_assignment_id' => $snapshot['plan_assignment_id'],

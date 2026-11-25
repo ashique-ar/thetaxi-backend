@@ -7,16 +7,27 @@ use App\Services\BookingHistoryService;
 use Carbon\CarbonImmutable;
 use Illuminate\Console\Command;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Schema;
 use Illuminate\Support\Str;
 
 class BackfillBookingHistory extends Command
 {
     protected $signature = 'booking-history:backfill {--before= : Reconstruct only source events before this UTC timestamp} {--commit : Write reconstructed history rows}';
 
-    protected $description = 'Backfill booking status, approval decision, price, and financial history from verifiable legacy records.';
+    protected $description = 'Backfill verifiable legacy sources into booking history.';
 
     public function handle(BookingHistoryService $history): int
     {
+        $requiredTables = [
+            'booking_history_events', 'booking_statuses', 'booking_approvals', 'booking_activities',
+            'financial_audit_events', 'sales_booking_attribution_events', 'sales_booking_attributions',
+        ];
+        $missingTables = array_values(array_filter($requiredTables, fn (string $table): bool => !Schema::hasTable($table)));
+        if ($missingTables !== []) {
+            $this->error('Backfill requires these tables before it can run: ' . implode(', ', $missingTables));
+            return self::FAILURE;
+        }
+
         if ($this->option('commit') && !$this->option('before')) {
             $this->error('--before is required with --commit to define the legacy coverage cutoff.');
             return self::FAILURE;
@@ -37,7 +48,8 @@ class BackfillBookingHistory extends Command
         $approvalCount = $this->backfillApprovalDecisionEvents($before, $commit);
         $priceCount = $this->backfillPriceEvents($before, $commit);
         $financialCount = $this->backfillFinancialEvents($before, $commit, $history);
-        $this->info("Booking status: {$statusCount}; approval decision: {$approvalCount}; trip price: {$priceCount}; financial: {$financialCount} source event(s)." . ($commit ? ' Existing idempotency keys were preserved.' : ' Run again with --commit and --before=<same timestamp> to write them.'));
+        $salesAttributionCount = $this->backfillSalesAttributionEvents($before, $commit, $history);
+        $this->info("Booking status: {$statusCount}; approval decision: {$approvalCount}; trip price: {$priceCount}; financial: {$financialCount}; sales attribution: {$salesAttributionCount} source event(s)." . ($commit ? ' Existing idempotency keys were preserved.' : ' Run again with --commit and --before=<same timestamp> to write them.'));
 
         return self::SUCCESS;
     }
@@ -201,6 +213,25 @@ class BackfillBookingHistory extends Command
                     if ($commit) $history->recordFinancialAuditEvent($row, 'reconstructed');
                 }
             });
+
+        return $count;
+    }
+
+    private function backfillSalesAttributionEvents(CarbonImmutable $before, bool $commit, BookingHistoryService $history): int
+    {
+        $count = 0;
+        DB::table('sales_booking_attribution_events as event')
+            ->join('sales_booking_attributions as attribution', 'attribution.id', '=', 'event.attribution_id')
+            ->whereNotNull('attribution.booking_id')
+            ->where('event.created_at', '<', $before)
+            ->select('event.*', 'attribution.booking_id as booking_id')
+            ->orderBy('event.id')
+            ->chunkById(200, function ($rows) use ($commit, $history, &$count): void {
+                foreach ($rows as $row) {
+                    $count++;
+                    if ($commit) $history->recordSalesAttributionEvent($row, (string) $row->booking_id, 'reconstructed');
+                }
+            }, 'event.id', 'id');
 
         return $count;
     }

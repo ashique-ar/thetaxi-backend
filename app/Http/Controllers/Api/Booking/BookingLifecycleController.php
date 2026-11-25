@@ -553,6 +553,7 @@ class BookingLifecycleController extends Controller
             'charges' => 'nullable|array',
             'charges.*.amount' => 'required_with:charges|numeric|min:0',
             'activity_source' => 'nullable|string|in:customer_mobile,driver_mobile,system_return,system_completion',
+            'change_reason' => 'nullable|string|max:1000',
         ]);
 
         try {
@@ -615,6 +616,7 @@ class BookingLifecycleController extends Controller
             'booking_id' => ['required', 'uuid'],
             'booking_item_id' => ['nullable', 'uuid'],
             'notes' => ['required', 'string', 'min:3', 'max:3000'],
+            'change_reason' => ['nullable', 'string', 'max:1000'],
         ]);
         $data['notes'] = trim($data['notes']);
         if (mb_strlen($data['notes']) < 3) {
@@ -628,7 +630,8 @@ class BookingLifecycleController extends Controller
                 $data['booking_id'],
                 $data['booking_item_id'] ?? null,
                 trim($data['notes']),
-                (string) Auth::id()
+                (string) Auth::id(),
+                $data['change_reason'] ?? null
             );
 
             return response()->json([

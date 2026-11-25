@@ -1234,7 +1234,8 @@ Route::middleware(['auth:api'])->group(function () {
     Route::prefix('hr/ess')->middleware('business.module:hr')->group(function () {
         Route::get('my-requests', [EssController::class, 'myRequests'])->middleware('permission:hr.ess.use');
         Route::get('my-requests/{id}', [EssController::class, 'requestHistory'])->whereUuid('id')->middleware('permission:hr.ess.use');
-        Route::get('approval-inbox', [EssController::class, 'inbox'])->middleware('permission:hr.mss.approve');
+        Route::get('approval-inbox', [EssController::class, 'inbox'])->middleware('permission:hr.mss.approve|hr.leave.approve|hr.work-requests.approve|hr.timesheets.approve|hr.attendance.corrections.approve');
+        Route::post('approval-inbox/{id}/claim', [EssController::class, 'claimInboxRequest'])->whereUuid('id')->middleware('permission:staff.view-all');
         Route::get('delegations', [EssController::class, 'delegations'])->middleware('permission:hr.mss.approve|hr.mss.delegate|hr.mss.delegations.approve');
         Route::get('delegate-options', [EssController::class, 'delegationOptions'])->middleware('permission:hr.mss.delegate');
         Route::post('delegations', [EssController::class, 'delegate'])->middleware('permission:hr.mss.delegate');
@@ -1542,47 +1543,54 @@ Route::middleware(['auth:api'])->group(function () {
 
     Route::middleware(['permission:customers.view'])->group(function () {
         Route::get('customers/search', [CustomerController::class, 'search']);
-        Route::get('customers/check-email', [CustomerController::class, 'checkEmail']);
-        Route::get('customers/stats', [CustomerController::class, 'getCustomerAnalytics'])->middleware('permission:customers.analytics');
-        Route::get('customers/analytics', [CustomerController::class, 'getCustomerAnalytics'])->middleware('permission:customers.analytics');
-        Route::get('customers/analytics/growth', [CustomerController::class, 'getCustomerGrowth'])->middleware('permission:customers.analytics');
-        Route::get('customers/analytics/segments', [CustomerController::class, 'getCustomerSegments'])->middleware('permission:customers.analytics');
-        Route::get('customers/analytics/cohort', [CustomerController::class, 'getCustomerCohort'])->middleware('permission:customers.analytics');
-        Route::get('customers/analytics/top-customers', [CustomerController::class, 'getTopCustomers'])->middleware('permission:customers.analytics');
         Route::get('customers/export', [CustomerController::class, 'exportCustomers'])->middleware('permission:customers.export');
-        Route::get('customers/feedback/stats', [CustomerController::class, 'getFeedbackStats'])->middleware('permission:customers.feedback');
-        Route::get('customers/feedback', [CustomerController::class, 'getAllCustomerFeedback'])->middleware('permission:customers.feedback');
-        Route::post('customers/feedback', [CustomerController::class, 'submitCustomerFeedback'])->middleware('permission:customers.feedback');
-        Route::post('customers/feedback/{feedbackId}/respond', [CustomerController::class, 'respondToFeedback'])->middleware('permission:customers.feedback');
         Route::get('customers/{customer}/possible-matches', [CustomerController::class, 'possibleMatches'])->whereUuid('customer');
-        Route::post('customers/{customer}/possible-matches/{matchedCustomerId}/different-people', [CustomerController::class, 'markPossibleMatchAsDifferent'])
-            ->whereUuid('customer')->whereUuid('matchedCustomerId')->middleware('permission:customers.edit');
-        Route::post('customers/{customer}/possible-matches/{matchedCustomerId}/same-person', [CustomerController::class, 'mergePossibleMatch'])
-            ->whereUuid('customer')->whereUuid('matchedCustomerId')->middleware('permission:customers.edit');
         Route::get('customers/documents/stats', [CustomerController::class, 'getDocumentStats']);
         Route::get('customers/documents', [CustomerController::class, 'getDocuments']);
-        Route::post('customers/documents', [CustomerController::class, 'storeDocument'])->middleware('permission:customers.create');
         Route::get('customers/documents/{document}', [CustomerController::class, 'showDocument'])->whereUuid('document');
         Route::get('customers/documents/{document}/download', [CustomerController::class, 'downloadDocument'])->whereUuid('document');
-        Route::post('customers/documents/{document}/verify', [CustomerController::class, 'verifyDocument'])->middleware('permission:customers.edit')->whereUuid('document');
-        Route::post('customers/documents/{document}/reject', [CustomerController::class, 'rejectDocument'])->middleware('permission:customers.edit')->whereUuid('document');
         Route::get('customers/{customer}/bookings', [CustomerController::class, 'getCustomerBookings'])->middleware('permission:customers.bookings')->whereUuid('customer');
         Route::get('customers/{customer}/inquiries', [CustomerController::class, 'getCustomerInquiries'])->whereUuid('customer');
         Route::get('customers/{customer}/timeline', [CustomerController::class, 'getCustomerTimeline'])->whereUuid('customer');
         Route::get('customers/{customer}/loyalty', [CustomerController::class, 'getCustomerLoyalty'])->middleware('permission:customers.loyalty')->whereUuid('customer');
-        Route::post('customers/{customer}/loyalty/points', [LoyaltyController::class, 'addPoints'])->middleware('permission:customers.loyalty')->whereUuid('customer');
-        Route::post('customers/{customer}/loyalty/adjustments', [LoyaltyController::class, 'adjustPoints'])->middleware('permission:customers.loyalty')->whereUuid('customer');
         Route::get('customers/{customer}/documents', [CustomerController::class, 'getCustomerDocuments'])->middleware('permission:documents.view')->whereUuid('customer');
-        Route::get('customers/{customer}/feedback', [CustomerController::class, 'getCustomerFeedback'])->middleware('permission:customers.feedback')->whereUuid('customer');
-        Route::post('customers/{customer}/feedback', [CustomerController::class, 'addCustomerFeedback'])->middleware('permission:customers.feedback')->whereUuid('customer');
-        Route::get('customers/relationship-owner-options', [CustomerController::class, 'relationshipOwnerOptions']);
-        Route::put('customers/{customer}/relationship-owner', [CustomerController::class, 'assignRelationshipOwner'])->whereUuid('customer');
-        Route::post('customers/{customer}/send-portal-verification', [CustomerController::class, 'sendPortalVerification'])
-            ->middleware(['permission:users.manage', 'throttle:5,1'])->whereUuid('customer');
-        Route::post('customers/{customer}/activate-portal', [CustomerController::class, 'activateVerifiedPortal'])
-            ->middleware('permission:users.manage')->whereUuid('customer');
     });
+    Route::post('customers/{customer}/possible-matches/{matchedCustomerId}/different-people', [CustomerController::class, 'markPossibleMatchAsDifferent'])
+        ->middleware('permission:customers.edit')->whereUuid('customer')->whereUuid('matchedCustomerId');
+    Route::post('customers/{customer}/possible-matches/{matchedCustomerId}/same-person', [CustomerController::class, 'mergePossibleMatch'])
+        ->middleware('permission:customers.edit')->whereUuid('customer')->whereUuid('matchedCustomerId');
+    Route::post('customers/documents', [CustomerController::class, 'storeDocument'])->middleware('permission:customers.create');
+    Route::post('customers/documents/{document}/verify', [CustomerController::class, 'verifyDocument'])->middleware('permission:customers.edit')->whereUuid('document');
+    Route::post('customers/documents/{document}/reject', [CustomerController::class, 'rejectDocument'])->middleware('permission:customers.edit')->whereUuid('document');
+    Route::post('customers/{customer}/loyalty/points', [LoyaltyController::class, 'addPoints'])->middleware('permission:customers.loyalty')->whereUuid('customer');
+    Route::post('customers/{customer}/loyalty/adjustments', [LoyaltyController::class, 'adjustPoints'])->middleware('permission:customers.loyalty')->whereUuid('customer');
+    Route::post('customers/{customer}/send-portal-verification', [CustomerController::class, 'sendPortalVerification'])
+        ->middleware(['permission:users.manage', 'throttle:5,1'])->whereUuid('customer');
+    Route::post('customers/{customer}/activate-portal', [CustomerController::class, 'activateVerifiedPortal'])
+        ->middleware('permission:users.manage')->whereUuid('customer');
+    Route::get('customers/check-email', [CustomerController::class, 'checkEmail'])
+        ->middleware('permission:customers.create|customers.edit');
+    Route::get('customers/stats', [CustomerController::class, 'getCustomerAnalytics'])->middleware('permission:customers.analytics|customers.view');
+    Route::get('customers/analytics', [CustomerController::class, 'getCustomerAnalytics'])->middleware('permission:customers.analytics|customers.view');
+    Route::get('customers/analytics/growth', [CustomerController::class, 'getCustomerGrowth'])->middleware('permission:customers.analytics|customers.view');
+    Route::get('customers/analytics/segments', [CustomerController::class, 'getCustomerSegments'])->middleware('permission:customers.analytics|customers.view');
+    Route::get('customers/analytics/cohort', [CustomerController::class, 'getCustomerCohort'])->middleware('permission:customers.analytics|customers.view');
+    Route::get('customers/analytics/top-customers', [CustomerController::class, 'getTopCustomers'])->middleware('permission:customers.analytics|customers.view');
+    Route::get('customers/feedback/stats', [CustomerController::class, 'getFeedbackStats'])->middleware('permission:customers.feedback');
+    Route::get('customers/feedback', [CustomerController::class, 'getAllCustomerFeedback'])->middleware('permission:customers.feedback');
+    Route::post('customers/feedback', [CustomerController::class, 'submitCustomerFeedback'])->middleware('permission:customers.feedback');
+    Route::post('customers/feedback/{feedbackId}/respond', [CustomerController::class, 'respondToFeedback'])->middleware('permission:customers.feedback');
+    Route::get('customers/{customer}/feedback', [CustomerController::class, 'getCustomerFeedback'])->middleware('permission:customers.feedback')->whereUuid('customer');
+    Route::post('customers/{customer}/feedback', [CustomerController::class, 'addCustomerFeedback'])->middleware('permission:customers.feedback')->whereUuid('customer');
+    Route::get('customers/relationship-owner-options', [CustomerController::class, 'relationshipOwnerOptions'])
+        ->middleware('permission:customers.edit');
+    Route::put('customers/{customer}/relationship-owner', [CustomerController::class, 'assignRelationshipOwner'])
+        ->middleware('permission:customers.edit')->whereUuid('customer');
     Route::apiResource('customers', CustomerController::class)->whereUuid('customer');
+    Route::get('booking-customers', [CustomerController::class, 'bookingLookup'])
+        ->middleware('permission:bookings.view|bookings.view-assigned|bookings.create|bookings.update|bookings.edit-assigned');
+    Route::get('booking-customers/search', [CustomerController::class, 'bookingLookup'])
+        ->middleware('permission:bookings.view|bookings.view-assigned|bookings.create|bookings.update|bookings.edit-assigned');
 
     /*
     |--------------------------------------------------------------------------
@@ -1772,6 +1780,8 @@ Route::middleware(['auth:api'])->group(function () {
 
     Route::get('/vehicle-finance-providers', [VehicleFinanceProviderController::class, 'index'])
         ->middleware('permission:vehicle-leases.view');
+    Route::get('/vehicle-finance-providers/lookup', [VehicleFinanceProviderController::class, 'lookup'])
+        ->middleware('permission:vehicle-leases.view|vehicle-leases.create|vehicle-leases.edit');
     Route::post('/vehicle-finance-providers', [VehicleFinanceProviderController::class, 'store'])
         ->middleware('permission:vehicle-leases.manage');
     Route::put('/vehicle-finance-providers/{vehicleFinanceProvider}', [VehicleFinanceProviderController::class, 'update'])
@@ -1832,6 +1842,20 @@ Route::middleware(['auth:api'])->group(function () {
         ->whereNumber('commandId')->middleware('permission:vehicles.edit')->middleware('throttle:6,1');
     Route::get('vehicles/vehicle-groups', [VehicleGroupController::class, 'index'])
         ->middleware('permission:vehicle-groups.view');
+    Route::get('vehicles/filter-options', [VehicleController::class, 'filterOptions'])
+        ->middleware('permission:vehicles.view');
+    Route::get('vehicles/vehicle-groups/lookup', [VehicleGroupController::class, 'vehicleLookup'])
+        ->middleware('permission:vehicle-groups.view|vehicles.create|vehicles.edit');
+    Route::get('vehicles/vehicle-groups/vehicle-filter-options', [VehicleGroupController::class, 'vehicleLookup'])
+        ->middleware('permission:vehicle-groups.view|vehicles.view');
+    Route::get('vehicles/vehicle-groups/booking-options', [VehicleGroupController::class, 'moduleLookup'])
+        ->middleware('permission:vehicle-groups.view|bookings.view|bookings.view-assigned|bookings.create|bookings.update|bookings.edit-assigned');
+    Route::get('vehicles/vehicle-groups/logsheet-options', [VehicleGroupController::class, 'moduleLookup'])
+        ->middleware('permission:vehicle-groups.view|driver-batta-rules.view|driver-batta-rules.create|driver-batta-rules.edit|driver-hire-settlements.view|driver-hire-settlements.create|driver-hire-settlements.edit');
+    Route::get('booking-vehicle-options', [VehicleController::class, 'bookingLookup'])
+        ->middleware('permission:bookings.dispatch');
+    Route::get('insurance-vehicle-options', [VehicleController::class, 'insuranceLookup'])
+        ->middleware('permission:vehicle-insurances.view|vehicle-insurances.create|vehicle-insurances.edit|vehicles.view');
     Route::middleware(['permission:vehicles.view'])->group(function () {
         Route::get('fleet-tracking', [FleetTrackingController::class, 'index'])->middleware('throttle:60,1');
         Route::get('fleet-tracking/vehicles/{vehicle}/telemetry', [FleetTrackingController::class, 'telemetry'])->middleware('throttle:60,1');
@@ -1877,6 +1901,8 @@ Route::middleware(['auth:api'])->group(function () {
             Route::get('vehicle-revenue-licenses/{document}', [VehicleRevenueLicenseController::class, 'show'])->whereUuid('document');
             Route::put('vehicle-revenue-licenses/{document}', [VehicleRevenueLicenseController::class, 'update'])->whereUuid('document');
             Route::delete('vehicle-revenue-licenses/{document}', [VehicleRevenueLicenseController::class, 'destroy'])->whereUuid('document');
+            Route::get('vehicle-insurance-providers/lookup', [VehicleInsuranceProviderController::class, 'vehicleLookup'])->middleware('permission:vehicle-insurance-providers.view|vehicle-insurances.view|vehicle-insurances.create|vehicle-insurances.edit|vehicles.create|vehicles.edit');
+            Route::get('vehicle-insurance-types/lookup', [VehicleInsuranceTypeController::class, 'vehicleLookup'])->middleware('permission:vehicle-insurance-types.view|vehicle-insurances.view|vehicle-insurances.create|vehicle-insurances.edit|vehicles.create|vehicles.edit');
             Route::apiResource('vehicle-insurance-providers', VehicleInsuranceProviderController::class);
             Route::apiResource('vehicle-insurance-types', VehicleInsuranceTypeController::class);
             Route::apiResource('vehicle-maintenance-schedules', VehicleMaintenanceScheduleController::class);
@@ -1887,6 +1913,7 @@ Route::middleware(['auth:api'])->group(function () {
                 ->parameters(['records' => 'vehicleMaintenanceRecord']);
             Route::apiResource('vehicle-makes', VehicleMakeController::class);
             Route::apiResource('vehicle-models', VehicleModelController::class);
+            Route::get('vehicle-owners/lookup', [VehicleOwnerController::class, 'vehicleLookup'])->middleware('permission:vehicle-owners.view|vehicles.create|vehicles.edit');
             Route::apiResource('vehicle-owners', VehicleOwnerController::class);
             Route::apiResource('vehicle-owner-types', VehicleOwnerTypeController::class);
             // Route::apiResource('slab-definitions', VehiclePricingSlabController::class);
@@ -2004,6 +2031,8 @@ Route::middleware(['auth:api'])->group(function () {
 
             // Vehicle Discounts
             Route::prefix('vehicle-discounts')->group(function () {
+                Route::get('/vehicle-group-options', [VehicleGroupController::class, 'vehicleLookup'])
+                    ->middleware('permission:vehicle-discounts.view|vehicle-discounts.create|vehicle-discounts.edit');
                 Route::get('/', [VehicleDiscountController::class, 'index']);
                 Route::post('/', [VehicleDiscountController::class, 'store']);
                 Route::delete('/bulk', [VehicleDiscountController::class, 'bulkDestroy']);
@@ -2047,33 +2076,41 @@ Route::middleware(['auth:api'])->group(function () {
         Route::get('/vehicles/available', [VehicleController::class, 'getAvailableVehicles']);
         Route::get('/vehicles/operations-dashboard', [VehicleController::class, 'operationsDashboard']);
         Route::get('/vehicles/availability-analytics', [VehicleController::class, 'availabilityAnalytics']);
-        Route::get('/vehicles/{vehicle}/commissions', [VehicleCommissionController::class, 'index']);
-        Route::post('/vehicles/{vehicle}/commissions', [VehicleCommissionController::class, 'store']);
-        Route::put('/vehicles/{vehicle}/commissions/{commission}', [VehicleCommissionController::class, 'update']);
-        Route::delete('/vehicles/{vehicle}/commissions/{commission}', [VehicleCommissionController::class, 'destroy']);
+        Route::get('/vehicles/{vehicle}/commissions', [VehicleCommissionController::class, 'index'])->withoutMiddleware('permission:vehicles.view');
+        Route::post('/vehicles/{vehicle}/commissions', [VehicleCommissionController::class, 'store'])->withoutMiddleware('permission:vehicles.view');
+        Route::put('/vehicles/{vehicle}/commissions/{commission}', [VehicleCommissionController::class, 'update'])->withoutMiddleware('permission:vehicles.view');
+        Route::delete('/vehicles/{vehicle}/commissions/{commission}', [VehicleCommissionController::class, 'destroy'])->withoutMiddleware('permission:vehicles.view');
         Route::get('/vehicles/{id}/availability', [VehicleController::class, 'checkAvailability']);
         Route::get('/vehicles/{id}/maintenance/history', [VehicleController::class, 'getMaintenanceHistory']);
         Route::get('/vehicles/{vehicle}/maintenance/schedules', [VehicleMaintenanceScheduleController::class, 'forVehicle'])
-            ->middleware('permission:vehicle-maintenance-schedules.view');
-        Route::get('/vehicles/maintenance/upcoming', [VehicleController::class, 'getUpcomingMaintenance']);
+            ->middleware('permission:vehicle-maintenance-schedules.view')->withoutMiddleware('permission:vehicles.view');
+        Route::get('/vehicles/maintenance/upcoming', [VehicleController::class, 'getUpcomingMaintenance'])
+            ->middleware('permission:vehicle-maintenance-records.view|vehicle-maintenance-schedules.view')
+            ->withoutMiddleware('permission:vehicles.view');
         Route::post('/vehicles/maintenance/schedules/{id}/complete', [VehicleController::class, 'completeMaintenanceSchedule'])
-            ->middleware('permission:vehicle-maintenance-schedules.edit');
-        Route::post('/vehicles/{id}/block', [VehicleController::class, 'blockVehicle']);
+            ->middleware('permission:vehicle-maintenance-schedules.edit')->withoutMiddleware('permission:vehicles.view');
+        Route::post('/vehicles/{id}/block', [VehicleController::class, 'blockVehicle'])
+            ->middleware('permission:vehicles.edit')->withoutMiddleware('permission:vehicles.view');
         Route::patch('/vehicles/{id}/availability', [VehicleController::class, 'updateAvailability'])
-            ->middleware('permission:vehicles.edit');
+            ->middleware('permission:vehicles.edit')->withoutMiddleware('permission:vehicles.view');
         Route::get('/vehicles/service-types', [VehicleController::class, 'getServiceTypes'])
-            ->middleware('pricing.context');
-        Route::get('/vehicles/insurance-types', [VehicleController::class, 'getInsuranceTypes']);
-        Route::get('/vehicles/check-plate-availability', [VehicleController::class, 'checkPlateAvailability']);
+            ->middleware(['pricing.context', 'permission:vehicles.view|vehicles.create|vehicles.edit'])->withoutMiddleware('permission:vehicles.view');
+        Route::get('/vehicles/insurance-types', [VehicleController::class, 'getInsuranceTypes'])
+            ->middleware('permission:vehicle-insurance-types.view|vehicle-insurances.view|vehicles.view|vehicles.create|vehicles.edit')->withoutMiddleware('permission:vehicles.view');
+        Route::get('/vehicles/check-plate-availability', [VehicleController::class, 'checkPlateAvailability'])
+            ->middleware('permission:vehicles.create|vehicles.edit')->withoutMiddleware('permission:vehicles.view');
         Route::put('/vehicles/{vehicle}/handover', [VehicleController::class, 'recordHandover'])
-            ->middleware('permission:vehicles.edit');
+            ->middleware('permission:vehicles.edit')->withoutMiddleware('permission:vehicles.view');
         Route::post('/vehicles/{vehicle}/share-links', [VehicleController::class, 'createShareLink']);
         Route::get('/vehicles/{vehicle}/share-links', [VehicleController::class, 'getShareLinks']);
-        Route::apiResource('vehicles', VehicleController::class);
+        Route::apiResource('vehicles', VehicleController::class)
+            ->withoutMiddleware('permission:vehicles.view');
 
         // Default driver management for vehicles
-        Route::get('vehicles/{vehicle}/default-driver', [BookingAssignmentController::class, 'getVehicleDefaultDriver']);
-        Route::put('vehicles/{vehicle}/default-driver', [BookingAssignmentController::class, 'updateVehicleDefaultDriver']);
+        Route::get('vehicles/{vehicle}/default-driver', [BookingAssignmentController::class, 'getVehicleDefaultDriver'])
+            ->middleware('permission:vehicles.view|vehicles.edit')->withoutMiddleware('permission:vehicles.view');
+        Route::put('vehicles/{vehicle}/default-driver', [BookingAssignmentController::class, 'updateVehicleDefaultDriver'])
+            ->middleware('permission:vehicles.edit')->withoutMiddleware('permission:vehicles.view');
     });
 
     Route::get('pricing-context-policy', [PricingContextPolicyController::class, 'show']);
@@ -2202,24 +2239,38 @@ Route::middleware(['auth:api'])->group(function () {
         ->middleware(['business.module:driver', 'permission:drivers.onboarding.view', 'permission:drivers.onboarding.manage']);
 
     Route::middleware(['business.module:driver', 'permission:drivers.view'])->group(function () {
-        Route::get('driving-license-types', [DrivingLicenseTypeController::class, 'index']);
+        Route::get('driving-license-types', [DrivingLicenseTypeController::class, 'index'])
+            ->withoutMiddleware('permission:drivers.view');
         // Driver status and location endpoints (place specific routes before resource registration)
         Route::get('drivers/locations', [DriverController::class, 'locations']);
         Route::get('drivers/realtime-status', [DriverController::class, 'realTimeStatus']);
         Route::get('drivers/list-summary', [DriverController::class, 'listSummary']);
+        Route::get('drivers/vehicle-options', [DriverController::class, 'vehicleLookup'])
+            ->middleware('permission:drivers.view|vehicles.create|vehicles.edit')
+            ->withoutMiddleware('permission:drivers.view');
+        Route::get('drivers/booking-options', [DriverController::class, 'vehicleLookup'])
+            ->middleware('permission:drivers.view|bookings.view|bookings.view-assigned|bookings.create|bookings.update|bookings.edit-assigned|bookings.dispatch')
+            ->withoutMiddleware('permission:drivers.view');
+        Route::get('drivers/logsheet-options', [DriverController::class, 'vehicleLookup'])
+            ->middleware('permission:drivers.view|driver-logs.view|driver-logs.create|driver-logs.edit|driver-hire-settlements.view|driver-hire-settlements.create|driver-hire-settlements.edit')
+            ->withoutMiddleware('permission:drivers.view');
         Route::get('drivers/with-status', [BookingAssignmentController::class, 'driversWithStatus']);
         Route::get('driver-assignments/dashboard-stats', [DriverController::class, 'driverAssignmentDashboardStats']);
         Route::get('driver-assignments/active', [DriverController::class, 'activeDriverAssignments']);
         Route::get('driver-assignments/recent', [DriverController::class, 'recentDriverAssignments']);
         Route::get('drivers/{driver}/status', [DriverController::class, 'status']);
-        Route::put('drivers/{driver}/status', [DriverController::class, 'updateStatus']);
-        Route::post('drivers/{driver}/test-notification', [DriverController::class, 'testNotification']);
+        Route::put('drivers/{driver}/status', [DriverController::class, 'updateStatus'])
+            ->withoutMiddleware('permission:drivers.view');
+        Route::post('drivers/{driver}/test-notification', [DriverController::class, 'testNotification'])
+            ->withoutMiddleware('permission:drivers.view');
         Route::post('drivers/{driver}/notifications/custom', [DriverController::class, 'sendCustomNotification'])
-            ->middleware('permission:drivers.edit');
+            ->middleware('permission:drivers.edit')->withoutMiddleware('permission:drivers.view');
         Route::post('drivers/notifications/custom', [DriverController::class, 'sendBulkCustomNotifications'])
-            ->middleware('permission:drivers.edit');
+            ->middleware('permission:drivers.edit')->withoutMiddleware('permission:drivers.view');
         Route::get('drivers/{driver}/activity', [DriverController::class, 'activity']);
-        Route::apiResource('drivers', DriverController::class);
+        Route::apiResource('drivers', DriverController::class)
+            ->withoutMiddleware('permission:drivers.view');
+        Route::middleware([])->withoutMiddleware('permission:drivers.view')->group(function () {
         Route::get('logsheets/stats', [DriverLogController::class, 'stats']);
         Route::get('logsheets/dashboard', [DriverLogController::class, 'stats']);
         Route::get('logsheets', [DriverLogController::class, 'index']);
@@ -2243,6 +2294,7 @@ Route::middleware(['auth:api'])->group(function () {
         Route::post('driver-hire-settlements/{driverHireSettlement}/mark-paid', [DriverHireSettlementController::class, 'markPaid']);
         Route::post('driver-hire-settlements/{driverHireSettlement}/mark-recovered', [DriverHireSettlementController::class, 'markRecovered']);
         Route::apiResource('driver-hire-settlements', DriverHireSettlementController::class);
+        });
         Route::get('drivers/{driver}/sessions', [DriverController::class, 'sessions']);
         Route::get('drivers/{driver}/sessions/{session}', [DriverController::class, 'session']);
         Route::get('drivers/{driver}/sessions/{session}/route', [DriverController::class, 'sessionRoute']);
@@ -2250,16 +2302,17 @@ Route::middleware(['auth:api'])->group(function () {
         Route::get('drivers/{driver}/analytics', [DriverController::class, 'analytics']);
 
         // Default vehicle management for drivers
-        Route::get('drivers/{driver}/default-vehicle', [BookingAssignmentController::class, 'getDriverDefaultVehicle']);
+        Route::get('drivers/{driver}/default-vehicle', [BookingAssignmentController::class, 'getDriverDefaultVehicle'])
+            ->middleware('permission:drivers.view|drivers.edit')->withoutMiddleware('permission:drivers.view');
         Route::put('drivers/{driver}/default-vehicle', [BookingAssignmentController::class, 'updateDriverDefaultVehicle'])
-            ->middleware('permission:drivers.edit');
+            ->middleware('permission:drivers.edit')->withoutMiddleware('permission:drivers.view');
 
         // Driver device management endpoints
         Route::get('drivers/{driver}/devices', [DriverController::class, 'devices']);
         Route::post('drivers/{driver}/devices/{deviceUuid}/deactivate', [DriverController::class, 'deactivateDevice'])
-            ->middleware('permission:drivers.edit');
+            ->middleware('permission:drivers.edit')->withoutMiddleware('permission:drivers.view');
         Route::delete('drivers/{driver}/devices/{deviceUuid}', [DriverController::class, 'removeDevice'])
-            ->middleware('permission:drivers.delete');
+            ->middleware('permission:drivers.delete')->withoutMiddleware('permission:drivers.view');
     });
 
     /*
@@ -2352,21 +2405,21 @@ Route::middleware(['auth:api'])->group(function () {
     Route::post('bookings/route-usage', [BookingRouteUsageController::class, 'store'])
         ->middleware(['permission:bookings.view|bookings.view-assigned|bookings.create|bookings.update|dashboard.view|analytics.view|analytics.bookings|reports.view|reports.generate|vehicle-availability.view|vip-types.view', 'throttle:120,1']);
 
-    Route::middleware(['permission:bookings.view|bookings.view-assigned', 'booking.own-scope'])->group(function () {
+    Route::middleware(['booking.own-scope'])->group(function () {
 
         Route::group(['prefix' => 'booking-flow', 'middleware' => [RedactCustomerPortalBookingData::class]], function () {
             // Vehicle Availability Routes - Updated to match frontend service
             Route::get('vehicle-groups/availability', [BookingFlowController::class, 'getAvailableVehicleGroups'])
-                ->middleware('permission:bookings.view|bookings.view-assigned');
+                ->middleware('permission:bookings.view|bookings.view-assigned|bookings.create|bookings.update|bookings.edit-assigned');
             Route::get('vehicles/availability', [BookingFlowController::class, 'getAvailableVehiclesInGroup'])
-                ->middleware('permission:bookings.view|bookings.view-assigned');
+                ->middleware('permission:bookings.view|bookings.view-assigned|bookings.create|bookings.update|bookings.edit-assigned');
             Route::get('drivers/availability', [BookingFlowController::class, 'getAvailableDrivers'])
-                ->middleware('permission:bookings.view|bookings.view-assigned');
+                ->middleware('permission:bookings.view|bookings.view-assigned|bookings.create|bookings.update|bookings.edit-assigned');
 
             Route::get('/availability/vehicle', [BookingFlowController::class, 'getAvailableVehicleGroups'])
-                ->middleware('api.deprecated:/api/booking-flow/vehicle-groups/availability');
+                ->middleware(['permission:bookings.view|bookings.view-assigned|bookings.create|bookings.update|bookings.edit-assigned', 'api.deprecated:/api/booking-flow/vehicle-groups/availability']);
             Route::get('/availability/driver', [BookingFlowController::class, 'getAvailableDrivers'])
-                ->middleware('api.deprecated:/api/booking-flow/drivers/availability');
+                ->middleware(['permission:bookings.view|bookings.view-assigned|bookings.create|bookings.update|bookings.edit-assigned', 'api.deprecated:/api/booking-flow/drivers/availability']);
 
 
             // Conflict Checking Routes - Updated to match frontend service
@@ -2383,37 +2436,37 @@ Route::middleware(['auth:api'])->group(function () {
 
             // Pricing Routes - Updated to match frontend service
             Route::post('pricing/calculate', [BookingFlowController::class, 'calculatePricing'])
-                ->middleware('permission:bookings.view|bookings.view-assigned');
+                ->middleware('permission:bookings.view|bookings.view-assigned|bookings.create|bookings.update|bookings.edit-assigned');
 
             Route::get('currencies', [BookingFlowController::class, 'getAvailableCurrencies'])
-                ->middleware('permission:bookings.view|bookings.view-assigned');
+                ->middleware('permission:bookings.view|bookings.view-assigned|bookings.create|bookings.update|bookings.edit-assigned');
 
             Route::get('dynamic-pricing-adjustments', [BookingFlowController::class, 'getDynamicPricingAdjustments'])
-                ->middleware('permission:bookings.view|bookings.view-assigned');
+                ->middleware('permission:bookings.view|bookings.view-assigned|bookings.create|bookings.update|bookings.edit-assigned');
 
             // Add-ons Routes - Updated to match frontend service
             Route::get('addons/available', [BookingFlowController::class, 'getAvailableAddons'])
-                ->middleware(['permission:bookings.view|bookings.view-assigned', 'pricing.context']);
+                ->middleware(['permission:bookings.view|bookings.view-assigned|bookings.create|bookings.update|bookings.edit-assigned', 'pricing.context']);
             Route::post('addons/process-dependencies', [BookingFlowController::class, 'processAddonDependencies'])
                 ->middleware(['permission:bookings.create', 'pricing.context']);
 
             // Alternative route names for backward compatibility
             Route::get('available-addons', [BookingFlowController::class, 'getAvailableAddons'])
-                ->middleware(['permission:bookings.view|bookings.view-assigned', 'pricing.context', 'api.deprecated:/api/booking-flow/addons/available']);
+                ->middleware(['permission:bookings.view|bookings.view-assigned|bookings.create|bookings.update|bookings.edit-assigned', 'pricing.context', 'api.deprecated:/api/booking-flow/addons/available']);
             Route::post('process-addon-dependencies', [BookingFlowController::class, 'processAddonDependencies'])
                 ->middleware(['permission:bookings.create', 'pricing.context', 'api.deprecated:/api/booking-flow/addons/process-dependencies']);
 
             // Self-Driven Routes - Updated to match frontend service
             Route::get('customers/{customerId}/self-driven-eligibility', [BookingFlowController::class, 'validateSelfDrivenEligibility'])
-                ->middleware('permission:bookings.view|bookings.view-assigned');
+                ->middleware('permission:bookings.view|bookings.view-assigned|bookings.create|bookings.update|bookings.edit-assigned');
             Route::get('vehicles/{vehicleId}/self-driven-suitability', [BookingFlowController::class, 'getVehicleSelfDrivenSuitability'])
-                ->middleware('permission:bookings.view|bookings.view-assigned');
+                ->middleware('permission:bookings.view|bookings.view-assigned|bookings.create|bookings.update|bookings.edit-assigned');
 
             // Alternative route names for backward compatibility
             Route::get('validate-self-driven-eligibility/{customerId}', [BookingFlowController::class, 'validateSelfDrivenEligibility'])
-                ->middleware('permission:bookings.view|bookings.view-assigned');
+                ->middleware('permission:bookings.view|bookings.view-assigned|bookings.create|bookings.update|bookings.edit-assigned');
             Route::get('vehicle-self-driven-suitability/{vehicleId}', [BookingFlowController::class, 'getVehicleSelfDrivenSuitability'])
-                ->middleware('permission:bookings.view|bookings.view-assigned');
+                ->middleware('permission:bookings.view|bookings.view-assigned|bookings.create|bookings.update|bookings.edit-assigned');
 
             // Booking Submission Routes
             Route::post('submit-for-approval', [BookingFlowController::class, 'submitBookingForApproval'])
@@ -2423,7 +2476,7 @@ Route::middleware(['auth:api'])->group(function () {
 
             // Review & Confirmation Enhancement Routes
             Route::post('booking-summary', [BookingFlowController::class, 'getBookingSummary'])
-                ->middleware(['permission:bookings.view|bookings.view-assigned', DenyCustomerPortalLegacyBookingActions::class]);
+                ->middleware(['permission:bookings.view|bookings.view-assigned|bookings.create|bookings.update|bookings.edit-assigned', DenyCustomerPortalLegacyBookingActions::class]);
 
             // Draft Management Routes - Updated to match frontend service
             Route::post('create-inquiry-from-call', [BookingFlowController::class, 'createCallBookingInquiry'])
@@ -2435,11 +2488,11 @@ Route::middleware(['auth:api'])->group(function () {
             Route::post('request-quotation', [BookingFlowController::class, 'requestBookingQuotation'])
                 ->middleware(['permission:bookings.create', DenyCustomerPortalLegacyBookingActions::class]);
             Route::get('draft/{draftId}', [BookingFlowController::class, 'loadBookingDraft'])
-                ->middleware(['permission:bookings.view|bookings.view-assigned', DenyCustomerPortalLegacyBookingActions::class]);
+                ->middleware(['permission:bookings.view|bookings.view-assigned|bookings.create|bookings.update|bookings.edit-assigned', DenyCustomerPortalLegacyBookingActions::class]);
 
             // Alternative route names for backward compatibility
             Route::get('load-draft/{draftId}', [BookingFlowController::class, 'loadBookingDraft'])
-                ->middleware(['permission:bookings.view|bookings.view-assigned', DenyCustomerPortalLegacyBookingActions::class]);
+                ->middleware(['permission:bookings.view|bookings.view-assigned|bookings.create|bookings.update|bookings.edit-assigned', DenyCustomerPortalLegacyBookingActions::class]);
 
             // Approval Workflow Routes - Updated to match frontend service
             Route::get('approval-status/{bookingId}', [BookingFlowController::class, 'getApprovalStatus'])
@@ -2453,73 +2506,72 @@ Route::middleware(['auth:api'])->group(function () {
 
             // Variable Customization Routes - NEW
             Route::get('variables/customizable', [BookingFlowController::class, 'getCustomizableVariables'])
-                ->middleware(['permission:bookings.view|bookings.view-assigned', DenyCustomerPortalLegacyBookingActions::class]);
+                ->middleware(['permission:bookings.view|bookings.view-assigned|bookings.create|bookings.update|bookings.edit-assigned', DenyCustomerPortalLegacyBookingActions::class]);
             Route::post('variables/customizations', [BookingFlowController::class, 'storeVariableCustomizations'])
                 ->middleware(['permission:bookings.create', DenyCustomerPortalLegacyBookingActions::class]);
             Route::get('variables/customizations', [BookingFlowController::class, 'getVariableCustomizations'])
-                ->middleware(['permission:bookings.view|bookings.view-assigned', DenyCustomerPortalLegacyBookingActions::class]);
+                ->middleware(['permission:bookings.view|bookings.view-assigned|bookings.create|bookings.update|bookings.edit-assigned', DenyCustomerPortalLegacyBookingActions::class]);
 
             // Enhanced Assignment Management Routes
             Route::post('select-vehicle-assignment', [BookingFlowController::class, 'selectVehicleWithAssignmentDetails'])
-                ->middleware(['permission:bookings.view|bookings.view-assigned', DenyCustomerPortalLegacyBookingActions::class]);
+                ->middleware(['permission:bookings.view|bookings.view-assigned|bookings.create|bookings.update|bookings.edit-assigned', DenyCustomerPortalLegacyBookingActions::class]);
             Route::post('alternative-assignments', [BookingFlowController::class, 'getAlternativeAssignments'])
-                ->middleware(['permission:bookings.view|bookings.view-assigned', DenyCustomerPortalLegacyBookingActions::class]);
+                ->middleware(['permission:bookings.view|bookings.view-assigned|bookings.create|bookings.update|bookings.edit-assigned', DenyCustomerPortalLegacyBookingActions::class]);
             Route::post('process-assignment-confirmation', [BookingFlowController::class, 'processAssignmentConfirmation'])
                 ->middleware(['permission:bookings.create', DenyCustomerPortalLegacyBookingActions::class]);
             Route::post('approve-assignments', [BookingFlowController::class, 'approveAssignments'])
                 ->middleware('permission:bookings.approve');
 
             Route::post('validate-rules', [BookingFlowController::class, 'validateBookingRules'])
-                ->middleware('permission:bookings.view|bookings.view-assigned');
+                ->middleware('permission:bookings.view|bookings.view-assigned|bookings.create|bookings.update|bookings.edit-assigned');
             Route::post('alternatives', [BookingFlowController::class, 'getAlternativeSuggestions'])
-                ->middleware('permission:bookings.view|bookings.view-assigned');
+                ->middleware('permission:bookings.view|bookings.view-assigned|bookings.create|bookings.update|bookings.edit-assigned');
 
             // Alternative route names for backward compatibility
             Route::post('validate-booking-rules', [BookingFlowController::class, 'validateBookingRules'])
-                ->middleware('permission:bookings.view|bookings.view-assigned');
+                ->middleware('permission:bookings.view|bookings.view-assigned|bookings.create|bookings.update|bookings.edit-assigned');
             Route::get('alternative-suggestions', [BookingFlowController::class, 'getAlternativeSuggestions'])
-                ->middleware('permission:bookings.view|bookings.view-assigned');
+                ->middleware('permission:bookings.view|bookings.view-assigned|bookings.create|bookings.update|bookings.edit-assigned');
 
             // Confirmation Routes - Updated to match frontend service
             Route::post('generate-confirmation/{bookingId}', [BookingFlowController::class, 'generateBookingConfirmation'])
-                ->middleware(['permission:bookings.view|bookings.view-assigned', DenyCustomerPortalLegacyBookingActions::class]);
+                ->middleware(['permission:bookings.view|bookings.view-assigned|bookings.create|bookings.update|bookings.edit-assigned', DenyCustomerPortalLegacyBookingActions::class]);
 
             // Corporate booking context routes
             Route::get('corporates', [BookingFlowController::class, 'getCorporates'])
-                ->middleware('permission:bookings.create');
+                ->middleware('permission:bookings.create|bookings.update|bookings.edit-assigned');
             Route::get('corporates/{corporateId}/departments', [BookingFlowController::class, 'getCorporateDepartments'])
-                ->middleware('permission:bookings.create');
+                ->middleware('permission:bookings.create|bookings.update|bookings.edit-assigned');
             Route::get('corporates/{corporateId}/department-options', [BookingFlowController::class, 'corporateDepartmentOptions'])
-                ->middleware('permission:bookings.create');
+                ->middleware('permission:bookings.create|bookings.update|bookings.edit-assigned');
             Route::post('corporates/{corporateId}/departments', [BookingFlowController::class, 'createCorporateDepartment'])
                 ->middleware('permission:bookings.create');
             Route::get('corporates/{corporateId}/departments/{departmentId}/divisions', [BookingFlowController::class, 'getCorporateDivisions'])
-                ->middleware('permission:bookings.create');
+                ->middleware('permission:bookings.create|bookings.update|bookings.edit-assigned');
             Route::get('corporates/{corporateId}/departments/{departmentId}/division-options', [BookingFlowController::class, 'corporateDivisionOptions'])
-                ->middleware('permission:bookings.create');
+                ->middleware('permission:bookings.create|bookings.update|bookings.edit-assigned');
             Route::post('corporates/{corporateId}/departments/{departmentId}/divisions', [BookingFlowController::class, 'createCorporateDivision'])
                 ->middleware('permission:bookings.create');
             Route::get('corporates/{corporateId}/employees', [BookingFlowController::class, 'getCorporateEmployees'])
-                ->middleware('permission:bookings.create');
+                ->middleware('permission:bookings.create|bookings.update|bookings.edit-assigned');
             Route::get('corporates/{corporateId}/employee-options', [BookingFlowController::class, 'corporateEmployeeOptions'])
-                ->middleware('permission:bookings.create');
+                ->middleware('permission:bookings.create|bookings.update|bookings.edit-assigned');
             Route::post('corporates/{corporateId}/employees', [BookingFlowController::class, 'createCorporateEmployee'])
                 ->middleware('permission:bookings.create');
             // Saved location search for booking forms
             Route::get('locations', [BookingFlowController::class, 'getSavedLocations'])
-                ->middleware('permission:bookings.view|bookings.view-assigned');
+                ->middleware('permission:bookings.view|bookings.view-assigned|bookings.create|bookings.update|bookings.edit-assigned');
 
             // Route Calculation for Multiple Locations
             Route::post('calculate-route', [BookingFlowController::class, 'calculateRoute'])
-                ->middleware('permission:bookings.view|bookings.view-assigned');
+                ->middleware('permission:bookings.view|bookings.view-assigned|bookings.create|bookings.update|bookings.edit-assigned');
 
             Route::get('edit/{id}', [BookingFlowController::class, 'getBookingForEdit'])
-                ->middleware(DenyCustomerPortalLegacyBookingActions::class);
+                ->middleware(['permission:bookings.update|bookings.edit-assigned', DenyCustomerPortalLegacyBookingActions::class]);
 
             // Update booking and edit history routes expected by frontend
             Route::put('update/{bookingId}', [BookingFlowController::class, 'updateBooking'])
-                ->middleware(DenyCustomerPortalLegacyBookingActions::class);
-            // ->middleware('permission:bookings.update');
+                ->middleware(['permission:bookings.update|bookings.edit-assigned', DenyCustomerPortalLegacyBookingActions::class]);
             Route::get('edit-history/{bookingId}', [BookingFlowController::class, 'getBookingEditHistory'])
                 ->middleware(['permission:bookings.view|bookings.view-assigned', DenyCustomerPortalLegacyBookingActions::class]);
             Route::get('{bookingId}/items/{bookingItemId}/price-history', [BookingFlowController::class, 'getTripPriceHistory'])
@@ -2752,11 +2804,14 @@ Route::middleware(['auth:api'])->group(function () {
         ], function () {
 
             // Public availability checking (with limited data)
-            Route::get('check-availability', [BookingFlowController::class, 'getAvailableVehicleGroups']);
-            Route::post('estimate-pricing', [BookingFlowController::class, 'calculatePricing']);
+            Route::get('check-availability', [BookingFlowController::class, 'getAvailableVehicleGroups'])
+                ->middleware('permission:bookings.view|bookings.view-assigned|bookings.create|bookings.update|bookings.edit-assigned');
+            Route::post('estimate-pricing', [BookingFlowController::class, 'calculatePricing'])
+                ->middleware('permission:bookings.view|bookings.view-assigned|bookings.create|bookings.update|bookings.edit-assigned');
 
             // Self-service booking submission
-            Route::post('submit-booking-request', [BookingFlowController::class, 'submitBookingForApproval']);
+            Route::post('submit-booking-request', [BookingFlowController::class, 'submitBookingForApproval'])
+                ->middleware('permission:bookings.create');
         });
         Route::apiResource('booking-channels', BookingChannelController::class);
         Route::apiResource('booking-statuses', BookingStatusController::class);
@@ -2842,7 +2897,7 @@ Route::middleware(['auth:api'])->group(function () {
     |--------------------------------------------------------------------------
     */
 
-    Route::prefix('users/{user}')->middleware(['permission:gamification.view'])->group(function () {
+    Route::prefix('users/{user}')->group(function () {
         Route::get('points', [GamificationController::class, 'getUserPoints']);
         Route::get('reputation', [GamificationController::class, 'getUserReputation']);
         Route::post('points/give', [GamificationController::class, 'givePoints'])->middleware('permission:gamification.give-points');
@@ -2852,14 +2907,12 @@ Route::middleware(['auth:api'])->group(function () {
         Route::get('rank', [GamificationController::class, 'getUserRank']);
     });
 
-    Route::middleware(['permission:gamification.view'])->group(function () {
-        Route::get('badges', [GamificationController::class, 'getAllBadges']);
-        Route::get('badges/stats', [GamificationController::class, 'getBadgeStats'])->middleware('permission:gamification.stats');
-        Route::get('badges/{id}', [GamificationController::class, 'getBadgeDetails'])->whereNumber('id');
-        Route::get('leaderboard', [GamificationController::class, 'getLeaderboard']);
-        Route::get('reputation/stats', [GamificationController::class, 'getReputationStats'])->middleware('permission:gamification.stats');
-        Route::post('points/bulk-give', [GamificationController::class, 'bulkGivePoints'])->middleware('permission:gamification.bulk-give-points');
-    });
+    Route::get('badges', [GamificationController::class, 'getAllBadges']);
+    Route::get('badges/stats', [GamificationController::class, 'getBadgeStats'])->middleware('permission:gamification.stats');
+    Route::get('badges/{id}', [GamificationController::class, 'getBadgeDetails'])->whereNumber('id');
+    Route::get('leaderboard', [GamificationController::class, 'getLeaderboard']);
+    Route::get('reputation/stats', [GamificationController::class, 'getReputationStats'])->middleware('permission:gamification.stats');
+    Route::post('points/bulk-give', [GamificationController::class, 'bulkGivePoints'])->middleware('permission:gamification.bulk-give-points');
 
     /*
     |--------------------------------------------------------------------------
@@ -3308,20 +3361,18 @@ Route::middleware(['auth:api'])->group(function () {
         Route::get('faqs/categories/list', [FAQController::class, 'getCategories'])
             ->middleware('permission:faqs.view');
 
-        Route::middleware(['permission:settings.view'])->group(function () {
-            Route::get('booking-form-tabs', [BookingFormTabController::class, 'index']);
-            Route::get('booking-form-tabs/{id}', [BookingFormTabController::class, 'show']);
-        });
+        Route::get('booking-form-tabs', [BookingFormTabController::class, 'index']);
+        Route::get('booking-form-tabs/{id}', [BookingFormTabController::class, 'show']);
         Route::put('booking-form-tabs/{id}', [BookingFormTabController::class, 'update'])
-            ->middleware('permission:settings.edit');
+            ->middleware('permission:booking-form-tabs.edit');
         Route::post('booking-form-tabs/{id}/toggle', [BookingFormTabController::class, 'toggle'])
-            ->middleware('permission:settings.edit');
+            ->middleware('permission:booking-form-tabs.edit');
         Route::post('booking-form-tabs/{id}/default', [BookingFormTabController::class, 'setDefault'])
-            ->middleware('permission:settings.edit');
+            ->middleware('permission:booking-form-tabs.edit');
         Route::post('booking-form-tabs/reorder', [BookingFormTabController::class, 'reorder'])
-            ->middleware('permission:settings.edit');
+            ->middleware('permission:booking-form-tabs.edit');
         Route::post('booking-form-tabs/bulk-update', [BookingFormTabController::class, 'bulkUpdate'])
-            ->middleware('permission:settings.edit');
+            ->middleware('permission:booking-form-tabs.edit');
 
         // Service Form Configs — DB-driven overrides for DynamicServiceConfigurationService
         Route::get('service-form-configs', [App\Http\Controllers\Api\Admin\ServiceFormConfigController::class, 'index']);
@@ -3396,14 +3447,17 @@ Route::prefix('public')->group(function () {
 */
 
 // Admin Popup Management Routes (Requires Authentication and Authorization)
-Route::middleware(['auth:api', 'permission:popup.view'])->group(function () {
+Route::middleware(['auth:api'])->group(function () {
     Route::prefix('admin')->group(function () {
         // Popup CRUD operations
         Route::get('popups/statistics', [PopupController::class, 'statistics'])
+            ->middleware('permission:popup.view')
             ->name('api.admin.popups.statistics');
         Route::get('popups', [PopupController::class, 'index'])
+            ->middleware('permission:popup.view')
             ->name('api.admin.popups.index');
         Route::get('popups/{popup}', [PopupController::class, 'show'])
+            ->middleware('permission:popup.view')
             ->name('api.admin.popups.show');
         Route::post('popups', [PopupController::class, 'store'])
             ->middleware('permission:popup.create')
@@ -3418,23 +3472,20 @@ Route::middleware(['auth:api', 'permission:popup.view'])->group(function () {
             ->middleware('permission:popup.update')
             ->name('api.admin.popups.toggle');
 
-        // Terms & Conditions CRUD (admin)
-        Route::get('terms', [TermsController::class, 'index'])
-            ->middleware('permission:terms.view')
-            ->name('api.admin.terms.index');
-        Route::get('terms/{id}', [TermsController::class, 'show'])
-            ->middleware('permission:terms.view')
-            ->name('api.admin.terms.show');
-        Route::post('terms', [TermsController::class, 'store'])
-            ->middleware('permission:terms.create')
-            ->name('api.admin.terms.store');
-        Route::put('terms/{id}', [TermsController::class, 'update'])
-            ->middleware('permission:terms.edit')
-            ->name('api.admin.terms.update');
-        Route::delete('terms/{id}', [TermsController::class, 'destroy'])
-            ->middleware('permission:terms.delete')
-            ->name('api.admin.terms.destroy');
     });
+});
+
+Route::middleware(['auth:api'])->prefix('admin')->group(function () {
+    Route::get('terms', [TermsController::class, 'index'])
+        ->middleware('permission:terms.view')->name('api.admin.terms.index');
+    Route::get('terms/{id}', [TermsController::class, 'show'])
+        ->middleware('permission:terms.view')->name('api.admin.terms.show');
+    Route::post('terms', [TermsController::class, 'store'])
+        ->middleware('permission:terms.create')->name('api.admin.terms.store');
+    Route::put('terms/{id}', [TermsController::class, 'update'])
+        ->middleware('permission:terms.edit')->name('api.admin.terms.update');
+    Route::delete('terms/{id}', [TermsController::class, 'destroy'])
+        ->middleware('permission:terms.delete')->name('api.admin.terms.destroy');
 });
 
 // Public Popup Routes (No Authentication Required)
@@ -3456,14 +3507,17 @@ Route::prefix('popups')->group(function () {
 */
 
 // Admin Promo Code Management Routes (Requires Authentication and Authorization)
-Route::middleware(['auth:api', 'permission:promo-code.view'])->group(function () {
+Route::middleware(['auth:api'])->group(function () {
     Route::prefix('admin')->group(function () {
         // Promo Code CRUD operations
         Route::get('promo-codes/statistics', [PromoCodeController::class, 'statistics'])
+            ->middleware('permission:promo-code.view')
             ->name('api.admin.promo-codes.statistics');
         Route::get('promo-codes', [PromoCodeController::class, 'index'])
+            ->middleware('permission:promo-code.view')
             ->name('api.admin.promo-codes.index');
         Route::get('promo-codes/{promoCode}', [PromoCodeController::class, 'show'])
+            ->middleware('permission:promo-code.view')
             ->name('api.admin.promo-codes.show');
         Route::post('promo-codes', [PromoCodeController::class, 'store'])
             ->middleware('permission:promo-code.create')
@@ -3478,6 +3532,7 @@ Route::middleware(['auth:api', 'permission:promo-code.view'])->group(function ()
             ->middleware('permission:promo-code.update')
             ->name('api.admin.promo-codes.toggle');
         Route::get('promo-codes/{promoCode}/analytics', [PromoCodeController::class, 'analytics'])
+            ->middleware('permission:promo-code.view')
             ->name('api.admin.promo-codes.analytics');
     });
 });

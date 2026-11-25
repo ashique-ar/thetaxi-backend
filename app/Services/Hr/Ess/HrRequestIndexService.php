@@ -19,7 +19,7 @@ class HrRequestIndexService
     public function transition(string $sourceType,string $sourceId,string $status,string $message,string $actor,?string $owner=null,?string $resultType=null,?string $resultId=null,array $private=[]):void
     {
         $row=DB::table('hr_request_index')->where('source_type',$sourceType)->where('source_id',$sourceId)->lockForUpdate()->first(); if(!$row)return;
-        $this->event($row->id,'transition',$row->status,$status,$message,$actor,$private);
+        $this->event($row->id,'transition',$row->status,$status,$message,$actor,$private+['owner_before_staff_id'=>$row->current_owner_staff_id,'owner_after_staff_id'=>$owner]);
         DB::table('hr_request_index')->where('id',$row->id)->update(['status'=>$status,'current_owner_staff_id'=>$owner,'result_type'=>$resultType,'result_id'=>$resultId,'closed_at'=>in_array($status,['approved','rejected','cancelled','completed','closed'],true)?now():null,'updated_at'=>now()]);
     }
     private function event(string$id,string$type,?string$from,string$to,string$message,string$actor,array$private):void{DB::table('hr_request_events')->insert(['id'=>(string)Str::uuid(),'request_index_id'=>$id,'event_type'=>$type,'from_status'=>$from,'to_status'=>$to,'visible_to_employee_message'=>$message,'private_snapshot'=>json_encode($private,JSON_THROW_ON_ERROR),'actor_user_id'=>$actor,'occurred_at'=>now(),'created_at'=>now(),'updated_at'=>now()]);}

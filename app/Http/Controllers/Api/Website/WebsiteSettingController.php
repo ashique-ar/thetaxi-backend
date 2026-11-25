@@ -27,6 +27,7 @@ class WebsiteSettingController extends Controller
     )
     {
         $this->settingsService = $settingsService;
+        $this->middleware('permission:drivers.view')->only(['driverMobile']);
         $this->middleware('permission:website-settings.view')->only([
             'index',
             'show',

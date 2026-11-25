@@ -22,13 +22,13 @@ class GenerateRecurringBookings extends Command
         $this->info('Generating recurring booking occurrences…');
 
         try {
-            $summary = $service->generateAllDue();
+            $summary = $service->generateAllDue($dryRun);
 
             $this->table(
                 ['Metric', 'Count'],
                 [
                     ['Templates processed', $summary['processed']],
-                    ['Occurrences created', $summary['created']],
+                    [$dryRun ? 'Occurrences that would be created' : 'Occurrences created', $summary['created']],
                     ['Errors',              $summary['errors']],
                 ]
             );

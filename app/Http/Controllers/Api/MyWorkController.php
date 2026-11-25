@@ -27,7 +27,11 @@ class MyWorkController extends Controller
         $activeBookingStatuses = array_merge(['inquiry', 'inquiry_qualified'], BookingLifecycleStatus::activeOperationalValues());
         $bookingAssignmentAvailable = Schema::hasColumn('bookings', 'responsible_user_id');
 
-        if ($request->user()->can('hr.mss.approve') && $request->user()->can('hr.leave.approve')) {
+        $canApproveLeave = $request->user()->can('hr.mss.approve') && $request->user()->can('hr.leave.approve');
+        $canApproveTimesheets = $request->user()->can('hr.timesheets.approve');
+        $canApproveWorkRequests = $request->user()->can('hr.work-requests.approve');
+        $canApproveAttendanceCorrections = $request->user()->can('hr.attendance.corrections.approve');
+        if ($canApproveLeave || $canApproveTimesheets || $canApproveWorkRequests || $canApproveAttendanceCorrections) {
             $staffContexts = DB::table('user_contexts as context')->join('staff', 'staff.id', '=', 'context.context_id')
                 ->where('context.user_id', $userId)->where('context.context_type', 'staff')->where('context.is_active', true)
                 ->whereNull('context.deleted_at')->where('staff.user_id', $userId)->whereNull('staff.deleted_at')
@@ -41,6 +45,12 @@ class MyWorkController extends Controller
             }
             $staffIds = $staffContexts->pluck('staff.id');
             $staffId = $staffIds->count() === 1 ? $staffIds->first() : null;
+            $actionableSources = array_filter([
+                $canApproveLeave ? ['request_type', 'leave'] : null,
+                $canApproveTimesheets ? ['source_type', 'timesheet'] : null,
+                $canApproveWorkRequests ? ['source_type', 'work_request'] : null,
+                $canApproveAttendanceCorrections ? ['source_type', 'attendance_correction'] : null,
+            ]);
             $delegatedLeaveOwners = [];
             if ($staffId) {
                 foreach (DB::table('hr_approval_delegations as delegation')
@@ -54,16 +64,23 @@ class MyWorkController extends Controller
                 }
             }
             if ($staffId) {
-                $inbox = DB::table('hr_request_index')->whereIn('status', ['pending', 'pending_approval', 'returned'])
-                    ->where(function ($query) use ($staffId, $delegatedLeaveOwners) {
+                $canClaimUnassigned = $request->user()->can('staff.view-all');
+                $inbox = DB::table('hr_request_index')->whereIn('status', ['pending', 'pending_approval', 'submitted', 'returned'])
+                    ->where(function ($query) use ($actionableSources) {
+                        foreach ($actionableSources as [$column, $value]) $query->orWhere($column, $value);
+                    })
+                    ->where(function ($query) use ($staffId, $delegatedLeaveOwners, $canClaimUnassigned) {
                         $query->where('current_owner_staff_id', $staffId);
                         if ($delegatedLeaveOwners) $query->orWhere(fn ($delegated) => $delegated->where('request_type', 'leave')->whereIn('current_owner_staff_id', $delegatedLeaveOwners));
+                        if ($canClaimUnassigned) $query->orWhereNull('current_owner_staff_id')->orWhereIn('current_owner_staff_id', DB::table('staff')->where(fn ($owner) => $owner->whereNotNull('employment_ended_at')->orWhereNotNull('deleted_at'))->select('id'));
                     });
                 $queues[] = ['group' => 'mine', 'title' => 'HR approvals', 'help' => 'Employee requests awaiting your decision', 'icon' => 'how_to_reg',
                     'link' => '/hr/self-service/approvals', 'count' => (int) (clone $inbox)->count()];
-                foreach ((clone $inbox)->orderByRaw('due_at asc nulls last')->limit(5)->get(['id', 'request_type', 'summary', 'due_at']) as $row) {
+                foreach ((clone $inbox)->orderByRaw('due_at asc nulls last')->limit(5)->get(['id', 'request_type', 'summary', 'due_at', 'current_owner_staff_id']) as $row) {
+                    $ownerUnavailable = $row->current_owner_staff_id && $row->current_owner_staff_id !== $staffId
+                        && ! in_array($row->current_owner_staff_id, $delegatedLeaveOwners, true);
                     $attention[] = ['id' => 'hr-approval:'.$row->id, 'group' => 'mine', 'type' => 'HR approval',
-                        'title' => $row->summary ?: str_replace('_', ' ', $row->request_type), 'detail' => ucfirst(str_replace('_', ' ', $row->status)),
+                        'title' => $row->summary ?: str_replace('_', ' ', $row->request_type), 'detail' => ! $row->current_owner_staff_id ? 'Unassigned · claim in Approval Inbox' : ($ownerUnavailable ? 'Owner unavailable · reassign in Approval Inbox' : 'Open approval'),
                         'when' => $row->due_at, 'link' => '/hr/self-service/approvals?selected_id='.$row->id];
                 }
             }

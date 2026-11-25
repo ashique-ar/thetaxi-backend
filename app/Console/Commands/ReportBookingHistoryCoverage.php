@@ -14,6 +14,11 @@ class ReportBookingHistoryCoverage extends Command
 
     public function handle(): int
     {
+        if (!Schema::hasTable('booking_history_events')) {
+            $this->error('Booking history ledger is not installed. Run the reviewed migrations before requesting coverage.');
+            return self::FAILURE;
+        }
+
         $totals = DB::table('booking_history_events')
             ->selectRaw('COUNT(*) AS total_events')
             ->selectRaw("SUM(CASE WHEN provenance = 'live' THEN 1 ELSE 0 END) AS live_events")
@@ -45,11 +50,16 @@ class ReportBookingHistoryCoverage extends Command
 
         $sourceParity = collect([
             $this->sourceParity('booking_statuses', [['prefix' => 'booking-status:', 'source' => 'booking_statuses', 'event_type' => 'booking_status_changed']]),
+            $this->approvalDecisionParity(),
+            $this->paymentTransactionParity(),
             $this->sourceParity('financial_audit_events', [['prefix' => 'financial-audit:', 'source' => 'financial_audit_events']]),
             $this->sourceParity('booking_activities', [
                 ['prefix' => 'booking-activity:', 'source' => 'booking_activities', 'event_type' => 'trip_price_changed'],
                 ['prefix' => 'legacy:booking-price:', 'source' => 'legacy:booking_activities', 'event_type' => 'booking_price_changed'],
             ], 'trip_price_changed'),
+            $this->bookingInquiryParity(),
+            $this->postTripMaintenanceParity(),
+            $this->salesAttributionParity(),
         ])->filter()->values();
 
         $this->table(['Measure', 'Count'], [
@@ -72,11 +82,14 @@ class ReportBookingHistoryCoverage extends Command
         string $table,
         array $ledgerIdentities,
         ?string $sourceEventKey = null,
+        ?string $dateColumn = null,
+        ?string $since = null,
     ): ?array {
         if (!Schema::hasTable($table)) return null;
 
         $source = DB::table($table . ' as source')->whereNotNull('source.booking_id');
         if ($sourceEventKey !== null) $source->where('source.event_key', $sourceEventKey);
+        if ($dateColumn !== null && $since !== null) $source->where('source.' . $dateColumn, '>=', $since);
         $sourceRows = (clone $source)->count();
         $matched = (clone $source)->whereExists(function ($query) use ($ledgerIdentities): void {
             $query->selectRaw('1')->from('booking_history_events as history')
@@ -99,10 +112,134 @@ class ReportBookingHistoryCoverage extends Command
         $driver = DB::connection()->getDriverName();
         $id = match ($driver) {
             'pgsql' => "'" . $keyPrefix . "' || CAST(source.id AS TEXT)",
-            'mysql' => "CONCAT('" . $keyPrefix . "', CAST(source.id AS CHAR))",
+            'mysql', 'mariadb' => "CONCAT('" . $keyPrefix . "', CAST(source.id AS CHAR))",
+            'sqlsrv' => "CONCAT('" . $keyPrefix . "', CONVERT(varchar(100), source.id))",
             default => "'" . $keyPrefix . "' || CAST(source.id AS TEXT)",
         };
 
         return 'history.idempotency_key = ' . $id;
+    }
+
+    private function salesAttributionParity(): ?array
+    {
+        if (!Schema::hasTable('sales_booking_attribution_events') || !Schema::hasTable('sales_booking_attributions')) return null;
+
+        $source = DB::table('sales_booking_attribution_events as source')
+            ->join('sales_booking_attributions as attribution', 'attribution.id', '=', 'source.attribution_id')
+            ->whereNotNull('attribution.booking_id');
+        $sourceRows = (clone $source)->count();
+        $matched = (clone $source)->whereExists(function ($query): void {
+            $query->selectRaw('1')->from('booking_history_events as history')
+                ->where('history.source', 'sales_booking_attribution_events')
+                ->whereRaw($this->sourceIdempotencyMatchSql('sales-attribution-event:'));
+        })->count();
+
+        return ['sales_booking_attribution_events', $sourceRows, $matched, max(0, $sourceRows - $matched)];
+    }
+
+    private function approvalDecisionParity(): ?array
+    {
+        if (!Schema::hasTable('booking_approvals')) return null;
+
+        $sourceRows = 0;
+        $matched = 0;
+        DB::table('booking_approvals')->whereNotNull('booking_id')->orderBy('id')->chunkById(200, function ($approvals) use (&$sourceRows, &$matched): void {
+            $keys = [];
+            foreach ($approvals as $approval) {
+                $conditions = is_array($approval->conditions)
+                    ? $approval->conditions
+                    : (json_decode((string) ($approval->conditions ?? ''), true) ?: []);
+                $decisions = is_array($conditions['step_decisions'] ?? null) ? $conditions['step_decisions'] : [];
+                foreach ($decisions as $decision) {
+                    if (empty($decision['user_id']) || empty($decision['decided_at'])) continue;
+                    $step = max(1, (int) ($decision['step'] ?? 1));
+                    $keys[] = 'booking-approval-decision:' . $approval->id . ':' . $step . ':' . $decision['user_id'];
+                }
+
+                $status = (string) ($approval->status ?? '');
+                $decidedAt = $status === 'rejected' ? $approval->rejected_at : ($status === 'approved' ? $approval->approved_at : null);
+                $approverId = $approval->approver_id;
+                if (!in_array($status, ['approved', 'rejected'], true) || !$decidedAt || !$approverId) continue;
+                if ($status === 'approved' && collect($decisions)->contains(fn ($decision) => (string) ($decision['user_id'] ?? '') === (string) $approverId)) continue;
+                $step = max(1, count($decisions) + 1);
+                $keys[] = 'booking-approval-decision:' . $approval->id . ':' . $step . ':' . $approverId;
+            }
+
+            $keys = array_values(array_unique($keys));
+            $sourceRows += count($keys);
+            if ($keys) {
+                $matched += DB::table('booking_history_events')->whereIn('idempotency_key', $keys)->count();
+            }
+        });
+
+        return ['verifiable booking approval decisions', $sourceRows, $matched, max(0, $sourceRows - $matched)];
+    }
+
+    private function paymentTransactionParity(): ?array
+    {
+        $coverageStart = config('booking_history.coverage_start');
+        if (!Schema::hasTable('payment_transactions') || !$coverageStart) return null;
+
+        $sourceRows = 0;
+        $matched = 0;
+        DB::table('payment_transactions')->whereNotNull('booking_id')->where('created_at', '>=', $coverageStart)
+            ->orderBy('id')->chunkById(200, function ($rows) use (&$sourceRows, &$matched): void {
+                foreach ($rows as $transaction) {
+                    $keys = [
+                        'payment-transaction-status:' . $transaction->id . ':pending',
+                        'payment-transaction-gateway-session:' . $transaction->id,
+                    ];
+                    if (in_array($transaction->status, ['success', 'failed', 'cancelled'], true)) {
+                        $keys[] = 'payment-transaction-status:' . $transaction->id . ':' . $transaction->status;
+                    }
+                    $sourceRows += count($keys);
+                    $matched += DB::table('booking_history_events')->whereIn('idempotency_key', $keys)->count();
+                }
+            });
+
+        return ['payment transaction lifecycle events since coverage start', $sourceRows, $matched, max(0, $sourceRows - $matched)];
+    }
+
+    private function postTripMaintenanceParity(): ?array
+    {
+        $coverageStart = config('booking_history.coverage_start');
+        if (!Schema::hasTable('booking_activities') || !$coverageStart) return null;
+
+        $expected = 0;
+        $matched = 0;
+        DB::table('booking_activities')->whereNotNull('booking_id')->where('event_key', 'post_trip_maintenance')
+            ->where(function ($query) use ($coverageStart): void {
+                $query->where('created_at', '>=', $coverageStart)->orWhere('updated_at', '>=', $coverageStart);
+            })->orderBy('id')->chunkById(200, function ($activities) use ($coverageStart, &$expected, &$matched): void {
+                foreach ($activities as $activity) {
+                    $states = [];
+                    if ($activity->created_at && $activity->created_at >= $coverageStart) $states[] = 'pending';
+                    if ($activity->result_status === 'completed' && $activity->updated_at && $activity->updated_at >= $coverageStart) {
+                        $states[] = 'completed';
+                    }
+                    foreach (array_unique($states) as $state) {
+                        $expected++;
+                        $matched += DB::table('booking_history_events')
+                            ->where('source', 'booking_activities')
+                            ->where('event_type', 'post_trip_maintenance')
+                            ->where('idempotency_key', 'booking-activity:' . $activity->id . ':' . $state)
+                            ->exists() ? 1 : 0;
+                    }
+                }
+            });
+
+        return ['post-trip maintenance transitions since coverage start', $expected, $matched, max(0, $expected - $matched)];
+    }
+
+    private function bookingInquiryParity(): ?array
+    {
+        $coverageStart = config('booking_history.coverage_start');
+        if (!$coverageStart || !Schema::hasTable('booking_activities')) return null;
+
+        return $this->sourceParity('booking_activities', [[
+            'prefix' => 'booking-activity:',
+            'source' => 'booking_activities',
+            'event_type' => 'booking_inquiry_created',
+        ]], 'booking_inquiry_created', 'event_at', $coverageStart);
     }
 }

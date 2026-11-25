@@ -74,7 +74,7 @@ class BookingAttributionService
                 'created_user_id' => $booking->created_user_id,
             ]);
 
-            DB::table('sales_booking_attribution_events')->insert([
+            $attributionEvent = [
                 'id' => (string) Str::uuid(),
                 'attribution_id' => $attribution->id,
                 'version' => 1,
@@ -86,7 +86,12 @@ class BookingAttributionService
                 'actor_user_id' => $booking->updated_user_id ?? $booking->created_user_id,
                 'created_at' => now(),
                 'updated_at' => now(),
-            ]);
+            ];
+            DB::table('sales_booking_attribution_events')->insert($attributionEvent);
+            app(\App\Services\BookingHistoryService::class)->recordSalesAttributionEvent(
+                (object) $attributionEvent,
+                (string) $booking->id,
+            );
 
             $this->recordExceptions(
                 $booking,

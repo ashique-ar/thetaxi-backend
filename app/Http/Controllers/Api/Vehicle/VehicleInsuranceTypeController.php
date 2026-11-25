@@ -26,6 +26,11 @@ class VehicleInsuranceTypeController extends Controller
         return VehicleInsuranceTypeResource::collection($q->paginate($request->per_page ?? 15));
     }
 
+    public function vehicleLookup(): JsonResponse
+    {
+        return response()->json(['status' => 'success', 'data' => VehicleInsuranceType::query()->orderBy('name')->get(['id', 'name'])]);
+    }
+
     public function store(CreateVehicleInsuranceTypeRequest $request): JsonResponse
     {
         $type = VehicleInsuranceType::create($request->validated()+['created_user_id'=>$request->user()->id]);

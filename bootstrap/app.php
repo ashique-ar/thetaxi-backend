@@ -35,6 +35,7 @@ return Application::configure(basePath: dirname(__DIR__))
     ->withCommands([
         \App\Console\Commands\GenerateEmailImageVariants::class,
         \App\Console\Commands\BackfillBookingHistory::class,
+        \App\Console\Commands\RouteHrApprovalOwners::class,
     ])
     ->withMiddleware(function (Middleware $middleware): void {
         // API clients and Echo channel authorization must receive a 401 response.

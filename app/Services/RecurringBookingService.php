@@ -39,7 +39,7 @@ class RecurringBookingService
      * Generate all missing occurrences for a single recurring template.
      * Returns the number of new bookings created.
      */
-    public function generateOccurrences(Booking $template): int
+    public function generateOccurrences(Booking $template, bool $dryRun = false): int
     {
         if (!$template->is_recurring || $template->recurring_series_id) {
             return 0;
@@ -75,6 +75,11 @@ class RecurringBookingService
                 continue;
             }
 
+            if ($dryRun) {
+                $created++;
+                continue;
+            }
+
             try {
                 $this->createOccurrence($template, $date, $created + 1);
                 $created++;
@@ -94,7 +99,7 @@ class RecurringBookingService
      * Generate occurrences for ALL active recurring templates.
      * Called by the scheduler once per day.
      */
-    public function generateAllDue(): array
+    public function generateAllDue(bool $dryRun = false): array
     {
         $templates = Booking::where('is_recurring', true)
             ->whereNull('recurring_series_id')
@@ -109,7 +114,7 @@ class RecurringBookingService
 
         foreach ($templates as $template) {
             try {
-                $count            = $this->generateOccurrences($template);
+                $count            = $this->generateOccurrences($template, $dryRun);
                 $summary['created']    += $count;
                 $summary['processed']++;
             } catch (\Throwable $e) {

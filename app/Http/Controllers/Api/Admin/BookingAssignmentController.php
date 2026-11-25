@@ -27,12 +27,10 @@ class BookingAssignmentController extends Controller
     ) {
         $this->assignmentService = $assignmentService;
 
-        $this->middleware('permission:vehicles.edit')->only([
-            'getVehicleDefaultDriver', 'updateVehicleDefaultDriver',
-        ]);
-        $this->middleware('permission:drivers.edit')->only([
-            'getDriverDefaultVehicle', 'updateDriverDefaultVehicle',
-        ]);
+        $this->middleware('permission:vehicles.view|vehicles.edit')->only(['getVehicleDefaultDriver']);
+        $this->middleware('permission:vehicles.edit')->only(['updateVehicleDefaultDriver']);
+        $this->middleware('permission:drivers.view|drivers.edit')->only(['getDriverDefaultVehicle']);
+        $this->middleware('permission:drivers.edit')->only(['updateDriverDefaultVehicle']);
         $this->middleware('permission:drivers.view')->only(['driversWithStatus']);
         $this->middleware('permission:bookings.create')->only(['createBookingAssignment']);
     }

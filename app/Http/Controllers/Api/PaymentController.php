@@ -137,6 +137,13 @@ class PaymentController extends Controller
                     'created_at' => now(),
                     'updated_at' => now(),
                 ]);
+                app(\App\Services\BookingHistoryService::class)->recordPaymentTransactionStatusChange(
+                    (string) $booking->id,
+                    $recordId,
+                    null,
+                    'pending',
+                    $request->user()?->id ? (string) $request->user()->id : null,
+                );
 
                 return compact('booking', 'transactionId', 'recordId', 'requestedAmount', 'paymentCurrency');
             }, 3);
@@ -189,14 +196,24 @@ class PaymentController extends Controller
                 'fx_rate_at' => data_get($providerData, 'fx_rate_at'),
                 'gateway_fx_rate_to_lkr' => data_get($providerData, 'gateway_fx_rate_to_lkr'),
             ];
-
-            DB::table('payment_transactions')->where('id', $recordId)->update([
-                'gateway_transaction_id' => $gatewayResult['transaction_id'] ?? null,
-                'amount' => $chargedAmount,
-                'currency' => $chargedCurrency,
-                'gateway_payment_snapshot' => json_encode($snapshot, JSON_THROW_ON_ERROR),
-                'updated_at' => now(),
-            ]);
+            $gatewaySessionOutcome = ! $sourceFactsMatchReservation
+                ? 'reconciliation_required'
+                : (! empty($gatewayResult['success']) && ! empty($gatewayResult['payment_url']) ? 'ready' : 'unavailable');
+            DB::transaction(function () use ($recordId, $chargedAmount, $chargedCurrency, $snapshot, $gatewayResult, $booking, $request, $gatewaySessionOutcome): void {
+                DB::table('payment_transactions')->where('id', $recordId)->update([
+                    'gateway_transaction_id' => $gatewayResult['transaction_id'] ?? null,
+                    'amount' => $chargedAmount,
+                    'currency' => $chargedCurrency,
+                    'gateway_payment_snapshot' => json_encode($snapshot, JSON_THROW_ON_ERROR),
+                    'updated_at' => now(),
+                ]);
+                app(\App\Services\BookingHistoryService::class)->recordPaymentGatewaySessionOutcome(
+                    (string) $booking->id,
+                    $recordId,
+                    $gatewaySessionOutcome,
+                    $request->user()?->id ? (string) $request->user()->id : null,
+                );
+            });
 
             if (empty($gatewayResult['success']) || empty($gatewayResult['payment_url']) || ! $sourceFactsMatchReservation) {
                 $message = $sourceFactsMatchReservation
@@ -319,6 +336,12 @@ class PaymentController extends Controller
                         'payment_id' => $request->input('payment_id'),
                         'updated_at' => now(),
                     ]);
+                app(\App\Services\BookingHistoryService::class)->recordPaymentTransactionStatusChange(
+                    (string) $booking->id,
+                    (string) $lockedTransaction->id,
+                    (string) $lockedTransaction->status,
+                    (string) $request->input('status'),
+                );
 
                 if ($request->input('status') === 'success') {
                     $snapshot = json_decode((string) ($lockedTransaction->gateway_payment_snapshot ?? ''), true);

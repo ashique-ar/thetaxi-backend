@@ -19,6 +19,7 @@ use App\Models\Sales\SalesProfile;
 use App\Services\Sales\BookingAttributionMutationService;
 use App\Services\Sales\SalesCrmService;
 use App\Services\Hr\PeopleCoreService;
+use App\Services\Hr\Ess\HrRequestIndexService;
 
 class StaffIdentityService
 {
@@ -27,6 +28,7 @@ class StaffIdentityService
         private readonly BookingAttributionMutationService $attributionMutations,
         private readonly PeopleCoreService $peopleCore,
         private readonly SalesCrmService $salesCrm,
+        private readonly HrRequestIndexService $hrRequestIndex,
     ) {}
 
     public function terminate(Staff $staff, User $actor, string $reason, string $idempotencyKey): array
@@ -81,6 +83,7 @@ class StaffIdentityService
             ]);
 
             $employmentSpell = $this->peopleCore->closeEmployment($lockedStaff, $reason, $actor->id);
+            $hrApprovalsReturned = $this->handoffHrApprovals($lockedStaff, $actor);
 
             $lockedStaff->forceFill([
                 'employment_ended_at' => now(),
@@ -110,6 +113,7 @@ class StaffIdentityService
                 'sales_opportunities_needing_manager_review' => $reassignedOpportunityCounts['needs_manager_review'],
                 'missed_calls_returned_to_queue' => $releasedMissedCallCount,
                 'bookings_returned_to_queue' => $releasedBookingCount,
+                'hr_approvals_returned_to_queue' => $hrApprovalsReturned,
                 'remaining_active_contexts' => $remainingContexts,
                 'user_disabled' => false,
             ];
@@ -142,6 +146,7 @@ class StaffIdentityService
                     'sales_opportunities_needing_manager_review' => $reassignedOpportunityCounts['needs_manager_review'],
                     'missed_calls_returned_to_queue' => $releasedMissedCallCount,
                     'bookings_returned_to_queue' => $releasedBookingCount,
+                    'hr_approvals_returned_to_queue' => $hrApprovalsReturned,
                     'remaining_active_contexts' => $remainingContexts,
                     'user_disabled' => false,
                     'termination_event_idempotency_key' => $idempotencyKey,
@@ -150,6 +155,26 @@ class StaffIdentityService
 
             return $outcome;
         });
+    }
+
+    private function handoffHrApprovals(Staff $staff, User $actor): int
+    {
+        if (! Schema::hasTable('hr_request_index')) return 0;
+        $requests = DB::table('hr_request_index')->where('current_owner_staff_id', $staff->id)
+            ->whereIn('status', ['pending', 'pending_approval', 'submitted', 'returned'])->lockForUpdate()->get();
+        $delegatedLeave = Schema::hasTable('hr_approval_delegations') ? DB::table('hr_approval_delegations')->where('delegator_staff_id', $staff->id)
+            ->where('status', 'approved')->whereNotNull('approved_at')->whereDate('effective_from', '<=', now())
+            ->whereDate('effective_until', '>=', now())->get(['request_types']) : collect();
+        $hasLeaveDelegate = $delegatedLeave->contains(fn ($row) => in_array('leave', json_decode($row->request_types, true) ?: [], true));
+        $returned = 0;
+        foreach ($requests as $request) {
+            if ($request->source_type === 'leave_request' && $hasLeaveDelegate) continue;
+            $this->hrRequestIndex->transition($request->source_type, $request->source_id, $request->status,
+                'Approval returned to the HR queue because its owner left the organization.', $actor->id, null);
+            $returned++;
+        }
+
+        return $returned;
     }
 
     private function reassignSalesOpportunities(Staff $staff, $salesProfiles, User $actor): array

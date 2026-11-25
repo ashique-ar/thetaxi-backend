@@ -27,6 +27,11 @@ class VehicleInsuranceProviderController extends Controller
         return VehicleInsuranceProviderResource::collection($q->paginate($request->per_page ?? 15));
     }
 
+    public function vehicleLookup(): JsonResponse
+    {
+        return response()->json(['status' => 'success', 'data' => VehicleInsuranceProvider::query()->orderBy('name')->get(['id', 'name'])]);
+    }
+
     public function store(CreateVehicleInsuranceProviderRequest $request): JsonResponse
     {
         $prov = VehicleInsuranceProvider::create($request->validated()+['created_user_id'=>$request->user()->id]);

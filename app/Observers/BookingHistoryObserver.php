@@ -43,6 +43,11 @@ class BookingHistoryObserver
             unset($this->before[spl_object_id($model)]);
             return;
         }
+        if ($model instanceof BookingActivity) {
+            app(BookingHistoryService::class)->recordBookingActivity($model, $before);
+            unset($this->before[spl_object_id($model)]);
+            return;
+        }
         $this->record($model, 'updated', $before);
         unset($this->before[spl_object_id($model)]);
     }

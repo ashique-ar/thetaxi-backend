@@ -12,7 +12,11 @@ return new class extends Migration
                 $this->protectPostgres();
                 return;
             case 'mysql':
+            case 'mariadb':
                 $this->protectMysql();
+                return;
+            case 'sqlsrv':
+                $this->protectSqlServer();
                 return;
             case 'sqlite':
                 $this->protectSqlite();
@@ -25,7 +29,7 @@ return new class extends Migration
     private function protectPostgres(): void
     {
         DB::unprepared(<<<'SQL'
-            CREATE FUNCTION prevent_booking_history_event_mutation()
+            CREATE OR REPLACE FUNCTION prevent_booking_history_event_mutation()
             RETURNS trigger AS $$
             BEGIN
                 RAISE EXCEPTION 'booking_history_events is append-only';
@@ -33,6 +37,7 @@ return new class extends Migration
             $$ LANGUAGE plpgsql
             SQL);
 
+        DB::unprepared('DROP TRIGGER IF EXISTS booking_history_events_append_only ON booking_history_events');
         DB::unprepared(<<<'SQL'
             CREATE TRIGGER booking_history_events_append_only
             BEFORE UPDATE OR DELETE ON booking_history_events
@@ -42,32 +47,59 @@ return new class extends Migration
 
     private function protectMysql(): void
     {
-        DB::unprepared(<<<'SQL'
-            CREATE TRIGGER booking_history_events_no_update
-            BEFORE UPDATE ON booking_history_events
-            FOR EACH ROW SIGNAL SQLSTATE '45000' SET MESSAGE_TEXT = 'booking_history_events is append-only'
-            SQL);
-        DB::unprepared(<<<'SQL'
-            CREATE TRIGGER booking_history_events_no_delete
-            BEFORE DELETE ON booking_history_events
-            FOR EACH ROW SIGNAL SQLSTATE '45000' SET MESSAGE_TEXT = 'booking_history_events is append-only'
-            SQL);
+        if (!$this->mysqlTriggerExists('booking_history_events_no_update')) {
+            DB::unprepared(<<<'SQL'
+                CREATE TRIGGER booking_history_events_no_update
+                BEFORE UPDATE ON booking_history_events
+                FOR EACH ROW SIGNAL SQLSTATE '45000' SET MESSAGE_TEXT = 'booking_history_events is append-only'
+                SQL);
+        }
+        if (!$this->mysqlTriggerExists('booking_history_events_no_delete')) {
+            DB::unprepared(<<<'SQL'
+                CREATE TRIGGER booking_history_events_no_delete
+                BEFORE DELETE ON booking_history_events
+                FOR EACH ROW SIGNAL SQLSTATE '45000' SET MESSAGE_TEXT = 'booking_history_events is append-only'
+                SQL);
+        }
+    }
+
+    private function mysqlTriggerExists(string $name): bool
+    {
+        return DB::selectOne(
+            'SELECT 1 FROM information_schema.triggers WHERE trigger_schema = DATABASE() AND event_object_table = ? AND trigger_name = ?',
+            ['booking_history_events', $name],
+        ) !== null;
     }
 
     private function protectSqlite(): void
     {
         DB::unprepared(<<<'SQL'
-            CREATE TRIGGER booking_history_events_no_update
+            CREATE TRIGGER IF NOT EXISTS booking_history_events_no_update
             BEFORE UPDATE ON booking_history_events
             BEGIN
                 SELECT RAISE(ABORT, 'booking_history_events is append-only');
             END
             SQL);
         DB::unprepared(<<<'SQL'
-            CREATE TRIGGER booking_history_events_no_delete
+            CREATE TRIGGER IF NOT EXISTS booking_history_events_no_delete
             BEFORE DELETE ON booking_history_events
             BEGIN
                 SELECT RAISE(ABORT, 'booking_history_events is append-only');
+            END
+            SQL);
+    }
+
+    private function protectSqlServer(): void
+    {
+        $table = DB::connection()->getQueryGrammar()->wrapTable('booking_history_events');
+        DB::unprepared(<<<SQL
+            CREATE OR ALTER TRIGGER [booking_history_events_append_only]
+            ON {$table}
+            AFTER UPDATE, DELETE
+            AS
+            BEGIN
+                SET NOCOUNT ON;
+                THROW 51000, 'booking_history_events is append-only', 1;
             END
             SQL);
     }

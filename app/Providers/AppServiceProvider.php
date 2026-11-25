@@ -124,6 +124,39 @@ class AppServiceProvider extends ServiceProvider
     {
         $this->configureDriverApiDocumentation();
 
+        $pushBookingHistorySource = static function (string $source): void {
+            $request = request();
+            $stack = $request->attributes->get('booking_history_source_stack', []);
+            $stack[] = [
+                $request->attributes->has('booking_history_source_trigger'),
+                $request->attributes->get('booking_history_source_trigger'),
+            ];
+            $request->attributes->set('booking_history_source_stack', $stack);
+            $request->attributes->set('booking_history_source_trigger', $source);
+        };
+        $popBookingHistorySource = static function (string $prefix): void {
+            $request = request();
+            $stack = $request->attributes->get('booking_history_source_stack', []);
+            if ($stack === [] || !str_starts_with((string) $request->attributes->get('booking_history_source_trigger', ''), $prefix)) return;
+            [$hadSource, $source] = array_pop($stack);
+            $request->attributes->set('booking_history_source_stack', $stack);
+            $hadSource
+                ? $request->attributes->set('booking_history_source_trigger', $source)
+                : $request->attributes->remove('booking_history_source_trigger');
+        };
+        \Illuminate\Support\Facades\Event::listen(\Illuminate\Console\Events\CommandStarting::class,
+            fn ($event) => $pushBookingHistorySource('artisan:' . $event->command));
+        \Illuminate\Support\Facades\Event::listen(\Illuminate\Console\Events\CommandFinished::class,
+            fn () => $popBookingHistorySource('artisan:'));
+        \Illuminate\Support\Facades\Event::listen(\Illuminate\Queue\Events\JobProcessing::class,
+            fn ($event) => $pushBookingHistorySource('queue:' . (method_exists($event->job, 'resolveName') ? $event->job->resolveName() : get_class($event->job))));
+        foreach ([
+            \Illuminate\Queue\Events\JobProcessed::class,
+            \Illuminate\Queue\Events\JobExceptionOccurred::class,
+        ] as $completedJobEvent) {
+            \Illuminate\Support\Facades\Event::listen($completedJobEvent, fn () => $popBookingHistorySource('queue:'));
+        }
+
         // Outlook and Gmail drop <style> blocks (always in replies/forwards), so inline the CSS at send time.
         \Illuminate\Support\Facades\Event::listen(\Illuminate\Mail\Events\MessageSending::class, function ($event) {
             $html = $event->message->getHtmlBody();

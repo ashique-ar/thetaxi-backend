@@ -22,6 +22,8 @@ class GamificationController extends Controller
             'getUserReputation',
             'getUserBadges',
             'getUserRank',
+            'getAllBadges',
+            'getBadgeDetails',
             'getLeaderboard'
         ]);
         $this->middleware('permission:gamification.give-points')->only(['givePoints']);

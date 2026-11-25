@@ -451,9 +451,13 @@ class WorkforceController extends Controller
         $projection->work($row, $r->user()->id);
         return response()->json(['status' => 'success', 'data' => $row], 201);
     }
-    public function decideWork(Request $r, string $id, WorkforceWorkflowService $service, HrDomainRequestProjectionService $projection): JsonResponse
+    public function decideWork(Request $r, string $id, WorkforceWorkflowService $service, StaffAccessService $access, HrDomainRequestProjectionService $projection): JsonResponse
     {
         $d = $r->validate(['action' => ['required', Rule::in(['approve', 'reject'])], 'decision_note' => ['required', 'string', 'max:2000']]);
+        $request = DB::table('hr_work_requests')->find($id);
+        abort_unless($request, 404);
+        $staff = Staff::query()->findOrFail($request->staff_id);
+        $access->authorize($r->user(), $staff, 'view');
         $row = $service->decideWorkRequest($id, $d['action'], $d['decision_note'], $r->user()->id);
         $projection->work($row, $r->user()->id);
         return response()->json(['status' => 'success', 'data' => $row]);
@@ -545,8 +549,8 @@ class WorkforceController extends Controller
         $row = DB::table('hr_timesheets')->find($id);
         abort_unless($row, 404);
         $staff = Staff::query()->findOrFail($row->staff_id);
+        $access->authorize($r->user(), $staff, 'view');
         if ($d['action'] === 'submit') {
-            $access->authorize($r->user(), $staff, 'view');
             abort_unless($r->user()->can('hr.timesheets.manage'), 403, 'Submitting timesheets requires manage authority.');
         } else {
             $permission = in_array($d['action'], ['approve', 'return'], true) ? 'hr.timesheets.approve' : 'hr.timesheets.lock';

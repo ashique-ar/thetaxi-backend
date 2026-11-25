@@ -37,7 +37,7 @@ class CustomerController extends Controller
     public function __construct(UserContextService $contextService, private readonly SalesAccessScope $salesScope)
     {
         $this->contextService = $contextService;
-        $this->middleware('permission:customers.view')->only(['index', 'show']);
+        $this->middleware('permission:customers.view')->only(['show']);
         $this->middleware('permission:customers.create')->only(['store']);
         $this->middleware('permission:customers.edit')->only(['update']);
         $this->middleware('permission:customers.edit')->only(['markPossibleMatchAsDifferent']);
@@ -46,6 +46,32 @@ class CustomerController extends Controller
         $this->middleware('permission:customers.edit')->only(['relationshipOwnerOptions', 'assignRelationshipOwner']);
         $this->middleware('permission:customers.delete')->only(['destroy']);
         $this->middleware('permission:customers.export')->only(['exportCustomers']);
+    }
+
+    public function bookingLookup(Request $request): JsonResponse
+    {
+        $filters = $request->validate(['q' => ['nullable', 'string', 'max:120']]);
+        $customers = Customer::query()
+            ->select(['id', 'user_id'])
+            ->with('user:id,first_name,last_name')
+            ->when($filters['q'] ?? null, function ($query, $search) {
+                $query->whereHas('user', fn ($user) => $user
+                    ->whereLikeInsensitive('first_name', $search)
+                    ->orWhereLikeInsensitive('last_name', $search));
+            })
+            ->latest('customers.created_at')
+            ->limit(100)
+            ->get()
+            ->map(fn ($customer) => [
+                'id' => $customer->id,
+                'name' => trim(($customer->user?->first_name ?? '') . ' ' . ($customer->user?->last_name ?? '')),
+                'user' => [
+                    'first_name' => $customer->user?->first_name,
+                    'last_name' => $customer->user?->last_name,
+                ],
+            ]);
+
+        return response()->json(['status' => 'success', 'data' => $customers]);
     }
 
     public function index(Request $request): AnonymousResourceCollection
@@ -57,7 +83,13 @@ class CustomerController extends Controller
             'possible_phone_match' => ['nullable', 'boolean'],
             'possible_duplicate' => ['nullable', 'boolean'],
         ]);
+        $evaluator = app(\App\Services\PermissionEvaluator::class);
+        $contextType = $request->attributes->get('resolved_active_context_type', $request->header('X-Active-Context-Type'));
+        $contextId = $request->attributes->get('resolved_active_context_id', $request->header('X-Active-Context-Id'));
         if ($request->boolean('booking_lookup')) {
+            abort_unless($evaluator->userHasAnyForRequest($request->user(), [
+                'bookings.view', 'bookings.view-assigned', 'bookings.create', 'bookings.update', 'bookings.edit-assigned',
+            ], $contextType, $contextId), 403);
             $perPage = min(100, max(1, (int) $request->input('per_page', 15)));
 
             return CustomerResource::collection(
@@ -69,6 +101,8 @@ class CustomerController extends Controller
                     ->get()
             );
         }
+
+        abort_unless($evaluator->userHasAnyForRequest($request->user(), ['customers.view'], $contextType, $contextId), 403);
 
         $q = Customer::query()->select('customers.*')
             ->leftJoin('users as customer_phone', 'customer_phone.id', '=', 'customers.user_id')

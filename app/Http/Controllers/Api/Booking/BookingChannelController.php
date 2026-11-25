@@ -16,7 +16,7 @@ class BookingChannelController extends Controller
 {
     public function __construct()
     {
-        $this->middleware('permission:booking-channels.view|booking-channels.delete|bookings.create')->only(['index']);
+        $this->middleware('permission:booking-channels.view|booking-channels.delete|bookings.create|bookings.update|bookings.edit-assigned')->only(['index']);
         $this->middleware('permission:booking-channels.view')->only(['show']);
         $this->middleware('permission:booking-channels.create')->only(['store']);
         $this->middleware('permission:booking-channels.edit')->only(['update']);

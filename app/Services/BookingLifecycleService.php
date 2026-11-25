@@ -3846,9 +3846,10 @@ class BookingLifecycleService
         string $bookingId,
         ?string $bookingItemId,
         string $notes,
-        string $actorUserId
+        string $actorUserId,
+        ?string $changeReason = null
     ): BookingActivity {
-        return DB::transaction(function () use ($bookingId, $bookingItemId, $notes, $actorUserId) {
+        return DB::transaction(function () use ($bookingId, $bookingItemId, $notes, $actorUserId, $changeReason) {
             $booking = Booking::query()->lockForUpdate()->with('bookingItems')->findOrFail($bookingId);
             $context = $this->resolveLifecycleContext($booking, $bookingItemId);
             $bookingItem = $context['booking_item'];
@@ -3895,14 +3896,18 @@ class BookingLifecycleService
             if ($blockers !== []) throw new \DomainException(implode(' ', $blockers));
 
             $meta = is_array($activity->meta) ? $activity->meta : [];
+            $previousStatus = (string) $activity->result_status;
             $activity->update([
                 'result_status' => 'completed',
+                'title' => 'Post-trip maintenance completed',
                 'detail' => trim($notes),
                 'event_at' => Carbon::now('UTC'),
                 'meta' => array_merge($meta, [
                     'completed_by' => $actorUserId,
                     'completed_at' => Carbon::now('UTC')->toIso8601String(),
                     'completion_notes' => trim($notes),
+                    'previous_result_status' => $previousStatus,
+                    'change_reason' => $changeReason !== null && trim($changeReason) !== '' ? trim($changeReason) : null,
                 ]),
             ]);
 

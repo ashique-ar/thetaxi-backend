@@ -11,6 +11,17 @@ use Illuminate\Validation\Rule;
 
 class VehicleFinanceProviderController extends Controller
 {
+    public function lookup(): JsonResponse
+    {
+        return response()->json([
+            'status' => 'success',
+            'data' => VehicleFinanceProvider::query()
+                ->where('is_active', true)
+                ->orderBy('name')
+                ->get(['id', 'code', 'name', 'provider_type']),
+        ]);
+    }
+
     public function index(Request $request): JsonResponse
     {
         $filters = $request->validate([

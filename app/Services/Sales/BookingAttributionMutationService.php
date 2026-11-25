@@ -256,7 +256,7 @@ class BookingAttributionMutationService
 
             $from = $locked->{$field};
             $version = $locked->version + 1;
-            DB::table('sales_booking_attribution_events')->insert([
+            $attributionEvent = [
                 'id' => (string) Str::uuid(),
                 'attribution_id' => $locked->id,
                 'version' => $version,
@@ -273,7 +273,9 @@ class BookingAttributionMutationService
                 'projected_at' => $effectiveAt->lte(now()) ? now() : null,
                 'created_at' => now(),
                 'updated_at' => now(),
-            ]);
+            ];
+            DB::table('sales_booking_attribution_events')->insert($attributionEvent);
+            app(BookingHistoryService::class)->recordSalesAttributionEvent((object) $attributionEvent, (string) $locked->booking_id);
 
             $projection = ['version' => $version, 'updated_user_id' => $actorUserId];
             if ($effectiveAt->lte(now())) {

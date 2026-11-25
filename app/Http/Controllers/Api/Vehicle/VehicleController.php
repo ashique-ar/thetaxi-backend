@@ -11,6 +11,8 @@ use App\Models\Booking\BookingActivity;
 use App\Models\DriverAssignment;
 use App\Models\Service\ServiceType;
 use App\Models\Vehicle\Vehicle;
+use App\Models\Vehicle\VehicleCategory;
+use App\Models\Vehicle\VehicleMake;
 use App\Services\WialonService;
 use App\Models\Vehicle\VehicleLease;
 use App\Models\Vehicle\VehicleMaintenanceRecord;
@@ -107,6 +109,36 @@ class VehicleController extends Controller
         return VehicleResource::collection(
             $q->paginate($request->per_page ?? 15)
         );
+    }
+
+    public function bookingLookup(): JsonResponse
+    {
+        $vehicles = Vehicle::query()->orderBy('title')->get(['id', 'title', 'license_plate', 'registration_no']);
+        return response()->json(['status' => 'success', 'data' => $vehicles->map(fn ($vehicle) => [
+            'id' => $vehicle->id,
+            'name' => $vehicle->title ?: ($vehicle->license_plate ?: $vehicle->registration_no),
+            'title' => $vehicle->title,
+            'license_plate' => $vehicle->license_plate,
+        ])]);
+    }
+
+    public function insuranceLookup(): JsonResponse
+    {
+        $vehicles = Vehicle::query()->orderBy('title')->get(['id', 'title', 'license_plate']);
+        return response()->json(['status' => 'success', 'data' => $vehicles->map(fn ($vehicle) => [
+            'id' => $vehicle->id,
+            'name' => $vehicle->title ?: $vehicle->license_plate,
+            'title' => $vehicle->title,
+            'license_plate' => $vehicle->license_plate,
+        ])]);
+    }
+
+    public function filterOptions(): JsonResponse
+    {
+        return response()->json(['status' => 'success', 'data' => [
+            'categories' => VehicleCategory::query()->orderBy('name')->get(['id', 'name']),
+            'makes' => VehicleMake::query()->orderBy('name')->get(['id', 'name']),
+        ]]);
     }
 
     public function store(CreateVehicleRequest $request, VehicleLeaseService $leaseService): JsonResponse

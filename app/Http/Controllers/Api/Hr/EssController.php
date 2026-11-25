@@ -4,6 +4,7 @@ namespace App\Http\Controllers\Api\Hr;
 
 use App\Http\Controllers\Controller;
 use App\Models\Staff;
+use App\Services\Hr\Ess\HrRequestIndexService;
 use App\Services\StaffAccessService;
 use Illuminate\Database\QueryException;
 use Illuminate\Http\JsonResponse;
@@ -40,10 +41,16 @@ class EssController extends Controller
         return response()->json(['status' => 'success', 'data' => ['request' => $index, 'events' => $events]]);
     }
 
-    public function inbox(Request $r): JsonResponse
+    public function inbox(Request $r, StaffAccessService $access): JsonResponse
     {
         $data = $r->validate(['selected_id' => ['nullable', 'uuid']]);
         $staff = $this->currentStaff($r);
+        $actionableSources = array_filter([
+            $r->user()->can('hr.leave.approve') ? ['request_type', 'leave'] : null,
+            $r->user()->can('hr.work-requests.approve') ? ['source_type', 'work_request'] : null,
+            $r->user()->can('hr.timesheets.approve') ? ['source_type', 'timesheet'] : null,
+            $r->user()->can('hr.attendance.corrections.approve') ? ['source_type', 'attendance_correction'] : null,
+        ]);
         $delegations = DB::table('hr_approval_delegations as delegation')
             ->join('staff as delegator', 'delegator.id', '=', 'delegation.delegator_staff_id')
             ->join('staff as delegate', 'delegate.id', '=', 'delegation.delegate_staff_id')
@@ -61,18 +68,55 @@ class EssController extends Controller
         }
         $query = DB::table('hr_request_index')->leftJoin('staff as requester_staff', 'requester_staff.id', '=', 'hr_request_index.requester_staff_id')
             ->leftJoin('users as requester_user', 'requester_user.id', '=', 'requester_staff.user_id')
-            ->whereIn('hr_request_index.status', ['pending', 'pending_approval', 'returned'])
+            ->leftJoin('staff as approval_owner', 'approval_owner.id', '=', 'hr_request_index.current_owner_staff_id')
+            ->whereIn('hr_request_index.status', ['pending', 'pending_approval', 'submitted', 'returned'])
+            ->where(function ($query) use ($actionableSources) {
+                if (! $actionableSources) return $query->whereRaw('1 = 0');
+                foreach ($actionableSources as [$column, $value]) $query->orWhere('hr_request_index.'.$column, $value);
+            })
             ->when($data['selected_id'] ?? null, fn ($query, $id) => $query->where('hr_request_index.id', $id))
-            ->where(function ($q) use ($staff, $delegatedOwnersByType) {
+            ->where(function ($q) use ($staff, $delegatedOwnersByType, $r) {
                 $q->where('hr_request_index.current_owner_staff_id', $staff->id);
                 foreach ($delegatedOwnersByType as $type => $owners) {
                     $q->orWhere(fn ($delegated) => $delegated->where('hr_request_index.request_type', $type)->whereIn('hr_request_index.current_owner_staff_id', $owners));
                 }
+                if ($r->user()->can('staff.view-all')) $q->orWhereNull('hr_request_index.current_owner_staff_id')->orWhere(fn ($inactive) => $inactive->whereNotNull('hr_request_index.current_owner_staff_id')->where(fn ($owner) => $owner->whereNull('approval_owner.id')->orWhereNotNull('approval_owner.employment_ended_at')->orWhereNotNull('approval_owner.deleted_at')));
             })
+            ->whereIn('hr_request_index.requester_staff_id', $access->scope(Staff::query(), $r->user())->select('staff.id'))
             ->select(['hr_request_index.id', 'hr_request_index.requester_staff_id', 'hr_request_index.request_type', 'hr_request_index.source_type', 'hr_request_index.source_id', 'hr_request_index.status', 'hr_request_index.summary', 'hr_request_index.current_owner_staff_id', 'hr_request_index.due_at', 'hr_request_index.submitted_at', 'requester_staff.code as requester_staff_code', DB::raw("TRIM(CONCAT_WS(' ', requester_user.first_name, requester_user.last_name)) as requester_name")])
+            ->selectRaw(($r->user()->can('staff.view-all') ? 'CASE WHEN approval_owner.id IS NULL OR approval_owner.employment_ended_at IS NOT NULL OR approval_owner.deleted_at IS NOT NULL THEN 1 ELSE 0 END' : '0').' AS claimable')
             ->orderByRaw('hr_request_index.due_at asc nulls last');
 
         return response()->json(['status' => 'success', 'data' => $query->paginate($this->paginationSize($r, 50))]);
+    }
+
+    public function claimInboxRequest(Request $r, string $id, StaffAccessService $access, HrRequestIndexService $indexService): JsonResponse
+    {
+        abort_unless($r->user()->can('staff.view-all'), 403, 'Only HR staff with organization-wide visibility may claim unassigned approvals.');
+        $actor = $this->currentStaff($r);
+        $row = DB::transaction(function () use ($r, $id, $actor, $access, $indexService) {
+            $index = DB::table('hr_request_index')->where('id', $id)->lockForUpdate()->first();
+            abort_unless($index, 404);
+            $permission = match ($index->source_type) {
+                'leave_request' => 'hr.leave.approve',
+                'work_request' => 'hr.work-requests.approve',
+                'timesheet' => 'hr.timesheets.approve',
+                'attendance_correction' => 'hr.attendance.corrections.approve',
+                default => null,
+            };
+            abort_unless($permission && $r->user()->can($permission), 403, 'You cannot claim this request type.');
+            abort_unless(in_array($index->status, ['pending', 'pending_approval', 'submitted', 'returned'], true), 409, 'Only open approvals can be claimed.');
+            abort_unless($access->scope(Staff::query()->whereKey($index->requester_staff_id), $r->user())->exists(), 404);
+            if ($index->current_owner_staff_id) {
+                if ($index->current_owner_staff_id === $actor->id) return $index;
+                $owner = DB::table('staff')->where('id', $index->current_owner_staff_id)->first();
+                abort_unless(! $owner || $owner->employment_ended_at !== null || $owner->deleted_at !== null, 409, 'This approval has already been claimed by an active owner.');
+            }
+            $indexService->transition($index->source_type, $index->source_id, $index->status, 'Approval ownership updated by HR.', $r->user()->id, $actor->id);
+            return DB::table('hr_request_index')->where('id', $id)->first();
+        });
+
+        return response()->json(['status' => 'success', 'data' => $row]);
     }
 
     public function delegationOptions(Request $r): JsonResponse

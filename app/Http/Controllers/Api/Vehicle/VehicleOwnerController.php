@@ -49,6 +49,15 @@ class VehicleOwnerController extends Controller
         return VehicleOwnerResource::collection($q->paginate($request->per_page ?? 15));
     }
 
+    public function vehicleLookup(): JsonResponse
+    {
+        $owners = VehicleOwner::query()->with('user:id,first_name,last_name')->orderBy('id')->get(['id', 'user_id']);
+        return response()->json(['status' => 'success', 'data' => $owners->map(fn ($owner) => [
+            'id' => $owner->id,
+            'name' => trim(($owner->user?->first_name ?? '') . ' ' . ($owner->user?->last_name ?? '')),
+        ])]);
+    }
+
     public function store(CreateVehicleOwnerRequest $request): JsonResponse
     {
         $data = $request->validated();
