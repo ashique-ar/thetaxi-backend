@@ -474,7 +474,7 @@ Route::middleware(['auth:api'])->group(function () {
         $query = ServiceType::query()
             ->where('is_active', true);
 
-        if (in_array($requestedContext, ['portal', 'corporate'], true)) {
+        if ($request->boolean('portal_view') || in_array($requestedContext, ['portal', 'corporate'], true)) {
             $query->where(fn ($builder) => $builder->where('is_portal_hidden', false)->orWhereNull('is_portal_hidden'));
         }
 
