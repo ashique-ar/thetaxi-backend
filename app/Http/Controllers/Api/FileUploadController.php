@@ -614,10 +614,11 @@ class FileUploadController extends Controller
         $thumbnailFileName = 'thumb_' . pathinfo($originalFileName, PATHINFO_FILENAME) . '.webp';
         $fullThumbnailPath = $thumbnailPath . '/' . $thumbnailFileName;
 
-        // Create thumbnail image
-        $thumbnail = Image::decode($file)
-            ->cover(150, 150)
-            ->encodeUsingFileExtension('webp', quality: 85);
+        // Flatten transparency onto white before resizing to avoid dark/smeared edges.
+        $thumbnailImage = Image::decode($file)
+            ->fillTransparentAreas('#ffffff')
+            ->scaleDown(width: 150, height: 150);
+        $thumbnail = $thumbnailImage->encodeUsingFileExtension('webp', quality: 85);
 
         $thumbnailData = (string) $thumbnail;
 
@@ -632,8 +633,8 @@ class FileUploadController extends Controller
             'full_path' => $fullThumbnailPath,
             'mime_type' => 'image/webp',
             'size' => strlen($thumbnailData),
-            'width' => 150,
-            'height' => 150,
+            'width' => $thumbnailImage->width(),
+            'height' => $thumbnailImage->height(),
             'user_id' => $user?->id,
             'category' => 'thumbnails',
             'is_image' => true,

@@ -109,3 +109,57 @@ it('renames owned media without moving files and prevents other users from renam
     expect(fn () => $this->controller->updateFile($request, $data['id']))
         ->toThrow(\Symfony\Component\HttpKernel\Exception\HttpException::class);
 });
+
+it('flattens transparent vehicle thumbnails onto white without cropping and regenerates with --force', function () {
+    $gd = imagecreatetruecolor(800, 800);
+    imagesavealpha($gd, true);
+    imagealphablending($gd, false);
+    $transparent = imagecolorallocatealpha($gd, 0, 0, 0, 127);
+    imagefill($gd, 0, 0, $transparent);
+    $carColor = imagecolorallocatealpha($gd, 30, 90, 200, 0);
+    imagefilledrectangle($gd, 200, 200, 600, 600, $carColor);
+    ob_start();
+    imagepng($gd);
+    $pngBytes = ob_get_clean();
+
+    $tmpPath = tempnam(sys_get_temp_dir(), 'car_');
+    file_put_contents($tmpPath, $pngBytes);
+    $file = new UploadedFile($tmpPath, 'yaris.png', 'image/png', null, true);
+
+    $response = $this->controller->uploadFile(mediaUploadRequest($file, [
+        'category' => 'vehicles',
+        'path' => 'vehicles/thumbnails',
+        'thumbnail' => true,
+    ]));
+    @unlink($tmpPath);
+
+    expect($response->getStatusCode())->toBe(201);
+    $data = $response->getData(true)['data'];
+
+    // Thumbnail created with white background and preserved aspect ratio (150x150)
+    $thumbBytes = Storage::disk('public')->get($data['thumbnail']['path']);
+    $thumbGd = imagecreatefromstring($thumbBytes);
+    $thumbCorner = imagecolorat($thumbGd, 0, 0);
+    expect([($thumbCorner >> 16) & 255, ($thumbCorner >> 8) & 255, $thumbCorner & 255])->toBe([255, 255, 255]);
+
+    // Email variant created with white background and preserved 1:1 aspect ratio (200x200, not cropped to 300x200)
+    $variantPath = dirname($data['path']) . '/email/' . pathinfo($data['path'], PATHINFO_FILENAME) . '-vehicle.jpg';
+    Storage::disk('public')->assertExists($variantPath);
+    $variantBytes = Storage::disk('public')->get($variantPath);
+    $variantGd = imagecreatefromstring($variantBytes);
+    $variantCorner = imagecolorat($variantGd, 0, 0);
+    expect(imagesx($variantGd))->toBe(200)
+        ->and(imagesy($variantGd))->toBe(200)
+        ->and(($variantCorner >> 16) & 255)->toBeGreaterThanOrEqual(250)
+        ->and(($variantCorner >> 8) & 255)->toBeGreaterThanOrEqual(250)
+        ->and($variantCorner & 255)->toBeGreaterThanOrEqual(250);
+
+    // Corrupt existing variant and verify --force regenerates it while default skips
+    Storage::disk('public')->put($variantPath, 'old-broken-variant');
+    $this->artisan('media:generate-email-variants')->assertSuccessful();
+    expect(Storage::disk('public')->get($variantPath))->toBe('old-broken-variant');
+
+    $this->artisan('media:generate-email-variants', ['--force' => true])->assertSuccessful();
+    $regenerated = imagecreatefromstring(Storage::disk('public')->get($variantPath));
+    expect(imagesx($regenerated))->toBe(200)->and(imagesy($regenerated))->toBe(200);
+});

@@ -97,6 +97,17 @@ class PendingPaymentLink extends BaseModel
         return $this->expires_at > now() && is_null($this->invalidated_at);
     }
 
+    /** Decode booking_context safely, including legacy double-encoded JSON rows. */
+    public function decodedBookingContext(): array
+    {
+        $context = $this->booking_context;
+        if (!is_array($context)) {
+            $context = json_decode((string) $context, true) ?: [];
+        }
+
+        return is_array($context) ? $context : [];
+    }
+
     /**
      * Get remaining validity time
      */

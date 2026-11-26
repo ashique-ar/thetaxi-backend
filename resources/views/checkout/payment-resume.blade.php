@@ -15,7 +15,8 @@
         $quotedItems = $context['booking_items'] ?? [];
         $selectedItemIds = $paymentData['revision_item_ids'] ?? array_column($quotedItems, 'id');
         $hasTours = collect($quotedItems)->contains(fn($item) => !empty($item['is_tour']));
-        $canEditVehicles = count($quotedItems) > 0
+        $hasMultipleVehicles = count($quotedItems) > 1;
+        $canEditVehicles = $hasMultipleVehicles
             && collect($quotedItems)->every(fn($item) => !empty($item['id']))
             && !$hasTours;
         $hasRevisedSelection = !empty($paymentData['revision_item_ids']) && count($paymentData['revision_item_ids']) < count($quotedItems);
@@ -91,9 +92,8 @@
                                 {{ $hasTours ? 'Trip and Tour Details' : 'Vehicle Wise Trip Details' }}
                             </h2>
                             @if ($canEditVehicles)
-                                <p style="color:#555;">Choose the vehicles you want to keep. Your original quotation is preserved.
-                                </p>
-                                <form method="POST" action="{{ route('checkout.payment-resume.vehicles', ['token' => $token]) }}">
+                                <p class="vehicle-selection-hint">Choose the vehicles you want to keep. Your original quotation is preserved.</p>
+                                <form id="vehicle-selection-form" method="POST" action="{{ route('checkout.payment-resume.vehicles', ['token' => $token]) }}">
                                     @csrf
                             @endif
                                 @if (!empty($context['booking_items']))
@@ -155,10 +155,9 @@
                                             );
                                         @endphp
                                         <div class="booking-item-email">
-                                            @if ($canEditVehicles)<label
-                                                style="display:flex;align-items:center;gap:8px;margin-bottom:14px;color:#333;font-weight:600;">
-                                                <input type="checkbox" name="item_ids[]" value="{{ $item['id'] ?? '' }}" {{ in_array((string) ($item['id'] ?? ''), array_map('strval', $selectedItemIds), true) ? 'checked' : '' }}>
-                                                Keep this vehicle
+                                            @if ($canEditVehicles)<label class="vehicle-keep-toggle">
+                                                <input type="checkbox" class="vehicle-keep-checkbox" name="item_ids[]" value="{{ $item['id'] ?? '' }}" {{ in_array((string) ($item['id'] ?? ''), array_map('strval', $selectedItemIds), true) ? 'checked' : '' }}>
+                                                <span>Keep this vehicle</span>
                                             </label>@endif
                                             <div style="display: flex; align-items: flex-start; gap: 15px; margin-bottom: 5px;">
                                                 @if ($defaultImage)
@@ -360,12 +359,19 @@
                                     @endforeach
                                 @endif
                                 @if ($canEditVehicles)
-                                        <button type="submit" class="btn btn-secondary" style="margin:12px 0;">Update vehicle
-                                            selection</button>
+                                        <div class="vehicle-selection-actions">
+                                            <div class="vehicle-selection-meta">
+                                                <span id="vehicle-selection-count" class="vehicle-selection-count">
+                                                    {{ count(array_intersect(array_map('strval', $selectedItemIds), array_map('strval', array_column($quotedItems, 'id')))) }} of {{ count($quotedItems) }} vehicles selected
+                                                </span>
+                                                <span id="vehicle-selection-note" class="vehicle-selection-note">At least 1 vehicle must stay in your booking.</span>
+                                            </div>
+                                            <button type="submit" id="vehicle-update-btn" class="vehicle-update-btn">Update vehicle selection</button>
+                                        </div>
                                     </form>
-                                @else
-                                <p style="color:#777;">To change this older quotation, please contact our booking team.</p>
-                            @endif
+                                @elseif ($hasMultipleVehicles && !$hasTours)
+                                    <p style="color:#777;">To change this older quotation, please contact our booking team.</p>
+                                @endif
                         </div>
 
                         <!-- Customer Information Section -->
@@ -1041,6 +1047,36 @@
 
             // Add cursor pointer and title to booking reference
             $('.reference-number').css('cursor', 'pointer').attr('title', 'Click to copy reference number');
+
+            // Vehicle selection controls (when 2+ vehicles are editable)
+            const $vehicleForm = $('#vehicle-selection-form');
+            if ($vehicleForm.length) {
+                const $checkboxes = $vehicleForm.find('.vehicle-keep-checkbox');
+                const $countLabel = $('#vehicle-selection-count');
+                const $noteLabel = $('#vehicle-selection-note');
+                const $updateBtn = $('#vehicle-update-btn');
+                const totalVehicles = $checkboxes.length;
+
+                function syncVehicleSelectionState() {
+                    const checkedCount = $checkboxes.filter(':checked').length;
+                    $countLabel.text(`${checkedCount} of ${totalVehicles} vehicles selected`);
+                    $updateBtn.prop('disabled', checkedCount < 1);
+                    $noteLabel.toggleClass('is-warning', checkedCount <= 1);
+                }
+
+                $checkboxes.on('change', function () {
+                    if ($checkboxes.filter(':checked').length === 0) {
+                        $(this).prop('checked', true);
+                    }
+                    syncVehicleSelectionState();
+                });
+
+                $vehicleForm.on('submit', function () {
+                    $updateBtn.prop('disabled', true).text('Updating selection...');
+                });
+
+                syncVehicleSelectionState();
+            }
 
             // Form submission handler
             $('#payment-resume-form').on('submit', function (e) {

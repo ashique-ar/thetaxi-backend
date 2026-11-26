@@ -8,13 +8,14 @@ use Illuminate\Console\Command;
 
 class GenerateEmailImageVariants extends Command
 {
-    protected $signature = 'media:generate-email-variants';
+    protected $signature = 'media:generate-email-variants {--force : Regenerate existing variants}';
     protected $description = 'Generate cached, email-sized logo and vehicle image variants';
 
     public function handle(EmailImageVariantService $variants): int
     {
         $created = 0;
         $skipped = 0;
+        $force = (bool) $this->option('force');
 
         UserMedia::query()
             ->where('is_image', true)
@@ -26,10 +27,10 @@ class GenerateEmailImageVariants extends Command
                         $query->where('category', 'vehicles')->where('full_path', 'like', '%/thumbnails/%');
                     });
             })
-            ->chunkById(100, function ($media) use ($variants, &$created, &$skipped) {
+            ->chunkById(100, function ($media) use ($variants, $force, &$created, &$skipped) {
                 foreach ($media as $source) {
                     try {
-                        $variants->createFromStored($source) ? $created++ : $skipped++;
+                        $variants->createFromStored($source, $force) ? $created++ : $skipped++;
                     } catch (\Throwable $e) {
                         $this->components->error($source->full_path . ': ' . $e->getMessage());
                         $skipped++;

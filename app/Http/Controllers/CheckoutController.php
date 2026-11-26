@@ -2632,7 +2632,7 @@ class CheckoutController extends Controller
             return back()->with('error', 'A Tour itinerary cannot be changed from payment recovery. Contact our booking team if your plans need updating.');
         }
 
-        $context = $link->booking_context ?? [];
+        $context = $link->decodedBookingContext();
         $items = $context['booking_items'] ?? [];
         $validIds = collect($items)->pluck('id')->filter()->map(fn ($id) => (string) $id)->all();
         $selected = collect($request->input('item_ids', []))->map(fn ($id) => (string) $id)->unique()->values()->all();
@@ -2770,7 +2770,7 @@ class CheckoutController extends Controller
                             'total_discount' => round((float) $pricingBreakdowns->sum(fn ($p) => (float) data_get($p, 'discount_summary.total_discount_amount', 0)), 2),
                             'total' => $total,
                             'revision_source' => 'payment_resume',
-                            'original_quote_total' => (float) data_get($link->booking_context, 'pricing.total_estimated', $link->amount_due),
+                            'original_quote_total' => (float) data_get($paymentLinkData['context'] ?? [], 'pricing.total_estimated', $link->amount_due),
                             'removed_item_ids' => array_values(array_diff($allIds, $keepIds)),
                             'revision_history' => $link->revision_history ?? [],
                         ],

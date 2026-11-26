@@ -27,7 +27,7 @@ class EmailImageVariantService
         }
     }
 
-    public function createFromStored(UserMedia $source): bool
+    public function createFromStored(UserMedia $source, bool $force = false): bool
     {
         if ($source->is_thumbnail) {
             return false;
@@ -44,7 +44,8 @@ class EmailImageVariantService
         }
 
         $path = $this->variantPath($source->full_path, $variant);
-        if (Storage::disk($source->storage_type)->exists($path)
+        if (!$force
+            && Storage::disk($source->storage_type)->exists($path)
             && UserMedia::query()->where('full_path', $path)->where('storage_type', $source->storage_type)->exists()) {
             return false;
         }
@@ -79,16 +80,15 @@ class EmailImageVariantService
 
     private function create(string $bytes, UserMedia $source, string $variant): void
     {
-        $image = Image::decode($bytes);
+        // Flatten transparency onto white before resizing to avoid dark/smeared edges.
+        $image = Image::decode($bytes)->fillTransparentAreas('#ffffff');
         if ($variant === 'logo') {
             $image->scaleDown(width: 600, height: 240);
-            $image->fillTransparentAreas('#ffffff');
             $extension = 'png';
             $mime = 'image/png';
             $encoded = $image->encodeUsingFileExtension($extension);
         } else {
-            $image->cover(300, 200);
-            $image->fillTransparentAreas('#ffffff');
+            $image->scaleDown(width: 300, height: 200);
             $extension = 'jpg';
             $mime = 'image/jpeg';
             $encoded = $image->encodeUsingFileExtension($extension, quality: 82);

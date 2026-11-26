@@ -23,7 +23,9 @@ class MediaImageProcessor
         $width ??= config('fileupload.image_processing.max_dimensions.width', 2560);
         $height ??= config('fileupload.image_processing.max_dimensions.height', 2560);
         $quality ??= config('fileupload.image_processing.default_quality', 80);
-        $image->scaleDown(width: $width, height: $height);
+        if ($image->width() > $width || $image->height() > $height) {
+            $image->scaleDown(width: $width, height: $height);
+        }
 
         $extension = config('fileupload.image_processing.convert_to_webp', true)
             && extension_loaded('gd') && function_exists('imagewebp')

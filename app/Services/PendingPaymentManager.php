@@ -78,7 +78,7 @@ class PendingPaymentManager
             'booking_id' => $booking->id,
             'token' => $token,
             'type' => 'payment_reminder',
-            'booking_context' => json_encode($bookingContext),
+            'booking_context' => $bookingContext,
             'amount_due' => $amountDue,
             'expires_at' => Carbon::now()->addHours($expiryHours),
             'accessed_at' => null,
@@ -434,10 +434,7 @@ class PendingPaymentManager
             ]);
 
             // Return booking context and payment details
-            $bookingContext = $paymentLink->booking_context;
-            if (!is_array($bookingContext)) {
-                $bookingContext = json_decode((string) $bookingContext, true) ?: [];
-            }
+            $bookingContext = $paymentLink->decodedBookingContext();
             $booking = $paymentLink->booking()->first();
             if (!$booking) {
                 return null;
