@@ -13,7 +13,7 @@ class ReportBookingHistoryCoverage extends Command
 
     protected $description = 'Report recorded booking-history coverage by source and event type.';
 
-    private const REQUIRED_PARITY_CHECKS = 65;
+    private const REQUIRED_PARITY_CHECKS = 66;
 
     private ?string $verifiedCoverageStart = null;
 
@@ -122,6 +122,7 @@ class ReportBookingHistoryCoverage extends Command
             $this->modelStateParity('sales_booking_attributions', 'SalesBookingAttribution'),
             $this->modelStateParity('sales_commission_decisions', 'SalesCommissionDecision'),
             $this->modelStateParity('sales_tasks', 'SalesTask'),
+            $this->modelStateParity('sales_opportunities', 'SalesOpportunity', 'won_booking_id'),
             $this->modelStateParity('inquiries', 'Inquiry'),
             $this->bookingWorkflowActivityParity(),
             $this->vehicleEventLinkParity(),
@@ -256,17 +257,17 @@ class ReportBookingHistoryCoverage extends Command
         return ['booking status record edits/deletes/restores since coverage start', $sourceRows, $matched, max(0, $sourceRows - $matched)];
     }
 
-    private function modelStateParity(string $table, string $entityType): ?array
+    private function modelStateParity(string $table, string $entityType, string $bookingLinkColumn = 'booking_id'): ?array
     {
         $coverageStart = $this->verifiedCoverageStart;
         if (!Schema::hasTable($table) || !Schema::hasTable('booking_items') || !$coverageStart
             || !Schema::hasColumn($table, 'created_at') || !Schema::hasColumn($table, 'updated_at')
-            || ($table === 'vehicle_assignments' && !Schema::hasColumn($table, 'booking_item_id'))
-            || ($table !== 'bookings' && !Schema::hasColumn($table, 'booking_id'))) return null;
+            || ($table === 'bookings' ? $bookingLinkColumn !== 'booking_id' : !Schema::hasColumn($table, $bookingLinkColumn))
+            || ($table === 'vehicle_assignments' && !Schema::hasColumn($table, 'booking_item_id'))) return null;
 
         $base = DB::table($table . ' as source');
-        if ($table !== 'bookings') $base->whereNotNull('source.booking_id');
-        $bookingColumn = $table === 'bookings' ? 'source.id' : 'source.booking_id';
+        if ($table !== 'bookings') $base->whereNotNull('source.' . $bookingLinkColumn);
+        $bookingColumn = $table === 'bookings' ? 'source.id' : 'source.' . $bookingLinkColumn;
         $created = (clone $base)->where('source.created_at', '>=', $coverageStart);
         $createdRows = (clone $created)->count();
         $createdMatched = (clone $created)->whereExists(function ($query) use ($bookingColumn, $entityType, $coverageStart): void {

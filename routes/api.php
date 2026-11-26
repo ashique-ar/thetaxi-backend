@@ -674,7 +674,7 @@ Route::middleware(['auth:api'])->group(function () {
         ->middleware('permission:staff-sensitive-payment-methods.approve');
 
     Route::middleware('ensure.internal')->prefix('staff-payment-links')->group(function () {
-        Route::post('/', [\App\Http\Controllers\StaffPaymentLinkController::class, 'store'])->middleware('throttle:20,1');
+        Route::post('/', [\App\Http\Controllers\StaffPaymentLinkController::class, 'store'])->middleware(['permission:payments.initiate', 'throttle:20,1']);
     });
 
     Route::prefix('sales')->middleware(['ensure.internal', 'business.module:sales'])->group(function () {
@@ -1688,9 +1688,9 @@ Route::middleware(['auth:api'])->group(function () {
         Route::apiResource('vip-types', VipTypeController::class);
         Route::post('service-types/workflow-preview', [ServiceTypeController::class, 'previewWorkflow'])->middleware('pricing.context');
         Route::get('service-types/{serviceType}/vehicle-classes', [ServiceVehicleClassController::class, 'index'])
-            ->middleware(['ensure.internal', 'pricing.context']);
+            ->middleware(['ensure.internal:staff', 'pricing.context']);
         Route::put('service-types/{serviceType}/vehicle-classes/{vehicleClass}', [ServiceVehicleClassController::class, 'update'])
-            ->middleware(['ensure.internal', 'pricing.context']);
+            ->middleware(['ensure.internal:staff', 'pricing.context']);
         Route::get('service-types/{serviceType}/workflow-revisions', [ServiceTypeController::class, 'workflowRevisions'])->middleware(['pricing.context', 'permission:service-types.view|service-types.edit']);
         Route::post('service-types/{serviceType}/workflow-revisions/{revision}/review', [ServiceTypeController::class, 'reviewWorkflowRevision'])->middleware('pricing.context');
         Route::apiResource('service-types', ServiceTypeController::class)->middleware('pricing.context');

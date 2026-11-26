@@ -48,6 +48,7 @@ class SmsSettingsService
                 $settings['sms_quotation_requested_enabled'] ?? false,
                 false
             ),
+            'quotation_ready_enabled' => $this->toBool($settings['sms_quotation_ready_enabled'] ?? false, false),
             'inquiry_received_enabled' => $this->toBool(
                 $settings['sms_inquiry_received_enabled'] ?? false,
                 false
@@ -92,6 +93,10 @@ class SmsSettingsService
             'quotation_requested_template' => trim((string) (
                 $settings['sms_quotation_requested_template']
                     ?? 'Thank you for requesting a quotation from {company_name}. Reference: {booking_number}. Our team will contact you shortly. Assistance: {company_phone}.'
+            )),
+            'quotation_ready_template' => trim((string) (
+                $settings['sms_quotation_ready_template']
+                    ?? 'Your quotation from {company_name} is ready. Reference: {booking_number}. Review and accept it here: {quotation_link}'
             )),
             'inquiry_received_template' => trim((string) (
                 $settings['sms_inquiry_received_template']

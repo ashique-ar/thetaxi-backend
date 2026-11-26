@@ -119,6 +119,7 @@ class SmsManagementController extends Controller
             'sms_booking_status_enabled' => ['required', 'boolean'],
             'sms_booking_confirmation_enabled' => ['sometimes', 'boolean'],
             'sms_quotation_requested_enabled' => ['sometimes', 'boolean'],
+            'sms_quotation_ready_enabled' => ['sometimes', 'boolean'],
             'sms_inquiry_received_enabled' => ['sometimes', 'boolean'],
             'sms_driver_dispatched_enabled' => ['sometimes', 'boolean'],
             'sms_driver_arrived_enabled' => ['sometimes', 'boolean'],
@@ -148,6 +149,7 @@ class SmsManagementController extends Controller
             'sms_admin_booking_summary_numbers.*' => ['required', 'string', 'distinct', 'regex:/^(?:\+?94|0)?7\d{8}$/'],
             'sms_booking_confirmation_template' => ['sometimes', 'string', 'max:1000'],
             'sms_quotation_requested_template' => ['sometimes', 'string', 'max:1000'],
+            'sms_quotation_ready_template' => ['sometimes', 'string', 'max:1000'],
             'sms_inquiry_received_template' => ['sometimes', 'string', 'max:1000'],
             'sms_driver_dispatched_template' => ['sometimes', 'string', 'max:1500'],
             'sms_driver_arrived_template' => ['sometimes', 'string', 'max:1500'],
@@ -323,6 +325,7 @@ class SmsManagementController extends Controller
         $events = [
             'website.inquiry_received',
             'website.quotation_requested',
+            'quotation.ready',
             'booking.confirmed',
             'admin.booking_confirmed_summary',
             'driver.assignment_fallback',

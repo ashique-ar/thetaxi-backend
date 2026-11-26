@@ -6,6 +6,7 @@ enum TransactionalSmsEvent: string
 {
     case WebsiteInquiryReceived = 'website.inquiry_received';
     case WebsiteQuotationRequested = 'website.quotation_requested';
+    case QuotationReady = 'quotation.ready';
     case BookingConfirmed = 'booking.confirmed';
     case AdminBookingConfirmedSummary = 'admin.booking_confirmed_summary';
     case DriverDispatched = 'driver.dispatched';

@@ -7179,6 +7179,7 @@ class BookingFlowService
                 // Use item-specific addons
                 'selected_addons' => $itemAddons,
             ]);
+            unset($itemParams['extra_km']);
 
             $itemServiceType = $this->resolveCalculationServiceType(
                 $item['service_type_id'] ?? $item['service_type'] ?? null,
@@ -7237,6 +7238,28 @@ class BookingFlowService
                 ];
             } else {
                 $groupResult = $this->calculateSingleGroupPricing($itemParams, $duration, $baseCurrency, $targetCurrency);
+            }
+
+            // Extra kilometres are a separate checkout charge, not a formula input.
+            $extraKm = min(10000, max(0, (int) ($item['extra_km'] ?? $itemMetadata['extra_km'] ?? 0)));
+            $serviceCode = strtolower((string) ($itemServiceType?->code ?? ''));
+            if (
+                $extraKm > 0
+                && empty($item['is_tour'])
+                && !str_contains($serviceCode, 'tour')
+                && \App\Models\Vehicle\VehiclePricing\VehiclePricingSlabDefinition::query()
+                    ->forServiceType((string) ($item['service_type_id'] ?? $item['service_type'] ?? ''))
+                    ->active()
+                    ->exists()
+            ) {
+                $extraKmRate = (float) data_get($groupResult, 'distance_details.extra_km_price', 0);
+                if ($extraKmRate > 0) {
+                    $extraKmCharge = round($extraKm * $extraKmRate, 2);
+                    $groupResult['summary']['subtotal'] += $extraKmCharge;
+                    $groupResult['summary']['total'] += $extraKmCharge;
+                    $groupResult['distance_details']['extra_km_selected'] = $extraKm;
+                    $groupResult['distance_details']['extra_km_charge'] = $extraKmCharge;
+                }
             }
             // Add item metadata
             $groupResult['item_index'] = $index;

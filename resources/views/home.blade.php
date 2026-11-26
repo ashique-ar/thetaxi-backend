@@ -758,8 +758,14 @@ document.addEventListener('click', function (event) {
 
     .cart-float-header h6 {
         margin: 0;
+        font-size: 15px;
         font-weight: 700;
         color: white;
+    }
+
+    .cart-summary-float #clearCartFloat {
+        padding: 5px 9px;
+        font-size: 12px;
     }
 
     .cart-float-body {
@@ -772,6 +778,17 @@ document.addEventListener('click', function (event) {
     .cart-float-item {
         padding: 12px 0;
         border-bottom: 1px solid rgba(255, 255, 255, 0.1);
+        font-size: 13px;
+        line-height: 1.5;
+    }
+
+    .cart-float-item > div:first-child > div:first-child > strong {
+        font-size: 14px;
+        line-height: 1.35;
+    }
+
+    .cart-float-item .small {
+        font-size: 12px;
     }
 
     .cart-float-item:last-child {
@@ -781,6 +798,11 @@ document.addEventListener('click', function (event) {
     .cart-float-footer {
         padding: 16px 20px;
         border-top: 1px solid rgba(255, 255, 255, 0.2);
+        font-size: 13px;
+    }
+
+    .cart-float-footer > small {
+        font-size: 12px;
     }
 
     .cart-total {
@@ -788,12 +810,12 @@ document.addEventListener('click', function (event) {
         justify-content: space-between;
         align-items: center;
         color: white;
-        font-size: 16px;
+        font-size: 14px;
     }
 
     .cart-total strong {
-        font-size: 20px;
-        font-weight: 800;
+        font-size: 17px;
+        font-weight: 700;
     }
 
     .currency-symbol {
@@ -967,6 +989,28 @@ document.addEventListener('click', function (event) {
         // Close cart float
         $(document).on('click', '#closeCartFloat', function() {
             $('#cartSummaryFloat').fadeOut();
+        });
+        $(document).on('click', '#clearCartFloat', function() {
+            if (!confirm('Clear all items from your cart?')) return;
+
+            $.ajax({
+                url: '{{ route('cart.clear') }}',
+                method: 'POST',
+                data: { _token: '{{ csrf_token() }}' },
+                success: function(response) {
+                    if (response.success) {
+                        cart = [];
+                        updateCartDisplay();
+                        $('#cartSummaryFloat').fadeOut();
+                        window.dispatchEvent(new CustomEvent('cartUpdated'));
+                    } else {
+                        alert('Error: ' + response.message);
+                    }
+                },
+                error: function(xhr) {
+                    alert(xhr.responseJSON?.message || 'Error clearing cart. Please try again.');
+                }
+            });
         });
 
         // Initialize Featured Vehicles Slider
@@ -1185,7 +1229,10 @@ document.addEventListener('click', function (event) {
                     <div class="cart-float-content">
                         <div class="cart-float-header">
                             <h6><i class="bi bi-cart-fill"></i> Cart</h6>
-                            <button type="button" class="btn-close btn-close-white" id="closeCartFloat"></button>
+                            <div class="d-flex align-items-center gap-3">
+                                <button type="button" class="btn btn-sm btn-outline-light" id="clearCartFloat">Clear cart</button>
+                                <button type="button" class="btn-close btn-close-white" id="closeCartFloat" aria-label="Close cart"></button>
+                            </div>
                         </div>
                         <div class="cart-float-body" id="cartFloatItems">
                             <!-- Cart items will be dynamically added here -->

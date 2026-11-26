@@ -21,6 +21,7 @@ use App\Models\Finance\FinancialAuditEvent;
 use App\Models\Invoice;
 use App\Services\Driver\RouteEvidenceService;
 use App\Services\PermissionEvaluator;
+use App\Services\Sales\SalesAccessScope;
 use Carbon\Carbon;
 use Illuminate\Support\Collection;
 use Illuminate\Support\Facades\Cache;
@@ -29,7 +30,10 @@ use Illuminate\Support\Facades\DB;
 
 class BookingObservabilityService
 {
-    public function __construct(private readonly RouteEvidenceService $routeEvidence) {}
+    public function __construct(
+        private readonly RouteEvidenceService $routeEvidence,
+        private readonly SalesAccessScope $salesAccessScope,
+    ) {}
 
     public function trace(Booking $booking, ?string $bookingItemId, ?string $cursor = null, int $limit = 50, string $filter = 'all', array $filters = []): array
     {
@@ -64,8 +68,64 @@ class BookingObservabilityService
         $logs = $query->orderByDesc('timestamp')->orderByDesc('id')->get();
         $events = $logs->map(fn(AuditLog $log): array => $this->mapAuditEvent($booking, $log));
 
-        $historyEvents = BookingHistoryEvent::query()
-            ->where('booking_id', $booking->id)
+        $user = request()->user();
+        $canViewSalesDecisions = $user && $this->salesAccessScope->hasPermission($user, 'sales.commission-decisions.view');
+        $salesDecisionProfileIds = $canViewSalesDecisions
+            ? $this->salesAccessScope->profileIds($user, 'sales.commission-decisions.view-all', 'sales.commission-decisions.view-team')
+            : [];
+        $canViewSalesAttributions = $user && $this->salesAccessScope->hasPermission($user, 'sales.attributions.view');
+        $salesAttributionProfileIds = $canViewSalesAttributions
+            ? $this->salesAccessScope->profileIds($user, 'sales.attributions.view-all', 'sales.attributions.view-team')
+            : [];
+        $canViewSalesCrm = $user && $this->salesAccessScope->hasPermission($user, 'sales.crm.view');
+        $salesCrmProfileIds = $canViewSalesCrm
+            ? $this->salesAccessScope->profileIds($user, 'sales.crm.view-all', 'sales.crm.view-team')
+            : [];
+
+        $historyQuery = BookingHistoryEvent::query()->where('booking_id', $booking->id);
+        foreach ([
+            'SalesCommissionDecision' => ['sales_commission_decisions', ['beneficiary_sales_profile_id'], $salesDecisionProfileIds],
+            'SalesBookingAttribution' => ['sales_booking_attributions', ['acquisition_sales_profile_id', 'collection_sales_profile_id'], $salesAttributionProfileIds],
+            'SalesActivity' => ['sales_activities', ['sales_profile_id'], $salesCrmProfileIds],
+            'SalesTask' => ['sales_tasks', ['owner_sales_profile_id'], $salesCrmProfileIds],
+            'SalesOpportunity' => ['sales_opportunities', ['owner_sales_profile_id'], $salesCrmProfileIds],
+        ] as $entityType => [$table, $profileColumns, $profileIds]) {
+            if ($profileIds === []) {
+                $historyQuery->where('entity_type', '!=', $entityType);
+            } elseif ($profileIds !== null) {
+                $historyQuery->where(function ($scope) use ($entityType, $table, $profileColumns, $profileIds): void {
+                    $scope->where('entity_type', '!=', $entityType)
+                        ->orWhereExists(function ($record) use ($table, $profileColumns, $profileIds): void {
+                            $record->selectRaw('1')->from($table . ' as sales_record')
+                                ->whereColumn('sales_record.id', 'booking_history_events.entity_id')
+                                ->where(function ($owners) use ($profileColumns, $profileIds): void {
+                                    foreach ($profileColumns as $column) {
+                                        $owners->orWhereIn('sales_record.' . $column, $profileIds);
+                                    }
+                                });
+                        });
+                });
+            }
+        }
+        if (!$canViewSalesAttributions || $salesAttributionProfileIds === []) {
+            $historyQuery->where('entity_type', '!=', 'SalesAttributionException');
+        } elseif ($salesAttributionProfileIds !== null) {
+            $historyQuery->where(function ($scope) use ($salesAttributionProfileIds): void {
+                $scope->where('entity_type', '!=', 'SalesAttributionException')
+                    ->orWhereExists(function ($exception) use ($salesAttributionProfileIds): void {
+                        $exception->selectRaw('1')->from('sales_attribution_exceptions as sales_exception')
+                            ->whereColumn('sales_exception.id', 'booking_history_events.entity_id')
+                            ->whereExists(function ($attribution) use ($salesAttributionProfileIds): void {
+                                $attribution->selectRaw('1')->from('sales_booking_attributions as sales_attribution')
+                                    ->whereColumn('sales_attribution.booking_id', 'sales_exception.booking_id')
+                                    ->where(fn ($owners) => $owners->whereIn('sales_attribution.acquisition_sales_profile_id', $salesAttributionProfileIds)
+                                        ->orWhereIn('sales_attribution.collection_sales_profile_id', $salesAttributionProfileIds));
+                            });
+                    });
+            });
+        }
+
+        $historyEvents = $historyQuery
             ->when($bookingItemId, fn ($scope) => $scope->where(fn ($items) => $items
                 ->whereNull('booking_item_id')->orWhere('booking_item_id', $bookingItemId)))
             ->when($filters['actor_id'] ?? null, fn ($scope, $value) => $scope->where('actor_user_id', $value))
@@ -956,7 +1016,7 @@ class BookingObservabilityService
         return [
             'id' => 'sales-attribution-event:' . $event->id,
             'booking_id' => (string) $booking->id,
-            'booking_item_id' => $assignment->booking_item_id ? (string) $assignment->booking_item_id : null,
+            'booking_item_id' => null,
             'occurred_at' => Carbon::parse($event->created_at)->utc()->toIso8601String(),
             'source' => 'sales',
             'event_type' => 'booking_attribution_' . $event->event_type,
@@ -1040,7 +1100,7 @@ class BookingObservabilityService
         $canViewPrice = auth()->user()?->can('bookings.price_override') ?? false;
         $canViewPayments = $this->canViewPayments();
         $financeEntities = [
-            'Invoice', 'FinancialAuditEvent', 'FinancialAdjustment', 'FinancialPaymentAllocation',
+            'Invoice', 'FinancialAuditEvent', 'FinancialAdjustment', 'FinancialPaymentAllocation', 'PaymentTransaction',
             'VehicleMaintenanceRecord',
             'FinancialSettlementItem', 'DriverCashSettlementItem', 'DriverHireSettlement',
             'DriverIouAdvance', 'AgentCommission', 'BookingPaymentReceipt', 'BookingPaymentReceiptComponent',
@@ -1091,7 +1151,10 @@ class BookingObservabilityService
             $source = 'approval';
         } elseif ($history->entity_type === 'BookingDispatch') {
             $source = 'dispatch';
-        } elseif ($isSalesAttributionEvent) {
+        } elseif ($isSalesAttributionEvent || in_array($history->entity_type, [
+            'SalesCommissionDecision', 'SalesBookingAttribution', 'SalesAttributionException',
+            'SalesActivity', 'SalesTask', 'SalesOpportunity',
+        ], true)) {
             $source = 'sales';
         } elseif ($history->entity_type === 'VehicleMaintenanceSchedule'
             || str_starts_with($history->event_type, 'booking_maintenance_schedule_')) {
@@ -1216,7 +1279,7 @@ class BookingObservabilityService
         return [
             'id' => 'vehicle-assignment:' . $assignment->id,
             'booking_id' => (string) $booking->id,
-            'booking_item_id' => null,
+            'booking_item_id' => $assignment->booking_item_id ? (string) $assignment->booking_item_id : null,
             'occurred_at' => $assignment->created_at?->utc()->toIso8601String(),
             'source' => 'assignment',
             'event_type' => 'vehicle_assigned',

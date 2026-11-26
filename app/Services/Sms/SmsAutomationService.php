@@ -139,6 +139,7 @@ class SmsAutomationService
         $variables = [
             'booking_number' => 'BK-EXAMPLE-001',
             'inquiry_number' => 'INQ-EXAMPLE-001',
+            'quotation_link' => route('home'),
             'customer_name' => 'Example Customer',
             'customer_mobile' => '0771234567',
             'pickup_datetime' => now()->addDay()->setTime(9, 30)->format('d/m/Y h:i A'),
@@ -203,6 +204,39 @@ class SmsAutomationService
             $this->render($settings['quotation_requested_template'], $this->bookingVariables($booking)),
             $booking->updated_at ?? now(),
             ['audience' => 'customer', 'source' => 'website']
+        );
+    }
+
+    public function queueQuotationReady(Booking $booking, string $quotationLink): void
+    {
+        $booking = $this->resolveBooking($booking);
+        $event = TransactionalSmsEvent::QuotationReady;
+        if (!$this->bookingAllowsSms($booking)) {
+            $this->recordBookingDecision($booking, $event, 'disabled', 'SMS was not enabled for this quotation.');
+            return;
+        }
+
+        $settings = $this->settingsService->getSettings();
+        if (!$settings['enabled'] || empty($settings['quotation_ready_enabled'])) {
+            $this->recordBookingDecision($booking, $event, 'disabled', 'Quotation-ready SMS is disabled.');
+            return;
+        }
+
+        $phone = $this->bookingCustomerPhone($booking);
+        if (!$phone) {
+            $this->recordBookingDecision($booking, $event, 'missing_recipient', 'Customer has no SMS recipient number.');
+            return;
+        }
+
+        $variables = array_merge($this->bookingVariables($booking), ['quotation_link' => $quotationLink]);
+        $this->queueBookingEvent(
+            $booking,
+            $event->value,
+            $phone,
+            $this->render($settings['quotation_ready_template'], $variables),
+            now(),
+            ['audience' => 'customer', 'source' => 'staff'],
+            scopeId: hash('sha256', $quotationLink)
         );
     }
 

@@ -622,6 +622,10 @@ class MobileAssignmentService
     public function createAssignment(array $data): DriverAssignment
     {
         return DB::transaction(function () use ($data) {
+            if (!empty($data['booking_item_id'])) {
+                BookingItem::query()->where('booking_id', $data['booking_id'])
+                    ->whereKey($data['booking_item_id'])->firstOrFail();
+            }
             $assignment = DriverAssignment::create(array_merge($data, [
                 'trip_phase' => TripPhase::ACTIVE,
                 'status' => $data['status'] ?? 'active',

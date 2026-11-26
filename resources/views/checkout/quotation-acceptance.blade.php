@@ -16,8 +16,8 @@
         $amountPaid = (float) ($snapshot['amount_paid'] ?? 0);
         $amountDue = max(0, $total - $amountPaid);
         $quotationOptions = $quotation['options'] ?? [];
-        $tripOptionGroups = \App\Helpers\BookingLinkHelper::quotationTripOptionGroups($quotationOptions);
-        $optionSelectionMap = \App\Helpers\BookingLinkHelper::quotationOptionSelectionMap($quotationOptions, $booking, $currency);
+        $tripOptionGroups = \App\Helpers\BookingLinkHelper::quotationTripOptionGroups($quotationOptions, $booking, $currency);
+        $optionSelectionMap = \App\Helpers\BookingLinkHelper::quotationOptionSelectionMap($quotationOptions);
         $defaultOption = $quotationOptions[0] ?? [];
         $defaultGroupIds = $defaultOption['vehicle_group_ids'] ?? [];
     @endphp
@@ -71,6 +71,9 @@
                     @if (!empty($item['route']) || $pickup || $dropoff)
                         <div class="text-muted">{{ $item['route'] ?? (($pickup ?: 'Pickup not set') . ' → ' . ($dropoff ?: 'Drop-off not set')) }}</div>
                     @endif
+                    @if (!empty($item['included_km_label']))
+                        <div class="text-muted mt-1">Included KM: {{ $item['included_km_label'] }}</div>
+                    @endif
                     @if (empty($quotation['options']))
                     <div class="text-muted">{{ $item['quantity'] ?? 1 }} ×
                         {{ number_format((float) ($item['unit_price'] ?? 0), 2) }} {{ $currency }}</div>
@@ -89,9 +92,21 @@
                                             required
                                             @checked(($defaultGroupIds[$tripIndex] ?? null) === $choice['vehicle_group_id'])>
                                         <img src="{{ $choice['image'] }}" alt="{{ $choice['vehicle_group_name'] }}" width="80" height="54" class="rounded" style="width:80px;height:54px;object-fit:cover">
-                                        <span class="quotation-vehicle-option__name">{{ $choice['vehicle_group_name'] }}</span>
+                                        <span class="quotation-vehicle-option__name">
+                                            <span class="d-block">{{ $choice['vehicle_group_name'] }}</span>
+                                            @if (!empty($choice['included_km_label']))
+                                                <small class="d-block text-muted mt-1">Included KM: {{ $choice['included_km_label'] }}</small>
+                                            @endif
+                                        </span>
                                     </span>
-                                    <strong class="quotation-vehicle-option__price"><small>Trip price</small>{{ number_format($choice['price'], 2) }} {{ $currency }}</strong>
+                                    <strong class="quotation-vehicle-option__price"><small>Trip price</small>{{ number_format($choice['price'], 2) }} {{ $currency }}
+                                        @if ($choice['deposit'] > 0)
+                                            <small class="d-block mt-1">Refundable deposit</small>
+                                            <span class="d-block">{{ number_format($choice['deposit'], 2) }} {{ $currency }}</span>
+                                            <small class="d-block mt-1">Total including deposit</small>
+                                            <span class="d-block">{{ number_format($choice['price'] + $choice['deposit'], 2) }} {{ $currency }}</span>
+                                        @endif
+                                    </strong>
                                 </label>
                             @endforeach
                         </fieldset>
@@ -140,8 +155,6 @@
                     <span>Selected vehicle combination</span>
                     <strong id="quotation-combined-total">{{ number_format((float) data_get($defaultOption, 'totals.total_estimated', 0), 2) }} {{ $currency }}</strong>
                     <small>The total updates as you choose one vehicle for each trip.</small>
-                    <div id="quotation-selected-deposit" class="mt-2" hidden>Refundable deposit due at vehicle collection: <strong></strong></div>
-                    <div id="quotation-total-with-deposit" class="mt-1" hidden>Total including refundable deposit: <strong></strong></div>
                 </div>
                 @error('quotation_option_id')<p class="text-danger" role="alert">{{ $message }}</p>@enderror
             @endif
@@ -160,10 +173,6 @@
                     const form = document.getElementById('accept-quotation-form');
                     const optionField = document.getElementById('quotation-option-id');
                     const totalLabel = document.getElementById('quotation-combined-total');
-                    const depositLabel = document.querySelector('#quotation-selected-deposit strong');
-                    const depositRow = document.getElementById('quotation-selected-deposit');
-                    const totalWithDeposit = document.querySelector('#quotation-total-with-deposit strong');
-                    const totalWithDepositRow = document.getElementById('quotation-total-with-deposit');
                     const submitButton = form?.querySelector('button[type="submit"]');
                     const selectionMap = @json($optionSelectionMap);
                     const tripRadios = [...document.querySelectorAll('[data-trip-index]')];
@@ -182,10 +191,6 @@
                         submitButton.disabled = !selectedOption;
                         if (selectedOption) {
                             totalLabel.textContent = `${Number(selectedOption.total).toFixed(2)} ${currency}`;
-                            depositRow.hidden = !(Number(selectedOption.deposit) > 0);
-                            totalWithDepositRow.hidden = !(Number(selectedOption.deposit) > 0);
-                            depositLabel.textContent = `${currency} ${Number(selectedOption.deposit).toFixed(2)}`;
-                            totalWithDeposit.textContent = `${currency} ${Number(selectedOption.total_with_deposit).toFixed(2)}`;
                         }
                     };
                     tripRadios.forEach(input => input.addEventListener('change', updateSelection));

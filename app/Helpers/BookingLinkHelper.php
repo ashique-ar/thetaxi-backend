@@ -153,6 +153,16 @@ class BookingLinkHelper
                     ->sortBy('route_order')->pluck('address')->all(),
                 data_get($item->dropoff_location, 'address'),
             ])));
+            $displayItem['distance_details'] = data_get($item->metadata, 'distance_details')
+                ?? data_get($item->pricing_breakdown, 'base_pricing.distance_details', []);
+            $displayItem['service_code'] = (string) ($item->serviceType?->code ?? '');
+            $displayItem['pricing_mode'] = $item->serviceType?->pricing_mode;
+            $displayItem['duration_days'] = max(1, (int) ($item->duration_days ?? 1));
+            $displayItem['included_km_label'] = self::quotationIncludedKmLabel(
+                (array) $displayItem['distance_details'],
+                isServiceDurationBased($displayItem['service_code'], $displayItem['pricing_mode']),
+                $displayItem['duration_days']
+            );
             $displayItems[] = $displayItem;
         }
         $snapshot['items'] = $displayItems;
@@ -160,9 +170,14 @@ class BookingLinkHelper
         return $snapshot;
     }
 
-    public static function quotationTripOptionGroups(array $options): array
+    public static function quotationTripOptionGroups(array $options, Booking $booking, string $currency): array
     {
         $trips = [];
+        $items = $booking->bookingItems()->with('serviceType')->get()
+            ->sortBy(fn ($item) => (int) data_get($item->metadata, '_quotation_trip_index', 0))->values();
+        $groupIds = collect($options)->flatMap(fn ($option) => $option['vehicle_group_ids'] ?? [])->unique();
+        $vehicleGroups = VehicleGroup::query()->whereIn('id', $groupIds)->get(['id', 'thumbnail', 'refundable_deposit'])->keyBy('id');
+        $currencyService = app(\App\Services\CurrencyService::class);
         foreach ($options as $option) {
             foreach (($option['trip_choices'] ?? []) as $index => $tripChoice) {
                 $tripNumber = (int) ($tripChoice['trip_number'] ?? $index + 1);
@@ -173,16 +188,34 @@ class BookingLinkHelper
                     ?? 0;
                 $trips[$tripNumber] ??= [];
                 $key = $groupId !== '' ? $groupId : (string) ($tripChoice['vehicle_group_name'] ?? '');
+                $item = $items->firstWhere('id', $itemId) ?? $items->get($tripNumber - 1);
+                $distanceDetails = (array) (
+                    data_get($option, "pricing.items.{$itemId}.distance_details")
+                    ?? data_get($option, "pricing.items.{$itemId}.base_pricing.distance_details")
+                    ?? data_get($option, "booking_items.{$index}.metadata.distance_details")
+                    ?? data_get($item?->metadata, 'distance_details', [])
+                );
+                $requiresDeposit = (bool) ($item?->metadata['requires_refundable_deposit']
+                    ?? $item?->workflow_config_snapshot['requires_refundable_deposit']
+                    ?? $item?->serviceType?->requires_refundable_deposit);
+                $depositLkr = $requiresDeposit
+                    ? max(0, (float) $vehicleGroups->get($groupId)?->refundable_deposit) * max(1, (int) ($item?->quantity ?? 1))
+                    : 0;
+                $deposit = $currencyService->convertFromLKR($depositLkr, $currency);
                 $trips[$tripNumber][$key] ??= [
                     'vehicle_group_id' => $groupId,
                     'vehicle_group_name' => (string) ($tripChoice['vehicle_group_name'] ?? 'Vehicle option'),
                     'price' => (float) $price,
+                    'deposit' => $deposit,
+                    'included_km_label' => self::quotationIncludedKmLabel(
+                        $distanceDetails,
+                        isServiceDurationBased((string) ($item?->serviceType?->code ?? ''), $item?->serviceType?->pricing_mode),
+                        max(1, (int) ($item?->duration_days ?? 1))
+                    ),
                 ];
             }
         }
 
-        $groupIds = collect($trips)->flatten(1)->pluck('vehicle_group_id')->filter()->unique();
-        $vehicleGroups = VehicleGroup::query()->whereIn('id', $groupIds)->get(['id', 'thumbnail'])->keyBy('id');
         foreach ($trips as &$choices) {
             foreach ($choices as &$choice) {
                 $thumbnail = $vehicleGroups->get($choice['vehicle_group_id'])?->thumbnail;
@@ -199,33 +232,40 @@ class BookingLinkHelper
         return array_map(fn ($choices) => array_values($choices), $trips);
     }
 
-    public static function quotationOptionSelectionMap(array $options, Booking $booking, string $currency): array
+    public static function quotationIncludedKmLabel(array $distanceDetails, bool $isDayPackage, int $durationDays): ?string
+    {
+        $days = max(1, (int) ($distanceDetails['effective_days'] ?? $durationDays));
+        $perDay = (float) ($distanceDetails['free_km_per_day'] ?? 0);
+        $perPackage = (float) ($distanceDetails['free_km_per_package'] ?? 0);
+        $allowed = (float) ($distanceDetails['allowed_total_km'] ?? 0);
+
+        if ($perDay > 0) {
+            if ($isDayPackage) {
+                $total = $allowed > 0 ? $allowed : $perDay * $days;
+                return number_format($total, 0).' km total included ('.$days.' '.\Illuminate\Support\Str::plural('day', $days).')';
+            }
+
+            return number_format($perDay, 0).' km included per day'.($allowed > 0
+                ? ' ('.number_format($allowed, 0).' km total for '.$days.' '.\Illuminate\Support\Str::plural('day', $days).')'
+                : '');
+        }
+
+        if ($perPackage > 0) return number_format($perPackage, 0).' km included per package';
+        if ($allowed > 0) return number_format($allowed, 0).' km included';
+
+        return null;
+    }
+
+    public static function quotationOptionSelectionMap(array $options): array
     {
         $selectionMap = [];
-        $items = $booking->bookingItems()->get()->sortBy(fn ($item) => (int) data_get($item->metadata, '_quotation_trip_index', 0))->values();
-        $groupIds = collect($options)->flatMap(fn ($option) => $option['vehicle_group_ids'] ?? [])->unique();
-        $groups = VehicleGroup::query()->whereIn('id', $groupIds)->get(['id', 'refundable_deposit'])->keyBy(fn ($group) => (string) $group->id);
-        $currencyService = app(\App\Services\CurrencyService::class);
         foreach ($options as $option) {
             $groupIds = array_map('strval', $option['vehicle_group_ids'] ?? []);
             if ($groupIds === [] || empty($option['id'])) continue;
-            $depositLkr = 0.0;
-            foreach ($groupIds as $index => $groupId) {
-                $item = $items->get($index);
-                $requiresDeposit = (bool) ($item?->metadata['requires_refundable_deposit']
-                    ?? $item?->workflow_config_snapshot['requires_refundable_deposit']
-                    ?? $item?->serviceType?->requires_refundable_deposit);
-                if ($requiresDeposit) {
-                    $depositLkr += max(0, (float) $groups->get($groupId)?->refundable_deposit) * max(1, (int) ($item?->quantity ?? 1));
-                }
-            }
-            $deposit = $currencyService->convertFromLKR($depositLkr, $currency);
             $total = (float) data_get($option, 'totals.total_estimated', 0);
             $selectionMap[implode('|', $groupIds)] = [
                 'id' => (string) $option['id'],
                 'total' => $total,
-                'deposit' => $deposit,
-                'total_with_deposit' => $total + $deposit,
             ];
         }
 

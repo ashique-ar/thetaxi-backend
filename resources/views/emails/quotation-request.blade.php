@@ -17,10 +17,7 @@
             ?: ($booking->customer?->full_name ?: 'Valued Customer');
         $cartItems = $workflowData['cart_items'] ?? [];
         $quotationOptions = $workflowData['quotation_options'] ?? [];
-        $tripOptionGroups = \App\Helpers\BookingLinkHelper::quotationTripOptionGroups($quotationOptions);
-        $quotationSelectionMap = count($quotationOptions) > 1
-            ? \App\Helpers\BookingLinkHelper::quotationOptionSelectionMap($quotationOptions, $booking, $currencyCode)
-            : [];
+        $tripOptionGroups = \App\Helpers\BookingLinkHelper::quotationTripOptionGroups($quotationOptions, $booking, $currencyCode);
         $quotationDisplaySnapshot = count($quotationOptions) > 1
             ? \App\Helpers\BookingLinkHelper::quotationDisplaySnapshot($booking)
             : [];
@@ -127,30 +124,21 @@
                         <table role="presentation" style="margin-top:5px; border-collapse:collapse;">
                             <tr>
                                 <td style="padding-right:8px; vertical-align:middle;"><img src="{{ $choice['image'] }}" alt="{{ $choice['vehicle_group_name'] }}" width="80" height="54" style="display:block; width:80px; height:54px; object-fit:cover; border-radius:4px;"></td>
-                                <td style="vertical-align:middle;">{{ $choice['vehicle_group_name'] }} — {{ number_format($choice['price'], 2) }} {{ $currencyCode }}</td>
+                                <td style="vertical-align:middle;">
+                                    <strong>{{ $choice['vehicle_group_name'] }}</strong>
+                                    <div>Trip price: {{ number_format($choice['price'], 2) }} {{ $currencyCode }}</div>
+                                    @if (!empty($choice['included_km_label']))
+                                        <div>Included KM: {{ $choice['included_km_label'] }}</div>
+                                    @endif
+                                    @if ($choice['deposit'] > 0)
+                                        <div>Refundable deposit due at vehicle collection: {{ number_format($choice['deposit'], 2) }} {{ $currencyCode }}</div>
+                                        <strong>Total including deposit: {{ number_format($choice['price'] + $choice['deposit'], 2) }} {{ $currencyCode }}</strong>
+                                    @endif
+                                </td>
                             </tr>
                         </table>
                     @endforeach
                 </div>
-            @endforeach
-            @foreach ($quotationOptions as $option)
-                @php $optionTotals = $quotationSelectionMap[implode('|', array_map('strval', $option['vehicle_group_ids'] ?? []))] ?? null; @endphp
-                @if ($optionTotals)
-                    <div style="display:flex;justify-content:space-between;gap:12px;padding:8px 0;border-bottom:1px solid #e5e7eb;">
-                        <strong>Vehicle combination {{ $option['option_number'] ?? $loop->iteration }} — trip prices</strong>
-                        <strong>{{ number_format($optionTotals['total'], 2) }} {{ $currencyCode }}</strong>
-                    </div>
-                    @if ($optionTotals['deposit'] > 0)
-                        <div style="display:flex;justify-content:space-between;gap:12px;padding:6px 0;">
-                            <span>Refundable deposit due at vehicle collection</span>
-                            <span>{{ number_format($optionTotals['deposit'], 2) }} {{ $currencyCode }}</span>
-                        </div>
-                        <div style="display:flex;justify-content:space-between;gap:12px;padding:6px 0;">
-                            <strong>Total including refundable deposit</strong>
-                            <strong>{{ number_format($optionTotals['total_with_deposit'], 2) }} {{ $currencyCode }}</strong>
-                        </div>
-                    @endif
-                @endif
             @endforeach
         </div>
     @endif

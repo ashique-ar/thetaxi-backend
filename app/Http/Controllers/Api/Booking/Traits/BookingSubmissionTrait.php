@@ -648,25 +648,38 @@ trait BookingSubmissionTrait
             $booking = $this->bookingFlowService->requestBookingQuotation($params);
 
             $sendSms = filter_var($params['send_quotation_sms'] ?? false, FILTER_VALIDATE_BOOL);
+            $sendEmail = filter_var($params['send_quotation_email'] ?? false, FILTER_VALIDATE_BOOL);
             $booking->notification_sms = $sendSms;
             $booking->save();
-            if ($sendSms) {
-                app(SmsAutomationService::class)->queueWebsiteQuotationRequested($booking);
+            $checkoutLink = null;
+            if ($sendSms || $sendEmail) {
+                try {
+                    if ((float) $booking->total_estimated <= 0) {
+                        throw new \RuntimeException('The quotation has no valid saved total.');
+                    }
+                    $quote = PendingPaymentManager::createQuotationLink($booking);
+                    $checkoutLink = \App\Helpers\BookingLinkHelper::getQuotationCheckoutLink($quote);
+                } catch (\Throwable $e) {
+                    Log::error('Staff quotation link creation failed', [
+                        'booking_id' => $booking->id,
+                        'error' => $e->getMessage(),
+                    ]);
+                }
+            }
+            if ($sendSms && $checkoutLink) {
+                app(SmsAutomationService::class)->queueQuotationReady($booking, $checkoutLink);
             }
 
             $quotationEmailStatus = 'not_requested';
-            if (filter_var($params['send_quotation_email'] ?? false, FILTER_VALIDATE_BOOL)) {
+            if ($sendEmail) {
                 $quotationEmailStatus = 'missing_email';
                 try {
                     $booking->loadMissing('customer.user', 'bookingItems.vehicleGroup', 'bookingItems.serviceType');
                     $email = $booking->customer?->user?->email;
                     if ($email) {
-                        if ((float) $booking->total_estimated <= 0) {
-                            throw new \RuntimeException('The quotation has no valid saved total.');
+                        if (!$checkoutLink) {
+                            throw new \RuntimeException('The quotation acceptance link could not be created.');
                         }
-
-                        $quote = PendingPaymentManager::createQuotationLink($booking);
-                        $checkoutLink = \App\Helpers\BookingLinkHelper::getQuotationCheckoutLink($quote);
                         app(\App\Services\MailDispatchService::class)->sendToCustomer(
                             $email,
                             new QuotationRequestMail(
@@ -790,7 +803,7 @@ trait BookingSubmissionTrait
 
     public function getBookingsList(Request $request): JsonResponse
     {
-        foreach (['requires_approval', 'has_overrides', 'mine_only', 'work_only', 'is_self_driven'] as $booleanFilter) {
+        foreach (['quotation_view', 'requires_approval', 'has_overrides', 'mine_only', 'work_only', 'is_self_driven'] as $booleanFilter) {
             $value = $request->input($booleanFilter);
             if (is_string($value) && in_array(strtolower($value), ['true', 'false'], true)) {
                 $request->merge([$booleanFilter => filter_var($value, FILTER_VALIDATE_BOOLEAN)]);

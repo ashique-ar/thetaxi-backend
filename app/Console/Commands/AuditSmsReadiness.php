@@ -160,6 +160,7 @@ class AuditSmsReadiness extends Command
         $eventSwitches = [
             'booking_confirmation_enabled',
             'quotation_requested_enabled',
+            'quotation_ready_enabled',
             'inquiry_received_enabled',
             'driver_dispatched_enabled',
             'driver_arrived_enabled',

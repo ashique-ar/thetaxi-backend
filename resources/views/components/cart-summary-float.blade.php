@@ -71,8 +71,14 @@
 
     .cart-summary-float .cart-float-header h6 {
         margin: 0;
+        font-size: 15px;
         font-weight: 700;
         color: white;
+    }
+
+    .cart-summary-float #clearCartFloat {
+        padding: 5px 9px;
+        font-size: 12px;
     }
 
     /* Cart float body - scrollable items container */
@@ -88,7 +94,17 @@
     .cart-summary-float .cart-float-item {
         padding: 12px 0;
         border-bottom: 1px solid rgba(255, 255, 255, 0.1);
+        font-size: 13px;
         line-height: 1.5;
+    }
+
+    .cart-summary-float .cart-float-item > div:first-child > div:first-child > strong {
+        font-size: 14px;
+        line-height: 1.35;
+    }
+
+    .cart-summary-float .cart-float-item .small {
+        font-size: 12px;
     }
 
     .cart-summary-float .cart-float-item:last-child {
@@ -100,6 +116,11 @@
         padding: 16px 20px;
         border-top: 1px solid rgba(255, 255, 255, 0.2);
         background: var(--primary-color, #111827);
+        font-size: 13px;
+    }
+
+    .cart-summary-float .cart-float-footer > small {
+        font-size: 12px;
     }
 
     /* Cart total row styling */
@@ -108,12 +129,12 @@
         justify-content: space-between;
         align-items: center;
         color: white;
-        font-size: 16px;
+        font-size: 14px;
     }
 
     .cart-summary-float .cart-total strong {
-        font-size: 20px;
-        font-weight: 800;
+        font-size: 17px;
+        font-weight: 700;
     }
 
     /* Currency symbol styling within cart float */
@@ -165,7 +186,10 @@
         {{-- Cart Header with icon and close button --}}
         <div class="cart-float-header">
             <h6><i class="bi bi-cart-fill"></i> Cart</h6>
-            <button type="button" class="btn-close btn-close-white" id="closeCartFloat" aria-label="Close cart"></button>
+            <div class="d-flex align-items-center gap-3">
+                <button type="button" class="btn btn-sm btn-outline-light" id="clearCartFloat">Clear cart</button>
+                <button type="button" class="btn-close btn-close-white" id="closeCartFloat" aria-label="Close cart"></button>
+            </div>
         </div>
         
         {{-- Cart Body - Dynamic cart items container --}}
@@ -495,6 +519,30 @@
             });
         }
 
+        function clearCart() {
+            if (!confirm('Clear all items from your cart?')) return;
+
+            $.ajax({
+                url: '{{ route('cart.clear') }}',
+                method: 'POST',
+                data: { _token: '{{ csrf_token() }}' },
+                success: function(response) {
+                    if (response.success) {
+                        cart = [];
+                        cartTotals = response.cart?.totals || {};
+                        updateCartDisplay();
+                        hideCartFloat();
+                        window.dispatchEvent(new CustomEvent('cartUpdated'));
+                    } else {
+                        showErrorNotification('Error: ' + response.message);
+                    }
+                },
+                error: function(xhr) {
+                    showErrorNotification(xhr.responseJSON?.message || 'Error clearing cart. Please try again.');
+                }
+            });
+        }
+
         /**
          * Show a success notification toast
          * @param {string} message - The message to display
@@ -539,6 +587,7 @@
         $('#closeCartFloat').on('click', function() {
             $('#cartSummaryFloat').fadeOut();
         });
+        $('#clearCartFloat').on('click', clearCart);
     });
 </script>
 @endpush

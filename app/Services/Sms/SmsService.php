@@ -525,7 +525,7 @@ class SmsService
     {
         $since = now()->subDays($days);
         $standardEvents = ['booking.confirmed', 'driver.dispatched', 'driver.arrived'];
-        $optionalEvents = ['website.inquiry_received', 'website.quotation_requested', 'trip.completed', 'payment.received'];
+        $optionalEvents = ['website.inquiry_received', 'website.quotation_requested', 'quotation.ready', 'trip.completed', 'payment.received'];
         $adminEvent = 'admin.booking_confirmed_summary';
         $driverOnlyEvents = ['driver.assignment_fallback'];
 

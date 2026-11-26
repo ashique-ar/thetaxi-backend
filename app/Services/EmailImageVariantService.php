@@ -82,11 +82,13 @@ class EmailImageVariantService
         $image = Image::decode($bytes);
         if ($variant === 'logo') {
             $image->scaleDown(width: 600, height: 240);
+            $image->fillTransparentAreas('#ffffff');
             $extension = 'png';
             $mime = 'image/png';
             $encoded = $image->encodeUsingFileExtension($extension);
         } else {
             $image->cover(300, 200);
+            $image->fillTransparentAreas('#ffffff');
             $extension = 'jpg';
             $mime = 'image/jpeg';
             $encoded = $image->encodeUsingFileExtension($extension, quality: 82);
