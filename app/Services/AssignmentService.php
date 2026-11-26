@@ -217,7 +217,8 @@ class AssignmentService
                 $driver = Driver::find($params['driver_id']);
                 if ($driver) {
                     SendCustomerDriverAssignedNotificationJob::dispatch($booking, $driver)
-                        ->onQueue(config('services.firebase.customer_queue', 'customer-notifications'));
+                        ->onQueue(config('services.firebase.customer_queue', 'customer-notifications'))
+                        ->afterCommit();
                 }
             }
 
