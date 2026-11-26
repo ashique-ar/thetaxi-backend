@@ -614,7 +614,7 @@ Route::middleware(['auth:api'])->group(function () {
         */
 
         Route::get('permissions/registry', [PermissionController::class, 'registry'])
-            ->middleware('permission:permissions.view|permissions.manage|roles.create|roles.edit|roles.manage');
+            ->middleware('permission:permissions.view|permissions.manage|roles.create|roles.edit|roles.manage|users.edit');
         Route::get('permissions', [PermissionController::class, 'index'])
             ->middleware('permission:permissions.view|permissions.create|permissions.edit|permissions.delete|permissions.manage');
         Route::get('permissions/{permission}', [PermissionController::class, 'show'])
@@ -2709,7 +2709,7 @@ Route::middleware(['auth:api'])->group(function () {
 
         Route::prefix('bookings/{booking}')->middleware('booking.operations.telemetry')->group(function () {
             Route::get('trace', [BookingObservabilityController::class, 'trace'])
-                ->middleware(['permission:bookings.view|bookings.view-assigned', DenyCustomerPortalLegacyBookingActions::class]);
+                ->middleware(['ensure.internal', 'permission:bookings.view|bookings.view-assigned']);
             Route::get('tracking-summary', [BookingObservabilityController::class, 'trackingSummary'])
                 ->middleware('permission:bookings.view');
             Route::get('route-replay', [BookingObservabilityController::class, 'routeReplay'])
@@ -3054,6 +3054,7 @@ Route::middleware(['auth:api'])->group(function () {
     Route::prefix('corporate')->middleware(['ensure.corporate'])->group(function () {
         Route::get('workspace', [CorporateWorkspaceController::class, 'dashboard'])
             ->middleware('permission:corporate.view');
+        Route::get('booking-configuration', [CorporateWorkspaceController::class, 'bookingConfiguration']);
         // Department Management
         Route::get('departments', [CorporateDepartmentController::class, 'index']);
         Route::post('departments', [CorporateDepartmentController::class, 'store'])->middleware('permission:manage_departments');
@@ -3239,7 +3240,7 @@ Route::middleware(['auth:api'])->group(function () {
         Route::post('{corporate}/initial-admin', [CorporateController::class, 'createInitialAdmin']);
 
         Route::middleware('ensure.internal')->group(function () {
-            Route::get('{corporate}/billing/terms', [CorporateMonthlyBillingController::class, 'terms'])->middleware('permission:corporates.view');
+            Route::get('{corporate}/billing/terms', [CorporateMonthlyBillingController::class, 'terms'])->middleware('permission:corporates.view|corporates.manage');
             Route::post('{corporate}/billing/terms', [CorporateMonthlyBillingController::class, 'storeTerms'])->middleware('permission:corporates.manage');
             Route::patch('{corporate}/billing/terms/{term}/end', [CorporateMonthlyBillingController::class, 'endTerms'])->whereUuid('term')->middleware('permission:corporates.manage');
             Route::post('{corporate}/billing/preview', [CorporateMonthlyBillingController::class, 'preview'])->middleware('permission:bookings.view');

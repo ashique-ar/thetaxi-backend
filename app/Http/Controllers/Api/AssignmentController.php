@@ -2223,6 +2223,21 @@ class AssignmentController extends Controller
                 );
 
                 // Store swap record for audit
+                $vehicleSnapshots = DB::table('vehicles')->whereIn('id', array_filter([$oldVehicleId, $newVehicleId]))
+                    ->get(['id', 'title', 'license_plate'])->keyBy('id');
+                $driverSnapshots = DB::table('drivers')->whereIn('id', array_filter([$oldDriverId, $newDriverId]))
+                    ->get(['id', 'name'])->keyBy('id');
+                $vehicleSnapshot = static fn ($id) => $id && isset($vehicleSnapshots[$id]) ? [
+                    'id' => (string) $id,
+                    'label' => trim(implode(' · ', array_filter([
+                        $vehicleSnapshots[$id]->title,
+                        $vehicleSnapshots[$id]->license_plate,
+                    ]))),
+                ] : ($id ? ['id' => (string) $id, 'label' => null] : null);
+                $driverSnapshot = static fn ($id) => $id && isset($driverSnapshots[$id]) ? [
+                    'id' => (string) $id,
+                    'label' => (string) $driverSnapshots[$id]->name,
+                ] : ($id ? ['id' => (string) $id, 'label' => null] : null);
                 $swapRecord = [
                     'booking_id' => $booking->id,
                     'booking_item_id' => $selectedBookingItem?->id,
@@ -2232,6 +2247,10 @@ class AssignmentController extends Controller
                     'new_vehicle_id' => $newVehicleId,
                     'old_driver_id' => $oldDriverId,
                     'new_driver_id' => $newDriverId,
+                    'old_vehicle_snapshot' => $vehicleSnapshot($oldVehicleId),
+                    'new_vehicle_snapshot' => $vehicleSnapshot($newVehicleId),
+                    'old_driver_snapshot' => $driverSnapshot($oldDriverId),
+                    'new_driver_snapshot' => $driverSnapshot($newDriverId),
                     'swap_time' => $swapTime,
                     'handoff_location' => $handoff,
                     'initiated_by' => Auth::id(),

@@ -6,6 +6,7 @@ use App\Http\Controllers\Controller;
 use App\Http\Requests\Corporate\StoreCorporateBookingRequest;
 use App\Http\Requests\Corporate\CorporateReportFiltersRequest;
 use App\Models\Booking\Booking;
+use App\Models\Booking\BookingHistoryEvent;
 use App\Models\Corporate\CorporateEmployee;
 use App\Models\Corporate\CorporateDepartment;
 use App\Models\Corporate\CorporateDivision;
@@ -34,10 +35,12 @@ class CorporateBookingController extends Controller
         $this->bookingService = $bookingService;
 
         $this->middleware('permission:view_all_bookings')->only(['index', 'export']);
-        $this->middleware('permission:create_bookings')->only(['store']);
-        $this->middleware('permission:create_bookings')->only(['storeForEmployee']);
+        $this->middleware('permission:create_bookings|bookings.create')->only(['store', 'storeForEmployee']);
         $this->middleware('permission:create_bookings_for_others')->only(['storeForEmployee']);
-        $this->middleware('permission:view_reports|corporate.view')->only(['stats']);
+        $this->middleware('permission:bookings.view|bookings.create|create_bookings')->only(['myBookings']);
+        $this->middleware('permission:bookings.view|bookings.create|create_bookings|view_all_bookings|approve_bookings')->only(['show', 'liveProgress', 'timeline']);
+        $this->middleware('permission:bookings.create|create_bookings|view_all_bookings')->only(['cancelRecurring']);
+        $this->middleware('permission:view_reports|corporate.view|bookings.view|bookings.create|create_bookings|view_all_bookings')->only(['stats']);
     }
 
     public function index(Request $request): JsonResponse
@@ -140,7 +143,7 @@ class CorporateBookingController extends Controller
     public function bookingEmployeeOptions(Request $request): JsonResponse
     {
         $actor = $request->attributes->get('corporate_employee');
-        $canCreate = CorporatePortalPermission::allows($request, 'create_bookings');
+        $canCreate = CorporatePortalPermission::allowsAny($request, ['create_bookings', 'bookings.create']);
         $canCreateForOthers = CorporatePortalPermission::allows($request, 'create_bookings_for_others');
 
         if (!$actor || !$canCreate || !$canCreateForOthers) {
@@ -269,7 +272,7 @@ class CorporateBookingController extends Controller
     public function bookingEmployees(Request $request): JsonResponse
     {
         $actor = $request->attributes->get('corporate_employee');
-        $canCreate = CorporatePortalPermission::allows($request, 'create_bookings');
+        $canCreate = CorporatePortalPermission::allowsAny($request, ['create_bookings', 'bookings.create']);
         $canCreateForOthers = CorporatePortalPermission::allows($request, 'create_bookings_for_others');
 
         if (!$actor || !$canCreate || !$canCreateForOthers) {
@@ -319,7 +322,8 @@ class CorporateBookingController extends Controller
 
         $details = $this->bookingService->getCorporateBookingDetails($booking, $this->canViewPayments($request), $this->bookingScope($request));
         $details['can_cancel_recurring'] = CorporatePortalPermission::allows($request, 'view_all_bookings')
-            || $this->isOwnedByActor($booking, $employee?->user_id);
+            || (CorporatePortalPermission::allowsAny($request, ['create_bookings', 'bookings.create'])
+                && $this->isOwnedByActor($booking, $employee?->user_id));
 
         return response()->json([
             'status' => 'success',
@@ -421,6 +425,41 @@ class CorporateBookingController extends Controller
             }
         }
 
+        $canViewPayments = $this->canViewPayments($request);
+        $corporateEventTypes = [
+            'booking_updated', 'booking_status_changed', 'booking_item_created', 'booking_item_deleted',
+            'booking_item_restored', 'bookingitem_updated', 'bookingitem_status_changed',
+            'resource_swap_completed', 'booking_vehicle_changed', 'booking_assignment_changed',
+            'booking_approval_rejected',
+            'booking_trip_phase_changed', 'rental_extension_requested', 'rental_extension_approved',
+            'rental_extension_rejected', 'replacement_requested', 'replacement_request_closed',
+        ];
+        if ($canViewPayments) {
+            $corporateEventTypes = [...$corporateEventTypes, 'trip_price_changed', 'booking_price_changed', 'additional_rental_charge_added'];
+        }
+        $historyEvents = BookingHistoryEvent::query()
+            ->where('booking_id', $booking->id)
+            ->whereIn('event_type', $corporateEventTypes)
+            ->when($itemId, fn ($query) => $query->where(fn ($scope) => $scope
+                ->whereNull('booking_item_id')->orWhere('booking_item_id', $itemId)))
+            ->orderBy('occurred_at')->orderBy('id')->get([
+                'id', 'event_type', 'occurred_at', 'booking_item_id', 'changes', 'provenance',
+            ])
+            ->filter(function (BookingHistoryEvent $event): bool {
+                $status = data_get($event->changes, 'status.to');
+                return $event->event_type !== 'booking_status_changed'
+                    || !in_array($status, ['approved', 'confirmed'], true);
+            })
+            ->map(fn (BookingHistoryEvent $event): array => [
+                'id' => 'booking-history:' . $event->id,
+                'type' => $event->event_type,
+                'label' => $this->corporateTimelineEventLabel($event->event_type),
+                'occurred_at' => Carbon::parse($event->occurred_at)->toIso8601String(),
+                'booking_item_id' => $event->booking_item_id ? (string) $event->booking_item_id : null,
+                'provenance' => $event->provenance,
+            ]);
+        $events = $events->concat($historyEvents);
+
         $booking->bookingItems()->when($itemId, fn ($query) => $query->whereKey($itemId))->get()->each(function ($item) use ($events) {
             $events->push(['type' => 'final_priced', 'label' => 'Final pricing completed', 'occurred_at' => $item->final_priced_at, 'booking_item_id' => $item->id]);
             $events->push(['type' => 'completed', 'label' => 'Trip completed', 'occurred_at' => $item->completed_at, 'booking_item_id' => $item->id]);
@@ -439,10 +478,36 @@ class CorporateBookingController extends Controller
         return response()->json(['status' => 'success', 'data' => [
             'booking_id' => $booking->id,
             'booking_item_id' => $itemId,
-            'events' => $events->filter(fn ($event) => filled($event['occurred_at']))->sortBy('occurred_at')->values()
-                ->map(fn ($event) => array_merge($event, ['occurred_at' => $event['occurred_at']->toISOString()])),
-            'financial_events_visible' => $this->canViewPayments($request),
+            'coverage_start' => config('booking_history.coverage_start'),
+            'events' => $events->filter(fn ($event) => filled($event['occurred_at']))
+                ->sortBy(fn ($event) => Carbon::parse($event['occurred_at'])->getTimestampMs())->values()
+                ->map(fn ($event) => array_merge($event, ['occurred_at' => Carbon::parse($event['occurred_at'])->toISOString()])),
+            'financial_events_visible' => $canViewPayments,
         ]]);
+    }
+
+    private function corporateTimelineEventLabel(string $eventType): string
+    {
+        return match ($eventType) {
+            'booking_updated' => 'Booking details changed',
+            'booking_status_changed' => 'Booking status changed',
+            'booking_item_created' => 'Trip added',
+            'booking_item_deleted' => 'Trip removed',
+            'booking_item_restored' => 'Trip restored',
+            'bookingitem_updated' => 'Trip details changed',
+            'bookingitem_status_changed' => 'Trip status changed',
+            'resource_swap_completed', 'booking_vehicle_changed', 'booking_assignment_changed' => 'Vehicle or driver assignment changed',
+            'booking_approval_rejected' => 'Booking approval declined',
+            'booking_trip_phase_changed' => 'Trip progress updated',
+            'rental_extension_requested' => 'Trip extension requested',
+            'rental_extension_approved' => 'Trip extension approved',
+            'rental_extension_rejected' => 'Trip extension declined',
+            'replacement_requested' => 'Replacement requested',
+            'replacement_request_closed' => 'Replacement request updated',
+            'trip_price_changed', 'booking_price_changed' => 'Trip pricing changed',
+            'additional_rental_charge_added' => 'Additional rental charge recorded',
+            default => 'Booking update recorded',
+        };
     }
 
     public function overrideContractualDistance(Request $request, string $id): JsonResponse
@@ -640,7 +705,7 @@ class CorporateBookingController extends Controller
         ]);
         $filters = $request->only(['date_from', 'date_to']);
         $filters['can_view_payments'] = $this->canViewPayments($request);
-        if (!CorporatePortalPermission::allows($request, 'view_reports')) {
+        if (!CorporatePortalPermission::allowsAny($request, ['view_reports', 'view_all_bookings'])) {
             $filters['employee_id'] = $request->attributes->get('corporate_employee')?->user_id;
         }
 

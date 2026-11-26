@@ -40,6 +40,7 @@ class PaymentEventService
             return $record;
         } catch (\Exception $e) {
             Log::error('Failed to record PaymentEvent', ['error' => $e->getMessage(), 'data' => $data]);
+            if (!empty($data['booking_id'])) throw $e;
             return null;
         }
     }

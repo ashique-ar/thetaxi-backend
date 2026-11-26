@@ -15,6 +15,20 @@ use Illuminate\Support\Str;
 
 class CorporateWorkspaceController extends Controller
 {
+    public function bookingConfiguration(Request $request): JsonResponse
+    {
+        abort_unless(CorporatePortalPermission::allowsAny($request, ['create_bookings', 'bookings.create']), 403);
+        $corporate = Corporate::findOrFail($request->corporate_id);
+
+        return response()->json([
+            'status' => 'success',
+            'data' => [
+                'id' => $corporate->id,
+                'booking_vehicle_display' => $corporate->booking_vehicle_display ?? 'vehicle_class',
+            ],
+        ]);
+    }
+
     public function approvalOptions(Request $request): JsonResponse
     {
         abort_unless(CorporatePortalPermission::allows($request, 'manage_employees'), 403);
@@ -78,6 +92,7 @@ class CorporateWorkspaceController extends Controller
     {
         $user = $request->user();
         $employee = $request->attributes->get('corporate_employee');
+        $corporate = $employee->corporate;
         $can = fn (string $permission) => CorporatePortalPermission::allows($request, $permission);
         $all = $can('view_all_bookings');
         $base = Booking::query()->where('corporate_account_id', $request->corporate_id)
@@ -101,8 +116,9 @@ class CorporateWorkspaceController extends Controller
         return response()->json(['status' => 'success', 'data' => [
             'role_mode' => $can('manage_employees') ? 'administrator' : ($can('view_payments') ? 'finance' : ($can('approve_bookings') ? 'approver' : ($all ? 'coordinator' : 'employee'))),
             'scope' => $all ? 'company' : 'employee',
+            'portal_setup_complete' => $corporate->departments()->exists() && $corporate->employees()->where('is_active', true)->exists(),
             'tasks' => $tasks,
-            'capabilities' => collect(['create_bookings', 'create_bookings_for_others', 'view_all_bookings', 'approve_bookings', 'view_payments', 'view_reports', 'manage_employees', 'corporate.audit-logs.view'])->mapWithKeys(fn ($permission) => [$permission => $can($permission)]),
+            'capabilities' => collect(['create_bookings', 'bookings.create', 'create_bookings_for_others', 'view_all_bookings', 'approve_bookings', 'view_payments', 'view_reports', 'manage_employees', 'corporate.audit-logs.view'])->mapWithKeys(fn ($permission) => [$permission => $can($permission)]),
         ]]);
     }
 }

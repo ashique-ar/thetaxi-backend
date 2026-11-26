@@ -67,6 +67,7 @@ class GooglePlacesController extends Controller
             'query' => 'required|string|min:1|max:255',
             'country_code' => 'sometimes|string|size:2',
             'limit' => 'sometimes|integer|min:1|max:20',
+            'refresh' => 'sometimes|boolean',
         ]);
 
         $query = trim($request->input('query'));
@@ -83,7 +84,7 @@ class GooglePlacesController extends Controller
 
         // Cache key
         $cacheKey = "places_autocomplete:v4:" . md5($query . $countryCode . $limit);
-        if ($cached = Cache::get($cacheKey)) {
+        if (!$request->boolean('refresh') && ($cached = Cache::get($cacheKey))) {
             return response()->json([
                 'status' => 'success',
                 'data' => $cached,
@@ -434,16 +435,28 @@ class GooglePlacesController extends Controller
             }
 
             if (!$response->successful()) {
-                Log::error('Place details (New) failed', [
+                $googleError = $response->json('error.message');
+                $expiredPlaceId = $response->status() === 404
+                    && str_contains(strtolower((string) $googleError), 'place id is no longer valid');
+
+                $logContext = [
                     'place_id' => $placeId,
                     'status' => $response->status(),
                     'body' => $response->body(),
-                ]);
+                ];
+                if ($expiredPlaceId) {
+                    Log::warning('Google Place ID expired', $logContext);
+                } else {
+                    Log::error('Place details (New) failed', $logContext);
+                }
 
                 if ($response->status() === 404) {
                     return response()->json([
                         'status' => 'error',
-                        'message' => 'Place not found'
+                        'message' => $expiredPlaceId
+                            ? 'This place suggestion expired. Search again and select the place.'
+                            : 'Place not found',
+                        'code' => $expiredPlaceId ? 'PLACE_ID_EXPIRED' : 'PLACE_NOT_FOUND',
                     ], 404);
                 }
 

@@ -237,7 +237,7 @@ class CorporateRoleController extends Controller
 
     private function canManageCorporateRoles(Request $request): bool
     {
-        return CorporatePortalPermission::allows($request, 'roles.manage');
+        return CorporatePortalPermission::allows($request, 'manage-roles');
     }
 
     private function forbiddenResponse(): JsonResponse

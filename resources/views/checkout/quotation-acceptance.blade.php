@@ -17,7 +17,7 @@
         $amountDue = max(0, $total - $amountPaid);
         $quotationOptions = $quotation['options'] ?? [];
         $tripOptionGroups = \App\Helpers\BookingLinkHelper::quotationTripOptionGroups($quotationOptions);
-        $optionSelectionMap = \App\Helpers\BookingLinkHelper::quotationOptionSelectionMap($quotationOptions);
+        $optionSelectionMap = \App\Helpers\BookingLinkHelper::quotationOptionSelectionMap($quotationOptions, $booking, $currency);
         $defaultOption = $quotationOptions[0] ?? [];
         $defaultGroupIds = $defaultOption['vehicle_group_ids'] ?? [];
     @endphp
@@ -140,6 +140,8 @@
                     <span>Selected vehicle combination</span>
                     <strong id="quotation-combined-total">{{ number_format((float) data_get($defaultOption, 'totals.total_estimated', 0), 2) }} {{ $currency }}</strong>
                     <small>The total updates as you choose one vehicle for each trip.</small>
+                    <div id="quotation-selected-deposit" class="mt-2" hidden>Refundable deposit due at vehicle collection: <strong></strong></div>
+                    <div id="quotation-total-with-deposit" class="mt-1" hidden>Total including refundable deposit: <strong></strong></div>
                 </div>
                 @error('quotation_option_id')<p class="text-danger" role="alert">{{ $message }}</p>@enderror
             @endif
@@ -158,6 +160,10 @@
                     const form = document.getElementById('accept-quotation-form');
                     const optionField = document.getElementById('quotation-option-id');
                     const totalLabel = document.getElementById('quotation-combined-total');
+                    const depositLabel = document.querySelector('#quotation-selected-deposit strong');
+                    const depositRow = document.getElementById('quotation-selected-deposit');
+                    const totalWithDeposit = document.querySelector('#quotation-total-with-deposit strong');
+                    const totalWithDepositRow = document.getElementById('quotation-total-with-deposit');
                     const submitButton = form?.querySelector('button[type="submit"]');
                     const selectionMap = @json($optionSelectionMap);
                     const tripRadios = [...document.querySelectorAll('[data-trip-index]')];
@@ -174,7 +180,13 @@
                             : null;
                         optionField.value = selectedOption?.id || '';
                         submitButton.disabled = !selectedOption;
-                        if (selectedOption) totalLabel.textContent = `${Number(selectedOption.total).toFixed(2)} ${currency}`;
+                        if (selectedOption) {
+                            totalLabel.textContent = `${Number(selectedOption.total).toFixed(2)} ${currency}`;
+                            depositRow.hidden = !(Number(selectedOption.deposit) > 0);
+                            totalWithDepositRow.hidden = !(Number(selectedOption.deposit) > 0);
+                            depositLabel.textContent = `${currency} ${Number(selectedOption.deposit).toFixed(2)}`;
+                            totalWithDeposit.textContent = `${currency} ${Number(selectedOption.total_with_deposit).toFixed(2)}`;
+                        }
                     };
                     tripRadios.forEach(input => input.addEventListener('change', updateSelection));
                     updateSelection();

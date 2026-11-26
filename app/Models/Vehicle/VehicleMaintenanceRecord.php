@@ -32,7 +32,7 @@ use Illuminate\Database\Eloquent\Relations\BelongsTo;
  */
 class VehicleMaintenanceRecord extends BaseModel
 {
-    
+    use \App\Traits\RecordsBookingHistoryAtomically;
 
     /**
      * The table associated with the model.

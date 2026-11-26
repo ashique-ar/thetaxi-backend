@@ -25,6 +25,7 @@ class BookingObservabilityController extends Controller
 
     public function trace(Request $request, Booking $booking): JsonResponse
     {
+        $this->authorize('view', $booking);
         $itemId = $this->validatedItemId($request, $booking, false);
         $validated = $request->validate([
             'filter' => ['nullable', 'in:all,operations,journey,recovery,finance,communications,documents,administration,exceptions'],

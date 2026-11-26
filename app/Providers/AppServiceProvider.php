@@ -240,6 +240,7 @@ class AppServiceProvider extends ServiceProvider
         PaymentEvent::observe(BookingHistoryObserver::class);
         PromoCodeUsage::observe(BookingHistoryObserver::class);
         DriverAssignmentStop::observe(BookingHistoryObserver::class);
+        \App\Models\WaitingTimeRecord::observe(BookingHistoryObserver::class);
         IntegrationWebhookEvent::observe(BookingHistoryObserver::class);
         DriverSession::observe(BookingHistoryObserver::class);
         DriverIouAdvance::observe(BookingHistoryObserver::class);
@@ -263,7 +264,9 @@ class AppServiceProvider extends ServiceProvider
         BookingAddon::observe(BookingHistoryObserver::class);
         BookingVariableCustomization::observe(BookingHistoryObserver::class);
         VehicleAssignment::observe(BookingHistoryObserver::class);
+        Vehicle::observe(BookingHistoryObserver::class);
         VehicleMaintenanceSchedule::observe(BookingHistoryObserver::class);
+        \App\Models\Vehicle\VehicleMaintenanceRecord::observe(BookingHistoryObserver::class);
         PendingPaymentLink::observe(BookingHistoryObserver::class);
         DriverAssignment::observe(BookingHistoryObserver::class);
         FinancialAuditEvent::observe(BookingHistoryObserver::class);

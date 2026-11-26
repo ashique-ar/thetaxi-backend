@@ -437,6 +437,11 @@ class BookingApprovalService
                 $decision,
                 $comments,
                 $userId,
+                null,
+                'booking-approval-decision:' . $approval->id . ':' . (int) $approval->current_step . ':' . $userId,
+                'booking_approval_decisions',
+                'BookingApprovalDecision',
+                ['approval_id' => (string) $approval->id, 'step' => (int) $approval->current_step],
             );
 
             if ($decision === 'rejected') {

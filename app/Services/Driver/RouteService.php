@@ -47,8 +47,22 @@ class RouteService
      */
     public function calculateDistance(DriverSession $session): float
     {
-        $routePoints = $this->getSessionRoute($session);
-        return $this->calculateDistanceFromPoints($routePoints);
+        $totalDistance = 0.0;
+        $previous = null;
+
+        foreach ($session->routePoints()->orderBy('recorded_at', 'asc')->lazy(1000) as $point) {
+            if ($previous !== null) {
+                $totalDistance += $this->haversineDistance(
+                    $this->getLatitude($previous),
+                    $this->getLongitude($previous),
+                    $this->getLatitude($point),
+                    $this->getLongitude($point)
+                );
+            }
+            $previous = $point;
+        }
+
+        return round($totalDistance, 2);
     }
 
     /**

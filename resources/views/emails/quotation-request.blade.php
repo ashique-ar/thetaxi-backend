@@ -18,6 +18,9 @@
         $cartItems = $workflowData['cart_items'] ?? [];
         $quotationOptions = $workflowData['quotation_options'] ?? [];
         $tripOptionGroups = \App\Helpers\BookingLinkHelper::quotationTripOptionGroups($quotationOptions);
+        $quotationSelectionMap = count($quotationOptions) > 1
+            ? \App\Helpers\BookingLinkHelper::quotationOptionSelectionMap($quotationOptions, $booking, $currencyCode)
+            : [];
         $quotationDisplaySnapshot = count($quotationOptions) > 1
             ? \App\Helpers\BookingLinkHelper::quotationDisplaySnapshot($booking)
             : [];
@@ -129,6 +132,25 @@
                         </table>
                     @endforeach
                 </div>
+            @endforeach
+            @foreach ($quotationOptions as $option)
+                @php $optionTotals = $quotationSelectionMap[implode('|', array_map('strval', $option['vehicle_group_ids'] ?? []))] ?? null; @endphp
+                @if ($optionTotals)
+                    <div style="display:flex;justify-content:space-between;gap:12px;padding:8px 0;border-bottom:1px solid #e5e7eb;">
+                        <strong>Vehicle combination {{ $option['option_number'] ?? $loop->iteration }} — trip prices</strong>
+                        <strong>{{ number_format($optionTotals['total'], 2) }} {{ $currencyCode }}</strong>
+                    </div>
+                    @if ($optionTotals['deposit'] > 0)
+                        <div style="display:flex;justify-content:space-between;gap:12px;padding:6px 0;">
+                            <span>Refundable deposit due at vehicle collection</span>
+                            <span>{{ number_format($optionTotals['deposit'], 2) }} {{ $currencyCode }}</span>
+                        </div>
+                        <div style="display:flex;justify-content:space-between;gap:12px;padding:6px 0;">
+                            <strong>Total including refundable deposit</strong>
+                            <strong>{{ number_format($optionTotals['total_with_deposit'], 2) }} {{ $currencyCode }}</strong>
+                        </div>
+                    @endif
+                @endif
             @endforeach
         </div>
     @endif

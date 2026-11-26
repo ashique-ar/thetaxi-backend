@@ -643,7 +643,7 @@ class BookingLifecycleService
                     });
                 }
             }
-            $vehicle->update($vehicleUpdates);
+            $this->updateBookingVehicle($booking, $context['booking_item'], $vehicle, $vehicleUpdates);
 
             if (!$isRepeatDispatch) {
                 if ($booking->bookingItems->count() === 1) {
@@ -1137,7 +1137,7 @@ class BookingLifecycleService
                         $vehicleForMaintenance = Vehicle::find($vehicleId);
                         if ($vehicleForMaintenance) {
                             if ($mileageIn > (int) ($vehicleForMaintenance->current_mileage ?? 0)) {
-                                $vehicleForMaintenance->update(['current_mileage' => $mileageIn]);
+                                $this->updateBookingVehicle($booking, $bookingItem, $vehicleForMaintenance, ['current_mileage' => $mileageIn]);
                                 if ($vehicleForMaintenance->wialon_unit_id) {
                                     $unitId = (int) $vehicleForMaintenance->wialon_unit_id;
                                     DB::afterCommit(function () use ($unitId, $vehicleId, $mileageIn): void {
@@ -1178,7 +1178,7 @@ class BookingLifecycleService
 
             if ($isQcEnabled) {
                 $vehicle = Vehicle::findOrFail($vehicleId);
-                $vehicle->update(['availability_status' => VehicleAvailabilityStatus::UNAVAILABLE_QC->value]);
+                $this->updateBookingVehicle($booking, $bookingItem, $vehicle, ['availability_status' => VehicleAvailabilityStatus::UNAVAILABLE_QC->value]);
 
                 $lifecycleStatus = $dispatch->isOverdue()
                     ? BookingLifecycleStatus::RETURN_LATE
@@ -1409,12 +1409,12 @@ class BookingLifecycleService
             $maintenanceStageEnabled = (bool) ($this->getLifecycleWorkflowSettings($booking, $context['booking_item'])['enable_maintenance_stage'] ?? false);
             if (!$qc->needsRepair() && !$qc->requires_maintenance && !$maintenanceStageEnabled) {
                 if ($vehicleId) {
-                    $this->makeVehicleAvailable($vehicleId);
+                    $this->makeVehicleAvailable($booking, $context['booking_item'], $vehicleId);
                 }
             } elseif (!$qc->needsRepair() && ($qc->requires_maintenance || $maintenanceStageEnabled)) {
                 if ($vehicleId) {
                     $vehicle = Vehicle::findOrFail($vehicleId);
-                    $vehicle->update([
+                    $this->updateBookingVehicle($booking, $context['booking_item'], $vehicle, [
                         'availability_status' => VehicleAvailabilityStatus::UNAVAILABLE_MAINTENANCE->value,
                     ]);
                 }
@@ -1422,7 +1422,7 @@ class BookingLifecycleService
                 // Update vehicle to repair status
                 if ($vehicleId) {
                     $vehicle = Vehicle::findOrFail($vehicleId);
-                    $vehicle->update(['availability_status' => VehicleAvailabilityStatus::UNAVAILABLE_REPAIR->value]);
+                    $this->updateBookingVehicle($booking, $context['booking_item'], $vehicle, ['availability_status' => VehicleAvailabilityStatus::UNAVAILABLE_REPAIR->value]);
                 }
             }
 
@@ -1472,11 +1472,11 @@ class BookingLifecycleService
             if ($vehicleId) {
                 $settings = $this->getLifecycleWorkflowSettings($booking, $context['booking_item']);
                 if ($settings['enable_maintenance_stage'] ?? false) {
-                    Vehicle::findOrFail($vehicleId)->update([
+                    $this->updateBookingVehicle($booking, $context['booking_item'], Vehicle::findOrFail($vehicleId), [
                         'availability_status' => VehicleAvailabilityStatus::UNAVAILABLE_MAINTENANCE->value,
                     ]);
                 } else {
-                    $this->makeVehicleAvailable($vehicleId);
+                    $this->makeVehicleAvailable($booking, $context['booking_item'], $vehicleId);
                 }
             }
 
@@ -3748,10 +3748,19 @@ class BookingLifecycleService
     /**
      * Make vehicle available after QC completion
      */
-    private function makeVehicleAvailable(string $vehicleId): void
+    private function makeVehicleAvailable(Booking $booking, ?BookingItem $bookingItem, string $vehicleId): void
     {
         $vehicle = Vehicle::findOrFail($vehicleId);
-        $vehicle->update(['availability_status' => VehicleAvailabilityStatus::AVAILABLE->value]);
+        $this->updateBookingVehicle($booking, $bookingItem, $vehicle, ['availability_status' => VehicleAvailabilityStatus::AVAILABLE->value]);
+    }
+
+    private function updateBookingVehicle(Booking $booking, ?BookingItem $bookingItem, Vehicle $vehicle, array $attributes): void
+    {
+        app(\App\Services\BookingHistoryService::class)->withBookingContext(
+            (string) $booking->id,
+            $bookingItem?->id ? (string) $bookingItem->id : null,
+            fn () => $vehicle->update($attributes),
+        );
     }
 
     private function postTripMaintenanceKey(Booking $booking, ?BookingItem $bookingItem): string
@@ -3779,7 +3788,7 @@ class BookingLifecycleService
         $activity = BookingActivity::withTrashed()->where('idempotency_key', $key)->first();
         if ($activity?->result_status === 'pending') {
             if ($activity->trashed()) $activity->restore();
-            $vehicle->update(['availability_status' => VehicleAvailabilityStatus::UNAVAILABLE_MAINTENANCE->value]);
+            $this->updateBookingVehicle($booking, $bookingItem, $vehicle, ['availability_status' => VehicleAvailabilityStatus::UNAVAILABLE_MAINTENANCE->value]);
             return;
         }
         if ($activity?->result_status === 'completed') return;
@@ -3805,7 +3814,7 @@ class BookingLifecycleService
                 VehicleAvailabilityStatus::ON_HIRE->value,
                 VehicleAvailabilityStatus::UNAVAILABLE_QC->value,
             ], true)) {
-                $vehicle->update(['availability_status' => VehicleAvailabilityStatus::AVAILABLE->value]);
+                $this->updateBookingVehicle($booking, $bookingItem, $vehicle, ['availability_status' => VehicleAvailabilityStatus::AVAILABLE->value]);
             }
             return;
         }
@@ -3838,7 +3847,7 @@ class BookingLifecycleService
         }
 
         if ($activity->result_status !== 'completed') {
-            $vehicle->update(['availability_status' => VehicleAvailabilityStatus::UNAVAILABLE_MAINTENANCE->value]);
+            $this->updateBookingVehicle($booking, $bookingItem, $vehicle, ['availability_status' => VehicleAvailabilityStatus::UNAVAILABLE_MAINTENANCE->value]);
         }
     }
 
@@ -3912,7 +3921,7 @@ class BookingLifecycleService
             ]);
 
             $priorStatus = (string) data_get($meta, 'prior_availability_status', 'available');
-            $vehicle->update([
+            $this->updateBookingVehicle($booking, $bookingItem, $vehicle, [
                 'availability_status' => in_array($priorStatus, [
                     VehicleAvailabilityStatus::UNAVAILABLE_OFFLINE->value,
                     VehicleAvailabilityStatus::UNAVAILABLE_REPAIR->value,
@@ -5447,14 +5456,14 @@ class BookingLifecycleService
 
             if ($qc->repair_required) {
                 // Vehicle needs repair - mark as unavailable
-                $vehicle->update([
+                $this->updateBookingVehicle($booking, null, $vehicle, [
                     'availability_status' => VehicleAvailabilityStatus::UNAVAILABLE_REPAIR,
                     'unavailable_reason' => 'Post-rental repair required',
                     'estimated_available_date' => $qc->estimated_repair_completion,
                 ]);
             } else {
                 // Vehicle passed QC - mark as available
-                $vehicle->update([
+                $this->updateBookingVehicle($booking, null, $vehicle, [
                     'availability_status' => VehicleAvailabilityStatus::AVAILABLE,
                     'unavailable_reason' => null,
                     'estimated_available_date' => null,

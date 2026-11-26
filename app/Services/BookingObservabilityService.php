@@ -24,6 +24,7 @@ use App\Services\PermissionEvaluator;
 use Carbon\Carbon;
 use Illuminate\Support\Collection;
 use Illuminate\Support\Facades\Cache;
+use Illuminate\Support\Facades\Crypt;
 use Illuminate\Support\Facades\DB;
 
 class BookingObservabilityService
@@ -240,6 +241,7 @@ class BookingObservabilityService
         $hasMore = $events->count() > $limit;
         $events = $events->take($limit)->values();
         $last = $events->last();
+        $events = $events->map(fn (array $event): array => $this->redactTraceIdentifiers($event));
 
         return [
             'booking_id' => (string) $booking->id,
@@ -840,14 +842,14 @@ class BookingObservabilityService
             $swapType = data_get($activity->meta, 'swap_type');
             if (in_array($swapType, ['vehicle', 'both'], true)) {
                 $changes['vehicle_id'] = [
-                    'from' => data_get($activity->meta, 'old_vehicle_id'),
-                    'to' => data_get($activity->meta, 'new_vehicle_id'),
+                    'from' => data_get($activity->meta, 'old_vehicle_snapshot.label') ?: data_get($activity->meta, 'old_vehicle_id'),
+                    'to' => data_get($activity->meta, 'new_vehicle_snapshot.label') ?: data_get($activity->meta, 'new_vehicle_id'),
                 ];
             }
             if (in_array($swapType, ['driver', 'both'], true)) {
                 $changes['driver_id'] = [
-                    'from' => data_get($activity->meta, 'old_driver_id'),
-                    'to' => data_get($activity->meta, 'new_driver_id'),
+                    'from' => data_get($activity->meta, 'old_driver_snapshot.label') ?: data_get($activity->meta, 'old_driver_id'),
+                    'to' => data_get($activity->meta, 'new_driver_snapshot.label') ?: data_get($activity->meta, 'new_driver_id'),
                 ];
             }
         }
@@ -989,6 +991,12 @@ class BookingObservabilityService
     {
         $changes = is_array($history->changes) ? $history->changes : [];
         unset($changes['transaction_id']);
+        $isInvoiceEvent = $history->entity_type === 'Invoice';
+        foreach (['customer_name', 'customer_email', 'customer_phone', 'customer_address', 'line_items', 'pdf_path'] as $field) {
+            if (isset($changes[$field])) {
+                $changes[$field] = ['from' => '[redacted]', 'to' => '[redacted]'];
+            }
+        }
         $rawChangeFields = array_keys($changes);
         $sourceAttributionEventId = data_get($history->context, 'source_attribution_event_id');
         $isSalesAttributionEvent = $history->entity_type === 'SalesBookingAttributionEvent';
@@ -1000,16 +1008,65 @@ class BookingObservabilityService
         if ($isSalesAttributionEvent && !$canViewAttribution) {
             $context = collect($context)->only(['version', 'effective_at', 'trigger'])->all();
         }
-        $priceFields = ['unit_price', 'total_price', 'base_amount', 'total_estimated', 'total_actual', 'driver_cost', 'distance_cost', 'addons_cost', 'discount_amount', 'tax_amount', 'currency', 'price', 'rate', 'original_value', 'custom_value', 'original_amount', 'final_amount', 'calculated_amount', 'applied_rate', 'delta_source_amount', 'delta_lkr_amount', 'previous_effective_source_amount', 'previous_effective_lkr_amount', 'resulting_effective_source_amount', 'resulting_effective_lkr_amount', 'contract_value_source', 'contract_value_lkr', 'expected_value_source', 'expected_value_lkr', 'source_currency', 'subtotal', 'total_amount', 'commission_amount_lkr', 'eligible_lkr_amount', 'amount_spent', 'redemption_value', 'value', 'applied_amount', 'price_override_amount', 'price_override_reason', 'estimated_repair_cost'];
-        $paymentFields = ['amount', 'amount_due', 'revision_amount_due', 'revision_total', 'currency', 'refunded_amount', 'payment_method', 'payment_stage', 'payment_purpose', 'source_amount', 'source_currency', 'lkr_amount', 'allocated_source_amount', 'adjusted_source_amount', 'additional_charges', 'late_return_fee', 'refund_method', 'allocated_amount', 'driver_company_settled_amount', 'driver_company_settlement_status', 'driver_company_settled_at', 'payments_total', 'refunds_total', 'adjustments_total', 'outstanding_total', 'settled_at', 'fx_rate_to_lkr', 'fx_rate_at', 'fx_source', 'reference', 'received_via', 'received_at', 'received_by', 'commission_amount', 'receipt_amount', 'eligible_amount', 'commission_rate', 'charge_amount', 'paid_before_amount', 'refund_amount', 'adjustment_amount', 'outstanding_amount', 'base_batta_amount', 'night_batta_rate', 'night_batta_amount', 'manual_adjustment_amount', 'approved_batta_amount', 'approved_expenses_total', 'iou_total', 'final_balance', 'cash_collected_unsettled'];
+        $priceFields = ['unit_price', 'total_price', 'base_amount', 'total_estimated', 'total_actual', 'driver_cost', 'distance_cost', 'addons_cost', 'discount_amount', 'tax_amount', 'currency', 'price', 'rate', 'original_value', 'custom_value', 'original_amount', 'final_amount', 'calculated_amount', 'applied_rate', 'delta_source_amount', 'delta_lkr_amount', 'previous_effective_source_amount', 'previous_effective_lkr_amount', 'resulting_effective_source_amount', 'resulting_effective_lkr_amount', 'contract_value_source', 'contract_value_lkr', 'expected_value_source', 'expected_value_lkr', 'source_currency', 'subtotal', 'total_amount', 'commission_amount_lkr', 'eligible_lkr_amount', 'amount_spent', 'redemption_value', 'value', 'applied_amount', 'price_override_amount', 'price_override_reason', 'base_price_override', 'base_price_override_reason', 'base_price_edited_by', 'base_price_edited_at', 'addon_overrides', 'original_totals', 'edited_totals', 'gamify_discount_applied', 'estimated_repair_cost'];
+        $paymentFields = ['amount', 'amount_due', 'amount_to_pay', 'payment_collected_amount', 'payment_collected_at', 'payment_collected_by_driver_id', 'payment_collection_method', 'payment_reference', 'payment_type', 'payment_arrangement_status', 'payment_responsibility', 'payment_schedule_frequency', 'payment_schedule_start_date', 'payment_schedule_installment_amount', 'payment_schedule_reminder_days', 'payment_notes', 'settlement_due_date', 'invoice_number', 'invoice_status', 'corporate_settlement_status', 'customer_settlement_status', 'driver_collection_status', 'refund_status', 'hourly_rate', 'exchange_rate', 'revision_amount_due', 'revision_total', 'currency', 'refunded_amount', 'payment_method', 'payment_stage', 'payment_purpose', 'source_amount', 'source_currency', 'lkr_amount', 'allocated_source_amount', 'adjusted_source_amount', 'additional_charges', 'late_return_fee', 'refund_method', 'allocated_amount', 'driver_company_settled_amount', 'driver_company_settlement_status', 'driver_company_settled_at', 'payments_total', 'refunds_total', 'adjustments_total', 'outstanding_total', 'settled_at', 'fx_rate_to_lkr', 'fx_rate_at', 'fx_source', 'reference', 'received_via', 'received_at', 'received_by', 'commission_amount', 'receipt_amount', 'eligible_amount', 'commission_rate', 'charge_amount', 'paid_before_amount', 'refund_amount', 'adjustment_amount', 'outstanding_amount', 'base_batta_amount', 'night_batta_rate', 'night_batta_amount', 'manual_adjustment_amount', 'approved_batta_amount', 'approved_expenses_total', 'iou_total', 'final_balance', 'cash_collected_unsettled'];
+        $priceFields = array_merge($priceFields, [
+            'slab_definition_id', 'vehicle_group_pricing_id', 'common_rate_definition_id',
+            'vehicle_group_common_rate_pricing_id', 'calculation_base', 'is_mandatory',
+            'loyalty_points_used', 'points_to_amount_rate', 'application_method', 'discount_code',
+        ]);
+        $paymentFields = array_merge($paymentFields, [
+            'sequence', 'label', 'period_start', 'period_end', 'schedule_kind', 'reconciliation_role',
+            'is_collection_target_eligible', 'collection_sales_profile_id', 'superseded_at',
+            'superseded_by_revision_id', 'booking_payment_schedule_rule_id', 'rule_occurrence_number',
+            'reminder_sent_at', 'overdue_notified_at', 'reconciliation_rule', 'contract_basis',
+            'frequency', 'frequency_months', 'anchor_date', 'reminder_offset_days', 'horizon_months',
+            'last_generated_occurrence', 'last_generated_through', 'impact_dimension', 'fx_quote_base',
+            'fx_calculation_mode', 'original_fx_source', 'lkr_delta', 'cumulative_lkr_delta',
+            'commission_decision_id', 'corrects_adjustment_id', 'lineage_root_adjustment_id',
+            'correction_sequence', 'prior_corrected_lkr_amount', 'prior_fx_rate_to_lkr',
+            'prior_fx_rate_at', 'prior_fx_source', 'contractual_source_amount', 'retained_source_amount',
+            'replacement_source_amount', 'reconciliation_amount', 'contractual_lkr_amount',
+            'retained_lkr_amount', 'replacement_lkr_amount',
+            'work_type', 'reminder_offset_days', 'last_reminded_at', 'allocated_by', 'event_version',
+            'finalized_at', 'initial_finality_status', 'payer_type', 'payer_id', 'corporate_remittance_id',
+        ]);
         $canViewPrice = auth()->user()?->can('bookings.price_override') ?? false;
         $canViewPayments = $this->canViewPayments();
+        $financeEntities = [
+            'Invoice', 'FinancialAuditEvent', 'FinancialAdjustment', 'FinancialPaymentAllocation',
+            'VehicleMaintenanceRecord',
+            'FinancialSettlementItem', 'DriverCashSettlementItem', 'DriverHireSettlement',
+            'DriverIouAdvance', 'AgentCommission', 'BookingPaymentReceipt', 'BookingPaymentReceiptComponent',
+            'BookingPaymentAdjustment', 'BookingPaymentScheduleAllocation', 'BookingPaymentScheduleRuleEvent',
+            'BookingPaymentSchedule', 'BookingPaymentScheduleRule', 'BookingPaymentScheduleRevision',
+            'BookingPaymentReceiptFinalityEvent', 'BookingCollectionWorkItem', 'BookingCollectionWorkItemFollowUp',
+            'BookingCollectionReminderDelivery', 'BookingDiscount',
+            'BookingDepositRefund', 'BookingCollectionCommission', 'BookingCommercialValueAdjustment',
+            'BookingCollectionSubmission',
+        ];
+        $priceEntities = [
+            'BookingPriceAdjustmentHistory', 'VehicleBookingPriceAdjustmentHistory',
+            'BookingPricing', 'BookingCommonRatePricing',
+        ];
+        if ((!$canViewPayments && in_array($history->entity_type, $financeEntities, true))
+            || (!$canViewPrice && in_array($history->entity_type, $priceEntities, true))) {
+            $entityType = null;
+            $entityId = null;
+        }
+        if (!$canViewPayments && in_array($history->entity_type, $financeEntities, true)) {
+            unset($context['financial_audit_event_id'], $context['source_activity_id'], $context['source_record_id']);
+        }
+        if (!$canViewPrice && in_array($history->entity_type, $priceEntities, true)) {
+            unset($context['source_activity_id'], $context['source_record_id']);
+        }
         if (!$canViewPrice) {
             foreach ($priceFields as $field) unset($changes[$field]);
         }
         if (!$canViewPayments) {
             foreach ($paymentFields as $field) unset($changes[$field]);
         }
+        if ($isInvoiceEvent && !$canViewPayments) $changes = [];
         $financialEventId = data_get($history->context, 'financial_audit_event_id');
         $correlationId = $history->source === 'financial_audit_events' && $financialEventId
             ? 'financial-audit:' . $financialEventId
@@ -1018,7 +1075,8 @@ class BookingObservabilityService
             ?? data_get($history->context, 'source_record_id');
         $status = $changes['status'] ?? $changes['dispatch_status'] ?? $changes['result_status'] ?? null;
         $source = 'booking';
-        if (in_array($history->event_type, ['trip_price_changed', 'additional_rental_charge_added'], true)
+        if ($isInvoiceEvent || in_array($history->entity_type, $financeEntities, true) || array_intersect($rawChangeFields, $paymentFields) !== []
+            || in_array($history->event_type, ['trip_price_changed', 'additional_rental_charge_added'], true)
             || $history->source === 'financial_audit_events' || in_array($history->entity_type, ['FinancialAuditEvent', 'DriverIouAdvance', 'BookingPaymentReceiptComponent', 'BookingPaymentScheduleRuleEvent'], true)
             || str_contains($history->event_type, 'payment') || str_contains($history->event_type, 'refund')
             || str_contains($history->event_type, 'adjustment') || str_contains($history->event_type, 'price')) {
@@ -1029,6 +1087,12 @@ class BookingObservabilityService
             $source = 'dispatch';
         } elseif ($isSalesAttributionEvent) {
             $source = 'sales';
+        } elseif ($history->entity_type === 'VehicleMaintenanceSchedule'
+            || str_starts_with($history->event_type, 'booking_maintenance_schedule_')) {
+            $source = 'maintenance';
+        } elseif ($history->entity_type === 'WaitingTimeRecord'
+            || str_starts_with($history->event_type, 'booking_waiting_time_')) {
+            $source = 'tracking';
         } elseif (str_contains($history->event_type, 'incident') || $history->entity_type === 'DriverTrackingIncident') {
             $source = 'tracking';
         } elseif (in_array($history->event_type, ['resource_swap_completed', 'booking_vehicle_changed', 'booking_responsible_user_changed'], true)
@@ -1037,18 +1101,18 @@ class BookingObservabilityService
         } elseif (in_array($history->event_type, [
             'rental_return_no_show', 'replacement_requested', 'replacement_request_closed',
             'rental_extension_requested', 'rental_extension_approved', 'rental_extension_rejected',
-            'post_trip_maintenance',
+            'post_trip_maintenance', 'booking_vehicle_state_changed',
         ], true) || str_contains($history->event_type, 'status')) {
             $source = 'lifecycle';
         } elseif (in_array($history->event_type, ['booking_updated', 'booking_inquiry_created'], true)) {
             $source = 'booking';
         }
         $reason = $history->reason;
-        if (!$canViewPrice && (array_intersect($rawChangeFields, $priceFields) !== [] || str_contains($history->event_type, 'price'))) {
+        if (!$canViewPrice && (in_array($history->entity_type, $priceEntities, true) || array_intersect($rawChangeFields, $priceFields) !== [] || str_contains($history->event_type, 'price'))) {
             $reason = null;
         }
-        if (!$canViewPayments && (array_intersect($rawChangeFields, $paymentFields) !== []
-            || $history->source === 'financial_audit_events' || in_array($history->entity_type, ['FinancialAuditEvent', 'DriverIouAdvance', 'BookingPaymentReceiptComponent', 'BookingPaymentScheduleRuleEvent'], true)
+        if (!$canViewPayments && (in_array($history->entity_type, $financeEntities, true) || array_intersect($rawChangeFields, $paymentFields) !== []
+            || $history->source === 'financial_audit_events' || in_array($history->entity_type, ['Invoice', 'FinancialAuditEvent', 'DriverIouAdvance', 'BookingPaymentReceiptComponent', 'BookingPaymentScheduleRuleEvent'], true)
             || str_contains($history->event_type, 'payment') || str_contains($history->event_type, 'refund') || str_contains($history->event_type, 'adjustment'))) {
             $reason = null;
         }
@@ -1667,7 +1731,7 @@ class BookingObservabilityService
     private function matchesTraceFilter(array $event, string $filter): bool
     {
         return match ($filter) {
-            'operations' => in_array($event['source'], ['booking', 'lifecycle', 'trip', 'assignment', 'dispatch', 'sales'], true),
+            'operations' => in_array($event['source'], ['booking', 'lifecycle', 'trip', 'assignment', 'dispatch', 'maintenance', 'sales'], true),
             'journey' => in_array($event['source'], ['trip', 'tracking'], true),
             'recovery' => $event['source'] === 'tracking' && str_starts_with($event['event_type'], 'recovery_'),
             'finance' => $event['source'] === 'finance',
@@ -1757,15 +1821,49 @@ class BookingObservabilityService
 
     private function encodeCursor(string $timestamp, string $id): string
     {
-        return rtrim(strtr(base64_encode($timestamp . '|' . $id), '+/', '-_'), '=');
+        return Crypt::encryptString($timestamp . '|' . $id);
     }
 
     private function decodeCursor(string $cursor): ?array
     {
-        $decoded = base64_decode(strtr($cursor, '-_', '+/'), true);
+        try {
+            $decoded = Crypt::decryptString($cursor);
+        } catch (\Throwable) {
+            $decoded = base64_decode(strtr($cursor, '-_', '+/'), true);
+        }
         if (!$decoded || !str_contains($decoded, '|'))
             return null;
         return explode('|', $decoded, 2);
+    }
+
+    private function redactTraceIdentifiers(array $event): array
+    {
+        $eventType = (string) ($event['event_type'] ?? '');
+        $isPriceEvent = str_contains($eventType, 'price');
+        $isSalesEvent = str_starts_with($eventType, 'booking_attribution_');
+        $isRestricted = ($isPriceEvent && !(auth()->user()?->can('bookings.price_override') ?? false))
+            || ($isSalesEvent && !(auth()->user()?->can('collection-commissions.view') ?? false))
+            || (($event['source'] ?? null) === 'finance' && !$isPriceEvent && !$this->canViewPayments());
+        if (!$isRestricted) return $event;
+
+        $opaqueId = static fn (mixed $value): ?string => $value === null
+            ? null
+            : 'restricted:' . hash_hmac('sha256', (string) $value, (string) config('app.key'));
+
+        $deduplicationKey = $event['deduplication_key'] ?? $event['id'] ?? null;
+        $event['id'] = $opaqueId($event['id'] ?? null);
+        $event['deduplication_key'] = $opaqueId($deduplicationKey);
+        $event['correlation_id'] = null;
+        $event['entity_type'] = null;
+        $event['entity_id'] = null;
+        $event['affected_entity'] = null;
+        $event['reason'] = null;
+        $event['changes'] = [];
+        $event['metadata'] = array_filter([
+            'provenance' => data_get($event, 'metadata.provenance') ?? $event['provenance'] ?? null,
+        ], fn ($value) => $value !== null);
+
+        return $event;
     }
 
     private function isBeforeCursor(array $event, array $cursor): bool

@@ -100,6 +100,35 @@ it('searches and hydrates paginated active CorporateEmployee options within book
         ->assertOk()->assertJsonCount(0, 'data.data');
 });
 
+it('serves only booking setup data to corporate booking creators', function () {
+    $corporate = Corporate::create(['name' => 'Booking Configuration Corporate', 'booking_vehicle_display' => 'vehicle_group']);
+    $user = User::factory()->create();
+    $employee = CorporateEmployee::create([
+        'user_id' => $user->id,
+        'corporate_id' => $corporate->id,
+        'is_active' => true,
+    ]);
+    $context = UserContext::create([
+        'user_id' => $user->id,
+        'context_type' => 'corporate',
+        'context_id' => $employee->id,
+        'is_active' => true,
+    ]);
+    $roles = app(\App\Services\CorporateRoleStarterService::class);
+    $roles->provision($corporate);
+    $context->roles()->attach($roles->resolve($corporate, 'Corporate_Employee')->id);
+    $headers = ['X-Active-Context-Type' => 'corporate', 'X-Active-Context-Id' => $context->id];
+
+    $this->actingAs($user, 'api')->getJson('/api/corporate/booking-configuration', $headers)
+        ->assertOk()
+        ->assertJsonPath('data.id', $corporate->id)
+        ->assertJsonPath('data.booking_vehicle_display', 'vehicle_group')
+        ->assertJsonMissingPath('data.contact_email');
+    $this->actingAs($user, 'api')->getJson('/api/corporate/workspace', $headers)
+        ->assertOk()
+        ->assertJsonPath('data.portal_setup_complete', false);
+});
+
 it('searches and hydrates only authorized travelers for corporate portal booking', function () {
     $corporate = Corporate::create(['name' => 'Portal Booking Options']);
     $makeEmployee = function (string $code, string $name) use ($corporate) {

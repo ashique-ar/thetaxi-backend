@@ -8,6 +8,7 @@ use App\Models\Booking\BookingItem;
 use App\Models\Document;
 use App\Models\Driver\Driver;
 use App\Traits\UUID;
+use App\Traits\RecordsBookingHistoryAtomically;
 
 /**
  * App\Models\Vehicle\Vehicle
@@ -60,6 +61,7 @@ use App\Traits\UUID;
  */
 class Vehicle extends BaseModel
 {
+    use RecordsBookingHistoryAtomically;
 
 
     /**

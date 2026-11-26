@@ -20,7 +20,7 @@ class BackfillBookingHistory extends Command
     {
         $requiredTables = [
             'booking_history_events', 'booking_statuses', 'booking_approvals', 'booking_activities',
-            'financial_audit_events', 'sales_booking_attribution_events', 'sales_booking_attributions',
+            'financial_audit_events',
         ];
         $missingTables = array_values(array_filter($requiredTables, fn (string $table): bool => !Schema::hasTable($table)));
         if ($missingTables !== []) {
@@ -34,11 +34,19 @@ class BackfillBookingHistory extends Command
         }
 
         try {
-            $before = $this->option('before')
-                ? CarbonImmutable::parse($this->option('before'))->utc()
-                : now()->toImmutable()->utc();
+            $beforeOption = $this->option('before');
+            if ($beforeOption && !preg_match('/(?:Z|\\+00(?::?00|00)?)$/i', trim($beforeOption))) {
+                throw new \InvalidArgumentException('--before must include an explicit UTC offset, such as Z or +00:00.');
+            }
+            $before = $beforeOption
+                ? CarbonImmutable::parse($beforeOption)
+                : now('UTC')->toImmutable();
+            if ($before->offset !== 0) {
+                throw new \InvalidArgumentException('--before must be a UTC timestamp.');
+            }
+            $before = $before->utc();
         } catch (\Throwable) {
-            $this->error('--before must be a valid timestamp.');
+            $this->error('--before must be a valid UTC timestamp with an explicit UTC offset.');
             return self::FAILURE;
         }
 
@@ -48,8 +56,14 @@ class BackfillBookingHistory extends Command
         $approvalCount = $this->backfillApprovalDecisionEvents($before, $commit);
         $priceCount = $this->backfillPriceEvents($before, $commit);
         $financialCount = $this->backfillFinancialEvents($before, $commit, $history);
-        $salesAttributionCount = $this->backfillSalesAttributionEvents($before, $commit, $history);
-        $this->info("Booking status: {$statusCount}; approval decision: {$approvalCount}; trip price: {$priceCount}; financial: {$financialCount}; sales attribution: {$salesAttributionCount} source event(s)." . ($commit ? ' Existing idempotency keys were preserved.' : ' Run again with --commit and --before=<same timestamp> to write them.'));
+        $salesAttributionAvailable = Schema::hasTable('sales_booking_attribution_events') && Schema::hasTable('sales_booking_attributions');
+        $salesAttributionCount = $salesAttributionAvailable
+            ? $this->backfillSalesAttributionEvents($before, $commit, $history)
+            : null;
+        $salesAttributionSummary = $salesAttributionAvailable
+            ? "{$salesAttributionCount} source event(s)"
+            : 'skipped (source tables unavailable)';
+        $this->info("Booking status: {$statusCount}; approval decision: {$approvalCount}; trip price: {$priceCount}; financial: {$financialCount}; sales attribution: {$salesAttributionSummary}." . ($commit ? ' Existing idempotency keys were preserved.' : ' Run again with --commit and --before=<same timestamp> to write them.'));
 
         return self::SUCCESS;
     }

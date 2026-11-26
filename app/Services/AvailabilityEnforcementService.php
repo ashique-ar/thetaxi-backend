@@ -509,12 +509,13 @@ class AvailabilityEnforcementService
 
         if (!empty($triggered)) {
             // Mark vehicle unavailable until maintenance is done
-            DB::table('vehicles')
-                ->where('id', $vehicle->id)
-                ->update([
+            app(BookingHistoryService::class)->withBookingContext(
+                $bookingId,
+                $bookingItemId,
+                fn () => $vehicle->update([
                     'availability_status' => 'unavailable_maintenance',
-                    'updated_at'          => now(),
-                ]);
+                ]),
+            );
 
             Log::info('Vehicle flagged for maintenance after trip', [
                 'vehicle_id' => $vehicle->id,

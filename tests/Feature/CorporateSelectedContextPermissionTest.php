@@ -92,6 +92,7 @@ it('uses only the selected corporate context when a user belongs to two companie
         ['id' => 2, 'name' => 'manage_employees', 'guard_name' => 'api'],
         ['id' => 3, 'name' => 'manage-roles', 'guard_name' => 'api'],
         ['id' => 4, 'name' => 'global_only_permission', 'guard_name' => 'api'],
+        ['id' => 5, 'name' => 'bookings.create', 'guard_name' => 'api'],
     ]);
     DB::table('user_context_roles')->insert([
         ['user_context_id' => $financeContext, 'role_id' => 1],
@@ -105,6 +106,7 @@ it('uses only the selected corporate context when a user belongs to two companie
     DB::table('user_context_permission_grants')->insert([
         ['user_context_id' => $financeContext, 'permission_id' => 2],
         ['user_context_id' => $financeContext, 'permission_id' => 3],
+        ['user_context_id' => $financeContext, 'permission_id' => 5],
     ]);
 
     $user = new User();
@@ -123,7 +125,8 @@ it('uses only the selected corporate context when a user belongs to two companie
 
     expect(CorporatePortalPermission::employeeAllows($employee, 'manage_employees'))->toBeTrue()
         ->and(CorporatePortalPermission::employeeAllows($employee, 'view_payments'))->toBeTrue()
-        ->and(CorporatePortalPermission::employeeAllows($employee, 'roles.manage'))->toBeTrue();
+        ->and(CorporatePortalPermission::employeeAllows($employee, 'manage-roles'))->toBeTrue()
+        ->and(CorporatePortalPermission::employeeAllowsAny($employee, ['create_bookings', 'bookings.create']))->toBeTrue();
 
     $context->id = $employeeContext;
     expect(CorporatePortalPermission::employeeAllows($employee, 'manage_employees'))->toBeFalse();

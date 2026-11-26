@@ -199,15 +199,33 @@ class BookingLinkHelper
         return array_map(fn ($choices) => array_values($choices), $trips);
     }
 
-    public static function quotationOptionSelectionMap(array $options): array
+    public static function quotationOptionSelectionMap(array $options, Booking $booking, string $currency): array
     {
         $selectionMap = [];
+        $items = $booking->bookingItems()->get()->sortBy(fn ($item) => (int) data_get($item->metadata, '_quotation_trip_index', 0))->values();
+        $groupIds = collect($options)->flatMap(fn ($option) => $option['vehicle_group_ids'] ?? [])->unique();
+        $groups = VehicleGroup::query()->whereIn('id', $groupIds)->get(['id', 'refundable_deposit'])->keyBy(fn ($group) => (string) $group->id);
+        $currencyService = app(\App\Services\CurrencyService::class);
         foreach ($options as $option) {
             $groupIds = array_map('strval', $option['vehicle_group_ids'] ?? []);
             if ($groupIds === [] || empty($option['id'])) continue;
+            $depositLkr = 0.0;
+            foreach ($groupIds as $index => $groupId) {
+                $item = $items->get($index);
+                $requiresDeposit = (bool) ($item?->metadata['requires_refundable_deposit']
+                    ?? $item?->workflow_config_snapshot['requires_refundable_deposit']
+                    ?? $item?->serviceType?->requires_refundable_deposit);
+                if ($requiresDeposit) {
+                    $depositLkr += max(0, (float) $groups->get($groupId)?->refundable_deposit) * max(1, (int) ($item?->quantity ?? 1));
+                }
+            }
+            $deposit = $currencyService->convertFromLKR($depositLkr, $currency);
+            $total = (float) data_get($option, 'totals.total_estimated', 0);
             $selectionMap[implode('|', $groupIds)] = [
                 'id' => (string) $option['id'],
-                'total' => (float) data_get($option, 'totals.total_estimated', 0),
+                'total' => $total,
+                'deposit' => $deposit,
+                'total_with_deposit' => $total + $deposit,
             ];
         }
 

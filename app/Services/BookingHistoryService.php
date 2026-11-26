@@ -26,30 +26,75 @@ class BookingHistoryService
     private const TRACKED_FIELDS = [
         'status', 'old_status', 'new_status', 'payment_status', 'payment_collection_status',
         'booking_channel_id', 'booking_source', 'booking_origin', 'booking_date', 'booked_at', 'created_from',
+        'invoice_number', 'log_code', 'vip_id', 'third_party_ref', 'booking_number', 'created_by_user_id',
+        'trip_status', 'invoice_status', 'trip_ended_at',
+        'is_recurring', 'recurrence_pattern', 'recurrence_days', 'recurrence_end_date',
+        'recurring_occurrence_date', 'recurring_sequence', 'recurring_series_id',
+        'actual_distance', 'actual_duration', 'estimated_distance', 'estimated_duration',
+        'amount_to_pay', 'payment_arrangement_status', 'payment_collected_amount', 'payment_collected_at',
+        'payment_collected_by_driver_id', 'payment_collection_method', 'payment_reference', 'payment_type',
+        'payment_responsibility', 'payment_schedule_frequency', 'payment_schedule_start_date',
+        'payment_schedule_installment_amount', 'payment_schedule_reminder_days', 'payment_notes', 'settlement_due_date',
+        'corporate_settlement_status', 'customer_settlement_status', 'driver_collection_status', 'refund_status',
         'workflow_step', 'workflow_data', 'confirmation_number', 'approval_priority', 'approval_requested_at', 'approval_requested_by',
         'customer_id', 'agent_id', 'responsible_user_id', 'passenger_count', 'luggage_count', 'driver_hire_settlement_id', 'issued_date', 'issued_by',
-        'special_requirements', 'emergency_contact_name', 'emergency_contact_phone',
+        'special_requirements', 'emergency_contact_name', 'emergency_contact_phone', 'emergency_contact_relationship',
+        'insurance_type', 'safety_features_required', 'notification_sms', 'notification_email',
+        'notification_whatsapp', 'notification_push', 'skip_all_emails',
         'review_notes', 'base_amount', 'total_estimated', 'total_actual', 'driver_cost',
         'distance_cost', 'addons_cost',
         'is_corporate_booking', 'corporate_account_id',
         'corporate_department_id', 'corporate_division_id', 'employee_id',
+        'corporate_approval_status', 'corporate_approval_by', 'corporate_approval_at', 'corporate_approval_note',
+        'corporate_approval_step', 'corporate_approval_history',
         'cost_center', 'project_code', 'service_type_id', 'vehicle_group_id',
-        'vehicle_class_id', 'vehicle_id', 'driver_id', 'from_date', 'from_time',
+        'vehicle_class_id', 'pricing_basis', 'vehicle_id', 'driver_id', 'from_date', 'from_time',
         'to_date', 'to_time', 'pickup_landmark', 'dropoff_landmark',
         'item_type', 'item_code', 'duration_days', 'duration_hours', 'duration_minutes', 'is_self_driven',
         'pickup_location', 'pickup_latitude', 'pickup_longitude', 'dropoff_location', 'dropoff_latitude', 'dropoff_longitude',
         'final_priced_at', 'price_overridden_at', 'price_overridden_by', 'price_override_amount', 'price_override_reason',
-        'unit_price', 'total_price', 'currency', 'discount_amount', 'tax_amount', 'confirmed',
-        'confirmed_at', 'completed_at', 'cancelled_at', 'approval_status', 'approval_justification', 'status',
+        'unit_price', 'total_price', 'currency', 'exchange_rate', 'discount_amount', 'tax_amount', 'confirmed',
+        'slab_definition_id', 'vehicle_group_pricing_id', 'common_rate_definition_id',
+        'vehicle_group_common_rate_pricing_id', 'calculation_base', 'is_mandatory',
+        'sequence', 'label', 'period_start', 'period_end', 'schedule_kind', 'reconciliation_role',
+        'is_collection_target_eligible', 'collection_sales_profile_id', 'superseded_at',
+        'superseded_by_revision_id', 'booking_payment_schedule_rule_id', 'rule_occurrence_number',
+        'reminder_sent_at', 'overdue_notified_at', 'reconciliation_rule', 'work_type',
+        'reminder_offset_days', 'last_reminded_at', 'allocated_by', 'event_version', 'finalized_at',
+        'initial_finality_status', 'payer_type', 'payer_id', 'corporate_remittance_id',
+        'contract_basis', 'frequency', 'frequency_months', 'anchor_date', 'reminder_offset_days',
+        'horizon_months', 'last_generated_occurrence', 'last_generated_through',
+        'description', 'loyalty_points_used', 'points_to_amount_rate', 'application_method',
+        'discount_code', 'applied_by', 'valid_from', 'valid_until', 'conditions_met',
+        'calculation_details', 'internal_notes', 'impact_dimension', 'fx_quote_base', 'fx_calculation_mode',
+        'before_snapshot', 'after_snapshot',
+        'original_fx_source', 'lkr_delta', 'cumulative_lkr_delta', 'commission_decision_id',
+        'corrects_adjustment_id', 'lineage_root_adjustment_id', 'correction_sequence',
+        'prior_corrected_lkr_amount', 'prior_fx_rate_to_lkr', 'prior_fx_rate_at', 'prior_fx_source',
+        'contractual_source_amount', 'retained_source_amount', 'replacement_source_amount',
+        'reconciliation_amount', 'contractual_lkr_amount', 'retained_lkr_amount', 'replacement_lkr_amount',
+        'confirmed_at', 'completed_at', 'returned_at', 'cancelled_at', 'approval_status', 'approval_justification', 'status', 'approved_by',
         'approval_by', 'approval_at', 'approval_note',
-        'requires_approval', 'approved_at', 'actual_start', 'actual_end',
-        'manager_id', 'requested_at', 'processed_by', 'conditions', 'notes',
+        'requires_approval', 'approved_at', 'actual_start', 'actual_end', 'hourly_rate',
+        'manager_id', 'requested_at', 'processed_at', 'processed_by', 'conditions', 'notes',
         'trip_phase', 'trip_completed_at',
-        'assigned_from', 'assigned_to', 'assignment_type', 'assignment_notes',
+        'assigned_from', 'assigned_to', 'assignment_type', 'assignment_notes', 'service_type', 'overlap_type',
+        'manually_confirmed', 'overtime_applicable', 'mileage_start', 'mileage_end', 'overlap_details',
+        'override_reasons', 'maintenance_window', 'approval_notes', 'booking_device_snapshot', 'customer_name',
+        'issues_reported', 'repair_notes', 'qc_notes', 'photos',
         'confirmation_method', 'confirmation_notes', 'confirmed_by', 'confirmed_by_name_snapshot',
         'assigned_by_name_snapshot', 'driver_name_snapshot', 'decline_reason', 'parent_assignment_id',
         'pickup_arrived_at', 'trip_started_at', 'accept_latitude', 'accept_longitude', 'final_latitude', 'final_longitude',
         'pickup_arrival_latitude', 'pickup_arrival_longitude', 'trip_start_latitude', 'trip_start_longitude',
+        'current_latitude', 'current_longitude', 'location_updated_at',
+        'toll_charges_included', 'fuel_charges_included', 'parking_charges_included',
+        'customer_rating', 'customer_feedback', 'customer_feedback_submitted_at', 'customer_feedback_response',
+        'customer_feedback_responded_at', 'customer_feedback_responded_by', 'driver_rating', 'driver_feedback',
+        'base_price_override', 'base_price_override_reason', 'base_price_edited_by', 'base_price_edited_at',
+        'addon_overrides', 'original_totals', 'edited_totals', 'gamify_points_earned', 'gamify_discount_applied',
+        'gamify_details', 'has_overrides', 'concurrent_assignments', 'pricing_snapshot', 'duration_metrics', 'distance_metrics',
+        'lifecycle_data', 'workflow_config_snapshot',
+        'availability_status', 'current_mileage', 'unavailable_reason', 'estimated_available_date', 'last_qc_date',
         'hire_waiting_time_seconds', 'pickup_waiting_time_seconds', 'total_waiting_time_seconds',
         'amount', 'refunded_amount', 'payment_method', 'payment_stage',
         'payment_purpose', 'finality_status', 'allocation_status', 'refund_method',
@@ -80,7 +125,7 @@ class BookingHistoryService
         'stop_type', 'route_order', 'completed_at', 'completed_action', 'skip_reason',
         'type_sequence', 'arrived_at', 'address', 'location', 'latitude', 'longitude',
         'arrived_latitude', 'arrived_longitude', 'completed_latitude', 'completed_longitude',
-        'assignment_id', 'start_time', 'end_time', 'total_distance_km', 'linked_booking_id',
+        'assignment_id', 'start_time', 'end_time', 'duration_seconds', 'total_distance_km', 'linked_booking_id',
         'call_status', 'follow_up_due_at', 'follow_up_completed_at',
         'exception_type', 'details', 'resolved_by', 'resolved_at', 'detected_at',
         'booking_collection_work_item_id', 'recipient_user_id', 'reminder_type', 'channel',
@@ -112,8 +157,9 @@ class BookingHistoryService
         'vehicle_condition_out', 'vehicle_condition_in', 'damages_reported',
         'inspection_started_at', 'inspector_id', 'passed_inspection', 'repair_required', 'requires_maintenance',
         'fuel_level', 'mileage', 'next_maintenance_due', 'estimated_repair_cost',
+        'performed_date', 'cost',
         'additional_charges', 'late_return_fee', 'documents_generated', 'agreements_signed',
-        'quantity', 'addon_id', 'price', 'variable_name',
+        'quantity', 'addon_id', 'price', 'variable_name', 'addons', 'customizations', 'discounts',
         'variable_type', 'original_value', 'custom_value', 'customization_reason',
         'context', 'qty', 'rate', 'is_insurance', 'is_milage', 'label',
         'decision', 'actor_type', 'effective_at', 'current_step', 'total_steps',
@@ -266,8 +312,14 @@ class BookingHistoryService
         $actor = $actorId ? User::query()->find($actorId) : null;
         $changes = match ($activity->event_key) {
             'resource_swap_completed' => array_filter([
-                'vehicle_id' => ['from' => data_get($meta, 'old_vehicle_id'), 'to' => data_get($meta, 'new_vehicle_id')],
-                'driver_id' => ['from' => data_get($meta, 'old_driver_id'), 'to' => data_get($meta, 'new_driver_id')],
+                'vehicle_id' => [
+                    'from' => data_get($meta, 'old_vehicle_snapshot.label') ?: data_get($meta, 'old_vehicle_id'),
+                    'to' => data_get($meta, 'new_vehicle_snapshot.label') ?: data_get($meta, 'new_vehicle_id'),
+                ],
+                'driver_id' => [
+                    'from' => data_get($meta, 'old_driver_snapshot.label') ?: data_get($meta, 'old_driver_id'),
+                    'to' => data_get($meta, 'new_driver_snapshot.label') ?: data_get($meta, 'new_driver_id'),
+                ],
             ], fn (array $change): bool => $change['from'] !== null || $change['to'] !== null),
             'booking_vehicle_changed' => ['vehicle_id' => [
                 'from' => data_get($meta, 'previous_vehicle_id'), 'to' => data_get($meta, 'new_vehicle_id'),
@@ -332,6 +384,10 @@ class BookingHistoryService
                 'activity_status' => $activity->result_status,
                 'swap_type' => data_get($meta, 'swap_type'),
                 'vehicle_id' => data_get($meta, 'vehicle_id'),
+                'old_vehicle_snapshot' => data_get($meta, 'old_vehicle_snapshot'),
+                'new_vehicle_snapshot' => data_get($meta, 'new_vehicle_snapshot'),
+                'old_driver_snapshot' => data_get($meta, 'old_driver_snapshot'),
+                'new_driver_snapshot' => data_get($meta, 'new_driver_snapshot'),
                 'origin_entity_type' => $entityType !== 'BookingActivity' ? $entityType : null,
                 'origin_entity_id' => $entityType !== 'BookingActivity' ? $entityId : null,
                 'category' => data_get($meta, 'category'),
@@ -534,6 +590,8 @@ class BookingHistoryService
     public function recordModelChange(Model $model, string $operation, array $before = [], ?string $reasonOverride = null): void
     {
         $linkedAssignment = null;
+        $linkedQc = null;
+        $linkedMaintenanceSchedule = null;
         $bookingId = $model instanceof \App\Models\Booking\Booking
             ? (string) $model->getKey()
             : (string) ($model->getAttribute('booking_id')
@@ -547,10 +605,24 @@ class BookingHistoryService
                 ?? $model->rule?->booking_id
                 ?? $model->rollingRule?->booking_id
                 ?? '');
-        if ($bookingId === '' && $model instanceof \App\Models\Driver\DriverSession) {
+        if ($bookingId === '' && ($model->getAttribute('assignment_id') || isset($before['assignment_id']))) {
             $assignmentId = $model->assignment_id ?? ($before['assignment_id'] ?? null);
             $linkedAssignment = $assignmentId ? \App\Models\DriverAssignment::withTrashed()->find($assignmentId) : null;
             $bookingId = (string) ($linkedAssignment?->booking_id ?? '');
+        }
+        if ($model->getAttribute('booking_qc_id') || isset($before['booking_qc_id'])) {
+            $qcId = $model->booking_qc_id ?? ($before['booking_qc_id'] ?? null);
+            $linkedQc = $qcId ? \App\Models\Booking\BookingQC::withTrashed()->find($qcId) : null;
+            if ($bookingId === '') {
+                $bookingId = (string) ($linkedQc?->booking_id ?? '');
+            }
+        }
+        if ($model instanceof \App\Models\Vehicle\VehicleMaintenanceRecord) {
+            $scheduleId = $model->schedule_id ?? ($before['schedule_id'] ?? null);
+            $linkedMaintenanceSchedule = $scheduleId
+                ? \App\Models\Vehicle\VehicleMaintenanceSchedule::withTrashed()->find($scheduleId)
+                : null;
+            if ($bookingId === '') $bookingId = (string) ($linkedMaintenanceSchedule?->booking_id ?? '');
         }
         $bookingId = (string) request()->attributes->get('booking_history_booking_id', $bookingId);
         if ($bookingId === '') return;
@@ -560,31 +632,64 @@ class BookingHistoryService
                 ? (string) $model->getKey()
                 : ($model->getAttribute('booking_item_id')
                     ? (string) $model->getAttribute('booking_item_id')
-                    : ($linkedAssignment?->booking_item_id ? (string) $linkedAssignment->booking_item_id : null)));
+                    : ($linkedAssignment?->booking_item_id
+                        ? (string) $linkedAssignment->booking_item_id
+                        : ($linkedQc?->booking_item_id
+                            ? (string) $linkedQc->booking_item_id
+                            : ($linkedMaintenanceSchedule?->booking_item_id
+                                ? (string) $linkedMaintenanceSchedule->booking_item_id
+                                : null)))));
+
+        $trackedFields = self::TRACKED_FIELDS;
+        if ($model instanceof \App\Models\Inquiry) {
+            $trackedFields = array_merge($trackedFields, [
+                'name', 'email', 'phone', 'message', 'response', 'form_data', 'search_context', 'ip_address', 'user_agent',
+            ]);
+        } elseif ($model instanceof \App\Models\PhoneCall) {
+            $trackedFields = array_merge($trackedFields, ['phone', 'client_name', 'summary']);
+        }
 
         $changes = [];
-        foreach (self::TRACKED_FIELDS as $field) {
+        foreach ($trackedFields as $field) {
             if (array_key_exists($field, $before) || array_key_exists($field, $model->getAttributes())) {
                 $old = $before[$field] ?? null;
                 $new = $model->getAttribute($field);
                 if (in_array($operation, ['created', 'deleted', 'restored'], true) || $old !== $new) {
+                    if ($model instanceof \App\Models\Inquiry && in_array($field, ['customer_id', 'booking_id'], true)) {
+                        $changes[$field] = [
+                            'from' => $operation === 'created' || $operation === 'restored' ? null : $this->safeValue($old),
+                            'to' => $operation === 'deleted' ? null : $this->safeValue($new),
+                        ];
+                        continue;
+                    }
                     $redact = in_array($field, [
-                        'special_requirements', 'emergency_contact_name', 'emergency_contact_phone',
-                        'details', 'context', 'workflow_data', 'conditions', 'notes', 'confirmation_notes',
-                        'pickup_location', 'pickup_latitude', 'pickup_longitude',
+                        'special_requirements', 'emergency_contact_name', 'emergency_contact_phone', 'customer_name',
+                        'emergency_contact_relationship', 'details', 'context', 'workflow_data', 'conditions', 'notes',
+                        'comments', 'justification', 'approval_justification', 'review_notes',
+                        'description', 'internal_notes', 'payment_notes', 'approval_notes', 'repair_notes', 'qc_notes', 'photos',
+                        'corporate_approval_note', 'customer_feedback', 'customer_feedback_response', 'driver_feedback',
+                        'confirmation_notes', 'pickup_location', 'pickup_latitude', 'pickup_longitude', 'current_latitude', 'current_longitude', 'location_updated_at',
                         'dropoff_location', 'dropoff_latitude', 'dropoff_longitude', 'address', 'location',
-                        'latitude', 'longitude', 'accept_latitude', 'accept_longitude', 'final_latitude',
+                        'latitude', 'longitude', 'start_latitude', 'start_longitude', 'end_latitude', 'end_longitude',
+                        'accept_latitude', 'accept_longitude', 'final_latitude',
                         'final_longitude', 'pickup_arrival_latitude', 'pickup_arrival_longitude',
                         'trip_start_latitude', 'trip_start_longitude', 'driver_name_snapshot',
                         'assigned_by_name_snapshot', 'confirmed_by_name_snapshot', 'notes', 'request_payload_checksum',
                     ], true);
+                    if (($model instanceof \App\Models\Inquiry && in_array($field, [
+                        'message', 'response', 'name', 'email', 'phone', 'form_data', 'search_context', 'ip_address', 'user_agent',
+                    ], true)) || ($model instanceof \App\Models\PhoneCall && in_array($field, [
+                        'phone', 'client_name', 'summary',
+                    ], true))) {
+                        $redact = true;
+                    }
                     $changes[$field] = [
-                        'from' => $operation === 'created' || $operation === 'restored'
-                            ? null
-                            : ($redact && $old !== null ? '[redacted]' : $this->safeValue($old)),
-                        'to' => $operation === 'deleted'
-                            ? null
-                            : ($redact && $new !== null ? '[redacted]' : $this->safeValue($new)),
+                        'from' => $redact
+                            ? ($operation === 'created' || $operation === 'restored' || $old === null ? null : '[redacted]')
+                            : ($operation === 'created' || $operation === 'restored' ? null : $this->safeValue($old)),
+                        'to' => $redact
+                            ? ($operation === 'deleted' || $new === null ? null : '[redacted]')
+                            : ($operation === 'deleted' ? null : $this->safeValue($new)),
                     ];
                 }
             }
@@ -596,7 +701,7 @@ class BookingHistoryService
         };
         $untrackedFields = array_values(array_diff(
             $changedFields,
-            self::TRACKED_FIELDS,
+            $trackedFields,
             ['id', 'booking_id', 'booking_item_id', 'created_at', 'updated_at', 'deleted_at', 'created_user_id', 'updated_user_id'],
         ));
         if ($untrackedFields !== []) {
@@ -643,7 +748,9 @@ class BookingHistoryService
             'id' => $id,
             'booking_id' => $bookingId,
             'booking_item_id' => $bookingItemId,
-            'entity_type' => class_basename($model),
+            'entity_type' => $model instanceof \App\Models\Vehicle\VehiclePricing\BookingPriceAdjustmentHistory
+                ? 'VehicleBookingPriceAdjustmentHistory'
+                : class_basename($model),
             'entity_id' => (string) $model->getKey(),
             'event_type' => $this->eventType($model, $operation, $changes),
             'actor_type' => $actor ? 'user' : ($model instanceof \App\Models\IntegrationWebhookEvent ? 'integration' : 'system'),
@@ -655,6 +762,7 @@ class BookingHistoryService
             'reason' => $reason !== '' ? Str::limit($reason, 1000) : null,
             'changes' => json_encode($changes, JSON_THROW_ON_ERROR),
             'context' => json_encode(array_filter([
+                'operation' => $operation,
                 'booking_number' => $model instanceof \App\Models\Booking\Booking
                     ? $model->booking_number
                     : null,
@@ -678,12 +786,20 @@ class BookingHistoryService
         if ($model instanceof \App\Models\Booking\Booking && isset($changes['status'])) return 'booking_status_changed';
         if ($model instanceof \App\Models\Booking\Booking && isset($changes['responsible_user_id'])) return 'booking_responsible_user_changed';
         if ($model instanceof \App\Models\Booking\Booking && $operation === 'created') return 'booking_created';
+        if ($model instanceof \App\Models\Booking\BookingItem && in_array($operation, ['created', 'deleted', 'restored'], true)) {
+            return 'booking_item_' . $operation;
+        }
+        if ($model instanceof \App\Models\Vehicle\Vehicle && (isset($changes['availability_status']) || isset($changes['current_mileage']))) {
+            return 'booking_vehicle_state_changed';
+        }
         if ($model instanceof BookingStatus) return 'booking_status_record_' . $operation;
         if (isset($changes['trip_phase'])) return 'booking_trip_phase_changed';
         if ($model instanceof \App\Models\Driver\DriverTrackingIncident) return 'booking_tracking_incident_' . (isset($changes['state']) ? 'state_changed' : $operation);
         if ($model instanceof \App\Models\Driver\DriverLog) return 'booking_driver_log_' . (isset($changes['status']) ? 'status_changed' : $operation);
+        if ($model instanceof \App\Models\WaitingTimeRecord) return 'booking_waiting_time_' . (isset($changes['duration_seconds']) ? 'period_closed' : $operation);
         if ($model instanceof \App\Models\Driver\DriverIouAdvance) return 'booking_driver_iou_' . $operation;
         if ($model instanceof \App\Models\Vehicle\VehicleMaintenanceSchedule) return 'booking_maintenance_schedule_' . (isset($changes['status']) ? 'status_changed' : $operation);
+        if ($model instanceof \App\Models\Vehicle\VehicleMaintenanceRecord) return 'booking_maintenance_record_' . (isset($changes['status']) ? 'status_changed' : $operation);
         if ($model instanceof \App\Models\Corporate\CorporateTransportGenerationLog) return 'booking_transport_generation_' . (isset($changes['status']) ? 'status_changed' : $operation);
         if ($model instanceof \App\Models\Sales\SalesOpportunity) return 'booking_sales_opportunity_' . $operation;
         if ($model instanceof \App\Models\Sales\SalesAttributionException) {

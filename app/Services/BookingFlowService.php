@@ -4067,7 +4067,9 @@ class BookingFlowService
     {
         $this->assertCanOverrideTripPrices($params);
 
-        return DB::transaction(function () use ($bookingId, $params) {
+        return app(BookingHistoryService::class)->withReasonContext(
+            isset($params['change_reason']) && is_string($params['change_reason']) ? $params['change_reason'] : null,
+            fn () => DB::transaction(function () use ($bookingId, $params) {
 
             $booking = Booking::with(['bookingItems', 'bookingAddons', 'variableCustomizations'])->lockForUpdate()->findOrFail($bookingId);
             $this->lockBookingCapacityGroups($params, $booking);
@@ -4635,8 +4637,9 @@ class BookingFlowService
                 }
             }
 
-            return $booking->load(['customer', 'vehicleGroup', 'bookingItems.vehicle', 'bookingItems.driver', 'bookingItems.serviceType', 'bookingItems.vehicleGroup', 'approvals']);
-        });
+                return $booking->load(['customer', 'vehicleGroup', 'bookingItems.vehicle', 'bookingItems.driver', 'bookingItems.serviceType', 'bookingItems.vehicleGroup', 'approvals']);
+            })
+        );
     }
 
     private function generateConflictRecommendations(array $conflicts, string $vehicleId, array $params): array
@@ -8601,10 +8604,11 @@ class BookingFlowService
      */
     public function processApproval(string $bookingId, string $action, ?string $note, string $userId): array
     {
-        return DB::transaction(function () use ($bookingId, $action, $note, $userId): array {
+        return app(BookingHistoryService::class)->withReasonContext($note, fn () => DB::transaction(function () use ($bookingId, $action, $note, $userId): array {
             $booking = Booking::query()->whereKey($bookingId)->lockForUpdate()->firstOrFail();
             $approval = BookingApproval::query()->where('booking_id', $bookingId)
                 ->where('status', BookingApproval::STATUS_PENDING)->latest()->lockForUpdate()->first();
+            $approval?->setAttribute('updated_user_id', $userId);
             if ($approval?->approval_type === 'resource_swap') {
                 abort_if($approval->manager_id && (string) $approval->manager_id !== $userId, 403, 'This request is assigned to another approver.');
                 $conditions = is_array($approval->conditions) ? $approval->conditions : [];
@@ -8663,6 +8667,7 @@ class BookingFlowService
             $booking->approval_by = $userId;
             $booking->approval_at = now();
             $booking->approval_note = $note;
+            $booking->updated_user_id = $userId;
             $booking->status = $action === 'approve' ? 'confirmed' : 'cancelled';
             $booking->workflow_step = $action === 'approve' ? 'confirmed' : 'cancelled';
 
@@ -8689,6 +8694,7 @@ class BookingFlowService
                     $updates['approved_at'] = now();
                     $updates['approved_by'] = $userId;
                 }
+                $item->setAttribute('updated_user_id', $userId);
                 $item->update($updates);
             });
 
@@ -8727,7 +8733,7 @@ class BookingFlowService
             );
 
             return ['booking' => $booking, 'action' => $action, 'status' => $action === 'approve' ? 'approved' : 'rejected', 'message' => 'Booking ' . $action . 'd successfully'];
-        });
+        }));
     }
 
     public function dismissApprovalNotification(string $notificationId, string $reason, string $userId): array
@@ -12512,7 +12518,7 @@ class BookingFlowService
 
     private function cancelBookingRecord(Booking $booking, string $userId, ?string $reason): void
     {
-        DB::transaction(function () use ($booking, $userId, $reason): void {
+        app(BookingHistoryService::class)->withReasonContext($reason, fn () => DB::transaction(function () use ($booking, $userId, $reason): void {
             $workflowData = $booking->workflow_data ?? [];
             $workflowData['cancellation_actor_id'] = $userId;
             if ($reason !== null && trim($reason) !== '') {
@@ -12524,19 +12530,22 @@ class BookingFlowService
             $booking->updated_user_id = $userId;
             $booking->save();
 
-            $booking->bookingItems()->get()->each(function (BookingItem $item): void {
+            $booking->bookingItems()->get()->each(function (BookingItem $item) use ($userId): void {
                 $item->status = 'cancelled';
+                $item->setAttribute('updated_user_id', $userId);
                 $item->save();
             });
-            $booking->vehicleAssignments()->get()->each(function (VehicleAssignment $assignment): void {
+            $booking->vehicleAssignments()->get()->each(function (VehicleAssignment $assignment) use ($userId): void {
                 $assignment->status = 'cancelled';
+                $assignment->setAttribute('updated_user_id', $userId);
                 $assignment->save();
             });
-            $booking->driverAssignments()->get()->each(function (DriverAssignment $assignment): void {
+            $booking->driverAssignments()->get()->each(function (DriverAssignment $assignment) use ($userId): void {
                 $assignment->status = 'cancelled';
+                $assignment->setAttribute('updated_user_id', $userId);
                 $assignment->save();
             });
-        });
+        }));
 
         // booking_dispatches currently has no cancelled database state; assignment release is handled above.
     }
@@ -12552,7 +12561,11 @@ class BookingFlowService
         $canDelete = $booking->status === 'draft';
 
         if ($canDelete) {
-            DB::transaction(fn () => $booking->delete());
+            $booking->setAttribute('updated_user_id', $userId);
+            app(BookingHistoryService::class)->withReasonContext(
+                $reason,
+                fn () => DB::transaction(fn () => $booking->delete()),
+            );
 
             return [
                 'deleted' => true,

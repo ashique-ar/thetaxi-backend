@@ -25,6 +25,7 @@ use Illuminate\Database\Eloquent\Relations\BelongsTo;
 class WaitingTimeRecord extends Model
 {
     use HasUuids;
+    use \App\Traits\RecordsBookingHistoryAtomically;
 
     protected $table = 'waiting_time_records';
 

@@ -45,6 +45,25 @@
         },
     };
 
+    async function getPlaceDetails(place) {
+        const detailsUrl = (placeId) => `/api/places/details?place_id=${encodeURIComponent(placeId)}`;
+        let response = await fetch(detailsUrl(place.place_id));
+        let result = await response.json();
+        if (result.code !== "PLACE_ID_EXPIRED") return result;
+
+        const query = place.description || place.value || place.main_text;
+        if (!query) return result;
+        const searchResponse = await fetch(`/api/places/search?query=${encodeURIComponent(query)}&limit=5&refresh=1`);
+        const searchResult = await searchResponse.json();
+        const refreshed = searchResult.data?.find((item) =>
+            (item.description || "").toLowerCase() === query.toLowerCase()
+        ) || searchResult.data?.[0];
+        if (!refreshed?.place_id) return result;
+
+        response = await fetch(detailsUrl(refreshed.place_id));
+        return response.json();
+    }
+
     // State management
     const state = {
         currentService: "airport_transfers",
@@ -1224,8 +1243,7 @@
                     if (isNaN(index)) return;
 
                     if (ui.item.place_id) {
-                        fetch(`/api/places/details?place_id=${encodeURIComponent(ui.item.place_id)}`)
-                            .then((res) => res.json())
+                        getPlaceDetails(ui.item)
                             .then((resData) => {
                                 if (resData.status === "success" && resData.data) {
                                     const details = resData.data;
@@ -1453,8 +1471,7 @@
                     select: function (event, ui) {
                         const form = input.closest("form");
                         if (ui.item.place_id) {
-                            fetch(`/api/places/details?place_id=${encodeURIComponent(ui.item.place_id)}`)
-                                .then((res) => res.json())
+                            getPlaceDetails(ui.item)
                                 .then((resData) => {
                                     if (resData.status === "success" && resData.data) {
                                         const details = resData.data;
