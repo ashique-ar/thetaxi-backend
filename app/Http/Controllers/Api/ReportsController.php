@@ -551,12 +551,14 @@ class ReportsController extends Controller
 
         $bookings = Booking::query();
         $this->applyFilters($bookings, $filters);
-        $dailyExpression = DB::connection()->getDriverName() === 'pgsql'
-            ? "DATE(bookings.created_at AT TIME ZONE 'UTC' AT TIME ZONE ?)"
+        $quotedTimezone = DB::connection()->getDriverName() === 'pgsql'
+            ? DB::connection()->getPdo()->quote($timezone)
+            : null;
+        $dailyExpression = $quotedTimezone !== null
+            ? "DATE(bookings.created_at AT TIME ZONE 'UTC' AT TIME ZONE {$quotedTimezone})"
             : 'DATE(bookings.created_at)';
-        $dailyBindings = DB::connection()->getDriverName() === 'pgsql' ? [$timezone] : [];
-        $dailyCounts = (clone $bookings)->selectRaw("{$dailyExpression} as day, COUNT(*) as bookings", $dailyBindings)
-            ->groupByRaw($dailyExpression, $dailyBindings)->orderBy('day')->get()
+        $dailyCounts = (clone $bookings)->selectRaw("{$dailyExpression} as day, COUNT(*) as bookings")
+            ->groupByRaw($dailyExpression)->orderBy('day')->get()
             ->mapWithKeys(fn ($row) => [(string) $row->day => (int) $row->bookings]);
         $dailyBookings = collect();
         $day = Carbon::parse($from, $timezone);
@@ -1421,12 +1423,14 @@ class ReportsController extends Controller
 
             $bookings = Booking::query();
             $this->applyFilters($bookings, $filters);
-            $dailyExpression = DB::connection()->getDriverName() === 'pgsql'
-                ? "DATE(bookings.created_at AT TIME ZONE 'UTC' AT TIME ZONE ?)"
+            $quotedTimezone = DB::connection()->getDriverName() === 'pgsql'
+                ? DB::connection()->getPdo()->quote($timezone)
+                : null;
+            $dailyExpression = $quotedTimezone !== null
+                ? "DATE(bookings.created_at AT TIME ZONE 'UTC' AT TIME ZONE {$quotedTimezone})"
                 : 'DATE(bookings.created_at)';
-            $dailyBindings = DB::connection()->getDriverName() === 'pgsql' ? [$timezone] : [];
-            $dailyCounts = (clone $bookings)->selectRaw("{$dailyExpression} as day, COUNT(*) as total", $dailyBindings)
-                ->groupByRaw($dailyExpression, $dailyBindings)->orderBy('day')->get()->mapWithKeys(fn ($row) => [(string) $row->day => (int) $row->total]);
+            $dailyCounts = (clone $bookings)->selectRaw("{$dailyExpression} as day, COUNT(*) as total")
+                ->groupByRaw($dailyExpression)->orderBy('day')->get()->mapWithKeys(fn ($row) => [(string) $row->day => (int) $row->total]);
             $day = Carbon::parse($from, $timezone);
             $lastDay = Carbon::parse($to, $timezone);
             while ($day->lte($lastDay)) {
@@ -1666,6 +1670,13 @@ class ReportsController extends Controller
         if (is_array($request->input('booking_status'))) {
             $rules['booking_status.*'] = ['string', 'max:64'];
         }
+        if ($request->has('unpriced_only') && is_string($request->input('unpriced_only'))) {
+            $parsed = filter_var($request->input('unpriced_only'), FILTER_VALIDATE_BOOLEAN, FILTER_NULL_ON_FAILURE);
+            if ($parsed !== null) {
+                $request->merge(['unpriced_only' => $parsed]);
+            }
+        }
+
         $request->validate($rules);
         $today = Carbon::today(TimezoneService::getUserTimezone())->toDateString();
         $hasExplicitRange = $request->filled('date_from') || $request->filled('date_to');
@@ -2131,28 +2142,25 @@ class ReportsController extends Controller
 
     private function getCustomerDemographics(array $filters): array
     {
-        $byCountry = Country::query()
-            ->select('id', 'name')
-            ->whereHas('customers', function ($q) use ($filters) {
-                $q->withInactive();
-                $q->whereHas('bookings', function ($bookings) use ($filters) {
-                    $this->applyReportBookingScope($bookings);
-                    $this->applyResponsibleFilters($bookings, $filters);
-                });
+        $customerIds = Customer::withInactive()
+            ->whereHas('bookings', function ($bookings) use ($filters) {
+                $this->applyReportBookingScope($bookings);
+                $this->applyResponsibleFilters($bookings, $filters);
             })
-            ->withCount(['customers' => function ($q) use ($filters) {
-                $q->withInactive();
-                $q->whereHas('bookings', function ($bookings) use ($filters) {
-                    $this->applyReportBookingScope($bookings);
-                    $this->applyResponsibleFilters($bookings, $filters);
-                });
-            }])
-            ->orderByDesc('customers_count')
+            ->select('customers.id');
+
+        $byCountry = Country::query()
+            ->join('addresses', 'addresses.country_id', '=', 'countries.id')
+            ->where('addresses.addressable_type', Customer::class)
+            ->whereIn('addresses.addressable_id', $customerIds)
+            ->groupBy('countries.id', 'countries.name')
+            ->selectRaw('countries.name as country, COUNT(DISTINCT addresses.addressable_id) as count')
+            ->orderByDesc('count')
             ->limit(10)
             ->get()
-            ->map(fn (Country $country) => [
-                'country' => $country->name,
-                'count' => $country->customers_count,
+            ->map(fn ($row) => [
+                'country' => (string) $row->country,
+                'count' => (int) $row->count,
             ])
             ->toArray();
 
