@@ -180,7 +180,7 @@
             </label>
             @error('accept_terms')
             <p id="accept-quotation-terms-error" class="text-danger" role="alert">{{ $message }}</p> @enderror
-            <button type="submit" class="btn btn-primary">Accept quotation &amp; continue</button>
+            <button type="submit" class="btn btn-primary">Accept &amp; proceed to payment</button>
         </form>
         @if (!empty($quotationOptions))
             <script>

@@ -275,7 +275,7 @@ body.theme-theme-03:is(.theme-page-checkout-success, .theme-page-checkout-paymen
 body.theme-theme-03.theme-page-booking-status .t3-site-main > .container { padding-block: var(--t3-section-space) !important; }
 body.theme-theme-03 .checkout-success--theme-03 > .container > .row > .card,
 body.theme-theme-03 .payment-resume--theme-03 > .container > .row > .card { overflow: hidden; border: 1px solid var(--t3-line) !important; border-top: 7px solid var(--t3-ink) !important; border-radius: 0 !important; background: #fffdf8 !important; box-shadow: 16px 16px 0 var(--t3-stone) !important; }
-body.theme-theme-03 :where(.checkout-success--theme-03, .payment-resume--theme-03) :where(.reference-box, .highlight-box, .booking-item-email, .payment-benefits) { border: 1px solid var(--t3-line) !important; border-left: 4px solid var(--t3-accent) !important; border-radius: 0 !important; background: #fffaf2 !important; }
+body.theme-theme-03 :where(.checkout-success--theme-03, .payment-resume--theme-03) :where(.reference-box, .highlight-box, .booking-item-email) { border: 1px solid var(--t3-line) !important; border-left: 4px solid var(--t3-accent) !important; border-radius: 0 !important; background: #fffaf2 !important; }
 body.theme-theme-03 :where(.checkout-success--theme-03, .payment-resume--theme-03) .section { padding-block: 22px; border-bottom: 1px solid var(--t3-line); }
 body.theme-theme-03 :where(.checkout-success--theme-03, .payment-resume--theme-03) .section-title { font-family: var(--t3-font-display); font-size: clamp(1.75rem, 4vw, 2.8rem); }
 body.theme-theme-03 :where(.checkout-success--theme-03, .payment-resume--theme-03) :where(.info-table, .info-table td, .info-table th) { border-color: var(--t3-line) !important; }

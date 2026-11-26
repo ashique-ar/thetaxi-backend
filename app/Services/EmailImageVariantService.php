@@ -27,30 +27,35 @@ class EmailImageVariantService
         }
     }
 
-    public function createFromStored(UserMedia $source, bool $force = false): bool
+    public function createFromStored(UserMedia $source, bool $force = false, ?string $variantOverride = null): bool
     {
         if ($source->is_thumbnail) {
             return false;
         }
 
-        $variant = match (true) {
+        $variant = $variantOverride ?? match (true) {
             in_array($source->category, ['branding', 'logos'], true) => 'logo',
             $source->category === 'vehicles' && str_contains($source->full_path, '/thumbnails/') => 'vehicle',
             default => null,
         };
 
-        if (!$variant) {
+        if (!$variant || !in_array($variant, ['logo', 'vehicle'], true)) {
             return false;
         }
 
         $path = $this->variantPath($source->full_path, $variant);
         if (!$force
             && Storage::disk($source->storage_type)->exists($path)
-            && UserMedia::query()->where('full_path', $path)->where('storage_type', $source->storage_type)->exists()) {
+            && UserMedia::withInactive()->where('full_path', $path)->where('storage_type', $source->storage_type)->exists()) {
             return false;
         }
 
-        $this->create(Storage::disk($source->storage_type)->get($source->full_path), $source, $variant);
+        $bytes = Storage::disk($source->storage_type)->get($source->full_path);
+        if ($bytes === null || $bytes === '') {
+            return false;
+        }
+
+        $this->create($bytes, $source, $variant);
         return true;
     }
 

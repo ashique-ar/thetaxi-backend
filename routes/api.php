@@ -1694,6 +1694,8 @@ Route::middleware(['auth:api'])->group(function () {
             ->middleware(['ensure.internal:staff', 'pricing.context']);
         Route::get('service-types/{serviceType}/workflow-revisions', [ServiceTypeController::class, 'workflowRevisions'])->middleware(['pricing.context', 'permission:service-types.view|service-types.edit']);
         Route::post('service-types/{serviceType}/workflow-revisions/{revision}/review', [ServiceTypeController::class, 'reviewWorkflowRevision'])->middleware('pricing.context');
+        Route::post('service-types/reorder', [ServiceTypeController::class, 'reorder'])->middleware('pricing.context');
+        Route::post('service-types/{serviceType}/default', [ServiceTypeController::class, 'setDefault'])->middleware('pricing.context');
         Route::apiResource('service-types', ServiceTypeController::class)->middleware('pricing.context');
         Route::post('service-types/{serviceType}/clone', [ServiceTypeController::class, 'clone'])
             ->middleware('pricing.context');

@@ -20,6 +20,7 @@ class ServiceTypeResource extends JsonResource
             'type' => $this->type,
             'trip_mode' => $this->form_config['trip_mode'] ?? $this->form_config['booking_mode'] ?? $this->form_config['service_mode'] ?? 'fixed_route',
             'priority' => $this->priority,
+            'is_default' => (bool) $this->is_default,
             'minimum_km' => $this->minimum_km,
             'default_payment_arrangement'=>$this->default_payment_arrangement,
             'deposit_mode'=>$this->deposit_mode,

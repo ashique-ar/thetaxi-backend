@@ -28,6 +28,7 @@ class ServiceTypeController extends Controller
         $this->middleware('permission:service-types.view')->only(['index','show']);
         $this->middleware('permission:service-types.create')->only(['store', 'clone']);
         $this->middleware('permission:service-types.edit')->only(['update']);
+        $this->middleware('permission:service-types.edit|system.edit')->only(['reorder', 'setDefault']);
         $this->middleware('permission:service-types.delete')->only(['destroy']);
         $this->middleware('permission:service-types.create|service-types.edit')->only(['previewWorkflow']);
         $this->middleware('permission:service-types.workflow.approve')->only(['reviewWorkflowRevision']);
@@ -260,6 +261,75 @@ class ServiceTypeController extends Controller
         ]);
     }
 
+    public function reorder(Request $request): JsonResponse
+    {
+        $data = $request->validate([
+            'service_type_ids' => ['required', 'array', 'min:1'],
+            'service_type_ids.*' => ['required', 'uuid', 'distinct', 'exists:service_types,id'],
+            'context' => ['nullable', 'string', 'in:public,portal,corporate'],
+        ]);
+
+        $context = isset($data['context'])
+            ? $this->pricingContextPolicy->effectiveContext($data['context'])
+            : null;
+
+        DB::transaction(function () use ($data, $context): void {
+            $query = ServiceType::withInactive()->whereIn('id', $data['service_type_ids']);
+            if ($context !== null) {
+                $query->forContext($context);
+            }
+            $services = $query->lockForUpdate()->get()->keyBy('id');
+
+            foreach (array_values($data['service_type_ids']) as $index => $id) {
+                $serviceType = $services->get($id);
+                if (! $serviceType) {
+                    continue;
+                }
+                $this->pricingContextPolicy->assertServiceTypeIsWritable($serviceType);
+                $serviceType->priority = $index + 1;
+                $serviceType->save();
+            }
+        });
+
+        app(\App\Services\DynamicServiceConfigurationService::class)->clearCache();
+        Cache::put('ref.service-types.v', ((int) Cache::get('ref.service-types.v', 0)) + 1, 86400);
+        Cache::forget('sitemap');
+
+        return response()->json([
+            'status' => 'success',
+            'message' => 'Service types reordered successfully',
+        ]);
+    }
+
+    public function setDefault(ServiceType $serviceType): JsonResponse
+    {
+        $this->pricingContextPolicy->assertServiceTypeIsWritable($serviceType);
+
+        $updated = DB::transaction(function () use ($serviceType): ServiceType {
+            $locked = ServiceType::withInactive()->whereKey($serviceType->id)->lockForUpdate()->firstOrFail();
+            abort_unless((bool) $locked->is_active, 422, 'Enable the service type before making it the default.');
+
+            ServiceType::withInactive()
+                ->where('context', $locked->context)
+                ->where('id', '!=', $locked->id)
+                ->update(['is_default' => false]);
+
+            $locked->is_default = true;
+            $locked->save();
+
+            return $locked->fresh();
+        });
+
+        app(\App\Services\DynamicServiceConfigurationService::class)->clearCache();
+        Cache::put('ref.service-types.v', ((int) Cache::get('ref.service-types.v', 0)) + 1, 86400);
+
+        return response()->json([
+            'status' => 'success',
+            'message' => 'Default service type updated successfully',
+            'data' => ['service_type' => new ServiceTypeResource($updated)],
+        ]);
+    }
+
     public function clone(Request $request, ServiceType $serviceType): JsonResponse
     {
         $serviceType = $this->pricingContextPolicy->effectiveServiceType($serviceType);
@@ -337,6 +407,6 @@ class ServiceTypeController extends Controller
             $query->where('is_active', $request->boolean('is_active'));
         }
 
-        return $query;
+        return $query->orderBy('priority')->orderBy('name');
     }
 }

@@ -541,7 +541,7 @@
                                 @else
                                     <h3>⏳ Payment Required to Confirm Booking</h3>
                                     <p>Your booking is currently
-                                        <strong>{{ ucfirst(str_replace('_', ' ', $context['payment_status'])) }}</strong>.
+                                        <strong>{{ strtolower($paymentStatusLabel) }}</strong>.
                                         Complete your payment now to secure your reservation.
                                     </p>
 
