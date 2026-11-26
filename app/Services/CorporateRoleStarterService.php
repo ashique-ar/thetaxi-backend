@@ -20,8 +20,9 @@ class CorporateRoleStarterService
                 'create_bookings', 'create_bookings_for_others', 'view_all_bookings',
                 'approve_bookings', 'view_payments', 'manage_billing', 'manage_rate_charts',
                 'view_reports', 'schedule_reports', 'corporate.audit-logs.view', 'corporate.view',
-                'bookings.view', 'bookings.create', 'staff-transport.view',
-                'staff-transport.manage', 'staff-transport.override', 'staff-transport.generate',
+                'bookings.view', 'bookings.create', 'staff-transport.self.view',
+                'staff-transport.view', 'staff-transport.manage', 'staff-transport.override',
+                'staff-transport.generate',
             ],
         ],
         'Transport_Coordinator' => [
@@ -30,8 +31,8 @@ class CorporateRoleStarterService
             'permissions' => [
                 'corporate.view', 'manage-roles', 'manage_employees', 'create_bookings',
                 'create_bookings_for_others', 'view_all_bookings', 'bookings.view',
-                'bookings.create', 'staff-transport.view', 'staff-transport.manage',
-                'staff-transport.override', 'staff-transport.generate',
+                'bookings.create', 'staff-transport.self.view', 'staff-transport.view',
+                'staff-transport.manage', 'staff-transport.override', 'staff-transport.generate',
             ],
         ],
         'Approval_Manager' => [

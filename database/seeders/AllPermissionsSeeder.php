@@ -1295,12 +1295,18 @@ class AllPermissionsSeeder extends Seeder
                 'view_all_bookings',
                 'approve_bookings',
                 'view_payments',
+                'manage_billing',
                 'manage_rate_charts',
                 'view_reports',
                 'schedule_reports',
                 'corporate.audit-logs.view',
                 'bookings.view',
                 'bookings.create',
+                'staff-transport.self.view',
+                'staff-transport.view',
+                'staff-transport.manage',
+                'staff-transport.override',
+                'staff-transport.generate',
             ],
             'Transport_Coordinator' => [
                 'corporate.view',
@@ -1311,6 +1317,11 @@ class AllPermissionsSeeder extends Seeder
                 'view_all_bookings',
                 'bookings.view',
                 'bookings.create',
+                'staff-transport.self.view',
+                'staff-transport.view',
+                'staff-transport.manage',
+                'staff-transport.override',
+                'staff-transport.generate',
             ],
             'Approval_Manager' => [
                 'corporate.view',
@@ -1322,6 +1333,7 @@ class AllPermissionsSeeder extends Seeder
                 'create_bookings',
                 'bookings.view',
                 'bookings.create',
+                'staff-transport.self.view',
             ],
         ];
 

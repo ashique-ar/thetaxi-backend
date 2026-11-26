@@ -144,3 +144,26 @@ it('moves existing employee starter roles from management transport access to pe
         ->toContain('staff-transport.self.view')
         ->not->toContain('staff-transport.view');
 });
+
+it('backfills all starter corporate admin permissions and coordinator self transport access onto existing roles', function () {
+    $corporate = Corporate::create(['name' => 'Backfill Company', 'contact_email' => 'backfill@example.test', 'is_active' => true]);
+    $service = app(CorporateRoleStarterService::class);
+    $service->provision($corporate);
+
+    $masterRole = $service->resolve($corporate, 'Corporate_Master_Admin');
+    $coordinatorRole = $service->resolve($corporate, 'Transport_Coordinator');
+
+    $masterRole->syncPermissions(['corporate.view', 'manage_employees']);
+    $coordinatorRole->syncPermissions(['corporate.view', 'staff-transport.view']);
+
+    (require database_path('migrations/2026_11_26_000001_sync_corporate_master_admin_starter_permissions.php'))->up();
+
+    $masterPermissions = $masterRole->fresh()->permissions->pluck('name')->all();
+    $coordinatorPermissions = $coordinatorRole->fresh()->permissions->pluck('name')->all();
+
+    expect($masterPermissions)
+        ->toEqualCanonicalizing(CorporateRoleStarterService::TEMPLATES['Corporate_Master_Admin']['permissions'])
+        ->and($coordinatorPermissions)
+        ->toContain('staff-transport.view')
+        ->toContain('staff-transport.self.view');
+});
