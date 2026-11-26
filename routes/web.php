@@ -74,14 +74,14 @@ Route::post('/booking/feedback/{booking}', [CustomerBookingFeedbackController::c
 
 // Dynamic robots.txt based on SEO_INDEXABLE environment variable
 Route::get('/robots.txt', function () {
-    $indexable = config('app.env') === 'production' || config('app.seo_indexable', true);
+    $indexable = config('app.seo_indexable', true);
     
     if ($indexable) {
         // Allow indexing for production sites
         $content = "User-agent: *\nDisallow: /v/\nDisallow: /shared-vehicles/\n\nSitemap: " . url('/sitemap.xml');
     } else {
-        // Block all indexing for dev/staging sites
-        $content = "User-agent: *\nDisallow: /";
+        // Keep pages crawlable so search engines can read the noindex response header.
+        $content = "User-agent: *\nAllow: /";
     }
     
     return response($content, 200)

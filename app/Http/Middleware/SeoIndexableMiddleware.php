@@ -9,7 +9,7 @@ use Symfony\Component\HttpFoundation\Response;
 /**
  * Middleware to control search engine indexing via X-Robots-Tag header
  * 
- * When SEO_INDEXABLE is false (dev/staging), adds X-Robots-Tag: noindex, nofollow
+ * When SEO_INDEXABLE is false, adds X-Robots-Tag: noindex, nofollow
  * to prevent Google and other search engines from indexing the site.
  */
 class SeoIndexableMiddleware
@@ -23,8 +23,7 @@ class SeoIndexableMiddleware
     {
         $response = $next($request);
         
-        // Production pages stay indexable even if a stale deployment flag says otherwise.
-        if (config('app.env') !== 'production' && !config('app.seo_indexable', true)) {
+        if (!config('app.seo_indexable', true)) {
             $response->headers->set('X-Robots-Tag', 'noindex, nofollow');
         }
         
