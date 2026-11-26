@@ -2,6 +2,7 @@
 
 namespace App\Http\Controllers\Api;
 
+use App\Enums\BookingLifecycleStatus;
 use App\Http\Controllers\Controller;
 use App\Models\Booking\Booking;
 use App\Models\Booking\BookingItem;
@@ -102,6 +103,168 @@ class ReportsController extends Controller
         $stats = $bypassCache ? $loadStats() : Cache::remember($cacheKey, self::CACHE_TTL, $loadStats);
 
         return response()->json(['status' => 'success', 'data' => $stats]);
+    }
+
+    public function getExecutiveOverview(Request $request): JsonResponse
+    {
+        $filters = $this->parseFilters($request);
+        $comparison = $request->validate([
+            'compare_date_from' => ['sometimes', 'required_with:compare_date_to', 'date_format:Y-m-d'],
+            'compare_date_to' => ['sometimes', 'required_with:compare_date_from', 'date_format:Y-m-d', 'after_or_equal:compare_date_from'],
+        ]);
+        $actor = $request->user();
+        $permissions = $actor?->getAllPermissions()->pluck('name')->sort()->values()->all() ?? [];
+        $bypassCache = !$actor?->can('bookings.view-all') || !empty($filters['organization_unit_id']);
+        $cacheKey = 'reports.executive_overview.' . md5(json_encode([
+            $actor?->getAuthIdentifier(), $permissions, $actor?->agent_id,
+            $filters, $comparison, TimezoneService::getUserTimezone(),
+        ]));
+
+        $loadOverview = function () use ($filters, $comparison) {
+            $bookings = Booking::query();
+            $this->applyFilters($bookings, $filters);
+
+            $completedBookings = Booking::query()->where('status', 'completed');
+            $this->applyFilters($completedBookings, $filters, 'bookings.completed_at');
+
+            $totalBookings = (clone $bookings)->count();
+            $completedCount = (clone $bookings)->where('status', 'completed')->count();
+            $cancelledCount = (clone $bookings)->whereIn('status', ['cancelled', 'inquiry_cancelled', 'booking_cancelled'])->count();
+            $activeCount = (clone $bookings)->whereIn('status', BookingLifecycleStatus::activeOperationalValues())->count();
+
+            $revenueByCurrency = $this->executiveRevenueByCurrency(clone $completedBookings);
+            $receivablesByCurrency = (clone $completedBookings)
+                ->where(function ($q) {
+                    $q->whereNull('payment_status')
+                        ->orWhereIn(DB::raw('LOWER(payment_status)'), [
+                            'pending', 'partially_paid', 'failed',
+                            'corporate_account', 'credit_terms', 'invoiced_corporate', 'invoiced_credit',
+                        ]);
+                })
+                ->selectRaw("COALESCE(NULLIF(UPPER(currency), ''), 'LKR') as currency, COUNT(*) as unpaid_count, SUM(COALESCE(total_actual, 0)) as unpaid_amount")
+                ->groupBy('currency')
+                ->orderBy('currency')
+                ->get()
+                ->map(fn ($row) => [
+                    'currency' => $row->currency,
+                    'unpaid_count' => (int) $row->unpaid_count,
+                    'unpaid_amount' => (float) $row->unpaid_amount,
+                ])
+                ->values()
+                ->toArray();
+
+            $liveBookings = Booking::query();
+            $this->applyReportBookingScope($liveBookings);
+            $this->applyResponsibleFilters($liveBookings, $filters);
+
+            $operations = [
+                'pending_dispatch_count' => (clone $liveBookings)->whereIn('status', [
+                    'allocation_pending', 'allocation_assigned', 'allocation_approved', 'dispatch_ready', 'pending', 'confirmed', 'allocated',
+                ])->count(),
+                'ongoing_hires_count' => (clone $liveBookings)->whereIn('status', [
+                    'dispatch_out', 'ongoing_active', 'ongoing_replacement_needed', 'ongoing_breakdown', 'in_progress', 'active',
+                ])->count(),
+                'overdue_returns_count' => (clone $liveBookings)->whereIn('status', ['return_overdue', 'return_late'])->count(),
+                'open_inquiries_count' => (clone $liveBookings)->whereIn('status', ['inquiry', 'inquiry_qualified'])->count(),
+                'unpriced_completed_count' => (clone $completedBookings)->whereNull('total_actual')->count(),
+            ];
+
+            $fleet = $this->getFleetMetrics($filters);
+            $fleet['available'] = $this->visibleVehicles()->where('is_active', true)->where('availability_status', 'available')->count();
+
+            $serviceCurrency = "COALESCE(NULLIF(UPPER(booking_items.currency), ''), NULLIF(UPPER(bookings.currency), ''), 'LKR')";
+            $serviceMixQuery = Booking::query()
+                ->join('booking_items', 'bookings.id', '=', 'booking_items.booking_id')
+                ->join('service_types', 'booking_items.service_type_id', '=', 'service_types.id')
+                ->select('service_types.name as service_type')
+                ->selectRaw("{$serviceCurrency} as currency")
+                ->selectRaw('COUNT(DISTINCT bookings.id) as total_bookings')
+                ->selectRaw("SUM(CASE WHEN bookings.status = 'completed' THEN COALESCE(booking_items.total_price, 0) ELSE 0 END) as revenue")
+                ->groupBy('service_types.id', 'service_types.name')
+                ->groupByRaw($serviceCurrency)
+                ->orderByDesc('total_bookings')
+                ->limit(8);
+            $serviceFilters = $filters;
+            unset($serviceFilters['currency']);
+            $this->applyFilters($serviceMixQuery, $serviceFilters, $this->reportBookingDateColumn($filters));
+            if (!empty($filters['currency'])) {
+                $serviceMixQuery->whereRaw("{$serviceCurrency} = ?", [$filters['currency']]);
+            }
+
+            $overview = [
+                'summary' => [
+                    'total_bookings' => $totalBookings,
+                    'completed_bookings' => $completedCount,
+                    'cancelled_bookings' => $cancelledCount,
+                    'active_bookings' => $activeCount,
+                    'completion_rate' => $totalBookings > 0 ? round(($completedCount / $totalBookings) * 100, 1) : 0,
+                    'cancellation_rate' => $totalBookings > 0 ? round(($cancelledCount / $totalBookings) * 100, 1) : 0,
+                    'total_customers' => $this->allCustomers($filters)
+                        ->where('created_at', '>=', TimezoneService::userDateStartUtc($filters['date_from']))
+                        ->where('created_at', '<', $this->exclusiveDateEnd($filters['date_to']))
+                        ->count(),
+                    'revenue_by_currency' => $revenueByCurrency,
+                    'receivables_by_currency' => $receivablesByCurrency,
+                ],
+                'fleet' => $fleet,
+                'operations' => $operations,
+                'booking_trends' => $this->getBookingTrends($filters),
+                'revenue_trends' => $this->getRevenueTrends($filters),
+                'service_mix' => $serviceMixQuery->get()->toArray(),
+            ];
+
+            if (isset($comparison['compare_date_from'], $comparison['compare_date_to'])) {
+                $comparisonFilters = [...$filters, 'date_from' => $comparison['compare_date_from'], 'date_to' => $comparison['compare_date_to']];
+                $compBookings = Booking::query();
+                $this->applyFilters($compBookings, $comparisonFilters);
+                $compCompleted = Booking::query()->where('status', 'completed');
+                $this->applyFilters($compCompleted, $comparisonFilters, 'bookings.completed_at');
+
+                $compTotal = (clone $compBookings)->count();
+                $compDone = (clone $compBookings)->where('status', 'completed')->count();
+                $compCancelled = (clone $compBookings)->whereIn('status', ['cancelled', 'inquiry_cancelled', 'booking_cancelled'])->count();
+
+                $overview['comparison'] = [
+                    'total_bookings' => $compTotal,
+                    'completed_bookings' => $compDone,
+                    'cancelled_bookings' => $compCancelled,
+                    'completion_rate' => $compTotal > 0 ? round(($compDone / $compTotal) * 100, 1) : 0,
+                    'cancellation_rate' => $compTotal > 0 ? round(($compCancelled / $compTotal) * 100, 1) : 0,
+                    'revenue_by_currency' => $this->executiveRevenueByCurrency($compCompleted),
+                ];
+            }
+
+            return $overview;
+        };
+
+        $data = $bypassCache ? $loadOverview() : Cache::remember($cacheKey, self::CACHE_TTL, $loadOverview);
+
+        return response()->json(['status' => 'success', 'data' => $data]);
+    }
+
+    private function executiveRevenueByCurrency($completedBookings): array
+    {
+        return $completedBookings
+            ->selectRaw("COALESCE(NULLIF(UPPER(currency), ''), 'LKR') as currency,
+                SUM(COALESCE(total_actual, 0)) as revenue,
+                SUM(COALESCE(driver_cost, 0)) as driver_cost,
+                COUNT(total_actual) as priced_bookings_count,
+                COUNT(CASE WHEN total_actual IS NULL THEN 1 END) as unpriced_bookings_count,
+                COUNT(CASE WHEN driver_cost IS NULL THEN 1 END) as missing_driver_cost_count")
+            ->groupBy('currency')
+            ->orderBy('currency')
+            ->get()
+            ->map(fn ($row) => [
+                'currency' => $row->currency,
+                'revenue' => (float) $row->revenue,
+                'driver_cost' => (float) $row->driver_cost,
+                'gross_margin' => (float) $row->revenue - (float) $row->driver_cost,
+                'priced_bookings_count' => (int) $row->priced_bookings_count,
+                'unpriced_bookings_count' => (int) $row->unpriced_bookings_count,
+                'missing_driver_cost_count' => (int) $row->missing_driver_cost_count,
+            ])
+            ->values()
+            ->toArray();
     }
 
     public function getDepartmentPerformance(Request $request): JsonResponse
@@ -1901,6 +2064,20 @@ class ReportsController extends Controller
         $dateColumn = $column === 'completed_at'
             ? 'COALESCE(bookings.completed_at, bookings.created_at)'
             : $column;
+
+        if (DB::connection()->getDriverName() === 'sqlite') {
+            return match ($groupBy) {
+                'hour'    => "strftime('%Y-%m-%d %H:00', {$dateColumn})",
+                'week',
+                'weekly'  => "strftime('%Y-W%W', {$dateColumn})",
+                'month',
+                'monthly' => "strftime('%Y-%m', {$dateColumn})",
+                'year',
+                'yearly'  => "strftime('%Y', {$dateColumn})",
+                default   => "DATE({$dateColumn})",
+            };
+        }
+
         $localDate = "({$dateColumn} AT TIME ZONE 'UTC' AT TIME ZONE {$timezone})";
 
         return match ($groupBy) {

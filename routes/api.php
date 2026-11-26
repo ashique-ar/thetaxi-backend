@@ -2116,6 +2116,8 @@ Route::middleware(['auth:api'])->group(function () {
     Route::get('pricing-context-policy', [PricingContextPolicyController::class, 'show']);
 
     Route::group(['prefix' => 'reports'], function () {
+        Route::get('/executive-overview', [ReportsController::class, 'getExecutiveOverview'])
+            ->middleware('permission:reports.view');
         Route::get('/dashboard-stats', [ReportsController::class, 'getDashboardStats'])
             ->middleware('permission:reports.view');
         Route::get('/departments/performance', [ReportsController::class, 'getDepartmentPerformance'])
