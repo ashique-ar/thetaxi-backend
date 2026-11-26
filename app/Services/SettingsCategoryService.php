@@ -770,6 +770,16 @@ class SettingsCategoryService
                     'type' => 'toggle',
                     'description' => 'Copy the staff member who created the booking on customer booking confirmation emails.'
                 ],
+                'booking_create_default_send_sms' => [
+                    'label' => 'Default SMS on Create Booking',
+                    'type' => 'toggle',
+                    'description' => 'Tick the Send SMS notification checkbox by default when creating or quoting a booking.'
+                ],
+                'booking_create_default_send_email' => [
+                    'label' => 'Default Email on Create Booking',
+                    'type' => 'toggle',
+                    'description' => 'Tick the Send email notification checkbox by default when creating or quoting a booking.'
+                ],
                 // Service visibility toggles
                 'enable_airport_transfers' => [
                     'label' => 'Enable Airport Transfers',

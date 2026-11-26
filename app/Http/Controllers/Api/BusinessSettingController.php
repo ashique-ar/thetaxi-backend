@@ -67,6 +67,8 @@ class BusinessSettingController extends Controller
             'approval_resource_swap_enabled',
             'booking_advance_hours',
             'booking_confirmation_cc_creator',
+            'booking_create_default_send_sms',
+            'booking_create_default_send_email',
             'customer_portal_booking_advance_hours',
             'corporate_portal_booking_advance_hours',
             'booking_max_days',
