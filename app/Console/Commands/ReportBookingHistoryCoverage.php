@@ -156,6 +156,7 @@ class ReportBookingHistoryCoverage extends Command
     private function normalizeCoverageStart(mixed $value): ?string
     {
         if (!is_string($value) || trim($value) === '') return null;
+        if (!preg_match('/(?:Z|\\+00(?::?00|00)?)$/i', trim($value))) return null;
 
         try {
             $timestamp = CarbonImmutable::parse($value);
