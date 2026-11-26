@@ -473,12 +473,12 @@ class CartService
         $items = $cart->items ?? [];
 
         $groupIds = collect($items)->pluck('vehicle_group_id')->filter()->unique();
-        $groupDeposits = $groupIds->isNotEmpty()
-            ? \App\Models\Vehicle\VehicleGroup::query()->whereIn('id', $groupIds)->pluck('refundable_deposit', 'id')
+        $vehicleGroups = $groupIds->isNotEmpty()
+            ? \App\Models\Vehicle\VehicleGroup::query()->whereIn('id', $groupIds)->get(['id', 'refundable_deposit', 'thumbnail'])->keyBy('id')
             : collect();
 
         // Convert item prices to selected currency
-        $convertedItems = collect($items)->map(function ($item) use ($selectedCurrency, $groupDeposits) {
+        $convertedItems = collect($items)->map(function ($item) use ($selectedCurrency, $vehicleGroups) {
             $item = is_array($item) ? $item : (array) $item;
 
             if (!empty($item['is_tour'])) {
@@ -578,15 +578,20 @@ class CartService
                 }
             }
 
+            $group = !empty($item['vehicle_group_id']) ? $vehicleGroups->get($item['vehicle_group_id']) : null;
             $requiresDeposit = empty($item['is_tour']) && (bool) data_get($item, 'service_type_data.requires_refundable_deposit', false);
             $depositLkr = $requiresDeposit
-                ? max(0, (float) ($item['refundable_deposit_lkr'] ?? ($groupDeposits[$item['vehicle_group_id'] ?? ''] ?? 0)))
+                ? max(0, (float) ($item['refundable_deposit_lkr'] ?? ($group?->refundable_deposit ?? 0)))
                 : 0.0;
             $item['requires_refundable_deposit'] = $requiresDeposit;
             $item['refundable_deposit_lkr'] = $depositLkr;
             $item['refundable_deposit'] = $depositLkr > 0
                 ? $this->currencyService->convertFromLKR($depositLkr, $selectedCurrency)
                 : 0.0;
+
+            $imagePath = $item['image'] ?? ($group?->thumbnail['path'] ?? null);
+            $item['image'] = $imagePath;
+            $item['image_url'] = !empty($imagePath) ? s3_asset($imagePath) : null;
 
             // Add currency and package information
             $item['currency'] = $selectedCurrency;

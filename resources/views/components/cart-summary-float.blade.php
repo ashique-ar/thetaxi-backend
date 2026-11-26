@@ -531,9 +531,9 @@
                     </span>
                 </div>
 
-                {{-- Security Deposit row - hidden when zero, excluded from Total Amount --}}
+                {{-- Refundable Security Deposit row - hidden when zero, excluded from Total Amount --}}
                 <div class="cart-security-deposit mb-1" style="display: none;">
-                    <span>Security Deposit <small style="opacity: 0.72; font-size: 11px;">(not in total)</small>:</span>
+                    <span>Refundable Security Deposit <small style="opacity: 0.72; font-size: 11px;">(Payable at pickup)</small>:</span>
                     <span id="cartSecurityDeposit">
                         <span class="currency-symbol">{{ $currencySymbol }}</span>
                         <span class="amount">0</span>
@@ -684,7 +684,7 @@
                 const pricingLabel = getPricingLabel(serviceType);
                 const durationLabel = getDurationLabel(serviceType, days);
                 const fixedRate = isFixedRate(serviceType);
-                const imageUrl = resolveImageUrl(item.image || item.vehicle_image || '');
+                const imageUrl = item.image_url || resolveImageUrl(item.image || item.vehicle_image || '');
                 const dateText = `${item.pickup_date || ''} to ${item.return_date || ''}`;
 
                 const thumbHtml = imageUrl
