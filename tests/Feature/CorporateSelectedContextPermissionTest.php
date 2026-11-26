@@ -13,6 +13,10 @@ use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Schema;
 
 it('uses only the selected corporate context when a user belongs to two companies', function () {
+    Schema::create('users', function (Blueprint $table) {
+        $table->uuid('id')->primary();
+        $table->softDeletes();
+    });
     Schema::create('user_contexts', function (Blueprint $table) {
         $table->uuid('id')->primary();
         $table->uuid('user_id');
@@ -71,6 +75,7 @@ it('uses only the selected corporate context when a user belongs to two companie
     $userId = '10000000-0000-4000-8000-000000000001';
     $financeContext = '20000000-0000-4000-8000-000000000001';
     $employeeContext = '20000000-0000-4000-8000-000000000002';
+    DB::table('users')->insert(['id' => $userId]);
     DB::table('user_contexts')->insert([
         ['id' => $financeContext, 'user_id' => $userId, 'context_type' => 'corporate', 'context_id' => '30000000-0000-4000-8000-000000000001', 'is_active' => true],
         ['id' => $employeeContext, 'user_id' => $userId, 'context_type' => 'corporate', 'context_id' => '30000000-0000-4000-8000-000000000002', 'is_active' => true],
@@ -93,6 +98,7 @@ it('uses only the selected corporate context when a user belongs to two companie
         ['id' => 3, 'name' => 'manage-roles', 'guard_name' => 'api'],
         ['id' => 4, 'name' => 'global_only_permission', 'guard_name' => 'api'],
         ['id' => 5, 'name' => 'bookings.create', 'guard_name' => 'api'],
+        ['id' => 6, 'name' => 'bookings.view', 'guard_name' => 'api'],
     ]);
     DB::table('user_context_roles')->insert([
         ['user_context_id' => $financeContext, 'role_id' => 1],
@@ -107,6 +113,7 @@ it('uses only the selected corporate context when a user belongs to two companie
         ['user_context_id' => $financeContext, 'permission_id' => 2],
         ['user_context_id' => $financeContext, 'permission_id' => 3],
         ['user_context_id' => $financeContext, 'permission_id' => 5],
+        ['user_context_id' => $financeContext, 'permission_id' => 6],
     ]);
 
     $user = new User();
@@ -131,11 +138,18 @@ it('uses only the selected corporate context when a user belongs to two companie
     $context->id = $employeeContext;
     expect(CorporatePortalPermission::employeeAllows($employee, 'manage_employees'))->toBeFalse();
 
-    $request = Request::create('/api/corporate/workspace');
+    $request = Request::create('/api/corporate/workspace', 'GET', [], [], [], [
+        'HTTP_X_ACTIVE_CONTEXT_TYPE' => 'corporate',
+        'HTTP_X_ACTIVE_CONTEXT_ID' => $financeContext,
+    ]);
     $request->setUserResolver(fn () => $user);
     (new EnsureCorporateContext())->handle($request, function (Request $request) use ($financeContext, $employeeContext, $user, $evaluator): \Symfony\Component\HttpFoundation\Response {
         expect($request->attributes->get('resolved_active_context_type'))->toBe('corporate')
-            ->and($request->attributes->get('resolved_active_context_id'))->toBeIn([$financeContext, $employeeContext])
+            ->and($request->attributes->get('resolved_active_context_id'))->toBe($financeContext)
+            ->and(CorporatePortalPermission::allows($request, 'view_payments'))->toBeTrue()
+            ->and(CorporatePortalPermission::allows($request, 'manage_employees'))->toBeTrue()
+            ->and(CorporatePortalPermission::allows($request, 'bookings.view'))->toBeTrue()
+            ->and(CorporatePortalPermission::allows($request, 'global_only_permission'))->toBeFalse()
             ->and($evaluator->userHasAnyForRequest(
                 $user,
                 ['global_only_permission'],

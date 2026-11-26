@@ -4,6 +4,7 @@ namespace App\Models\Vehicle;
 
 use App\Models\BaseModel;
 use App\Models\Booking\Booking;
+use App\Models\Booking\BookingItem;
 use App\Models\User;
 use App\Services\TimezoneService;
 use App\Traits\RecordsBookingHistoryAtomically;
@@ -17,6 +18,7 @@ class VehicleAssignment extends BaseModel
     protected $fillable = [
         'vehicle_id',
         'booking_id',
+        'booking_item_id',
         'parent_assignment_id',
         'customer_name',
         'service_type',
@@ -126,6 +128,11 @@ class VehicleAssignment extends BaseModel
     public function booking(): BelongsTo
     {
         return $this->belongsTo(Booking::class);
+    }
+
+    public function bookingItem(): BelongsTo
+    {
+        return $this->belongsTo(BookingItem::class);
     }
 
     /**

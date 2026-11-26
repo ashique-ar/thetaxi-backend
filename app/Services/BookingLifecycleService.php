@@ -450,6 +450,7 @@ class BookingLifecycleService
             if (isset($assignmentData['vehicle_id'])) {
                 $vehicleAssignment = $this->assignmentService->createVehicleAssignment([
                     'booking_id' => $booking->id,
+                    'booking_item_id' => $assignmentData['booking_item_id'] ?? null,
                     'vehicle_id' => $assignmentData['vehicle_id'],
                     'assigned_from' => $this->bookingDateTime($booking->from_date, $booking->from_time),
                     'assigned_to' => $this->bookingDateTime($booking->to_date, $booking->to_time),

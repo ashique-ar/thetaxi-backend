@@ -13372,12 +13372,14 @@ class BookingFlowService
             Vehicle::query()->whereKey($vehicleId)->where('is_active', true)->where('status', 'active')->firstOrFail();
             $activeVehicleAssignments = VehicleAssignment::query()->where('booking_id', $booking->id)->where('vehicle_id', $vehicleId)
                 ->whereNull('actual_end')->whereNotIn('status', ['cancelled', 'completed'])->get();
-            $itemsNeedingAssignment = $items->filter(function (BookingItem $item) use ($activeVehicleAssignments, $vehicleId): bool {
+            $itemsNeedingAssignment = $items->filter(function (BookingItem $item) use ($activeVehicleAssignments, $items, $vehicleId): bool {
                 $from = $this->bookingDateTime($item->from_date, $item->from_time);
                 $to = $this->bookingDateTime($item->to_date, $item->to_time);
                 return (string) $item->vehicle_id !== (string) $vehicleId
                     || !$activeVehicleAssignments->contains(fn (VehicleAssignment $assignment): bool =>
-                        Carbon::parse($assignment->assigned_from)->lte($from)
+                        ((string) $assignment->booking_item_id === (string) $item->id
+                            || ($assignment->booking_item_id === null && $items->count() === 1))
+                        && Carbon::parse($assignment->assigned_from)->lte($from)
                         && Carbon::parse($assignment->assigned_to)->gte($to));
             });
             if ($itemsNeedingAssignment->isEmpty()) return;
@@ -13409,6 +13411,7 @@ class BookingFlowService
                 $this->assignmentService->createVehicleAssignment([
                     'vehicle_id' => $vehicleId,
                     'booking_id' => $booking->id,
+                    'booking_item_id' => $item->id,
                     'customer_name' => $customerName,
                     'service_type' => $item->serviceType?->name ?? 'Unknown Service',
                     'assigned_from' => $this->bookingDateTime($item->from_date, $item->from_time),

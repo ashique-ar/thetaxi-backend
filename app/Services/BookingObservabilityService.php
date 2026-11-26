@@ -141,9 +141,15 @@ class BookingObservabilityService
                     ?? $activity->created_user_id ?? $activity->updated_user_id
             )));
 
-        $vehicleAssignments = $bookingItemId ? collect() : VehicleAssignment::query()
+        $vehicleAssignments = VehicleAssignment::query()
             ->with(['vehicle:id,title,license_plate', 'assignedBy:id,first_name,last_name'])
             ->where('booking_id', $booking->id)
+            ->when($bookingItemId, fn ($query, $value) => $query->where('booking_item_id', $value))
+            ->whereNotExists(fn ($query) => $query->selectRaw('1')->from('booking_history_events as history')
+                ->whereColumn('history.booking_id', 'vehicle_assignments.booking_id')
+                ->whereColumn('history.entity_id', 'vehicle_assignments.id')
+                ->where('history.entity_type', 'VehicleAssignment')
+                ->where('history.event_type', 'vehicleassignment_created'))
             ->when($filters['actor_id'] ?? null, fn ($query, $value) => $query->where('assigned_by', $value))
             ->when(isset($filters['entity_type']) && strcasecmp($filters['entity_type'], 'VehicleAssignment') !== 0, fn ($query) => $query->whereRaw('1 = 0'))
             ->when($filters['entity_id'] ?? null, fn ($query, $value) => $query->whereKey($value))
@@ -950,7 +956,7 @@ class BookingObservabilityService
         return [
             'id' => 'sales-attribution-event:' . $event->id,
             'booking_id' => (string) $booking->id,
-            'booking_item_id' => null,
+            'booking_item_id' => $assignment->booking_item_id ? (string) $assignment->booking_item_id : null,
             'occurred_at' => Carbon::parse($event->created_at)->utc()->toIso8601String(),
             'source' => 'sales',
             'event_type' => 'booking_attribution_' . $event->event_type,

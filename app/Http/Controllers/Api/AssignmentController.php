@@ -2068,6 +2068,7 @@ class AssignmentController extends Controller
                     $newVehicleAssignment = $this->assignmentService->createVehicleAssignment([
                         'vehicle_id' => $newVehicleId,
                         'booking_id' => $booking->id,
+                        'booking_item_id' => $selectedBookingItem?->id,
                         'customer_name' => $customerName,
                         'service_type' => $serviceTypeId,
                         'assigned_from' => $swapTime,

@@ -125,7 +125,7 @@ class BookingHistoryService
         'stop_type', 'route_order', 'completed_at', 'completed_action', 'skip_reason',
         'type_sequence', 'arrived_at', 'address', 'location', 'latitude', 'longitude',
         'arrived_latitude', 'arrived_longitude', 'completed_latitude', 'completed_longitude',
-        'assignment_id', 'start_time', 'end_time', 'duration_seconds', 'total_distance_km', 'linked_booking_id',
+        'assignment_id', 'booking_item_id', 'start_time', 'end_time', 'duration_seconds', 'total_distance_km', 'linked_booking_id',
         'call_status', 'follow_up_due_at', 'follow_up_completed_at',
         'exception_type', 'details', 'resolved_by', 'resolved_at', 'detected_at',
         'booking_collection_work_item_id', 'recipient_user_id', 'reminder_type', 'channel',

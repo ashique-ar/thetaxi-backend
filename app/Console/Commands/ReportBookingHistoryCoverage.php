@@ -261,6 +261,7 @@ class ReportBookingHistoryCoverage extends Command
         $coverageStart = $this->verifiedCoverageStart;
         if (!Schema::hasTable($table) || !Schema::hasTable('booking_items') || !$coverageStart
             || !Schema::hasColumn($table, 'created_at') || !Schema::hasColumn($table, 'updated_at')
+            || ($table === 'vehicle_assignments' && !Schema::hasColumn($table, 'booking_item_id'))
             || ($table !== 'bookings' && !Schema::hasColumn($table, 'booking_id'))) return null;
 
         $base = DB::table($table . ' as source');
@@ -277,6 +278,7 @@ class ReportBookingHistoryCoverage extends Command
                 ->whereColumn('history.occurred_at', '>=', 'source.created_at')
                 ->whereRaw($this->historyOperationMatchSql('created'));
             $this->requireHistoryItemBelongsToBooking($query);
+            $this->requireVehicleAssignmentItemMatch($query, $table);
         })->count();
         // shortcut: second-precision timestamps can hide same-second edits and only the latest row state is checked; add immutable mutation records to verify every change.
         $mutations = (clone $base)->where('source.updated_at', '>=', $coverageStart)
@@ -296,6 +298,7 @@ class ReportBookingHistoryCoverage extends Command
                 ->whereColumn('history.occurred_at', '>=', 'source.updated_at')
                 ->whereRaw($this->historyOperationMatchSql(['updated', 'deleted', 'restored']));
             $this->requireHistoryItemBelongsToBooking($query);
+            $this->requireVehicleAssignmentItemMatch($query, $table);
         })->count();
         $sourceRows = $createdRows + $mutationRows;
         $matched = $createdMatched + $mutationMatched;
@@ -312,6 +315,17 @@ class ReportBookingHistoryCoverage extends Command
                         ->whereColumn('booking_item.id', 'history.booking_item_id')
                         ->whereColumn('booking_item.booking_id', 'history.booking_id');
                 });
+        });
+    }
+
+    private function requireVehicleAssignmentItemMatch($query, string $table): void
+    {
+        if ($table !== 'vehicle_assignments') return;
+
+        $query->where(function ($link): void {
+            $link->where(function ($bothNull): void {
+                $bothNull->whereNull('source.booking_item_id')->whereNull('history.booking_item_id');
+            })->orWhereColumn('history.booking_item_id', 'source.booking_item_id');
         });
     }
 

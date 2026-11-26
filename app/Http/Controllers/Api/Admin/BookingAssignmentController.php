@@ -315,6 +315,7 @@ class BookingAssignmentController extends Controller
                         }
                     }
                     $existingVA = VehicleAssignment::where('booking_id', $booking->id)
+                        ->where('booking_item_id', $bookingItem->id)
                         ->where('vehicle_id', $request->vehicle_id)
                         ->whereIn('status', ['active', 'pending_approval'])
                         ->first();
@@ -323,6 +324,7 @@ class BookingAssignmentController extends Controller
                         $va = $this->assignmentService->createVehicleAssignment([
                             'vehicle_id' => $request->vehicle_id,
                             'booking_id' => $booking->id,
+                            'booking_item_id' => $bookingItem->id,
                             'customer_name' => $booking->customer->name ?? 'Unknown',
                             'service_type' => $bookingItem->serviceType?->name ?? $booking->service_type ?? null,
                             'assigned_from' => $bookingItem->from_date ?? $booking->from_date,

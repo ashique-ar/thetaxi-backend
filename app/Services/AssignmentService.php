@@ -116,6 +116,10 @@ class AssignmentService
     public function createVehicleAssignment(array $params): VehicleAssignment
     {
         return DB::transaction(function () use ($params) {
+            if (!empty($params['booking_item_id'])) {
+                BookingItem::query()->where('booking_id', $params['booking_id'])
+                    ->whereKey($params['booking_item_id'])->firstOrFail();
+            }
             $vehicle = Vehicle::query()->whereKey($params['vehicle_id'])->lockForUpdate()->firstOrFail();
             $conflicts = $vehicle->getAssignmentConflicts($params['assigned_from'], $params['assigned_to']);
             if ($conflicts) {
@@ -132,6 +136,7 @@ class AssignmentService
             $assignment = VehicleAssignment::create([
                 'vehicle_id' => $params['vehicle_id'],
                 'booking_id' => $params['booking_id'],
+                'booking_item_id' => $params['booking_item_id'] ?? null,
                 'parent_assignment_id' => $params['parent_assignment_id'] ?? null,
                 'customer_name' => $params['customer_name'],
                 'service_type' => $params['service_type'],
@@ -262,6 +267,10 @@ class AssignmentService
 
             if ($manuallyConfirmed) {
                 VehicleAssignment::query()->where('booking_id', $bookingId)
+                    ->when($bookingItem, fn ($query) => $query->where(function ($itemQuery) use ($bookingItem): void {
+                        $itemQuery->where('booking_item_id', $bookingItem->id)
+                            ->orWhereNull('booking_item_id');
+                    }))
                     ->whereIn('status', ['pending', 'pending_approval'])
                     ->where('assigned_from', '<', $toDate)->where('assigned_to', '>', $fromDate)
                     ->get()->each(function (VehicleAssignment $assignment): void {
@@ -284,6 +293,7 @@ class AssignmentService
                 $vehicleAssignmentParams = [
                     'vehicle_id' => $vehicleId,
                     'booking_id' => $bookingId,
+                    'booking_item_id' => $bookingItem?->id,
                     'customer_name' => $params['customer_name'],
                     'service_type' => $params['service_type'],
                     'assigned_from' => $fromDate,
