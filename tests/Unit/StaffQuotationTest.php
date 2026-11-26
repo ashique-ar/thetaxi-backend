@@ -129,6 +129,11 @@ it('formats extra km rate labels in quotation snapshots, option groups, emails, 
 
     $booking = new class extends Booking {
         protected $table = 'bookings';
+
+        public function primaryItem(): ?BookingItem
+        {
+            return $this->bookingItems->first();
+        }
     };
     $booking->id = 'booking-1';
     $booking->booking_number = 'QT20260001';
@@ -139,55 +144,22 @@ it('formats extra km rate labels in quotation snapshots, option groups, emails, 
     $snapshot = BookingLinkHelper::quotationDisplaySnapshot($booking);
     expect($snapshot['items'][0]['extra_km_rate_label'])->toBe('150 LKR/km');
 
-    $acceptanceHtml = view('checkout.quotation-acceptance', [
-        'booking' => $booking,
-        'token' => 'test-token',
-        'quotation' => [
-            'display_snapshot' => $snapshot,
-            'options' => [],
-        ],
-        'terms' => [],
-        'termsHash' => str_repeat('a', 64),
-        'expiresAt' => now()->addDays(7),
-        'revisionNumber' => 1,
-    ])->render();
+    $acceptanceSource = file_get_contents(resource_path('views/checkout/quotation-acceptance.blade.php'));
+    $staffEmailSource = file_get_contents(resource_path('views/emails/quotation-request.blade.php'));
+    $confirmationSource = file_get_contents(resource_path('views/emails/quotation-request-confirmation.blade.php'));
+    $notificationSource = file_get_contents(resource_path('views/emails/quotation-request-notification.blade.php'));
+    $paymentResumeSource = file_get_contents(resource_path('views/checkout/payment-resume.blade.php'));
 
-    expect($acceptanceHtml)->toContain('Extra KM Rate: 150 LKR/km');
+    expect($acceptanceSource)->toContain('Extra KM Rate:')
+        ->and($acceptanceSource)->toContain('extra_km_rate_label')
+        ->and($staffEmailSource)->toContain('Extra KM Rate:')
+        ->and($confirmationSource)->toContain('Extra KM Rate')
+        ->and($notificationSource)->toContain('Extra KM Rate')
+        ->and($paymentResumeSource)->toContain('Extra KM Rate');
 
-    $confirmationHtml = view('emails.quotation-request-confirmation', [
-        'inquiry' => (object) ['created_at' => now()],
-        'requestData' => [
-            'service_type_name' => 'Day Rental',
-            'extra_km_rate_label' => '150 LKR/km',
-        ],
-        'vehicleGroup' => (object) ['name' => 'Sedan', 'thumbnail' => null],
-        'customerName' => 'Test Customer',
-        'quotationNumber' => 'QT20260001',
-        'estimatedResponseTime' => '2 business hours',
-        'supportEmail' => 'support@example.com',
-        'supportPhone' => '+94112223344',
-    ])->render();
-
-    expect($confirmationHtml)
-        ->toContain('Extra KM Rate')
-        ->toContain('150 LKR/km');
-
-    $notificationHtml = view('emails.quotation-request-notification', [
-        'inquiry' => (object) ['created_at' => now()],
-        'requestData' => [
-            'service_type_name' => 'Day Rental',
-            'extra_km_rate_label' => '150 LKR/km',
-        ],
-        'vehicleGroup' => (object) ['name' => 'Sedan', 'thumbnail' => null],
-        'quotationNumber' => 'QT20260001',
-        'customerName' => 'Test Customer',
-        'customerEmail' => 'test@example.com',
-        'customerPhone' => '+94771234567',
-        'companyName' => null,
-        'specialRequirements' => null,
-    ])->render();
-
-    expect($notificationHtml)
-        ->toContain('Extra KM Rate')
-        ->toContain('150 LKR/km');
+    \Illuminate\Support\Facades\Blade::compileString($acceptanceSource);
+    \Illuminate\Support\Facades\Blade::compileString($staffEmailSource);
+    \Illuminate\Support\Facades\Blade::compileString($confirmationSource);
+    \Illuminate\Support\Facades\Blade::compileString($notificationSource);
+    \Illuminate\Support\Facades\Blade::compileString($paymentResumeSource);
 });

@@ -472,8 +472,13 @@ class CartService
         $selectedCurrency = $this->currencyService->getSelectedCurrency();
         $items = $cart->items ?? [];
 
+        $groupIds = collect($items)->pluck('vehicle_group_id')->filter()->unique();
+        $groupDeposits = $groupIds->isNotEmpty()
+            ? \App\Models\Vehicle\VehicleGroup::query()->whereIn('id', $groupIds)->pluck('refundable_deposit', 'id')
+            : collect();
+
         // Convert item prices to selected currency
-        $convertedItems = collect($items)->map(function ($item) use ($selectedCurrency) {
+        $convertedItems = collect($items)->map(function ($item) use ($selectedCurrency, $groupDeposits) {
             $item = is_array($item) ? $item : (array) $item;
 
             if (!empty($item['is_tour'])) {
@@ -573,6 +578,16 @@ class CartService
                 }
             }
 
+            $requiresDeposit = empty($item['is_tour']) && (bool) data_get($item, 'service_type_data.requires_refundable_deposit', false);
+            $depositLkr = $requiresDeposit
+                ? max(0, (float) ($item['refundable_deposit_lkr'] ?? ($groupDeposits[$item['vehicle_group_id'] ?? ''] ?? 0)))
+                : 0.0;
+            $item['requires_refundable_deposit'] = $requiresDeposit;
+            $item['refundable_deposit_lkr'] = $depositLkr;
+            $item['refundable_deposit'] = $depositLkr > 0
+                ? $this->currencyService->convertFromLKR($depositLkr, $selectedCurrency)
+                : 0.0;
+
             // Add currency and package information
             $item['currency'] = $selectedCurrency;
             $item['is_package'] = $isPackage;
@@ -604,6 +619,8 @@ class CartService
             }
         }
 
+        $convertedTotals['refundable_deposit_lkr'] = $convertedItems->sum(fn ($i) => (float) ($i['refundable_deposit_lkr'] ?? 0));
+        $convertedTotals['refundable_deposit'] = $convertedItems->sum(fn ($i) => (float) ($i['refundable_deposit'] ?? 0));
         $convertedTotals['currency'] = $selectedCurrency;
         $convertedTotals['currency_symbol'] = getCurrencySymbol($selectedCurrency);
 

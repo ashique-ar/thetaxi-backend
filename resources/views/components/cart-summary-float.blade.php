@@ -450,19 +450,18 @@
 <!-- Cart Summary Float (Hidden by default, shown when items added) -->
 <div id="cartSummaryFloat" class="cart-summary-float {{ theme_class('cart-summary-float') }}" style="display: none;">
     <div class="cart-float-content">
-        {{-- Cart Header with icon, count badge, clear and close buttons --}}
+        {{-- Cart Header with icon, clear and close buttons --}}
         <div class="cart-float-header">
             <div class="cart-float-title-group">
                 <span class="cart-float-icon-badge" aria-hidden="true">
-                    <i class="bi bi-bag-fill"></i>
+                    <i class="bi bi-cart-fill"></i>
                 </span>
-                <h6>Rental Cart</h6>
-                <span class="cart-count-pill" id="cartFloatCountBadge">0 Vehicles</span>
+                <h6>Cart</h6>
             </div>
             <div class="cart-float-actions">
-                <button type="button" id="clearCartFloat" title="Clear all items">
+                <button type="button" id="clearCartFloat">
                     <i class="bi bi-trash3"></i>
-                    <span>Clear all</span>
+                    <span>Clear cart</span>
                 </button>
                 <button type="button" class="cart-close-btn" id="closeCartFloat" aria-label="Close cart">
                     <i class="bi bi-chevron-down"></i>
@@ -531,11 +530,20 @@
                         <span class="amount">0</span>
                     </span>
                 </div>
+
+                {{-- Security Deposit row - hidden when zero, excluded from Total Amount --}}
+                <div class="cart-security-deposit mb-1" style="display: none;">
+                    <span>Security Deposit <small style="opacity: 0.72; font-size: 11px;">(not in total)</small>:</span>
+                    <span id="cartSecurityDeposit">
+                        <span class="currency-symbol">{{ $currencySymbol }}</span>
+                        <span class="amount">0</span>
+                    </span>
+                </div>
                 
                 {{-- Total Amount row - always visible (Requirement 1.11) --}}
                 <div class="cart-total">
                     <div>
-                        <span class="cart-total-overline">Total Amount</span>
+                        <span class="cart-total-overline">Total Amount:</span>
                         <strong id="cartTotalPrice">
                             <span class="currency-symbol">{{ $currencySymbol }}</span>
                             <span class="amount">0</span>
@@ -546,15 +554,14 @@
             
             {{-- Checkout button (Requirement 1.12) --}}
             <a href="{{ $cartPageRoute }}" class="btn btn-light w-100 cart-checkout-btn">
-                <i class="bi bi-lock-fill"></i>
-                <span>Review &amp; Checkout <span id="cartCheckoutCount"></span></span>
+                <i class="bi bi-cart-check"></i>
+                <span>Review &amp; Checkout</span>
                 <i class="bi bi-arrow-right"></i>
             </a>
 
-            {{-- Helper / trust meta --}}
+            {{-- Helper text --}}
             <div class="cart-float-meta">
-                <span><i class="bi bi-check2"></i> Instant reservation</span>
-                <span><i class="bi bi-sliders2"></i> Extras &amp; extra km at checkout</span>
+                <span>Review extras and extra km at checkout</span>
             </div>
         </div>
     </div>
@@ -653,10 +660,6 @@
 
             let total = 0;
             const keys = Object.keys(cart);
-            const itemCount = keys.length;
-
-            $('#cartFloatCountBadge').text(itemCount === 1 ? '1 Vehicle' : `${itemCount} Vehicles`);
-            $('#cartCheckoutCount').text(itemCount > 0 ? `(${itemCount})` : '');
 
             const formatAmount = (val) => Math.floor(Math.max(0, val)).toLocaleString('en-US', {
                 minimumFractionDigits: 0,
@@ -681,14 +684,8 @@
                 const pricingLabel = getPricingLabel(serviceType);
                 const durationLabel = getDurationLabel(serviceType, days);
                 const fixedRate = isFixedRate(serviceType);
-                const allowedKm = item.distance_details && item.distance_details.allowed_total_km
-                    ? Math.round(parseFloat(item.distance_details.allowed_total_km))
-                    : null;
-                const badgeText = allowedKm ? `${allowedKm.toLocaleString('en-US')} km included` : durationLabel;
                 const imageUrl = resolveImageUrl(item.image || item.vehicle_image || '');
-                const dateText = item.pickup_date && item.return_date
-                    ? `${item.pickup_date} – ${item.return_date}${!fixedRate ? ` · ${days} ${days === 1 ? 'Day' : 'Days'}` : ''}`
-                    : (item.pickup_date || durationLabel);
+                const dateText = `${item.pickup_date || ''} to ${item.return_date || ''}`;
 
                 const thumbHtml = imageUrl
                     ? `<img src="${imageUrl}" alt="${item.vehicle_name || item.name || 'Vehicle'}" class="cart-item-thumb" onerror="this.style.display='none';this.nextElementSibling.style.display='inline-flex';"><span class="cart-item-thumb-placeholder" style="display:none;"><i class="bi bi-car-front-fill"></i></span>`
@@ -707,38 +704,37 @@
                         <div class="cart-item-bottom" style="align-items: flex-end;">
                             <div class="return-trip-breakdown" style="font-size: 11.5px; line-height: 1.45; color: rgba(255,255,255,0.85);">
                                 <div>
-                                    <i class="bi bi-arrow-right-circle"></i> Outbound: <small class="currency-symbol">${cartCurrencySymbol}</small>${formatAmount(oneWay)}
+                                    <i class="bi bi-arrow-right-circle"></i> Outbound: <small class="currency-symbol">${cartCurrencySymbol}</small> ${formatAmount(oneWay)}
                                 </div>
                                 <div>
-                                    <i class="bi bi-arrow-left-circle"></i> Return: ${returnPct > 0 ? '<span class="badge bg-success" style="font-size: 10px; margin: 0 4px;">' + returnPct + '% off</span>' : ''} <small class="currency-symbol">${cartCurrencySymbol}</small>${formatAmount(returnPrice)}
+                                    <i class="bi bi-arrow-left-circle"></i> Return: ${returnPct > 0 ? '<span class="badge bg-success" style="font-size: 10px; margin: 0 4px;">' + returnPct + '% off</span>' : ''} <small class="currency-symbol">${cartCurrencySymbol}</small> ${formatAmount(returnPrice)}
                                 </div>
                             </div>
-                            <span class="cart-item-price"><small class="currency-symbol">${cartCurrencySymbol}</small>${formatAmount(itemTotal)}</span>
+                            <span class="cart-item-price"><small class="currency-symbol">${cartCurrencySymbol}</small> ${formatAmount(itemTotal)}</span>
                         </div>
                     `;
                 } else if (fixedRate) {
                     bottomHtml = `
                         <div class="cart-item-bottom">
                             <div class="cart-item-meta-left">
-                                <span class="cart-item-badge bg-success text-white">${badgeText}</span>
-                                <span class="cart-item-rate-muted">${pricingLabel}</span>
+                                <span class="cart-item-badge bg-success text-white">${durationLabel}</span>
+                                <span class="cart-item-rate-muted">${pricingLabel}: <small class="currency-symbol">${cartCurrencySymbol}</small> ${formatAmount(itemTotal)}</span>
                             </div>
-                            <span class="cart-item-price"><small class="currency-symbol">${cartCurrencySymbol}</small>${formatAmount(itemTotal)}</span>
                         </div>
                     `;
                 } else {
                     bottomHtml = `
                         <div class="cart-item-bottom">
                             <div class="cart-item-meta-left">
-                                <span class="cart-item-badge bg-success text-white">${badgeText}</span>
-                                <span class="cart-item-rate-muted"><small class="currency-symbol">${cartCurrencySymbol}</small>${formatAmount(price)} × ${days}d</span>
+                                <span class="cart-item-badge bg-success text-white">${durationLabel}</span>
+                                <span class="cart-item-rate-muted">${pricingLabel}: <small class="currency-symbol">${cartCurrencySymbol}</small> ${formatAmount(price)}</span>
                             </div>
-                            <span class="cart-item-price"><small class="currency-symbol">${cartCurrencySymbol}</small>${formatAmount(itemTotal)}</span>
+                            <span class="cart-item-price"><small class="currency-symbol">${cartCurrencySymbol}</small> ${formatAmount(itemTotal)}</span>
                         </div>
                     `;
                 }
 
-                // Render cart item card with thumbnail, vehicle name, dates, badge, pricing, and remove button
+                // Render cart item card with thumbnail, vehicle name, dates, duration label, pricing, and remove button
                 // Requirements: 5.1, 5.2, 5.4, 5.6, 5.7
                 $cartItems.append(`
                     <div class="cart-float-item">
@@ -788,6 +784,11 @@
             updateBreakdownItem('.cart-service-fee', cartTotals.service_fee || 0);
             updateBreakdownItem('.cart-tax', cartTotals.tax || 0);
             updateBreakdownItem('.cart-vat', cartTotals.vat || 0);
+
+            const securityDeposit = cartTotals.refundable_deposit !== undefined
+                ? parseFloat(cartTotals.refundable_deposit || 0)
+                : keys.reduce((sum, key) => sum + parseFloat(cart[key]?.refundable_deposit || 0), 0);
+            updateBreakdownItem('.cart-security-deposit', securityDeposit);
 
             // Update final total (should be subtotal + all charges)
             $('#cartTotalPrice .amount').text(finalTotal.toLocaleString('en-US', {
