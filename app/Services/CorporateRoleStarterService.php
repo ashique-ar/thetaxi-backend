@@ -3,14 +3,48 @@
 namespace App\Services;
 
 use App\Models\Corporate\Corporate;
+use App\Models\Corporate\CorporateEmployee;
 use App\Models\User;
 use App\Models\UserContext;
+use Illuminate\Http\Exceptions\HttpResponseException;
+use Illuminate\Support\Collection;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Schema;
+use Illuminate\Support\Str;
 use Spatie\Permission\Models\Permission;
 use Spatie\Permission\Models\Role;
+use Spatie\Permission\PermissionRegistrar;
 
 class CorporateRoleStarterService
 {
+    /**
+     * Corporate-scoped permissions that can be assigned to corporate roles.
+     */
+    public const CORPORATE_PERMISSIONS = [
+        'manage-roles',
+        'manage_employees',
+        'manage_departments',
+        'manage_divisions',
+        'create_bookings',
+        'create_bookings_for_others',
+        'view_all_bookings',
+        'approve_bookings',
+        'view_payments',
+        'manage_billing',
+        'manage_rate_charts',
+        'view_reports',
+        'schedule_reports',
+        'corporate.audit-logs.view',
+        'corporate.view',
+        'bookings.view',
+        'bookings.create',
+        'staff-transport.self.view',
+        'staff-transport.view',
+        'staff-transport.manage',
+        'staff-transport.override',
+        'staff-transport.generate',
+    ];
+
     public const TEMPLATES = [
         'Corporate_Master_Admin' => [
             'label' => 'Master Administrator',
@@ -124,19 +158,183 @@ class CorporateRoleStarterService
                 ], true)
             );
         }
+
+        $prefix = $this->customRolePrefix($corporate->id);
         $name = $template
             ? $this->roleName($corporate->id, $template['key'])
-            : $requestedName;
+            : (Str::startsWith($requestedName, $prefix)
+                ? $requestedName
+                : $this->roleName($corporate->id, Str::of($requestedName)->trim()->replace([' ', '-'], '_')->toString()));
 
         return Role::where('guard_name', 'api')
             ->where('name', $name)
-            ->where('name', 'like', 'Corporate_'.$corporate->id.'_%')
+            ->where('name', 'like', $prefix.'%')
             ->first();
+    }
+
+    public function listRoles(Corporate $corporate): Collection
+    {
+        $this->provision($corporate);
+        $prefix = $this->customRolePrefix($corporate->id);
+
+        return Role::where('guard_name', 'api')
+            ->where('name', 'like', $prefix.'%')
+            ->with('permissions')
+            ->get()
+            ->each(function (Role $role) use ($prefix): void {
+                $role->setAttribute('display_name', Str::startsWith($role->name, $prefix)
+                    ? Str::after($role->name, $prefix)
+                    : $role->name);
+            });
+    }
+
+    public function createRole(Corporate $corporate, array $data): Role
+    {
+        $prefix = $this->customRolePrefix($corporate->id);
+        $roleName = $prefix . Str::of($data['name'])->trim()->replace([' ', '-'], '_');
+
+        if (Role::where('name', $roleName)->where('guard_name', 'api')->exists()) {
+            $this->abortJson('A role with this name already exists.', 422);
+        }
+
+        $attributes = [
+            'name' => $roleName,
+            'guard_name' => 'api',
+        ];
+        if (array_key_exists('description', $data) && $this->hasDescriptionColumn()) {
+            $attributes['description'] = $data['description'];
+        }
+
+        $role = Role::create($attributes);
+        $role->syncPermissions($this->ensureCorporatePermissions($data['permissions'] ?? []));
+        app(PermissionRegistrar::class)->forgetCachedPermissions();
+
+        $role->setAttribute('display_name', Str::after($role->name, $prefix));
+
+        return $role->load('permissions');
+    }
+
+    public function updateRole(Corporate $corporate, string $id, array $data): Role
+    {
+        $prefix = $this->customRolePrefix($corporate->id);
+        $role = Role::where('guard_name', 'api')
+            ->where('name', 'like', $prefix.'%')
+            ->findOrFail($id);
+
+        if ($this->isAssignedOutsideCorporate($role, $corporate->id)) {
+            $this->abortJson('This role is used by another corporate account and cannot be changed here.', 409);
+        }
+
+        $hasName = isset($data['name']) && trim((string) $data['name']) !== '';
+        if ($this->isDefaultRole($role, $corporate->id) && $hasName) {
+            $requestedKey = (string) Str::of($data['name'])->trim()->replace([' ', '-'], '_');
+            abort_unless($requestedKey === Str::after($role->name, $prefix), 422, 'Default corporate roles cannot be renamed.');
+        }
+
+        if ($hasName && ! $this->isDefaultRole($role, $corporate->id)) {
+            $roleName = $prefix . Str::of($data['name'])->trim()->replace([' ', '-'], '_');
+            if (Role::where('guard_name', 'api')->where('name', $roleName)->where('id', '!=', $role->id)->exists()) {
+                $this->abortJson('A role with this name already exists.', 422);
+            }
+            $role->name = (string) $roleName;
+        }
+
+        if (array_key_exists('description', $data) && $this->hasDescriptionColumn()) {
+            $role->description = $data['description'];
+        }
+
+        if ($role->isDirty()) {
+            $role->save();
+        }
+
+        $role->syncPermissions($this->ensureCorporatePermissions($data['permissions'] ?? []));
+        app(PermissionRegistrar::class)->forgetCachedPermissions();
+
+        $role->setAttribute('display_name', Str::after($role->name, $prefix));
+
+        return $role->load('permissions');
+    }
+
+    public function deleteRole(Corporate $corporate, string $id): void
+    {
+        $prefix = $this->customRolePrefix($corporate->id);
+        $role = Role::where('guard_name', 'api')
+            ->where('name', 'like', $prefix.'%')
+            ->findOrFail($id);
+
+        abort_if($this->isDefaultRole($role, $corporate->id), 403, 'Default corporate roles cannot be deleted.');
+
+        $assignedCount = CorporateEmployee::withInactive()
+            ->where('corporate_id', $corporate->id)
+            ->whereHas('userContext.roles', fn ($rq) => $rq->where('roles.id', $role->id))
+            ->count();
+
+        if ($assignedCount > 0) {
+            $this->abortJson("Cannot delete role. There are {$assignedCount} employees assigned to this role.", 409);
+        }
+
+        $role->delete();
+        app(PermissionRegistrar::class)->forgetCachedPermissions();
+    }
+
+    public function listPermissions(): Collection
+    {
+        $this->ensureCorporatePermissions(self::CORPORATE_PERMISSIONS);
+
+        return Permission::where('guard_name', 'api')
+            ->whereIn('name', self::CORPORATE_PERMISSIONS)
+            ->get(['id', 'name']);
     }
 
     public function roleName(string $corporateId, string $key): string
     {
         return 'Corporate_'.$corporateId.'_'.$key;
+    }
+
+    public function customRolePrefix(string $corporateId): string
+    {
+        return 'Corporate_'.$corporateId.'_';
+    }
+
+    public function isDefaultRole(Role $role, string $corporateId): bool
+    {
+        return in_array(
+            Str::after($role->name, $this->customRolePrefix($corporateId)),
+            array_column(self::TEMPLATES, 'key'),
+            true
+        );
+    }
+
+    private function isAssignedOutsideCorporate(Role $role, string $corporateId): bool
+    {
+        return CorporateEmployee::withInactive()
+            ->where('corporate_id', '!=', $corporateId)
+            ->whereHas('userContext.roles', fn ($query) => $query->where('roles.id', $role->id))
+            ->exists();
+    }
+
+    private function ensureCorporatePermissions(array $permissionNames): array
+    {
+        $names = array_values(array_unique($permissionNames));
+
+        foreach ($names as $name) {
+            Permission::findOrCreate($name, 'api');
+        }
+
+        return $names;
+    }
+
+    private function hasDescriptionColumn(): bool
+    {
+        return Schema::hasColumn(config('permission.table_names.roles', 'roles'), 'description');
+    }
+
+    private function abortJson(string $message, int $status): never
+    {
+        throw new HttpResponseException(response()->json([
+            'status' => 'error',
+            'message' => $message,
+        ], $status));
     }
 
     public static function isCorporateRoleName(string $name): bool

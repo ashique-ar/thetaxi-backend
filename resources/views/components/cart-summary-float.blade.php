@@ -34,12 +34,12 @@
         position: fixed;
         bottom: 20px;
         right: 20px;
-        width: 350px;
+        width: 380px;
         background: var(--primary-color, #111827);
-        border-radius: 16px;
-        box-shadow: 0 8px 32px rgba(0, 0, 0, 0.3);
+        border-radius: 18px;
+        box-shadow: 0 16px 48px rgba(0, 0, 0, 0.35), 0 0 0 1px rgba(255, 255, 255, 0.08);
         z-index: 1050;
-        animation: cartSummaryFloatSlideInUp 0.4s ease-out;
+        animation: cartSummaryFloatSlideInUp 0.35s cubic-bezier(0.16, 1, 0.3, 1);
         overflow: hidden;
     }
 
@@ -50,7 +50,7 @@
     /* Slide-in animation for cart float appearance */
     @keyframes cartSummaryFloatSlideInUp {
         from {
-            transform: translateY(100px);
+            transform: translateY(80px);
             opacity: 0;
         }
         to {
@@ -59,90 +59,266 @@
         }
     }
 
-    /* Cart float header - title and close button */
+    /* Cart float header - title, count badge, clear & close actions */
     .cart-summary-float .cart-float-header {
-        padding: 16px 20px;
-        border-bottom: 1px solid rgba(255, 255, 255, 0.2);
+        padding: 14px 18px;
+        border-bottom: 1px solid rgba(255, 255, 255, 0.12);
         display: flex;
         justify-content: space-between;
         align-items: center;
+        gap: 10px;
         color: white;
+    }
+
+    .cart-summary-float .cart-float-title-group {
+        display: flex;
+        align-items: center;
+        gap: 9px;
+        min-width: 0;
+    }
+
+    .cart-summary-float .cart-float-icon-badge {
+        width: 30px;
+        height: 30px;
+        border-radius: 8px;
+        background: rgba(255, 255, 255, 0.14);
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
+        font-size: 14px;
+        flex-shrink: 0;
     }
 
     .cart-summary-float .cart-float-header h6 {
         margin: 0;
         font-size: 15px;
         font-weight: 700;
+        letter-spacing: -0.01em;
         color: white;
+        white-space: nowrap;
+    }
+
+    .cart-summary-float .cart-count-pill {
+        font-size: 11px;
+        font-weight: 600;
+        line-height: 1;
+        padding: 4px 9px;
+        border-radius: 999px;
+        background: rgba(255, 255, 255, 0.14);
+        color: white;
+        white-space: nowrap;
+    }
+
+    .cart-summary-float .cart-float-actions {
+        display: flex;
+        align-items: center;
+        gap: 6px;
+        flex-shrink: 0;
     }
 
     .cart-summary-float #clearCartFloat {
-        padding: 5px 9px;
+        padding: 4px 8px;
         font-size: 12px;
+        font-weight: 500;
+        color: rgba(255, 255, 255, 0.78);
+        background: transparent;
+        border: none;
+        border-radius: 6px;
+        display: inline-flex;
+        align-items: center;
+        gap: 5px;
+        transition: color 0.15s ease, background 0.15s ease;
+    }
+
+    .cart-summary-float #clearCartFloat:hover {
+        color: #fff;
+        background: rgba(255, 255, 255, 0.1);
+    }
+
+    .cart-summary-float .cart-close-btn {
+        width: 28px;
+        height: 28px;
+        padding: 0;
+        border: none;
+        border-radius: 7px;
+        background: transparent;
+        color: rgba(255, 255, 255, 0.78);
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
+        font-size: 14px;
+        transition: color 0.15s ease, background 0.15s ease;
+    }
+
+    .cart-summary-float .cart-close-btn:hover {
+        color: #fff;
+        background: rgba(255, 255, 255, 0.1);
     }
 
     /* Cart float body - scrollable items container */
     .cart-summary-float .cart-float-body {
-        padding: 16px 20px;
-        max-height: 300px;
+        padding: 12px 14px;
+        max-height: 320px;
         overflow-y: auto;
+        display: flex;
+        flex-direction: column;
+        gap: 10px;
         color: white;
         background: var(--primary-color, #111827);
+        scrollbar-width: thin;
+        scrollbar-color: rgba(255, 255, 255, 0.2) transparent;
     }
 
-    /* Individual cart item styling */
+    .cart-summary-float .cart-float-body::-webkit-scrollbar {
+        width: 5px;
+    }
+
+    .cart-summary-float .cart-float-body::-webkit-scrollbar-thumb {
+        background: rgba(255, 255, 255, 0.2);
+        border-radius: 999px;
+    }
+
+    /* Individual cart item card */
     .cart-summary-float .cart-float-item {
-        padding: 12px 0;
-        border-bottom: 1px solid rgba(255, 255, 255, 0.1);
-        font-size: 13px;
-        line-height: 1.5;
+        padding: 12px;
+        border-radius: 12px;
+        background: rgba(255, 255, 255, 0.06);
+        border: 1px solid rgba(255, 255, 255, 0.1);
+        font-size: 12.5px;
+        line-height: 1.4;
+        transition: background 0.15s ease, border-color 0.15s ease;
     }
 
-    .cart-summary-float .cart-float-item > div:first-child > div:first-child > strong {
+    .cart-summary-float .cart-float-item:hover {
+        background: rgba(255, 255, 255, 0.09);
+        border-color: rgba(255, 255, 255, 0.18);
+    }
+
+    .cart-summary-float .cart-item-top {
+        display: flex;
+        align-items: flex-start;
+        gap: 10px;
+    }
+
+    .cart-summary-float .cart-item-thumb {
+        width: 54px;
+        height: 40px;
+        border-radius: 8px;
+        object-fit: cover;
+        flex-shrink: 0;
+        background: rgba(255, 255, 255, 0.08);
+        border: 1px solid rgba(255, 255, 255, 0.1);
+    }
+
+    .cart-summary-float .cart-item-thumb-placeholder {
+        width: 54px;
+        height: 40px;
+        border-radius: 8px;
+        flex-shrink: 0;
+        background: rgba(255, 255, 255, 0.08);
+        border: 1px solid rgba(255, 255, 255, 0.1);
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
+        font-size: 16px;
+        color: rgba(255, 255, 255, 0.6);
+    }
+
+    .cart-summary-float .cart-item-info {
+        flex: 1;
+        min-width: 0;
+    }
+
+    .cart-summary-float .cart-item-title {
+        display: block;
         font-size: 14px;
+        font-weight: 700;
+        line-height: 1.3;
+        color: #fff;
+        margin-bottom: 3px;
+        overflow: hidden;
+        text-overflow: ellipsis;
+        white-space: nowrap;
+    }
+
+    .cart-summary-float .cart-item-dates {
+        font-size: 11.5px;
         line-height: 1.35;
+        color: rgba(255, 255, 255, 0.68);
+        display: flex;
+        align-items: center;
+        gap: 5px;
     }
 
-    .cart-summary-float .cart-float-item .small {
+    .cart-summary-float .cart-item-remove {
+        width: 24px;
+        height: 24px;
+        padding: 0;
+        border: none;
+        border-radius: 6px;
+        background: transparent;
+        color: rgba(255, 255, 255, 0.55);
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
         font-size: 12px;
+        flex-shrink: 0;
+        transition: color 0.15s ease, background 0.15s ease;
     }
 
-    .cart-summary-float .cart-float-item:last-child {
-        border-bottom: none;
+    .cart-summary-float .cart-item-remove:hover {
+        color: #fff;
+        background: rgba(255, 255, 255, 0.12);
+    }
+
+    .cart-summary-float .cart-item-bottom {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        gap: 8px;
+        margin-top: 10px;
+        padding-top: 9px;
+        border-top: 1px solid rgba(255, 255, 255, 0.08);
+    }
+
+    .cart-summary-float .cart-item-meta-left {
+        display: flex;
+        align-items: center;
+        gap: 8px;
+        flex-wrap: wrap;
+        min-width: 0;
+    }
+
+    .cart-summary-float .cart-item-badge {
+        font-size: 11px;
+        font-weight: 600;
+        line-height: 1.2;
+        padding: 3px 8px;
+        border-radius: 6px;
+        white-space: nowrap;
+    }
+
+    .cart-summary-float .cart-item-rate-muted {
+        font-size: 11.5px;
+        color: rgba(255, 255, 255, 0.72);
+        white-space: nowrap;
+    }
+
+    .cart-summary-float .cart-item-price {
+        font-size: 14.5px;
+        font-weight: 700;
+        line-height: 1.2;
+        color: #fff;
+        white-space: nowrap;
+        font-variant-numeric: tabular-nums;
     }
 
     /* Cart float footer - totals and checkout button */
     .cart-summary-float .cart-float-footer {
-        padding: 16px 20px;
-        border-top: 1px solid rgba(255, 255, 255, 0.2);
+        padding: 14px 18px 16px;
+        border-top: 1px solid rgba(255, 255, 255, 0.12);
         background: var(--primary-color, #111827);
-        font-size: 13px;
-    }
-
-    .cart-summary-float .cart-float-footer > small {
-        font-size: 12px;
-    }
-
-    /* Cart total row styling */
-    .cart-summary-float .cart-total {
-        display: flex;
-        justify-content: space-between;
-        align-items: center;
-        color: white;
-        font-size: 14px;
-    }
-
-    .cart-summary-float .cart-total strong {
-        font-size: 17px;
-        font-weight: 700;
-    }
-
-    /* Currency symbol styling within cart float */
-    .cart-summary-float .currency-symbol {
-        font-size: 0.75em;
-        font-weight: 400 !important;
-        opacity: 0.9;
-        margin-right: 0.2rem;
+        font-size: 12.5px;
     }
 
     /* Cart breakdown rows (subtotal, charges, taxes) */
@@ -151,12 +327,94 @@
         justify-content: space-between;
         align-items: center;
         color: white;
-        font-size: 14px;
-        margin-bottom: 4px;
+        font-size: 12.5px;
+        line-height: 1.4;
+        margin-bottom: 6px;
     }
 
     .cart-summary-float .cart-breakdown > div span:first-child {
+        color: rgba(255, 255, 255, 0.74);
+    }
+
+    .cart-summary-float .cart-breakdown > div span:last-child {
+        font-weight: 600;
+        font-variant-numeric: tabular-nums;
+    }
+
+    /* Cart total row styling */
+    .cart-summary-float .cart-total {
+        display: flex;
+        justify-content: space-between;
+        align-items: flex-end;
+        color: white;
+        border-top: 1px solid rgba(255, 255, 255, 0.12);
+        padding-top: 12px;
+        margin-top: 10px;
+        margin-bottom: 12px !important;
+    }
+
+    .cart-summary-float .cart-total-overline {
+        display: block;
+        font-size: 10.5px;
+        font-weight: 600;
+        letter-spacing: 0.06em;
+        text-transform: uppercase;
+        color: rgba(255, 255, 255, 0.65);
+        margin-bottom: 2px;
+    }
+
+    .cart-summary-float .cart-total strong#cartTotalPrice {
+        display: block;
+        font-size: 22px;
+        font-weight: 800;
+        line-height: 1.15;
+        letter-spacing: -0.02em;
+        font-variant-numeric: tabular-nums;
+    }
+
+    /* Currency symbol styling within cart float */
+    .cart-summary-float .currency-symbol {
+        font-size: 0.78em;
+        font-weight: 500 !important;
         opacity: 0.9;
+        margin-right: 0.15rem;
+    }
+
+    /* Primary checkout button */
+    .cart-summary-float .cart-checkout-btn {
+        padding: 11px 16px;
+        border-radius: 10px;
+        font-size: 14px;
+        font-weight: 700;
+        line-height: 1.25;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        gap: 8px;
+        transition: transform 0.15s ease, box-shadow 0.15s ease;
+    }
+
+    .cart-summary-float .cart-checkout-btn:hover {
+        transform: translateY(-1px);
+        box-shadow: 0 6px 16px rgba(0, 0, 0, 0.22);
+    }
+
+    .cart-summary-float .cart-float-meta {
+        margin-top: 10px;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        gap: 14px;
+        flex-wrap: wrap;
+        font-size: 11px;
+        line-height: 1.3;
+        color: rgba(255, 255, 255, 0.7);
+    }
+
+    .cart-summary-float .cart-float-meta span {
+        display: inline-flex;
+        align-items: center;
+        gap: 4px;
     }
 
     /* ==================== RESPONSIVE STYLES ==================== */
@@ -164,16 +422,25 @@
     /* Tablet breakpoint */
     @media (max-width: 991px) {
         .cart-summary-float {
-            width: 300px;
+            width: 340px;
         }
     }
 
     /* Mobile breakpoint - full width with margins */
     @media (max-width: 767px) {
         .cart-summary-float {
-            width: calc(100% - 40px);
-            right: 20px;
-            left: 20px;
+            width: calc(100% - 32px);
+            right: 16px;
+            left: 16px;
+            bottom: 16px;
+        }
+
+        .cart-summary-float .cart-float-body {
+            max-height: min(38dvh, 280px);
+        }
+
+        .cart-summary-float .cart-total strong#cartTotalPrice {
+            font-size: 20px;
         }
     }
 </style>
@@ -183,12 +450,23 @@
 <!-- Cart Summary Float (Hidden by default, shown when items added) -->
 <div id="cartSummaryFloat" class="cart-summary-float {{ theme_class('cart-summary-float') }}" style="display: none;">
     <div class="cart-float-content">
-        {{-- Cart Header with icon and close button --}}
+        {{-- Cart Header with icon, count badge, clear and close buttons --}}
         <div class="cart-float-header">
-            <h6><i class="bi bi-cart-fill"></i> Cart</h6>
-            <div class="d-flex align-items-center gap-3">
-                <button type="button" class="btn btn-sm btn-outline-light" id="clearCartFloat">Clear cart</button>
-                <button type="button" class="btn-close btn-close-white" id="closeCartFloat" aria-label="Close cart"></button>
+            <div class="cart-float-title-group">
+                <span class="cart-float-icon-badge" aria-hidden="true">
+                    <i class="bi bi-bag-fill"></i>
+                </span>
+                <h6>Rental Cart</h6>
+                <span class="cart-count-pill" id="cartFloatCountBadge">0 Vehicles</span>
+            </div>
+            <div class="cart-float-actions">
+                <button type="button" id="clearCartFloat" title="Clear all items">
+                    <i class="bi bi-trash3"></i>
+                    <span>Clear all</span>
+                </button>
+                <button type="button" class="cart-close-btn" id="closeCartFloat" aria-label="Close cart">
+                    <i class="bi bi-chevron-down"></i>
+                </button>
             </div>
         </div>
         
@@ -255,22 +533,29 @@
                 </div>
                 
                 {{-- Total Amount row - always visible (Requirement 1.11) --}}
-                <div class="cart-total mb-2 mt-2" style="border-top: 1px solid rgba(255,255,255,0.2); padding-top: 8px;">
-                    <span><strong>Total Amount:</strong></span>
-                    <strong id="cartTotalPrice">
-                        <span class="currency-symbol">{{ $currencySymbol }}</span> 
-                        <span class="amount">0</span>
-                    </strong>
+                <div class="cart-total">
+                    <div>
+                        <span class="cart-total-overline">Total Amount</span>
+                        <strong id="cartTotalPrice">
+                            <span class="currency-symbol">{{ $currencySymbol }}</span>
+                            <span class="amount">0</span>
+                        </strong>
+                    </div>
                 </div>
             </div>
             
-            {{-- Helper text --}}
-            <small class="text-white d-block mb-2">Review extras and extra km at checkout</small>
-            
             {{-- Checkout button (Requirement 1.12) --}}
-            <a href="{{ $cartPageRoute }}" class="btn btn-light w-100">
-                <i class="bi bi-cart-check"></i> Review & Checkout
+            <a href="{{ $cartPageRoute }}" class="btn btn-light w-100 cart-checkout-btn">
+                <i class="bi bi-lock-fill"></i>
+                <span>Review &amp; Checkout <span id="cartCheckoutCount"></span></span>
+                <i class="bi bi-arrow-right"></i>
             </a>
+
+            {{-- Helper / trust meta --}}
+            <div class="cart-float-meta">
+                <span><i class="bi bi-check2"></i> Instant reservation</span>
+                <span><i class="bi bi-sliders2"></i> Extras &amp; extra km at checkout</span>
+            </div>
         </div>
     </div>
 </div>
@@ -367,7 +652,24 @@
             }
 
             let total = 0;
-            Object.keys(cart).forEach((key, index) => {
+            const keys = Object.keys(cart);
+            const itemCount = keys.length;
+
+            $('#cartFloatCountBadge').text(itemCount === 1 ? '1 Vehicle' : `${itemCount} Vehicles`);
+            $('#cartCheckoutCount').text(itemCount > 0 ? `(${itemCount})` : '');
+
+            const formatAmount = (val) => Math.floor(Math.max(0, val)).toLocaleString('en-US', {
+                minimumFractionDigits: 0,
+                maximumFractionDigits: 0
+            });
+
+            const resolveImageUrl = (img) => {
+                if (!img || typeof img !== 'string') return '';
+                if (img.startsWith('http://') || img.startsWith('https://') || img.startsWith('/')) return img;
+                return `/storage/${img.replace(/^\/+/, '')}`;
+            };
+
+            keys.forEach((key) => {
                 const item = cart[key];
                 const price = parseFloat(item.price || 0);
                 const days = parseInt(item.days || 1);
@@ -379,9 +681,21 @@
                 const pricingLabel = getPricingLabel(serviceType);
                 const durationLabel = getDurationLabel(serviceType, days);
                 const fixedRate = isFixedRate(serviceType);
+                const allowedKm = item.distance_details && item.distance_details.allowed_total_km
+                    ? Math.round(parseFloat(item.distance_details.allowed_total_km))
+                    : null;
+                const badgeText = allowedKm ? `${allowedKm.toLocaleString('en-US')} km included` : durationLabel;
+                const imageUrl = resolveImageUrl(item.image || item.vehicle_image || '');
+                const dateText = item.pickup_date && item.return_date
+                    ? `${item.pickup_date} – ${item.return_date}${!fixedRate ? ` · ${days} ${days === 1 ? 'Day' : 'Days'}` : ''}`
+                    : (item.pickup_date || durationLabel);
+
+                const thumbHtml = imageUrl
+                    ? `<img src="${imageUrl}" alt="${item.vehicle_name || item.name || 'Vehicle'}" class="cart-item-thumb" onerror="this.style.display='none';this.nextElementSibling.style.display='inline-flex';"><span class="cart-item-thumb-placeholder" style="display:none;"><i class="bi bi-car-front-fill"></i></span>`
+                    : `<span class="cart-item-thumb-placeholder"><i class="bi bi-car-front-fill"></i></span>`;
 
                 // Build pricing display based on service type
-                let pricingHtml = '';
+                let bottomHtml = '';
 
                 // If fixed-rate and return trip info available, show outbound/return breakdown (Requirement 5.5)
                 if (fixedRate && item.is_return_trip && (item.one_way_price || item.return_price)) {
@@ -389,45 +703,59 @@
                     const returnPrice = parseFloat(item.return_price || 0);
                     const returnPct = parseFloat(item.return_discount_percentage || 0);
 
-                    pricingHtml = `
-                        <div class="return-trip-breakdown text-white-0">
-                            <div style="color: #fff; font-size: 13px;">
-                                <i class="bi bi-arrow-right-circle"></i> Outbound: <small class="currency-symbol">${cartCurrencySymbol}</small> ${Math.floor(Math.max(0, oneWay)).toLocaleString('en-US', {minimumFractionDigits: 0, maximumFractionDigits: 0})}
+                    bottomHtml = `
+                        <div class="cart-item-bottom" style="align-items: flex-end;">
+                            <div class="return-trip-breakdown" style="font-size: 11.5px; line-height: 1.45; color: rgba(255,255,255,0.85);">
+                                <div>
+                                    <i class="bi bi-arrow-right-circle"></i> Outbound: <small class="currency-symbol">${cartCurrencySymbol}</small>${formatAmount(oneWay)}
+                                </div>
+                                <div>
+                                    <i class="bi bi-arrow-left-circle"></i> Return: ${returnPct > 0 ? '<span class="badge bg-success" style="font-size: 10px; margin: 0 4px;">' + returnPct + '% off</span>' : ''} <small class="currency-symbol">${cartCurrencySymbol}</small>${formatAmount(returnPrice)}
+                                </div>
                             </div>
-                            <div style="color: #fff; font-size: 13px;">
-                                <i class="bi bi-arrow-left-circle"></i> Return: ${returnPct > 0 ? '<span class="badge bg-success" style="font-size: 11px; margin-left: 6px;">' + returnPct + '% off</span>' : ''} <small class="currency-symbol">${cartCurrencySymbol}</small> ${Math.floor(Math.max(0, returnPrice)).toLocaleString('en-US', {minimumFractionDigits: 0, maximumFractionDigits: 0})}
-                            </div>
-                            <div style="margin-top:6px; font-weight:700;">
-                                <small class="currency-symbol">${cartCurrencySymbol}</small> ${Math.floor(Math.max(0, itemTotal)).toLocaleString('en-US', {minimumFractionDigits: 0, maximumFractionDigits: 0})}
-                            </div>
+                            <span class="cart-item-price"><small class="currency-symbol">${cartCurrencySymbol}</small>${formatAmount(itemTotal)}</span>
                         </div>
                     `;
                 } else if (fixedRate) {
-                    pricingHtml = `<span>${pricingLabel}: <small class="currency-symbol">${cartCurrencySymbol}</small> ${Math.floor(Math.max(0, itemTotal)).toLocaleString('en-US', {minimumFractionDigits: 0, maximumFractionDigits: 0})}</span>`;
+                    bottomHtml = `
+                        <div class="cart-item-bottom">
+                            <div class="cart-item-meta-left">
+                                <span class="cart-item-badge bg-success text-white">${badgeText}</span>
+                                <span class="cart-item-rate-muted">${pricingLabel}</span>
+                            </div>
+                            <span class="cart-item-price"><small class="currency-symbol">${cartCurrencySymbol}</small>${formatAmount(itemTotal)}</span>
+                        </div>
+                    `;
                 } else {
-                    pricingHtml = `
-                        <span>${pricingLabel}: <small class="currency-symbol">${cartCurrencySymbol}</small> ${Math.floor(Math.max(0, price)).toLocaleString('en-US', {minimumFractionDigits: 0, maximumFractionDigits: 0})}</span>
-                        <strong><small class="currency-symbol">${cartCurrencySymbol}</small> ${Math.floor(Math.max(0, itemTotal)).toLocaleString('en-US', {minimumFractionDigits: 0, maximumFractionDigits: 0})}</strong>
+                    bottomHtml = `
+                        <div class="cart-item-bottom">
+                            <div class="cart-item-meta-left">
+                                <span class="cart-item-badge bg-success text-white">${badgeText}</span>
+                                <span class="cart-item-rate-muted"><small class="currency-symbol">${cartCurrencySymbol}</small>${formatAmount(price)} × ${days}d</span>
+                            </div>
+                            <span class="cart-item-price"><small class="currency-symbol">${cartCurrencySymbol}</small>${formatAmount(itemTotal)}</span>
+                        </div>
                     `;
                 }
 
-                // Render cart item with vehicle name, dates, duration label, pricing, and remove button
+                // Render cart item card with thumbnail, vehicle name, dates, badge, pricing, and remove button
                 // Requirements: 5.1, 5.2, 5.4, 5.6, 5.7
                 $cartItems.append(`
                     <div class="cart-float-item">
-                        <div class="d-flex justify-content-between align-items-start mb-2">
-                            <div class="flex-grow-1">
-                                <strong>${item.vehicle_name || item.name || 'Vehicle Rental'}</strong>
-                                <small class="small bg-success py-1 px-2 rounded">${durationLabel}</small>
-                                <div class="small">${item.pickup_date || ''} to ${item.return_date || ''}</div>
+                        <div class="cart-item-top">
+                            ${thumbHtml}
+                            <div class="cart-item-info">
+                                <strong class="cart-item-title">${item.vehicle_name || item.name || 'Vehicle Rental'}</strong>
+                                <div class="cart-item-dates">
+                                    <i class="bi bi-calendar3"></i>
+                                    <span>${dateText}</span>
+                                </div>
                             </div>
-                            <button type="button" class="btn btn-sm btn-link text-white p-0 ms-2" onclick="removeFromCart('${key}')">
+                            <button type="button" class="cart-item-remove" onclick="removeFromCart('${key}')" aria-label="Remove item">
                                 <i class="bi bi-x-lg"></i>
                             </button>
                         </div>
-                        <div class="d-flex justify-content-between">
-                            ${pricingHtml}
-                        </div>
+                        ${bottomHtml}
                     </div>
                 `);
             });

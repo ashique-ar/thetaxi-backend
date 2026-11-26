@@ -71,8 +71,20 @@
                     @if (!empty($item['route']) || $pickup || $dropoff)
                         <div class="text-muted">{{ $item['route'] ?? (($pickup ?: 'Pickup not set') . ' → ' . ($dropoff ?: 'Drop-off not set')) }}</div>
                     @endif
+                    @php
+                        $extraKmRateLabel = $item['extra_km_rate_label']
+                            ?? \App\Helpers\BookingLinkHelper::quotationExtraKmRateLabel(
+                                (array) ($item['distance_details'] ?? []),
+                                $currency,
+                                !empty($item['vehicle_group_id']) ? (string) $item['vehicle_group_id'] : null,
+                                !empty($item['service_type_id']) ? (string) $item['service_type_id'] : null
+                            );
+                    @endphp
                     @if (!empty($item['included_km_label']))
                         <div class="text-muted mt-1">Included KM: {{ $item['included_km_label'] }}</div>
+                    @endif
+                    @if (!empty($extraKmRateLabel))
+                        <div class="text-muted mt-1">Extra KM Rate: {{ $extraKmRateLabel }}</div>
                     @endif
                     @if (empty($quotation['options']))
                     <div class="text-muted">{{ $item['quantity'] ?? 1 }} ×
@@ -96,6 +108,9 @@
                                             <span class="d-block">{{ $choice['vehicle_group_name'] }}</span>
                                             @if (!empty($choice['included_km_label']))
                                                 <small class="d-block text-muted mt-1">Included KM: {{ $choice['included_km_label'] }}</small>
+                                            @endif
+                                            @if (!empty($choice['extra_km_rate_label']))
+                                                <small class="d-block text-muted mt-1">Extra KM Rate: {{ $choice['extra_km_rate_label'] }}</small>
                                             @endif
                                         </span>
                                     </span>

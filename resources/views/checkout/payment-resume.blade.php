@@ -310,6 +310,16 @@
                                                     </div>
                                                 </div>
                                             @endif
+                                            @if (!empty($item['extra_km_rate_label']))
+                                                <div class="extra-km-rate-section"
+                                                    style="margin-top: 12px; padding-top: 12px; border-top: 1px solid #eee;">
+                                                    <div
+                                                        style="display: flex; justify-content: space-between; align-items: center; padding: 5px 0;">
+                                                        <span><strong>Extra KM Rate</strong></span>
+                                                        <span>{{ $item['extra_km_rate_label'] }}</span>
+                                                    </div>
+                                                </div>
+                                            @endif
                                             @if ($extraKilometers > 0 && $baseTotalKm !== null)
                                                 <div class="total-km-section"
                                                     style="margin-top: 12px; padding-top: 12px; border-top: 1px solid #eee;">

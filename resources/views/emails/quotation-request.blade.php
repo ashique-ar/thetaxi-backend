@@ -130,6 +130,9 @@
                                     @if (!empty($choice['included_km_label']))
                                         <div>Included KM: {{ $choice['included_km_label'] }}</div>
                                     @endif
+                                    @if (!empty($choice['extra_km_rate_label']))
+                                        <div>Extra KM Rate: {{ $choice['extra_km_rate_label'] }}</div>
+                                    @endif
                                     @if ($choice['deposit'] > 0)
                                         <div>Refundable deposit due at vehicle collection: {{ number_format($choice['deposit'], 2) }} {{ $currencyCode }}</div>
                                         <strong>Total including deposit: {{ number_format($choice['price'] + $choice['deposit'], 2) }} {{ $currencyCode }}</strong>

@@ -33,6 +33,29 @@ it('omits monetary fields from management data without the selected context paym
 
 });
 
+it('returns management data with finance visibility enabled when no billing period is selected', function () {
+    Schema::create('bookings', function (Blueprint $table) {
+        $table->uuid('id')->primary();
+        $table->uuid('corporate_account_id')->nullable();
+        $table->softDeletes();
+    });
+    Schema::create('booking_items', function (Blueprint $table) {
+        $table->uuid('id')->primary();
+        $table->uuid('booking_id');
+        $table->softDeletes();
+    });
+
+    $payload = app(CorporateManagementAnalyticsService::class)->report(
+        '00000000-0000-4000-8000-000000000000',
+        [],
+        true
+    );
+
+    expect($payload['financial_metrics_visible'])->toBeTrue()
+        ->and($payload['financial_periods'])->toBe([])
+        ->and($payload)->not->toHaveKey('financial_period');
+});
+
 it('marks estimated aggregates incomplete when a trip has no saved amount', function () {
     $service = new CorporateManagementAnalyticsService;
     $method = new ReflectionMethod($service, 'group');

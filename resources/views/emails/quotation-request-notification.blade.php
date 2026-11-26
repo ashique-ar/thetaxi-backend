@@ -16,6 +16,7 @@
         $returnDate = $requestData['return_date'] ?? null;
         $returnTime = $requestData['return_time'] ?? null;
         $passengers = $requestData['passengers'] ?? null;
+        $extraKmRateLabel = $requestData['extra_km_rate_label'] ?? null;
         $vehicleThumbnail = $vehicleGroup->thumbnail ?? null;
         $thumb = is_array($vehicleThumbnail) ? ($vehicleThumbnail['path'] ?? ($vehicleThumbnail[0] ?? null)) : $vehicleThumbnail;
         $imageUrl = $thumb ? app(\App\Services\EmailImageVariantService::class)->url($thumb, 'vehicle') : asset('assets/img/default-vehicle.jpg');
@@ -100,6 +101,12 @@
                     <tr>
                         <td>Passengers</td>
                         <td>{{ $passengers }}</td>
+                    </tr>
+                @endif
+                @if (!empty($extraKmRateLabel))
+                    <tr>
+                        <td>Extra KM Rate</td>
+                        <td><strong>{{ $extraKmRateLabel }}</strong></td>
                     </tr>
                 @endif
             </table>

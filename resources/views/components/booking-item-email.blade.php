@@ -368,7 +368,22 @@
     $convertDisplayAmount = fn ($amount) => $sourceCurrencyCode && $sourceCurrencyCode !== $displayCurrencyCode
         ? $currencyService->convert((float) $amount, $sourceCurrencyCode, $displayCurrencyCode)
         : (float) $amount;
-    $displayExtraKmPrice = $convertDisplayAmount($extraKmPrice ?? 0);
+    if ((float) ($extraKmPrice ?? 0) <= 0 && !empty($item->vehicle_group_id)) {
+        try {
+            $fallbackExtraKmRate = app(\App\Services\CartService::class)->getExtraKmRateForVehicleGroup(
+                (string) $item->vehicle_group_id,
+                !empty($item->service_type_id) ? (string) $item->service_type_id : null
+            );
+            $extraKmPrice = $fallbackExtraKmRate['rate'] ?? $extraKmPrice;
+        } catch (\Throwable) {
+            // Keep null when database/rate lookup is unavailable in isolated views
+        }
+    }
+    $displayExtraKmPrice = (float) ($extraKmPrice ?? 0) > 0
+        ? ($displayCurrencyCode === 'LKR'
+            ? (float) $extraKmPrice
+            : $currencyService->convertFromLKR((float) $extraKmPrice, $displayCurrencyCode))
+        : 0;
     $displayExtraKmTotal = $convertDisplayAmount($extraKmTotal);
     $displayBaseItemTotal = $convertDisplayAmount($baseItemTotal);
     $displayItemGrandTotal = $convertDisplayAmount($itemGrandTotal);

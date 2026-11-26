@@ -567,7 +567,7 @@ class PendingPaymentManager
             ],
             'pricing_snapshot' => is_array($booking->pricing_snapshot) ? $booking->pricing_snapshot : [],
             'items_count' => $itemsCount,
-            'booking_items' => $booking->bookingItems->map(function ($item) {
+            'booking_items' => $booking->bookingItems->map(function ($item) use ($booking) {
                 // Get vehicle group images
                 $vehicleGroupImages = [];
                 $vehicleGroup = $item->vehicleGroup;
@@ -652,6 +652,14 @@ class PendingPaymentManager
                 }
                 $displayBaseTotalKm = $includedTotalKmForExtra ?? $baseTotalKm;
 
+                $bookingCurrency = strtoupper(trim((string) ($booking->currency ?: 'LKR'))) ?: 'LKR';
+                $extraKmRateLabel = \App\Helpers\BookingLinkHelper::quotationExtraKmRateLabel(
+                    $distanceDetails,
+                    $bookingCurrency,
+                    $item->vehicle_group_id ? (string) $item->vehicle_group_id : null,
+                    $item->service_type_id ? (string) $item->service_type_id : null
+                );
+
                 return [
                 'id' => (string) $item->id,
                     'is_tour' => !empty($metadata['tour_itinerary_id']),
@@ -675,6 +683,7 @@ class PendingPaymentManager
                     'addons' => $addonsData,
                     'extra_kilometers' => $extraKilometers,
                     'extra_km_rate' => $extraKmRate,
+                    'extra_km_rate_label' => $extraKmRateLabel,
                     'extra_km_total' => $extraKmTotal,
                     'base_total_km' => $baseTotalKm,
                     'display_base_total_km' => $displayBaseTotalKm,

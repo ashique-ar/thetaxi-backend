@@ -66,11 +66,13 @@ class CorporateManagementAnalyticsService
                     ->orderBy('period_start')
                     ->get()
                 : collect();
-            $onlinePayments = CorporateOnlinePaymentAttempt::query()
-                ->whereIn('settlement_id', $settlements->modelKeys())
-                ->orderByDesc('created_at')
-                ->get(['settlement_id', 'invoice_amount', 'invoice_currency', 'gateway_amount', 'gateway_currency', 'fx_rate_to_lkr', 'gateway_fx_rate_to_lkr', 'fx_rate_at', 'status', 'gateway_transaction_id', 'paid_at', 'created_at'])
-                ->groupBy('settlement_id');
+            $onlinePayments = $settlements->isEmpty()
+                ? collect()
+                : CorporateOnlinePaymentAttempt::query()
+                    ->whereIn('settlement_id', $settlements->modelKeys())
+                    ->orderByDesc('created_at')
+                    ->get(['settlement_id', 'invoice_amount', 'invoice_currency', 'gateway_amount', 'gateway_currency', 'fx_rate_to_lkr', 'gateway_fx_rate_to_lkr', 'fx_rate_at', 'status', 'gateway_transaction_id', 'paid_at', 'created_at'])
+                    ->groupBy('settlement_id');
             $payload['financial_periods'] = $settlements->map(fn (FinancialAccountSettlement $settlement) => [
                         'id' => (string) $settlement->id,
                         'period_start' => $settlement->period_start?->toDateString(),

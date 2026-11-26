@@ -134,6 +134,7 @@ class BookingLinkHelper
                     ->filter()->values();
             }
         }
+        $currency = (string) ($booking->currency ?? 'LKR');
         $seenTripIndexes = [];
         $displayItems = [];
         foreach ($items as $item) {
@@ -162,6 +163,12 @@ class BookingLinkHelper
                 (array) $displayItem['distance_details'],
                 isServiceDurationBased($displayItem['service_code'], $displayItem['pricing_mode']),
                 $displayItem['duration_days']
+            );
+            $displayItem['extra_km_rate_label'] = self::quotationExtraKmRateLabel(
+                (array) $displayItem['distance_details'],
+                $currency,
+                $item->vehicle_group_id ? (string) $item->vehicle_group_id : null,
+                $item->service_type_id ? (string) $item->service_type_id : null
             );
             $displayItems[] = $displayItem;
         }
@@ -212,6 +219,12 @@ class BookingLinkHelper
                         isServiceDurationBased((string) ($item?->serviceType?->code ?? ''), $item?->serviceType?->pricing_mode),
                         max(1, (int) ($item?->duration_days ?? 1))
                     ),
+                    'extra_km_rate_label' => self::quotationExtraKmRateLabel(
+                        $distanceDetails,
+                        $currency,
+                        $groupId !== '' ? $groupId : null,
+                        $item?->service_type_id ? (string) $item->service_type_id : null
+                    ),
                 ];
             }
         }
@@ -254,6 +267,35 @@ class BookingLinkHelper
         if ($allowed > 0) return number_format($allowed, 0).' km included';
 
         return null;
+    }
+
+    public static function quotationExtraKmRateLabel(
+        array $distanceDetails,
+        string $currency,
+        ?string $vehicleGroupId = null,
+        ?string $serviceTypeId = null
+    ): ?string {
+        $extraKmPriceLkr = (float) ($distanceDetails['extra_km_price'] ?? 0);
+        if ($extraKmPriceLkr <= 0 && $vehicleGroupId) {
+            try {
+                $rateInfo = app(\App\Services\CartService::class)->getExtraKmRateForVehicleGroup($vehicleGroupId, $serviceTypeId);
+                $extraKmPriceLkr = (float) ($rateInfo['rate'] ?? 0);
+            } catch (\Throwable) {
+                $extraKmPriceLkr = 0;
+            }
+        }
+
+        if ($extraKmPriceLkr <= 0) {
+            return null;
+        }
+
+        $currencyCode = strtoupper(trim($currency)) ?: 'LKR';
+        $converted = $currencyCode === 'LKR'
+            ? $extraKmPriceLkr
+            : app(\App\Services\CurrencyService::class)->convertFromLKR($extraKmPriceLkr, $currencyCode);
+        $decimals = $currencyCode === 'LKR' ? 0 : 2;
+
+        return number_format(max(0, $converted), $decimals) . ' ' . $currencyCode . '/km';
     }
 
     public static function quotationOptionSelectionMap(array $options): array

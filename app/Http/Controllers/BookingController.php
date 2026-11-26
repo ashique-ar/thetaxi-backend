@@ -2410,13 +2410,25 @@ class BookingController extends Controller
             // Get search parameters from session for context
             $searchParams = $searchContext;
             $vehicleGroup = VehicleGroup::findOrFail($request->vehicle_group_id);
-            $serviceTypeName = \App\Models\Service\ServiceType::publicContext()
-                ->where('code', $request->service_type)
-                ->value('name')
+            $serviceTypeModel = $this->resolveServiceType($request->service_type);
+            $serviceTypeName = $serviceTypeModel?->name
+                ?? \App\Models\Service\ServiceType::publicContext()
+                    ->where('code', $request->service_type)
+                    ->value('name')
                 ?? ucwords(str_replace(['_', '-'], ' ', $request->service_type));
+            $selectedCurrency = strtoupper(trim((string) $this->currencyService->getSelectedCurrency())) ?: 'LKR';
+            $extraKmRateLabel = \App\Helpers\BookingLinkHelper::quotationExtraKmRateLabel(
+                [],
+                $selectedCurrency,
+                (string) $vehicleGroup->id,
+                $serviceTypeModel?->id ? (string) $serviceTypeModel->id : null
+            );
             $requestData = array_merge($request->except([
                 '_token', '_inquiry_form_token', '_inquiry_website', 'cf-turnstile-response',
-            ]), ['service_type_name' => $serviceTypeName]);
+            ]), [
+                'service_type_name' => $serviceTypeName,
+                'extra_km_rate_label' => $extraKmRateLabel,
+            ]);
 
             // Create inquiry with enhanced context
             $baseInquiryData = [
@@ -2530,6 +2542,9 @@ class BookingController extends Controller
 
         $message .= "\nSERVICE DETAILS:\n";
         $message .= "Service Type: " . ($requestData['service_type_name'] ?? $requestData['service_type']) . "\n";
+        if (!empty($requestData['extra_km_rate_label'])) {
+            $message .= "Extra KM Rate: {$requestData['extra_km_rate_label']}\n";
+        }
 
         if (!empty($requestData['pickup_location'])) {
             $message .= "Pickup: {$requestData['pickup_location']}\n";

@@ -101,3 +101,93 @@ it('binds the saved refundable deposit amount to the quotation snapshot', functi
     $item->metadata = ['refundable_deposit_lkr' => 2500.50];
     expect(BookingLinkHelper::matchesQuotationSnapshot($booking, $legacyHash))->toBeTrue();
 });
+
+it('formats extra km rate labels in quotation snapshots, option groups, emails, and acceptance views', function () {
+    expect(BookingLinkHelper::quotationExtraKmRateLabel(['extra_km_price' => 150], 'LKR'))
+        ->toBe('150 LKR/km');
+    expect(BookingLinkHelper::quotationExtraKmRateLabel([], 'LKR'))
+        ->toBeNull();
+
+    $serviceType = new ServiceType(['name' => 'Day Rental', 'code' => 'day_rental', 'pricing_mode' => 'day']);
+    $item = new BookingItem([
+        'vehicle_group_id' => 'vg-1',
+        'service_type_id' => 'st-1',
+        'duration_days' => 2,
+        'unit_price' => 25000,
+        'total_price' => 25000,
+        'metadata' => [
+            'distance_details' => [
+                'free_km_per_day' => 100,
+                'allowed_total_km' => 200,
+                'extra_km_price' => 150,
+            ],
+        ],
+    ]);
+    $item->id = 'item-1';
+    $item->setRelation('serviceType', $serviceType);
+    $item->setRelation('vehicleGroup', new \App\Models\Vehicle\VehicleGroup(['name' => 'Sedan']));
+
+    $booking = new class extends Booking {
+        protected $table = 'bookings';
+    };
+    $booking->id = 'booking-1';
+    $booking->booking_number = 'QT20260001';
+    $booking->currency = 'LKR';
+    $booking->total_estimated = 25000;
+    $booking->setRelation('bookingItems', new \Illuminate\Database\Eloquent\Collection([$item]));
+
+    $snapshot = BookingLinkHelper::quotationDisplaySnapshot($booking);
+    expect($snapshot['items'][0]['extra_km_rate_label'])->toBe('150 LKR/km');
+
+    $acceptanceHtml = view('checkout.quotation-acceptance', [
+        'booking' => $booking,
+        'token' => 'test-token',
+        'quotation' => [
+            'display_snapshot' => $snapshot,
+            'options' => [],
+        ],
+        'terms' => [],
+        'termsHash' => str_repeat('a', 64),
+        'expiresAt' => now()->addDays(7),
+        'revisionNumber' => 1,
+    ])->render();
+
+    expect($acceptanceHtml)->toContain('Extra KM Rate: 150 LKR/km');
+
+    $confirmationHtml = view('emails.quotation-request-confirmation', [
+        'inquiry' => (object) ['created_at' => now()],
+        'requestData' => [
+            'service_type_name' => 'Day Rental',
+            'extra_km_rate_label' => '150 LKR/km',
+        ],
+        'vehicleGroup' => (object) ['name' => 'Sedan', 'thumbnail' => null],
+        'customerName' => 'Test Customer',
+        'quotationNumber' => 'QT20260001',
+        'estimatedResponseTime' => '2 business hours',
+        'supportEmail' => 'support@example.com',
+        'supportPhone' => '+94112223344',
+    ])->render();
+
+    expect($confirmationHtml)
+        ->toContain('Extra KM Rate')
+        ->toContain('150 LKR/km');
+
+    $notificationHtml = view('emails.quotation-request-notification', [
+        'inquiry' => (object) ['created_at' => now()],
+        'requestData' => [
+            'service_type_name' => 'Day Rental',
+            'extra_km_rate_label' => '150 LKR/km',
+        ],
+        'vehicleGroup' => (object) ['name' => 'Sedan', 'thumbnail' => null],
+        'quotationNumber' => 'QT20260001',
+        'customerName' => 'Test Customer',
+        'customerEmail' => 'test@example.com',
+        'customerPhone' => '+94771234567',
+        'companyName' => null,
+        'specialRequirements' => null,
+    ])->render();
+
+    expect($notificationHtml)
+        ->toContain('Extra KM Rate')
+        ->toContain('150 LKR/km');
+});

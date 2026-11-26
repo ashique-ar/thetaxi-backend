@@ -43,6 +43,7 @@ use App\Http\Controllers\Api\Corporate\AdminCorporateBookingController;
 use App\Http\Controllers\Api\Corporate\AdminCorporateDepartmentController;
 use App\Http\Controllers\Api\Corporate\AdminCorporateDivisionController;
 use App\Http\Controllers\Api\Corporate\AdminCorporateEmployeeController;
+use App\Http\Controllers\Api\Corporate\AdminCorporateRoleController;
 use App\Http\Controllers\Api\Corporate\CorporateApprovalController;
 use App\Http\Controllers\Api\Corporate\CorporateAuditLogController;
 use App\Http\Controllers\Api\Corporate\CorporateBookingController;
@@ -3280,6 +3281,12 @@ Route::middleware(['auth:api'])->group(function () {
         Route::post('{corporate}/employees/{id}/role', [AdminCorporateEmployeeController::class, 'assignRole']);
         Route::delete('{corporate}/employees/{id}', [AdminCorporateEmployeeController::class, 'destroy']);
         Route::post('{corporate}/employees/{id}/access-link', [AdminCorporateEmployeeController::class, 'sendAccessLink'])->middleware('throttle:5,1');
+
+        Route::get('{corporate}/roles', [AdminCorporateRoleController::class, 'index']);
+        Route::post('{corporate}/roles', [AdminCorporateRoleController::class, 'store']);
+        Route::get('{corporate}/roles/permissions', [AdminCorporateRoleController::class, 'permissions']);
+        Route::put('{corporate}/roles/{id}', [AdminCorporateRoleController::class, 'update']);
+        Route::delete('{corporate}/roles/{id}', [AdminCorporateRoleController::class, 'destroy']);
 
         Route::post('{corporate}/bookings/for-employee', [AdminCorporateBookingController::class, 'storeForEmployee']);
 
