@@ -28,7 +28,7 @@ class ServiceTypeController extends Controller
         $this->middleware('permission:service-types.view')->only(['index','show']);
         $this->middleware('permission:service-types.create')->only(['store', 'clone']);
         $this->middleware('permission:service-types.edit')->only(['update']);
-        $this->middleware('permission:service-types.edit|system.edit')->only(['reorder', 'setDefault']);
+        $this->middleware('permission:service-types.edit|system.edit')->only(['reorder', 'setDefault', 'toggleVisibility']);
         $this->middleware('permission:service-types.delete')->only(['destroy']);
         $this->middleware('permission:service-types.create|service-types.edit')->only(['previewWorkflow']);
         $this->middleware('permission:service-types.workflow.approve')->only(['reviewWorkflowRevision']);
@@ -308,6 +308,7 @@ class ServiceTypeController extends Controller
         $updated = DB::transaction(function () use ($serviceType): ServiceType {
             $locked = ServiceType::withInactive()->whereKey($serviceType->id)->lockForUpdate()->firstOrFail();
             abort_unless((bool) $locked->is_active, 422, 'Enable the service type before making it the default.');
+            abort_if((bool) $locked->is_portal_hidden, 422, 'Show the service type before making it the default.');
 
             ServiceType::withInactive()
                 ->where('context', $locked->context)
@@ -326,6 +327,31 @@ class ServiceTypeController extends Controller
         return response()->json([
             'status' => 'success',
             'message' => 'Default service type updated successfully',
+            'data' => ['service_type' => new ServiceTypeResource($updated)],
+        ]);
+    }
+
+    public function toggleVisibility(ServiceType $serviceType): JsonResponse
+    {
+        $this->pricingContextPolicy->assertServiceTypeIsWritable($serviceType);
+
+        $updated = DB::transaction(function () use ($serviceType): ServiceType {
+            $locked = ServiceType::withInactive()->whereKey($serviceType->id)->lockForUpdate()->firstOrFail();
+            $locked->is_portal_hidden = ! (bool) $locked->is_portal_hidden;
+            if ($locked->is_portal_hidden) {
+                $locked->is_default = false;
+            }
+            $locked->save();
+
+            return $locked->fresh();
+        });
+
+        app(\App\Services\DynamicServiceConfigurationService::class)->clearCache();
+        Cache::put('ref.service-types.v', ((int) Cache::get('ref.service-types.v', 0)) + 1, 86400);
+
+        return response()->json([
+            'status' => 'success',
+            'message' => $updated->is_portal_hidden ? 'Service type hidden in internal portal' : 'Service type shown in internal portal',
             'data' => ['service_type' => new ServiceTypeResource($updated)],
         ]);
     }

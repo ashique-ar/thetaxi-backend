@@ -34,6 +34,7 @@ beforeEach(function () {
         $table->string('context')->default('public');
         $table->integer('priority')->default(0);
         $table->boolean('is_default')->default(false);
+        $table->boolean('is_portal_hidden')->default(false);
         $table->boolean('is_active')->default(true);
         $table->boolean('is_internal')->default(false);
         $table->json('form_config')->nullable();
@@ -74,4 +75,11 @@ it('reorders service types and sets a single default per context', function () {
 
     $resource = (new ServiceTypeResource($pub2->fresh()))->toArray(new Request());
     expect($resource['is_default'])->toBeTrue();
+
+    $controller->toggleVisibility($pub2->fresh());
+    expect($pub2->fresh()->is_portal_hidden)->toBeTrue()
+        ->and($pub2->fresh()->is_default)->toBeFalse();
+
+    $controller->toggleVisibility($pub2->fresh());
+    expect($pub2->fresh()->is_portal_hidden)->toBeFalse();
 });

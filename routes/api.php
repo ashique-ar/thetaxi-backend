@@ -465,6 +465,7 @@ Route::middleware(['auth:api'])->group(function () {
     Route::get('service-types/{serviceType}/form-config', [ServiceFormConfigController::class, 'getFormConfig'])
         ->middleware(['permission:bookings.view|bookings.create|create_bookings|view_all_bookings|corporate.view|system.view', RedactCustomerPortalBookingData::class]);
     Route::get('booking-flow/service-types', function (Request $request) {
+        $requestedContext = strtolower(trim((string) $request->input('context', 'portal')));
         $context = app(PricingContextPolicyService::class)
             ->effectiveContext((string) $request->input('context', 'portal'));
         $fallbackContext = (string) $request->input('fallback_context', '');
@@ -472,6 +473,10 @@ Route::middleware(['auth:api'])->group(function () {
 
         $query = ServiceType::query()
             ->where('is_active', true);
+
+        if (in_array($requestedContext, ['portal', 'corporate'], true)) {
+            $query->where(fn ($builder) => $builder->where('is_portal_hidden', false)->orWhereNull('is_portal_hidden'));
+        }
 
         if ($context !== 'all') {
             $query->forContext($context);
@@ -1696,6 +1701,7 @@ Route::middleware(['auth:api'])->group(function () {
         Route::post('service-types/{serviceType}/workflow-revisions/{revision}/review', [ServiceTypeController::class, 'reviewWorkflowRevision'])->middleware('pricing.context');
         Route::post('service-types/reorder', [ServiceTypeController::class, 'reorder'])->middleware('pricing.context');
         Route::post('service-types/{serviceType}/default', [ServiceTypeController::class, 'setDefault'])->middleware('pricing.context');
+        Route::post('service-types/{serviceType}/toggle-visibility', [ServiceTypeController::class, 'toggleVisibility'])->middleware('pricing.context');
         Route::apiResource('service-types', ServiceTypeController::class)->middleware('pricing.context');
         Route::post('service-types/{serviceType}/clone', [ServiceTypeController::class, 'clone'])
             ->middleware('pricing.context');
@@ -3126,6 +3132,7 @@ Route::middleware(['auth:api'])->group(function () {
             $corporate = Corporate::findOrFail($request->corporate_id);
             $serviceTypes = $corporate->serviceTypes()
                 ->where('service_types.is_active', true)
+                ->where(fn ($query) => $query->where('service_types.is_portal_hidden', false)->orWhereNull('service_types.is_portal_hidden'))
                 ->where(fn ($query) => $query->where('service_types.is_internal', false)->orWhereNull('service_types.is_internal'))
                 ->orderBy('service_types.priority')
                 ->orderBy('service_types.name')
