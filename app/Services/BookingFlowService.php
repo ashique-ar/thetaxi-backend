@@ -4170,6 +4170,31 @@ class BookingFlowService
                     ];
 
                     $itemPricing = $this->calculatePricing($itemPricingParams);
+                    $extraKm = min(10000, max(0, (int) ($itemData['extra_km'] ?? data_get($itemData, 'metadata.extra_km', 0))));
+                    $serviceCode = strtolower((string) ($this->resolveCalculationServiceType($itemPricingParams['service_type'], $itemPricingParams)?->code ?? ''));
+                    $extraKmRate = (float) data_get($itemPricing, 'distance_details.extra_km_price', data_get($itemPricing, 'base_pricing.distance_details.extra_km_price', 0));
+                    if (
+                        $extraKm > 0
+                        && empty($itemData['is_tour'])
+                        && !str_contains($serviceCode, 'tour')
+                        && \App\Models\Vehicle\VehiclePricing\VehiclePricingSlabDefinition::query()
+                            ->forServiceType((string) $itemPricingParams['service_type'])
+                            ->active()
+                            ->exists()
+                        && $extraKmRate > 0
+                    ) {
+                        $extraKmCharge = round($extraKm * $extraKmRate, 2);
+                        $itemPricing['base_pricing']['total_amount'] = (float) ($itemPricing['base_pricing']['total_amount'] ?? 0) + $extraKmCharge;
+                        $itemPricing['summary']['subtotal'] = (float) ($itemPricing['summary']['subtotal'] ?? 0) + $extraKmCharge;
+                        $itemPricing['summary']['total'] = (float) ($itemPricing['summary']['total'] ?? 0) + $extraKmCharge;
+                        if (isset($itemPricing['final_breakdown']['final_amount'])) {
+                            $itemPricing['final_breakdown']['final_amount'] += $extraKmCharge;
+                        }
+                        $itemPricing['distance_details'] ??= $itemPricing['base_pricing']['distance_details'] ?? [];
+                        $itemPricing['distance_details']['extra_km_selected'] = $extraKm;
+                        $itemPricing['distance_details']['extra_km_charge'] = $extraKmCharge;
+                        $itemPricing['distance_details']['extra_km_price'] = $extraKmRate;
+                    }
                     $itemTotals = $this->extractTotalsFromPricing($itemPricing);
 
                     // Extract location data
@@ -4230,6 +4255,10 @@ class BookingFlowService
                         'metadata' => array_merge(
                             is_array($itemData['metadata'] ?? null) ? $itemData['metadata'] : [],
                             [
+                                'extra_km' => $extraKm,
+                                'extra_km_rate' => $extraKmRate,
+                                'extra_km_total' => $extraKm > 0 ? round($extraKm * $extraKmRate, 2) : 0,
+                                'distance_details' => $itemPricing['distance_details'] ?? data_get($itemPricing, 'base_pricing.distance_details'),
                                 'service_package_id' => $itemPricingParams['service_package_id']
                                     ?? data_get($itemPricing, 'calculation_metadata.runtime_context.package_id'),
                                 'slab_definition_id' => data_get($itemPricing, 'calculation_metadata.runtime_context.slab_definition_id'),

@@ -13,7 +13,7 @@ class ReportBookingHistoryCoverage extends Command
 
     protected $description = 'Report recorded booking-history coverage by source and event type.';
 
-    private const REQUIRED_PARITY_CHECKS = 66;
+    private const REQUIRED_PARITY_CHECKS = 74;
 
     private ?string $verifiedCoverageStart = null;
 
@@ -62,7 +62,11 @@ class ReportBookingHistoryCoverage extends Command
             $this->modelStateParity('bookings', 'Booking'),
             $this->modelStateParity('booking_items', 'BookingItem'),
             $this->modelStateParity('vehicle_assignments', 'VehicleAssignment'),
+            $this->modelStateParity('booking_price_adjustment_history', 'BookingPriceAdjustmentHistory'),
             $this->modelStateParity('driver_assignments', 'DriverAssignment'),
+            $this->modelStateParity('driver_sessions', 'DriverSession', bookingRelationTable: 'driver_assignments', bookingRelationForeignKey: 'assignment_id'),
+            $this->modelStateParity('phone_calls', 'PhoneCall'),
+            $this->modelStateParity('integration_webhook_events', 'IntegrationWebhookEvent', 'linked_booking_id'),
             $this->approvalDecisionParity(),
             $this->approvalDecisionTableParity(),
             $this->paymentTransactionParity(),
@@ -80,13 +84,17 @@ class ReportBookingHistoryCoverage extends Command
             $this->modelStateParity('booking_qcs', 'BookingQC'),
             $this->modelStateParity('booking_extension_requests', 'BookingExtensionRequest'),
             $this->modelStateParity('booking_payment_receipts', 'BookingPaymentReceipt'),
+            $this->modelStateParity('booking_payment_receipt_components', 'BookingPaymentReceiptComponent', bookingRelationTable: 'booking_payment_receipts', bookingRelationForeignKey: 'receipt_id'),
             $this->modelStateParity('booking_payment_schedules', 'BookingPaymentSchedule'),
+            $this->modelStateParity('booking_payment_schedule_allocations', 'BookingPaymentScheduleAllocation', bookingRelationTable: 'booking_payment_schedules', bookingRelationForeignKey: 'booking_payment_schedule_id'),
             $this->modelStateParity('booking_payment_schedule_rules', 'BookingPaymentScheduleRule'),
+            $this->modelStateParity('booking_payment_schedule_rule_events', 'BookingPaymentScheduleRuleEvent', bookingRelationTable: 'booking_payment_schedule_rules', bookingRelationForeignKey: 'booking_payment_schedule_rule_id'),
             $this->modelStateParity('booking_payment_adjustments', 'BookingPaymentAdjustment'),
             $this->modelStateParity('booking_discounts', 'BookingDiscount'),
             $this->modelStateParity('booking_deposit_refunds', 'BookingDepositRefund'),
             $this->modelStateParity('booking_collection_commissions', 'BookingCollectionCommission'),
             $this->modelStateParity('booking_collection_work_items', 'BookingCollectionWorkItem'),
+            $this->modelStateParity('booking_collection_work_item_follow_ups', 'BookingCollectionWorkItemFollowUp'),
             $this->modelStateParity('booking_collection_submissions', 'BookingCollectionSubmission'),
             $this->modelStateParity('booking_commercial_value_adjustments', 'BookingCommercialValueAdjustment'),
             $this->modelStateParity('booking_terms', 'BookingTerm'),
@@ -122,7 +130,7 @@ class ReportBookingHistoryCoverage extends Command
             $this->modelStateParity('sales_booking_attributions', 'SalesBookingAttribution'),
             $this->modelStateParity('sales_commission_decisions', 'SalesCommissionDecision'),
             $this->modelStateParity('sales_tasks', 'SalesTask'),
-            $this->modelStateParity('sales_opportunities', 'SalesOpportunity', 'won_booking_id'),
+            $this->modelStateParity('sales_opportunities', 'SalesOpportunity', 'won_booking_id', false),
             $this->modelStateParity('inquiries', 'Inquiry'),
             $this->bookingWorkflowActivityParity(),
             $this->vehicleEventLinkParity(),
@@ -257,30 +265,47 @@ class ReportBookingHistoryCoverage extends Command
         return ['booking status record edits/deletes/restores since coverage start', $sourceRows, $matched, max(0, $sourceRows - $matched)];
     }
 
-    private function modelStateParity(string $table, string $entityType, string $bookingLinkColumn = 'booking_id'): ?array
+    private function modelStateParity(
+        string $table,
+        string $entityType,
+        string $bookingLinkColumn = 'booking_id',
+        bool $checkCreation = true,
+        ?string $bookingRelationTable = null,
+        ?string $bookingRelationForeignKey = null,
+    ): ?array
     {
         $coverageStart = $this->verifiedCoverageStart;
+        $hasBookingRelation = $bookingRelationTable !== null && $bookingRelationForeignKey !== null;
         if (!Schema::hasTable($table) || !Schema::hasTable('booking_items') || !$coverageStart
             || !Schema::hasColumn($table, 'created_at') || !Schema::hasColumn($table, 'updated_at')
-            || ($table === 'bookings' ? $bookingLinkColumn !== 'booking_id' : !Schema::hasColumn($table, $bookingLinkColumn))
+            || ($hasBookingRelation
+                ? !Schema::hasTable($bookingRelationTable) || !Schema::hasColumn($table, $bookingRelationForeignKey) || !Schema::hasColumn($bookingRelationTable, 'booking_id')
+                : ($table === 'bookings' ? $bookingLinkColumn !== 'booking_id' : !Schema::hasColumn($table, $bookingLinkColumn)))
             || ($table === 'vehicle_assignments' && !Schema::hasColumn($table, 'booking_item_id'))) return null;
 
         $base = DB::table($table . ' as source');
-        if ($table !== 'bookings') $base->whereNotNull('source.' . $bookingLinkColumn);
-        $bookingColumn = $table === 'bookings' ? 'source.id' : 'source.' . $bookingLinkColumn;
-        $created = (clone $base)->where('source.created_at', '>=', $coverageStart);
-        $createdRows = (clone $created)->count();
-        $createdMatched = (clone $created)->whereExists(function ($query) use ($bookingColumn, $entityType, $coverageStart): void {
-            $query->selectRaw('1')->from('booking_history_events as history')
-                ->whereColumn('history.booking_id', $bookingColumn)
-                ->whereColumn('history.entity_id', 'source.id')
-                ->where('history.entity_type', $entityType)
-                ->where('history.occurred_at', '>=', $coverageStart)
-                ->whereColumn('history.occurred_at', '>=', 'source.created_at')
-                ->whereRaw($this->historyOperationMatchSql('created'));
-            $this->requireHistoryItemBelongsToBooking($query);
-            $this->requireVehicleAssignmentItemMatch($query, $table);
-        })->count();
+        if ($hasBookingRelation) {
+            $base->join($bookingRelationTable . ' as booking_link', 'booking_link.id', '=', 'source.' . $bookingRelationForeignKey);
+        } elseif ($table !== 'bookings') {
+            $base->whereNotNull('source.' . $bookingLinkColumn);
+        }
+        $bookingColumn = $hasBookingRelation ? 'booking_link.booking_id' : ($table === 'bookings' ? 'source.id' : 'source.' . $bookingLinkColumn);
+        $createdRows = $createdMatched = 0;
+        if ($checkCreation) {
+            $created = (clone $base)->where('source.created_at', '>=', $coverageStart);
+            $createdRows = (clone $created)->count();
+            $createdMatched = (clone $created)->whereExists(function ($query) use ($bookingColumn, $entityType, $coverageStart): void {
+                $query->selectRaw('1')->from('booking_history_events as history')
+                    ->whereColumn('history.booking_id', $bookingColumn)
+                    ->whereColumn('history.entity_id', 'source.id')
+                    ->where('history.entity_type', $entityType)
+                    ->where('history.occurred_at', '>=', $coverageStart)
+                    ->whereColumn('history.occurred_at', '>=', 'source.created_at')
+                    ->whereRaw($this->historyOperationMatchSql('created'));
+                $this->requireHistoryItemBelongsToBooking($query);
+                $this->requireVehicleAssignmentItemMatch($query, $table);
+            })->count();
+        }
         // shortcut: second-precision timestamps can hide same-second edits and only the latest row state is checked; add immutable mutation records to verify every change.
         $mutations = (clone $base)->where('source.updated_at', '>=', $coverageStart)
             ->where(function ($query) use ($table): void {
@@ -304,7 +329,7 @@ class ReportBookingHistoryCoverage extends Command
         $sourceRows = $createdRows + $mutationRows;
         $matched = $createdMatched + $mutationMatched;
 
-        return [$table . ' created/latest mutation states since coverage start', $sourceRows, $matched, max(0, $sourceRows - $matched)];
+        return [$table . ($checkCreation ? ' created/latest mutation states' : ' latest linked mutation states') . ' since coverage start', $sourceRows, $matched, max(0, $sourceRows - $matched)];
     }
 
     private function requireHistoryItemBelongsToBooking($query): void
