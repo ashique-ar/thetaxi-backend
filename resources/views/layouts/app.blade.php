@@ -105,7 +105,11 @@
         {!! $metaStack !!}
     @endif
     @php($favicon = $settings['brand_favicon'] ?? $settings['favicon'] ?? null)
-    @if ($favicon)<link rel="icon" href="{{ s3_asset($favicon) }}" type="image/x-icon">@endif
+    @if ($favicon)
+        <link rel="icon" href="{{ url('/favicon.ico') }}" sizes="any">
+        <link rel="icon" href="{{ url('/favicon.png') }}" type="image/png" sizes="192x192">
+        <link rel="apple-touch-icon" href="{{ url('/apple-touch-icon.png') }}" sizes="180x180">
+    @endif
 
     @if (!empty($settings['google_tag_manager_id']))
         <!-- Google Tag Manager -->

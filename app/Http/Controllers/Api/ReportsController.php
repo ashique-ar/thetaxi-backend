@@ -695,11 +695,7 @@ class ReportsController extends Controller
                 'total' => $bookings->total(),
                 'summary' => [
                     'total_bookings' => (clone $summaryQuery)->count(),
-                    'by_currency' => $byCurrency->map(fn ($row) => [
-                        'currency' => (string) $row->currency,
-                        'bookings' => (int) $row->bookings,
-                        'amount' => (float) $row->amount,
-                    ])->values(),
+                    'by_currency' => $byCurrency,
                     'by_status' => $byStatus,
                     'by_payment_status' => $byPaymentStatus,
                     'comparison' => $comparison,

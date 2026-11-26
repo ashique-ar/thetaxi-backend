@@ -14,6 +14,7 @@ use App\Http\Controllers\ShortUrlController;
 use App\Http\Controllers\VehicleController;
 use App\Http\Controllers\Website\TourController;
 use App\Http\Controllers\Website\CmsController;
+use App\Http\Controllers\Website\FaviconController;
 use App\Http\Controllers\Website\HomeController;
 use App\Http\Controllers\Website\PageController;
 use App\Http\Controllers\Website\InquiryServicePageController;
@@ -275,3 +276,8 @@ Route::get('/{contentType}/{content}', [CmsController::class, 'show'])
 
 // Sitemap
 Route::get('/sitemap.xml', [SitemapController::class, 'index'])->name('sitemap');
+
+// Dynamic company favicons (normalized to valid ICO/PNG for Google Search & browsers)
+Route::get('/favicon.ico', [FaviconController::class, 'ico'])->name('favicon.ico');
+Route::get('/favicon.png', [FaviconController::class, 'png'])->name('favicon.png');
+Route::get('/apple-touch-icon.png', [FaviconController::class, 'appleTouchIcon'])->name('apple-touch-icon');

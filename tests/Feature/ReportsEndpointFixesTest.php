@@ -75,3 +75,72 @@ it('aggregates customer demographics by country through addresses without custom
         ['country' => 'Sri Lanka', 'count' => 1],
     ]);
 });
+
+it('returns booking report currency summaries without object property access errors', function () {
+    Schema::create('users', function (Blueprint $table) {
+        $table->uuid('id')->primary();
+        $table->string('first_name')->nullable();
+        $table->string('last_name')->nullable();
+        $table->timestamps();
+        $table->softDeletes();
+    });
+    Schema::create('customers', function (Blueprint $table) {
+        $table->uuid('id')->primary();
+        $table->uuid('user_id')->nullable();
+        $table->timestamps();
+        $table->softDeletes();
+    });
+    Schema::create('vehicles', function (Blueprint $table) {
+        $table->uuid('id')->primary();
+        $table->string('title')->nullable();
+        $table->string('license_plate')->nullable();
+        $table->timestamps();
+        $table->softDeletes();
+    });
+    Schema::create('bookings', function (Blueprint $table) {
+        $table->uuid('id')->primary();
+        $table->string('booking_number')->nullable();
+        $table->uuid('customer_id')->nullable();
+        $table->uuid('agent_id')->nullable();
+        $table->decimal('total_actual', 12, 2)->nullable();
+        $table->string('currency')->nullable();
+        $table->string('status')->nullable();
+        $table->string('payment_status')->nullable();
+        $table->timestamps();
+        $table->softDeletes();
+    });
+    Schema::create('booking_items', function (Blueprint $table) {
+        $table->uuid('id')->primary();
+        $table->uuid('booking_id');
+        $table->uuid('vehicle_id')->nullable();
+        $table->date('from_date')->nullable();
+        $table->date('to_date')->nullable();
+        $table->timestamps();
+        $table->softDeletes();
+    });
+
+    DB::table('bookings')->insert([
+        'id' => '00000000-0000-4000-8000-000000000101',
+        'booking_number' => 'BK-1001',
+        'total_actual' => 12500.00,
+        'currency' => 'lkr',
+        'status' => 'completed',
+        'payment_status' => 'paid',
+        'created_at' => now(),
+        'updated_at' => now(),
+    ]);
+
+    $response = app(ReportsController::class)->getBookingReports(Request::create('/api/reports/bookings', 'GET'));
+    $payload = $response->getData(true);
+
+    expect($response->getStatusCode())->toBe(200)
+        ->and($payload['meta']['summary']['by_currency'])->toBe([
+            [
+                'currency' => 'LKR',
+                'bookings' => 1,
+                'amount' => 12500,
+                'priced_bookings_count' => 1,
+                'unpriced_bookings_count' => 0,
+            ],
+        ]);
+});
