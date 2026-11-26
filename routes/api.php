@@ -3129,7 +3129,7 @@ Route::middleware(['auth:api'])->group(function () {
                 ->get();
 
             return ServiceTypeResource::collection($serviceTypes);
-        })->middleware('permission:staff-transport.view|staff-transport.manage|staff-transport.override|staff-transport.generate|view_all_bookings');
+        })->middleware('permission:create_bookings|bookings.create|staff-transport.view|staff-transport.manage|staff-transport.override|staff-transport.generate|view_all_bookings');
 
         // Staff Transport
         Route::prefix('staff-transport')->group(function () {

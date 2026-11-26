@@ -1,6 +1,7 @@
 <?php
 
 use App\Models\Driver\Driver;
+use App\Services\PermissionEvaluator;
 use Illuminate\Support\Facades\Broadcast;
 
 /*
@@ -40,7 +41,52 @@ Broadcast::channel('driver.{driverId}.assignments', function ($user, string $dri
  * @see Requirements 14.5, 14.6
  */
 Broadcast::channel('admin.assignments', function ($user) {
-    return $user->hasAnyPermission(['bookings.view', 'bookings.create', 'bookings.edit']);
+    $assignmentPermissions = [
+        'bookings.view',
+        'bookings.view-assigned',
+        'bookings.view-rep-team',
+        'bookings.create',
+        'bookings.edit',
+        'bookings.edit-assigned',
+        'bookings.update',
+        'bookings.manage',
+        'bookings.assign',
+        'bookings.dispatch',
+        'driver-assignments.view',
+        'driver-assignments.create',
+        'driver-assignments.edit',
+        'driver-assignments.manage',
+    ];
+
+    $evaluator = app(PermissionEvaluator::class);
+    $request = request();
+    $contextType = $request?->header('X-Active-Context-Type');
+    $contextId = $request?->header('X-Active-Context-Id');
+
+    if (is_string($contextType) && $contextType !== '') {
+        if (! in_array($contextType, ['internal', 'staff'], true)) {
+            return false;
+        }
+
+        return $evaluator->userHasAnyForRequest($user, $assignmentPermissions, $contextType, $contextId)
+            || ($contextType === 'internal' && $evaluator->hasInternalRole($user, 'super-admin'));
+    }
+
+    if ($evaluator->hasInternalRole($user, 'super-admin')
+        || $evaluator->userHasAnyForInternalContext($user, $assignmentPermissions)) {
+        return true;
+    }
+
+    return $user->contexts()
+        ->where('context_type', 'staff')
+        ->where('is_active', true)
+        ->get(['id'])
+        ->contains(fn ($context) => $evaluator->userHasAnyForRequest(
+            $user,
+            $assignmentPermissions,
+            'staff',
+            (string) $context->id
+        ));
 });
 
 /**
