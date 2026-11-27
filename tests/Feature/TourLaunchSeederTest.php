@@ -37,7 +37,7 @@ class TourLaunchSeederTest extends TestCase
         DB::table('vehicle_groups')->insert([
             ['id' => 'economy-a', 'class_id' => 'economy-class', 'name' => 'Verified sedan A', 'passengers_count' => 4, 'hand_luggages' => 2, 'is_active' => true],
             ['id' => 'economy-b', 'class_id' => 'economy-class', 'name' => 'Verified sedan B', 'passengers_count' => 4, 'hand_luggages' => 2, 'is_active' => true],
-            ['id' => 'economy-too-small', 'class_id' => 'economy-class', 'name' => 'Small car', 'passengers_count' => 3, 'hand_luggages' => 2, 'is_active' => true],
+            ['id' => 'economy-too-small', 'class_id' => 'economy-class', 'name' => 'Small car', 'passengers_count' => 2, 'hand_luggages' => 2, 'is_active' => true],
             ['id' => 'high-roof', 'class_id' => 'high-roof-class', 'name' => 'Toyota KDH 14 Seater', 'passengers_count' => 14, 'hand_luggages' => 4, 'is_active' => true],
             ['id' => 'coaster', 'class_id' => 'full-size-class', 'name' => 'Toyota Coaster', 'passengers_count' => 22, 'hand_luggages' => 8, 'is_active' => true],
             ['id' => 'unknown-capacity', 'class_id' => 'full-size-class', 'name' => 'Truck', 'passengers_count' => null, 'hand_luggages' => null, 'is_active' => true],
