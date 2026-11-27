@@ -298,6 +298,7 @@
 
     $formatBookingNotice = function (string $html): string {
         $allowedTags = '<strong><b><em><i><br><p><span><a>';
+        $html = preg_replace('/(<a\b[^>]*?href\s*=\s*)([\'"])([^\'"<>]+?)>/i', '$1$2$3$2>', $html);
         $clean = strip_tags($html, $allowedTags);
         $clean = preg_replace('/<(?!a\b)([a-z][a-z0-9]*)\b[^>]*>/i', '<$1>', $clean);
         $clean = preg_replace_callback('/<a\b([^>]*)>/i', function ($matches) {

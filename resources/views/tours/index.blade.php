@@ -709,7 +709,7 @@
                         <!-- Vehicle Tier Selector Cards -->
                         <fieldset class="border-0 p-0 m-0">
                             <legend class="tour-label mb-2">Choose your private vehicle *</legend>
-                            <div id="tour-class-cards" class="row g-3" role="radiogroup" aria-label="Vehicle class"></div>
+                            <div id="tour-class-cards" class="row g-3" role="radiogroup" aria-label="Choose a vehicle type"></div>
                             <select id="tour-class" class="d-none no-nice" tabindex="-1" aria-hidden="true"></select>
                         </fieldset>
 

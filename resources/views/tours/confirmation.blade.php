@@ -25,7 +25,7 @@
             <p class="lead">Reference <strong>{{ $booking->public_reference }}</strong></p>
             <p>Our team will check vehicle availability and contact you about the next steps and payment. This page confirms we received your request; it does not confirm vehicle availability or payment.</p>
             @if ($tourClass || $tourAmount !== null)
-                <div class="alert alert-light"><strong>Tour transport:</strong> {{ $tourClass ?? 'Vehicle class' }}@if ($tourAmount !== null) · quoted {{ $tourCurrency }} {{ number_format((float) $tourAmount, 2) }}@endif</div>
+                <div class="alert alert-light"><strong>Tour transport:</strong> {{ $tourClass ?? 'Vehicle type' }}@if ($tourAmount !== null) · quoted {{ $tourCurrency }} {{ number_format((float) $tourAmount, 2) }}@endif</div>
             @endif
         @else
             <span class="badge text-bg-info mb-3">Staff review requested</span>
@@ -33,7 +33,7 @@
             <p class="lead">Reference <strong>{{ $inquiry->inquiry_number }}</strong></p>
             <p>Our team will review your route or vehicle availability and contact you. This request does not book or reserve a vehicle, and no payment has been taken.</p>
             @if (data_get($inquiry->payload, 'vehicle_class'))
-                <div class="alert alert-light"><strong>Requested class:</strong> {{ data_get($inquiry->payload, 'vehicle_class') }}@if (data_get($inquiry->payload, 'quote.total_amount') !== null) · quote {{ data_get($inquiry->payload, 'quote.currency') }} {{ number_format((float) data_get($inquiry->payload, 'quote.total_amount'), 2) }}@endif</div>
+                <div class="alert alert-light"><strong>Requested vehicle:</strong> {{ data_get($inquiry->payload, 'vehicle_class') }}@if (data_get($inquiry->payload, 'quote.total_amount') !== null) · quote {{ data_get($inquiry->payload, 'quote.currency') }} {{ number_format((float) data_get($inquiry->payload, 'quote.total_amount'), 2) }}@endif</div>
             @endif
         @endif
         @if ($booking || data_get($inquiry?->payload, 'party'))
