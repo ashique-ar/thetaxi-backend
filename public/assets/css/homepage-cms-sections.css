@@ -22,21 +22,21 @@
 @media(max-width:767px){.home-cms-section__head{align-items:start;flex-direction:column;gap:12px}.home-cms-section__grid{grid-template-columns:repeat(2,minmax(0,1fr))}}
 @media(max-width:479px){.home-cms-section__grid{gap:8px}.home-cms-section__image{height:170px}.home-cms-section__body{min-height:145px;padding:10px}}
 
-.homepage-tour-banner{display:flex;align-items:center;justify-content:space-between;gap:28px;padding:22px;border:1px solid #e2e8f0;border-radius:10px;background:#fff;box-shadow:0 2px 8px rgba(15,23,42,.04);color:#173b46}
+.homepage-tour-banner{display:flex;align-items:center;justify-content:space-between;gap:28px;padding:26px 22px;border:1px solid #e2e8f0;border-radius:10px;background:#fff;box-shadow:0 2px 8px rgba(15,23,42,.04);color:#173b46}
 .homepage-tour-banner__main{min-width:0;max-width:720px}
-.homepage-tour-banner__eyebrow{margin:0 0 8px;color:#d46b32;font-size:.72rem;font-weight:700;letter-spacing:.04em;text-transform:uppercase}
-.homepage-tour-banner__eyebrow span{margin-right:6px}
+.homepage-tour-banner__eyebrow{margin:0 0 14px;color:var(--primary-color1,#BF2629);font-size:.72rem;font-weight:700;letter-spacing:.04em;text-transform:uppercase}
+.homepage-tour-banner__eyebrow i{margin-right:6px}
 .homepage-tour-banner h2{margin:0 0 7px;color:#173b46;font-size:clamp(1.25rem,2.2vw,1.8rem);font-weight:700;line-height:1.2}
 .homepage-tour-banner__description{margin:0;color:#647184;font-size:.9rem;line-height:1.55}
 .homepage-tour-banner__benefits{display:flex;flex-wrap:wrap;gap:10px 24px;margin:14px 0 0;padding:12px 0 0;border-top:1px solid #edf0f2;list-style:none;color:#52616b;font-size:.75rem}
 .homepage-tour-banner__benefits li{display:flex;align-items:center;gap:6px}
-.homepage-tour-banner__benefits span{display:inline-grid;width:15px;height:15px;place-items:center;border:1px solid #35ad8a;border-radius:50%;color:#259574;font-size:.65rem;font-weight:700}
+.homepage-tour-banner__benefits span{display:inline-grid;width:15px;height:15px;place-items:center;border:1px solid var(--primary-color1,#BF2629);border-radius:50%;color:var(--primary-color1,#BF2629);font-size:.65rem;font-weight:700;line-height:1}
 .homepage-tour-banner__actions{display:flex;flex:none;flex-direction:column;align-items:center;gap:9px}
-.homepage-tour-banner__button{display:inline-flex;align-items:center;gap:10px;padding:10px 16px;border-radius:5px;background:#103e48;color:#fff;text-decoration:none;font-size:.78rem;font-weight:700;white-space:nowrap}
-.homepage-tour-banner__button:hover{background:#0a3038;color:#fff}
+.homepage-tour-banner__button{display:inline-flex;align-items:center;gap:10px;padding:15px 16px;border-radius:5px;background:var(--primary-color1,#BF2629);color:#fff;text-decoration:none;font-size:.78rem;font-weight:700;white-space:nowrap}
+.homepage-tour-banner__button:hover{filter:brightness(.92);color:#fff}
 .homepage-tour-banner__routes{color:#718091;text-decoration:none;font-size:.72rem;font-weight:600}
 .homepage-tour-banner__routes:hover{text-decoration:underline}
-.homepage-tour-banner a:focus-visible{outline:3px solid #35ad8a;outline-offset:3px}
+.homepage-tour-banner a:focus-visible{outline:3px solid var(--primary-color1,#BF2629);outline-offset:3px}
 @media(max-width:767px){.homepage-tour-banner{align-items:flex-start;flex-direction:column;padding:18px}.homepage-tour-banner__actions{align-items:flex-start}}
 
 /* Alternate layouts for managed homepage CMS sections, shared by every theme. */
@@ -167,14 +167,14 @@ body.theme-default.theme-page-home :is(.home-cms-section,.cms-content-section) a
 /* Theme 1 homepage CMS cards use the photo-led tour layout from the supplied reference. */
 body.theme-default.theme-page-home .cms-content-section>.container{position:relative}
 body.theme-default.theme-page-home .cms-content-section>.container>.row.justify-content-center.mb-50{
-    display:flex;align-items:flex-end;justify-content:space-between!important;gap:24px;margin-bottom:22px!important
+    display:flex;flex-wrap:nowrap;align-items:flex-end;justify-content:space-between!important;gap:24px;margin-bottom:22px!important
 }
 body.theme-default.theme-page-home .cms-content-section>.container>.row.justify-content-center.mb-50>[class*="col-"]{width:auto;max-width:700px;padding:0}
 body.theme-default.theme-page-home .cms-content-section .section-title,
 body.theme-default.theme-page-home .cms-content-section .section-title.text-center{text-align:left!important;margin:0}
 body.theme-default.theme-page-home .cms-content-section .section-title h2{margin:0;font-size:clamp(1.55rem,2.5vw,1.95rem);letter-spacing:-.03em}
 body.theme-default.theme-page-home .cms-content-section .section-title p{margin:6px 0 0;font-size:.88rem}
-body.theme-default.theme-page-home .theme1-cms-section__all{display:inline-flex;flex:none;align-items:center;gap:8px;margin-bottom:4px;padding:9px 13px;border:1px solid #e2e8f0;border-radius:6px;background:#fff;color:#173b46;font-size:.76rem;font-weight:700;text-decoration:none}
+body.theme-default.theme-page-home .theme1-cms-section__all{display:inline-flex;width:auto;max-width:none;flex:none;align-items:center;gap:8px;margin-bottom:4px;padding:9px 13px;border:1px solid #e2e8f0;border-radius:6px;background:#fff;color:#173b46;font-size:.76rem;font-weight:700;text-decoration:none}
 body.theme-default.theme-page-home .theme1-cms-section__all:hover{border-color:#173b46;background:#173b46;color:#fff}
 body.theme-default.theme-page-home .cms-content-section .row.g-4.mb-40{grid-template-columns:repeat(3,minmax(0,1fr));gap:18px!important}
 body.theme-default.theme-page-home .cms-content-section .row.g-4.mb-40>[class*="col-"]{display:flex}
@@ -225,7 +225,7 @@ body.theme-default.theme-page-home :is(.theme1-cms-card,.home-cms-section__card)
     body.theme-default.theme-page-home .theme1-cms-card__media,body.theme-default.theme-page-home .home-cms-section__image{height:180px}
 }
 @media(max-width:575px){
-    body.theme-default.theme-page-home .cms-content-section>.container>.row.justify-content-center.mb-50{align-items:flex-start;flex-direction:column;gap:12px}
+    body.theme-default.theme-page-home .cms-content-section>.container>.row.justify-content-center.mb-50{align-items:flex-start;flex-wrap:wrap;flex-direction:column;gap:12px}
     body.theme-default.theme-page-home .cms-content-section .row.g-4.mb-40{grid-template-columns:1fr;gap:12px!important}
     body.theme-default.theme-page-home .theme1-cms-card__media,body.theme-default.theme-page-home .home-cms-section__image{height:190px}
     body.theme-default.theme-page-home .theme1-cms-card__body,body.theme-default.theme-page-home .home-cms-section__body{min-height:0;padding:12px}

@@ -31,7 +31,7 @@
     <section class="container my-4" aria-labelledby="homepage-tour-title">
         <div class="homepage-tour-banner">
             <div class="homepage-tour-banner__main">
-                <p class="homepage-tour-banner__eyebrow"><span aria-hidden="true">▦</span> Islandwide car &amp; driver service</p>
+                <p class="homepage-tour-banner__eyebrow"><i class="bi bi-map" aria-hidden="true"></i> Islandwide car &amp; driver service</p>
                 <h2 id="homepage-tour-title">Private Island Tours &amp; Multi-Day Hire</h2>
                 <p class="homepage-tour-banner__description">Hire a dedicated air-conditioned car, van, or minibus with an English-fluent tourist driver for your entire stay. Create your own itinerary or adapt routes on the go — with all fuel, expressway tolls, parking permits, and driver lodging completely taken care of.</p>
                 <ul class="homepage-tour-banner__benefits" aria-label="Tour benefits">

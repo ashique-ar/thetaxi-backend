@@ -58,6 +58,7 @@ class TourCatalogueController extends Controller
                     ->map(fn(ServiceVehicleClassSetting $setting): array => [
                         'id' => $setting->vehicle_class_id,
                         'name' => $setting->vehicleClass?->name,
+                        'display_name' => $setting->customer_display_name ?: $setting->vehicleClass?->name,
                         'description' => $setting->description ?: $setting->vehicleClass?->description,
                         'max_passengers' => $setting->max_passengers,
                         'max_luggage' => $setting->max_luggage,
@@ -439,7 +440,7 @@ class TourCatalogueController extends Controller
 
     public function updateLocation(Request $request, PredefinedLocation $location): JsonResponse
     {
-        abort_unless($location->type === 'tour' && $location->google_place_id, 404);
+        abort_unless($location->type === 'tour', 404);
         $location->update($this->validateLocation($request, true));
 
         return response()->json(['success' => true, 'data' => $location->fresh()]);
