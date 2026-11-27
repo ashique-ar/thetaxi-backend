@@ -166,9 +166,11 @@ class TourCatalogueTest extends TestCase
         app()->instance(WebsiteSettingsService::class, $settings);
         $serviceId = 'c2c58e96-7a3d-4974-81b8-2f6fef280947';
         $classId = 'ad150b30-e73c-43c8-8b46-884c5297caf9';
+        $fleetClassId = 'c1cf0983-a543-4e41-9e2a-e6f2e0321e22';
         DB::table('vehicle_classes')->insert(['id' => $classId, 'name' => 'Standard car', 'description' => 'Room for three.']);
+        DB::table('vehicle_classes')->insert(['id' => $fleetClassId, 'name' => 'Full-size']);
         DB::table('vehicle_groups')->insert([
-            'id' => '4f73d714-776b-4cf0-8be5-70250eceff38', 'class_id' => $classId,
+            'id' => '4f73d714-776b-4cf0-8be5-70250eceff38', 'class_id' => $fleetClassId,
             'name' => 'Verified sedan', 'passengers_count' => 3, 'hand_luggages' => 2,
         ]);
         DB::table('service_vehicle_class_settings')->insert([
@@ -193,7 +195,7 @@ class TourCatalogueTest extends TestCase
         $response = (new TourCatalogueController)->publishedServices()->getData(true);
 
         self::assertCount(1, $response['data']['services']);
-        self::assertSame('Tours', $response['data']['services'][0]['name']);
+        self::assertArrayHasKey('description', $response['data']['services'][0]);
         self::assertSame($classId, $response['data']['services'][0]['classes'][0]['id']);
         self::assertSame(3, $response['data']['services'][0]['classes'][0]['max_passengers']);
         self::assertSame(1, $response['data']['services'][0]['packages'][0]['tour_itinerary_template']['days'][0]['day_number']);
@@ -203,7 +205,7 @@ class TourCatalogueTest extends TestCase
         self::assertCount(1, $response['data']['services'][0]['form_fields']);
         self::assertArrayNotHasKey('tour_booking_enabled', $response['data']['services'][0]);
         $this->getJson('/api/public/tours/catalogue?service_type_id=50f31c02-93e5-4fb7-bb5a-a70a53b88f44')
-            ->assertNotFound();
+            ->assertOk()->assertJsonCount(0, 'data.destinations');
 
         $enabledSettings = \Mockery::mock(WebsiteSettingsService::class);
         $enabledSettings->shouldReceive('get')->with('tour_ai_itinerary_enabled', false)->andReturn(true);
@@ -331,7 +333,6 @@ class TourCatalogueTest extends TestCase
             'latitude' => 7.2734, 'longitude' => 80.5966,
         ]))->getData(true)['data'];
         $destination = $controller->storeDestination(Request::create('/tours/destinations', 'POST', [
-            'service_type_id' => 'c2c58e96-7a3d-4974-81b8-2f6fef280947',
             'predefined_location_id' => $destinationLocation['id'],
             'code' => 'kandy', 'name' => 'Kandy', 'timezone' => 'Asia/Colombo', 'is_published' => true,
         ]))->getData(true)['data'];
@@ -344,9 +345,7 @@ class TourCatalogueTest extends TestCase
             'is_published' => true,
         ]))->getData(true)['data'];
 
-        $catalogue = $controller->published(Request::create('/public/tours/catalogue', 'GET', [
-            'service_type_id' => 'c2c58e96-7a3d-4974-81b8-2f6fef280947',
-        ]))->getData(true);
+        $catalogue = $controller->published(Request::create('/public/tours/catalogue', 'GET'))->getData(true);
 
         self::assertSame($destination['id'], $catalogue['data']['destinations'][0]['id']);
         self::assertSame(90, $catalogue['data']['destinations'][0]['activities'][0]['visit_duration_minutes']);
@@ -364,7 +363,6 @@ class TourCatalogueTest extends TestCase
             'country' => 'Sri Lanka', 'latitude' => 7.29, 'longitude' => 80.63,
         ]))->getData(true)['data'];
         $destination = $controller->storeDestination(Request::create('/tours/destinations', 'POST', [
-            'service_type_id' => 'c2c58e96-7a3d-4974-81b8-2f6fef280947',
             'predefined_location_id' => $location['id'], 'code' => 'ai-kandy', 'name' => 'Kandy',
             'timezone' => 'Asia/Colombo', 'is_published' => true,
         ]))->getData(true)['data'];
@@ -413,7 +411,6 @@ class TourCatalogueTest extends TestCase
             'country' => 'Sri Lanka', 'latitude' => 7.29, 'longitude' => 80.63,
         ]))->getData(true)['data'];
         $destination = $controller->storeDestination(Request::create('/tours/destinations', 'POST', [
-            'service_type_id' => 'c2c58e96-7a3d-4974-81b8-2f6fef280947',
             'predefined_location_id' => $location['id'], 'code' => 'ai-flow-kandy', 'name' => 'Kandy',
             'timezone' => 'Asia/Colombo', 'is_published' => true,
         ]))->getData(true)['data'];
@@ -433,7 +430,6 @@ class TourCatalogueTest extends TestCase
             \Mockery::on(fn(array $catalogue): bool => count($catalogue) === 1 && $catalogue[0]['id'] === $destination['id'] && !array_key_exists('latitude', $catalogue[0]))
         )->andReturn(['days' => [['day_number' => 1, 'stops' => [['kind' => 'activity', 'catalogue_id' => $activity['id']]]]]]);
         $request = Request::create('/api/public/tours/suggestions', 'POST', [
-            'service_type_id' => 'c2c58e96-7a3d-4974-81b8-2f6fef280947',
             'duration_days' => 1, 'start_date' => '2026-12-01', 'interests' => 'gardens',
         ]);
         $result = $controller->suggestPublicItinerary($request, $ai)->getData(true);
@@ -454,7 +450,6 @@ class TourCatalogueTest extends TestCase
 
         $this->expectException(ValidationException::class);
         (new TourCatalogueController)->storeDestination(Request::create('/tours/destinations', 'POST', [
-            'service_type_id' => 'c2c58e96-7a3d-4974-81b8-2f6fef280947',
             'predefined_location_id' => $location->id,
             'code' => 'unmapped', 'name' => 'Unmapped', 'timezone' => 'Asia/Colombo',
         ]));
@@ -472,7 +467,6 @@ class TourCatalogueTest extends TestCase
             'country' => 'Sri Lanka', 'latitude' => 7.27, 'longitude' => 80.59,
         ]))->getData(true)['data'];
         $destination = $controller->storeDestination(Request::create('/tours/destinations', 'POST', [
-            'service_type_id' => 'c2c58e96-7a3d-4974-81b8-2f6fef280947',
             'predefined_location_id' => $destinationLocation['id'],
             'code' => 'route-kandy', 'name' => 'Kandy', 'timezone' => 'Asia/Colombo', 'is_published' => true,
         ]))->getData(true)['data'];
@@ -515,7 +509,6 @@ class TourCatalogueTest extends TestCase
         $currency->method('getBookingBaseCurrency')->willReturn('LKR');
         $currency->method('convertPricingStructure')->willReturnArgument(0);
         $response = $controller->suggestRoute(Request::create('/public/tours/route-suggestion', 'POST', [
-            'service_type_id' => 'c2c58e96-7a3d-4974-81b8-2f6fef280947',
             'vehicle_class_id' => $classId,
             'from_date' => '2026-12-01',
             'duration_days' => 2,

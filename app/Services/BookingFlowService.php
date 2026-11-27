@@ -2049,7 +2049,6 @@ class BookingFlowService
         }
         $groups = VehicleGroup::query()
             ->whereIn('id', $eligibleGroupIds)
-            ->where('class_id', $itinerary->vehicle_class_id)
             ->where('is_active', true)
             ->whereNotNull('passengers_count')->where('passengers_count', '>=', $setting->max_passengers)
             ->whereNotNull('hand_luggages')->where('hand_luggages', '>=', $setting->max_luggage)
@@ -2069,7 +2068,7 @@ class BookingFlowService
             'to_time' => '23:59',
             'pickup_location' => $dayOne?->start_location_snapshot,
             'dropoff_location' => $lastItineraryDay?->end_location_snapshot,
-            'vehicle_group_filter' => ['class_id' => $itinerary->vehicle_class_id],
+            'vehicle_group_filter' => [],
             'eligible_vehicle_group_ids' => $groups->all(),
             'per_page' => 500,
             'sort_by' => 'name_asc',

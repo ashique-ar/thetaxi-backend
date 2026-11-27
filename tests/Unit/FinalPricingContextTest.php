@@ -69,7 +69,7 @@ it('derives stop count and included kilometres from persisted booking metadata',
     $includedKm = invokePrivateMethod($service, 'resolvePackageIncludedKilometres', [
         ['package_info' => ['max_km_per_day' => 80]],
         [],
-        1500,
+        2,
     ]);
 
     expect($stops)->toBe(2)

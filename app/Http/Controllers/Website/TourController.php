@@ -61,7 +61,6 @@ class TourController extends Controller
             'last_name' => 'nullable|string|max:100',
             'email' => 'required|email:rfc|max:255',
             'phone' => 'required|string|min:5|max:30',
-            'service_type_id' => 'required|uuid',
             'service_package_id' => 'nullable|uuid',
             'vehicle_class_id' => 'required|uuid',
             'start_date' => 'required|date|after_or_equal:today',
@@ -342,6 +341,10 @@ class TourController extends Controller
         abort_unless((string) $request->session()->get('tour_checkout_itinerary_id') === $id, 404);
         $customer = $this->sessionCustomer();
         abort_unless($customer, 403, 'Your Tour checkout session has expired. Start again to continue.');
+        $user = $this->sessionUser();
+        $service = app(WebsiteSettingsService::class)->getTourService(true);
+        $itinerary = $user ? TourItinerary::query()->where('user_id', $user->id)->findOrFail($id) : null;
+        abort_unless($service && $itinerary && (string) $itinerary->service_type_id === (string) $service->id, 404);
         $this->bindCustomerContext($request, $customer, $context);
 
         return $customer;

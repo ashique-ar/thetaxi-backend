@@ -35,22 +35,23 @@ class TourItineraryController extends Controller
     public function index(Request $request): JsonResponse
     {
         $this->customerPortalProfile($request);
-        $drafts = TourItinerary::query()
+        $service = app(WebsiteSettingsService::class)->getTourService(true);
+        $drafts = $service ? TourItinerary::query()
             ->where('user_id', $request->user()->id)
+            ->where('service_type_id', $service->id)
             ->whereIn('status', ['draft', 'quoted', 'accepted'])
             ->with('serviceType:id,name')
             ->orderByDesc('updated_at')
             ->limit(50)
-            ->get(['id', 'service_type_id', 'start_date', 'duration_days', 'status', 'updated_at'])
+            ->get(['id', 'start_date', 'duration_days', 'status', 'updated_at'])
             ->map(fn(TourItinerary $itinerary): array => [
                 'id' => $itinerary->id,
-                'service_type_id' => $itinerary->service_type_id,
                 'service_name' => $itinerary->serviceType?->name,
                 'start_date' => $itinerary->start_date?->toDateString(),
                 'duration_days' => (int) $itinerary->duration_days,
                 'status' => $itinerary->status,
                 'updated_at' => $itinerary->updated_at?->toIso8601String(),
-            ])->values();
+            ])->values() : collect();
 
         return response()->json(['success' => true, 'data' => $drafts]);
     }
@@ -60,7 +61,7 @@ class TourItineraryController extends Controller
         $data = $this->validateItinerary($request);
         $data['child_seat_count'] = (int) ($data['child_seat_count'] ?? 0);
         $this->customerPortalProfile($request);
-        $service = $this->assertConfiguration($data, $request);
+        $service = $this->assertConfiguration($data);
         $data['custom_answers'] = TourFormConfiguration::validate($service, $request->input('custom_answers', []));
         $data['custom_fields_snapshot'] = TourFormConfiguration::fields($service);
         $package = !empty($data['service_package_id']) ? ServicePackage::findOrFail($data['service_package_id']) : null;
@@ -97,11 +98,9 @@ class TourItineraryController extends Controller
         $data['child_seat_count'] = array_key_exists('child_seat_count', $data)
             ? (int) $data['child_seat_count']
             : (int) $itinerary->child_seat_count;
-        if (isset($data['service_type_id']) && $data['service_type_id'] !== $itinerary->service_type_id) {
-            throw ValidationException::withMessages(['service_type_id' => 'A draft cannot be moved to a different service type.']);
-        }
         abort_unless(in_array($itinerary->status, ['draft', 'quoted'], true), 409, 'An accepted or converted itinerary cannot be edited here.');
-        $service = $this->assertConfiguration($data + ['service_type_id' => $itinerary->service_type_id], $request);
+        $service = $this->assertConfiguration($data);
+        abort_unless((string) $service->id === (string) $itinerary->service_type_id, 404);
         $data['custom_answers'] = TourFormConfiguration::validate($service, $request->input('custom_answers', []));
         $data['custom_fields_snapshot'] = TourFormConfiguration::fields($service);
         if (!array_key_exists('service_package_template_version', $data)) {
@@ -371,7 +370,6 @@ class TourItineraryController extends Controller
     private function validateItinerary(Request $request, bool $updating = false): array
     {
         $data = $request->validate([
-            'service_type_id' => [$updating ? 'sometimes' : 'required', 'uuid', 'exists:service_types,id'],
             'service_package_id' => 'nullable|uuid',
             'service_package_template_version' => 'nullable|integer|min:1',
             'vehicle_class_id' => 'required|uuid',
@@ -405,11 +403,21 @@ class TourItineraryController extends Controller
         return $data;
     }
 
-    private function assertConfiguration(array $data, Request $request): ServiceType
+    private function assertConfiguration(array &$data): ServiceType
     {
-        $service = ($this->isCustomerPortalRequest($request) ? ServiceType::publicContext() : ServiceType::query())
-            ->where('is_active', true)->findOrFail($data['service_type_id']);
-        abort_unless(app(WebsiteSettingsService::class)->isTourService($service, $this->isCustomerPortalRequest($request)), 404);
+        $service = app(WebsiteSettingsService::class)->getTourService(true);
+        abort_unless($service, 404);
+        if (empty($data['service_package_id'])) {
+            $packages = ServicePackage::query()
+                ->where('service_type_id', $service->id)
+                ->where('is_active', true)
+                ->limit(2)
+                ->get(['id', 'tour_itinerary_template_version']);
+            if ($packages->count() === 1) {
+                $data['service_package_id'] = $packages[0]->id;
+                $data['service_package_template_version'] ??= $packages[0]->tour_itinerary_template_version;
+            }
+        }
         $classId = $data['vehicle_class_id'] ?? null;
         $classSetting = ServiceVehicleClassSetting::query()
             ->where('service_type_id', $service->id)
@@ -608,7 +616,11 @@ class TourItineraryController extends Controller
     private function ownedItinerary(Request $request, string $id): TourItinerary
     {
         $this->customerPortalProfile($request);
-        return TourItinerary::query()->where('user_id', $request->user()->id)->findOrFail($id);
+        $itinerary = TourItinerary::query()->where('user_id', $request->user()->id)->findOrFail($id);
+        $service = app(WebsiteSettingsService::class)->getTourService(true);
+        abort_unless($service && (string) $service->id === (string) $itinerary->service_type_id, 404);
+
+        return $itinerary;
     }
 
     private function isCustomerPortalRequest(Request $request): bool

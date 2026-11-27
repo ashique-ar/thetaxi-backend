@@ -59,10 +59,10 @@ class TourCatalogueController extends Controller
                     ->filter(function (ServiceVehicleClassSetting $setting): bool {
                         $ids = $setting->eligible_vehicle_group_ids ?? [];
                         return $ids !== [] && \App\Models\Vehicle\VehicleGroup::query()
-                            ->whereIn('id', $ids)->where('class_id', $setting->vehicle_class_id)
+                            ->whereIn('id', $ids)
                             ->where('is_active', true)->whereNull('deleted_at')
-                            ->where('passengers_count', '>=', $setting->max_passengers)
-                            ->where('hand_luggages', '>=', $setting->max_luggage)->exists();
+                            ->whereNotNull('passengers_count')->where('passengers_count', '>=', $setting->max_passengers)
+                            ->whereNotNull('hand_luggages')->where('hand_luggages', '>=', $setting->max_luggage)->exists();
                     })
                     ->map(fn(ServiceVehicleClassSetting $setting): array => [
                         'id' => $setting->vehicle_class_id,
@@ -80,8 +80,6 @@ class TourCatalogueController extends Controller
                     ->get(['id', 'name', 'description', 'default_vehicle_class_id', 'allowed_upgrade_class_ids', 'tour_itinerary_template', 'tour_itinerary_template_version']);
 
                 return [
-                    'id' => $service->id,
-                    'name' => $service->name,
                     'description' => $service->description,
                     'form_fields' => TourFormConfiguration::fields($service),
                     'ai_itinerary_helper_enabled' => $aiItineraryEnabled,
@@ -108,21 +106,20 @@ class TourCatalogueController extends Controller
     private function makeItinerarySuggestion(Request $request, AIContentService $ai): JsonResponse
     {
         $data = $request->validate([
-            'service_type_id' => 'required|uuid',
             'duration_days' => 'required|integer|min:1|max:14',
             'start_date' => 'nullable|date|after_or_equal:today',
             'interests' => 'nullable|string|max:500',
         ]);
         abort_unless(filter_var(app(WebsiteSettingsService::class)->get('tour_ai_itinerary_enabled', false), FILTER_VALIDATE_BOOL), 404);
         $service = app(WebsiteSettingsService::class)->getTourService(true);
-        abort_unless($service && (string) $service->id === (string) $data['service_type_id'], 404);
+        abort_unless($service, 404);
         $destinations = TourDestination::query()->with([
             'location:id,name,city,address',
             'activities' => fn($query) => $query->where('is_published', true)->orderBy('sort_order')->orderBy('name'),
         ])->where('service_type_id', $service->id)->where('is_published', true)
             ->orderBy('sort_order')->orderBy('name')->get();
         if ($destinations->isEmpty()) {
-            throw ValidationException::withMessages(['service_type_id' => 'No published tour places are available for suggestions.']);
+            throw ValidationException::withMessages(['tour' => 'No published tour places are available for suggestions.']);
         }
 
         $catalogue = $destinations->map(fn(TourDestination $destination): array => [
@@ -224,11 +221,10 @@ class TourCatalogueController extends Controller
         abort_unless($owns, 403, 'An active customer profile is required.');
     }
 
-    public function published(Request $request): JsonResponse
+    public function published(): JsonResponse
     {
-        $data = $request->validate(['service_type_id' => 'required|uuid|exists:service_types,id']);
         $service = app(WebsiteSettingsService::class)->getTourService(true);
-        abort_unless($service && (string) $service->id === (string) $data['service_type_id'], 404);
+        abort_unless($service, 404);
 
         $destinations = TourDestination::query()
             ->with([
@@ -265,7 +261,6 @@ class TourCatalogueController extends Controller
         return response()->json([
             'success' => true,
             'data' => [
-                'service_type_id' => $service->id,
                 'form_fields' => TourFormConfiguration::fields($service),
                 'destinations' => $destinations,
             ],
@@ -276,7 +271,6 @@ class TourCatalogueController extends Controller
     public function suggestRoute(Request $request, TourRoutePlanner $planner, BookingFlowService $bookingFlow, CurrencyService $currencyService): JsonResponse
     {
         $data = $request->validate([
-            'service_type_id' => 'required|uuid|exists:service_types,id',
             'vehicle_class_id' => 'required|uuid',
             'package_id' => 'nullable|uuid',
             'from_date' => 'required|date',
@@ -294,7 +288,7 @@ class TourCatalogueController extends Controller
             'stops.*.arrival_time' => 'sometimes|date_format:H:i',
         ]);
         $service = app(WebsiteSettingsService::class)->getTourService(true);
-        abort_unless($service && (string) $service->id === (string) $data['service_type_id'], 404);
+        abort_unless($service, 404);
         $classSetting = ServiceVehicleClassSetting::query()
             ->where('service_type_id', $service->id)
             ->where('vehicle_class_id', $data['vehicle_class_id'])
@@ -419,10 +413,9 @@ class TourCatalogueController extends Controller
         return response()->json(['success' => true, 'data' => $suggestion]);
     }
 
-    public function manageIndex(Request $request): JsonResponse
+    public function manageIndex(): JsonResponse
     {
-        $data = $request->validate(['service_type_id' => 'required|uuid|exists:service_types,id']);
-        $service = ServiceType::findOrFail($data['service_type_id']);
+        $service = app(WebsiteSettingsService::class)->getTourService();
         $this->assertClassPriced($service);
 
         return response()->json([
@@ -458,10 +451,10 @@ class TourCatalogueController extends Controller
     public function storeDestination(Request $request): JsonResponse
     {
         $data = $this->validateDestination($request);
-        $service = ServiceType::findOrFail($data['service_type_id']);
+        $service = app(WebsiteSettingsService::class)->getTourService();
         $this->assertClassPriced($service);
         $this->assertMappedTourLocation($data['predefined_location_id']);
-        $destination = TourDestination::create($data);
+        $destination = TourDestination::create([...$data, 'service_type_id' => $service->id]);
 
         return response()->json(['success' => true, 'data' => $destination->load('location')], 201);
     }
@@ -469,8 +462,9 @@ class TourCatalogueController extends Controller
     public function updateDestination(Request $request, TourDestination $destination): JsonResponse
     {
         $data = $this->validateDestination($request, true);
-        $service = ServiceType::findOrFail($data['service_type_id'] ?? $destination->service_type_id);
+        $service = app(WebsiteSettingsService::class)->getTourService();
         $this->assertClassPriced($service);
+        abort_unless((string) $destination->service_type_id === (string) $service->id, 404);
         $locationId = $data['predefined_location_id'] ?? $destination->predefined_location_id;
         $this->assertMappedTourLocation($locationId);
         $destination->update($data);
@@ -525,10 +519,10 @@ class TourCatalogueController extends Controller
     {
         $required = $partial ? 'sometimes' : 'required';
         $destination = $request->route('destination');
-        $serviceTypeId = $request->input('service_type_id') ?? $destination?->service_type_id;
+        $serviceTypeId = app(WebsiteSettingsService::class)->getTourService()?->id;
+        abort_unless($serviceTypeId, 404);
 
         return $request->validate([
-            'service_type_id' => [$required, 'uuid', 'exists:service_types,id'],
             'predefined_location_id' => [$required, 'uuid', 'exists:predefined_locations,id'],
             'code' => [$required, 'string', 'max:100', 'regex:/^[A-Za-z0-9_-]+$/', Rule::unique('tour_destinations', 'code')->where('service_type_id', $serviceTypeId)->ignore($destination)],
             'name' => [$required, 'string', 'max:255'],
@@ -566,8 +560,8 @@ class TourCatalogueController extends Controller
 
     private function assertClassPriced(?ServiceType $service): void
     {
-        if (!$service || $service->pricing_basis !== 'vehicle_class') {
-            throw ValidationException::withMessages(['service_type_id' => 'Tours catalogue entries require a class-priced service.']);
+        if (!$service || !app(WebsiteSettingsService::class)->isTourService($service)) {
+            abort(404);
         }
     }
 

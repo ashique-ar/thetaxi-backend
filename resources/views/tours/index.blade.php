@@ -661,10 +661,6 @@
                         </div>
 
                         <div class="row g-3 mb-4">
-                            <div class="col-md-6" id="tour-service-field">
-                                <label for="tour-service" class="form-label">Tour service *</label>
-                                <select id="tour-service" class="form-select no-nice" required></select>
-                            </div>
                             <div class="col-md-6" id="tour-package-field">
                                 <label for="tour-package" class="form-label">Handcrafted package <span class="text-lowercase fw-normal tour-muted">(optional)</span></label>
                                 <select id="tour-package" class="form-select no-nice">
@@ -982,7 +978,6 @@
             const form = document.getElementById('tour-form');
             const loading = document.getElementById('tour-loading');
             const error = document.getElementById('tour-error');
-            const serviceSelect = document.getElementById('tour-service');
             const classSelect = document.getElementById('tour-class');
             const packageSelect = document.getElementById('tour-package');
             const startSelect = document.getElementById('tour-start');
@@ -992,6 +987,7 @@
             const api = '/api/public/tours';
             const csrf = document.querySelector('meta[name="csrf-token"]')?.content || '';
             let services = [];
+            let selectedService = null;
             let catalogue = null;
             let savedItinerary = null;
             let selectedTemplateDays = [];
@@ -1022,12 +1018,7 @@
                 }
                 return body.data;
             }
-            function currentService() { return services.find(item => item.id === serviceSelect.value); }
-            function fillServices() {
-                serviceSelect.innerHTML = services.map(item => `<option value="${escapeHtml(item.id)}">${escapeHtml(item.name)}</option>`).join('');
-                if (services.length === 1) serviceSelect.value = services[0].id;
-                document.getElementById('tour-service-field').hidden = services.length <= 1;
-            }
+            function currentService() { return selectedService; }
             function fillOptions() {
                 const service = currentService();
                 const packages = service?.packages || [];
@@ -1036,8 +1027,8 @@
                 if (packages.length === 1) packageSelect.value = packages[0].id;
                 const packageField = document.getElementById('tour-package-field');
                 packageField.hidden = packages.length <= 1;
-                packageField.classList.toggle('col-md-12', services.length <= 1 && packages.length > 1);
-                packageField.classList.toggle('col-md-6', !(services.length <= 1 && packages.length > 1));
+                packageField.classList.toggle('col-md-12', packages.length > 1);
+                packageField.classList.toggle('col-md-6', packages.length <= 1);
                 document.getElementById('tour-ai-helper').hidden = !service?.ai_itinerary_helper_enabled;
                 document.getElementById('tour-ai-preview').hidden = true;
                 document.getElementById('tour-ai-status').textContent = '';
@@ -1154,14 +1145,14 @@
                 });
             }
             async function loadCatalogue() {
-                const sameService = catalogue?.service_type_id === serviceSelect.value;
+                const sameService = Boolean(catalogue);
                 const previousStart = sameService ? startSelect.value : '';
                 const previousDestinations = new Set(sameService ? [...document.querySelectorAll('.tour-destination:checked')].map(box => box.value) : []);
                 const previousActivities = new Set(sameService ? [...document.querySelectorAll('.tour-activity:checked')].map(box => box.value) : []);
                 const previousDays = new Map(sameService ? [...document.querySelectorAll('.tour-place-day')].map(select => [select.id.replace('tour-place-day-', ''), select.value]) : []);
                 const previousActivityDays = new Map(sameService ? [...document.querySelectorAll('.tour-activity-day')].map(select => [select.dataset.activity, select.value]) : []);
                 clearError(); results.hidden = true; destinationList.innerHTML = ''; daySettings.innerHTML = ''; startSelect.innerHTML = '<option value="">Choose a listed place</option>'; document.getElementById('tour-start-search').value = ''; document.getElementById('tour-destination-search').value = '';
-                const data = await request(`${api}/catalogue?service_type_id=${encodeURIComponent(serviceSelect.value)}`);
+                const data = await request(`${api}/catalogue`);
                 catalogue = data;
                 const destinations = data.destinations || [];
                 startSelect.innerHTML += destinations.map(item => `<option value="${escapeHtml(item.id)}">${escapeHtml(item.name)}</option>`).join('');
@@ -1283,7 +1274,6 @@
                         last_name: document.getElementById('tour-last-name').value,
                         email: document.getElementById('tour-email').value,
                         phone: document.getElementById('tour-phone').value,
-                        service_type_id: serviceSelect.value,
                         vehicle_class_id: classSelect.value,
                         service_package_id: packageSelect.value || null,
                         start_date: document.getElementById('tour-date').value,
@@ -1345,7 +1335,6 @@
                 } catch (exception) { showError(exception.message || 'We could not plan this route. Please check your choices and try again.'); }
                 finally { busyControls.forEach((control, index) => { control.disabled = priorDisabled[index]; }); button.disabled = false; document.getElementById('tour-working').hidden = true; }
             });
-            serviceSelect.addEventListener('change', async () => { selectedTemplateDays = []; fillOptions(); try { await loadCatalogue(); if (packageSelect.value) applyPackageTemplate(); } catch (exception) { showError(exception.message); } });
             packageSelect.addEventListener('change', () => { clearAiSuggestion(); limitPackageClasses(); applyPackageTemplate(); });
             document.getElementById('tour-destination-search').addEventListener('input', filterDestinationCards);
             form.addEventListener('input', event => {
@@ -1389,7 +1378,6 @@
                 const button = event.currentTarget;
                 const status = document.getElementById('tour-ai-status');
                 const requestData = {
-                    service_type_id: serviceSelect.value,
                     duration_days: Number(document.getElementById('tour-days').value),
                     start_date: document.getElementById('tour-date').value || null,
                     interests: document.getElementById('tour-interests').value.trim(),
@@ -1403,8 +1391,7 @@
                 status.textContent = 'Preparing ideas from published places…';
                 try {
                     const response = await request('/api/public/tours/suggestions', { method: 'POST', body: JSON.stringify(requestData) });
-                    if (serviceSelect.value !== requestData.service_type_id
-                        || JSON.stringify({ service_type_id: serviceSelect.value, duration_days: Number(document.getElementById('tour-days').value), start_date: document.getElementById('tour-date').value || null, interests: document.getElementById('tour-interests').value.trim() }) !== requestKey) {
+                    if (JSON.stringify({ duration_days: Number(document.getElementById('tour-days').value), start_date: document.getElementById('tour-date').value || null, interests: document.getElementById('tour-interests').value.trim() }) !== requestKey) {
                         status.textContent = 'Trip details changed while ideas were loading. Request fresh ideas if you still want them.';
                         return;
                     }
@@ -1425,7 +1412,7 @@
             request(`${api}/services`).then(data => {
                 services = data.services || [];
                 if (!services.length) throw new Error('Tours are not available at the moment.');
-                fillServices(); fillOptions(); return loadCatalogue();
+                selectedService = services[0]; fillOptions(); return loadCatalogue();
             }).then(() => { if (packageSelect.value) applyPackageTemplate(); loading.hidden = true; form.hidden = false; }).catch(exception => { loading.hidden = true; showError(exception.message); });
         })();
     </script>

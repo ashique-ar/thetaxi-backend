@@ -586,7 +586,7 @@ class TourItineraryTest extends TestCase
         DB::table('tour_itineraries')->where('id', $itinerary['id'])->update(['status' => 'accepted']);
         DB::table('vehicle_groups')->insert([
             'id' => '9273137e-26f6-4a02-8884-e461e3496609',
-            'class_id' => self::CLASS_ID,
+            'class_id' => 'f37d3f1b-0c6d-4218-9fed-d6d586a8a20d',
             'passengers_count' => 4,
             'hand_luggages' => 3,
             'is_active' => true,
@@ -883,7 +883,7 @@ class TourItineraryTest extends TestCase
             'city' => 'Kandy', 'country' => 'Sri Lanka', 'latitude' => 7.291, 'longitude' => 80.632,
         ])->assertCreated()->assertJsonPath('data.type', 'tour')->json('data');
         $destination = $this->postJson('/api/tours/destinations', [
-            'service_type_id' => self::SERVICE_ID, 'predefined_location_id' => $location['id'],
+            'predefined_location_id' => $location['id'],
             'code' => 'mapped-museum', 'name' => 'Museum', 'timezone' => 'Asia/Colombo',
         ])->assertCreated()->assertJsonPath('data.predefined_location_id', $location['id']);
 
@@ -975,7 +975,6 @@ class TourItineraryTest extends TestCase
     private function payload(string $destinationId, string $activityId): array
     {
         return [
-            'service_type_id' => self::SERVICE_ID,
             'vehicle_class_id' => self::CLASS_ID,
             'start_date' => '2026-12-01',
             'duration_days' => 2,

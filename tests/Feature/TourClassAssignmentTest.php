@@ -30,6 +30,7 @@ class TourClassAssignmentTest extends TestCase
         Schema::create('bookings', function (Blueprint $table): void {
             $table->uuid('id')->primary();
             $table->uuid('customer_id')->nullable();
+            $table->string('status')->default('confirmed');
             $table->unsignedInteger('passenger_count')->default(1);
             $table->unsignedInteger('luggage_count')->default(0);
             $table->timestamps();
@@ -86,7 +87,13 @@ class TourClassAssignmentTest extends TestCase
             $table->uuid('id')->primary();
             $table->uuid('booking_id');
             $table->uuid('vehicle_id');
-            $table->string('status')->default('active');
+            $table->uuid('booking_item_id')->nullable(); $table->uuid('parent_assignment_id')->nullable();
+            $table->string('customer_name')->nullable(); $table->string('service_type')->nullable();
+            $table->dateTime('assigned_from')->nullable(); $table->dateTime('assigned_to')->nullable();
+            $table->string('assignment_type')->default('primary'); $table->string('status')->default('active');
+            $table->string('overlap_type')->nullable(); $table->json('overlap_details')->nullable();
+            $table->boolean('requires_approval')->default(false); $table->boolean('manually_confirmed')->default(false);
+            $table->json('override_reasons')->nullable(); $table->uuid('assigned_by')->nullable(); $table->uuid('created_user_id')->nullable();
             $table->timestamps();
             $table->softDeletes();
         });
@@ -141,7 +148,7 @@ class TourClassAssignmentTest extends TestCase
         self::assertSame('60000000-0000-4000-8000-000000000001', DB::table('booking_items')->value('vehicle_id'));
     }
 
-    public function test_tour_dispatch_rejects_an_unmapped_or_reclassified_fleet_group(): void
+    public function test_tour_dispatch_accepts_a_mapped_group_from_another_global_class_and_rejects_stale_capacity(): void
     {
         DB::table('booking_items')->where('id', '30000000-0000-4000-8000-000000000001')->update([
             'metadata' => json_encode(['tour_itinerary_id' => '90000000-0000-4000-8000-000000000001']),
@@ -149,6 +156,16 @@ class TourClassAssignmentTest extends TestCase
         DB::table('service_vehicle_class_settings')->where('vehicle_class_id', '40000000-0000-4000-8000-000000000001')
             ->update(['eligible_vehicle_group_ids' => json_encode(['50000000-0000-4000-8000-000000000001'])]);
 
+        $assignment = app(AssignmentService::class)->createVehicleAssignment([
+            'booking_id' => '20000000-0000-4000-8000-000000000001',
+            'booking_item_id' => '30000000-0000-4000-8000-000000000001',
+            'vehicle_id' => '60000000-0000-4000-8000-000000000001',
+            'customer_name' => 'Tour customer', 'service_type' => 'Tours',
+            'assigned_from' => '2026-12-01 09:00:00', 'assigned_to' => '2026-12-02 18:00:00',
+        ]);
+        self::assertSame('60000000-0000-4000-8000-000000000001', $assignment->vehicle_id);
+
+        DB::table('vehicle_groups')->where('id', '50000000-0000-4000-8000-000000000001')->update(['passengers_count' => 2]);
         try {
             app(AssignmentService::class)->createVehicleAssignment([
                 'booking_id' => '20000000-0000-4000-8000-000000000001',
@@ -157,7 +174,7 @@ class TourClassAssignmentTest extends TestCase
                 'customer_name' => 'Tour customer', 'service_type' => 'Tours',
                 'assigned_from' => '2026-12-01 09:00:00', 'assigned_to' => '2026-12-02 18:00:00',
             ]);
-            self::fail('A vehicle group reclassified outside the purchased Tour class was assigned.');
+            self::fail('A mapped group with stale passenger capacity was assigned.');
         } catch (ValidationException $exception) {
             self::assertArrayHasKey('vehicle_id', $exception->errors());
         }

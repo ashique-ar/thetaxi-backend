@@ -21,7 +21,11 @@ class TourLaunchSeederTest extends TestCase
         ]);
         DB::table('vehicle_pricing_slab_definitions')->insert([
             'id' => 'day-slab', 'service_type_id' => 'day-rental', 'name' => 'One day',
-            'min_days' => 1, 'max_days' => 2, 'max_km_per_day' => 100, 'is_active' => true,
+            'min_days' => 1, 'max_days' => 2, 'max_km_per_day' => null, 'is_active' => true,
+        ]);
+        DB::table('service_packages')->insert([
+            ['id' => 'day-100-km', 'service_type_id' => 'day-rental', 'name' => '100 km', 'max_km_per_day' => 100, 'is_active' => true],
+            ['id' => 'day-200-km', 'service_type_id' => 'day-rental', 'name' => '200 km', 'max_km_per_day' => 200, 'is_active' => true],
         ]);
         DB::table('vehicle_pricing_common_rate_definitions')->insert([
             'id' => 'day-km-definition', 'service_type_id' => 'day-rental', 'vehicle_group_id' => null,
@@ -40,6 +44,8 @@ class TourLaunchSeederTest extends TestCase
             ['id' => 'economy-too-small', 'class_id' => 'economy-class', 'name' => 'Small car', 'passengers_count' => 2, 'hand_luggages' => 2, 'is_active' => true],
             ['id' => 'high-roof', 'class_id' => 'high-roof-class', 'name' => 'Toyota KDH 14 Seater', 'passengers_count' => 14, 'hand_luggages' => 4, 'is_active' => true],
             ['id' => 'coaster', 'class_id' => 'full-size-class', 'name' => 'Toyota Coaster', 'passengers_count' => 22, 'hand_luggages' => 8, 'is_active' => true],
+            ['id' => 'standard-axio', 'class_id' => 'compact-class', 'name' => 'Toyota Axio Economy', 'passengers_count' => 4, 'hand_luggages' => 2, 'is_active' => true],
+            ['id' => 'flat-roof-kdh', 'class_id' => 'full-size-class', 'name' => 'Toyota KDH 200 8 Seater', 'passengers_count' => 8, 'hand_luggages' => 3, 'is_active' => true],
             ['id' => 'unknown-capacity', 'class_id' => 'full-size-class', 'name' => 'Truck', 'passengers_count' => null, 'hand_luggages' => null, 'is_active' => true],
         ]);
         DB::table('vehicle_group_pricing')->insert([
@@ -48,6 +54,8 @@ class TourLaunchSeederTest extends TestCase
             ['id' => 'too-small-rate', 'slab_definition_id' => 'day-slab', 'vehicle_group_id' => 'economy-too-small', 'rate' => 5000, 'rate_type' => 'per_day', 'includes_fuel' => false, 'includes_driver' => false, 'is_active' => true],
             ['id' => 'high-roof-rate', 'slab_definition_id' => 'day-slab', 'vehicle_group_id' => 'high-roof', 'rate' => 24500, 'rate_type' => 'per_day', 'includes_fuel' => false, 'includes_driver' => false, 'is_active' => true],
             ['id' => 'coaster-rate', 'slab_definition_id' => 'day-slab', 'vehicle_group_id' => 'coaster', 'rate' => 18000, 'rate_type' => 'per_day', 'includes_fuel' => false, 'includes_driver' => false, 'is_active' => true],
+            ['id' => 'standard-rate', 'slab_definition_id' => 'day-slab', 'vehicle_group_id' => 'standard-axio', 'rate' => 8500, 'rate_type' => 'per_day', 'includes_fuel' => true, 'includes_driver' => false, 'is_active' => true],
+            ['id' => 'flat-roof-rate', 'slab_definition_id' => 'day-slab', 'vehicle_group_id' => 'flat-roof-kdh', 'rate' => 16000, 'rate_type' => 'per_day', 'includes_fuel' => false, 'includes_driver' => true, 'is_active' => true],
         ]);
         DB::table('vehicle_group_common_rate_pricing')->insert([
             ['id' => 'economy-km-a', 'vehicle_group_id' => 'economy-a', 'common_rate_definition_id' => 'day-km-definition', 'value' => 140, 'is_active' => true],
@@ -55,6 +63,8 @@ class TourLaunchSeederTest extends TestCase
             ['id' => 'economy-km-small', 'vehicle_group_id' => 'economy-too-small', 'common_rate_definition_id' => 'day-km-definition', 'value' => 80, 'is_active' => true],
             ['id' => 'high-roof-km', 'vehicle_group_id' => 'high-roof', 'common_rate_definition_id' => 'day-km-definition', 'value' => 240, 'is_active' => true],
             ['id' => 'coaster-km', 'vehicle_group_id' => 'coaster', 'common_rate_definition_id' => 'day-km-definition', 'value' => 290, 'is_active' => true],
+            ['id' => 'standard-km', 'vehicle_group_id' => 'standard-axio', 'common_rate_definition_id' => 'day-km-definition', 'value' => 145, 'is_active' => true],
+            ['id' => 'flat-roof-km', 'vehicle_group_id' => 'flat-roof-kdh', 'common_rate_definition_id' => 'day-km-definition', 'value' => 260, 'is_active' => true],
         ]);
 
         (require database_path('migrations/2026_11_27_000002_add_tour_vehicle_group_mapping.php'))->up();
@@ -74,6 +84,8 @@ class TourLaunchSeederTest extends TestCase
         self::assertSame($tourId, DB::table('business_settings')->where('type', 'tour_service_type_id')->value('value'));
         $classSetting = DB::table('service_vehicle_class_settings')->where('service_type_id', $tourId)->where('vehicle_class_id', 'economy-class')->first();
         self::assertSame(['economy-a', 'economy-b'], json_decode($classSetting->eligible_vehicle_group_ids, true));
+        self::assertSame(['standard-axio'], json_decode(DB::table('service_vehicle_class_settings')->where('service_type_id', $tourId)->where('vehicle_class_id', 'compact-class')->value('eligible_vehicle_group_ids'), true));
+        self::assertSame(['flat-roof-kdh'], json_decode(DB::table('service_vehicle_class_settings')->where('service_type_id', $tourId)->where('vehicle_class_id', 'commercial-class')->value('eligible_vehicle_group_ids'), true));
         self::assertSame('Economy car', $classSetting->customer_display_name);
         self::assertSame(3, $classSetting->max_passengers);
         self::assertSame(3, DB::table('service_vehicle_class_settings')->where('service_type_id', $tourId)->where('vehicle_class_id', 'compact-class')->value('max_passengers'));
@@ -82,6 +94,7 @@ class TourLaunchSeederTest extends TestCase
         self::assertSame(14, DB::table('service_vehicle_class_settings')->where('service_type_id', $tourId)->where('vehicle_class_id', 'full-size-class')->value('max_passengers'));
 
         $tourSlabId = DB::table('vehicle_pricing_slab_definitions')->where('service_type_id', $tourId)->value('id');
+        self::assertEquals(100, DB::table('vehicle_pricing_slab_definitions')->where('id', $tourSlabId)->value('max_km_per_day'));
         $classPrice = DB::table('vehicle_group_pricing')->where('slab_definition_id', $tourSlabId)->where('vehicle_class_id', 'economy-class')->first();
         self::assertEquals(8000, $classPrice->rate);
         self::assertTrue((bool) $classPrice->includes_fuel);
@@ -89,8 +102,8 @@ class TourLaunchSeederTest extends TestCase
         $distanceRate = DB::table('vehicle_group_common_rate_pricing')->where('vehicle_class_id', 'economy-class')->first();
         self::assertEquals(140, $distanceRate->value);
 
-        self::assertSame(18, DB::table('tour_destinations')->where('service_type_id', $tourId)->count());
-        self::assertGreaterThan(0, DB::table('tour_activities')->count());
+        self::assertSame(40, DB::table('tour_destinations')->where('service_type_id', $tourId)->count());
+        self::assertSame(53, DB::table('tour_activities')->count());
         self::assertSame(0, DB::table('predefined_locations')->where('type', 'tour')->where('is_active', true)->count());
         self::assertSame(0, DB::table('predefined_locations')->where('type', 'tour')->whereNotNull('google_place_id')->count());
         self::assertFalse((bool) DB::table('terms_and_conditions')->where('service_type_id', $tourId)->value('is_active'));
@@ -100,7 +113,7 @@ class TourLaunchSeederTest extends TestCase
         DB::table('vehicle_group_pricing')->where('slab_definition_id', $tourSlabId)->where('vehicle_class_id', 'economy-class')->update(['rate' => 9999]);
         app(TourLaunchSeeder::class)->run();
         self::assertEquals(9999, DB::table('vehicle_group_pricing')->where('slab_definition_id', $tourSlabId)->where('vehicle_class_id', 'economy-class')->value('rate'));
-        self::assertSame(18, DB::table('tour_destinations')->where('service_type_id', $tourId)->count());
+        self::assertSame(40, DB::table('tour_destinations')->where('service_type_id', $tourId)->count());
     }
 
     private function createSchema(): void
@@ -155,6 +168,11 @@ class TourLaunchSeederTest extends TestCase
             $table->unsignedInteger('min_days')->nullable(); $table->unsignedInteger('max_days')->nullable(); $table->unsignedInteger('max_km_per_day')->nullable();
             $table->unsignedInteger('sort_order')->default(1); $table->boolean('is_active'); $table->string('created_user_id')->nullable();
             $table->string('updated_user_id')->nullable(); $table->timestamps(); $table->softDeletes();
+        });
+        Schema::create('service_packages', function (Blueprint $table): void {
+            $table->string('id')->primary(); $table->string('service_type_id'); $table->string('name');
+            $table->decimal('max_km_per_day', 10, 2)->nullable(); $table->boolean('is_active')->default(true);
+            $table->timestamps(); $table->softDeletes();
         });
         Schema::create('vehicle_group_pricing', function (Blueprint $table): void {
             $table->string('id')->primary(); $table->string('slab_definition_id'); $table->string('vehicle_group_id')->nullable();

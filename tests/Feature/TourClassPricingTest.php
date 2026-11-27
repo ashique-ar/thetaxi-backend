@@ -308,6 +308,41 @@ class TourClassPricingTest extends TestCase
         ]);
     }
 
+    public function test_calculation_tester_rejects_negative_distance_and_stop_inputs(): void
+    {
+        $response = app(\App\Http\Controllers\Api\Vehicle\VehiclePricing\VehiclePricingCalculationDefinitionController::class)
+            ->testCalculation(Request::create('/vehicle-pricing-calculations/test', 'POST', [
+                'formula' => 'total_distance',
+                'test_inputs' => ['journey_distance' => -1, 'stops' => -1],
+            ]));
+
+        self::assertSame(422, $response->getStatusCode());
+        self::assertArrayHasKey('test_inputs.journey_distance', $response->getData(true)['errors']);
+        self::assertArrayHasKey('test_inputs.stops', $response->getData(true)['errors']);
+    }
+
+    public function test_saved_definition_tester_rejects_negative_total_distance(): void
+    {
+        $definitionId = 'negative-distance-validation';
+        DB::table('vehicle_pricing_calculation_definitions')->insert([
+            'id' => $definitionId,
+            'service_type_id' => 'tours',
+            'name' => 'Distance validation',
+            'formula' => 'total_distance',
+            'variables' => json_encode([['name' => 'total_distance', 'type' => 'distance']]),
+            'conditions' => json_encode([]),
+        ]);
+
+        $response = app(\App\Http\Controllers\Api\Vehicle\VehiclePricing\VehiclePricingCalculationDefinitionController::class)
+            ->testFormula(Request::create('/vehicle-pricing-calculations/test-formula', 'POST', [
+                'calculation_definition_id' => $definitionId,
+                'test_inputs' => ['total_distance' => -1],
+            ]));
+
+        self::assertSame(422, $response->getStatusCode());
+        self::assertArrayHasKey('test_inputs.total_distance', $response->getData(true)['errors']);
+    }
+
     public function test_class_calculation_cannot_replace_managed_common_rates_with_input_values(): void
     {
         $definition = $this->definition('tours');

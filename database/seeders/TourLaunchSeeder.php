@@ -9,6 +9,7 @@ use RuntimeException;
 
 class TourLaunchSeeder extends Seeder
 {
+    // Destination names use SLTDA's tourist-attractions catalogue (https://www.sltda.gov.lk/en/tourist-attractions); staff must confirm Google Places and exact entrances before publishing.
     private const PLACES = [
         'colombo' => ['Colombo', 'Western Province', 'City sights, museums and coastal landmarks.'],
         'negombo' => ['Negombo', 'Western Province', 'Coastal town near Bandaranaike International Airport.'],
@@ -28,6 +29,28 @@ class TourLaunchSeeder extends Seeder
         'jaffna' => ['Jaffna', 'Northern Province', 'Northern heritage, temples and city sights.'],
         'kalpitiya' => ['Kalpitiya', 'North Western Province', 'Coastal and lagoon area.'],
         'hikkaduwa' => ['Hikkaduwa', 'Southern Province', 'Beach and marine visits.'],
+        'adams_peak' => ["Adam's Peak", 'Sabaragamuwa Province', 'Pilgrimage mountain and surrounding trail region.'],
+        'bundala' => ['Bundala National Park', 'Southern Province', 'Coastal wetland and wildlife reserve.'],
+        'katunayake' => ['Katunayake', 'Western Province', 'Bandaranaike International Airport and nearby area.'],
+        'batticaloa' => ['Batticaloa', 'Eastern Province', 'East-coast city and lagoon.'],
+        'beruwala' => ['Beruwala', 'Western Province', 'South-west coast and historic harbour area.'],
+        'hambantota' => ['Hambantota', 'Southern Province', 'Southern coastal district centre.'],
+        'horton_plains' => ['Horton Plains National Park', 'Central Province', 'Highland plateau and walking trails.'],
+        'kalkudah' => ['Kalkudah', 'Eastern Province', 'East-coast resort and beach area.'],
+        'kitulgala' => ['Kitulgala', 'Sabaragamuwa Province', 'Rainforest and river adventure area.'],
+        'knuckles' => ['Knuckles Mountain Range', 'Central Province', 'Mountain range and conservation landscape.'],
+        'mannar' => ['Mannar', 'Northern Province', 'Island, causeway and coastal heritage area.'],
+        'matara' => ['Matara', 'Southern Province', 'Southern coastal city and heritage area.'],
+        'minneriya' => ['Minneriya', 'North Central Province', 'Reservoir and wildlife park region.'],
+        'nilaveli' => ['Nilaveli', 'Eastern Province', 'Coastal resort north of Trincomalee.'],
+        'pasikudah' => ['Pasikudah', 'Eastern Province', 'East-coast bay and beach area.'],
+        'pinnawela' => ['Pinnawela', 'Sabaragamuwa Province', 'Elephant care and visitor attraction area.'],
+        'puttalam' => ['Puttalam', 'North Western Province', 'Coastal district and lagoon region.'],
+        'ratnapura' => ['Ratnapura', 'Sabaragamuwa Province', 'Provincial capital and gem country.'],
+        'sinharaja' => ['Sinharaja Forest Reserve', 'Sabaragamuwa Province', 'Rainforest reserve and UNESCO heritage area.'],
+        'unawatuna' => ['Unawatuna', 'Southern Province', 'Coastal resort and beach area.'],
+        'weligama' => ['Weligama', 'Southern Province', 'Southern bay and coastal town.'],
+        'wilpattu' => ['Wilpattu National Park', 'North Western Province', 'Wildlife park and natural lake region.'],
     ];
 
     private const ACTIVITIES = [
@@ -49,6 +72,28 @@ class TourLaunchSeeder extends Seeder
         'jaffna' => [['Nallur Kandaswamy Temple', 60], ['Jaffna Fort', 60]],
         'kalpitiya' => [['Kalpitiya Lagoon', 120]],
         'hikkaduwa' => [['Hikkaduwa Coral Sanctuary', 90]],
+        'adams_peak' => [["Sri Pada trail access", 240]],
+        'bundala' => [['Bundala National Park entrance', 240]],
+        'katunayake' => [['Bandaranaike International Airport arrivals', 45]],
+        'batticaloa' => [['Batticaloa Dutch Fort', 60]],
+        'beruwala' => [['Masjid-ul-Abrar', 60]],
+        'hambantota' => [['Hambantota coastal visit', 60]],
+        'horton_plains' => [["World's End trail", 180], ["Baker's Falls trail", 90]],
+        'kalkudah' => [['Kalkudah Beach access', 60]],
+        'kitulgala' => [['Kelani River adventure access', 180]],
+        'knuckles' => [['Knuckles Conservation Forest trail access', 180]],
+        'mannar' => [['Mannar Baobab Tree', 45]],
+        'matara' => [['Dondra Head Lighthouse', 60]],
+        'minneriya' => [['Minneriya National Park entrance', 240]],
+        'nilaveli' => [['Pigeon Island boat departure access', 60]],
+        'pasikudah' => [['Pasikudah Beach access', 60]],
+        'pinnawela' => [['Pinnawela Elephant Orphanage entrance', 120]],
+        'puttalam' => [['Puttalam Dutch Fort', 60]],
+        'ratnapura' => [['Maha Saman Devalaya', 90]],
+        'sinharaja' => [['Sinharaja Forest Reserve entrance', 240]],
+        'unawatuna' => [['Jungle Beach access', 90]],
+        'weligama' => [['Weligama Bay', 60]],
+        'wilpattu' => [['Wilpattu National Park entrance', 240]],
     ];
 
     public function run(): void
@@ -137,8 +182,12 @@ class TourLaunchSeeder extends Seeder
         if (!$sourceSlab) {
             throw new RuntimeException('No active public Day Rental 1-day slab exists; Tour starter rates were not guessed.');
         }
-        if (!is_numeric($sourceSlab->max_km_per_day) || (float) $sourceSlab->max_km_per_day <= 0) {
-            throw new RuntimeException('The Day Rental 1-day slab has no positive included-kilometre allowance; Tour pricing was not seeded.');
+        $sourcePackage = DB::table('service_packages')->where('service_type_id', $source->id)
+            ->where('is_active', true)->whereNull('deleted_at')->where('max_km_per_day', '>', 0)
+            ->orderBy('max_km_per_day')->first();
+        $includedKmPerDay = (float) ($sourcePackage->max_km_per_day ?? 0);
+        if (!$sourcePackage || $includedKmPerDay <= 0 || floor($includedKmPerDay) !== $includedKmPerDay) {
+            throw new RuntimeException('No active Day Rental package has a positive whole-kilometre daily allowance; Tour pricing was not seeded.');
         }
         $rateByGroup = DB::table('vehicle_group_pricing')->where('slab_definition_id', $sourceSlab->id)
             ->where('rate_type', 'per_day')->where('is_active', true)->where('rate', '>', 0)->whereNull('owner_type')->whereNull('owner_id')
@@ -158,15 +207,15 @@ class TourLaunchSeeder extends Seeder
             ->map(fn($rows) => $rows->min(fn($row) => (float) $row->value));
         $classes = [
             ['class' => 'Economy', 'display' => 'Economy car', 'passengers' => 3, 'bags' => 2, 'groups' => null],
-            ['class' => 'Compact', 'display' => 'Standard car', 'passengers' => 3, 'bags' => 2, 'groups' => []],
-            ['class' => 'Commercial', 'display' => 'Flat-roof van', 'passengers' => 6, 'bags' => 6, 'groups' => []],
+            ['class' => 'Compact', 'display' => 'Standard car', 'passengers' => 3, 'bags' => 2, 'groups' => ['Toyota Axio Economy']],
+            ['class' => 'Commercial', 'display' => 'Flat-roof van', 'passengers' => 6, 'bags' => 3, 'group_class' => 'Full-size', 'groups' => ['Toyota KDH 200 8 Seater']],
             ['class' => '14 Seater Van (High Roof Van', 'display' => 'High-roof van', 'passengers' => 9, 'bags' => 4, 'groups' => ['Toyota KDH 14 Seater']],
             ['class' => 'Full-size', 'display' => 'Coaster bus', 'passengers' => 14, 'bags' => 8, 'groups' => ['Toyota Coaster']],
         ];
         $slabId = (string) (DB::table('vehicle_pricing_slab_definitions')->where('service_type_id', $serviceId)->where('name', 'Tours 1–60 days')->value('id') ?? Str::uuid());
         DB::table('vehicle_pricing_slab_definitions')->insertOrIgnore([
             'id' => $slabId, 'service_type_id' => $serviceId, 'name' => 'Tours 1–60 days', 'type' => 'daily',
-            'min_days' => 1, 'max_days' => 60, 'max_km_per_day' => $sourceSlab->max_km_per_day,
+            'min_days' => 1, 'max_days' => 60, 'max_km_per_day' => (int) $includedKmPerDay,
             'sort_order' => 1, 'is_active' => true, 'created_user_id' => $actorId, 'updated_user_id' => $actorId,
             'created_at' => now(), 'updated_at' => now(),
         ]);
@@ -174,7 +223,8 @@ class TourLaunchSeeder extends Seeder
         foreach ($classes as $row) {
             $classId = DB::table('vehicle_classes')->where('name', $row['class'])->value('id');
             if (!$classId) continue;
-            $groups = DB::table('vehicle_groups')->where('class_id', $classId)->where('is_active', true)->whereNull('deleted_at')
+            $groupClassId = DB::table('vehicle_classes')->where('name', $row['group_class'] ?? $row['class'])->value('id');
+            $groups = DB::table('vehicle_groups')->where('class_id', $groupClassId)->where('is_active', true)->whereNull('deleted_at')
                 ->whereNotNull('passengers_count')->where('passengers_count', '>=', $row['passengers'])
                 ->whereNotNull('hand_luggages')->where('hand_luggages', '>=', $row['bags'])
                 ->when(is_array($row['groups']), fn($query) => $query->whereIn('name', $row['groups']))
@@ -183,6 +233,7 @@ class TourLaunchSeeder extends Seeder
             $mapping = $eligible->pluck('id')->all();
             $hasRates = $mapping !== [];
             $setting = DB::table('service_vehicle_class_settings')->where('service_type_id', $serviceId)->where('vehicle_class_id', $classId)->first();
+            $existingMapping = $setting ? json_decode((string) $setting->eligible_vehicle_group_ids, true) : [];
             if (!$setting) {
                 DB::table('service_vehicle_class_settings')->insert([
                     'id' => (string) Str::uuid(), 'service_type_id' => $serviceId, 'vehicle_class_id' => $classId,
@@ -191,6 +242,14 @@ class TourLaunchSeeder extends Seeder
                     'description' => $hasRates ? 'Tour transport class. Activity tickets and fees are not included.' : 'Not bookable until staff verifies and maps an eligible group.',
                     'is_active' => true, 'is_hidden' => !$hasRates, 'is_inquiry_only' => !$hasRates,
                     'sort_order' => count($classes), 'created_at' => now(), 'updated_at' => now(),
+                ]);
+            } elseif (!$existingMapping && $setting->is_hidden && $setting->is_inquiry_only
+                && $setting->description === 'Not bookable until staff verifies and maps an eligible group.') {
+                DB::table('service_vehicle_class_settings')->where('id', $setting->id)->update([
+                    'customer_display_name' => $row['display'], 'eligible_vehicle_group_ids' => json_encode($mapping),
+                    'max_passengers' => $row['passengers'], 'max_luggage' => $row['bags'],
+                    'description' => $hasRates ? 'Tour transport class. Activity tickets and fees are not included.' : 'Not bookable until staff verifies and maps an eligible group.',
+                    'is_active' => true, 'is_hidden' => !$hasRates, 'is_inquiry_only' => !$hasRates, 'updated_at' => now(),
                 ]);
             }
             if (!$hasRates) continue;

@@ -132,7 +132,7 @@ class AssignmentService
                         ->where('vehicle_class_id', $item->vehicle_class_id)->first();
                     $validGroup = $setting && in_array((string) $vehicle->vehicle_group_id, $setting->eligible_vehicle_group_ids ?? [], true)
                         ? VehicleGroup::query()->whereKey($vehicle->vehicle_group_id)
-                            ->where('class_id', $item->vehicle_class_id)->where('is_active', true)
+                            ->where('is_active', true)
                             ->whereNotNull('passengers_count')->where('passengers_count', '>=', $setting->max_passengers)
                             ->whereNotNull('hand_luggages')->where('hand_luggages', '>=', $setting->max_luggage)->exists()
                         : false;

@@ -489,6 +489,7 @@ class VehiclePricingCalculationDefinitionController extends Controller
             'test_inputs.vehicle_group_id' => 'nullable|uuid',
             'test_inputs.vehicle_class_id' => 'nullable|uuid|prohibits:test_inputs.vehicle_group_id',
             'test_inputs.service_type_id' => 'nullable|uuid',
+            ...$this->nonNegativeCalculationInputRules(),
             'test_inputs.duration_hours' => 'nullable|numeric|min:0',
             'test_inputs.duration_minutes' => 'nullable|numeric|min:0',
             'test_inputs.extra_minutes' => 'nullable|numeric|min:0',
@@ -681,6 +682,17 @@ class VehiclePricingCalculationDefinitionController extends Controller
             $inputs['number_of_days'] = max(1, (int) ceil((float) $inputs['duration_minutes'] / 1440));
         }
 
+        if (!is_numeric($inputs['total_distance'] ?? null)) {
+            $distanceParts = ['journey_distance', 'pickup_distance', 'delivery_distance'];
+            $providedParts = array_filter($distanceParts, fn (string $key): bool => isset($inputs[$key]) && is_numeric($inputs[$key]));
+            if ($providedParts !== []) {
+                $inputs['total_distance'] = round(array_sum(array_map(
+                    fn (string $key): float => (float) $inputs[$key],
+                    $providedParts
+                )), 2);
+            }
+        }
+
         $stopCount = $inputs['additional_stops_count']
             ?? $inputs['additional_stops']
             ?? $inputs['stops']
@@ -692,6 +704,19 @@ class VehiclePricingCalculationDefinitionController extends Controller
         }
 
         return $inputs;
+    }
+
+    private function nonNegativeCalculationInputRules(): array
+    {
+        $rules = [];
+        foreach ([
+            'journey_distance', 'pickup_distance', 'delivery_distance', 'total_distance',
+            'additional_stops_count', 'additional_stops', 'stops',
+        ] as $field) {
+            $rules['test_inputs.'.$field] = 'nullable|numeric|min:0';
+        }
+
+        return $rules;
     }
 
     /**
@@ -1365,6 +1390,7 @@ class VehiclePricingCalculationDefinitionController extends Controller
         $validator = Validator::make($request->all(), [
             'calculation_definition_id' => 'required|uuid|exists:vehicle_pricing_calculation_definitions,id',
             'test_inputs' => 'nullable|array',
+            ...$this->nonNegativeCalculationInputRules(),
         ]);
 
         if ($validator->fails()) {

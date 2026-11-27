@@ -36,9 +36,13 @@ class ServiceVehicleClassController extends Controller
                 ->map(fn (VehicleClass $class) => [
                     'id' => $class->id, 'name' => $class->name, 'description' => $class->description,
                     'settings' => $settings->get($class->id),
-                    'vehicle_groups' => $isTourService ? \DB::table('vehicle_groups')->where('class_id', $class->id)
-                        ->where('is_active', true)->whereNull('deleted_at')
-                        ->orderBy('name')->get(['id', 'name', 'passengers_count', 'hand_luggages']) : [],
+                    'vehicle_groups' => $isTourService ? VehicleGroup::query()->with('class:id,name')
+                        ->where('is_active', true)->orderBy('name')
+                        ->get(['id', 'class_id', 'name', 'passengers_count', 'hand_luggages'])
+                        ->map(fn (VehicleGroup $group) => [
+                            'id' => $group->id, 'name' => $group->name, 'class_name' => $group->class?->name,
+                            'passengers_count' => $group->passengers_count, 'hand_luggages' => $group->hand_luggages,
+                        ]) : [],
                 ]),
         ]]);
     }
@@ -71,13 +75,12 @@ class ServiceVehicleClassController extends Controller
 
             $groupIds = $data['eligible_vehicle_group_ids'] ?? [];
             if ($groupIds) {
-                $valid = VehicleGroup::query()->where('class_id', $vehicleClass->id)
-                    ->where('is_active', true)->whereNull('deleted_at')
+                $valid = VehicleGroup::query()->where('is_active', true)
                     ->whereNotNull('passengers_count')->where('passengers_count', '>=', $data['max_passengers'])
                     ->whereNotNull('hand_luggages')->where('hand_luggages', '>=', $data['max_luggage'])
                     ->whereIn('id', $groupIds)->count();
                 if ($valid !== count($groupIds)) {
-                    throw ValidationException::withMessages(['eligible_vehicle_group_ids' => 'Choose active groups in this class with verified capacity for the customer promise.']);
+                    throw ValidationException::withMessages(['eligible_vehicle_group_ids' => 'Choose active fleet groups with verified capacity for the Tours customer promise.']);
                 }
             }
             if (($data['is_active'] ?? false) && !($data['is_inquiry_only'] ?? false) && array_key_exists('eligible_vehicle_group_ids', $data) && !$groupIds) {

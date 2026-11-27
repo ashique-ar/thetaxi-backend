@@ -128,6 +128,7 @@ it('allows corporate employees with booking create permission to fetch corporate
             $table->string('name');
             $table->integer('priority')->nullable();
             $table->boolean('is_internal')->nullable();
+            $table->boolean('is_portal_hidden')->nullable();
             $table->boolean('is_active');
             $table->timestamps();
             $table->softDeletes();

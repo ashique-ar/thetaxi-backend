@@ -130,14 +130,15 @@ class TourPurchasedClassMigrationTest extends TestCase
         self::assertFalse($setting->allowsOperationalClass(null));
     }
 
-    public function test_staff_can_save_class_settings_and_read_them_without_relabelling_the_class_catalogue(): void
+    public function test_staff_can_map_a_verified_group_from_another_global_class_without_relabelling_the_catalogue(): void
     {
         $this->prepareClassSettings();
         DB::table('vehicle_classes')->where('id', 'standard')->update(['name' => 'Standard car']);
+        DB::table('vehicle_classes')->insert(['id' => 'full-size', 'name' => 'Full-size']);
         $eligibleGroupId = '50000000-0000-4000-8000-000000000005';
         $undersizedGroupId = '50000000-0000-4000-8000-000000000006';
         DB::table('vehicle_groups')->insert([
-            ['id' => $eligibleGroupId, 'class_id' => 'standard', 'name' => 'Verified car', 'passengers_count' => 4, 'hand_luggages' => 3],
+            ['id' => $eligibleGroupId, 'class_id' => 'full-size', 'name' => 'Verified van', 'passengers_count' => 8, 'hand_luggages' => 3],
             ['id' => $undersizedGroupId, 'class_id' => 'standard', 'name' => 'Small car', 'passengers_count' => 2, 'hand_luggages' => 1],
         ]);
         $settings = $this->createMock(WebsiteSettingsService::class);
@@ -162,12 +163,13 @@ class TourPurchasedClassMigrationTest extends TestCase
         ]), $service, $class);
         self::assertSame(200, $response->getStatusCode());
         $listed = $controller->index($service)->getData(true)['data']['classes'];
-        self::assertSame('Standard car', $listed[0]['name']);
-        self::assertSame(3, $listed[0]['settings']['max_passengers']);
-        self::assertTrue($listed[0]['settings']['is_inquiry_only']);
-        self::assertSame('Tour standard', $listed[0]['settings']['customer_display_name']);
-        self::assertSame($eligibleGroupId, $listed[0]['settings']['eligible_vehicle_group_ids'][0]);
-        self::assertContains($eligibleGroupId, array_column($listed[0]['vehicle_groups'], 'id'));
+        $standard = collect($listed)->firstWhere('id', 'standard');
+        self::assertSame('Standard car', $standard['name']);
+        self::assertSame(3, $standard['settings']['max_passengers']);
+        self::assertTrue($standard['settings']['is_inquiry_only']);
+        self::assertSame('Tour standard', $standard['settings']['customer_display_name']);
+        self::assertSame($eligibleGroupId, $standard['settings']['eligible_vehicle_group_ids'][0]);
+        self::assertSame('Full-size', collect($standard['vehicle_groups'])->firstWhere('id', $eligibleGroupId)['class_name']);
         self::assertSame('Standard car', $class->fresh()->name);
     }
 
