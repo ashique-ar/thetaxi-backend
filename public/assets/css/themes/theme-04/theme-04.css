@@ -2231,7 +2231,7 @@ body.theme-theme-04 .t4-error-page__card p {
 @media (max-width: 991px) {
     body.theme-theme-04 {
         --t4-hero-height: clamp(520px, 68svh, 680px);
-        --t4-hero-overlap: calc(var(--t4-hero-height) / 6);
+        --t4-hero-overlap: calc(var(--t4-hero-height) * 0.13);
     }
 
     body.theme-theme-04 .t4-hero {
@@ -2255,13 +2255,13 @@ body.theme-theme-04 .t4-error-page__card p {
     }
 
     body.theme-theme-04.theme-page-home .t4-booking-panel {
-        margin-top: 0;
-        padding-top: 24px;
-        background: var(--t4-surface-soft);
+        margin-top: calc(var(--t4-hero-overlap) * -1);
+        padding-top: 0;
+        background: transparent;
     }
 
     body.theme-theme-04 .t4-hero__frame {
-        padding-bottom: 96px;
+        padding-bottom: calc(var(--t4-hero-overlap) + 28px);
     }
 
     body.theme-theme-04 .t4-booking-panel__card {
@@ -2345,7 +2345,7 @@ body.theme-theme-04 .t4-error-page__card p {
     body.theme-theme-04 .t4-hero__frame {
         min-height: var(--t4-hero-height);
         align-items: flex-end;
-        padding: 36px 0 96px;
+        padding: 36px 0 calc(var(--t4-hero-overlap) + 28px);
     }
 
     body.theme-theme-04 .t4-hero__copy {
@@ -2662,15 +2662,13 @@ body.theme-theme-04 .t4-hero .shared-hero-pagination .swiper-pagination-bullet-a
     body.theme-theme-04 .t4-hero .shared-hero-bar__meta { display: flex; }
 }
 @media (max-width: 991px) {
-    body.theme-theme-04 .t4-hero .shared-hero-bar { padding: 10px 16px; }
-    body.theme-theme-04 .t4-hero__location { bottom: 84px; }
+    body.theme-theme-04 .t4-hero .shared-hero-bar { padding: 10px 16px; bottom: var(--t4-hero-overlap); }
+    body.theme-theme-04 .t4-hero__location { bottom: calc(var(--t4-hero-overlap) + 16px); }
 }
 @media (max-width: 767px) {
     body.theme-theme-04 :where(.t4-hero__prev, .t4-hero__next) { display: none; }
-    body.theme-theme-04 .t4-hero .shared-hero-bar { padding: 10px 16px; }
-    body.theme-theme-04 .t4-hero .shared-hero-bar__inner { gap: 8px; }
-    body.theme-theme-04 .t4-hero .shared-hero-bar__label { display: none; }
-    body.theme-theme-04 .t4-hero__location { right: 16px; bottom: 84px; max-width: 45%; }
+    body.theme-theme-04 .t4-hero .shared-hero-bar { display: none; }
+    body.theme-theme-04 .t4-hero__location { right: 16px; bottom: calc(var(--t4-hero-overlap) + 16px); max-width: 45%; }
 }
 @media (max-width: 991px) and (max-height: 500px) {
     body.theme-theme-04 { --t4-hero-height: 460px; }

@@ -7,10 +7,45 @@ use Carbon\Carbon;
 use InvalidArgumentException;
 use ReflectionClass;
 use ReflectionMethod;
+use Illuminate\Database\Schema\Blueprint;
+use Illuminate\Support\Facades\Schema;
 use Tests\TestCase;
 
 class BookingFlowDurationMinutesTest extends TestCase
 {
+    protected function setUp(): void
+    {
+        parent::setUp();
+
+        foreach (['website_settings', 'business_settings'] as $tableName) {
+            Schema::create($tableName, function (Blueprint $table): void {
+                $table->uuid('id')->primary();
+                $table->string('type')->nullable()->index();
+                $table->text('value')->nullable();
+                $table->timestamps();
+                $table->softDeletes();
+            });
+        }
+        Schema::create('companies', function (Blueprint $table): void {
+            $table->uuid('id')->primary();
+            $table->decimal('latitude', 10, 7)->nullable();
+            $table->decimal('longitude', 10, 7)->nullable();
+            $table->boolean('is_garage')->default(false);
+            $table->boolean('is_active')->default(true);
+            $table->timestamps();
+            $table->softDeletes();
+        });
+    }
+
+    protected function tearDown(): void
+    {
+        Schema::dropIfExists('website_settings');
+        Schema::dropIfExists('business_settings');
+        Schema::dropIfExists('companies');
+
+        parent::tearDown();
+    }
+
     public function test_partial_hours_preserve_exact_minutes_and_fractional_hours(): void
     {
         $service = (new ReflectionClass(BookingFlowService::class))->newInstanceWithoutConstructor();

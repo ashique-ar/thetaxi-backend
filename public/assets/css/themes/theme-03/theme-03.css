@@ -5279,7 +5279,7 @@ body.theme-theme-03 .t3-error-page__content p {
 
     body.theme-theme-03 .t3-hero__frame {
         padding-top: 36px;
-        padding-bottom: 96px;
+        padding-bottom: 84px;
     }
 
     body.theme-theme-03 .t3-hero__copy .shared-hero-eyebrow {
@@ -5313,19 +5313,11 @@ body.theme-theme-03 .t3-error-page__content p {
     }
 
     body.theme-theme-03 .t3-hero .shared-hero-bar {
-        padding: 10px 16px;
-    }
-
-    body.theme-theme-03 .t3-hero .shared-hero-bar__inner {
-        gap: 8px;
-    }
-
-    body.theme-theme-03 .t3-hero .shared-hero-bar__label {
         display: none;
     }
 
     body.theme-theme-03 .home-booking-form-section {
-        margin-top: 20px;
+        margin-top: -58px;
     }
 
     body.theme-theme-03 .t3-journey-desk__masthead {

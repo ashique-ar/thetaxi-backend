@@ -3,7 +3,10 @@
 namespace Tests\Unit;
 
 use App\Models\Vehicle\VehiclePricing\VehiclePricingCalculationDefinition;
+use App\Models\Service\ServiceType;
 use App\Services\BookingFlowService;
+use Illuminate\Database\Schema\Blueprint;
+use Illuminate\Support\Facades\Schema;
 use InvalidArgumentException;
 use ReflectionClass;
 use ReflectionMethod;
@@ -11,9 +14,43 @@ use Tests\TestCase;
 
 class PricingRequiredTelemetryTest extends TestCase
 {
+    protected function setUp(): void
+    {
+        parent::setUp();
+
+        foreach (['website_settings', 'business_settings'] as $tableName) {
+            Schema::create($tableName, function (Blueprint $table): void {
+                $table->uuid('id')->primary();
+                $table->string('type')->nullable()->index();
+                $table->text('value')->nullable();
+                $table->timestamps();
+                $table->softDeletes();
+            });
+        }
+        Schema::create('companies', function (Blueprint $table): void {
+            $table->uuid('id')->primary();
+            $table->decimal('latitude', 10, 7)->nullable();
+            $table->decimal('longitude', 10, 7)->nullable();
+            $table->boolean('is_garage')->default(false);
+            $table->boolean('is_active')->default(true);
+            $table->timestamps();
+            $table->softDeletes();
+        });
+    }
+
+    protected function tearDown(): void
+    {
+        Schema::dropIfExists('website_settings');
+        Schema::dropIfExists('business_settings');
+        Schema::dropIfExists('companies');
+
+        parent::tearDown();
+    }
+
     public function test_missing_required_journey_distance_is_not_synthesized_as_zero(): void
     {
         $definition = new VehiclePricingCalculationDefinition();
+        $definition->setRelation('serviceType', new ServiceType(['pricing_basis' => 'vehicle_class']));
         $definition->formula = 'journey_distance';
         $definition->variables = [[
             'name' => 'journey_distance',
@@ -98,6 +135,7 @@ class PricingRequiredTelemetryTest extends TestCase
     public function test_required_package_overage_is_unresolved_without_an_allowance_source(): void
     {
         $definition = new VehiclePricingCalculationDefinition();
+        $definition->setRelation('serviceType', new ServiceType(['pricing_basis' => 'vehicle_class']));
         $definition->formula = 'allowed_km + extra_km';
         $definition->variables = [
             ['name' => 'allowed_km', 'type' => 'distance', 'is_required' => true],

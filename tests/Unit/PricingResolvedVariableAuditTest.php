@@ -16,7 +16,31 @@ class PricingResolvedVariableAuditTest extends TestCase
     {
         parent::setUp();
 
+        Schema::dropIfExists('km_range_pricing_rules');
         Schema::dropIfExists('price_adjustments');
+        Schema::create('km_range_pricing_rules', function (Blueprint $table): void {
+            $table->uuid('id')->primary();
+            $table->string('name');
+            $table->string('scope')->default('global');
+            $table->uuid('service_type_id')->nullable();
+            $table->uuid('vehicle_group_id')->nullable();
+            $table->json('distance_types')->nullable();
+            $table->json('applicable_contexts')->nullable();
+            $table->string('owner_type')->nullable();
+            $table->uuid('owner_id')->nullable();
+            $table->decimal('from_km', 12, 2)->default(0);
+            $table->decimal('to_km', 12, 2)->nullable();
+            $table->string('price_type')->default('fixed_rate');
+            $table->decimal('rate_per_km', 12, 4)->nullable();
+            $table->decimal('percentage', 12, 4)->nullable();
+            $table->decimal('flat_amount', 12, 2)->nullable();
+            $table->boolean('is_active')->default(false);
+            $table->integer('priority')->default(0);
+            $table->dateTime('effective_from')->nullable();
+            $table->dateTime('effective_to')->nullable();
+            $table->timestamps();
+            $table->softDeletes();
+        });
         Schema::create('price_adjustments', function (Blueprint $table): void {
             $table->id();
             $table->boolean('is_active')->default(true);
@@ -39,6 +63,7 @@ class PricingResolvedVariableAuditTest extends TestCase
     protected function tearDown(): void
     {
         Schema::dropIfExists('price_adjustments');
+        Schema::dropIfExists('km_range_pricing_rules');
 
         parent::tearDown();
     }

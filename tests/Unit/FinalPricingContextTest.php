@@ -5,6 +5,35 @@ use App\Services\BookingLifecycleService;
 use App\Models\Booking\BookingDispatch;
 use App\Models\Booking\Booking;
 use App\Models\Booking\BookingItem;
+use Illuminate\Database\Schema\Blueprint;
+use Illuminate\Support\Facades\Schema;
+
+beforeEach(function (): void {
+    foreach (['website_settings', 'business_settings'] as $tableName) {
+        Schema::create($tableName, function (Blueprint $table): void {
+            $table->uuid('id')->primary();
+            $table->string('type')->nullable()->index();
+            $table->text('value')->nullable();
+            $table->timestamps();
+            $table->softDeletes();
+        });
+    }
+    Schema::create('companies', function (Blueprint $table): void {
+        $table->uuid('id')->primary();
+        $table->decimal('latitude', 10, 7)->nullable();
+        $table->decimal('longitude', 10, 7)->nullable();
+        $table->boolean('is_garage')->default(false);
+        $table->boolean('is_active')->default(true);
+        $table->timestamps();
+        $table->softDeletes();
+    });
+});
+
+afterEach(function (): void {
+    Schema::dropIfExists('website_settings');
+    Schema::dropIfExists('business_settings');
+    Schema::dropIfExists('companies');
+});
 
 
 function invokePrivateMethod(object $target, string $method, array $arguments = []): mixed
