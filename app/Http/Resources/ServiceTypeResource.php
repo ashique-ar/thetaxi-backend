@@ -30,7 +30,6 @@ class ServiceTypeResource extends JsonResource
             'requires_refundable_deposit' => (bool) $this->requires_refundable_deposit,
             'pricing_mode' => $this->pricing_mode,
             'pricing_basis' => $this->pricing_basis ?? 'vehicle_group',
-            'tour_booking_enabled' => (bool) $this->tour_booking_enabled,
             'uses_dropoff_time' => (bool) $this->uses_dropoff_time,
             'allow_return_trip' => (bool) $this->allow_return_trip,
             'allow_multiple_pickup_locations' => (bool) $this->allow_multiple_pickup_locations,

@@ -10571,7 +10571,7 @@ class BookingFlowService
                 'booking.bookingItems.serviceType',
                 'booking.bookingItems.vehicle',
                 'booking.bookingItems.driver.user',
-                'serviceType:id,name,tour_booking_enabled',
+                'serviceType:id,name',
                 'vehicleClass:id,name',
                 'vehicle',
                 'vehicle.vehicleGroup:id,name',
@@ -11547,7 +11547,7 @@ class BookingFlowService
             'service_type' => $itemServiceType ? [
                 'id' => (string) $itemServiceType->id,
                 'name' => $itemServiceType->name,
-                'tour_booking_enabled' => (bool) $itemServiceType->tour_booking_enabled,
+                'has_tour_itinerary' => filled(data_get($item->metadata, 'tour_itinerary_id')),
             ] : null,
             'pricing_basis' => $item->pricing_basis ?? 'vehicle_group',
             'vehicle_class_id' => $item->vehicle_class_id ? (string) $item->vehicle_class_id : null,

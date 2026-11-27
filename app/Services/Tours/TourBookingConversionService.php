@@ -9,6 +9,7 @@ use App\Models\Service\ServiceVehicleClassSetting;
 use App\Models\Tours\TourItinerary;
 use App\Models\Tours\TourQuote;
 use App\Services\BookingFlowService;
+use App\Services\WebsiteSettingsService;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Validation\ValidationException;
 
@@ -36,7 +37,7 @@ class TourBookingConversionService
 
             $service = (($customerPortal || $publicWebsite) ? ServiceType::publicContext() : ServiceType::query())
                 ->where('is_active', true)->findOrFail($locked->service_type_id);
-            abort_unless($service->is_active && $service->pricing_basis === 'vehicle_class' && $service->tour_booking_enabled, 404);
+            abort_unless(app(WebsiteSettingsService::class)->isTourService($service, $customerPortal || $publicWebsite), 404);
             $classSetting = ServiceVehicleClassSetting::query()
                 ->where('service_type_id', $service->id)
                 ->where('vehicle_class_id', $locked->vehicle_class_id)

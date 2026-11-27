@@ -112,7 +112,7 @@ class CheckoutController extends Controller
             409,
             'This accepted Tour quote is no longer available in the selected currency. Return to Tours and request a current quote.'
         );
-        abort_unless($serviceType->is_active && $serviceType->tour_booking_enabled, 409, 'This Tour is no longer accepting bookings.');
+        abort_unless($this->websiteSettingsService->isTourService($serviceType, true), 409, 'This Tour is no longer accepting bookings.');
 
         $days = $itinerary->days->map(function ($day) use ($quote): array {
             $routeDay = collect(data_get($quote->route_snapshot, 'days', []))->firstWhere('day_number', (int) $day->day_number);

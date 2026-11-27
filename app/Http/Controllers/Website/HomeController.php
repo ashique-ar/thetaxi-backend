@@ -18,12 +18,7 @@ class HomeController extends Controller
         // CRITICAL: Cache everything with LONG expiry to avoid repeated database hits
         $homeData = $this->getCompleteHomeData();
         try {
-            $tourServiceAvailable = \App\Models\Service\ServiceType::publicContext()
-                ->where('is_active', true)->where('pricing_basis', 'vehicle_class')->where('tour_booking_enabled', true)->exists();
-            $configured = $settings->get('tours_enabled');
-            $homeData['tourBookingEnabled'] = $tourServiceAvailable && ($configured === null
-                ? true
-                : filter_var($configured, FILTER_VALIDATE_BOOLEAN));
+            $homeData['tourBookingEnabled'] = $settings->getTourService(true) !== null;
         } catch (\Throwable) {
             $homeData['tourBookingEnabled'] = false;
         }

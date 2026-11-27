@@ -409,7 +409,7 @@ class TourItineraryController extends Controller
     {
         $service = ($this->isCustomerPortalRequest($request) ? ServiceType::publicContext() : ServiceType::query())
             ->where('is_active', true)->findOrFail($data['service_type_id']);
-        abort_unless($service->pricing_basis === 'vehicle_class' && $service->tour_booking_enabled, 404);
+        abort_unless(app(WebsiteSettingsService::class)->isTourService($service, $this->isCustomerPortalRequest($request)), 404);
         $classId = $data['vehicle_class_id'] ?? null;
         $classSetting = ServiceVehicleClassSetting::query()
             ->where('service_type_id', $service->id)

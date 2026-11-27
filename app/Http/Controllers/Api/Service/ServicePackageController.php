@@ -16,6 +16,7 @@ use Illuminate\Validation\Rule;
 use Illuminate\Support\Facades\DB;
 use App\Services\DynamicServiceConfigurationService;
 use App\Services\Pricing\PricingContextPolicyService;
+use App\Services\WebsiteSettingsService;
 
 class ServicePackageController extends Controller
 {
@@ -364,7 +365,7 @@ class ServicePackageController extends Controller
         if ($template === null) {
             return;
         }
-        if ($serviceType->pricing_basis !== 'vehicle_class' || !$serviceType->tour_booking_enabled) {
+        if (! app(WebsiteSettingsService::class)->isTourService($serviceType)) {
             throw ValidationException::withMessages(['tour_itinerary_template' => 'Itinerary templates require an enabled class-priced Tours service.']);
         }
 

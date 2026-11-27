@@ -16,6 +16,7 @@ use App\Models\Service\ServiceVehicleClassSetting;
 use App\Models\Corporate\Corporate;
 use App\Models\Vehicle\VehiclePricingHistory;
 use App\Services\Pricing\PricingDefinitionOrchestrator;
+use App\Services\WebsiteSettingsService;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Validator;
@@ -878,7 +879,7 @@ class VehicleGroupPricingController extends Controller
         array $slabRateOverrides = [],
         array $commonRateOverrides = []
     ): array {
-        if (!$service->tour_booking_enabled) {
+        if (! app(WebsiteSettingsService::class)->isTourService($service)) {
             return [];
         }
 

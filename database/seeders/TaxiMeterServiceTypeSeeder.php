@@ -91,7 +91,6 @@ class TaxiMeterServiceTypeSeeder extends Seeder
                         'type' => 'with_driver',
                         'pricing_mode' => 'dynamic',
                         'pricing_basis' => 'vehicle_group',
-                        'tour_booking_enabled' => false,
                         'uses_dropoff_time' => true,
                         'allow_return_trip' => false,
                         'allow_multiple_pickup_locations' => false,

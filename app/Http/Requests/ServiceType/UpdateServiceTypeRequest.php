@@ -42,7 +42,6 @@ class UpdateServiceTypeRequest extends FormRequest
             'thumbnail' => ['sometimes', 'nullable', 'string', 'max:255'],
             'pricing_mode' => ['sometimes', 'nullable', 'string', 'in:trip,day,hourly'],
             'pricing_basis' => ['sometimes', 'required', 'in:vehicle_group,vehicle_class'],
-            'tour_booking_enabled' => ['prohibited'],
             'uses_dropoff_time' => ['sometimes', 'boolean'],
             'allow_return_trip' => ['sometimes', 'boolean'],
             'frontend_category' => ['sometimes', 'nullable', 'string', 'max:100'],

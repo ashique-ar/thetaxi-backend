@@ -45,12 +45,8 @@ class TourCatalogueController extends Controller
     public function publishedServices(): JsonResponse
     {
         $aiItineraryEnabled = filter_var(app(WebsiteSettingsService::class)->get('tour_ai_itinerary_enabled', false), FILTER_VALIDATE_BOOL);
-        $services = ServiceType::publicContext()
-            ->where('is_active', true)
-            ->where('pricing_basis', 'vehicle_class')
-            ->where('tour_booking_enabled', true)
-            ->orderBy('name')
-            ->get(['id', 'name', 'description', 'form_config'])
+        $tourService = app(WebsiteSettingsService::class)->getTourService(true);
+        $services = collect($tourService ? [$tourService] : [])
             ->map(function (ServiceType $service) use ($aiItineraryEnabled): array {
                 $classes = ServiceVehicleClassSetting::query()
                     ->with('vehicleClass:id,name,description')
@@ -108,9 +104,8 @@ class TourCatalogueController extends Controller
             'interests' => 'nullable|string|max:500',
         ]);
         abort_unless(filter_var(app(WebsiteSettingsService::class)->get('tour_ai_itinerary_enabled', false), FILTER_VALIDATE_BOOL), 404);
-        $service = ServiceType::publicContext()->where('is_active', true)
-            ->where('pricing_basis', 'vehicle_class')->where('tour_booking_enabled', true)
-            ->findOrFail($data['service_type_id']);
+        $service = app(WebsiteSettingsService::class)->getTourService(true);
+        abort_unless($service && (string) $service->id === (string) $data['service_type_id'], 404);
         $destinations = TourDestination::query()->with([
             'location:id,name,city,address',
             'activities' => fn($query) => $query->where('is_published', true)->orderBy('sort_order')->orderBy('name'),
@@ -222,8 +217,8 @@ class TourCatalogueController extends Controller
     public function published(Request $request): JsonResponse
     {
         $data = $request->validate(['service_type_id' => 'required|uuid|exists:service_types,id']);
-        $service = ServiceType::publicContext()->where('is_active', true)->findOrFail($data['service_type_id']);
-        abort_unless($service->pricing_basis === 'vehicle_class' && $service->tour_booking_enabled, 404);
+        $service = app(WebsiteSettingsService::class)->getTourService(true);
+        abort_unless($service && (string) $service->id === (string) $data['service_type_id'], 404);
 
         $destinations = TourDestination::query()
             ->with([
@@ -288,8 +283,8 @@ class TourCatalogueController extends Controller
             'stops.*.locked' => 'sometimes|boolean',
             'stops.*.arrival_time' => 'sometimes|date_format:H:i',
         ]);
-        $service = ServiceType::publicContext()->where('is_active', true)->findOrFail($data['service_type_id']);
-        abort_unless($service->pricing_basis === 'vehicle_class' && $service->tour_booking_enabled, 404);
+        $service = app(WebsiteSettingsService::class)->getTourService(true);
+        abort_unless($service && (string) $service->id === (string) $data['service_type_id'], 404);
         $classSetting = ServiceVehicleClassSetting::query()
             ->where('service_type_id', $service->id)
             ->where('vehicle_class_id', $data['vehicle_class_id'])

@@ -34,7 +34,6 @@ class CreateServiceTypeRequest extends FormRequest
             'thumbnail' => ['nullable', 'string', 'max:255'],
             'pricing_mode' => ['nullable', 'string', 'in:trip,day,hourly'],
             'pricing_basis' => ['sometimes', 'required', 'in:vehicle_group,vehicle_class'],
-            'tour_booking_enabled' => ['prohibited'],
             'uses_dropoff_time' => ['nullable', 'boolean'],
             'allow_return_trip' => ['nullable', 'boolean'],
             'frontend_category' => ['nullable', 'string', 'max:100'],

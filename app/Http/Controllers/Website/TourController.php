@@ -30,13 +30,7 @@ class TourController extends Controller
 {
     public function index(): View
     {
-        $enabled = ServiceType::publicContext()
-            ->where('is_active', true)
-            ->where('pricing_basis', 'vehicle_class')
-            ->where('tour_booking_enabled', true)
-            ->exists();
-
-        abort_unless($enabled, 404);
+        abort_unless(app(WebsiteSettingsService::class)->getTourService(true), 404);
 
         return view('tours.index');
     }
