@@ -62,10 +62,16 @@ class TourLaunchSeederTest extends TestCase
 
     public function test_launch_seeder_uses_existing_pricing_and_keeps_map_and_terms_drafts_unpublished(): void
     {
+        DB::table('business_settings')->insert([
+            ['id' => 'tour-service-setting', 'type' => 'tour_service_type_id', 'value' => null],
+            ['id' => 'tour-enabled-setting', 'type' => 'tours_enabled', 'value' => 'true'],
+        ]);
+
         app(TourLaunchSeeder::class)->run();
 
         $tourId = DB::table('service_types')->where('code', 'tours')->value('id');
         self::assertNotEmpty($tourId);
+        self::assertSame($tourId, DB::table('business_settings')->where('type', 'tour_service_type_id')->value('value'));
         $classSetting = DB::table('service_vehicle_class_settings')->where('service_type_id', $tourId)->where('vehicle_class_id', 'economy-class')->first();
         self::assertSame(['economy-a', 'economy-b'], json_decode($classSetting->eligible_vehicle_group_ids, true));
         self::assertSame('Economy car', $classSetting->customer_display_name);

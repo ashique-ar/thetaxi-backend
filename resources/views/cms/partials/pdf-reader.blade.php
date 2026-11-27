@@ -4,9 +4,27 @@
         <a href="{{ $pdfUrl }}" download><i class="bi bi-download" aria-hidden="true"></i> Download PDF</a>
     </div>
     @if ($pdfPreview === 'magazine')
-        <div data-magazine-status role="status" aria-live="polite">Preparing your magazine…</div>
-        <div data-magazine-book data-pdf-url="{{ $pdfUrl }}" aria-label="Magazine pages" tabindex="0" hidden></div>
-        <div data-magazine-controls hidden><button type="button" data-magazine-prev aria-label="Previous page">‹</button><span data-magazine-page aria-live="polite"></span><button type="button" data-magazine-next aria-label="Next page">›</button></div>
+        <div class="cms-pdf-frame cms-pdf-magazine" data-magazine-frame>
+            <header class="cms-pdf-toolbar">
+                <span class="cms-pdf-filename"><i class="bi bi-file-earmark-pdf" aria-hidden="true"></i> {{ basename(parse_url($pdfUrl, PHP_URL_PATH) ?: 'document.pdf') }}</span>
+                <span class="cms-pdf-page-count" data-magazine-page aria-live="polite">Loading PDF…</span>
+                <button type="button" class="cms-pdf-fullscreen" data-magazine-fullscreen aria-label="View PDF full screen" title="Full screen"><i class="bi bi-arrows-fullscreen" aria-hidden="true"></i></button>
+            </header>
+            <div class="cms-pdf-magazine-stage">
+                <div class="cms-pdf-loading" data-magazine-status role="status" aria-live="polite">
+                    @if ($content->thumbnail)
+                        <img class="cms-pdf-cover" src="{{ s3_asset($content->thumbnail) }}" alt="">
+                    @else
+                        <span class="cms-pdf-cover-placeholder"><i class="bi bi-file-earmark-pdf" aria-hidden="true"></i></span>
+                    @endif
+                    <span class="cms-pdf-magazine-copy">{{ $content->title }}</span>
+                    <span class="cms-pdf-progress"><span data-magazine-progress></span></span>
+                    <span data-magazine-loading-label>Preparing your magazine…</span>
+                </div>
+                <div data-magazine-book data-pdf-url="{{ $pdfUrl }}" aria-label="Magazine pages" tabindex="0" hidden></div>
+            </div>
+            <div class="cms-pdf-magazine-controls" data-magazine-controls hidden><button type="button" data-magazine-prev aria-label="Previous page">‹</button><button type="button" data-magazine-next aria-label="Next page">›</button></div>
+        </div>
     @else
         <div class="cms-pdf-frame">
             <header class="cms-pdf-toolbar">

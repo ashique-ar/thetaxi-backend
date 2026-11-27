@@ -11,13 +11,15 @@ if (book) {
     const pageStatus = document.querySelector('[data-magazine-page]');
     const previous = document.querySelector('[data-magazine-prev]');
     const next = document.querySelector('[data-magazine-next]');
+    const loadingLabel = document.querySelector('[data-magazine-loading-label]');
+    const progress = document.querySelector('[data-magazine-progress]');
     const objectUrls = [];
 
     const announcePage = (page = 0) => {
         const total = flip.getPageCount();
         const first = page + 1;
         const last = Math.min(page + (flip.getOrientation() === 'landscape' ? 2 : 1), total);
-        pageStatus.textContent = first === last ? `${first} / ${total}` : `${first}–${last} / ${total}`;
+        pageStatus.textContent = first === last ? `Page ${first} / ${total}` : `Pages ${first}–${last} / ${total}`;
         previous.disabled = page === 0;
         next.disabled = page >= total - (flip.getOrientation() === 'landscape' ? 2 : 1);
     };
@@ -39,7 +41,7 @@ if (book) {
             const images = [];
 
             for (let number = 1; number <= pdf.numPages; number++) {
-                status.textContent = `Preparing page ${number} of ${pdf.numPages}…`;
+                if (loadingLabel) loadingLabel.textContent = `Preparing page ${number} of ${pdf.numPages}…`;
                 const page = number === 1 ? firstPage : await pdf.getPage(number);
                 const viewport = page.getViewport({ scale: Math.min(1.5, 1400 / page.getViewport({ scale: 1 }).height) });
                 const canvas = document.createElement('canvas');
@@ -53,6 +55,7 @@ if (book) {
                 objectUrls.push(url);
                 images.push(url);
                 canvas.width = canvas.height = 0;
+                if (progress) progress.style.width = `${Math.round(number / pdf.numPages * 100)}%`;
             }
             await loadingTask.destroy();
 
@@ -79,11 +82,17 @@ if (book) {
             status.hidden = true;
             announcePage(0);
         } catch (error) {
-            status.textContent = 'This magazine could not be displayed here. Use Open PDF to read it.';
+            if (loadingLabel) loadingLabel.textContent = 'This magazine could not be displayed here. Use View PDF to read it.';
             console.error('Magazine reader failed:', error);
             cleanUp();
         }
     })();
+
+    document.querySelector('[data-magazine-fullscreen]')?.addEventListener('click', () => {
+        const frame = document.querySelector('[data-magazine-frame]');
+        if (document.fullscreenElement) document.exitFullscreen();
+        else frame?.requestFullscreen?.();
+    });
 
     previous.addEventListener('click', () => flip?.flipPrev());
     next.addEventListener('click', () => flip?.flipNext());

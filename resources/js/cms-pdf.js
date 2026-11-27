@@ -19,7 +19,6 @@ document.querySelectorAll('[data-cms-pdf]').forEach(async reader => {
         const pdf = await loadingTask.promise;
         for (let number = 1; number <= pdf.numPages; number++) {
             if (loadingLabel) loadingLabel.textContent = 'Preparing page ' + number + ' of ' + pdf.numPages + '…';
-            if (progress) progress.style.width = Math.round((number - 1) / pdf.numPages * 100) + '%';
             const page = await pdf.getPage(number);
             const viewport = page.getViewport({ scale: Math.min(1.5, 1100 / page.getViewport({ scale: 1 }).width) });
             const canvas = document.createElement('canvas');
@@ -29,6 +28,7 @@ document.querySelectorAll('[data-cms-pdf]').forEach(async reader => {
             canvas.className = 'cms-pdf-page img-fluid mb-3';
             canvas.setAttribute('aria-label', `Page ${number} of ${pdf.numPages}`);
             pages.append(canvas);
+            if (progress) progress.style.width = Math.round(number / pdf.numPages * 100) + '%';
         }
         if (progress) progress.style.width = '100%';
         await loadingTask.destroy();
