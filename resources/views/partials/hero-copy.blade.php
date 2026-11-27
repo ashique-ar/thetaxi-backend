@@ -16,7 +16,7 @@
     @if (($slide['ctaText'] ?? '') !== '')
         <a class="shared-hero-action" href="{{ $slide['ctaUrl'] }}"><span>{{ $slide['ctaText'] }}</span> <i class="bi bi-arrow-right" aria-hidden="true"></i></a>
     @endif
-    <a class="shared-hero-action-secondary" href="{{ route('vehicles') }}"><span>View Fleet</span></a>
+    <a class="shared-hero-action-secondary" href="{{ route('search') }}"><span>View Fleet</span></a>
 </div>
 @if (!empty($slide['locationLabel']))
     <span class="shared-hero-location"><i class="bi bi-geo-alt-fill" aria-hidden="true"></i> <span>{{ $slide['locationLabel'] }}</span></span>
