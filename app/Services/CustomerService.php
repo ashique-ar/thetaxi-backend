@@ -190,6 +190,8 @@ class CustomerService
                     ]);
                 }
 
+                $this->ensureCustomerContext($customer->user, $customer);
+
                 if (!$this->checkoutEmailIsVerified($data['customer_email'])) {
                     return $customer->load('user');
                 }
