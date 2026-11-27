@@ -388,7 +388,7 @@
         .cms-pdf-page { display:block; width:var(--cms-pdf-zoom, 100%); max-width:none; height:auto; margin:0 auto 20px; background:#fff; box-shadow:0 5px 16px rgba(15,23,42,.16); transition:width .15s ease; }
         .cms-pdf-page:last-child { margin-bottom:0; }
         .cms-pdf-error { margin:18px; padding:14px 16px; border-left:3px solid var(--cms-pdf-accent); border-radius:0 8px 8px 0; background:#fff; color:#475569; }
-        .cms-pdf-magazine-stage { display:grid; min-height:340px; place-items:center; padding:28px 16px; }
+        .cms-pdf-magazine-stage { display:grid; min-height:340px; overflow:auto; place-items:center; padding:28px 16px; }
         .cms-pdf-magazine .cms-pdf-loading { width:min(100%, 244px); gap:10px; margin:0; padding:0 0 16px; overflow:hidden; }
         .cms-pdf-cover,.cms-pdf-cover-placeholder { display:grid; width:100%; height:164px; object-fit:cover; place-items:center; background:#e8eaf5; color:var(--cms-pdf-accent); font-size:2rem; }
         .cms-pdf-magazine-copy { max-width:90%; overflow:hidden; color:#172033; font-weight:700; text-overflow:ellipsis; white-space:nowrap; }

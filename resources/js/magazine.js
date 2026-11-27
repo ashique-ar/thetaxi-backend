@@ -13,6 +13,7 @@ if (book) {
     const next = document.querySelector('[data-magazine-next]');
     const loadingLabel = document.querySelector('[data-magazine-loading-label]');
     const progress = document.querySelector('[data-magazine-progress]');
+    const zoomLabel = document.querySelector('[data-magazine-zoom-label]');
     const objectUrls = [];
 
     const announcePage = (page = 0) => {
@@ -26,6 +27,14 @@ if (book) {
 
     let flip;
     const cleanUp = () => objectUrls.forEach(URL.revokeObjectURL);
+    let zoom = 100;
+    const updateZoom = () => {
+        book.style.transform = `scale(${zoom / 100})`;
+        book.style.transformOrigin = 'center top';
+        if (zoomLabel) zoomLabel.textContent = `${zoom}%`;
+    };
+    document.querySelector('[data-magazine-zoom-out]')?.addEventListener('click', () => { zoom = Math.max(50, zoom - 10); updateZoom(); });
+    document.querySelector('[data-magazine-zoom-in]')?.addEventListener('click', () => { zoom = Math.min(150, zoom + 10); updateZoom(); });
     window.addEventListener('pagehide', event => {
         if (!event.persisted) cleanUp();
     }, { once: true });
@@ -78,6 +87,7 @@ if (book) {
             flip.loadFromImages(images);
 
             book.hidden = false;
+            updateZoom();
             controls.hidden = false;
             status.hidden = true;
             announcePage(0);

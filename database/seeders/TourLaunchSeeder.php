@@ -157,9 +157,9 @@ class TourLaunchSeeder extends Seeder
             ->get(['vehicle_group_id', 'value'])->groupBy('vehicle_group_id')
             ->map(fn($rows) => $rows->min(fn($row) => (float) $row->value));
         $classes = [
-            ['class' => 'Economy', 'display' => 'Economy car', 'passengers' => 4, 'bags' => 2, 'groups' => null],
-            ['class' => 'Compact', 'display' => 'Standard car', 'passengers' => 4, 'bags' => 2, 'groups' => []],
-            ['class' => 'Commercial', 'display' => 'Flat-roof van', 'passengers' => 9, 'bags' => 6, 'groups' => []],
+            ['class' => 'Economy', 'display' => 'Economy car', 'passengers' => 3, 'bags' => 2, 'groups' => null],
+            ['class' => 'Compact', 'display' => 'Standard car', 'passengers' => 3, 'bags' => 2, 'groups' => []],
+            ['class' => 'Commercial', 'display' => 'Flat-roof van', 'passengers' => 6, 'bags' => 6, 'groups' => []],
             ['class' => '14 Seater Van (High Roof Van', 'display' => 'High-roof van', 'passengers' => 9, 'bags' => 4, 'groups' => ['Toyota KDH 14 Seater']],
             ['class' => 'Full-size', 'display' => 'Coaster bus', 'passengers' => 14, 'bags' => 8, 'groups' => ['Toyota Coaster']],
         ];
