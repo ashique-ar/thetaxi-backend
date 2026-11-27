@@ -3,6 +3,7 @@
 @section('title', 'Plan your tour')
 
 @push('styles')
+    <link href="https://cdn.jsdelivr.net/npm/select2@4.1.0-rc.0/dist/css/select2.min.css" rel="stylesheet">
     <style>
         .tour-page {
             --tour-primary: var(--primary-color1, #BF2629);
@@ -238,6 +239,25 @@
             min-height: 38px;
             font-size: max(0.875rem, 14px);
         }
+
+        .tour-page .select2-container { width: 100% !important; font-size: 1rem; }
+        .tour-page .select2-container--default .select2-selection--single,
+        .tour-page .select2-container--default .select2-selection--multiple {
+            min-height: 44px;
+            border: 1px solid #cbd5e1;
+            border-radius: 0.5rem;
+            background: #fff;
+        }
+        .tour-page .tour-day-card .select2-container--default .select2-selection--single { min-height: 38px; }
+        .tour-page .select2-container--default .select2-selection--single .select2-selection__rendered { padding: 0.45rem 2rem 0.45rem 0.75rem; line-height: 1.5; color: var(--tour-ink); }
+        .tour-page .tour-day-card .select2-container--default .select2-selection--single .select2-selection__rendered { padding-top: 0.35rem; padding-bottom: 0.35rem; }
+        .tour-page .select2-container--default .select2-selection--single .select2-selection__arrow { height: 42px; }
+        .tour-page .tour-day-card .select2-container--default .select2-selection--single .select2-selection__arrow { height: 36px; }
+        .tour-page .select2-container--default .select2-selection--multiple .select2-selection__rendered { display: flex; flex-wrap: wrap; gap: 0.25rem; padding: 0.25rem 0.5rem; }
+        .tour-page .select2-container--default .select2-selection--multiple .select2-search--inline .select2-search__field { min-height: 28px; margin-top: 0.25rem; }
+        .tour-page .select2-dropdown { border-color: #cbd5e1; }
+        .tour-page .select2-container--default .select2-results__option--highlighted[aria-selected] { background: var(--tour-primary); }
+        .tour-page .select2-container--focus .select2-selection { border-color: var(--tour-primary); box-shadow: 0 0 0 3px var(--tour-primary-ring); }
 
         .tour-page .form-control:focus,
         .tour-page .form-select:focus {
@@ -743,15 +763,9 @@
                         </div>
 
                         <div class="tour-subpanel mb-4">
-                            <search class="mb-3 d-block">
-                                <label for="tour-start-search" class="form-label">Find a start or finish place</label>
-                                <input id="tour-start-search" type="search" class="form-control mb-3"
-                                    autocomplete="off" autocorrect="off" autocapitalize="none" spellcheck="false"
-                                    placeholder="Type a place name…">
-                            </search>
                             <div>
                                 <label for="tour-start" class="form-label">Start and finish at *</label>
-                                <select id="tour-start" class="form-select no-nice" required>
+                                <select id="tour-start" class="form-select no-nice tour-location-select" required>
                                     <option value="">Choose a place</option>
                                 </select>
                             </div>
@@ -759,12 +773,10 @@
 
                         <div id="tour-day-settings" class="row g-3 mb-4"></div>
 
-                        <search class="mb-3 d-block">
-                            <label for="tour-destination-search" class="form-label">Find places and activities</label>
-                            <input id="tour-destination-search" type="search" class="form-control"
-                                autocomplete="off" autocorrect="off" autocapitalize="none" spellcheck="false"
-                                placeholder="Type a place or activity name…">
-                        </search>
+                        <div class="mb-3">
+                            <label for="tour-destination-search" class="form-label">Search and add places or activities</label>
+                            <select id="tour-destination-search" class="form-select no-nice tour-location-select" multiple aria-label="Search and add places or activities"></select>
+                        </div>
 
                         <div id="tour-destinations" class="row g-3"></div>
                     </section>
@@ -981,6 +993,7 @@
 @endsection
 
 @push('scripts')
+    <script src="https://cdn.jsdelivr.net/npm/select2@4.1.0-rc.0/dist/js/select2.min.js"></script>
     <script>
         (() => {
             const form = document.getElementById('tour-form');
@@ -992,6 +1005,7 @@
             const daySettings = document.getElementById('tour-day-settings');
             const destinationList = document.getElementById('tour-destinations');
             const results = document.getElementById('tour-results');
+            const stopSearchSelect = document.getElementById('tour-destination-search');
             const api = '/api/public/tours';
             const csrf = document.querySelector('meta[name="csrf-token"]')?.content || '';
             let services = [];
@@ -1001,6 +1015,22 @@
             let selectedTemplateDays = [];
 
             const escapeHtml = (value) => String(value ?? '').replace(/[&<>"']/g, (char) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#039;' }[char]));
+            function destroyTourSearch(select) {
+                const $ = window.jQuery;
+                if ($?.fn?.select2 && $(select).hasClass('select2-hidden-accessible')) $(select).select2('destroy');
+            }
+            function enhanceTourSearch(select, placeholder, multiple = false) {
+                const $ = window.jQuery;
+                if (!$?.fn?.select2) return;
+                $(select).select2({
+                    width: '100%',
+                    minimumResultsForSearch: 0,
+                    placeholder,
+                    allowClear: select === startSelect,
+                    closeOnSelect: !multiple,
+                    dropdownParent: $('#tour-step-2'),
+                });
+            }
             const showError = (message) => { error.textContent = message; error.hidden = false; error.scrollIntoView({ behavior: 'smooth', block: 'nearest' }); };
             const clearError = () => { error.textContent = ''; error.hidden = true; };
             function invalidateDisplayedQuote() {
@@ -1017,6 +1047,20 @@
                 document.getElementById('tour-total-summary').hidden = false;
                 document.getElementById('tour-mobile-summary').hidden = false;
             }
+            window.jQuery(stopSearchSelect).on('change', () => {
+                const selected = new Set(window.jQuery(stopSearchSelect).val() || []);
+                destinationList.querySelectorAll('.tour-destination').forEach(input => { input.checked = selected.has(`destination:${input.value}`); });
+                destinationList.querySelectorAll('.tour-activity').forEach(input => { input.checked = selected.has(`activity:${input.value}`); });
+                invalidateDisplayedQuote();
+            });
+            destinationList.addEventListener('change', event => {
+                if (!event.target.matches('.tour-destination, .tour-activity')) return;
+                const selected = [
+                    ...[...destinationList.querySelectorAll('.tour-destination:checked')].map(input => `destination:${input.value}`),
+                    ...[...destinationList.querySelectorAll('.tour-activity:checked')].map(input => `activity:${input.value}`),
+                ];
+                window.jQuery(stopSearchSelect).val(selected).trigger('change');
+            });
             async function request(url, options = {}) {
                 const response = await fetch(url, { credentials: 'same-origin', ...options, headers: { 'Accept': 'application/json', 'Content-Type': 'application/json', 'X-CSRF-TOKEN': csrf, ...(options.headers || {}) } });
                 const body = await response.json().catch(() => ({}));
@@ -1131,53 +1175,46 @@
                 const destinations = catalogue.destinations || [];
                 const days = Number(document.getElementById('tour-days').value) || 1;
                 const priorEnds = new Map([...daySettings.querySelectorAll('.tour-day-end')].map(select => [Number(select.dataset.day), select.value]));
+                daySettings.querySelectorAll('.tour-day-end').forEach(destroyTourSearch);
                 daySettings.innerHTML = Array.from({ length: Math.max(1, Math.min(days, 60)) }, (_, index) => {
                     const day = index + 1;
                     const selectedEnd = priorEnds.get(day) || startSelect.value;
                     const label = day === days ? `Day ${day} finish location` : `Day ${day} overnight location`;
                     const help = day === days ? 'Choose where the tour ends. Return to start is selected by default.' : `Day ${day + 1} starts from this location.`;
-                    return `<div class="col-md-6"><div class="tour-day-card h-100"><div class="d-flex align-items-center justify-content-between mb-2"><span class="tour-day-badge">Day ${day}</span><span class="small tour-muted">${day === days ? 'Final Stop' : 'Overnight'}</span></div><search class="d-block mb-2"><label class="form-label" for="tour-day-end-search-${day}">Filter places</label><input id="tour-day-end-search-${day}" type="search" class="form-control form-control-sm" autocomplete="off" autocorrect="off" autocapitalize="none" spellcheck="false" placeholder="Search listed places…"></search><label class="form-label" for="tour-day-end-${day}">${label} *</label><select id="tour-day-end-${day}" class="form-select form-select-sm tour-day-end no-nice" data-day="${day}" required><option value="${escapeHtml(startSelect.value)}" ${selectedEnd === startSelect.value ? 'selected' : ''}>Return to start</option>${destinations.map(item => `<option value="${escapeHtml(item.id)}" ${selectedEnd === item.id ? 'selected' : ''}>${escapeHtml(item.name)}</option>`).join('')}</select><div class="form-text">${help}</div></div></div>`;
+                    return `<div class="col-md-6"><div class="tour-day-card h-100"><div class="d-flex align-items-center justify-content-between mb-2"><span class="tour-day-badge">Day ${day}</span><span class="small tour-muted">${day === days ? 'Final Stop' : 'Overnight'}</span></div><label class="form-label" for="tour-day-end-${day}">${label} *</label><select id="tour-day-end-${day}" class="form-select form-select-sm tour-day-end tour-location-select no-nice" data-day="${day}" required><option value="${escapeHtml(startSelect.value)}" ${selectedEnd === startSelect.value ? 'selected' : ''}>Return to start</option>${destinations.map(item => `<option value="${escapeHtml(item.id)}" ${selectedEnd === item.id ? 'selected' : ''}>${escapeHtml(item.name)}</option>`).join('')}</select><div class="form-text">${help}</div></div></div>`;
                 }).join('');
-                daySettings.querySelectorAll('input[type="search"]').forEach(input => bindLocationSelectSearch(input, document.getElementById(input.id.replace('-search', ''))));
-            }
-            function bindLocationSelectSearch(input, select) {
-                if (!input || !select) return;
-                if (input.dataset.searchBound === 'true') return;
-                input.dataset.searchBound = 'true';
-                input.value = '';
-                input.addEventListener('input', () => {
-                    const query = input.value.trim().toLocaleLowerCase();
-                    [...select.options].forEach(option => {
-                        option.hidden = Boolean(query && option.value !== select.value && !option.textContent.toLocaleLowerCase().includes(query));
-                    });
-                });
+                daySettings.querySelectorAll('.tour-day-end').forEach(select => enhanceTourSearch(select, 'Search listed places'));
             }
             async function loadCatalogue() {
                 const sameService = Boolean(catalogue);
                 const previousStart = sameService ? startSelect.value : '';
                 const previousDestinations = new Set(sameService ? [...document.querySelectorAll('.tour-destination:checked')].map(box => box.value) : []);
                 const previousActivities = new Set(sameService ? [...document.querySelectorAll('.tour-activity:checked')].map(box => box.value) : []);
+                const previousStops = [...previousDestinations].map(id => `destination:${id}`).concat([...previousActivities].map(id => `activity:${id}`));
                 const previousDays = new Map(sameService ? [...document.querySelectorAll('.tour-place-day')].map(select => [select.id.replace('tour-place-day-', ''), select.value]) : []);
                 const previousActivityDays = new Map(sameService ? [...document.querySelectorAll('.tour-activity-day')].map(select => [select.dataset.activity, select.value]) : []);
-                clearError(); results.hidden = true; destinationList.innerHTML = ''; daySettings.innerHTML = ''; startSelect.innerHTML = '<option value="">Choose a listed place</option>'; document.getElementById('tour-start-search').value = ''; document.getElementById('tour-destination-search').value = '';
+                destroyTourSearch(startSelect);
+                destroyTourSearch(stopSearchSelect);
+                daySettings.querySelectorAll('.tour-day-end').forEach(destroyTourSearch);
+                clearError(); results.hidden = true; destinationList.innerHTML = ''; daySettings.innerHTML = ''; startSelect.innerHTML = '<option value="">Choose a listed place</option>'; stopSearchSelect.innerHTML = '';
                 const data = await request(`${api}/catalogue`);
                 catalogue = data;
                 const destinations = data.destinations || [];
                 startSelect.innerHTML += destinations.map(item => `<option value="${escapeHtml(item.id)}">${escapeHtml(item.name)}</option>`).join('');
-                bindLocationSelectSearch(document.getElementById('tour-start-search'), startSelect);
                 if (destinations.some(item => item.id === previousStart)) startSelect.value = previousStart;
+                enhanceTourSearch(startSelect, 'Search a listed place');
+                const placeOptions = destinations.map(item => `<option value="destination:${escapeHtml(item.id)}">${escapeHtml(item.name)}</option>`).join('');
+                const activityOptions = destinations.flatMap(item => (item.activities || []).map(activity => `<option value="activity:${escapeHtml(activity.id)}">${escapeHtml(activity.name)} — ${escapeHtml(item.name)}</option>`)).join('');
+                stopSearchSelect.innerHTML = `<optgroup label="Places">${placeOptions}</optgroup><optgroup label="Activities">${activityOptions}</optgroup>`;
+                enhanceTourSearch(stopSearchSelect, 'Search places and activities', true);
                 destinationList.innerHTML = destinations.map((item, index) => `
                 <div class="col-md-6"><div class="tour-option d-flex flex-column">
                     <label class="form-check-label d-flex gap-2 align-items-start" style="cursor: pointer;"><input class="form-check-input mt-1 tour-destination" type="checkbox" value="${escapeHtml(item.id)}" id="tour-destination-${index}" ${previousDestinations.has(item.id) ? 'checked' : ''}><span><strong>Visit ${escapeHtml(item.name)}</strong><br><span class="small tour-muted">${escapeHtml(item.description || item.location?.city || item.location?.address || '')}</span></span></label>
                     <div class="mt-2"><label class="form-label mb-1" for="tour-place-day-${index}">Destination visit on</label><select class="form-select form-select-sm tour-place-day no-nice" id="tour-place-day-${index}">${Array.from({ length: Number(document.getElementById('tour-days').value) || 1 }, (_, day) => `<option value="${day + 1}" ${Number(previousDays.get(String(index))) === day + 1 ? 'selected' : ''}>Day ${day + 1}</option>`).join('')}</select></div>
                     ${(item.activities || []).length ? `<div class="border-top mt-3 pt-3"><p class="small fw-bold text-uppercase tour-muted mb-2" style="letter-spacing: 0.04em;">Activities at this place</p>${item.activities.map((activity, activityIndex) => `<div class="mb-2 pb-2 border-bottom border-light"><label class="form-check small mb-1" style="cursor: pointer;"><input class="form-check-input tour-activity" type="checkbox" value="${escapeHtml(activity.id)}" id="tour-activity-${index}-${activityIndex}" ${previousActivities.has(activity.id) ? 'checked' : ''}><span class="form-check-label"><strong>${escapeHtml(activity.name)}</strong>${activity.visit_duration_minutes ? ` <span class="tour-muted">(${escapeHtml(activity.visit_duration_minutes)} min)</span>` : ''}<br><span class="tour-muted">Route visit: ${escapeHtml(activity.location?.name || activity.location?.address || 'mapped entrance')}</span>${activity.description ? `<br><span class="tour-muted">${escapeHtml(activity.description)}</span>` : ''}</span></label><label class="small tour-muted ms-4 d-block mb-1" for="tour-activity-day-${index}-${activityIndex}">Activity visit on</label><select class="form-select form-select-sm tour-activity-day no-nice ms-4" style="width: calc(100% - 1.5rem);" id="tour-activity-day-${index}-${activityIndex}" data-activity="${escapeHtml(activity.id)}">${Array.from({ length: Number(document.getElementById('tour-days').value) || 1 }, (_, day) => `<option value="${day + 1}" ${Number(previousActivityDays.get(activity.id) ?? previousDays.get(String(index))) === day + 1 ? 'selected' : ''}>Day ${day + 1}</option>`).join('')}</select></div>`).join('')}</div>` : ''}
                 </div></div>`).join('');
-                filterDestinationCards();
+                window.jQuery(stopSearchSelect).val(previousStops).trigger('change');
                 renderDaySettings();
-            }
-            function filterDestinationCards() {
-                const query = document.getElementById('tour-destination-search').value.trim().toLocaleLowerCase();
-                destinationList.querySelectorAll(':scope > .col-md-6').forEach(card => { card.hidden = Boolean(query && !card.textContent.toLocaleLowerCase().includes(query)); });
             }
             function renderAiSuggestion(suggestion) {
                 const destinations = new Map((catalogue?.destinations || []).map(item => [item.id, item]));
@@ -1344,7 +1381,6 @@
                 finally { busyControls.forEach((control, index) => { control.disabled = priorDisabled[index]; }); button.disabled = false; document.getElementById('tour-working').hidden = true; }
             });
             packageSelect.addEventListener('change', () => { clearAiSuggestion(); limitPackageClasses(); applyPackageTemplate(); });
-            document.getElementById('tour-destination-search').addEventListener('input', filterDestinationCards);
             form.addEventListener('input', event => {
                 if (results.contains(event.target) || event.target.closest('#tour-ai-helper') || event.target.type === 'search') return;
                 invalidateDisplayedQuote();
