@@ -597,7 +597,7 @@ class TourCatalogueController extends Controller
                 $location->save();
                 $googleCoordinatesTracked = false;
             } elseif (empty($metadata['google_coordinates_cached_at'])
-                || now()->diffInDays($metadata['google_coordinates_cached_at']) >= 30) {
+                || !Carbon::parse($metadata['google_coordinates_cached_at'])->addDays(30)->isFuture()) {
                 $location->latitude = null;
                 $location->longitude = null;
                 $location->save();
