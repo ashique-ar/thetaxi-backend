@@ -9,7 +9,7 @@ use RuntimeException;
 
 class TourLaunchSeeder extends Seeder
 {
-    // Destination names use SLTDA's tourist-attractions catalogue (https://www.sltda.gov.lk/en/tourist-attractions); staff must confirm Google Places and exact entrances before publishing.
+    // Destinations are Sri Lankan route anchors; activity Place IDs target named sites or their road-access points.
     private const PLACES = [
         'colombo' => ['Colombo', 'Western Province', 'City sights, museums and coastal landmarks.'],
         'negombo' => ['Negombo', 'Western Province', 'Coastal town near Bandaranaike International Airport.'],
@@ -156,9 +156,13 @@ class TourLaunchSeeder extends Seeder
             ]);
             $locationId = (string) DB::table('predefined_locations')->where('code', 'tour_'.$code)->value('id');
             $location = DB::table('predefined_locations')->where('id', $locationId)->first();
-            if (!$location->google_place_id && data_get(json_decode((string) $location->metadata, true), 'mapping_required')) {
+            $locationMetadata = json_decode((string) $location->metadata, true) ?: [];
+            if (($locationMetadata['google_place_id_seeded'] ?? false) || ($locationMetadata['mapping_required'] ?? false)) {
                 DB::table('predefined_locations')->where('id', $locationId)->update([
                     'google_place_id' => $googlePlaceId,
+                    'address' => $province,
+                    'latitude' => 0,
+                    'longitude' => 0,
                     'is_active' => true,
                     'metadata' => json_encode(['google_place_id_seeded' => true, 'mapping_required' => false]),
                     'updated_user_id' => $actorId, 'updated_at' => now(),
@@ -191,9 +195,13 @@ class TourLaunchSeeder extends Seeder
                 ]);
                 $activityLocationId = (string) DB::table('predefined_locations')->where('code', $activityLocationCode)->value('id');
                 $activityLocation = DB::table('predefined_locations')->where('id', $activityLocationId)->first();
-                if (!$activityLocation->google_place_id && data_get(json_decode((string) $activityLocation->metadata, true), 'mapping_required')) {
+                $activityLocationMetadata = json_decode((string) $activityLocation->metadata, true) ?: [];
+                if (($activityLocationMetadata['google_place_id_seeded'] ?? false) || ($activityLocationMetadata['mapping_required'] ?? false)) {
                     DB::table('predefined_locations')->where('id', $activityLocationId)->update([
                         'google_place_id' => $googlePlaceId,
+                        'address' => $province,
+                        'latitude' => 0,
+                        'longitude' => 0,
                         'is_active' => true,
                         'metadata' => json_encode(['google_place_id_seeded' => true, 'mapping_required' => false, 'tickets_included' => false]),
                         'updated_user_id' => $actorId, 'updated_at' => now(),

@@ -31,8 +31,21 @@
 }
 
 body.theme-default .home4-banner-section .shared-hero-swiper .banner-content-wrap {
+    z-index: 15;
     align-items: center;
     padding: 4.5rem 0 7rem;
+    pointer-events: none;
+}
+
+body.theme-default .home4-banner-section .banner-content .shared-hero-action {
+    position: relative;
+    z-index: 20;
+    pointer-events: auto;
+    cursor: pointer;
+}
+
+body.theme-default .home4-banner-section .swiper-fade .swiper-slide:not(.swiper-slide-active) .shared-hero-action {
+    pointer-events: none;
 }
 
 .theme-default .home4-banner-section .banner-content h1,
