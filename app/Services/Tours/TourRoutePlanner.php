@@ -89,9 +89,14 @@ class TourRoutePlanner
                 throw new InvalidArgumentException('Every tour visit must have a unique non-empty identifier.');
             }
             $ids[$stop['id']] = true;
-            foreach (['latitude' => 90, 'longitude' => 180] as $field => $limit) {
-                if (! is_numeric($stop[$field] ?? null) || ! is_finite((float) $stop[$field]) || abs((float) $stop[$field]) > $limit) {
-                    throw new InvalidArgumentException('Tour visit '.$stop['id'].' has invalid '.$field.'.');
+            if (array_key_exists('place_id', $stop) && (! is_string($stop['place_id']) || trim($stop['place_id']) === '')) {
+                throw new InvalidArgumentException('Tour visit '.$stop['id'].' has an invalid place_id.');
+            }
+            if (empty($stop['place_id'])) {
+                foreach (['latitude' => 90, 'longitude' => 180] as $field => $limit) {
+                    if (! is_numeric($stop[$field] ?? null) || ! is_finite((float) $stop[$field]) || abs((float) $stop[$field]) > $limit) {
+                        throw new InvalidArgumentException('Tour visit '.$stop['id'].' has invalid '.$field.'.');
+                    }
                 }
             }
             if (isset($stop['visit_minutes']) && (! is_numeric($stop['visit_minutes']) || ! is_finite((float) $stop['visit_minutes']) || $stop['visit_minutes'] < 0)) {
@@ -112,8 +117,12 @@ class TourRoutePlanner
         $distance = 0.0;
         $duration = 0;
         for ($index = 1; $index < count($stops); $index++) {
-            $from = ['lat' => (float) $stops[$index - 1]['latitude'], 'lng' => (float) $stops[$index - 1]['longitude']];
-            $to = ['lat' => (float) $stops[$index]['latitude'], 'lng' => (float) $stops[$index]['longitude']];
+            $from = ! empty($stops[$index - 1]['place_id'])
+                ? ['place_id' => $stops[$index - 1]['place_id']]
+                : ['lat' => (float) $stops[$index - 1]['latitude'], 'lng' => (float) $stops[$index - 1]['longitude']];
+            $to = ! empty($stops[$index]['place_id'])
+                ? ['place_id' => $stops[$index]['place_id']]
+                : ['lat' => (float) $stops[$index]['latitude'], 'lng' => (float) $stops[$index]['longitude']];
             $key = json_encode([$from, $to], JSON_THROW_ON_ERROR);
             if (! isset($cache[$key])) {
                 $leg = $from === $to

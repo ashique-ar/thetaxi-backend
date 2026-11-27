@@ -45,6 +45,7 @@ body.theme-default .banner-content .shared-hero-heading {
 .theme-default .home4-banner-section .banner-content p,
 body.theme-default .banner-content :where(.shared-hero-description, .shared-hero-caption) {
     max-width: 620px;
+    margin-inline: auto;
     line-height: 1.5;
     text-shadow: 0 1px 8px rgba(0, 0, 0, 0.5);
 }
@@ -94,8 +95,8 @@ body.theme-default .banner-content .shared-hero-actions {
 @media (min-width: 992px) {
     .theme-default .home4-banner-section .banner-video-area,
     .theme-default .home4-banner-section .banner-video-area img {
-        min-height: clamp(620px, 48vw, 820px);
-        height: clamp(620px, 48vw, 820px);
+        min-height: clamp(640px, 48vw, 820px);
+        height: clamp(640px, 48vw, 820px);
         border-radius: 40px;
     }
 
@@ -104,11 +105,12 @@ body.theme-default .banner-content .shared-hero-actions {
     }
 
     body.theme-default .home4-banner-section .shared-hero-swiper .banner-content-wrap {
-        padding: clamp(2.5rem, 5vw, 4.5rem) 0 16rem;
+        align-items: center;
+        padding: clamp(7rem, 11vw, 10rem) 0 clamp(11rem, 15vw, 14rem);
     }
 
     .theme-default .home-booking-form-section {
-        margin-top: clamp(-240px, -16vw, -180px);
+        margin-top: clamp(-175px, -12vw, -140px);
     }
 }
 

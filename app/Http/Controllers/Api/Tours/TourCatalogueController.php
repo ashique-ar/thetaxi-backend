@@ -228,10 +228,10 @@ class TourCatalogueController extends Controller
 
         $destinations = TourDestination::query()
             ->with([
-                'location:id,name,address,city,country,latitude,longitude',
+                'location:id,name,city,country,google_place_id',
                 'activities' => fn($query) => $query
                     ->where('is_published', true)
-                    ->with('location:id,name,address,city,country,latitude,longitude')
+                    ->with('location:id,name,city,country,google_place_id')
             ])
             ->where('service_type_id', $service->id)
             ->where('is_published', true)
@@ -319,7 +319,7 @@ class TourCatalogueController extends Controller
                 $destination = TourDestination::query()
                     ->where('service_type_id', $service->id)
                     ->where('is_published', true)
-                    ->with('location:id,latitude,longitude')
+                    ->with('location:id,google_place_id')
                     ->findOrFail($stop['catalogue_id']);
                 $location = $destination->location;
                 $activity = null;
@@ -331,11 +331,14 @@ class TourCatalogueController extends Controller
                     ->whereHas('destination', fn($query) => $query
                         ->where('service_type_id', $service->id)
                         ->where('is_published', true))
-                    ->with(['location:id,latitude,longitude', 'destination:id,name'])
+                    ->with(['location:id,google_place_id', 'destination:id,name'])
                     ->findOrFail($stop['catalogue_id']);
                 $location = $activity->location;
                 $visitMinutes = $activity->visit_duration_minutes;
                 $name = $activity->name;
+            }
+            if (!$location || !$location->google_place_id) {
+                throw ValidationException::withMessages(['stops' => 'A selected Tour stop no longer has a Google Place ID.']);
             }
 
             $visits[] = [
@@ -343,8 +346,7 @@ class TourCatalogueController extends Controller
                 'catalogue_id' => $stop['catalogue_id'],
                 'kind' => $stop['kind'],
                 'name' => $name,
-                'latitude' => (float) $location->latitude,
-                'longitude' => (float) $location->longitude,
+                'place_id' => $location->google_place_id,
                 'visit_minutes' => $visitMinutes,
                 'locked' => $stop['locked'] ?? false,
                 ...($activity?->opens_at ? ['opens_at' => substr((string) $activity->opens_at, 0, 5)] : []),
@@ -422,9 +424,13 @@ class TourCatalogueController extends Controller
             'success' => true,
             'data' => [
                 'form_fields' => TourFormConfiguration::fields($service),
-                'locations' => PredefinedLocation::query()->where('type', 'tour')->orderBy('sort_order')->orderBy('name')->get(),
+                'locations' => PredefinedLocation::query()->where('type', 'tour')->orderBy('sort_order')->orderBy('name')
+                    ->get(['id', 'name', 'code', 'type', 'city', 'country', 'is_active', 'sort_order', 'description', 'google_place_id']),
                 'destinations' => TourDestination::withInactive()
-                    ->with(['location', 'activities' => fn($query) => $query->withInactive()->with('location')])
+                    ->with([
+                        'location:id,name,code,city,country,is_active,description,google_place_id',
+                        'activities' => fn($query) => $query->withInactive()->with('location:id,name,code,city,country,is_active,description,google_place_id'),
+                    ])
                     ->where('service_type_id', $service->id)
                     ->orderBy('sort_order')
                     ->orderBy('name')
@@ -500,17 +506,17 @@ class TourCatalogueController extends Controller
         $data = $request->validate([
             'name' => [$required, 'string', 'max:255'],
             'code' => [$required, 'string', 'max:50', 'regex:/^[A-Za-z0-9_-]+$/', Rule::unique('predefined_locations', 'code')->ignore($request->route('location'))],
-            'google_place_id' => [$required, 'string', 'max:255'],
-            'address' => ['nullable', 'string', 'max:2000'],
+            'google_place_id' => ['required', 'string', 'max:255'],
             'city' => ['nullable', 'string', 'max:255'],
             'country' => ['required', 'string', 'max:255'],
-            'latitude' => [$required, 'numeric', 'between:-90,90'],
-            'longitude' => [$required, 'numeric', 'between:-180,180'],
             'description' => ['nullable', 'string', 'max:5000'],
             'sort_order' => ['nullable', 'integer', 'min:0', 'max:65535'],
         ]);
         $data['type'] = 'tour';
         $data['is_active'] = true;
+        $data['address'] = null;
+        $data['latitude'] = 0;
+        $data['longitude'] = 0;
 
         return $data;
     }
@@ -568,7 +574,7 @@ class TourCatalogueController extends Controller
     private function assertMappedTourLocation(string $locationId): void
     {
         $location = PredefinedLocation::query()->findOrFail($locationId);
-        if ($location->type !== 'tour' || !$location->google_place_id || $location->latitude === null || $location->longitude === null) {
+        if ($location->type !== 'tour' || !$location->is_active || !$location->google_place_id) {
             throw ValidationException::withMessages(['predefined_location_id' => 'Choose a Tours location mapped and verified with Google Places.']);
         }
     }
@@ -582,11 +588,8 @@ class TourCatalogueController extends Controller
         return [
             'id' => $location->id,
             'name' => $location->name,
-            'address' => $location->address,
             'city' => $location->city,
             'country' => $location->country,
-            'latitude' => (float) $location->latitude,
-            'longitude' => (float) $location->longitude,
         ];
     }
 }

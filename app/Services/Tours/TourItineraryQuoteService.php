@@ -186,8 +186,9 @@ class TourItineraryQuoteService
                     'id' => "start-{$day->id}",
                     'kind' => 'endpoint',
                     'name' => $start['name'],
-                    'latitude' => (float) $start['latitude'],
-                    'longitude' => (float) $start['longitude'],
+                    ...(!empty($start['google_place_id']) ? ['place_id' => $start['google_place_id']] : [
+                        'latitude' => (float) $start['latitude'], 'longitude' => (float) $start['longitude'],
+                    ]),
                     'locked' => true,
                 ]
             ];
@@ -197,8 +198,9 @@ class TourItineraryQuoteService
                     'kind' => $stop->kind,
                     'catalogue_id' => $stop->tour_activity_id ?: $stop->tour_destination_id,
                     'name' => $stop->location_snapshot['name'] ?? '',
-                    'latitude' => (float) $stop->location_snapshot['latitude'],
-                    'longitude' => (float) $stop->location_snapshot['longitude'],
+                    ...(!empty($stop->location_snapshot['google_place_id']) ? ['place_id' => $stop->location_snapshot['google_place_id']] : [
+                        'latitude' => (float) $stop->location_snapshot['latitude'], 'longitude' => (float) $stop->location_snapshot['longitude'],
+                    ]),
                     'visit_minutes' => $stop->visit_duration_minutes,
                     'locked' => $day->is_locked || $stop->is_locked,
                     ...($stop->activity?->opens_at ? ['opens_at' => substr((string) $stop->activity->opens_at, 0, 5)] : []),
@@ -210,8 +212,9 @@ class TourItineraryQuoteService
                 'id' => "end-{$day->id}",
                 'kind' => 'endpoint',
                 'name' => $end['name'],
-                'latitude' => (float) $end['latitude'],
-                'longitude' => (float) $end['longitude'],
+                ...(!empty($end['google_place_id']) ? ['place_id' => $end['google_place_id']] : [
+                    'latitude' => (float) $end['latitude'], 'longitude' => (float) $end['longitude'],
+                ]),
                 'locked' => true,
             ];
             $result = $this->planner->suggest($stops, substr((string) $day->start_time, 0, 5));

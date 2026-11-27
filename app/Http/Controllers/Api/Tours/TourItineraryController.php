@@ -549,7 +549,7 @@ class TourItineraryController extends Controller
                     $location = $activity->location;
                     $visitMinutes = $activity->visit_duration_minutes;
                 }
-                if (!$location || $location->latitude === null || $location->longitude === null) {
+                if (!$location || !$location->google_place_id) {
                     throw ValidationException::withMessages(['days' => 'A selected Tours stop no longer has a mapped location.']);
                 }
                 $day->stops()->create([
@@ -559,9 +559,7 @@ class TourItineraryController extends Controller
                     'tour_activity_id' => $activity?->id,
                     'location_snapshot' => [
                         'name' => $location->name,
-                        'address' => $location->address,
-                        'latitude' => (float) $location->latitude,
-                        'longitude' => (float) $location->longitude,
+                        'google_place_id' => $location->google_place_id,
                     ],
                     'visit_duration_minutes' => $visitMinutes,
                     'is_locked' => $stopData['is_locked'] ?? false,
@@ -581,7 +579,7 @@ class TourItineraryController extends Controller
             ->where('is_published', true)
             ->with('location')
             ->findOrFail($id);
-        if (!$destination->location || $destination->location->latitude === null || $destination->location->longitude === null) {
+        if (!$destination->location || !$destination->location->google_place_id) {
             throw ValidationException::withMessages(['days' => 'A day endpoint no longer has a mapped location.']);
         }
 
@@ -593,9 +591,7 @@ class TourItineraryController extends Controller
         return [
             'destination_id' => $destination->id,
             'name' => $destination->location->name,
-            'address' => $destination->location->address,
-            'latitude' => (float) $destination->location->latitude,
-            'longitude' => (float) $destination->location->longitude,
+            'google_place_id' => $destination->location->google_place_id,
         ];
     }
 
