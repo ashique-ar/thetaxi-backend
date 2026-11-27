@@ -11,7 +11,7 @@ class TourFormConfiguration
     {
         $fields = $service->form_config['fields'] ?? $service->form_config ?? [];
 
-        return collect($fields)->filter(fn ($field, $key) => is_array($field)
+        $normalized = collect($fields)->filter(fn ($field, $key) => is_array($field)
             && in_array($field['type'] ?? null, ['text', 'textarea', 'number', 'date', 'time', 'select', 'radio', 'checkbox'], true)
             && !empty($field['label']))->map(fn ($field, $key) => [
                 'name' => (string) $key,
@@ -25,7 +25,30 @@ class TourFormConfiguration
                     'value' => (string) ($option['value'] ?? ''),
                     'label' => (string) ($option['label'] ?? ''),
                 ])->filter(fn ($option) => $option['value'] !== '' && $option['label'] !== '')->values()->all(),
-            ])->values()->all();
+            ])->keyBy('name');
+
+        $normalized->put('contact_whatsapp', [
+            'name' => 'contact_whatsapp',
+            'type' => 'text',
+            'label' => 'WhatsApp number (optional)',
+            'required' => false,
+            'placeholder' => null,
+            'hint' => null,
+            'validation' => [],
+            'options' => [],
+        ]);
+        $normalized->put('special_requests', [
+            'name' => 'special_requests',
+            'type' => 'textarea',
+            'label' => 'Special Requests or Flight Numbers (Optional)',
+            'required' => false,
+            'placeholder' => 'For example, flight details or a request for your trip.',
+            'hint' => null,
+            'validation' => [],
+            'options' => [],
+        ]);
+
+        return $normalized->values()->all();
     }
 
     public static function validate(ServiceType $service, mixed $answers): array

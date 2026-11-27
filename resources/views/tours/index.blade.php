@@ -4,6 +4,7 @@
 
 @push('styles')
     <link href="https://cdn.jsdelivr.net/npm/select2@4.1.0-rc.0/dist/css/select2.min.css" rel="stylesheet">
+    <link href="https://cdn.jsdelivr.net/npm/intl-tel-input@17/build/css/intlTelInput.css" rel="stylesheet">
     <style>
         .tour-page {
             --tour-primary: var(--primary-color1, #BF2629);
@@ -326,6 +327,14 @@
         .tour-class-estimate { max-width: 48%; text-align: right; line-height: 1.2; }
         .tour-class-estimate strong { display: block; color: var(--tour-primary); font-size: 0.95rem; }
         .tour-class-estimate small { display: block; font-size: 0.65rem; }
+        .tour-page .iti { width: 100%; }
+        .tour-itinerary-day { border: 1px solid #e2e8f0; border-radius: 0.65rem; padding: 0.65rem 0.75rem; background: #fff; }
+        .tour-itinerary-day + .tour-itinerary-day { margin-top: 0.5rem; }
+        .tour-itinerary-route { font-size: 0.78rem; font-weight: 600; color: #14213d; }
+        .tour-stop-chip { border: 0; border-radius: 999px; padding: 0.22rem 0.55rem; background: #eef8f4; color: #155f4b; font-size: 0.7rem; }
+        .tour-category-chip { border-radius: 999px; white-space: nowrap; }
+        .tour-category-chip.active { background: #14213d; border-color: #14213d; color: #fff; }
+        .tour-highlight-category { display: inline-block; font-size: 0.62rem; font-weight: 700; letter-spacing: 0.04em; text-transform: uppercase; color: var(--tour-primary); background: var(--tour-primary-soft); border-radius: 999px; padding: 0.18rem 0.45rem; }
 
         label.tour-option {
             cursor: pointer;
@@ -478,6 +487,25 @@
             border-radius: 0.9rem;
             box-shadow: 0 10px 25px -4px rgba(15, 23, 42, 0.06);
         }
+
+        .tour-summary-head { background: #192638; color: #fff; margin: -1rem -1rem 0; padding: 1rem; border-radius: 0.85rem 0.85rem 0 0; }
+        .tour-summary-head h2 { font-size: 1.1rem; font-weight: 800; margin: 0.45rem 0 0.15rem; }
+        .tour-summary-head .small { color: #dbe3ef; }
+        .tour-summary-duration { border-radius: 999px; background: var(--tour-primary); padding: 0.2rem 0.55rem; font-size: 0.68rem; font-weight: 800; white-space: nowrap; }
+        .tour-summary-facts { display: grid; grid-template-columns: 1fr auto; gap: 0.45rem 0.75rem; padding: 1rem 0; border-bottom: 1px solid var(--tour-border); font-size: 0.78rem; }
+        .tour-summary-facts dt { color: var(--tour-muted); font-weight: 500; }
+        .tour-summary-facts dd { margin: 0; text-align: right; font-weight: 700; }
+        .tour-summary-route { padding: 1rem 0; border-bottom: 1px solid var(--tour-border); }
+        .tour-summary-route ol { padding-left: 1.15rem; margin: 0.6rem 0 0; font-size: 0.76rem; }
+        .tour-summary-route li { padding: 0.18rem 0; }
+        .tour-summary-route li::marker { color: var(--tour-primary); }
+        .tour-summary-price { padding: 1rem 0; border-bottom: 1px solid var(--tour-border); }
+        .tour-summary-price strong { color: #8f1b1e; font-size: 1.45rem; line-height: 1.2; }
+        .tour-summary-term { font-size: 0.76rem; }
+        .tour-summary-term + .tour-summary-term { margin-top: 0.65rem; }
+        .tour-summary-pay { width: 100%; }
+        .tour-summary-request { width: 100%; }
+        @media (min-width: 768px) { .tour-summary-head { margin: -1.5rem -1.5rem 0; padding: 1.25rem 1.5rem; } }
 
         .tour-badge-guaranteed {
             display: inline-flex;
@@ -790,10 +818,29 @@
 
                         <div id="tour-day-settings" class="row g-3 mb-4"></div>
 
+                        <div class="tour-subpanel mb-4">
+                            <div class="d-flex align-items-start justify-content-between gap-2 mb-2">
+                                <div>
+                                    <h3 class="h6 fw-bold mb-1">Your itinerary</h3>
+                                    <p class="small tour-muted mb-0">Your chosen places and activities are grouped by day.</p>
+                                </div>
+                            </div>
+                            <div id="tour-itinerary-days" aria-live="polite"></div>
+                        </div>
+
                         <div class="mb-3">
                             <label for="tour-destination-search" class="form-label">Search and add places or activities</label>
                             <select id="tour-destination-search" class="form-select no-nice tour-location-select" multiple aria-label="Search and add places or activities"></select>
                         </div>
+
+                        <div class="d-flex flex-column flex-md-row justify-content-between align-items-md-end gap-2 mb-3">
+                            <div>
+                                <h3 class="h6 fw-bold mb-1">Explore Sri Lanka highlights</h3>
+                                <p class="small tour-muted mb-0">Browse by category, then add places to your day plan.</p>
+                            </div>
+                            <span id="tour-highlight-count" class="small tour-muted"></span>
+                        </div>
+                        <div id="tour-category-filters" class="d-flex flex-wrap gap-2 mb-3" role="group" aria-label="Filter highlights by category"></div>
 
                         <div id="tour-destinations" class="row g-3"></div>
 
@@ -855,8 +902,16 @@
                                     autocorrect="off" autocapitalize="none" spellcheck="false" required>
                             </div>
                             <div class="col-md-6">
-                                <label for="tour-phone" class="form-label">Phone / WhatsApp *</label>
+                                <label for="tour-phone" class="form-label">Mobile number *</label>
                                 <input id="tour-phone" type="tel" class="form-control" autocomplete="tel" required>
+                            </div>
+                            <div class="col-md-6">
+                                <label for="tour-whatsapp" class="form-label">WhatsApp number <span class="small tour-muted">(optional)</span></label>
+                                <input id="tour-whatsapp" type="tel" class="form-control" autocomplete="tel-national" data-custom-name="contact_whatsapp">
+                            </div>
+                            <div class="col-12">
+                                <label for="tour-special-requests" class="form-label">Special Requests or Flight Numbers <span class="small tour-muted">(Optional)</span></label>
+                                <textarea id="tour-special-requests" class="form-control" rows="3" maxlength="2000" placeholder="For example, your flight number or any special requests for the trip." data-custom-name="special_requests"></textarea>
                             </div>
                         </div>
 
@@ -909,44 +964,46 @@
                 <!-- RIGHT COLUMN: Sticky Live Quote & Assistance (4 Cols) -->
                 <aside class="col-lg-4 sticky-lg-top d-flex flex-column gap-4" style="top: 1.5rem;">
                     <div class="tour-sidebar-card p-3 p-md-4">
-                        <div class="d-flex align-items-center justify-content-between pb-3 border-bottom">
-                            <span class="text-uppercase fw-bold small tour-muted" style="letter-spacing: 0.06em;">Estimated transport price</span>
-                            <span class="tour-badge-guaranteed">Price held for 30 minutes</span>
-                        </div>
+                        <header class="tour-summary-head">
+                            <div class="d-flex align-items-center justify-content-between gap-2">
+                                <span class="text-uppercase fw-bold small" style="letter-spacing: 0.06em;">Tour Summary</span>
+                                <span id="tour-summary-duration" class="tour-summary-duration">3 Days / 2 Nights</span>
+                            </div>
+                            <h2>Private Tour</h2>
+                            <span id="tour-summary-vehicle" class="small">Choose your vehicle</span>
+                        </header>
 
-                        <section id="tour-total-summary" class="py-3 border-bottom" aria-live="polite" hidden>
-                            <h2 class="h6 tour-muted mb-1">Estimated travel price</h2>
-                            <p id="tour-total-amount" class="h3 fw-extrabold mb-1" style="color: var(--tour-ink);"></p>
-                            <p id="tour-total-distance" class="small tour-muted mb-0"></p>
+                        <dl class="tour-summary-facts mb-0" aria-live="polite">
+                            <dt>Dates</dt><dd id="tour-summary-dates">Choose your travel dates</dd>
+                            <dt>Travellers</dt><dd id="tour-summary-travellers">2 Adults</dd>
+                            <dt>Pick-up location</dt><dd id="tour-summary-pickup">Choose a place</dd>
+                            <dt>Luggage</dt><dd id="tour-summary-luggage">0 bags</dd>
+                        </dl>
+
+                        <section class="tour-summary-route" aria-labelledby="tour-summary-route-title">
+                            <h3 id="tour-summary-route-title" class="small text-uppercase fw-bold mb-0">Planned route stops</h3>
+                            <ol id="tour-summary-route-stops" aria-live="polite"><li>Choose places to build your route</li></ol>
                         </section>
 
-                        <div class="py-3 border-bottom">
-                            <h2 class="h6 fw-bold mb-2">Before you continue</h2>
-                            <ul class="list-unstyled small mb-0 d-flex flex-column gap-2 tour-muted">
-                                <li class="d-flex align-items-start gap-2">
-                                    <svg width="16" height="16" class="flex-shrink-0 mt-1" style="color: var(--tour-emerald);" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true">
-                                        <path d="M5 13l4 4L19 7" stroke-linecap="round" stroke-linejoin="round" stroke-width="2.5"></path>
-                                    </svg>
-                                    <span>Route suggestions may reduce driving between places</span>
-                                </li>
-                                <li class="d-flex align-items-start gap-2">
-                                    <svg width="16" height="16" class="flex-shrink-0 mt-1" style="color: var(--tour-emerald);" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true">
-                                        <path d="M5 13l4 4L19 7" stroke-linecap="round" stroke-linejoin="round" stroke-width="2.5"></path>
-                                    </svg>
-                                    <span>Transport price when available; staff review if needed</span>
-                                </li>
-                                <li class="d-flex align-items-start gap-2">
-                                    <svg width="16" height="16" class="flex-shrink-0 mt-1" style="color: var(--tour-emerald);" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true">
-                                        <path d="M5 13l4 4L19 7" stroke-linecap="round" stroke-linejoin="round" stroke-width="2.5"></path>
-                                    </svg>
-                                    <span>Activity tickets are not included; booking them will be available in the future</span>
-                                </li>
-                            </ul>
+                        <section id="tour-total-summary" class="tour-summary-price" aria-live="polite">
+                            <div class="d-flex justify-content-between gap-2 small mb-2">
+                                <span id="tour-summary-price-label">Estimated transport price</span>
+                                <span id="tour-summary-price-class"></span>
+                            </div>
+                            <div class="d-flex align-items-end justify-content-between gap-2">
+                                <span id="tour-total-distance" class="small tour-muted">Your price updates as your trip changes.</span>
+                                <strong id="tour-total-amount">—</strong>
+                            </div>
+                            <div id="tour-summary-breakdown" class="small mt-3" hidden></div>
+                            <p id="tour-summary-payment-note" class="small tour-muted mt-2 mb-0">Full payment or any available advance payment can be selected at checkout.</p>
+                            <p id="tour-summary-price-status" class="small tour-muted mt-2 mb-0" role="status" aria-live="polite"></p>
+                        </section>
+                        <div id="tour-summary-terms" class="py-3" hidden></div>
+                        <div class="d-grid gap-2">
+                            <button id="tour-summary-checkout" type="button" class="btn tour-btn-primary tour-summary-pay" hidden disabled>Continue to checkout</button>
+                            <button id="tour-summary-request-quote" type="button" class="btn tour-btn-outline tour-summary-request" hidden>Request a quotation</button>
                         </div>
-
-                        <p class="small tour-muted pt-3 mb-0">
-                            Complete steps 1–4 and click <strong>Compare route and price</strong> to review your trip and continue to checkout.
-                        </p>
+                        <p class="small tour-muted mt-3 mb-0">Attraction tickets and activity fees are not included.</p>
                     </div>
 
                     @if (!empty($supportPhone) || !empty($supportWhatsapp))
@@ -972,42 +1029,25 @@
             </form>
         </main>
 
-        <!-- FAQ Section (Native <details> Accordion) -->
-        <section class="tour-faq-section py-5" aria-labelledby="tour-faq-heading">
-            <div class="container" style="max-width: 54rem;">
-                <div class="text-center mb-4">
-                    <h2 id="tour-faq-heading" class="h3 fw-bold mb-1">Frequently Asked Questions</h2>
-                    <p class="small tour-muted mb-0">Clear answers about planning your multi-day private tour.</p>
-                </div>
+        @if ($tourFaqs->isNotEmpty())
+            <section class="tour-faq-section py-5" aria-labelledby="tour-faq-heading">
+                <div class="container" style="max-width: 54rem;">
+                    <div class="text-center mb-4">
+                        <h2 id="tour-faq-heading" class="h3 fw-bold mb-1">Frequently Asked Questions</h2>
+                        <p class="small tour-muted mb-0">Clear answers about planning your multi-day private tour.</p>
+                    </div>
 
-                <div class="d-flex flex-column gap-3">
-                    <details class="tour-faq-item">
-                        <summary>How do route suggestions work?</summary>
-                        <div class="tour-faq-body">
-                            After you choose places and activities, we may suggest a route with less driving between them. You can compare the suggestion with your chosen order and pick the one you prefer. Visit times may affect which routes are possible.
-                        </div>
-                    </details>
-                    <details class="tour-faq-item">
-                        <summary>Are activity tickets included in the price?</summary>
-                        <div class="tour-faq-body">
-                            No. The price covers your private vehicle and driver. Attraction entry, safari jeeps, train tickets, and other activity costs are separate. Booking activity tickets through us is planned for the future.
-                        </div>
-                    </details>
-                    <details class="tour-faq-item">
-                        <summary>What if my trip needs a review?</summary>
-                        <div class="tour-faq-body">
-                            If we need to check your route or vehicle, choose <strong>Ask our team to review this Tour</strong>. You will not be charged for asking us to review it.
-                        </div>
-                    </details>
-                    <details class="tour-faq-item">
-                        <summary>How do I book after reviewing the price?</summary>
-                        <div class="tour-faq-body">
-                            Choose your preferred route, read the booking terms, then click <strong>Accept price and continue to checkout</strong> to complete your booking.
-                        </div>
-                    </details>
+                    <div class="d-flex flex-column gap-3">
+                        @foreach ($tourFaqs as $faq)
+                            <details class="tour-faq-item">
+                                <summary>{{ $faq->question }}</summary>
+                                <div class="tour-faq-body">{{ $faq->answer }}</div>
+                            </details>
+                        @endforeach
+                    </div>
                 </div>
-            </div>
-        </section>
+            </section>
+        @endif
 
         <!-- Mobile Sticky Quote Summary -->
         <div id="tour-mobile-summary"
@@ -1025,10 +1065,22 @@
 @endsection
 
 @push('scripts')
+    <script src="https://cdn.jsdelivr.net/npm/intl-tel-input@17/build/js/intlTelInput.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/select2@4.1.0-rc.0/dist/js/select2.min.js"></script>
     <script>
         (() => {
             const form = document.getElementById('tour-form');
+            const mobileInput = document.getElementById('tour-phone');
+            const whatsappInput = document.getElementById('tour-whatsapp');
+            const phoneInputOptions = {
+                initialCountry: 'lk',
+                preferredCountries: ['lk', 'gb', 'us', 'in', 'au'],
+                separateDialCode: true,
+                nationalMode: true,
+                utilsScript: 'https://cdn.jsdelivr.net/npm/intl-tel-input@17/build/js/utils.js',
+            };
+            const mobilePhoneInput = typeof window.intlTelInput === 'function' ? window.intlTelInput(mobileInput, phoneInputOptions) : null;
+            const whatsappPhoneInput = typeof window.intlTelInput === 'function' ? window.intlTelInput(whatsappInput, phoneInputOptions) : null;
             const loading = document.getElementById('tour-loading');
             const error = document.getElementById('tour-error');
             const classSelect = document.getElementById('tour-class');
@@ -1036,6 +1088,9 @@
             const startSelect = document.getElementById('tour-start');
             const daySettings = document.getElementById('tour-day-settings');
             const destinationList = document.getElementById('tour-destinations');
+            const itineraryDaysSummary = document.getElementById('tour-itinerary-days');
+            const categoryFilters = document.getElementById('tour-category-filters');
+            const highlightCount = document.getElementById('tour-highlight-count');
             const results = document.getElementById('tour-results');
             const stopSearchSelect = document.getElementById('tour-destination-search');
             const api = '/api/public/tours';
@@ -1051,6 +1106,11 @@
             let mapRouteSelection = 'suggested';
             let savedItinerary = null;
             let selectedTemplateDays = [];
+            let activeDestinationCategory = 'all';
+            let preferredRouteChoice = 'suggested';
+            let currentTourQuote = null;
+            let currentRouteOptions = null;
+            let autoPriceRefreshTimer = null;
 
             const escapeHtml = (value) => String(value ?? '').replace(/[&<>"']/g, (char) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#039;' }[char]));
             function destroyTourSearch(select) {
@@ -1073,8 +1133,14 @@
             const clearError = () => { error.textContent = ''; error.hidden = true; };
             function invalidateDisplayedQuote() {
                 results.hidden = true;
-                document.getElementById('tour-total-summary').hidden = true;
+                currentTourQuote = null;
+                document.getElementById('tour-summary-terms').hidden = true;
+                document.getElementById('tour-summary-checkout').hidden = true;
                 document.getElementById('tour-mobile-summary').hidden = true;
+                document.getElementById('tour-summary-price-label').textContent = savedItinerary ? 'Estimated transport price' : 'Estimated transport price';
+                document.getElementById('tour-total-amount').textContent = savedItinerary ? 'Updating…' : '—';
+                document.getElementById('tour-summary-price-status').textContent = savedItinerary ? 'Updating your route and price…' : 'Your price updates as your trip changes.';
+                document.getElementById('tour-summary-breakdown').hidden = true;
                 if (classPriceEstimates.size) {
                     classPriceEstimates.clear();
                     classPriceRouteLabel = null;
@@ -1083,12 +1149,108 @@
             }
             function showQuoteSummary(quote) {
                 if (quote.total_amount === null || quote.total_amount === undefined || !Number.isFinite(Number(quote.total_amount))) return;
+                currentTourQuote = quote;
                 const formatted = `${quote.currency} ${Number(quote.total_amount).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
                 document.getElementById('tour-total-amount').textContent = formatted;
-                document.getElementById('tour-total-distance').textContent = `${quote.distance_km} km estimated · Price held until ${new Date(quote.expires_at).toLocaleString()}`;
+                document.getElementById('tour-summary-price-label').textContent = 'Confirmed transport total';
+                document.getElementById('tour-summary-price-class').textContent = classSelect.selectedOptions[0]?.textContent || '';
+                document.getElementById('tour-total-distance').textContent = `${quote.distance_km} km estimated`;
+                document.getElementById('tour-summary-price-status').textContent = `Price held until ${new Date(quote.expires_at).toLocaleString()}.`;
+                renderPricingBreakdown(quote.breakdown, quote.currency);
                 document.getElementById('tour-mobile-total').textContent = formatted;
-                document.getElementById('tour-total-summary').hidden = false;
                 document.getElementById('tour-mobile-summary').hidden = false;
+                const terms = quote.terms_snapshot || [];
+                const termsContainer = document.getElementById('tour-summary-terms');
+                termsContainer.innerHTML = terms.map((term, index) => `<div class="form-check tour-summary-term"><input class="form-check-input tour-term" type="checkbox" value="${escapeHtml(term.id)}" id="tour-summary-term-${escapeHtml(term.id || index)}"><label class="form-check-label" for="tour-summary-term-${escapeHtml(term.id || index)}"><strong>${escapeHtml(term.title || 'Booking terms')}</strong> (${escapeHtml(term.version || 'current')}) — I agree</label><div class="small tour-muted ms-4 mt-1" style="white-space:pre-wrap;line-height:1.5">${escapeHtml(term.content)}</div></div>`).join('');
+                termsContainer.hidden = terms.length === 0;
+                const checkoutButton = document.getElementById('tour-summary-checkout');
+                checkoutButton.hidden = false;
+                checkoutButton.disabled = terms.length > 0;
+                document.getElementById('tour-summary-request-quote').hidden = false;
+            }
+            function renderPricingBreakdown(breakdown, currency = '') {
+                const element = document.getElementById('tour-summary-breakdown');
+                const lines = Array.isArray(breakdown) ? breakdown : Object.entries(breakdown || {}).map(([component, amount]) => ({ component, amount }));
+                const visibleLines = lines.filter(line => line && typeof line === 'object' && Number.isFinite(Number(line.amount)));
+                element.innerHTML = visibleLines.map(line => `<div class="d-flex justify-content-between gap-2 py-1"><span>${escapeHtml(line.component || line.label || line.name || 'Transport')}</span><span>${escapeHtml(currency)} ${Number(line.amount).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</span></div>`).join('');
+                element.hidden = visibleLines.length === 0;
+            }
+            function renderTourSummaryDetails(routeOptions = null, routeChoice = preferredRouteChoice) {
+                const date = document.getElementById('tour-date').value;
+                const dayCount = Math.max(1, Number(document.getElementById('tour-days').value) || 1);
+                const travelers = Number(document.getElementById('tour-adults').value || 0) + Number(document.getElementById('tour-children').value || 0);
+                const luggage = Number(document.getElementById('tour-luggage').value || 0);
+                const places = new Map((catalogue?.destinations || []).map(item => [String(item.id), item]));
+                const start = places.get(String(startSelect.value));
+                const selectedClass = classSelect.selectedOptions[0]?.textContent?.trim() || 'Choose your vehicle';
+                const nightCount = Math.max(0, dayCount - 1);
+                document.getElementById('tour-summary-duration').textContent = `${dayCount} ${dayCount === 1 ? 'Day' : 'Days'} / ${nightCount} ${nightCount === 1 ? 'Night' : 'Nights'}`;
+                document.getElementById('tour-summary-vehicle').textContent = selectedClass;
+                document.getElementById('tour-summary-travellers').textContent = `${travelers} ${travelers === 1 ? 'Traveller' : 'Travellers'}`;
+                document.getElementById('tour-summary-luggage').textContent = `${luggage} ${luggage === 1 ? 'bag' : 'bags'}`;
+                document.getElementById('tour-summary-pickup').textContent = start?.name || 'Choose a place';
+                if (date) {
+                    const startDate = new Date(`${date}T00:00:00`);
+                    const endDate = new Date(startDate);
+                    endDate.setDate(endDate.getDate() + dayCount - 1);
+                    const formatDate = value => value.toLocaleDateString(undefined, { month: 'short', day: 'numeric', year: 'numeric' });
+                    document.getElementById('tour-summary-dates').textContent = dayCount > 1 ? `${formatDate(startDate)} – ${formatDate(endDate)}` : formatDate(startDate);
+                } else {
+                    document.getElementById('tour-summary-dates').textContent = 'Choose your travel dates';
+                }
+
+                const selectedRoute = routeOptions?.[routeChoice];
+                const routeDays = selectedRoute?.days;
+                const dayRows = routeDays?.length ? routeDays.map(day => {
+                    const stops = (day.schedule || []).map(stop => stop.stop_name).filter(Boolean);
+                    return `<li><strong>Day ${escapeHtml(day.day_number)}:</strong> ${escapeHtml(stops.join(' · ') || 'Route stops to be selected')}</li>`;
+                }) : Array.from({ length: dayCount }, (_, index) => {
+                    const day = index + 1;
+                    const destinations = [...document.querySelectorAll('.tour-destination:checked')]
+                        .filter(input => Number(document.getElementById(`tour-place-day-${input.id.replace('tour-destination-', '')}`)?.value) === day)
+                        .map(input => places.get(String(input.value))?.name);
+                    const activities = [...document.querySelectorAll('.tour-activity:checked')]
+                        .filter(input => Number(document.querySelector(`.tour-activity-day[data-activity="${CSS.escape(input.value)}"]`)?.value) === day)
+                        .map(input => (catalogue?.destinations || []).flatMap(place => place.activities || []).find(activity => String(activity.id) === String(input.value))?.name);
+                    const names = [...destinations, ...activities].filter(Boolean);
+                    return `<li><strong>Day ${day}:</strong> ${escapeHtml(names.join(' · ') || 'Choose places or activities')}</li>`;
+                });
+                document.getElementById('tour-summary-route-stops').innerHTML = dayRows.join('');
+            }
+            function showEstimatedSummary(routes, routeChoice = preferredRouteChoice) {
+                renderTourSummaryDetails(routes, routeChoice);
+                const route = routes?.[routeChoice];
+                const estimate = route?.quote;
+                document.getElementById('tour-summary-price-class').textContent = classSelect.selectedOptions[0]?.textContent || '';
+                document.getElementById('tour-summary-price-label').textContent = 'Estimated transport price';
+                if (estimate?.status === 'priced' && Number.isFinite(Number(estimate.total_amount))) {
+                    const formatted = `${estimate.currency} ${Number(estimate.total_amount).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
+                    document.getElementById('tour-total-amount').textContent = formatted;
+                    document.getElementById('tour-total-distance').textContent = `${route.distance_km} km estimated`;
+                    document.getElementById('tour-summary-price-status').textContent = 'Estimate updates when your trip details change.';
+                    renderPricingBreakdown(estimate.breakdown, estimate.currency);
+                    document.getElementById('tour-mobile-total').textContent = formatted;
+                    document.getElementById('tour-mobile-summary').hidden = false;
+                } else {
+                    document.getElementById('tour-total-amount').textContent = 'Request quote';
+                    document.getElementById('tour-summary-breakdown').hidden = true;
+                    document.getElementById('tour-total-distance').textContent = route?.distance_km == null ? 'Route distance pending review' : `${route.distance_km} km estimated`;
+                    document.getElementById('tour-summary-price-status').textContent = estimate?.reason || 'Our team will prepare a quotation for this route.';
+                }
+                document.getElementById('tour-summary-request-quote').hidden = !savedItinerary;
+                document.getElementById('tour-summary-checkout').hidden = true;
+            }
+            function scheduleAutomaticPriceRefresh() {
+                if (!savedItinerary?.id) return;
+                clearTimeout(autoPriceRefreshTimer);
+                document.getElementById('tour-summary-price-status').textContent = 'Updating your route and price…';
+                autoPriceRefreshTimer = setTimeout(() => {
+                    if (!form.checkValidity()) {
+                        document.getElementById('tour-summary-price-status').textContent = 'Complete the required trip details to refresh your price.';
+                        return;
+                    }
+                    form.requestSubmit();
+                }, 900);
             }
             function tourLocationPoint(location) {
                 const latitude = Number(location?.latitude);
@@ -1179,9 +1341,9 @@
             }
             function renderComparedTourMap(routeOptions) {
                 routeMapOptions = routeOptions;
-                mapRouteSelection = 'suggested';
+                mapRouteSelection = routeOptions?.[preferredRouteChoice] ? preferredRouteChoice : 'suggested';
                 document.getElementById('tour-map-route-options').hidden = false;
-                drawComparedTourMap('suggested');
+                drawComparedTourMap(mapRouteSelection);
             }
             function setClassPriceEstimates(routeOptions, routeChoice) {
                 classPriceEstimates.clear();
@@ -1233,6 +1395,8 @@
                 syncStopDaySelectors();
                 invalidateDisplayedQuote();
                 renderSelectedTourMap();
+                renderTourSummaryDetails();
+                scheduleAutomaticPriceRefresh();
             });
             destinationList.addEventListener('change', event => {
                 if (!event.target.matches('.tour-destination, .tour-activity')) return;
@@ -1246,6 +1410,68 @@
                 ];
                 window.jQuery(stopSearchSelect).val(selected).trigger('change');
             }
+            function renderDestinationCategoryFilters(destinations) {
+                const counts = new Map();
+                destinations.forEach(item => {
+                    const category = item.category || 'Other';
+                    counts.set(category, (counts.get(category) || 0) + 1);
+                });
+                if (!counts.has(activeDestinationCategory)) activeDestinationCategory = 'all';
+                categoryFilters.innerHTML = `<button type="button" class="btn btn-sm btn-outline-secondary tour-category-chip ${activeDestinationCategory === 'all' ? 'active' : ''}" data-category-filter="all">All highlights (${destinations.length})</button>${[...counts].map(([category, count]) => `<button type="button" class="btn btn-sm btn-outline-secondary tour-category-chip ${activeDestinationCategory === category ? 'active' : ''}" data-category-filter="${escapeHtml(category)}">${escapeHtml(category)} (${count})</button>`).join('')}`;
+                categoryFilters.querySelectorAll('[data-category-filter]').forEach(button => button.addEventListener('click', () => {
+                    activeDestinationCategory = button.dataset.categoryFilter;
+                    categoryFilters.querySelectorAll('[data-category-filter]').forEach(option => option.classList.toggle('active', option === button));
+                    applyDestinationCategoryFilter();
+                }));
+                applyDestinationCategoryFilter();
+            }
+            function applyDestinationCategoryFilter() {
+                const cards = [...destinationList.querySelectorAll('.tour-highlight-item')];
+                let visible = 0;
+                cards.forEach(card => {
+                    const show = activeDestinationCategory === 'all' || card.dataset.category === activeDestinationCategory;
+                    card.hidden = !show;
+                    if (show) visible++;
+                });
+                highlightCount.textContent = `${visible} ${visible === 1 ? 'place' : 'places'}`;
+            }
+            function renderTourItinerarySummary() {
+                if (!catalogue || !itineraryDaysSummary) return;
+                const destinations = new Map((catalogue.destinations || []).map(item => [String(item.id), item]));
+                const activities = new Map((catalogue.destinations || []).flatMap(item => (item.activities || []).map(activity => [String(activity.id), activity])));
+                const totalDays = Math.max(1, Number(document.getElementById('tour-days').value) || 1);
+                itineraryDaysSummary.innerHTML = Array.from({ length: totalDays }, (_, index) => {
+                    const day = index + 1;
+                    const startId = day === 1 ? startSelect.value : document.querySelector(`.tour-day-end[data-day="${day - 1}"]`)?.value;
+                    const endId = document.querySelector(`.tour-day-end[data-day="${day}"]`)?.value;
+                    const startName = destinations.get(String(startId))?.name || 'Choose a start place';
+                    const endName = destinations.get(String(endId))?.name || (day === totalDays ? 'Choose a finish place' : 'Choose an overnight place');
+                    const stops = [
+                        ...[...destinationList.querySelectorAll('.tour-destination:checked')]
+                            .filter(input => Number(document.getElementById(`tour-place-day-${input.id.replace('tour-destination-', '')}`)?.value) === day)
+                            .map(input => ({ kind: 'destination', id: input.value, name: destinations.get(String(input.value))?.name })),
+                        ...[...destinationList.querySelectorAll('.tour-activity:checked')]
+                            .filter(input => Number(document.querySelector(`.tour-activity-day[data-activity="${CSS.escape(input.value)}"]`)?.value) === day)
+                            .map(input => ({ kind: 'activity', id: input.value, name: activities.get(String(input.value))?.name })),
+                    ].filter(stop => stop.name);
+                    const routeLine = [startName, ...stops.map(stop => stop.name), endName].join(' → ');
+                    return `<div class="tour-itinerary-day"><div class="d-flex flex-wrap justify-content-between align-items-center gap-2"><div class="d-flex align-items-center gap-2"><span class="tour-day-badge">Day ${day}</span><span class="tour-itinerary-route">${escapeHtml(routeLine)}</span></div><span class="small tour-muted">${day === totalDays ? 'Finish' : `Overnight: ${escapeHtml(endName)}`}</span></div>${stops.length ? `<div class="d-flex flex-wrap gap-2 mt-2">${stops.map(stop => `<button type="button" class="tour-stop-chip" data-remove-stop="${stop.kind}" data-stop-id="${escapeHtml(stop.id)}" aria-label="Remove ${escapeHtml(stop.name)} from day ${day}">${escapeHtml(stop.name)} ×</button>`).join('')}</div>` : ''}</div>`;
+                }).join('');
+            }
+            itineraryDaysSummary.addEventListener('click', event => {
+                const remove = event.target.closest('[data-remove-stop]');
+                if (!remove) return;
+                const selector = remove.dataset.removeStop === 'destination' ? '.tour-destination' : '.tour-activity';
+                const input = [...destinationList.querySelectorAll(selector)].find(item => item.value === remove.dataset.stopId);
+                if (!input) return;
+                input.checked = false;
+                syncStopSearchSelection();
+                syncStopDaySelectors();
+                renderSelectedTourMap();
+                invalidateDisplayedQuote();
+                renderTourSummaryDetails();
+                scheduleAutomaticPriceRefresh();
+            });
             function minimumVisitDay(destinationId, locationId) {
                 const destinations = new Map((catalogue?.destinations || []).map(item => [String(item.id), item]));
                 const assignedDays = [...daySettings.querySelectorAll('.tour-day-end')]
@@ -1297,6 +1523,7 @@
                     daySelect.disabled = !input.checked;
                     if (!input.checked) daySelect.value = '';
                 });
+                renderTourItinerarySummary();
             }
             async function request(url, options = {}) {
                 const response = await fetch(url, { credentials: 'same-origin', ...options, headers: { 'Accept': 'application/json', 'Content-Type': 'application/json', 'X-CSRF-TOKEN': csrf, ...(options.headers || {}) } });
@@ -1325,7 +1552,7 @@
                 renderCustomFields();
             }
             function renderCustomFields() {
-                const fields = currentService()?.form_fields || [];
+                const fields = (currentService()?.form_fields || []).filter(field => !['contact_whatsapp', 'special_requests'].includes(field.name));
                 document.getElementById('tour-custom-fields').innerHTML = fields.map(field => {
                     const id = `tour-custom-${field.name}`; const required = field.required ? 'required' : ''; const label = escapeHtml(field.label);
                     let control = '';
@@ -1427,6 +1654,7 @@
                 }).join('');
                 daySettings.querySelectorAll('.tour-day-end').forEach(select => enhanceTourSearch(select, 'Search listed places'));
                 refreshVisitDayOptions();
+                renderTourItinerarySummary();
             }
             async function loadCatalogue() {
                 const sameService = Boolean(catalogue);
@@ -1451,11 +1679,13 @@
                 stopSearchSelect.innerHTML = `<optgroup label="Places">${placeOptions}</optgroup><optgroup label="Activities">${activityOptions}</optgroup>`;
                 enhanceTourSearch(stopSearchSelect, 'Search places and activities', true);
                 destinationList.innerHTML = destinations.map((item, index) => `
-                <div class="col-md-6"><div class="tour-option d-flex flex-column">
+                <div class="col-xl-4 col-md-6 tour-highlight-item" data-category="${escapeHtml(item.category || 'Other')}"><div class="tour-option d-flex flex-column">
+                    <div class="mb-2"><span class="tour-highlight-category">${escapeHtml(item.category || 'Explore')}</span></div>
                     <label class="form-check-label d-flex gap-2 align-items-start" style="cursor: pointer;"><input class="form-check-input mt-1 tour-destination" type="checkbox" value="${escapeHtml(item.id)}" id="tour-destination-${index}" ${previousDestinations.has(item.id) ? 'checked' : ''}><span><strong>Visit ${escapeHtml(item.name)}</strong><br><span class="small tour-muted">${escapeHtml(item.description || item.location?.city || item.location?.address || '')}</span></span></label>
                     <div class="mt-2 tour-stop-day-control" hidden><label class="form-label mb-1" for="tour-place-day-${index}">Visit on</label><select class="form-select form-select-sm tour-place-day no-nice" id="tour-place-day-${index}" required disabled><option value="">Choose a day</option>${Array.from({ length: Number(document.getElementById('tour-days').value) || 1 }, (_, day) => `<option value="${day + 1}" ${Number(previousDays.get(String(index))) === day + 1 ? 'selected' : ''}>Day ${day + 1}</option>`).join('')}</select></div>
                     ${(item.activities || []).length ? `<div class="border-top mt-3 pt-3"><p class="small fw-bold text-uppercase tour-muted mb-2" style="letter-spacing: 0.04em;">Activities at this place</p>${item.activities.map((activity, activityIndex) => `<div class="mb-2 pb-2 border-bottom border-light"><label class="form-check small mb-1" style="cursor: pointer;"><input class="form-check-input tour-activity" type="checkbox" value="${escapeHtml(activity.id)}" id="tour-activity-${index}-${activityIndex}" ${previousActivities.has(activity.id) ? 'checked' : ''}><span class="form-check-label"><strong>${escapeHtml(activity.name)}</strong>${activity.visit_duration_minutes ? ` <span class="tour-muted">(${escapeHtml(activity.visit_duration_minutes)} min)</span>` : ''}<br><span class="tour-muted">Route visit: ${escapeHtml(activity.location?.name || activity.location?.address || 'mapped entrance')}</span>${activity.description ? `<br><span class="tour-muted">${escapeHtml(activity.description)}</span>` : ''}</span></label><div class="tour-stop-day-control ms-4 mt-2" hidden><label class="small tour-muted d-block mb-1" for="tour-activity-day-${index}-${activityIndex}">Visit on</label><select class="form-select form-select-sm tour-activity-day no-nice" style="width: 100%;" id="tour-activity-day-${index}-${activityIndex}" data-activity="${escapeHtml(activity.id)}" data-destination-id="${escapeHtml(item.id)}" data-location-id="${escapeHtml(activity.location?.id || '')}" required disabled><option value="">Choose a day</option>${Array.from({ length: Number(document.getElementById('tour-days').value) || 1 }, (_, day) => `<option value="${day + 1}" ${Number(previousActivityDays.get(activity.id) ?? previousDays.get(String(index))) === day + 1 ? 'selected' : ''}>Day ${day + 1}</option>`).join('')}</select></div></div>`).join('')}</div>` : ''}
                 </div></div>`).join('');
+                renderDestinationCategoryFilters(destinations);
                 window.jQuery(stopSearchSelect).val(previousStops).trigger('change');
                 syncStopDaySelectors();
                 renderDaySettings();
@@ -1554,7 +1784,7 @@
                     const disabledLabel = route.quote?.status === 'quotation_required' || unavailable ? 'Our team needs to review this route' : 'Our team needs to check this price';
                     return `<div class="col-md-6"><div class="tour-option d-flex flex-column h-100"><h3 class="h6 fw-bold mb-2">${escapeHtml(label)}</h3><p class="small mb-2"><strong>${route.distance_km == null ? 'Distance unavailable' : `${escapeHtml(route.distance_km)} km total`}</strong>${route.duration_seconds != null ? ` · ${Math.round(route.duration_seconds / 3600 * 10) / 10} hr driving` : ''}</p>${route.quote?.status === 'priced' ? `<p class="h5 fw-bold mb-3" style="color: var(--tour-primary);">${escapeHtml(route.quote.currency)} ${Number(route.quote.total_amount).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</p>` : `<p class="small text-warning fw-semibold mb-3">${escapeHtml(route.quote?.reason || 'Our team needs to check this price.')}</p>`}<div class="mb-3">${(route.days || []).map(day => `<div class="tour-route-stop small"><span class="fw-bold">Day ${day.day_number}:</span> ${escapeHtml((day.schedule || []).map(stop => stop.stop_name).join(' → '))}</div>`).join('')}</div><button type="button" class="btn tour-btn-outline mt-auto tour-use-route" data-route="${label === 'Suggested route' ? 'suggested' : 'original'}" ${canQuote ? '' : 'disabled'}>${canQuote ? 'Use this route and review price' : disabledLabel}</button></div></div>`;
                 };
-                return `<div class="alert ${unavailable ? 'alert-warning' : 'alert-info'}">${routeMessage}</div><div class="row g-3">${renderAggregate(data.original, 'Your selected order')}${renderAggregate(data.suggested, 'Suggested route')}</div><div class="small tour-muted mt-3">${(data.issues || []).map(issue => `<p class="mb-1">Day ${issue.day_number}: ${escapeHtml(issue.message)}</p>`).join('')}<p class="mb-0">Activity visits are route stops only. Entry tickets and reservations are arranged separately.</p></div><div class="mt-3"><button type="button" id="tour-request-review" class="btn tour-btn-outline">Ask our team to review this Tour</button><p class="small tour-muted mt-2 mb-0">Free review — no payment needed yet.</p></div>`;
+                return `<div class="alert ${unavailable ? 'alert-warning' : 'alert-info'}">${routeMessage}</div><div class="row g-3">${renderAggregate(data.original, 'Your selected order')}${renderAggregate(data.suggested, 'Suggested route')}</div><div class="small tour-muted mt-3">${(data.issues || []).map(issue => `<p class="mb-1">Day ${issue.day_number}: ${escapeHtml(issue.message)}</p>`).join('')}<p class="mb-0">Activity visits are route stops only. Entry tickets and reservations are arranged separately.</p></div>`;
             }
             form.addEventListener('submit', async event => {
                 event.preventDefault(); clearError(); invalidateDisplayedQuote();
@@ -1563,11 +1793,23 @@
                 const priorDisabled = busyControls.map(control => control.disabled);
                 busyControls.forEach(control => { control.disabled = true; });
                 try {
+                    const mobileNumber = mobileInput.value.trim();
+                    const whatsappNumber = whatsappInput.value.trim();
+                    if (mobilePhoneInput) {
+                        await mobilePhoneInput.promise;
+                        if (!mobileNumber || !mobilePhoneInput.isValidNumber()) throw new Error('Enter a valid mobile number, including its country code.');
+                    } else if (!mobileNumber) {
+                        throw new Error('Enter your mobile number.');
+                    }
+                    if (whatsappNumber && whatsappPhoneInput) {
+                        await whatsappPhoneInput.promise;
+                        if (!whatsappPhoneInput.isValidNumber()) throw new Error('Enter a valid WhatsApp number, including its country code.');
+                    }
                     const payload = {
                         first_name: document.getElementById('tour-first-name').value,
                         last_name: document.getElementById('tour-last-name').value,
                         email: document.getElementById('tour-email').value,
-                        phone: document.getElementById('tour-phone').value,
+                        phone: mobilePhoneInput ? mobilePhoneInput.getNumber() : mobileNumber,
                         vehicle_class_id: classSelect.value,
                         service_package_id: packageSelect.value || null,
                         start_date: document.getElementById('tour-date').value,
@@ -1579,28 +1821,32 @@
                         days: itineraryDays(),
                         custom_answers: Object.fromEntries([...document.querySelectorAll('[data-custom-name]')].reduce((entries, input) => { if (input.type === 'radio') { if (input.checked) entries.push([input.dataset.customName, input.value]); } else entries.push([input.dataset.customName, input.type === 'checkbox' ? input.checked : input.value]); return entries; }, [])),
                     };
+                    if (whatsappNumber) payload.custom_answers.contact_whatsapp = whatsappPhoneInput ? whatsappPhoneInput.getNumber() : whatsappNumber;
                     if (!payload.vehicle_class_id) throw new Error('Choose a vehicle type.');
                     const created = await request('/tours/drafts', { method: 'POST', body: JSON.stringify(payload) });
                     savedItinerary = created.itinerary;
                     const routes = created.route_options;
+                    const hadPriorRouteOptions = !!currentRouteOptions;
+                    currentRouteOptions = routes;
+                    if (!hadPriorRouteOptions || routes[preferredRouteChoice]?.quote?.status !== 'priced') {
+                        preferredRouteChoice = routes.suggested?.quote?.status === 'priced' ? 'suggested' : 'original';
+                    }
+                    document.getElementById('tour-summary-request-quote').hidden = false;
+                    button.textContent = 'Update route and price';
                     results.innerHTML = renderRoute(routes) + `<div id="tour-quote" class="mt-4"></div>`;
                     results.hidden = false;
                     renderComparedTourMap(routes);
-                    setClassPriceEstimates(routes, 'suggested');
-                    document.getElementById('tour-request-review')?.addEventListener('click', async event => {
-                        const requestButton = event.currentTarget;
-                        requestButton.disabled = true;
-                        try {
-                            const review = await request(`/tours/drafts/${savedItinerary.id}/request-review`, { method: 'POST', body: JSON.stringify({}) });
-                            window.location.assign(review.confirmation_url);
-                        } catch (exception) {
-                            showError(exception.message || 'We could not send your Tour to our team. Please try again.');
-                            requestButton.disabled = false;
-                        }
-                    });
+                    setClassPriceEstimates(routes, preferredRouteChoice);
+                    showEstimatedSummary(routes, preferredRouteChoice);
                     results.querySelectorAll('.tour-use-route').forEach(button => button.addEventListener('click', async () => {
-                        let quoteReady = false;
+                        preferredRouteChoice = button.dataset.route;
+                        currentTourQuote = null;
+                        document.getElementById('tour-summary-checkout').hidden = true;
+                        document.getElementById('tour-summary-terms').hidden = true;
                         setClassPriceEstimates(routes, button.dataset.route);
+                        showEstimatedSummary(routes, preferredRouteChoice);
+                        renderTourSummaryDetails(routes, preferredRouteChoice);
+                        drawComparedTourMap(preferredRouteChoice);
                         button.disabled = true;
                         results.querySelectorAll('.tour-use-route').forEach(option => { option.disabled = true; });
                         try {
@@ -1613,38 +1859,37 @@
                             const q = quote;
                             const amount = Number(q.total_amount).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 });
                             showQuoteSummary(q);
-                            document.getElementById('tour-quote').innerHTML = `<div class="alert alert-success border"><h3 class="h5 fw-bold">Transport price for your selected route</h3><p class="h4 fw-bold">${escapeHtml(q.currency)} ${amount}</p><p class="small">Estimated route distance: ${escapeHtml(q.distance_km)} km. The price is held until ${escapeHtml(new Date(q.expires_at).toLocaleString())}. Vehicle availability is checked when you submit your booking through checkout.</p>${(q.terms_snapshot || []).map(term => `<div class="form-check mb-2"><input class="form-check-input tour-term" type="checkbox" value="${escapeHtml(term.id)}" id="tour-term-${escapeHtml(term.id)}"><label class="form-check-label" for="tour-term-${escapeHtml(term.id)}"><strong>${escapeHtml(term.title || 'Booking terms')}</strong> (${escapeHtml(term.version || 'current')}) — I agree</label><div class="small tour-muted ms-4" style="white-space:pre-wrap;line-height:1.55">${escapeHtml(term.content)}</div></div>`).join('')}<button class="btn tour-btn-primary mt-3" id="tour-accept-quote" type="button">Accept price and continue to checkout</button></div>`;
-                            quoteReady = true;
-                            document.getElementById('tour-accept-quote').addEventListener('click', async () => {
-                                const terms = document.querySelectorAll('.tour-term');
-                                if ([...terms].some(item => !item.checked)) { showError('Please accept each required booking term to continue.'); return; }
-                                const acceptButton = document.getElementById('tour-accept-quote'); acceptButton.disabled = true;
-                                try {
-                                    await request(`/tours/drafts/${savedItinerary.id}/quotes/${q.id}/accept`, { method: 'POST', body: JSON.stringify({ expected_revision: savedItinerary.revision, accept_terms: true }) });
-                                    const checkout = await request(`/tours/drafts/${savedItinerary.id}/booking`, { method: 'POST', body: JSON.stringify({ quote_id: q.id, expected_revision: savedItinerary.revision }) });
-                                    window.location.assign(checkout.checkout_url);
-                                } catch (exception) { showError(exception.message || 'We could not submit the Tour booking. Your accepted quote is saved so you can try again.'); acceptButton.disabled = false; }
-                            });
+                            renderTourSummaryDetails(routes, preferredRouteChoice);
+                            document.getElementById('tour-quote').innerHTML = `<div class="alert alert-success border small mb-0">${escapeHtml(q.currency)} ${amount} is held for 30 minutes. Your summary is ready to continue to checkout.</div>`;
                         } catch (exception) {
                             showError(exception.message || 'We could not prepare the quote. Please review your route and try again.');
-                        } finally { results.querySelectorAll('.tour-use-route').forEach(option => { option.disabled = quoteReady; }); }
+                } finally { results.querySelectorAll('.tour-use-route').forEach(option => { option.disabled = option.dataset.route && (currentRouteOptions?.[option.dataset.route]?.quote?.status !== 'priced' || currentRouteOptions?.status !== 'ready'); }); }
                     }));
                 } catch (exception) { showError(exception.message || 'We could not plan this route. Please check your choices and try again.'); }
                 finally { busyControls.forEach((control, index) => { control.disabled = priorDisabled[index]; }); button.disabled = false; document.getElementById('tour-working').hidden = true; }
             });
             packageSelect.addEventListener('change', () => { clearAiSuggestion(); limitPackageClasses(); applyPackageTemplate(); });
-            form.addEventListener('input', event => {
-                if (results.contains(event.target) || event.target.closest('#tour-ai-helper') || event.target.type === 'search') return;
-                invalidateDisplayedQuote();
-                if (event.target.closest('#tour-step-2')) renderSelectedTourMap();
-            });
-            form.addEventListener('change', event => {
-                if (results.contains(event.target) || event.target.closest('#tour-ai-helper') || event.target.type === 'search') return;
-                if (event.target.matches('.tour-class-choice')) return;
-                invalidateDisplayedQuote();
-                if (event.target.matches('.tour-day-end')) refreshVisitDayOptions();
-                if (event.target.closest('#tour-step-2')) renderSelectedTourMap();
-            });
+            function isPricingField(input) {
+                return input.matches('#tour-date,#tour-days,#tour-time,#tour-adults,#tour-children,#tour-child-seats,#tour-luggage,#tour-package,#tour-class,#tour-start,.tour-class-choice,.tour-day-end,.tour-place-day,.tour-destination,.tour-activity,.tour-activity-day')
+                    || (input.matches('[data-custom-name]') && !!input.closest('#tour-custom-fields'));
+            }
+            function handleTripFormChange(event) {
+                const input = event.target;
+                if (results.contains(input) || input.closest('#tour-ai-helper') || input.type === 'search') return;
+                if (event.type === 'input' && !isPricingField(input)) return;
+                if (event.type === 'change' && input.matches('.tour-day-end')) refreshVisitDayOptions();
+                if (input.closest('#tour-step-2')) {
+                    renderSelectedTourMap();
+                    renderTourItinerarySummary();
+                }
+                renderTourSummaryDetails();
+                if (isPricingField(input)) {
+                    invalidateDisplayedQuote();
+                    scheduleAutomaticPriceRefresh();
+                }
+            }
+            form.addEventListener('input', handleTripFormChange);
+            form.addEventListener('change', handleTripFormChange);
             document.getElementById('tour-map-route-options').addEventListener('click', event => {
                 const button = event.target.closest('[data-map-route]');
                 if (button) drawComparedTourMap(button.dataset.mapRoute);
@@ -1676,7 +1921,7 @@
             });
             document.getElementById('tour-verify-code')?.addEventListener('click', async () => {
                 const status = document.getElementById('tour-code-status');
-                try { const customer = await request('/checkout/customer-email/verify-code', { method: 'POST', body: JSON.stringify({ channel: 'email', value: document.getElementById('tour-email').value.trim(), code: document.getElementById('tour-code').value.trim() }) }); for (const [field, id] of [['first_name', 'tour-first-name'], ['last_name', 'tour-last-name'], ['email', 'tour-email'], ['phone', 'tour-phone']]) if (customer[field]) document.getElementById(id).value = customer[field]; status.textContent = 'Your details are verified.'; }
+                try { const customer = await request('/checkout/customer-email/verify-code', { method: 'POST', body: JSON.stringify({ channel: 'email', value: document.getElementById('tour-email').value.trim(), code: document.getElementById('tour-code').value.trim() }) }); for (const [field, id] of [['first_name', 'tour-first-name'], ['last_name', 'tour-last-name'], ['email', 'tour-email']]) if (customer[field]) document.getElementById(id).value = customer[field]; if (customer.phone) mobilePhoneInput ? mobilePhoneInput.setNumber(customer.phone) : mobileInput.value = customer.phone; status.textContent = 'Your details are verified.'; }
                 catch (exception) { status.textContent = exception.message; }
             });
             document.getElementById('tour-ai-suggest').addEventListener('click', async event => {
@@ -1708,9 +1953,41 @@
                     button.disabled = false;
                 }
             });
+            document.getElementById('tour-summary-terms').addEventListener('change', () => {
+                const terms = [...document.querySelectorAll('#tour-summary-terms .tour-term')];
+                document.getElementById('tour-summary-checkout').disabled = terms.some(term => !term.checked);
+            });
+            document.getElementById('tour-summary-checkout').addEventListener('click', async event => {
+                const button = event.currentTarget;
+                if (!currentTourQuote || !savedItinerary) return;
+                const terms = [...document.querySelectorAll('#tour-summary-terms .tour-term')];
+                if (terms.some(term => !term.checked)) { showError('Please accept each booking term before continuing.'); return; }
+                button.disabled = true;
+                try {
+                    await request(`/tours/drafts/${savedItinerary.id}/quotes/${currentTourQuote.id}/accept`, { method: 'POST', body: JSON.stringify({ expected_revision: savedItinerary.revision, accept_terms: true }) });
+                    const checkout = await request(`/tours/drafts/${savedItinerary.id}/booking`, { method: 'POST', body: JSON.stringify({ quote_id: currentTourQuote.id, expected_revision: savedItinerary.revision }) });
+                    window.location.assign(checkout.checkout_url);
+                } catch (exception) {
+                    showError(exception.message || 'We could not submit the Tour booking. Please request an updated price and try again.');
+                    button.disabled = false;
+                }
+            });
+            document.getElementById('tour-summary-request-quote').addEventListener('click', async event => {
+                const button = event.currentTarget;
+                if (!savedItinerary) return;
+                button.disabled = true;
+                try {
+                    const review = await request(`/tours/drafts/${savedItinerary.id}/request-review`, { method: 'POST', body: JSON.stringify({}) });
+                    window.location.assign(review.confirmation_url);
+                } catch (exception) {
+                    showError(exception.message || 'We could not send your Tour quotation request. Please try again.');
+                    button.disabled = false;
+                }
+            });
             document.getElementById('tour-mobile-review').addEventListener('click', () => {
-                document.getElementById('tour-quote')?.scrollIntoView({ behavior: 'smooth', block: 'center' });
-                document.getElementById('tour-accept-quote')?.focus({ preventScroll: true });
+                document.getElementById('tour-summary-checkout').hidden
+                    ? document.getElementById('tour-results').scrollIntoView({ behavior: 'smooth', block: 'center' })
+                    : document.getElementById('tour-summary-checkout').scrollIntoView({ behavior: 'smooth', block: 'center' });
             });
 
             const today = new Date();

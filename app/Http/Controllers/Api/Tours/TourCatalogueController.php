@@ -244,6 +244,7 @@ class TourCatalogueController extends Controller
                 'code' => $destination->code,
                 'name' => $destination->name,
                 'description' => $destination->description,
+                'category' => $destination->category,
                 'timezone' => $destination->timezone,
                 'location' => $this->locationPayload($destination->location),
                 'activities' => $destination->activities->map(fn(TourActivity $activity) => [

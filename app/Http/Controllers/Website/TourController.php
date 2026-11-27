@@ -12,6 +12,7 @@ use App\Models\Inquiry;
 use App\Models\Service\ServiceType;
 use App\Models\Tours\TourItinerary;
 use App\Models\User;
+use App\Models\Website\FAQCategory;
 use App\Services\CustomerService;
 use App\Services\CartService;
 use App\Services\CurrencyService;
@@ -33,10 +34,12 @@ class TourController extends Controller
         abort_unless(app(WebsiteSettingsService::class)->getTourService(true), 404);
 
         $bookingSettings = app(WebsiteSettingsService::class)->getBookingSettings();
+        $tourFaqs = FAQCategory::active()->where('slug', 'tours')->first()?->activeFaqs ?? collect();
 
         return view('tours.index', [
             'guestBookingEnabled' => filter_var($bookingSettings['guest_booking_enabled'] ?? true, FILTER_VALIDATE_BOOLEAN),
             'customerLookupEnabled' => filter_var($bookingSettings['checkout_returning_customer_lookup_enabled'] ?? true, FILTER_VALIDATE_BOOLEAN),
+            'tourFaqs' => $tourFaqs,
         ]);
     }
 
@@ -300,8 +303,8 @@ class TourController extends Controller
                 'email' => $user->email,
                 'phone' => $user->phone,
                 'inquiry_type' => 'tour_review',
-                'subject' => 'Tour route or vehicle availability review',
-                'message' => 'The customer requested staff review of the saved Tour itinerary. No vehicle has been booked or reserved.',
+                'subject' => 'Tour quotation request',
+                'message' => 'The customer requested a quotation for the saved Tour itinerary. Please review the route and vehicle availability. No vehicle has been booked or reserved.',
                 'status' => 'open',
                 'source' => 'web',
                 'payload' => [
@@ -341,7 +344,7 @@ class TourController extends Controller
                 app(SmsAutomationService::class)->queueWebsiteInquiryReceived($inquiry);
                 app(MailDispatchService::class)->sendToCustomer(
                     (string) $inquiry->email,
-                    new InquiryConfirmationMail($inquiry, 'Tour review request', 'We have received your Tour plan and will review the route or vehicle availability.')
+                    new InquiryConfirmationMail($inquiry, 'Tour quotation request', 'We have received your Tour plan and will prepare a quotation after checking the route and vehicle availability.')
                 );
             } catch (\Throwable $exception) {
                 report($exception);

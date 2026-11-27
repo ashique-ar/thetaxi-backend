@@ -28,10 +28,10 @@
                 <div class="alert alert-light"><strong>Tour transport:</strong> {{ $tourClass ?? 'Vehicle type' }}@if ($tourAmount !== null) · quoted {{ $tourCurrency }} {{ number_format((float) $tourAmount, 2) }}@endif</div>
             @endif
         @else
-            <span class="badge text-bg-info mb-3">Staff review requested</span>
-            <h1 class="h2">Your Tour review request has been received</h1>
+            <span class="badge text-bg-info mb-3">Quotation requested</span>
+            <h1 class="h2">Your Tour quotation request has been received</h1>
             <p class="lead">Reference <strong>{{ $inquiry->inquiry_number }}</strong></p>
-            <p>Our team will review your route or vehicle availability and contact you. This request does not book or reserve a vehicle, and no payment has been taken.</p>
+            <p>Our team will check your route and vehicle availability, then contact you with a quotation. This request does not book or reserve a vehicle, and no payment has been taken.</p>
             @if (data_get($inquiry->payload, 'vehicle_class'))
                 <div class="alert alert-light"><strong>Requested vehicle:</strong> {{ data_get($inquiry->payload, 'vehicle_class') }}@if (data_get($inquiry->payload, 'quote.total_amount') !== null) · quote {{ data_get($inquiry->payload, 'quote.currency') }} {{ number_format((float) data_get($inquiry->payload, 'quote.total_amount'), 2) }}@endif</div>
             @endif

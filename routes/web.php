@@ -32,7 +32,7 @@ Route::middleware('tours.schema')->group(function (): void {
     Route::get('/tours/confirmation', [TourController::class, 'confirmation'])->name('tours.confirmation');
     Route::post('/tours/drafts', [TourController::class, 'storeDraft'])
         ->defaults('tour_pricing_context', 'public')->defaults('tour_booking_context', 'customer')
-        ->middleware('throttle:10,1')->name('tours.drafts.store');
+        ->middleware('throttle:30,1')->name('tours.drafts.store');
     Route::post('/tours/drafts/{id}/quote', [TourController::class, 'quote'])
         ->whereUuid('id')->defaults('tour_pricing_context', 'public')->defaults('tour_booking_context', 'customer')
         ->middleware('throttle:10,1')->name('tours.drafts.quote');

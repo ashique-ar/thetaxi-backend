@@ -18,6 +18,7 @@ class TourDestination extends BaseModel
         'code',
         'name',
         'description',
+        'category',
         'timezone',
         'sort_order',
         'is_published',
