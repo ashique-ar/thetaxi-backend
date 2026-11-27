@@ -661,11 +661,11 @@
                         </div>
 
                         <div class="row g-3 mb-4">
-                            <div class="col-md-6">
+                            <div class="col-md-6" id="tour-service-field">
                                 <label for="tour-service" class="form-label">Tour service *</label>
                                 <select id="tour-service" class="form-select no-nice" required></select>
                             </div>
-                            <div class="col-md-6">
+                            <div class="col-md-6" id="tour-package-field">
                                 <label for="tour-package" class="form-label">Handcrafted package <span class="text-lowercase fw-normal tour-muted">(optional)</span></label>
                                 <select id="tour-package" class="form-select no-nice">
                                     <option value="">Choose later</option>
@@ -706,7 +706,7 @@
                                     <input id="tour-luggage" type="number" class="form-control" min="0" max="100" value="0" required>
                                 </div>
                             </div>
-                            <p class="form-text mb-0 mt-2">At checkout, select matching add-ons tagged child-seat. Seat availability is subject to confirmation.</p>
+                            <p class="form-text mb-0 mt-2">Confirm child seats at checkout.</p>
                         </fieldset>
 
                         <div id="tour-custom-fields" class="row g-3 mb-4"></div>
@@ -718,20 +718,18 @@
                             <select id="tour-class" class="d-none no-nice" tabindex="-1" aria-hidden="true"></select>
                         </fieldset>
 
-                        <!-- Optional AI Itinerary Ideas -->
+                        <!-- Optional Trip Ideas -->
                         <div id="tour-ai-helper" class="mt-4" hidden>
                             <div class="tour-ai-box">
-                                <h3 class="h6 fw-bold mb-1">Optional itinerary ideas</h3>
+                                <h3 class="h6 fw-bold mb-1">Need trip ideas?</h3>
                                 <p class="small tour-muted mb-3">
-                                    Share a few interests to get an editable draft based on our published places. We send only
-                                    your trip length, optional start date, interests, and the published tour catalogue.
-                                    Suggestions do not confirm a route, price, availability, tickets, or reservations.
+                                    Tell us your interests and we’ll suggest a starting plan you can edit anytime.
                                 </p>
                                 <label for="tour-interests" class="form-label">What are you interested in? <span class="text-lowercase fw-normal tour-muted">(optional)</span></label>
                                 <textarea id="tour-interests" class="form-control" rows="2" maxlength="500"
                                     placeholder="For example: beaches, wildlife, history"></textarea>
                                 <div class="d-flex flex-wrap align-items-center gap-2 mt-3">
-                                    <button id="tour-ai-suggest" class="btn tour-btn-outline btn-sm" type="button">Suggest itinerary ideas</button>
+                                    <button id="tour-ai-suggest" class="btn tour-btn-outline btn-sm" type="button">Suggest a plan</button>
                                     <span id="tour-ai-status" class="small tour-muted" role="status" aria-live="polite"></span>
                                 </div>
                                 <div id="tour-ai-preview" class="mt-3" hidden></div>
@@ -774,9 +772,6 @@
                         </search>
 
                         <div id="tour-destinations" class="row g-3"></div>
-                        <p class="small tour-muted mt-3 mb-0">
-                            Only locations published by our team are selectable here. Activities add a stop to your route when selected.
-                        </p>
                     </section>
 
                     <!-- STEP 3: Review Route & Transport Price -->
@@ -785,7 +780,7 @@
                             <span class="tour-step-badge">3</span>
                             <div>
                                 <h2 class="tour-card-title">Review Your Route &amp; Transport Price</h2>
-                                <p class="tour-card-subtitle">We calculate the route and configured transport price, then connect you to our shared checkout.</p>
+                                <p class="tour-card-subtitle">Get an instant price for your route and continue to checkout.</p>
                             </div>
                         </div>
 
@@ -884,25 +879,19 @@
                                     <svg width="16" height="16" class="flex-shrink-0 mt-1" style="color: var(--tour-emerald);" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true">
                                         <path d="M5 13l4 4L19 7" stroke-linecap="round" stroke-linejoin="round" stroke-width="2.5"></path>
                                     </svg>
-                                    <span>The suggested order tries to reduce backtracking while respecting activity opening times.</span>
+                                    <span>Smart route with less backtracking</span>
                                 </li>
                                 <li class="d-flex align-items-start gap-2">
                                     <svg width="16" height="16" class="flex-shrink-0 mt-1" style="color: var(--tour-emerald);" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true">
                                         <path d="M5 13l4 4L19 7" stroke-linecap="round" stroke-linejoin="round" stroke-width="2.5"></path>
                                     </svg>
-                                    <span>Displayed transport price is based on your selected route and current rates.</span>
+                                    <span>Instant transport quote</span>
                                 </li>
                                 <li class="d-flex align-items-start gap-2">
                                     <svg width="16" height="16" class="flex-shrink-0 mt-1" style="color: var(--tour-emerald);" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true">
                                         <path d="M5 13l4 4L19 7" stroke-linecap="round" stroke-linejoin="round" stroke-width="2.5"></path>
                                     </svg>
-                                    <span>Vehicle availability is checked as part of our shared checkout process.</span>
-                                </li>
-                                <li class="d-flex align-items-start gap-2">
-                                    <svg width="16" height="16" class="flex-shrink-0 mt-1" style="color: var(--tour-emerald);" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true">
-                                        <path d="M5 13l4 4L19 7" stroke-linecap="round" stroke-linejoin="round" stroke-width="2.5"></path>
-                                    </svg>
-                                    <span>Activity visits are route stops only; tickets and entry fees are arranged separately.</span>
+                                    <span>Attraction tickets not included</span>
                                 </li>
                             </ul>
                         </div>
@@ -1036,15 +1025,23 @@
             function currentService() { return services.find(item => item.id === serviceSelect.value); }
             function fillServices() {
                 serviceSelect.innerHTML = services.map(item => `<option value="${escapeHtml(item.id)}">${escapeHtml(item.name)}</option>`).join('');
+                if (services.length === 1) serviceSelect.value = services[0].id;
+                document.getElementById('tour-service-field').hidden = services.length <= 1;
             }
             function fillOptions() {
                 const service = currentService();
+                const packages = service?.packages || [];
                 classSelect.innerHTML = '<option value="">Choose a vehicle class</option>' + (service?.classes || []).map(item => `<option value="${escapeHtml(item.id)}">${escapeHtml(item.display_name || item.name)}${item.max_passengers ? ` — up to ${escapeHtml(item.max_passengers)} passengers` : ''}</option>`).join('');
-                packageSelect.innerHTML = '<option value="">Choose later</option>' + (service?.packages || []).map(item => `<option value="${escapeHtml(item.id)}">${escapeHtml(item.name)}</option>`).join('');
+                packageSelect.innerHTML = '<option value="">Choose later</option>' + packages.map(item => `<option value="${escapeHtml(item.id)}">${escapeHtml(item.name)}</option>`).join('');
+                if (packages.length === 1) packageSelect.value = packages[0].id;
+                const packageField = document.getElementById('tour-package-field');
+                packageField.hidden = packages.length <= 1;
+                packageField.classList.toggle('col-md-12', services.length <= 1 && packages.length > 1);
+                packageField.classList.toggle('col-md-6', !(services.length <= 1 && packages.length > 1));
                 document.getElementById('tour-ai-helper').hidden = !service?.ai_itinerary_helper_enabled;
                 document.getElementById('tour-ai-preview').hidden = true;
                 document.getElementById('tour-ai-status').textContent = '';
-                renderClassCards();
+                limitPackageClasses();
                 renderCustomFields();
             }
             function renderCustomFields() {
@@ -1272,7 +1269,7 @@
                     const disabledLabel = route.quote?.status === 'quotation_required' || unavailable ? 'Staff review required' : 'Price needs staff review';
                     return `<div class="col-md-6"><div class="tour-option d-flex flex-column h-100"><h3 class="h6 fw-bold mb-2">${escapeHtml(label)}</h3><p class="small mb-2"><strong>${route.distance_km == null ? 'Distance unavailable' : `${escapeHtml(route.distance_km)} km total`}</strong>${route.duration_seconds != null ? ` · ${Math.round(route.duration_seconds / 3600 * 10) / 10} hr driving` : ''}</p>${route.quote?.status === 'priced' ? `<p class="h5 fw-bold mb-3" style="color: var(--tour-primary);">${escapeHtml(route.quote.currency)} ${Number(route.quote.total_amount).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</p>` : `<p class="small text-warning fw-semibold mb-3">${escapeHtml(route.quote?.reason || 'Price needs staff review.')}</p>`}<div class="mb-3">${(route.days || []).map(day => `<div class="tour-route-stop small"><span class="fw-bold">Day ${day.day_number}:</span> ${escapeHtml((day.schedule || []).map(stop => stop.stop_name).join(' → '))}</div>`).join('')}</div><button type="button" class="btn tour-btn-outline mt-auto tour-use-route" data-route="${label === 'Suggested route' ? 'suggested' : 'original'}" ${canQuote ? '' : 'disabled'}>${canQuote ? 'Use this route and review price' : disabledLabel}</button></div></div>`;
                 };
-                return `<div class="alert ${unavailable ? 'alert-warning' : 'alert-info'}">${routeMessage}</div><div class="row g-3">${renderAggregate(data.original, 'Your selected order')}${renderAggregate(data.suggested, 'Suggested route')}</div><div class="small tour-muted mt-3">${(data.issues || []).map(issue => `<p class="mb-1">Day ${issue.day_number}: ${escapeHtml(issue.message)}</p>`).join('')}<p class="mb-0">Activity visits are included in your route only. Tickets, entry fees and activity reservations are not included. Please arrange these separately. Activity booking will be introduced in a future release.</p></div><div class="mt-3"><button type="button" id="tour-request-review" class="btn tour-btn-outline">Ask our team to review this Tour</button><p class="small tour-muted mt-2 mb-0">This sends your itinerary for follow-up only. It does not book a vehicle or take payment.</p></div>`;
+                return `<div class="alert ${unavailable ? 'alert-warning' : 'alert-info'}">${routeMessage}</div><div class="row g-3">${renderAggregate(data.original, 'Your selected order')}${renderAggregate(data.suggested, 'Suggested route')}</div><div class="small tour-muted mt-3">${(data.issues || []).map(issue => `<p class="mb-1">Day ${issue.day_number}: ${escapeHtml(issue.message)}</p>`).join('')}<p class="mb-0">Activity visits are route stops only. Entry tickets and reservations are arranged separately.</p></div><div class="mt-3"><button type="button" id="tour-request-review" class="btn tour-btn-outline">Ask our team to review this Tour</button><p class="small tour-muted mt-2 mb-0">Free review — no payment needed yet.</p></div>`;
             }
             form.addEventListener('submit', async event => {
                 event.preventDefault(); clearError(); invalidateDisplayedQuote();
@@ -1348,7 +1345,7 @@
                 } catch (exception) { showError(exception.message || 'We could not plan this route. Please check your choices and try again.'); }
                 finally { busyControls.forEach((control, index) => { control.disabled = priorDisabled[index]; }); button.disabled = false; document.getElementById('tour-working').hidden = true; }
             });
-            serviceSelect.addEventListener('change', async () => { selectedTemplateDays = []; fillOptions(); try { await loadCatalogue(); } catch (exception) { showError(exception.message); } });
+            serviceSelect.addEventListener('change', async () => { selectedTemplateDays = []; fillOptions(); try { await loadCatalogue(); if (packageSelect.value) applyPackageTemplate(); } catch (exception) { showError(exception.message); } });
             packageSelect.addEventListener('change', () => { clearAiSuggestion(); limitPackageClasses(); applyPackageTemplate(); });
             document.getElementById('tour-destination-search').addEventListener('input', filterDestinationCards);
             form.addEventListener('input', event => {
@@ -1398,7 +1395,7 @@
                     interests: document.getElementById('tour-interests').value.trim(),
                 };
                 if (requestData.duration_days > 14) {
-                    status.textContent = 'AI ideas support trips up to 14 days. You can still plan longer trips manually.';
+                    status.textContent = 'Trip ideas are available for trips up to 14 days. You can still plan longer trips manually.';
                     return;
                 }
                 const requestKey = JSON.stringify(requestData);
@@ -1429,7 +1426,7 @@
                 services = data.services || [];
                 if (!services.length) throw new Error('Tours are not available at the moment.');
                 fillServices(); fillOptions(); return loadCatalogue();
-            }).then(() => { loading.hidden = true; form.hidden = false; }).catch(exception => { loading.hidden = true; showError(exception.message); });
+            }).then(() => { if (packageSelect.value) applyPackageTemplate(); loading.hidden = true; form.hidden = false; }).catch(exception => { loading.hidden = true; showError(exception.message); });
         })();
     </script>
 @endpush

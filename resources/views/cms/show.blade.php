@@ -359,8 +359,32 @@
             text-underline-offset: 3px;
         }
 
-        .cms-pdf-reader { width: 100%; }
-        .cms-pdf-page { display: block; width: 100%; height: auto; background: #f3f4f6; box-shadow: 0 2px 12px rgba(15, 23, 42, .12); }
+        .cms-pdf-reader { --cms-pdf-accent: var(--primary-color1, #BF2629); width: 100%; color: #172033; }
+        .cms-pdf-actions { display:flex; flex-wrap:wrap; gap:10px; margin-bottom:14px; }
+        .cms-pdf-actions a { display:inline-flex; align-items:center; gap:7px; color:var(--cms-pdf-accent); font-weight:700; text-decoration:underline; text-underline-offset:3px; }
+        .cms-pdf-actions a:hover { color:var(--cms-pdf-accent); opacity:.78; }
+        .cms-pdf-frame { overflow:hidden; border:1px solid #e5e7eb; border-radius:14px; background:#f1f3ff; box-shadow:0 12px 32px rgba(15,23,42,.09); }
+        .cms-pdf-toolbar { display:flex; align-items:center; gap:12px; min-height:52px; padding:8px 14px; background:#fff; border-bottom:1px solid #e5e7eb; }
+        .cms-pdf-filename { display:flex; align-items:center; gap:8px; min-width:0; margin-right:auto; font-size:.9rem; font-weight:700; overflow-wrap:anywhere; }
+        .cms-pdf-filename i { color:var(--cms-pdf-accent); font-size:1.1rem; }
+        .cms-pdf-page-count { padding:4px 9px; border-radius:999px; background:#f1f3ff; color:#475569; font-size:.75rem; white-space:nowrap; }
+        .cms-pdf-zoom { display:flex; align-items:center; gap:4px; padding:2px 5px; border-radius:8px; background:#f8fafc; font-size:.8rem; }
+        .cms-pdf-zoom button,.cms-pdf-fullscreen { display:inline-grid; place-items:center; width:30px; height:30px; border:0; border-radius:6px; background:transparent; color:#334155; }
+        .cms-pdf-zoom button:not(:disabled):hover,.cms-pdf-fullscreen:hover { background:#eef2ff; color:var(--cms-pdf-accent); }
+        .cms-pdf-zoom button:disabled { opacity:.4; }
+        .cms-pdf-zoom span { min-width:42px; text-align:center; }
+        .cms-pdf-loading { display:flex; flex-direction:column; align-items:center; gap:10px; width:min(100% - 32px, 320px); margin:48px auto; padding:20px; border-radius:12px; background:#fff; color:#475569; text-align:center; font-size:.9rem; box-shadow:0 8px 20px rgba(15,23,42,.1); }
+        .cms-pdf-spinner { width:22px; height:22px; border:2px solid #dbe3ef; border-top-color:var(--cms-pdf-accent); border-radius:50%; animation:cms-pdf-spin .75s linear infinite; }
+        .cms-pdf-progress { width:100%; height:4px; overflow:hidden; border-radius:5px; background:#e8edf5; }
+        .cms-pdf-progress span { display:block; width:0; height:100%; background:var(--cms-pdf-accent); transition:width .2s ease; }
+        @keyframes cms-pdf-spin { to { transform:rotate(360deg); } }
+        .cms-pdf-pages { overflow:auto; padding:24px; }
+        .cms-pdf-page { display:block; width:var(--cms-pdf-zoom, 100%); max-width:none; height:auto; margin:0 auto 20px; background:#fff; box-shadow:0 5px 16px rgba(15,23,42,.16); transition:width .15s ease; }
+        .cms-pdf-page:last-child { margin-bottom:0; }
+        .cms-pdf-error { margin:18px; padding:14px 16px; border-left:3px solid var(--cms-pdf-accent); border-radius:0 8px 8px 0; background:#fff; color:#475569; }
+        .cms-pdf-frame:fullscreen { overflow:auto; border:0; border-radius:0; background:#f1f3ff; }
+        .cms-pdf-frame:fullscreen .cms-pdf-toolbar { position:sticky; top:0; z-index:2; }
+        @media(max-width:575px) { .cms-pdf-toolbar { flex-wrap:wrap; gap:7px; padding:8px; } .cms-pdf-filename { flex-basis:calc(100% - 44px); } .cms-pdf-page-count { margin-right:auto; } .cms-pdf-pages { padding:12px; } }
         [data-magazine-book] { margin: 0 auto; }
 
         .content-body img {
@@ -540,7 +564,7 @@
                         @if ($pdfUrl && $pdfPlacement === 'top')
                             @include('cms.partials.pdf-reader')
                         @endif
-                        
+
                         <div class="content-body mt-3" id="articleBody">
                             {!! $content->renderable_body ?? '' !!}
                         </div>

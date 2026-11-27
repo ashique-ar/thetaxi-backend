@@ -137,8 +137,11 @@ class TourLaunchSeeder extends Seeder
         if (!$sourceSlab) {
             throw new RuntimeException('No active public Day Rental 1-day slab exists; Tour starter rates were not guessed.');
         }
+        if (!is_numeric($sourceSlab->max_km_per_day) || (float) $sourceSlab->max_km_per_day <= 0) {
+            throw new RuntimeException('The Day Rental 1-day slab has no positive included-kilometre allowance; Tour pricing was not seeded.');
+        }
         $rateByGroup = DB::table('vehicle_group_pricing')->where('slab_definition_id', $sourceSlab->id)
-            ->where('rate_type', 'per_day')->where('is_active', true)->whereNull('owner_type')->whereNull('owner_id')
+            ->where('rate_type', 'per_day')->where('is_active', true)->where('rate', '>', 0)->whereNull('owner_type')->whereNull('owner_id')
             ->whereNotNull('vehicle_group_id')->get(['vehicle_group_id', 'rate', 'includes_fuel', 'includes_driver'])->keyBy('vehicle_group_id');
         $sourceDistanceDefinition = DB::table('vehicle_pricing_common_rate_definitions')
             ->whereIn('code', ['extra_km_rate', 'distance_rate'])->where('is_active', true)->whereNull('deleted_at')
@@ -150,7 +153,7 @@ class TourLaunchSeeder extends Seeder
         }
         $distanceRateByGroup = DB::table('vehicle_group_common_rate_pricing')
             ->whereIn('common_rate_definition_id', $sourceDistanceDefinition)->where('is_active', true)->whereNull('deleted_at')
-            ->whereNull('owner_type')->whereNull('owner_id')->whereNotNull('vehicle_group_id')->whereNotNull('value')
+            ->whereNull('owner_type')->whereNull('owner_id')->whereNotNull('vehicle_group_id')->where('value', '>', 0)
             ->get(['vehicle_group_id', 'value'])->groupBy('vehicle_group_id')
             ->map(fn($rows) => $rows->min(fn($row) => (float) $row->value));
         $classes = [
@@ -269,11 +272,18 @@ class TourLaunchSeeder extends Seeder
     private function setSelectedServiceWithoutEnablingSales(string $serviceId): void
     {
         $selected = DB::table('business_settings')->where('type', 'tour_service_type_id')->first();
-        if (!$selected) {
-            DB::table('business_settings')->insert([
-                'id' => (string) Str::uuid(), 'type' => 'tour_service_type_id', 'value' => $serviceId,
-                'created_at' => now(), 'updated_at' => now(),
-            ]);
+        if (!$selected || !filled($selected->value)) {
+            if ($selected) {
+                DB::table('business_settings')->where('id', $selected->id)->update(['value' => $serviceId, 'updated_at' => now()]);
+            } else {
+                DB::table('business_settings')->insert([
+                    'id' => (string) Str::uuid(), 'type' => 'tour_service_type_id', 'value' => $serviceId,
+                    'created_at' => now(), 'updated_at' => now(),
+                ]);
+            }
+            if (filter_var(DB::table('business_settings')->where('type', 'tours_enabled')->value('value'), FILTER_VALIDATE_BOOLEAN)) {
+                DB::table('business_settings')->where('type', 'tours_enabled')->update(['value' => 'false', 'updated_at' => now()]);
+            }
         }
         if (!DB::table('business_settings')->where('type', 'tours_enabled')->exists()) {
             DB::table('business_settings')->insert([
