@@ -28,8 +28,9 @@
 @endif
 <!-- End Booking Form Section -->
 @if ($tourBookingEnabled ?? false)
-    <section class="container-fluid my-4 px-3 px-lg-4" aria-labelledby="homepage-tour-title">
-        <div class="homepage-tour-banner">
+    <section class="homepage-tour-banner-section my-4" aria-labelledby="homepage-tour-title">
+        <div class="container">
+            <div class="homepage-tour-banner">
             <div class="homepage-tour-banner__main">
                 <p class="homepage-tour-banner__eyebrow"><i class="bi bi-map" aria-hidden="true"></i> Islandwide car &amp; driver service</p>
                 <h2 id="homepage-tour-title">Private Island Tours &amp; Multi-Day Hire</h2>
@@ -43,6 +44,7 @@
             <div class="homepage-tour-banner__actions">
                 <a class="homepage-tour-banner__button" href="{{ route('tours.index') }}">Plan your itinerary <span aria-hidden="true">→</span></a>
                 <a class="homepage-tour-banner__routes" href="{{ url('/#destinations-section') }}">Browse popular routes <span aria-hidden="true">↓</span></a>
+            </div>
             </div>
         </div>
     </section>

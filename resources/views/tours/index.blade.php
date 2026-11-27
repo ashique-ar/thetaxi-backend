@@ -264,6 +264,13 @@
             border: 1px solid #e2e8f0;
             border-radius: 0.75rem;
             padding: 1rem 1.125rem;
+            clear: both;
+            width: 100%;
+        }
+
+        #tour-day-settings,
+        #tour-destinations {
+            clear: both;
         }
 
         .tour-subpanel-title {
@@ -656,11 +663,11 @@
                         <div class="row g-3 mb-4">
                             <div class="col-md-6">
                                 <label for="tour-service" class="form-label">Tour service *</label>
-                                <select id="tour-service" class="form-select" required></select>
+                                <select id="tour-service" class="form-select no-nice" required></select>
                             </div>
                             <div class="col-md-6">
                                 <label for="tour-package" class="form-label">Handcrafted package <span class="text-lowercase fw-normal tour-muted">(optional)</span></label>
-                                <select id="tour-package" class="form-select">
+                                <select id="tour-package" class="form-select no-nice">
                                     <option value="">Choose later</option>
                                 </select>
                             </div>
@@ -708,7 +715,7 @@
                         <fieldset class="border-0 p-0 m-0">
                             <legend class="tour-label mb-2">Select Dedicated Private Vehicle *</legend>
                             <div id="tour-class-cards" class="row g-3" role="radiogroup" aria-label="Vehicle class"></div>
-                            <select id="tour-class" class="d-none" tabindex="-1" aria-hidden="true"></select>
+                            <select id="tour-class" class="d-none no-nice" tabindex="-1" aria-hidden="true"></select>
                         </fieldset>
 
                         <!-- Optional AI Itinerary Ideas -->
@@ -751,7 +758,7 @@
                             </search>
                             <div>
                                 <label for="tour-start" class="form-label">Start and finish at *</label>
-                                <select id="tour-start" class="form-select" required>
+                                <select id="tour-start" class="form-select no-nice" required>
                                     <option value="">Choose a listed place</option>
                                 </select>
                             </div>
@@ -1046,7 +1053,7 @@
                     const id = `tour-custom-${field.name}`; const required = field.required ? 'required' : ''; const label = escapeHtml(field.label);
                     let control = '';
                     if (field.type === 'textarea') control = `<textarea class="form-control" id="${escapeHtml(id)}" data-custom-name="${escapeHtml(field.name)}" ${required} placeholder="${escapeHtml(field.placeholder || '')}"></textarea>`;
-                    else if (field.type === 'select') control = `<select class="form-select" id="${escapeHtml(id)}" data-custom-name="${escapeHtml(field.name)}" ${required}><option value="">Choose</option>${(field.options || []).map(option => `<option value="${escapeHtml(option.value)}">${escapeHtml(option.label)}</option>`).join('')}</select>`;
+                    else if (field.type === 'select') control = `<select class="form-select no-nice" id="${escapeHtml(id)}" data-custom-name="${escapeHtml(field.name)}" ${required}><option value="">Choose</option>${(field.options || []).map(option => `<option value="${escapeHtml(option.value)}">${escapeHtml(option.label)}</option>`).join('')}</select>`;
                     else if (field.type === 'radio') control = `<div>${(field.options || []).map((option, index) => `<label class="form-check me-3"><input class="form-check-input" type="radio" id="${escapeHtml(id)}-${index}" name="${escapeHtml(id)}" data-custom-name="${escapeHtml(field.name)}" value="${escapeHtml(option.value)}" ${required && index === 0 ? 'required' : ''}><span class="form-check-label">${escapeHtml(option.label)}</span></label>`).join('')}</div>`;
                     else if (field.type === 'checkbox') control = `<label class="form-check mt-2"><input class="form-check-input" type="checkbox" id="${escapeHtml(id)}" data-custom-name="${escapeHtml(field.name)}" ${required}><span class="form-check-label">${label}</span></label>`;
                     else control = `<input class="form-control" type="${['number', 'date', 'time'].includes(field.type) ? field.type : 'text'}" id="${escapeHtml(id)}" data-custom-name="${escapeHtml(field.name)}" ${required} placeholder="${escapeHtml(field.placeholder || '')}" ${field.type === 'number' && field.validation?.min != null ? `min="${escapeHtml(field.validation.min)}"` : ''} ${field.type === 'number' && field.validation?.max != null ? `max="${escapeHtml(field.validation.max)}"` : ''}>`;
@@ -1133,7 +1140,7 @@
                     const selectedEnd = priorEnds.get(day) || startSelect.value;
                     const label = day === days ? `Day ${day} finish location` : `Day ${day} overnight location`;
                     const help = day === days ? 'Choose where the tour ends. Return to start is selected by default.' : `Day ${day + 1} starts from this location.`;
-                    return `<div class="col-md-6"><div class="tour-day-card h-100"><div class="d-flex align-items-center justify-content-between mb-2"><span class="tour-day-badge">Day ${day}</span><span class="small tour-muted">${day === days ? 'Final Stop' : 'Overnight'}</span></div><search class="d-block mb-2"><label class="form-label" for="tour-day-end-search-${day}">Filter places</label><input id="tour-day-end-search-${day}" type="search" class="form-control form-control-sm" autocomplete="off" autocorrect="off" autocapitalize="none" spellcheck="false" placeholder="Search listed places…"></search><label class="form-label" for="tour-day-end-${day}">${label} *</label><select id="tour-day-end-${day}" class="form-select form-select-sm tour-day-end" data-day="${day}" required><option value="${escapeHtml(startSelect.value)}" ${selectedEnd === startSelect.value ? 'selected' : ''}>Return to start</option>${destinations.map(item => `<option value="${escapeHtml(item.id)}" ${selectedEnd === item.id ? 'selected' : ''}>${escapeHtml(item.name)}</option>`).join('')}</select><div class="form-text">${help}</div></div></div>`;
+                    return `<div class="col-md-6"><div class="tour-day-card h-100"><div class="d-flex align-items-center justify-content-between mb-2"><span class="tour-day-badge">Day ${day}</span><span class="small tour-muted">${day === days ? 'Final Stop' : 'Overnight'}</span></div><search class="d-block mb-2"><label class="form-label" for="tour-day-end-search-${day}">Filter places</label><input id="tour-day-end-search-${day}" type="search" class="form-control form-control-sm" autocomplete="off" autocorrect="off" autocapitalize="none" spellcheck="false" placeholder="Search listed places…"></search><label class="form-label" for="tour-day-end-${day}">${label} *</label><select id="tour-day-end-${day}" class="form-select form-select-sm tour-day-end no-nice" data-day="${day}" required><option value="${escapeHtml(startSelect.value)}" ${selectedEnd === startSelect.value ? 'selected' : ''}>Return to start</option>${destinations.map(item => `<option value="${escapeHtml(item.id)}" ${selectedEnd === item.id ? 'selected' : ''}>${escapeHtml(item.name)}</option>`).join('')}</select><div class="form-text">${help}</div></div></div>`;
                 }).join('');
                 daySettings.querySelectorAll('input[type="search"]').forEach(input => bindLocationSelectSearch(input, document.getElementById(input.id.replace('-search', ''))));
             }
@@ -1166,8 +1173,8 @@
                 destinationList.innerHTML = destinations.map((item, index) => `
                 <div class="col-md-6"><div class="tour-option d-flex flex-column">
                     <label class="form-check-label d-flex gap-2 align-items-start" style="cursor: pointer;"><input class="form-check-input mt-1 tour-destination" type="checkbox" value="${escapeHtml(item.id)}" id="tour-destination-${index}" ${previousDestinations.has(item.id) ? 'checked' : ''}><span><strong>Visit ${escapeHtml(item.name)}</strong><br><span class="small tour-muted">${escapeHtml(item.description || item.location?.city || item.location?.address || '')}</span></span></label>
-                    <div class="mt-2"><label class="form-label mb-1" for="tour-place-day-${index}">Destination visit on</label><select class="form-select form-select-sm tour-place-day" id="tour-place-day-${index}">${Array.from({ length: Number(document.getElementById('tour-days').value) || 1 }, (_, day) => `<option value="${day + 1}" ${Number(previousDays.get(String(index))) === day + 1 ? 'selected' : ''}>Day ${day + 1}</option>`).join('')}</select></div>
-                    ${(item.activities || []).length ? `<div class="border-top mt-3 pt-3"><p class="small fw-bold text-uppercase tour-muted mb-2" style="letter-spacing: 0.04em;">Activities at this place</p>${item.activities.map((activity, activityIndex) => `<div class="mb-2 pb-2 border-bottom border-light"><label class="form-check small mb-1" style="cursor: pointer;"><input class="form-check-input tour-activity" type="checkbox" value="${escapeHtml(activity.id)}" id="tour-activity-${index}-${activityIndex}" ${previousActivities.has(activity.id) ? 'checked' : ''}><span class="form-check-label"><strong>${escapeHtml(activity.name)}</strong>${activity.visit_duration_minutes ? ` <span class="tour-muted">(${escapeHtml(activity.visit_duration_minutes)} min)</span>` : ''}<br><span class="tour-muted">Route visit: ${escapeHtml(activity.location?.name || activity.location?.address || 'mapped entrance')}</span>${activity.description ? `<br><span class="tour-muted">${escapeHtml(activity.description)}</span>` : ''}</span></label><label class="small tour-muted ms-4 d-block mb-1" for="tour-activity-day-${index}-${activityIndex}">Activity visit on</label><select class="form-select form-select-sm tour-activity-day ms-4" style="width: calc(100% - 1.5rem);" id="tour-activity-day-${index}-${activityIndex}" data-activity="${escapeHtml(activity.id)}">${Array.from({ length: Number(document.getElementById('tour-days').value) || 1 }, (_, day) => `<option value="${day + 1}" ${Number(previousActivityDays.get(activity.id) ?? previousDays.get(String(index))) === day + 1 ? 'selected' : ''}>Day ${day + 1}</option>`).join('')}</select></div>`).join('')}</div>` : ''}
+                    <div class="mt-2"><label class="form-label mb-1" for="tour-place-day-${index}">Destination visit on</label><select class="form-select form-select-sm tour-place-day no-nice" id="tour-place-day-${index}">${Array.from({ length: Number(document.getElementById('tour-days').value) || 1 }, (_, day) => `<option value="${day + 1}" ${Number(previousDays.get(String(index))) === day + 1 ? 'selected' : ''}>Day ${day + 1}</option>`).join('')}</select></div>
+                    ${(item.activities || []).length ? `<div class="border-top mt-3 pt-3"><p class="small fw-bold text-uppercase tour-muted mb-2" style="letter-spacing: 0.04em;">Activities at this place</p>${item.activities.map((activity, activityIndex) => `<div class="mb-2 pb-2 border-bottom border-light"><label class="form-check small mb-1" style="cursor: pointer;"><input class="form-check-input tour-activity" type="checkbox" value="${escapeHtml(activity.id)}" id="tour-activity-${index}-${activityIndex}" ${previousActivities.has(activity.id) ? 'checked' : ''}><span class="form-check-label"><strong>${escapeHtml(activity.name)}</strong>${activity.visit_duration_minutes ? ` <span class="tour-muted">(${escapeHtml(activity.visit_duration_minutes)} min)</span>` : ''}<br><span class="tour-muted">Route visit: ${escapeHtml(activity.location?.name || activity.location?.address || 'mapped entrance')}</span>${activity.description ? `<br><span class="tour-muted">${escapeHtml(activity.description)}</span>` : ''}</span></label><label class="small tour-muted ms-4 d-block mb-1" for="tour-activity-day-${index}-${activityIndex}">Activity visit on</label><select class="form-select form-select-sm tour-activity-day no-nice ms-4" style="width: calc(100% - 1.5rem);" id="tour-activity-day-${index}-${activityIndex}" data-activity="${escapeHtml(activity.id)}">${Array.from({ length: Number(document.getElementById('tour-days').value) || 1 }, (_, day) => `<option value="${day + 1}" ${Number(previousActivityDays.get(activity.id) ?? previousDays.get(String(index))) === day + 1 ? 'selected' : ''}>Day ${day + 1}</option>`).join('')}</select></div>`).join('')}</div>` : ''}
                 </div></div>`).join('');
                 filterDestinationCards();
                 renderDaySettings();

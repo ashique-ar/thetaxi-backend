@@ -414,6 +414,8 @@ body.theme-theme-04 .t4-hero__media .swiper-slide {
 }
 
 body.theme-theme-04 .t4-hero__media picture {
+    position: absolute;
+    inset: 0;
     display: block;
     height: 100%;
 }

@@ -26,6 +26,7 @@ class TourPurchasedClassMigrationTest extends TestCase
             Schema::create($name, function (Blueprint $table): void {
                 $table->string('id')->primary();
                 $table->string('name')->nullable();
+                $table->string('code')->nullable();
                 $table->text('description')->nullable();
                 $table->boolean('is_active')->default(true);
                 $table->timestamps();
@@ -45,7 +46,7 @@ class TourPurchasedClassMigrationTest extends TestCase
         });
         DB::table('booking_items')->insert(['id' => 'existing', 'vehicle_group_id' => 'real-group']);
         DB::table('vehicle_classes')->insert(['id' => 'standard']);
-        DB::table('service_types')->insert(['id' => 'tours']);
+        DB::table('service_types')->insert(['id' => 'tours', 'code' => 'tours']);
         Schema::create('vehicle_groups', function (Blueprint $table): void {
             $table->uuid('id')->primary();
             $table->uuid('class_id');
@@ -133,6 +134,12 @@ class TourPurchasedClassMigrationTest extends TestCase
     {
         $this->prepareClassSettings();
         DB::table('vehicle_classes')->where('id', 'standard')->update(['name' => 'Standard car']);
+        $eligibleGroupId = '50000000-0000-4000-8000-000000000005';
+        $undersizedGroupId = '50000000-0000-4000-8000-000000000006';
+        DB::table('vehicle_groups')->insert([
+            ['id' => $eligibleGroupId, 'class_id' => 'standard', 'name' => 'Verified car', 'passengers_count' => 4, 'hand_luggages' => 3],
+            ['id' => $undersizedGroupId, 'class_id' => 'standard', 'name' => 'Small car', 'passengers_count' => 2, 'hand_luggages' => 1],
+        ]);
         $settings = $this->createMock(WebsiteSettingsService::class);
         $settings->method('get')->willReturn('separate');
         $controller = new ServiceVehicleClassController(
@@ -140,14 +147,27 @@ class TourPurchasedClassMigrationTest extends TestCase
         );
         $service = ServiceType::findOrFail('tours');
         $class = VehicleClass::findOrFail('standard');
+        try {
+            $controller->update(Request::create('/classes', 'PUT', [
+                'max_passengers' => 3, 'max_luggage' => 2,
+                'eligible_vehicle_group_ids' => [$undersizedGroupId],
+            ]), $service, $class);
+            self::fail('A fleet group with insufficient verified capacity was accepted.');
+        } catch (ValidationException $exception) {
+            self::assertArrayHasKey('eligible_vehicle_group_ids', $exception->errors());
+        }
         $response = $controller->update(Request::create('/classes', 'PUT', [
             'max_passengers' => 3, 'max_luggage' => 2, 'is_hidden' => false, 'is_inquiry_only' => true,
+            'customer_display_name' => 'Tour standard', 'eligible_vehicle_group_ids' => [$eligibleGroupId],
         ]), $service, $class);
         self::assertSame(200, $response->getStatusCode());
         $listed = $controller->index($service)->getData(true)['data']['classes'];
         self::assertSame('Standard car', $listed[0]['name']);
         self::assertSame(3, $listed[0]['settings']['max_passengers']);
         self::assertTrue($listed[0]['settings']['is_inquiry_only']);
+        self::assertSame('Tour standard', $listed[0]['settings']['customer_display_name']);
+        self::assertSame($eligibleGroupId, $listed[0]['settings']['eligible_vehicle_group_ids'][0]);
+        self::assertContains($eligibleGroupId, array_column($listed[0]['vehicle_groups'], 'id'));
         self::assertSame('Standard car', $class->fresh()->name);
     }
 

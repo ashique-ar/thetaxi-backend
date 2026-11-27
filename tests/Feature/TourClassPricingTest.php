@@ -408,6 +408,14 @@ class TourClassPricingTest extends TestCase
             $table->string('id')->primary(); $table->string('type')->unique(); $table->text('value')->nullable();
             $table->timestamps(); $table->softDeletes();
         });
+        Schema::create('website_settings', function (Blueprint $table): void {
+            $table->string('id')->primary(); $table->string('type')->unique(); $table->text('value')->nullable();
+            $table->timestamps(); $table->softDeletes();
+        });
+        DB::table('business_settings')->insert([
+            ['id' => 'tour-service-id', 'type' => 'tour_service_type_id', 'value' => $serviceId],
+            ['id' => 'tour-enabled', 'type' => 'tours_enabled', 'value' => 'true'],
+        ]);
         Schema::create('vehicle_classes', function (Blueprint $table): void {
             $table->string('id')->primary();
             $table->string('name');
