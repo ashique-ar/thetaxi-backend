@@ -363,10 +363,10 @@
         <div class="theme1-cms-card__body">
             @if ($location)<a href="{{ $categoryLink }}" class="theme1-cms-card__route">{{ $location }}</a>@endif
             @if ($excerpt)<p>{{ $excerpt }}</p>@endif
-            @if ($pickupLocation || $minDays)
+            @if ($pickupLocation || (int) $minDays > 1)
                 <ul class="theme1-cms-card__facts">
                     @if ($pickupLocation)<li>{{ Str::limit($pickupLocation, 36) }}</li>@endif
-                    @if ($minDays)<li>Minimum {{ $minDays }} day{{ $minDays != 1 ? 's' : '' }}</li>@endif
+                    @if ((int) $minDays > 1)<li>Minimum {{ $minDays }} days</li>@endif
                 </ul>
             @endif
             @if ($showRating && $rating > 0)

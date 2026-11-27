@@ -16,7 +16,9 @@ class ImageGalleryResource extends JsonResource
             'path'           => $this->path,
             'thumbnail_path' => $this->thumbnail_path,
             'url'            => $this->path ? $this->storageUrl($this->path) : null,
+            'non_expiring_url' => $this->path ? $this->publicStorageUrl($this->path) : null,
             'thumbnail_url'  => $this->thumbnail_path ? $this->storageUrl($this->thumbnail_path) : null,
+            'thumbnail_non_expiring_url' => $this->thumbnail_path ? $this->publicStorageUrl($this->thumbnail_path) : null,
             'sort_order'     => $this->sort_order,
             'is_active'      => $this->is_active,
             'created_at'     => $this->created_at,
@@ -27,5 +29,14 @@ class ImageGalleryResource extends JsonResource
     private function storageUrl(string $path): string
     {
         return resource_proxy_url($path, config('filesystems.default', 's3'));
+    }
+
+    private function publicStorageUrl(string $path): ?string
+    {
+        $path = ltrim($path, '/');
+
+        return public_media_path($path)
+            ? route('resources.assets', ['path' => $path, 'disk' => config('filesystems.default', 's3')])
+            : null;
     }
 }

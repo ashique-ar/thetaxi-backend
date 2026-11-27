@@ -165,6 +165,7 @@ body.theme-default.theme-page-home :is(.home-cms-section,.cms-content-section) a
 @media(prefers-reduced-motion:reduce){body.theme-default.theme-page-home :is(.home-cms-section__card,.cms-content-card,.home-cms-section__image img,.cms-content-card .blog-img img){transition:none}}
 
 /* Theme 1 homepage CMS cards use the photo-led tour layout from the supplied reference. */
+body.theme-default.theme-page-home :is(.home-cms-section,.cms-content-section)>.container{width:calc(100% - 48px);max-width:none}
 body.theme-default.theme-page-home .cms-content-section>.container{position:relative}
 body.theme-default.theme-page-home .cms-content-section>.container>.row.justify-content-center.mb-50{
     display:flex;flex-wrap:nowrap;align-items:flex-end;justify-content:space-between!important;gap:24px;margin-bottom:22px!important
@@ -225,6 +226,7 @@ body.theme-default.theme-page-home :is(.theme1-cms-card,.home-cms-section__card)
     body.theme-default.theme-page-home .theme1-cms-card__media,body.theme-default.theme-page-home .home-cms-section__image{height:180px}
 }
 @media(max-width:575px){
+    body.theme-default.theme-page-home :is(.home-cms-section,.cms-content-section)>.container{width:calc(100% - 32px)}
     body.theme-default.theme-page-home .cms-content-section>.container>.row.justify-content-center.mb-50{align-items:flex-start;flex-wrap:wrap;flex-direction:column;gap:12px}
     body.theme-default.theme-page-home .cms-content-section .row.g-4.mb-40{grid-template-columns:1fr;gap:12px!important}
     body.theme-default.theme-page-home .theme1-cms-card__media,body.theme-default.theme-page-home .home-cms-section__image{height:190px}
