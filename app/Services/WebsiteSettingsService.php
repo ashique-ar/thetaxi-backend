@@ -4,6 +4,7 @@ namespace App\Services;
 
 use App\Models\Website\WebsiteSetting;
 use App\Models\BusinessSetting;
+use App\Models\Service\ServiceType;
 use Illuminate\Database\QueryException;
 use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\DB;
@@ -82,6 +83,8 @@ class WebsiteSettingsService
         'feature_respond_io_enabled',
         'feature_3cx_enabled',
         'feature_driver_management_enabled',
+        'tours_enabled',
+        'tour_service_type_id',
         'driver_form_public_enabled',
         'internal_pricing_mode',
         'driver_mobile_latest_version',
@@ -1268,6 +1271,9 @@ class WebsiteSettingsService
      */
     public function getBusinessFeatureFlags(): array
     {
+        $tourService = $this->getTourService();
+        $customerTourService = $this->getTourService(true);
+
         return $this->getMultiple([
             'feature_corporate_management_enabled',
             'feature_vehicle_return_management_enabled',
@@ -1279,19 +1285,37 @@ class WebsiteSettingsService
             'feature_driver_management_enabled',
             'driver_mobile_app_enabled',
         ]) + [
-            'feature_tour_booking_enabled' => Schema::hasColumn('service_types', 'tour_booking_enabled')
-                && \App\Models\Service\ServiceType::query()
-                ->where('is_active', true)
-                ->where('pricing_basis', 'vehicle_class')
-                ->where('tour_booking_enabled', true)
-                ->exists(),
-            'feature_customer_tour_booking_enabled' => Schema::hasColumn('service_types', 'tour_booking_enabled')
-                && \App\Models\Service\ServiceType::publicContext()
-                    ->where('is_active', true)
-                    ->where('pricing_basis', 'vehicle_class')
-                    ->where('tour_booking_enabled', true)
-                    ->exists(),
+            'feature_tour_booking_enabled' => $tourService !== null,
+            'feature_customer_tour_booking_enabled' => $customerTourService !== null,
+            'tour_service_type_id' => $tourService?->id,
         ];
+    }
+
+    public function getTourService(bool $publicOnly = false): ?ServiceType
+    {
+        if (! filter_var($this->get('tours_enabled', false), FILTER_VALIDATE_BOOLEAN)) {
+            return null;
+        }
+
+        $serviceId = $this->get('tour_service_type_id');
+        if (! $serviceId) {
+            return null;
+        }
+
+        $query = ServiceType::query()->active()
+            ->whereKey($serviceId)
+            ->where('pricing_basis', 'vehicle_class');
+
+        if ($publicOnly) {
+            $query->publicContext();
+        }
+
+        return $query->first();
+    }
+
+    public function isTourService(ServiceType $service, bool $publicOnly = false): bool
+    {
+        return (string) $this->getTourService($publicOnly)?->id === (string) $service->id;
     }
 
     /**

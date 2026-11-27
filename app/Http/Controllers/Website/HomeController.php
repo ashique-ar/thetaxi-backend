@@ -13,13 +13,17 @@ class HomeController extends Controller
     /**
      * ULTRA-SIMPLIFIED homepage - minimize all database calls
      */
-    public function index(\App\Services\HomepageVehicleSections $vehicleSections, \App\Services\HomepageCmsSections $cmsSections): View
+    public function index(\App\Services\HomepageVehicleSections $vehicleSections, \App\Services\HomepageCmsSections $cmsSections, \App\Services\WebsiteSettingsService $settings): View
     {
         // CRITICAL: Cache everything with LONG expiry to avoid repeated database hits
         $homeData = $this->getCompleteHomeData();
         try {
-            $homeData['tourBookingEnabled'] = \App\Models\Service\ServiceType::publicContext()
+            $tourServiceAvailable = \App\Models\Service\ServiceType::publicContext()
                 ->where('is_active', true)->where('pricing_basis', 'vehicle_class')->where('tour_booking_enabled', true)->exists();
+            $configured = $settings->get('tours_enabled');
+            $homeData['tourBookingEnabled'] = $tourServiceAvailable && ($configured === null
+                ? true
+                : filter_var($configured, FILTER_VALIDATE_BOOLEAN));
         } catch (\Throwable) {
             $homeData['tourBookingEnabled'] = false;
         }

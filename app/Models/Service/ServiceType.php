@@ -66,7 +66,6 @@ class ServiceType extends BaseModel
         'thumbnail',
         'pricing_mode',
         'pricing_basis',
-        'tour_booking_enabled',
         'uses_dropoff_time',
         'allow_return_trip',
         'allow_multiple_pickup_locations',
@@ -93,7 +92,6 @@ class ServiceType extends BaseModel
      * @var array<string, string>
      */
     protected $casts = [
-        'tour_booking_enabled' => 'boolean',
         'is_internal' => 'boolean',
         'is_inquiry' => 'boolean',
         'requires_refundable_deposit' => 'boolean',

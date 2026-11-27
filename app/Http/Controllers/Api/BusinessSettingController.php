@@ -4,6 +4,7 @@ namespace App\Http\Controllers\Api;
 
 use App\Http\Controllers\Controller;
 use App\Models\BusinessSetting;
+use App\Models\Service\ServiceType;
 use App\Models\Driver\Driver;
 use App\Http\Requests\BusinessSetting\CreateBusinessSettingRequest;
 use App\Http\Requests\BusinessSetting\UpdateBusinessSettingRequest;
@@ -16,6 +17,7 @@ use Illuminate\Http\Request;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Resources\Json\AnonymousResourceCollection;
 use Illuminate\Support\Facades\Validator;
+use Illuminate\Support\Facades\DB;
 
 class BusinessSettingController extends Controller
 {
@@ -91,6 +93,8 @@ class BusinessSettingController extends Controller
             'feature_3cx_enabled',
             'feature_driver_management_enabled',
             'tour_ai_itinerary_enabled',
+            'tours_enabled',
+            'tour_service_type_id',
             'driver_form_public_enabled',
             'assignment_enable_qc_stage',
             'assignment_enable_maintenance_stage',
@@ -181,6 +185,9 @@ class BusinessSettingController extends Controller
         $categories['booking']['booking_signed_agreement_required'] ??= true;
         $categories['booking']['booking_approvals_enabled'] ??= false;
         $categories['booking']['booking_approval_steps'] ??= 1;
+        $tourServices = ServiceType::query()->active()->where('context', 'public')->where('pricing_basis', 'vehicle_class')->orderBy('name')->get(['id', 'name']);
+        $categories['booking']['tour_service_type_id'] ??= null;
+        $categories['booking']['tours_enabled'] ??= false;
         foreach ([
             'approval_manual_discount_enabled', 'approval_pricing_override_enabled',
             'approval_custom_addon_enabled', 'approval_concurrent_assignment_enabled',
@@ -193,6 +200,7 @@ class BusinessSettingController extends Controller
         return response()->json([
             'status' => 'success',
             'data' => $categories,
+            'meta' => ['tour_service_types' => $tourServices->map(fn (ServiceType $service) => ['id' => $service->id, 'name' => $service->name])->values()],
         ]);
     }
 
@@ -231,6 +239,8 @@ class BusinessSettingController extends Controller
                 'approval_allocation_exception_enabled' => ['sometimes', 'boolean'],
                 'approval_resource_swap_enabled' => ['sometimes', 'boolean'],
                 'tour_ai_itinerary_enabled' => ['sometimes', 'boolean'],
+                'tours_enabled' => ['sometimes', 'boolean'],
+                'tour_service_type_id' => ['sometimes', 'nullable', 'uuid', 'exists:service_types,id'],
                 'add_trip_vehicle_group_pricing_enabled' => ['sometimes', 'boolean'],
             ]);
             if ($timingValidator->fails()) {
@@ -239,6 +249,22 @@ class BusinessSettingController extends Controller
                     'message' => 'Portal booking advance values must be numeric.',
                     'errors' => $timingValidator->errors(),
                 ], 422);
+            }
+            $tourSettings = $request->input('settings', []);
+            $selectedTourServiceId = array_key_exists('tour_service_type_id', $tourSettings)
+                ? $tourSettings['tour_service_type_id']
+                : $this->websiteSettingsService->get('tour_service_type_id');
+            $tourBookingsEnabled = array_key_exists('tours_enabled', $tourSettings)
+                ? filter_var($tourSettings['tours_enabled'], FILTER_VALIDATE_BOOLEAN)
+                : filter_var($this->websiteSettingsService->get('tours_enabled', false), FILTER_VALIDATE_BOOLEAN);
+            if ($tourBookingsEnabled && empty($selectedTourServiceId)) {
+                return response()->json(['status' => 'error', 'message' => 'Choose a vehicle-class-priced service for Tours.', 'errors' => ['settings.tour_service_type_id' => ['Choose a service before enabling Tours.']]], 422);
+            }
+            if (! empty($selectedTourServiceId)) {
+                $tourService = ServiceType::query()->active()->where('context', 'public')->where('pricing_basis', 'vehicle_class')->find($selectedTourServiceId);
+                if (! $tourService) {
+                    return response()->json(['status' => 'error', 'message' => 'Tours require an active Website service with vehicle-class pricing.', 'errors' => ['settings.tour_service_type_id' => ['Select an active Website service using vehicle-class pricing.']]], 422);
+                }
             }
         }
 
@@ -335,6 +361,9 @@ class BusinessSettingController extends Controller
             : '';
         $userId = $request->user()?->id;
         foreach ($settings as $type => $value) {
+            if (in_array($type, ['tours_enabled', 'tour_service_type_id'], true)) {
+                continue;
+            }
             $normalizedValue = WebsiteSetting::normalizeValue($value);
             if (in_array($type, BusinessSetting::INSTALLATION_WIDE_WEBSITE_KEYS, true)) {
                 WebsiteSetting::updateOrCreate(['type' => $type], [
@@ -358,6 +387,19 @@ class BusinessSettingController extends Controller
             } else {
                 $this->websiteSettingsService->set($type, $normalizedValue);
             }
+        }
+
+        if ($category === 'booking' && (array_key_exists('tours_enabled', $settings) || array_key_exists('tour_service_type_id', $settings))) {
+            $enabled = array_key_exists('tours_enabled', $settings)
+                ? filter_var($settings['tours_enabled'], FILTER_VALIDATE_BOOLEAN)
+                : filter_var($this->websiteSettingsService->get('tours_enabled', false), FILTER_VALIDATE_BOOLEAN);
+            $serviceId = array_key_exists('tour_service_type_id', $settings)
+                ? $settings['tour_service_type_id']
+                : $this->websiteSettingsService->get('tour_service_type_id');
+            DB::transaction(function () use ($enabled, $serviceId, $userId): void {
+                BusinessSetting::updateOrCreate(['type' => 'tours_enabled'], ['value' => WebsiteSetting::normalizeValue($enabled), 'updated_user_id' => $userId]);
+                BusinessSetting::updateOrCreate(['type' => 'tour_service_type_id'], ['value' => WebsiteSetting::normalizeValue($serviceId), 'updated_user_id' => $userId]);
+            });
         }
 
         if ($category === 'driverMobile' && array_key_exists('driver_mobile_latest_version', $settings)) {

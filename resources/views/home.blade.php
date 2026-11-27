@@ -28,15 +28,22 @@
 @endif
 <!-- End Booking Form Section -->
 @if ($tourBookingEnabled ?? false)
-    <section class="container my-4" aria-label="Plan a tour">
-        <div class="d-flex flex-wrap align-items-center justify-content-between gap-3 p-4 rounded border">
-            <div>
-                <h2 class="h4 mb-1">Plan a multi-day tour</h2>
-                <p class="mb-0">Choose your vehicle class, build your day-by-day route, and review a transport quote.</p>
+    <section class="container my-4" aria-labelledby="homepage-tour-title">
+        <div class="homepage-tour-banner">
+            <div class="homepage-tour-banner__main">
+                <p class="homepage-tour-banner__eyebrow"><span aria-hidden="true">▦</span> Islandwide car &amp; driver service</p>
+                <h2 id="homepage-tour-title">Private Island Tours &amp; Multi-Day Hire</h2>
+                <p class="homepage-tour-banner__description">Hire a dedicated air-conditioned car, van, or minibus with an English-fluent tourist driver for your entire stay. Create your own itinerary or adapt routes on the go — with all fuel, expressway tolls, parking permits, and driver lodging completely taken care of.</p>
+                <ul class="homepage-tour-banner__benefits" aria-label="Tour benefits">
+                    <li><span aria-hidden="true">✓</span> 100% flexible daily schedule</li>
+                    <li><span aria-hidden="true">✓</span> All fuel, tolls &amp; driver stays included</li>
+                    <li><span aria-hidden="true">✓</span> Certified English-speaking driver</li>
+                </ul>
             </div>
-            <a class="btn btn-primary" href="{{ route('tours.index') }}">
-                Plan your tour
-            </a>
+            <div class="homepage-tour-banner__actions">
+                <a class="homepage-tour-banner__button" href="{{ route('tours.index') }}">Plan your itinerary <span aria-hidden="true">→</span></a>
+                <a class="homepage-tour-banner__routes" href="{{ url('/#destinations-section') }}">Browse popular routes <span aria-hidden="true">↓</span></a>
+            </div>
         </div>
     </section>
 @endif
