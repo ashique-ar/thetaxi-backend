@@ -14,6 +14,7 @@ use App\Models\User;
 use App\Services\AIContentService;
 use App\Services\BookingFlowService;
 use App\Services\CurrencyService;
+use App\Services\GoogleMapsService;
 use App\Services\Tours\TourRoutePlanner;
 use App\Services\Tours\TourFormConfiguration;
 use App\Services\UserContextService;
@@ -228,10 +229,10 @@ class TourCatalogueController extends Controller
 
         $destinations = TourDestination::query()
             ->with([
-                'location:id,name,city,country,google_place_id',
+                'location:id,name,city,country,google_place_id,latitude,longitude,metadata',
                 'activities' => fn($query) => $query
                     ->where('is_published', true)
-                    ->with('location:id,name,city,country,google_place_id')
+                    ->with('location:id,name,city,country,google_place_id,latitude,longitude,metadata')
             ])
             ->where('service_type_id', $service->id)
             ->where('is_published', true)
@@ -585,11 +586,46 @@ class TourCatalogueController extends Controller
             return null;
         }
 
+        $metadata = $location->metadata ?? [];
+        $googleCoordinatesTracked = ($metadata['coordinates_source'] ?? null) === 'google_places';
+        $hasCoordinates = $location->latitude !== null && $location->longitude !== null;
+        if ($googleCoordinatesTracked && $hasCoordinates) {
+            $currentHash = hash('sha256', sprintf('%.6f,%.6f', (float) $location->latitude, (float) $location->longitude));
+            if (!hash_equals((string) ($metadata['google_coordinates_hash'] ?? ''), $currentHash)) {
+                unset($metadata['coordinates_source'], $metadata['google_coordinates_cached_at'], $metadata['google_coordinates_hash']);
+                $location->metadata = $metadata;
+                $location->save();
+                $googleCoordinatesTracked = false;
+            } elseif (empty($metadata['google_coordinates_cached_at'])
+                || now()->diffInDays($metadata['google_coordinates_cached_at']) >= 30) {
+                $location->latitude = null;
+                $location->longitude = null;
+                $location->save();
+                $hasCoordinates = false;
+            }
+        }
+
+        if (!$hasCoordinates && $location->google_place_id) {
+            $coordinates = app(GoogleMapsService::class)->coordinatesForPlaceId($location->google_place_id);
+            if ($coordinates) {
+                $location->latitude = $coordinates['latitude'];
+                $location->longitude = $coordinates['longitude'];
+                $metadata = $location->metadata ?? [];
+                $metadata['coordinates_source'] = 'google_places';
+                $metadata['google_coordinates_cached_at'] = now()->toIso8601String();
+                $metadata['google_coordinates_hash'] = hash('sha256', sprintf('%.6f,%.6f', $coordinates['latitude'], $coordinates['longitude']));
+                $location->metadata = $metadata;
+                $location->save();
+            }
+        }
+
         return [
             'id' => $location->id,
             'name' => $location->name,
             'city' => $location->city,
             'country' => $location->country,
+            'latitude' => $location->latitude === null ? null : (float) $location->latitude,
+            'longitude' => $location->longitude === null ? null : (float) $location->longitude,
         ];
     }
 }

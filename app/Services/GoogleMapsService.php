@@ -22,6 +22,53 @@ class GoogleMapsService
         }
     }
 
+    /** Fetch coordinates for a known Google Place ID, caching them for Google's permitted 30-day window. */
+    public function coordinatesForPlaceId(string $placeId): ?array
+    {
+        $placeId = trim(str_replace('places/', '', $placeId));
+        if ($placeId === '' || $this->apiKey === '') {
+            return null;
+        }
+
+        $cacheKey = 'gm:place-coordinates:v1:'.hash('sha256', $placeId);
+        if (Cache::has($cacheKey)) {
+            $cached = Cache::get($cacheKey);
+            return is_array($cached) ? $cached : null;
+        }
+
+        try {
+            $response = Http::withHeaders($this->getHeaders() + [
+                'X-Goog-Api-Key' => $this->apiKey,
+                'X-Goog-FieldMask' => 'location',
+            ])->timeout(10)->get('https://places.googleapis.com/v1/places/'.rawurlencode($placeId));
+
+            $location = $response->json('location');
+            $latitude = $location['latitude'] ?? null;
+            $longitude = $location['longitude'] ?? null;
+            if ($response->successful()
+                && is_numeric($latitude) && is_numeric($longitude)
+                && is_finite((float) $latitude) && is_finite((float) $longitude)
+                && abs((float) $latitude) <= 90 && abs((float) $longitude) <= 180) {
+                $coordinates = ['latitude' => (float) $latitude, 'longitude' => (float) $longitude];
+                Cache::put($cacheKey, $coordinates, now()->addDays(30));
+                return $coordinates;
+            }
+
+            Log::warning('Google Place coordinates could not be loaded.', [
+                'place_id' => $placeId,
+                'status' => $response->status(),
+            ]);
+        } catch (\Throwable $exception) {
+            Log::warning('Google Place coordinates request failed.', [
+                'place_id' => $placeId,
+                'error' => $exception->getMessage(),
+            ]);
+        }
+
+        Cache::put($cacheKey, false, now()->addMinutes(15));
+        return null;
+    }
+
     private function getHeaders(): array
     {
         $headers = [
