@@ -115,7 +115,7 @@ class PricingKmRangePriorityContractTest extends TestCase
             ],
         ]);
 
-        $result = KmRangePricingRule::calculateBestPricing(50, 1000);
+        $result = KmRangePricingRule::calculateBestPricing(50, 1000, distanceType: 'journey_distance');
 
         self::assertSame(
             '11111111-1111-4111-8111-111111111111',
@@ -229,8 +229,8 @@ class PricingKmRangePriorityContractTest extends TestCase
             ],
         ]);
 
-        $website = KmRangePricingRule::calculateBestPricing(25, pricingContext: 'public');
-        $internal = KmRangePricingRule::calculateBestPricing(25, pricingContext: 'portal');
+        $website = KmRangePricingRule::calculateBestPricing(25, distanceType: 'journey_distance', pricingContext: 'public');
+        $internal = KmRangePricingRule::calculateBestPricing(25, distanceType: 'journey_distance', pricingContext: 'portal');
 
         self::assertSame('Website rule', $website['rules_applied'][0]['rule_info']['name']);
         self::assertSame('Internal rule', $internal['rules_applied'][0]['rule_info']['name']);
@@ -256,8 +256,8 @@ class PricingKmRangePriorityContractTest extends TestCase
             'updated_at' => now(),
         ]);
 
-        self::assertNotEmpty(KmRangePricingRule::calculateBestPricing(25, pricingContext: 'public')['rules_applied']);
-        self::assertEmpty(KmRangePricingRule::calculateBestPricing(25, pricingContext: 'portal')['rules_applied']);
+        self::assertNotEmpty(KmRangePricingRule::calculateBestPricing(25, distanceType: 'journey_distance', pricingContext: 'public')['rules_applied']);
+        self::assertEmpty(KmRangePricingRule::calculateBestPricing(25, distanceType: 'journey_distance', pricingContext: 'portal')['rules_applied']);
     }
 
     public function test_canonical_calculation_applies_selected_garage_legs_only_for_garage_to_garage(): void
@@ -294,23 +294,38 @@ class PricingKmRangePriorityContractTest extends TestCase
         ];
 
         $kmCalculations = ['journey_distance' => 40];
+        $resolvedVariables = [
+            'journey_distance' => 40,
+            'pickup_distance' => 8,
+            'delivery_distance' => 6,
+            'journey_rate' => 10,
+            'pickup_rate' => 10,
+            'delivery_rate' => 10,
+        ];
+        $allDistanceRates = [
+            'journey_distance' => ['journey_rate'],
+            'pickup_distance' => ['pickup_rate'],
+            'delivery_distance' => ['delivery_rate'],
+        ];
         $garageToGarage = $method->invoke(
             $definition,
-            100,
+            640,
             $inputs + ['include_garage_distance' => true],
             null,
             null,
             $kmCalculations,
-            []
+            $resolvedVariables,
+            $allDistanceRates
         );
         $journeyOnly = $method->invoke(
             $definition,
-            100,
+            500,
             $inputs + ['include_garage_distance' => false],
             null,
             null,
             $kmCalculations,
-            []
+            $resolvedVariables,
+            $allDistanceRates
         );
 
         self::assertSame(640.0, (float) $garageToGarage['final_amount']);

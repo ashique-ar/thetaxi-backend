@@ -2250,18 +2250,18 @@ body.theme-theme-04 .t4-error-page__card p {
     body.theme-theme-04 .t4-booking-panel {
         min-height: 0;
         margin-top: 0;
-        padding-block: 30px 58px;
+        padding-block: 24px 48px;
         background: var(--t4-surface-soft);
     }
 
     body.theme-theme-04.theme-page-home .t4-booking-panel {
-        margin-top: calc(var(--t4-hero-overlap) * -1);
-        padding-top: 0;
-        background: transparent;
+        margin-top: 0;
+        padding-top: 24px;
+        background: var(--t4-surface-soft);
     }
 
     body.theme-theme-04 .t4-hero__frame {
-        padding-bottom: calc(var(--t4-hero-overlap) + 40px);
+        padding-bottom: 96px;
     }
 
     body.theme-theme-04 .t4-booking-panel__card {
@@ -2330,11 +2330,11 @@ body.theme-theme-04 .t4-error-page__card p {
 @media (max-width: 767px) {
     body.theme-theme-04 {
         --t4-section: 64px;
-        --t4-hero-height: clamp(520px, 75svh, 680px);
+        --t4-hero-height: 480px;
     }
 
     body.theme-theme-04 .t4-hero {
-        min-height: 520px;
+        min-height: 480px;
         min-height: var(--t4-hero-height);
     }
 
@@ -2344,18 +2344,44 @@ body.theme-theme-04 .t4-error-page__card p {
 
     body.theme-theme-04 .t4-hero__frame {
         min-height: var(--t4-hero-height);
-        align-items: end;
-        padding-bottom: calc(var(--t4-hero-overlap) + 70px);
+        align-items: flex-end;
+        padding: 36px 0 96px;
     }
 
     body.theme-theme-04 .t4-hero__copy {
         width: 100%;
         margin: 0;
-        padding: 0 24px;
+        padding: 0 16px;
+    }
+
+    body.theme-theme-04 .t4-hero__copy .shared-hero-eyebrow {
+        margin-bottom: 10px;
+        padding: 5px 12px;
+        font-size: 0.65rem;
     }
 
     body.theme-theme-04 .t4-hero__copy :where(h1, h2) {
-        font-size: clamp(2rem, 9vw, 3.2rem);
+        margin-bottom: 10px;
+        font-size: clamp(1.75rem, 7.5vw, 2.5rem);
+    }
+
+    body.theme-theme-04 .t4-hero__copy .shared-hero-description {
+        font-size: 0.95rem;
+    }
+
+    body.theme-theme-04 .t4-hero__copy .shared-hero-caption {
+        margin-bottom: 14px;
+        font-size: 0.8rem;
+    }
+
+    body.theme-theme-04 .t4-hero__copy .shared-hero-actions {
+        gap: 10px;
+        margin-bottom: 10px;
+    }
+
+    body.theme-theme-04 .t4-hero__copy :where(.shared-hero-action, .shared-hero-action-secondary) {
+        padding: 10px 16px;
+        font-size: 0.8rem;
     }
 
     body.theme-theme-04 .t4-booking-panel__card {
@@ -2636,13 +2662,15 @@ body.theme-theme-04 .t4-hero .shared-hero-pagination .swiper-pagination-bullet-a
     body.theme-theme-04 .t4-hero .shared-hero-bar__meta { display: flex; }
 }
 @media (max-width: 991px) {
-    body.theme-theme-04 .t4-hero .shared-hero-bar { padding-bottom: calc(var(--t4-hero-overlap) + 12px); }
-    body.theme-theme-04 .t4-hero__location { bottom: calc(var(--t4-hero-overlap) + 24px); }
+    body.theme-theme-04 .t4-hero .shared-hero-bar { padding: 10px 16px; }
+    body.theme-theme-04 .t4-hero__location { bottom: 84px; }
 }
 @media (max-width: 767px) {
     body.theme-theme-04 :where(.t4-hero__prev, .t4-hero__next) { display: none; }
-    body.theme-theme-04 .t4-hero .shared-hero-bar { padding: 10px 16px calc(var(--t4-hero-overlap) + 12px); }
-    body.theme-theme-04 .t4-hero__location { right: 20px; bottom: calc(var(--t4-hero-overlap) + 16px); max-width: 45%; }
+    body.theme-theme-04 .t4-hero .shared-hero-bar { padding: 10px 16px; }
+    body.theme-theme-04 .t4-hero .shared-hero-bar__inner { gap: 8px; }
+    body.theme-theme-04 .t4-hero .shared-hero-bar__label { display: none; }
+    body.theme-theme-04 .t4-hero__location { right: 16px; bottom: 84px; max-width: 45%; }
 }
 @media (max-width: 991px) and (max-height: 500px) {
     body.theme-theme-04 { --t4-hero-height: 460px; }

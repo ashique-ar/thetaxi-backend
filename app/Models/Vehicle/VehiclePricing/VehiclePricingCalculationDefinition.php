@@ -1758,6 +1758,9 @@ class VehiclePricingCalculationDefinition extends Model
                 $distanceLegs[$distanceName] = (float) ($resolvedVariables[$distanceName] ?? 0);
             }
         }
+        if (!($inputs['include_garage_distance'] ?? true)) {
+            unset($distanceLegs['pickup_distance'], $distanceLegs['delivery_distance']);
+        }
 
         foreach ($distanceLegs as $distanceType => $distance) {
             if ($distance <= 0) {

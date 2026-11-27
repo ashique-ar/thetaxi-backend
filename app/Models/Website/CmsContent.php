@@ -257,6 +257,17 @@ class CmsContent extends BaseModel
     }
 
     /**
+     * Scope to order by display_order ascending, placing null values last.
+     */
+    public function scopeOrderByDisplayOrder($query, ?string $table = null)
+    {
+        $column = ($table ?? $this->getTable()) . '.display_order';
+
+        return $query->orderByRaw("CASE WHEN {$column} IS NULL THEN 1 ELSE 0 END ASC")
+            ->orderBy($column, 'asc');
+    }
+
+    /**
      * Scope to order by rating.
      */
     public function scopeByRating($query, $order = 'desc')

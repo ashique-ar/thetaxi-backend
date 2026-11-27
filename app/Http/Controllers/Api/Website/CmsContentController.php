@@ -111,7 +111,7 @@ class CmsContentController extends Controller
                 );
                 break;
             default:
-                $q->orderBy("{$contentTable}.display_order", 'asc')
+                $q->orderByDisplayOrder($contentTable)
                     ->orderBy("{$contentTable}.published_at", 'desc')
                     ->orderBy("{$contentTable}.created_at", 'desc');
                 break;
@@ -302,7 +302,8 @@ class CmsContentController extends Controller
             $q->featured();
         }
 
-        $q->orderBy('is_featured', 'desc')
+        $q->orderByDisplayOrder()
+            ->orderBy('is_featured', 'desc')
             ->orderBy('published_at', 'desc');
 
         $perPage = min(max((int) $request->input('per_page', 15), 1), 100);

@@ -5273,18 +5273,55 @@ body.theme-theme-03 .t3-error-page__content p {
         display: none;
     }
 
+    body.theme-theme-03 .t3-hero {
+        min-height: 480px;
+    }
+
     body.theme-theme-03 .t3-hero__frame {
-        padding-top: 40px;
-        padding-bottom: 112px;
+        padding-top: 36px;
+        padding-bottom: 96px;
+    }
+
+    body.theme-theme-03 .t3-hero__copy .shared-hero-eyebrow {
+        margin-bottom: 10px;
+        padding: 5px 12px;
+        font-size: 0.65rem;
     }
 
     body.theme-theme-03 .t3-hero__copy :where(h1, h2) {
-        margin-block: 0 14px;
-        font-size: clamp(2rem, 10vw, 3rem);
+        margin-block: 0 10px;
+        font-size: clamp(1.75rem, 7.5vw, 2.5rem);
+    }
+
+    body.theme-theme-03 .t3-hero__copy .shared-hero-description {
+        font-size: 0.95rem;
+    }
+
+    body.theme-theme-03 .t3-hero__copy .shared-hero-caption {
+        margin-bottom: 14px;
+        font-size: 0.8rem;
+    }
+
+    body.theme-theme-03 .t3-hero__copy .shared-hero-actions {
+        gap: 10px;
+        margin-bottom: 10px;
+    }
+
+    body.theme-theme-03 .t3-hero__copy :where(.shared-hero-action, .shared-hero-action-secondary) {
+        padding: 10px 16px;
+        font-size: 0.8rem;
     }
 
     body.theme-theme-03 .t3-hero .shared-hero-bar {
         padding: 10px 16px;
+    }
+
+    body.theme-theme-03 .t3-hero .shared-hero-bar__inner {
+        gap: 8px;
+    }
+
+    body.theme-theme-03 .t3-hero .shared-hero-bar__label {
+        display: none;
     }
 
     body.theme-theme-03 .home-booking-form-section {

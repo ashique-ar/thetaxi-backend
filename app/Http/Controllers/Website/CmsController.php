@@ -82,7 +82,8 @@ class CmsController extends Controller
                 break;
             case 'latest':
             default:
-                $query->orderBy('is_featured', 'desc')
+                $query->orderByDisplayOrder()
+                    ->orderBy('is_featured', 'desc')
                     ->orderBy('published_at', 'desc')
                     ->orderBy('created_at', 'desc');
                 break;
@@ -116,6 +117,7 @@ class CmsController extends Controller
         $relatedContents = CmsContent::published()
             ->byType($contentTypeSlug)
             ->where('id', '!=', $content->id)
+            ->orderByDisplayOrder()
             ->orderBy('is_featured', 'desc')
             ->orderBy('published_at', 'desc')
             ->limit(6)
@@ -367,6 +369,7 @@ class CmsController extends Controller
         $featuredContent = CmsContent::published()
             ->featured()
             ->with(['contentType'])
+            ->orderByDisplayOrder()
             ->orderBy('published_at', 'desc')
             ->paginate(12);
 
@@ -393,10 +396,12 @@ class CmsController extends Controller
             ->when($contentTypeSlug, function ($q) use ($contentTypeSlug) {
                 $q->byType($contentTypeSlug);
             })
+            ->orderByDisplayOrder()
             ->orderBy('published_at', 'desc')
             ->paginate(12);
 
         $contentTypes = CmsContentType::where('is_active', true)
+            ->orderBy('display_order', 'asc')
             ->orderBy('title')
             ->get();
 

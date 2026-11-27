@@ -51,7 +51,9 @@ class HomepageCmsSections
                 if ($mode === 'featured') {
                     $query->where('is_featured', true);
                 }
-                $items = $query->orderByDesc('published_at')->orderByDesc('created_at')
+                $items = $query->orderByDisplayOrder()
+                    ->orderByDesc('published_at')
+                    ->orderByDesc('created_at')
                     ->limit(max(1, min(24, (int) ($section['limit'] ?? 7))))->get();
             }
             if ($items->isEmpty()) {

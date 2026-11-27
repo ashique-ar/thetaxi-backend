@@ -69,6 +69,7 @@ class HomeController extends Controller
                     'cms_contents.category',
                     'cms_contents.published_at',
                     'cms_contents.is_featured',
+                    'cms_contents.display_order',
                     'cms_contents.pickup_location',
                     'cms_contents.dropoff_location',
                     'cms_contents.service_type',
@@ -80,8 +81,11 @@ class HomeController extends Controller
                 ->where('cms_contents.is_active', true)
                 ->where('cms_contents.is_featured', true)
                 // ->whereNotNull('cms_contents.published_at')
+                ->orderByRaw('CASE WHEN cms_contents.display_order IS NULL THEN 1 ELSE 0 END ASC')
+                ->orderBy('cms_contents.display_order', 'asc')
                 ->orderByDesc('cms_contents.is_featured')
-                // ->orderByDesc('cms_contents.published_at')
+                ->orderByDesc('cms_contents.published_at')
+                ->orderByDesc('cms_contents.created_at')
                 ->get()
                 ->groupBy('content_type');
 

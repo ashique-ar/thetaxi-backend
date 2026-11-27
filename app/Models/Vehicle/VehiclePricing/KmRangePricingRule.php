@@ -435,8 +435,10 @@ class KmRangePricingRule extends BaseModel
                     : "{$portion} km × {$baseRatePerKm}/km × {$rule->percentage} = {$chargedAmount}";
             }
 
-            $adjustment = $chargedAmount - $alreadyPricedAmount;
-            if ($alreadyPricedAmount > 0) {
+            $adjustment = $rule->price_type === 'flat_addition'
+                ? $chargedAmount
+                : $chargedAmount - $alreadyPricedAmount;
+            if ($alreadyPricedAmount > 0 && $rule->price_type !== 'flat_addition') {
                 $calculation .= "; replaces {$alreadyPricedAmount} base charge; net adjustment {$adjustment}";
             }
             $appliedRules[] = [
