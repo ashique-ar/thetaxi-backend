@@ -12,13 +12,14 @@ class MissingRouteDistancePricingSafetyTest extends TestCase
     {
         $service = file_get_contents(app_path('Services/BookingFlowService.php'));
 
-        $this->assertStringContainsString('$distanceCalculationFailed = $hasUsablePickup', $service);
-        $this->assertStringContainsString('$this->isLocationPayloadUsable($params[\'dropoff_location\'])', $service);
+        $this->assertStringContainsString('$distanceCalculationFailed = $routeDistanceRequired', $service);
+        $this->assertStringContainsString('&& $hasUsablePickup', $service);
+        $this->assertStringContainsString('&& $hasUsableDropoff', $service);
+        $this->assertStringContainsString('&& !is_numeric($outboundDistanceKm)', $service);
         $this->assertStringContainsString('$availability = [];', $service);
         $this->assertStringContainsString("'distance_calculation_failed' => \$distanceCalculationFailed", $service);
         $this->assertStringContainsString('Verified journey distance is required before route pricing', $service);
-        $this->assertStringContainsString('$hasRequestedRoute = !empty($params[\'pickup_location\'])', $service);
-        $this->assertStringContainsString('if (!$hasRequestedRoute && !isset($inputs[\'total_distance\'])', $service);
+        $this->assertStringContainsString("if (!is_numeric(\$distanceCalculations['journey_distance'] ?? null))", $service);
     }
 
     public function test_public_results_explain_why_prices_are_withheld(): void

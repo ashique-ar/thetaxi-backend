@@ -15,13 +15,16 @@ class PricingAdjustmentComponentCoverageTest extends TestCase
         parent::setUp();
 
         Schema::dropIfExists('price_adjustments');
+        Schema::dropIfExists('km_range_pricing_rules');
         Schema::create('price_adjustments', function (Blueprint $table): void {
             $table->uuid('id')->primary();
             $table->string('name');
             $table->text('description')->nullable();
             $table->string('scope')->default('global');
             $table->uuid('service_type_id')->nullable();
+            $table->json('service_type_ids')->nullable();
             $table->uuid('vehicle_group_id')->nullable();
+            $table->json('vehicle_group_ids')->nullable();
             $table->string('owner_type')->nullable();
             $table->uuid('owner_id')->nullable();
             $table->string('adjustment_type');
@@ -41,11 +44,36 @@ class PricingAdjustmentComponentCoverageTest extends TestCase
             $table->timestamps();
             $table->softDeletes();
         });
+        Schema::create('km_range_pricing_rules', function (Blueprint $table): void {
+            $table->uuid('id')->primary();
+            $table->string('name');
+            $table->text('description')->nullable();
+            $table->string('scope')->default('global');
+            $table->uuid('service_type_id')->nullable();
+            $table->uuid('vehicle_group_id')->nullable();
+            $table->decimal('from_km', 10, 2);
+            $table->decimal('to_km', 10, 2)->nullable();
+            $table->string('price_type');
+            $table->decimal('rate_per_km', 10, 4)->nullable();
+            $table->decimal('percentage', 8, 4)->nullable();
+            $table->decimal('flat_amount', 10, 2)->nullable();
+            $table->boolean('is_active')->default(true);
+            $table->integer('priority')->default(0);
+            $table->timestamp('effective_from')->nullable();
+            $table->timestamp('effective_to')->nullable();
+            $table->json('distance_types')->nullable();
+            $table->json('applicable_contexts')->nullable();
+            $table->uuid('created_user_id')->nullable();
+            $table->uuid('updated_user_id')->nullable();
+            $table->timestamps();
+            $table->softDeletes();
+        });
     }
 
     protected function tearDown(): void
     {
         Schema::dropIfExists('price_adjustments');
+        Schema::dropIfExists('km_range_pricing_rules');
 
         parent::tearDown();
     }
@@ -123,6 +151,7 @@ class PricingAdjustmentComponentCoverageTest extends TestCase
 
         // Base 200 + distance 100 + ten percent of distance only (10).
         self::assertSame(310.0, $result['total_amount']);
+        self::assertSame(110.0, $result['distance_charge_totals']['delivery_distance']);
         self::assertSame(10.0, (float) $result['adjustment_details']['total_adjustment']);
         self::assertSame(
             'km_charges',

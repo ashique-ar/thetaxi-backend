@@ -383,8 +383,12 @@
     slider.dataset.heroReady = "true";
     var reduceMotion = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
     var pagination = slider.querySelector(".shared-hero-pagination");
-    var previous = slider.querySelector(".t4-hero__prev");
-    var next = slider.querySelector(".t4-hero__next");
+    var previous = slider.querySelector(".t4-hero__prev, .t3-hero__prev");
+    var next = slider.querySelector(".t4-hero__next, .t3-hero__next");
+    var highlightEl = slider.querySelector("[data-hero-highlight]");
+    var metaEl = slider.querySelector("[data-hero-meta]");
+    var statusEl = slider.querySelector("[data-hero-status]");
+    var isInitialSync = true;
     var instance = new Swiper(slider, {
       slidesPerView: 1,
       speed: reduceMotion ? 0 : 900,
@@ -396,13 +400,60 @@
         disableOnInteraction: false,
       },
       fadeEffect: { crossFade: true },
-      pagination: pagination ? { el: pagination, clickable: true } : undefined,
+      pagination: pagination ? {
+        el: pagination,
+        clickable: true,
+        renderBullet: function (index, className) {
+          var label = "Go to slide " + (index + 1);
+          return '<button type="button" class="' + className + '" aria-label="' + label + '"></button>';
+        },
+      } : undefined,
       navigation: previous && next ? { prevEl: previous, nextEl: next } : undefined,
       on: {
-        init: function () { syncHeroVideo(this); },
-        slideChangeTransitionStart: function () { syncHeroVideo(this); },
+        init: function () {
+          syncHeroVideo(this);
+          syncHeroMeta(this);
+          isInitialSync = false;
+        },
+        slideChangeTransitionStart: function () {
+          syncHeroVideo(this);
+          syncHeroMeta(this);
+        },
       },
     });
+
+    slider.querySelectorAll("[data-hero-prev]").forEach(function (btn) {
+      if (btn === previous) return;
+      btn.addEventListener("click", function () { instance.slidePrev(); });
+    });
+    slider.querySelectorAll("[data-hero-next]").forEach(function (btn) {
+      if (btn === next) return;
+      btn.addEventListener("click", function () { instance.slideNext(); });
+    });
+
+    function syncHeroMeta(hero) {
+      var activeSlide = hero.slides[hero.activeIndex];
+      if (activeSlide) {
+        if (highlightEl && activeSlide.dataset.slideHighlight !== undefined) {
+          highlightEl.textContent = activeSlide.dataset.slideHighlight;
+        }
+        if (metaEl && activeSlide.dataset.slideMeta !== undefined) {
+          metaEl.textContent = activeSlide.dataset.slideMeta;
+        }
+        if (statusEl && !isInitialSync) {
+          statusEl.textContent = "Slide " + (hero.activeIndex + 1) + " of " + hero.slides.length;
+        }
+      }
+      if (pagination) {
+        pagination.querySelectorAll(".swiper-pagination-bullet").forEach(function (bullet, idx) {
+          if (idx === hero.activeIndex) {
+            bullet.setAttribute("aria-current", "true");
+          } else {
+            bullet.removeAttribute("aria-current");
+          }
+        });
+      }
+    }
 
     function syncHeroVideo(hero) {
       hero.slides.forEach(function (slide, index) {

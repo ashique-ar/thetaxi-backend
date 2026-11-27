@@ -1814,6 +1814,25 @@ class VehiclePricingCalculationDefinition extends Model
 
         }
 
+        $kmChargeAmount = round(array_sum($distanceChargeTotals), 2);
+        if ($kmChargeAmount > 0) {
+            $kmChargeResult = $applyComponent('km_charges', $kmChargeAmount);
+            $appendComponentResult($kmChargeResult, 'km_charges');
+            $adjustedKmChargeAmount = (float) ($kmChargeResult['final_amount'] ?? $kmChargeAmount);
+            $kmChargeDelta = round($adjustedKmChargeAmount - $kmChargeAmount, 2);
+            if ($kmChargeDelta !== 0.0) {
+                $distanceTypes = array_keys($distanceChargeTotals);
+                $remainingDelta = $kmChargeDelta;
+                foreach ($distanceTypes as $index => $distanceType) {
+                    $share = $index === count($distanceTypes) - 1
+                        ? $remainingDelta
+                        : round($kmChargeDelta * $distanceChargeTotals[$distanceType] / $kmChargeAmount, 2);
+                    $distanceChargeTotals[$distanceType] = round(max(0, $distanceChargeTotals[$distanceType] + $share), 2);
+                    $remainingDelta = round($remainingDelta - $share, 2);
+                }
+                $currentAmount += $kmChargeDelta;
+            }
+        }
 
         $totalAdjustmentResult = $applyComponent('total_price', $currentAmount);
         $appendComponentResult($totalAdjustmentResult, 'total_price');
@@ -2010,8 +2029,9 @@ class VehiclePricingCalculationDefinition extends Model
         preg_match_all('/\{?([A-Za-z_][A-Za-z0-9_]*)\}?\s*\*\s*\{?([A-Za-z_][A-Za-z0-9_]*)\}?/', (string) $this->formula, $products, PREG_SET_ORDER);
         foreach ($products as $product) {
             foreach ([[$product[1], $product[2]], [$product[2], $product[1]]] as [$distanceName, $rateName]) {
+                $rateNameLooksLikeRate = (bool) preg_match('/(?:^|_)rate(?:_|$)/i', $rateName);
                 if (($variableTypes[$distanceName] ?? null) === 'distance'
-                    && in_array($variableTypes[$rateName] ?? null, ['common_rate', 'rate'], true)) {
+                    && (in_array($variableTypes[$rateName] ?? null, ['common_rate', 'rate'], true) || $rateNameLooksLikeRate)) {
                     $rates[$distanceName][] = $rateName;
                 }
             }

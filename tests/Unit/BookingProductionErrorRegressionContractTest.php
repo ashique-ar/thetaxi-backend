@@ -15,7 +15,9 @@ it('does not calculate route pricing until required locations are usable', funct
         ->toContain("sanitizeCanonicalLocationParam(\$params, 'dropoff_location')")
         ->and($availability)
         ->toContain('$hasRequiredPricingLocations')
-        ->toContain('if ($serviceTypeModel && $hasRequiredPricingLocations)');
+        ->toContain('$shouldCalculateGroupPricing =')
+        ->toContain('&& $hasRequiredPricingLocations')
+        ->toContain('&& (!$packageSelectionRequired || $hasSelectedPackage)');
 });
 
 it('does not require pricing context for vehicle conflict availability', function () {

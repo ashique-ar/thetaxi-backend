@@ -378,21 +378,23 @@ body.theme-theme-04 .t4-header__cart .cart-badge {
 
 /* Integrated hero and booking panel */
 body.theme-theme-04 {
-    --t4-hero-height: clamp(620px, min(72svh, 42vw), 900px);
+    --t4-hero-height: clamp(680px, min(78svh, 46vw), 860px);
 }
 
 body.theme-theme-04 .t4-hero {
     position: relative;
     min-height: var(--t4-hero-height);
     overflow: hidden;
-    background: var(--t4-surface-soft);
+    background: #0f172a;
 }
 
 body.theme-theme-04 .t4-hero__media::after {
     position: absolute;
     inset: 0;
     z-index: 1;
-    background: linear-gradient(90deg, rgb(10 18 26 / 38%), rgb(10 18 26 / 10%) 42%, rgb(10 18 26 / 72%) 100%);
+    background:
+        linear-gradient(90deg, rgb(0 0 0 / 85%) 0%, rgb(0 0 0 / 42%) 50%, rgb(0 0 0 / 76%) 100%),
+        linear-gradient(0deg, rgb(0 0 0 / 90%) 0%, transparent 45%, rgb(0 0 0 / 40%) 100%);
     content: "";
     pointer-events: none;
 }
@@ -434,87 +436,181 @@ body.theme-theme-04 .t4-hero__frame {
     z-index: 2;
     display: flex;
     min-height: var(--t4-hero-height);
-    align-items: end;
-    padding-bottom: clamp(70px, 9vh, 110px);
+    align-items: center;
+    padding-block: 48px 104px;
 }
 
 body.theme-theme-04 .t4-hero__copy {
-    width: min(570px, 49%);
+    width: min(580px, 49%);
     margin-left: auto;
     color: #fff;
-    text-shadow: 0 2px 12px rgb(0 0 0 / 35%);
+    text-shadow: 0 2px 14px rgb(0 0 0 / 45%);
 }
 
-body.theme-theme-04 .t4-hero__copy .t4-kicker {
-    display: inline-block;
-    padding-left: 12px;
-    border-left: 3px solid var(--t4-accent);
+body.theme-theme-04 .t4-hero__copy .shared-hero-eyebrow {
+    display: inline-flex;
+    align-items: center;
+    gap: 8px;
+    margin: 0 0 16px;
+    padding: 6px 14px;
+    border-radius: 9999px;
+    background: var(--t4-accent);
     color: #fff;
+    font-size: 0.72rem;
+    font-weight: 800;
+    letter-spacing: 0.1em;
+    line-height: 1.2;
+    text-transform: uppercase;
+    box-shadow: 0 10px 24px rgb(0 0 0 / 35%);
+}
+
+body.theme-theme-04 .t4-hero__copy .shared-hero-eyebrow__dot {
+    display: inline-block;
+    width: 6px;
+    height: 6px;
+    border-radius: 9999px;
+    background: #fff;
+    animation: t4-hero-pulse 2s ease-in-out infinite;
+}
+
+@keyframes t4-hero-pulse {
+    0%, 100% { opacity: 1; transform: scale(1); }
+    50% { opacity: 0.45; transform: scale(0.8); }
 }
 
 body.theme-theme-04 .t4-hero__copy :where(h1, h2) {
-    max-width: 560px;
-    margin: 14px 0 12px;
-    font-size: clamp(2.75rem, 4vw, 4.3rem);
-    line-height: 1.04;
+    max-width: 580px;
+    margin: 0 0 18px;
+    font-size: clamp(2.2rem, 4.1vw, 3.8rem);
+    font-weight: 900;
+    letter-spacing: -0.03em;
+    line-height: 1.08;
     color: #fff;
+    text-shadow: 0 12px 28px rgb(0 0 0 / 55%);
     text-wrap: balance;
 }
 
-body.theme-theme-04 .t4-hero__copy>p {
-    max-width: 470px;
-    margin: 0;
-    color: #fff;
-    font-size: 1rem;
-    line-height: 1.55;
+body.theme-theme-04 .t4-hero__copy .shared-hero-description {
+    max-width: 520px;
+    margin: 0 0 8px;
+    color: rgb(255 255 255 / 95%);
+    font-size: clamp(1rem, 1.35vw, 1.25rem);
+    font-weight: 500;
+    line-height: 1.6;
 }
 
-body.theme-theme-04 .t4-hero__copy>small {
+body.theme-theme-04 .t4-hero__copy .shared-hero-caption {
     display: block;
-    max-width: 470px;
-    margin-top: 10px;
-    color: #fff;
-    font-size: 0.85rem;
-    line-height: 1.5;
+    max-width: 440px;
+    margin: 0 0 28px;
+    color: rgb(255 255 255 / 78%);
+    font-size: 0.875rem;
+    line-height: 1.6;
 }
 
-body.theme-theme-04 .t4-hero__action {
+body.theme-theme-04 .t4-hero__copy .shared-hero-actions {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 14px;
+    margin-bottom: 22px;
+}
+
+body.theme-theme-04 .t4-hero__copy .shared-hero-action {
     display: inline-flex;
     align-items: center;
-    gap: 12px;
-    margin-top: 20px;
-    padding: 11px 18px;
-    border-radius: 5px;
+    gap: 10px;
+    margin: 0;
+    padding: 14px 26px;
+    border-radius: 12px;
     background: var(--t4-accent);
     color: #fff;
-    font-weight: 600;
+    font-size: 0.875rem;
+    font-weight: 800;
     text-decoration: none;
     text-shadow: none;
+    box-shadow: 0 14px 28px rgb(0 0 0 / 35%);
+    transition: transform 180ms ease, background-color 180ms ease;
 }
 
-body.theme-theme-04 .t4-hero__action:hover,
-body.theme-theme-04 .t4-hero__action:focus-visible {
-    background: #a81322;
+body.theme-theme-04 .t4-hero__copy .shared-hero-action:hover,
+body.theme-theme-04 .t4-hero__copy .shared-hero-action:focus-visible {
+    background: var(--t4-accent-strong);
     color: #fff;
+    transform: translateX(2px);
+    text-decoration: none;
+}
+
+body.theme-theme-04 .t4-hero__copy .shared-hero-action-secondary {
+    display: inline-flex;
+    align-items: center;
+    gap: 8px;
+    padding: 14px 22px;
+    border-radius: 12px;
+    background: rgb(255 255 255 / 12%);
+    backdrop-filter: blur(12px);
+    border: 1px solid rgb(255 255 255 / 22%);
+    color: #fff;
+    font-size: 0.875rem;
+    font-weight: 700;
+    text-decoration: none;
+    text-shadow: none;
+    transition: background-color 180ms ease, border-color 180ms ease;
+}
+
+body.theme-theme-04 .t4-hero__copy .shared-hero-action-secondary:hover,
+body.theme-theme-04 .t4-hero__copy .shared-hero-action-secondary:focus-visible {
+    background: rgb(255 255 255 / 22%);
+    border-color: rgb(255 255 255 / 38%);
+    color: #fff;
+}
+
+body.theme-theme-04 .t4-hero__copy .shared-hero-location {
+    display: inline-flex;
+    align-items: center;
+    gap: 8px;
+    margin: 0;
+    padding: 7px 13px;
+    border-radius: 8px;
+    background: rgb(0 0 0 / 45%);
+    backdrop-filter: blur(12px);
+    border: 1px solid rgb(255 255 255 / 12%);
+    color: rgb(255 255 255 / 92%);
+    font-size: 0.75rem;
+    font-weight: 500;
+}
+
+body.theme-theme-04 .t4-hero__copy .shared-hero-location i {
+    color: var(--t4-accent);
+    font-size: 0.9rem;
 }
 
 body.theme-theme-04 :where(.t4-hero__prev, .t4-hero__next) {
     position: absolute;
-    z-index: 4;
+    z-index: 6;
     top: 50%;
     display: grid;
-    width: 36px;
+    width: 44px;
     height: 44px;
     place-items: center;
-    border: 0;
-    background: rgb(10 18 26 / 40%);
+    border: 1px solid rgb(255 255 255 / 22%);
+    border-radius: 9999px;
+    background: rgb(0 0 0 / 44%);
+    backdrop-filter: blur(12px);
     color: #fff;
+    box-shadow: 0 10px 24px rgb(0 0 0 / 35%);
     transform: translateY(-50%);
+    touch-action: manipulation;
+    transition: background-color 180ms ease, border-color 180ms ease;
 }
 
-body.theme-theme-04 .t4-hero__prev { left: 0; }
-body.theme-theme-04 .t4-hero__next { right: 0; }
-body.theme-theme-04 :where(.t4-hero__prev, .t4-hero__next):focus-visible { outline: 3px solid #fff; outline-offset: -3px; }
+body.theme-theme-04 .t4-hero__prev { left: 16px; }
+body.theme-theme-04 .t4-hero__next { right: 16px; }
+body.theme-theme-04 :where(.t4-hero__prev, .t4-hero__next):hover {
+    background: var(--t4-accent);
+    border-color: transparent;
+}
+body.theme-theme-04 :where(.t4-hero__prev, .t4-hero__next):focus-visible { outline: 3px solid #fff; outline-offset: 2px; }
 body.theme-theme-04 .t4-hero__location {
     position: absolute;
     right: 24px;
@@ -536,7 +632,7 @@ body.theme-theme-04 .t4-booking-panel {
     z-index: 3;
     min-height: calc(var(--t4-hero-height) - 26px);
     margin-top: calc((var(--t4-hero-height) * -1) + 26px);
-    padding-bottom: 18px;
+    padding-bottom: 72px;
     pointer-events: none;
 }
 
@@ -2403,36 +2499,146 @@ body.theme-theme-04 .shared-hero-pagination .swiper-pagination-bullet-active {
     opacity: 1;
 }
 
+body.theme-theme-04 .t4-hero .shared-hero-bar {
+    position: absolute;
+    inset-inline: 0;
+    bottom: 0;
+    z-index: 6;
+    padding: 12px 24px;
+    border-top: 1px solid rgb(255 255 255 / 12%);
+    background: rgb(0 0 0 / 62%);
+    backdrop-filter: blur(12px);
+}
+
+body.theme-theme-04 .t4-hero .shared-hero-bar__inner {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    justify-content: space-between;
+    gap: 12px 20px;
+    width: min(100%, 1600px);
+    margin-inline: auto;
+    color: rgb(255 255 255 / 84%);
+    font-size: 0.75rem;
+}
+
+body.theme-theme-04 .t4-hero .shared-hero-bar__highlight {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    min-width: 0;
+}
+
+body.theme-theme-04 .t4-hero .shared-hero-bar__dot {
+    flex-shrink: 0;
+    width: 8px;
+    height: 8px;
+    border-radius: 9999px;
+    background: var(--t4-accent);
+}
+
+body.theme-theme-04 .t4-hero .shared-hero-bar__label {
+    flex-shrink: 0;
+    color: #fff;
+    font-weight: 700;
+}
+
+body.theme-theme-04 .t4-hero .shared-hero-bar__text {
+    max-width: min(360px, 55vw);
+    overflow: hidden;
+    color: rgb(255 255 255 / 72%);
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+body.theme-theme-04 .t4-hero .shared-hero-bar__meta {
+    display: none;
+    align-items: center;
+    gap: 8px;
+    color: rgb(255 255 255 / 66%);
+    font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+    font-size: 0.7rem;
+}
+
+body.theme-theme-04 .t4-hero .shared-hero-bar__controls {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    margin-left: auto;
+}
+
+body.theme-theme-04 .t4-hero .shared-hero-bar__arrow {
+    display: inline-flex;
+    width: 28px;
+    height: 28px;
+    align-items: center;
+    justify-content: center;
+    border: 0;
+    border-radius: 9999px;
+    background: rgb(255 255 255 / 12%);
+    color: #fff;
+    cursor: pointer;
+    touch-action: manipulation;
+    transition: background-color 180ms ease;
+}
+
+body.theme-theme-04 .t4-hero .shared-hero-bar__arrow:hover {
+    background: var(--t4-accent);
+}
+
 body.theme-theme-04 .t4-hero .shared-hero-pagination {
-    right: auto;
-    left: 68%;
-    bottom: 22px;
+    position: static;
+    display: flex;
+    align-items: center;
+    gap: 6px;
     counter-reset: t4-slide;
 }
 body.theme-theme-04 .t4-hero .shared-hero-pagination .swiper-pagination-bullet,
 body.theme-theme-04 .t4-hero .shared-hero-pagination .swiper-pagination-bullet-active {
-    width: 28px;
+    display: inline-flex;
+    min-width: 28px;
+    width: auto;
     height: 26px;
-    border-radius: 0;
+    padding: 2px 8px;
+    align-items: center;
+    justify-content: center;
+    border-radius: 6px;
     background: transparent;
-    color: #fff;
+    color: rgb(255 255 255 / 65%);
+    font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
     font-size: 0.75rem;
-    line-height: 24px;
+    font-weight: 700;
+    line-height: 1;
+    opacity: 1;
     text-align: center;
+    transition: background-color 180ms ease, color 180ms ease;
 }
 body.theme-theme-04 .t4-hero .shared-hero-pagination .swiper-pagination-bullet::after {
     counter-increment: t4-slide;
     content: counter(t4-slide, decimal-leading-zero);
 }
+body.theme-theme-04 .t4-hero .shared-hero-pagination .swiper-pagination-bullet:hover {
+    color: #fff;
+}
 body.theme-theme-04 .t4-hero .shared-hero-pagination .swiper-pagination-bullet-active {
-    border-bottom: 2px solid var(--t4-accent);
+    padding: 2px 10px;
+    border-bottom: 0;
+    outline: 1px solid rgb(255 255 255 / 35%);
+    background: var(--t4-accent);
+    color: #fff;
+    font-weight: 900;
+    box-shadow: 0 2px 8px rgb(0 0 0 / 35%);
+}
+@media (min-width: 992px) {
+    body.theme-theme-04 .t4-hero .shared-hero-bar__meta { display: flex; }
 }
 @media (max-width: 991px) {
-    body.theme-theme-04 .t4-hero .shared-hero-pagination { bottom: calc(var(--t4-hero-overlap) + 22px); }
+    body.theme-theme-04 .t4-hero .shared-hero-bar { padding-bottom: calc(var(--t4-hero-overlap) + 12px); }
     body.theme-theme-04 .t4-hero__location { bottom: calc(var(--t4-hero-overlap) + 24px); }
 }
 @media (max-width: 767px) {
-    body.theme-theme-04 .t4-hero .shared-hero-pagination { left: 20px; bottom: calc(var(--t4-hero-overlap) + 10px); }
+    body.theme-theme-04 :where(.t4-hero__prev, .t4-hero__next) { display: none; }
+    body.theme-theme-04 .t4-hero .shared-hero-bar { padding: 10px 16px calc(var(--t4-hero-overlap) + 12px); }
     body.theme-theme-04 .t4-hero__location { right: 20px; bottom: calc(var(--t4-hero-overlap) + 16px); max-width: 45%; }
 }
 @media (max-width: 991px) and (max-height: 500px) {

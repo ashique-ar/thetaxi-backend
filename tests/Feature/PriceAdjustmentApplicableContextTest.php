@@ -16,7 +16,9 @@ beforeEach(function () {
         $table->text('description')->nullable();
         $table->string('scope')->default('global');
         $table->uuid('service_type_id')->nullable();
+        $table->json('service_type_ids')->nullable();
         $table->uuid('vehicle_group_id')->nullable();
+        $table->json('vehicle_group_ids')->nullable();
         $table->string('owner_type')->nullable();
         $table->uuid('owner_id')->nullable();
         $table->string('adjustment_type')->default('percentage');
