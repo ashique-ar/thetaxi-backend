@@ -280,7 +280,7 @@ class TourItineraryTest extends TestCase
 
         self::assertSame('draft', $created['status']);
         self::assertSame(1, $created['revision']);
-        self::assertSame('g-kandy', $created['days'][0]['start_location']['google_place_id']);
+        self::assertSame('g-kandy', $created['days'][0]['start_location_snapshot']['google_place_id']);
         self::assertSame('g-garden-gate', $created['days'][0]['stops'][1]['location_snapshot']['google_place_id']);
         self::assertArrayNotHasKey('latitude', $created['days'][0]['stops'][1]['location_snapshot']);
         self::assertSame(75, $created['days'][0]['stops'][1]['visit_duration_minutes']);

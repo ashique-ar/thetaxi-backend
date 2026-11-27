@@ -20,6 +20,7 @@
 
 .theme-default .home4-banner-section .banner-video-area::before {
     z-index: 1;
+    pointer-events: none;
     background: linear-gradient(
         180deg,
         rgba(0, 0, 0, 0.34) 0%,
@@ -30,8 +31,8 @@
 }
 
 body.theme-default .home4-banner-section .shared-hero-swiper .banner-content-wrap {
-    align-items: flex-start;
-    padding: 1.25rem 0 6.5rem;
+    align-items: center;
+    padding: 4.5rem 0 7rem;
 }
 
 .theme-default .home4-banner-section .banner-content h1,
@@ -58,10 +59,12 @@ body.theme-default .banner-content .shared-hero-actions {
     position: relative;
     z-index: 10;
     margin-top: -100px;
+    pointer-events: none;
 }
 
 .theme-default .home-booking-form-section .filter-wrapper {
     margin-top: 0 !important;
+    pointer-events: auto;
 }
 
 .theme-default .filter-wrapper .filter-item-list {
@@ -84,7 +87,8 @@ body.theme-default .banner-content .shared-hero-actions {
     }
 
     body.theme-default .home4-banner-section .shared-hero-swiper .banner-content-wrap {
-        padding: 2.5rem 0 15rem;
+        align-items: center;
+        padding: 5.5rem 0 11rem;
     }
 
     .theme-default .home-booking-form-section {

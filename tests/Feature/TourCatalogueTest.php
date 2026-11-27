@@ -332,6 +332,10 @@ class TourCatalogueTest extends TestCase
             'address' => 'Peradeniya, Sri Lanka', 'city' => 'Peradeniya', 'country' => 'Sri Lanka',
             'latitude' => 7.2734, 'longitude' => 80.5966,
         ]))->getData(true)['data'];
+        self::assertSame('google-kandy', $destinationLocation['google_place_id']);
+        self::assertNull($destinationLocation['address']);
+        self::assertEquals(0, $destinationLocation['latitude']);
+        self::assertTrue((bool) $destinationLocation['is_active']);
         $destination = $controller->storeDestination(Request::create('/tours/destinations', 'POST', [
             'predefined_location_id' => $destinationLocation['id'],
             'code' => 'kandy', 'name' => 'Kandy', 'timezone' => 'Asia/Colombo', 'is_published' => true,

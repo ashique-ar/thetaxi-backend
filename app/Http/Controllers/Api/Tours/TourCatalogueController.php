@@ -114,7 +114,7 @@ class TourCatalogueController extends Controller
         $service = app(WebsiteSettingsService::class)->getTourService(true);
         abort_unless($service, 404);
         $destinations = TourDestination::query()->with([
-            'location:id,name,city,address',
+            'location:id,name,city',
             'activities' => fn($query) => $query->where('is_published', true)->orderBy('sort_order')->orderBy('name'),
         ])->where('service_type_id', $service->id)->where('is_published', true)
             ->orderBy('sort_order')->orderBy('name')->get();
