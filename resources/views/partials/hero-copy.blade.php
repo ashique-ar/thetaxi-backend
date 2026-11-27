@@ -12,12 +12,11 @@
 @if ($slide['caption'] !== '')
     <small class="shared-hero-caption">{{ $slide['caption'] }}</small>
 @endif
-<div class="shared-hero-actions">
-    @if (($slide['ctaText'] ?? '') !== '')
+@if (($slide['ctaText'] ?? '') !== '')
+    <div class="shared-hero-actions">
         <a class="shared-hero-action" href="{{ $slide['ctaUrl'] }}"><span>{{ $slide['ctaText'] }}</span> <i class="bi bi-arrow-right" aria-hidden="true"></i></a>
-    @endif
-    <a class="shared-hero-action-secondary" href="{{ route('search') }}"><span>View Fleet</span></a>
-</div>
+    </div>
+@endif
 @if (!empty($slide['locationLabel']))
     <span class="shared-hero-location"><i class="bi bi-geo-alt-fill" aria-hidden="true"></i> <span>{{ $slide['locationLabel'] }}</span></span>
 @endif
