@@ -412,6 +412,7 @@ body.theme-theme-03 .t3-hero {
 body.theme-theme-03 .t3-hero > .shared-hero-swiper,
 body.theme-theme-03 .t3-hero .swiper-wrapper,
 body.theme-theme-03 .t3-hero .swiper-slide {
+    height: 100%;
     min-height: inherit;
 }
 
@@ -432,8 +433,8 @@ body.theme-theme-03 .t3-hero__media::after {
     inset: 0;
     z-index: 1;
     background:
-        linear-gradient(90deg, rgb(0 0 0 / 84%) 0%, rgb(0 0 0 / 44%) 52%, rgb(0 0 0 / 74%) 100%),
-        linear-gradient(0deg, rgb(0 0 0 / 88%) 0%, transparent 46%, rgb(0 0 0 / 38%) 100%);
+        linear-gradient(90deg, rgb(0 0 0 / 82%) 0%, rgb(0 0 0 / 40%) 52%, rgb(0 0 0 / 72%) 100%),
+        linear-gradient(0deg, rgb(0 0 0 / 78%) 0%, transparent 46%, rgb(0 0 0 / 32%) 100%);
     content: "";
     pointer-events: none;
 }
