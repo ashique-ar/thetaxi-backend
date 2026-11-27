@@ -439,8 +439,8 @@ body.theme-theme-04 .t4-hero__frame {
     z-index: 2;
     display: flex;
     min-height: var(--t4-hero-height);
-    align-items: flex-start;
-    padding-block: clamp(56px, 7vh, 88px) 104px;
+    align-items: flex-end;
+    padding-block: 48px 104px;
 }
 
 body.theme-theme-04 .t4-hero__copy {

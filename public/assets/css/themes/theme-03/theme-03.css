@@ -454,7 +454,7 @@ body.theme-theme-03 .t3-hero__frame {
     position: relative;
     z-index: 2;
     display: flex;
-    align-items: flex-start;
+    align-items: flex-end;
     width: min(100%, 1600px);
     min-height: inherit;
     padding: clamp(56px, 7vw, 88px) var(--t3-gutter) clamp(110px, 11vw, 136px);
