@@ -3,6 +3,8 @@
 namespace App\Services\Tours;
 
 use App\Models\Service\ServiceVehicleClassSetting;
+use App\Models\Service\ServicePackage;
+use App\Models\Vehicle\VehicleGroup;
 use App\Models\Vehicle\VehiclePricing\VehiclePricingCalculationDefinition;
 use App\Models\Tours\TourItinerary;
 use App\Models\Tours\TourQuote;
@@ -47,19 +49,20 @@ class TourItineraryQuoteService
         if (!$setting || $setting->is_inquiry_only) {
             $routes['original']['quote'] = ['status' => 'quotation_required', 'reason' => 'This vehicle class requires staff confirmation.'];
             $routes['suggested']['quote'] = ['status' => 'quotation_required', 'reason' => 'This vehicle class requires staff confirmation.'];
-
-            return $routes + ['price_difference' => null];
+            $routes['price_difference'] = null;
+        } else {
+            $originalPricing = $this->calculatePricing($itinerary, $routes['original']['distance_km']);
+            $routes['original']['quote'] = $originalPricing['public'];
+            $routes['suggested']['quote'] = $routes['original']['distance_km'] === $routes['suggested']['distance_km']
+                ? $routes['original']['quote']
+                : $this->calculatePricing($itinerary, $routes['suggested']['distance_km'])['public'];
+            $routes['price_difference'] = ($routes['original']['quote']['status'] ?? null) === 'priced'
+                && ($routes['suggested']['quote']['status'] ?? null) === 'priced'
+                ? round($routes['suggested']['quote']['total_amount'] - $routes['original']['quote']['total_amount'], 2)
+                : null;
         }
 
-        $originalPricing = $this->calculatePricing($itinerary, $routes['original']['distance_km']);
-        $routes['original']['quote'] = $originalPricing['public'];
-        $routes['suggested']['quote'] = $routes['original']['distance_km'] === $routes['suggested']['distance_km']
-            ? $routes['original']['quote']
-            : $this->calculatePricing($itinerary, $routes['suggested']['distance_km'])['public'];
-        $routes['price_difference'] = ($routes['original']['quote']['status'] ?? null) === 'priced'
-            && ($routes['suggested']['quote']['status'] ?? null) === 'priced'
-            ? round($routes['suggested']['quote']['total_amount'] - $routes['original']['quote']['total_amount'], 2)
-            : null;
+        $routes['class_estimates'] = $this->classEstimates($itinerary, $routes);
 
         return $routes;
     }
@@ -299,16 +302,74 @@ class TourItineraryQuoteService
         ];
     }
 
+    private function classEstimates(TourItinerary $itinerary, array $routes): array
+    {
+        $package = $itinerary->service_package_id
+            ? ServicePackage::query()->find($itinerary->service_package_id)
+            : null;
+        $allowedClasses = $package
+            ? array_unique(array_filter([$package->default_vehicle_class_id, ...($package->allowed_upgrade_class_ids ?? [])]))
+            : null;
+        $partySize = (int) $itinerary->adult_count + (int) $itinerary->child_count;
+
+        return ServiceVehicleClassSetting::query()
+            ->where('service_type_id', $itinerary->service_type_id)
+            ->where('is_active', true)
+            ->where('is_hidden', false)
+            ->whereNotNull('eligible_vehicle_group_ids')
+            ->get()
+            ->filter(function (ServiceVehicleClassSetting $setting) use ($allowedClasses, $partySize, $itinerary): bool {
+                if (($allowedClasses !== null && !in_array($setting->vehicle_class_id, $allowedClasses, true))
+                    || $partySize < 1 || $partySize > $setting->max_passengers
+                    || (int) $itinerary->luggage_count > $setting->max_luggage) {
+                    return false;
+                }
+
+                $groupIds = $setting->eligible_vehicle_group_ids ?? [];
+                return $groupIds !== [] && VehicleGroup::query()
+                    ->whereIn('id', $groupIds)
+                    ->where('is_active', true)
+                    ->whereNull('deleted_at')
+                    ->where('passengers_count', '>=', $setting->max_passengers)
+                    ->where('hand_luggages', '>=', $setting->max_luggage)
+                    ->exists();
+            })
+            ->map(function (ServiceVehicleClassSetting $setting) use ($itinerary, $routes): array {
+                $classId = (string) $setting->vehicle_class_id;
+                if ($setting->is_inquiry_only) {
+                    $estimate = ['status' => 'quotation_required', 'reason' => 'Our team will confirm this vehicle price.'];
+                    return ['vehicle_class_id' => $classId, 'original' => $estimate, 'suggested' => $estimate];
+                }
+
+                try {
+                    $original = $classId === (string) $itinerary->vehicle_class_id
+                        ? $routes['original']['quote']
+                        : $this->calculatePricing($itinerary, (float) $routes['original']['distance_km'], false, $classId)['public'];
+                    $suggested = $routes['original']['distance_km'] === $routes['suggested']['distance_km']
+                        ? $original
+                        : ($classId === (string) $itinerary->vehicle_class_id
+                            ? $routes['suggested']['quote']
+                            : $this->calculatePricing($itinerary, (float) $routes['suggested']['distance_km'], false, $classId)['public']);
+                } catch (\Throwable) {
+                    $estimate = ['status' => 'quotation_required', 'reason' => 'Our team will confirm this vehicle price.'];
+                    return ['vehicle_class_id' => $classId, 'original' => $estimate, 'suggested' => $estimate];
+                }
+
+                return ['vehicle_class_id' => $classId, 'original' => $original, 'suggested' => $suggested];
+            })->values()->all();
+    }
+
     private function calculatePricing(
         TourItinerary $itinerary,
         float $distance,
-        bool $captureTourPricingBranches = false
+        bool $captureTourPricingBranches = false,
+        ?string $vehicleClassId = null
     ): array
     {
         $baseCurrency = $this->currencyService->getBookingBaseCurrency();
         $pricing = $this->bookingFlow->calculateDynamicPricing([
             'service_type_id' => $itinerary->service_type_id,
-            'vehicle_class_id' => $itinerary->vehicle_class_id,
+            'vehicle_class_id' => $vehicleClassId ?? $itinerary->vehicle_class_id,
             'package_id' => $itinerary->service_package_id,
             'from_date' => $itinerary->start_date->toDateString(),
             'to_date' => Carbon::parse($itinerary->start_date)->addDays($itinerary->duration_days - 1)->toDateString(),
