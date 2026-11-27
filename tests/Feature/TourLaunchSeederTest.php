@@ -78,6 +78,8 @@ class TourLaunchSeederTest extends TestCase
         self::assertSame(3, $classSetting->max_passengers);
         self::assertSame(3, DB::table('service_vehicle_class_settings')->where('service_type_id', $tourId)->where('vehicle_class_id', 'compact-class')->value('max_passengers'));
         self::assertSame(6, DB::table('service_vehicle_class_settings')->where('service_type_id', $tourId)->where('vehicle_class_id', 'commercial-class')->value('max_passengers'));
+        self::assertSame(9, DB::table('service_vehicle_class_settings')->where('service_type_id', $tourId)->where('vehicle_class_id', 'high-roof-class')->value('max_passengers'));
+        self::assertSame(14, DB::table('service_vehicle_class_settings')->where('service_type_id', $tourId)->where('vehicle_class_id', 'full-size-class')->value('max_passengers'));
 
         $tourSlabId = DB::table('vehicle_pricing_slab_definitions')->where('service_type_id', $tourId)->value('id');
         $classPrice = DB::table('vehicle_group_pricing')->where('slab_definition_id', $tourSlabId)->where('vehicle_class_id', 'economy-class')->first();

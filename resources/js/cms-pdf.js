@@ -17,8 +17,10 @@ document.querySelectorAll('[data-cms-pdf]').forEach(async reader => {
     try {
         const loadingTask = getDocument({ url: reader.dataset.pdfUrl });
         const pdf = await loadingTask.promise;
+        const renderedPages = document.createDocumentFragment();
         for (let number = 1; number <= pdf.numPages; number++) {
             if (loadingLabel) loadingLabel.textContent = 'Preparing page ' + number + ' of ' + pdf.numPages + '…';
+            if (counter) counter.textContent = 'Loading ' + number + ' / ' + pdf.numPages;
             const page = await pdf.getPage(number);
             const viewport = page.getViewport({ scale: Math.min(1.5, 1100 / page.getViewport({ scale: 1 }).width) });
             const canvas = document.createElement('canvas');
@@ -27,15 +29,12 @@ document.querySelectorAll('[data-cms-pdf]').forEach(async reader => {
             await page.render({ canvas, canvasContext: canvas.getContext('2d'), viewport }).promise;
             canvas.className = 'cms-pdf-page img-fluid mb-3';
             canvas.setAttribute('aria-label', `Page ${number} of ${pdf.numPages}`);
-            pages.append(canvas);
-            if (number === 1) {
-                if (loading) loading.hidden = true;
-                if (counter) counter.textContent = `Page 1 / ${pdf.numPages}`;
-            }
+            renderedPages.append(canvas);
             if (progress) progress.style.width = Math.round(number / pdf.numPages * 100) + '%';
         }
         if (progress) progress.style.width = '100%';
         await loadingTask.destroy();
+        pages.append(renderedPages);
         if (loading) loading.hidden = true;
         let current = 0;
         let zoom = 100;

@@ -373,25 +373,19 @@
         .cms-pdf-zoom button:not(:disabled):hover,.cms-pdf-fullscreen:hover { background:#eef2ff; color:var(--cms-pdf-accent); }
         .cms-pdf-zoom button:disabled { opacity:.4; }
         .cms-pdf-zoom span { min-width:42px; text-align:center; }
-        .cms-pdf-loading { display:flex; flex-direction:column; align-items:center; gap:12px; width:min(100% - 32px, 340px); margin:48px auto; padding:22px 24px; border-radius:12px; background:#fff; color:#475569; text-align:center; font-size:.9rem; box-shadow:0 8px 20px rgba(15,23,42,.1); }
-        .cms-pdf-loading[hidden] { display:none !important; }
-        .cms-pdf-spinner { display:block !important; flex:0 0 22px; width:22px; height:22px; border:2px solid #dbe3ef; border-top-color:var(--cms-pdf-accent); border-radius:50%; animation:cms-pdf-spin .75s linear infinite !important; }
-        [data-pdf-loading-label]::after { content:"..."; display:inline-block; width:1.2em; overflow:hidden; vertical-align:bottom; animation:cms-pdf-dots 1.2s ease-in-out infinite; }
-        .cms-pdf-progress { position:relative; width:100%; height:4px; overflow:hidden; border-radius:5px; background:#e8edf5; }
-        .cms-pdf-progress::after { content:""; position:absolute; top:0; bottom:0; left:0; width:34%; border-radius:inherit; background:var(--cms-pdf-accent); opacity:.65; animation:cms-pdf-track 1.15s ease-in-out infinite; }
+        .cms-pdf-loading-card { display:flex !important; flex-direction:column; align-items:center; gap:10px; width:min(244px, calc(100% - 32px)) !important; margin:40px auto !important; padding:0 0 16px !important; overflow:hidden; border-radius:12px; background:#fff; color:#64748b; text-align:center; font-size:.82rem; box-shadow:0 8px 20px rgba(15,23,42,.12); }
+        .cms-pdf-loading-card[hidden] { display:none !important; }
+        .cms-pdf-progress { position:relative; width:calc(100% - 32px); height:5px; overflow:hidden; border-radius:5px; background:#e8edf5; }
         .cms-pdf-progress span { position:relative; display:block; width:0; height:100%; background:var(--cms-pdf-accent); transition:width .2s ease; }
         .cms-pdf-progress span::after { content:""; position:absolute; inset:0; background:linear-gradient(90deg,transparent,rgba(255,255,255,.75),transparent); animation:cms-pdf-sheen 1.1s ease-in-out infinite; }
-        @keyframes cms-pdf-spin { to { transform:rotate(360deg); } }
-        @keyframes cms-pdf-dots { 0%,100% { opacity:.25; } 50% { opacity:1; } }
         @keyframes cms-pdf-sheen { from { transform:translateX(-100%); } to { transform:translateX(100%); } }
-        @keyframes cms-pdf-track { from { transform:translateX(-110%); } to { transform:translateX(310%); } }
-        @media(prefers-reduced-motion:reduce) { .cms-pdf-spinner,.cms-pdf-progress span::after,[data-pdf-loading-label]::after { animation-duration:3s; } }
+        @media(prefers-reduced-motion:reduce) { .cms-pdf-progress span::after { animation:none; } }
         .cms-pdf-pages { overflow:auto; padding:24px; }
         .cms-pdf-page { display:block; width:var(--cms-pdf-zoom, 100%); max-width:none; height:auto; margin:0 auto 20px; background:#fff; box-shadow:0 5px 16px rgba(15,23,42,.16); transition:width .15s ease; }
         .cms-pdf-page:last-child { margin-bottom:0; }
         .cms-pdf-error { margin:18px; padding:14px 16px; border-left:3px solid var(--cms-pdf-accent); border-radius:0 8px 8px 0; background:#fff; color:#475569; }
         .cms-pdf-magazine-stage { display:grid; min-height:340px; overflow:auto; place-items:center; padding:28px 16px; }
-        .cms-pdf-magazine .cms-pdf-loading { width:min(100%, 244px); gap:10px; margin:0; padding:0 0 16px; overflow:hidden; }
+        .cms-pdf-magazine .cms-pdf-loading-card { width:min(100%, 244px) !important; margin:0 auto !important; }
         .cms-pdf-cover,.cms-pdf-cover-placeholder { display:grid; width:100%; height:164px; object-fit:cover; place-items:center; background:#e8eaf5; color:var(--cms-pdf-accent); font-size:2rem; }
         .cms-pdf-magazine-copy { max-width:90%; overflow:hidden; color:#172033; font-weight:700; text-overflow:ellipsis; white-space:nowrap; }
         .cms-pdf-magazine .cms-pdf-progress { width:calc(100% - 32px); }

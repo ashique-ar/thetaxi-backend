@@ -51,6 +51,7 @@ if (book) {
 
             for (let number = 1; number <= pdf.numPages; number++) {
                 if (loadingLabel) loadingLabel.textContent = `Preparing page ${number} of ${pdf.numPages}…`;
+                if (pageStatus) pageStatus.textContent = `Loading ${number} / ${pdf.numPages}`;
                 const page = number === 1 ? firstPage : await pdf.getPage(number);
                 const viewport = page.getViewport({ scale: Math.min(1.5, 1400 / page.getViewport({ scale: 1 }).height) });
                 const canvas = document.createElement('canvas');

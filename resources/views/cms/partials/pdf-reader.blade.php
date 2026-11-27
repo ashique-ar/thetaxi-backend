@@ -11,8 +11,7 @@
                 <button type="button" class="cms-pdf-fullscreen" data-magazine-fullscreen aria-label="View PDF full screen" title="Full screen"><i class="bi bi-arrows-fullscreen" aria-hidden="true"></i></button>
             </header>
             <div class="cms-pdf-magazine-stage">
-                <div class="cms-pdf-loading" data-magazine-status role="status" aria-live="polite">
-                    <span class="cms-pdf-spinner" aria-hidden="true"></span>
+                <div class="cms-pdf-loading cms-pdf-loading-card" data-magazine-status role="status" aria-live="polite">
                     @if ($content->thumbnail)
                         <img class="cms-pdf-cover" src="{{ s3_asset($content->thumbnail) }}" alt="">
                     @else
@@ -33,9 +32,15 @@
                 <div class="cms-pdf-zoom" aria-label="PDF zoom controls"><button type="button" data-pdf-zoom-out aria-label="Zoom out" disabled>−</button><span data-pdf-zoom-label>100%</span><button type="button" data-pdf-zoom-in aria-label="Zoom in" disabled>+</button></div>
                 <button type="button" class="cms-pdf-fullscreen" data-pdf-fullscreen aria-label="View PDF full screen" title="Full screen"><i class="bi bi-arrows-fullscreen" aria-hidden="true"></i></button>
             </header>
-            <div class="cms-pdf-loading" data-pdf-loading role="status" aria-live="polite">
-                <span class="cms-pdf-spinner" aria-hidden="true"></span><span data-pdf-loading-label>Preparing your document…</span>
+            <div class="cms-pdf-loading cms-pdf-loading-card" data-pdf-loading role="status" aria-live="polite">
+                @if ($content->thumbnail)
+                    <img class="cms-pdf-cover" src="{{ s3_asset($content->thumbnail) }}" alt="">
+                @else
+                    <span class="cms-pdf-cover-placeholder"><i class="bi bi-file-earmark-pdf" aria-hidden="true"></i></span>
+                @endif
+                <span class="cms-pdf-magazine-copy">{{ $content->title }}</span>
                 <span class="cms-pdf-progress"><span data-pdf-progress></span></span>
+                <span data-pdf-loading-label>Preparing your document…</span>
             </div>
             <div class="cms-pdf-error" data-pdf-error role="alert" hidden>We couldn’t load the PDF preview. You can still open or download the document above.</div>
             <div class="cms-pdf-pages" data-pdf-pages></div>
