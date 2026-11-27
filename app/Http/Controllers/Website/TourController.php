@@ -32,7 +32,12 @@ class TourController extends Controller
     {
         abort_unless(app(WebsiteSettingsService::class)->getTourService(true), 404);
 
-        return view('tours.index');
+        $bookingSettings = app(WebsiteSettingsService::class)->getBookingSettings();
+
+        return view('tours.index', [
+            'guestBookingEnabled' => filter_var($bookingSettings['guest_booking_enabled'] ?? true, FILTER_VALIDATE_BOOLEAN),
+            'customerLookupEnabled' => filter_var($bookingSettings['checkout_returning_customer_lookup_enabled'] ?? true, FILTER_VALIDATE_BOOLEAN),
+        ]);
     }
 
     public function confirmation(Request $request): View
@@ -92,12 +97,31 @@ class TourController extends Controller
             'currency' => $currency->getBookingBaseCurrency(),
             'custom_answers' => $request->input('custom_answers', []),
         ]);
+        $bookingSettings = app(WebsiteSettingsService::class)->getBookingSettings();
+        $guestBookingEnabled = filter_var($bookingSettings['guest_booking_enabled'] ?? true, FILTER_VALIDATE_BOOLEAN);
+        $customerLookupEnabled = filter_var($bookingSettings['checkout_returning_customer_lookup_enabled'] ?? true, FILTER_VALIDATE_BOOLEAN);
+        if (!$customerLookupEnabled) {
+            $request->session()->forget([
+                'checkout_verified_email', 'checkout_verified_email_at',
+                'checkout_verified_customer_id', 'checkout_verified_customer_mobile',
+            ]);
+        }
+        $email = mb_strtolower(trim($data['email']));
+        $verifiedCustomerId = (string) $request->session()->get('checkout_verified_customer_id', '');
+        $verifiedEmail = mb_strtolower(trim((string) $request->session()->get('checkout_verified_email', '')));
+        $verifiedAt = (int) $request->session()->get('checkout_verified_email_at', 0);
+        $verifiedReturningCustomer = $customerLookupEnabled
+            && $verifiedCustomerId !== ''
+            && $verifiedEmail === $email
+            && $verifiedAt > 0
+            && now()->timestamp - $verifiedAt <= 1800;
+        abort_unless(Auth::check() || $guestBookingEnabled || $verifiedReturningCustomer, 403, 'Please verify your email or sign in before booking this Tour.');
+
         $controller = app(TourItineraryController::class);
-        [$customer, $user, $stored] = DB::transaction(function () use ($request, $data, $customers, $controller): array {
+        [$customer, $user, $stored] = DB::transaction(function () use ($request, $data, $customers, $controller, $guestBookingEnabled, $verifiedReturningCustomer): array {
             $customer = $this->sessionCustomer();
             $user = $customer ? $this->sessionUser() : null;
             if (!$customer) {
-                $bookingSettings = app(WebsiteSettingsService::class)->getBookingSettings();
                 $contact = [
                     'first_name' => $data['first_name'],
                     'last_name' => $data['last_name'] ?? '',
@@ -109,9 +133,9 @@ class TourController extends Controller
                     $user = Auth::user();
                     $customer = $customers->createCustomerForUser($user, $contact);
                 } else {
-                    abort_unless(filter_var($bookingSettings['guest_booking_enabled'] ?? true, FILTER_VALIDATE_BOOLEAN), 403, 'Please sign in before booking this tour.');
-                    $customer = $customers->createGuestCustomer($contact);
-                    $user = User::query()->whereRaw('LOWER(email) = ?', [mb_strtolower(trim($data['email']))])->firstOrFail();
+                    abort_unless($guestBookingEnabled || $verifiedReturningCustomer, 403, 'Please verify your email or sign in before booking this Tour.');
+                    $customer = $customers->getOrCreateCustomer($contact);
+                    $user = $customer->user;
                 }
             } elseif (!$user || mb_strtolower(trim((string) $user->email)) !== mb_strtolower(trim($data['email']))) {
                 throw ValidationException::withMessages(['email' => 'This tour checkout is already linked to another email. Start a new tour checkout to use different details.']);

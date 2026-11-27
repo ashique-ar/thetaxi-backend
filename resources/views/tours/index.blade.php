@@ -817,20 +817,29 @@
                         </div>
 
                         <div class="mt-3 pt-3 border-top">
-                            <button id="tour-send-code" class="btn btn-link px-0 text-decoration-none fw-semibold" style="color: var(--tour-primary);" type="button">
-                                Returning customer? Send a verification code
-                            </button>
-                            <div class="row g-2 align-items-end mt-1" id="tour-code-panel" hidden>
-                                <div class="col-sm-6">
-                                    <label for="tour-code" class="form-label">6-digit email code</label>
-                                    <input id="tour-code" class="form-control" inputmode="numeric" autocomplete="one-time-code"
-                                        autocorrect="off" autocapitalize="none" spellcheck="false" maxlength="6">
+                            @if ($guestBookingEnabled)
+                                <p class="small tour-muted mb-2">Already booked with us? Enter the same email and continue. Your booking will be saved with your existing account. You can verify by email to fill in your saved details here.</p>
+                            @elseif ($customerLookupEnabled)
+                                <p class="small tour-muted mb-2">Returning customers can verify their email to continue. New customers need to sign in.</p>
+                            @else
+                                <p class="small tour-muted mb-2">Please sign in before planning a Tour.</p>
+                            @endif
+                            @if ($customerLookupEnabled)
+                                <button id="tour-send-code" class="btn btn-link px-0 text-decoration-none fw-semibold" style="color: var(--tour-primary);" type="button">
+                                    Verify email and load saved details
+                                </button>
+                                <div class="row g-2 align-items-end mt-1" id="tour-code-panel" hidden>
+                                    <div class="col-sm-6">
+                                        <label for="tour-code" class="form-label">6-digit email code</label>
+                                        <input id="tour-code" class="form-control" inputmode="numeric" autocomplete="one-time-code"
+                                            autocorrect="off" autocapitalize="none" spellcheck="false" maxlength="6">
+                                    </div>
+                                    <div class="col-sm-auto">
+                                        <button id="tour-verify-code" class="btn tour-btn-outline" type="button">Verify and load details</button>
+                                    </div>
                                 </div>
-                                <div class="col-sm-auto">
-                                    <button id="tour-verify-code" class="btn tour-btn-outline" type="button">Verify and load details</button>
-                                </div>
-                            </div>
-                            <div id="tour-code-status" class="small mt-2 tour-muted" role="status" aria-live="polite"></div>
+                                <div id="tour-code-status" class="small mt-2 tour-muted" role="status" aria-live="polite"></div>
+                            @endif
                         </div>
                     </section>
 
@@ -1361,14 +1370,14 @@
                 renderDaySettings(); invalidateDisplayedQuote();
             });
             startSelect.addEventListener('change', renderDaySettings);
-            document.getElementById('tour-send-code').addEventListener('click', async () => {
+            document.getElementById('tour-send-code')?.addEventListener('click', async () => {
                 const email = document.getElementById('tour-email').value.trim();
                 if (!email) { showError('Enter your email first.'); return; }
                 const status = document.getElementById('tour-code-status');
                 try { const response = await request('/checkout/customer-email/send-code', { method: 'POST', body: JSON.stringify({ channel: 'email', value: email }) }); status.textContent = response.message || 'If these details match a previous booking, check your email for a code.'; document.getElementById('tour-code-panel').hidden = false; }
                 catch (exception) { status.textContent = exception.message; }
             });
-            document.getElementById('tour-verify-code').addEventListener('click', async () => {
+            document.getElementById('tour-verify-code')?.addEventListener('click', async () => {
                 const status = document.getElementById('tour-code-status');
                 try { const customer = await request('/checkout/customer-email/verify-code', { method: 'POST', body: JSON.stringify({ channel: 'email', value: document.getElementById('tour-email').value.trim(), code: document.getElementById('tour-code').value.trim() }) }); for (const [field, id] of [['first_name', 'tour-first-name'], ['last_name', 'tour-last-name'], ['email', 'tour-email'], ['phone', 'tour-phone']]) if (customer[field]) document.getElementById(id).value = customer[field]; status.textContent = 'Your details are verified.'; }
                 catch (exception) { status.textContent = exception.message; }
