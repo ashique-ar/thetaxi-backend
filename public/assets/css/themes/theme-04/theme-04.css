@@ -2652,7 +2652,6 @@ body.theme-theme-04 .t4-hero .shared-hero-pagination .swiper-pagination-bullet:h
 body.theme-theme-04 .t4-hero .shared-hero-pagination .swiper-pagination-bullet-active {
     padding: 2px 10px;
     border-bottom: 0;
-    outline: 1px solid rgb(255 255 255 / 35%);
     background: var(--t4-accent);
     color: #fff;
     font-weight: 900;
