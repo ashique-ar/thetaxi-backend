@@ -34,7 +34,6 @@ class TourCatalogueTest extends TestCase
             $table->text('description')->nullable();
             $table->string('context')->default('public');
             $table->string('pricing_basis')->default('vehicle_group');
-            $table->boolean('tour_booking_enabled')->default(false);
             $table->json('form_config')->nullable();
             $table->boolean('is_active')->default(true);
             $table->timestamps();
@@ -96,6 +95,15 @@ class TourCatalogueTest extends TestCase
         Schema::create('tour_itineraries', function (Blueprint $table): void {
             $table->uuid('id')->primary();
         });
+        Schema::create('business_settings', function (Blueprint $table): void {
+            $table->uuid('id')->primary();
+            $table->string('type')->nullable();
+            $table->text('value')->nullable();
+            $table->uuid('created_user_id')->nullable();
+            $table->uuid('updated_user_id')->nullable();
+            $table->timestamps();
+            $table->softDeletes();
+        });
         Schema::create('companies', function (Blueprint $table): void {
             $table->uuid('id')->primary();
             $table->string('name');
@@ -131,7 +139,10 @@ class TourCatalogueTest extends TestCase
             'id' => 'c2c58e96-7a3d-4974-81b8-2f6fef280947',
             'name' => 'Tours',
             'pricing_basis' => 'vehicle_class',
-            'tour_booking_enabled' => true,
+        ]);
+        DB::table('business_settings')->insert([
+            ['id' => 'tours-enabled', 'type' => 'tours_enabled', 'value' => 'true'],
+            ['id' => 'tour-service', 'type' => 'tour_service_type_id', 'value' => 'c2c58e96-7a3d-4974-81b8-2f6fef280947'],
         ]);
     }
 
@@ -139,6 +150,7 @@ class TourCatalogueTest extends TestCase
     {
         $settings = \Mockery::mock(WebsiteSettingsService::class);
         $settings->shouldReceive('get')->with('tour_ai_itinerary_enabled', false)->andReturn(false);
+        $settings->shouldReceive('getTourService')->with(true)->andReturn(ServiceType::findOrFail('c2c58e96-7a3d-4974-81b8-2f6fef280947'));
         app()->instance(WebsiteSettingsService::class, $settings);
         $serviceId = 'c2c58e96-7a3d-4974-81b8-2f6fef280947';
         $classId = 'ad150b30-e73c-43c8-8b46-884c5297caf9';
@@ -154,7 +166,7 @@ class TourCatalogueTest extends TestCase
         ]);
         DB::table('service_types')->insert([
             'id' => '50f31c02-93e5-4fb7-bb5a-a70a53b88f44', 'name' => 'Internal Tours',
-            'context' => 'portal', 'pricing_basis' => 'vehicle_class', 'tour_booking_enabled' => true,
+            'context' => 'portal', 'pricing_basis' => 'vehicle_class',
         ]);
         DB::table('service_types')->where('id', $serviceId)->update(['form_config' => json_encode(['fields' => [
             'pickup_note' => ['type' => 'text', 'label' => 'Pickup note', 'required' => true],
@@ -178,6 +190,7 @@ class TourCatalogueTest extends TestCase
 
         $enabledSettings = \Mockery::mock(WebsiteSettingsService::class);
         $enabledSettings->shouldReceive('get')->with('tour_ai_itinerary_enabled', false)->andReturn(true);
+        $enabledSettings->shouldReceive('getTourService')->with(true)->andReturn(ServiceType::findOrFail($serviceId));
         app()->instance(WebsiteSettingsService::class, $enabledSettings);
         $enabled = (new TourCatalogueController)->publishedServices()->getData(true);
         self::assertTrue($enabled['data']['services'][0]['ai_itinerary_helper_enabled']);

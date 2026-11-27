@@ -14,6 +14,7 @@ class ServiceVehicleClassSetting extends BaseModel
         'service_type_id', 'vehicle_class_id', 'max_passengers', 'max_luggage',
         'description', 'is_active', 'is_hidden', 'is_inquiry_only', 'sort_order',
         'allowed_upgrade_class_ids', 'allowed_substitute_class_ids',
+        'customer_display_name', 'eligible_vehicle_group_ids',
         'created_user_id', 'updated_user_id',
     ];
 
@@ -21,6 +22,7 @@ class ServiceVehicleClassSetting extends BaseModel
         'max_passengers' => 'integer', 'max_luggage' => 'integer', 'sort_order' => 'integer',
         'is_active' => 'boolean', 'is_hidden' => 'boolean', 'is_inquiry_only' => 'boolean',
         'allowed_upgrade_class_ids' => 'array', 'allowed_substitute_class_ids' => 'array',
+        'eligible_vehicle_group_ids' => 'array',
     ];
 
     protected static function booted(): void

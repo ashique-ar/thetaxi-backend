@@ -64,11 +64,16 @@
                     <article class="home-cms-section__card">
                         <a class="home-cms-section__image" href="{{ route('cms.show', ['contentType' => $section['type']->slug, 'content' => $item->slug]) }}">
                             <img src="{{ $item->thumbnail ? s3_asset($item->thumbnail) : asset('assets/img/default-blog.jpg') }}" alt="{{ $item->title }}" loading="lazy">
+                            @if ($item->category)<span class="home-cms-section__badge">{{ $item->category }}</span>@endif
+                            <span class="home-cms-section__image-title">{{ $item->title }}</span>
                         </a>
                         <div class="home-cms-section__body">
-                            <h3><a href="{{ route('cms.show', ['contentType' => $section['type']->slug, 'content' => $item->slug]) }}">{{ $item->title }}</a></h3>
+                            @if ($item->location)<span class="home-cms-section__route">{{ $item->location }}</span>@endif
                             @if ($item->excerpt || $item->body)<p>{{ \Illuminate\Support\Str::limit(trim(strip_tags(html_entity_decode($item->excerpt ?: $item->body, ENT_QUOTES | ENT_HTML5, 'UTF-8'))), 110) }}</p>@endif
-                            <a class="home-cms-section__more" href="{{ route('cms.show', ['contentType' => $section['type']->slug, 'content' => $item->slug]) }}">Learn More <span aria-hidden="true">→</span></a>
+                            <div class="home-cms-section__card-footer">
+                                <span>{{ $item->price ? (($item->price_currency ?? 'USD') . ' ' . number_format(floor(max(0, $item->price)), 0)) : '' }}</span>
+                                <a class="home-cms-section__more" href="{{ route('cms.show', ['contentType' => $section['type']->slug, 'content' => $item->slug]) }}">View details <span aria-hidden="true">→</span></a>
+                            </div>
                         </div>
                     </article>
                 @endforeach

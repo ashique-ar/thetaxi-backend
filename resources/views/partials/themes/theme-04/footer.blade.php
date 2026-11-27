@@ -1,4 +1,5 @@
 @php
+    $theme04CmsFooterLinks = \App\Models\FooterLink::bySection('links')->get();
     $theme04ServicesLinks = [];
     $theme04RoutesLinks = [];
     $theme04SupportLinks = [];
@@ -91,6 +92,12 @@
                 </nav>
             @endif
         @endforeach
+        @if ($theme04CmsFooterLinks->isNotEmpty())
+            <nav class="t4-footer__links" aria-label="Footer links">
+                <h3>Links</h3>
+                <ul>@foreach ($theme04CmsFooterLinks as $link) @if ($link->full_url)<li><a href="{{ $link->full_url }}" target="{{ $link->target ?? '_self' }}">{{ $link->title }}</a></li>@endif @endforeach</ul>
+            </nav>
+        @endif
 
         <div class="t4-footer__contact">
             <h3>{{ $settings['footer_inquiry_heading'] ?? 'Contact Us' }}</h3>

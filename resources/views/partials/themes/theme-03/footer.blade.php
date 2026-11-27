@@ -1,4 +1,5 @@
 @php
+    $theme03CmsFooterLinks = \App\Models\FooterLink::bySection('links')->get();
     $theme03ServicesLinks = [];
     $theme03RoutesLinks = [];
     $theme03SupportLinks = [];
@@ -118,6 +119,16 @@
                 </nav>
             @endif
         @endforeach
+        @if ($theme03CmsFooterLinks->isNotEmpty())
+            <nav class="t3-footer__links" aria-label="Footer links">
+                <h3>Links</h3>
+                <ul>
+                    @foreach ($theme03CmsFooterLinks as $link)
+                        @if ($link->full_url)<li><a href="{{ $link->full_url }}" target="{{ $link->target ?? '_self' }}">{{ $link->title }}</a></li>@endif
+                    @endforeach
+                </ul>
+            </nav>
+        @endif
     </div>
 
     <div class="t3-footer__bottom">

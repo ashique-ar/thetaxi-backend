@@ -31,7 +31,6 @@ class TourClassPricingTest extends TestCase
             $table->string('code')->nullable();
             $table->string('context')->default('public');
             $table->string('pricing_basis')->default('vehicle_group');
-            $table->boolean('tour_booking_enabled')->default(false);
             $table->boolean('is_active')->default(true);
             $table->softDeletes();
         });
@@ -393,7 +392,7 @@ class TourClassPricingTest extends TestCase
         $serviceId = 'b44a4e37-a5c2-49f0-8867-350237930830';
         $classId = 'e06f9be2-365c-495f-9812-98c3ba935301';
         $slabId = '9b1659ae-09ef-4e81-90ec-12ec6f56519e';
-        DB::table('service_types')->insert(['id' => $serviceId, 'pricing_basis' => 'vehicle_class', 'tour_booking_enabled' => true]);
+        DB::table('service_types')->insert(['id' => $serviceId, 'pricing_basis' => 'vehicle_class']);
         Schema::create('vehicle_classes', function (Blueprint $table): void {
             $table->string('id')->primary();
             $table->string('name');

@@ -13,14 +13,20 @@ return new class extends Migration
             return;
         }
 
-        $legacyService = DB::table('service_types')
+        $legacyServices = DB::table('service_types')
             ->where('tour_booking_enabled', true)
             ->where('context', 'public')
             ->where('pricing_basis', 'vehicle_class')
             ->where('is_active', true)
             ->whereNull('deleted_at')
             ->orderBy('id')
-            ->first(['id']);
+            ->get(['id']);
+        $centralServiceId = DB::table('business_settings')->where('type', 'tour_service_type_id')->value('value');
+        $centralServiceExists = DB::table('business_settings')->where('type', 'tour_service_type_id')->exists();
+        if (! $centralServiceExists && $legacyServices->count() > 1) {
+            throw new RuntimeException('More than one Website Tour service is enabled. Choose one in Business Settings before removing the service-level Tour flag.');
+        }
+        $legacyService = $legacyServices->first();
 
         if (! DB::table('business_settings')->where('type', 'tour_service_type_id')->exists()) {
             DB::table('business_settings')->insert([
@@ -33,10 +39,13 @@ return new class extends Migration
         }
 
         if (! DB::table('business_settings')->where('type', 'tours_enabled')->exists()) {
+            $legacyToursEnabled = $centralServiceExists
+                ? $legacyServices->contains(fn ($service) => (string) $service->id === (string) $centralServiceId)
+                : (bool) $legacyService;
             DB::table('business_settings')->insert([
                 'id' => (string) \Illuminate\Support\Str::uuid(),
                 'type' => 'tours_enabled',
-                'value' => $legacyService ? 'true' : 'false',
+                'value' => $legacyToursEnabled ? 'true' : 'false',
                 'created_at' => now(),
                 'updated_at' => now(),
             ]);

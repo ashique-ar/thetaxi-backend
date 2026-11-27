@@ -345,6 +345,44 @@
 </article>
 @else
 <div class="col-lg-3 col-md-4 col-sm-6 wow animate fadeInDown" data-wow-delay="{{ $delayMs }}ms" data-wow-duration="1500ms">
+    @if (request()->routeIs('home') && is_theme('theme-01'))
+    <article class="theme1-cms-card">
+        <div class="theme1-cms-card__media">
+            <a href="{{ $detailLink }}" aria-label="{{ $title }}">
+                <img src="{{ $imageUrl }}" alt="{{ $title }}" loading="lazy">
+                <span class="theme1-cms-card__shade" aria-hidden="true"></span>
+                <span class="theme1-cms-card__title">{{ $title }}</span>
+            </a>
+            @if ($category)
+                <a href="{{ $categoryLink }}" class="theme1-cms-card__badge">{{ $category }}</a>
+            @elseif ($isSpecialOffer && $discount > 0)
+                <span class="theme1-cms-card__badge">-{{ $discount }}%</span>
+            @endif
+            @if ($duration)<span class="theme1-cms-card__duration">{{ $duration }}</span>@endif
+        </div>
+        <div class="theme1-cms-card__body">
+            @if ($location)<a href="{{ $categoryLink }}" class="theme1-cms-card__route">{{ $location }}</a>@endif
+            @if ($excerpt)<p>{{ $excerpt }}</p>@endif
+            @if ($pickupLocation || $minDays)
+                <ul class="theme1-cms-card__facts">
+                    @if ($pickupLocation)<li>{{ Str::limit($pickupLocation, 36) }}</li>@endif
+                    @if ($minDays)<li>Minimum {{ $minDays }} day{{ $minDays != 1 ? 's' : '' }}</li>@endif
+                </ul>
+            @endif
+            @if ($showRating && $rating > 0)
+                <div class="theme1-cms-card__rating" aria-label="{{ $rating }} out of 5 stars">★ {{ $rating }}@if ($reviewsCount) <small>({{ $reviewsCount }} reviews)</small>@endif</div>
+            @endif
+            <footer class="theme1-cms-card__footer">
+                @if ($showPrice && $price)
+                    <div class="theme1-cms-card__price"><small>From</small><strong>{{ $currency }} {{ $price }}</strong>@if ($duration)<small>/ {{ $duration }}</small>@endif</div>
+                @else
+                    <span class="theme1-cms-card__price-label">Explore more</span>
+                @endif
+                <a href="{{ $detailLink }}" class="theme1-cms-card__action">View details <span aria-hidden="true">→</span></a>
+            </footer>
+        </div>
+    </article>
+    @else
     <div class="blog-card2 two cms-content-card">
         <div class="blog-img-wrap">
             <a href="{{ $detailLink }}" class="blog-img">
@@ -413,6 +451,7 @@
             @endif
         </div>
     </div>
+    @endif
 </div>
 @endif
 

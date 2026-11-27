@@ -8,7 +8,7 @@ it('projects and searches corporate and selected employee identity in the canoni
 
     expect($query)
         ->toContain("'booking.employeeUser' => fn(\$q) => \$q->withTrashed()")
-        ->toContain("'serviceType:id,name,tour_booking_enabled'")
+        ->toContain("'serviceType:id,name'")
         ->toContain("->orWhereHas('corporateAccount'")
         ->toContain("->orWhereExists(function (\$employeeUserQuery)")
         ->toContain("users.id::text = bookings.employee_id")
@@ -19,7 +19,7 @@ it('projects and searches corporate and selected employee identity in the canoni
         ->toContain("if (\$bookingSource === 'corporate')")
         ->not->toContain("if (\$bookingSource === 'corporate' && !\$employeeUser)")
         ->toContain("\$booking?->corporateAccount?->name")
-        ->toContain("'tour_booking_enabled' => (bool) \$itemServiceType->tour_booking_enabled")
+        ->toContain("'has_tour_itinerary' => filled(data_get(\$item->metadata, 'tour_itinerary_id'))")
         ->toContain("'corporate' => \$bookingSource === 'corporate'")
         ->toContain("'employee' => \$bookingSource === 'corporate' && \$employeeUser")
         ->toContain("'corporate_contact' => \$corporateContact")

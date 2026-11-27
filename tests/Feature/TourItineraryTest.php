@@ -86,7 +86,6 @@ class TourItineraryTest extends TestCase
             $table->string('name');
             $table->string('context')->default('public');
             $table->string('pricing_basis')->default('vehicle_group');
-            $table->boolean('tour_booking_enabled')->default(false);
             $table->json('form_config')->nullable();
             $table->boolean('is_active')->default(true);
             $table->timestamps();
@@ -196,6 +195,15 @@ class TourItineraryTest extends TestCase
             $table->timestamps();
             $table->softDeletes();
         });
+        Schema::create('business_settings', function (Blueprint $table): void {
+            $table->uuid('id')->primary();
+            $table->string('type')->nullable();
+            $table->text('value')->nullable();
+            $table->uuid('created_user_id')->nullable();
+            $table->uuid('updated_user_id')->nullable();
+            $table->timestamps();
+            $table->softDeletes();
+        });
         $this->catalogueMigration()->up();
         $this->itineraryMigration()->up();
         $this->tourDayStartTimeMigration()->up();
@@ -236,7 +244,10 @@ class TourItineraryTest extends TestCase
             'id' => self::SERVICE_ID,
             'name' => 'Tours',
             'pricing_basis' => 'vehicle_class',
-            'tour_booking_enabled' => true,
+        ]);
+        DB::table('business_settings')->insert([
+            ['id' => 'tours-enabled', 'type' => 'tours_enabled', 'value' => 'true'],
+            ['id' => 'tour-service', 'type' => 'tour_service_type_id', 'value' => self::SERVICE_ID],
         ]);
         DB::table('vehicle_pricing_calculation_definitions')->insert([
             'id' => 'tours-definition',
