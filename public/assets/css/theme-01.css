@@ -1,48 +1,123 @@
 .filter-wrapper .filter-input-wrap {
-    padding: 40px 30px 25px !important;
-    border-radius: 16px !important;
+    padding: 48px 32px 28px !important;
+    border-radius: 18px !important;
+    box-shadow: 0 16px 40px rgba(15, 23, 42, 0.1) !important;
 }
 
-.theme-default .home4-banner-section .banner-content h1 {
+.theme-default .home4-banner-section .banner-video-area {
+    overflow: hidden;
+    min-height: 440px;
+    height: 440px;
+    border-radius: 20px;
+}
+
+.theme-default .home4-banner-section .banner-video-area img {
+    min-height: 440px;
+    height: 440px;
+    object-fit: cover;
+    object-position: center;
+}
+
+.theme-default .home4-banner-section .banner-video-area::before {
+    z-index: 1;
+    background: linear-gradient(
+        180deg,
+        rgba(15, 23, 42, 0.56) 0%,
+        rgba(15, 23, 42, 0.44) 45%,
+        rgba(15, 23, 42, 0.78) 100%
+    );
+    border-radius: inherit;
+}
+
+body.theme-default .home4-banner-section .shared-hero-swiper .banner-content-wrap {
+    padding: 2rem 0 3.75rem;
+}
+
+.theme-default .home4-banner-section .banner-content h1,
+body.theme-default .banner-content .shared-hero-heading {
     max-width: 760px;
-    line-height: 1.05;
+    line-height: 1.08;
+    text-wrap: balance;
+    text-shadow: 0 2px 16px rgba(0, 0, 0, 0.45);
 }
 
-.theme-default .home4-banner-section .banner-content p {
+.theme-default .home4-banner-section .banner-content p,
+body.theme-default .banner-content :where(.shared-hero-description, .shared-hero-caption) {
     max-width: 620px;
-    line-height: 1.65;
+    line-height: 1.6;
+    text-shadow: 0 1px 10px rgba(0, 0, 0, 0.45);
+}
+
+body.theme-default .banner-content .shared-hero-actions {
+    justify-content: center;
+}
+
+body.theme-default .banner-content .shared-hero-action {
+    box-shadow: 0 10px 24px rgba(191, 38, 41, 0.35);
+    transition: transform 0.2s ease, box-shadow 0.2s ease, background-color 0.2s ease;
+}
+
+body.theme-default .banner-content .shared-hero-action:hover {
+    transform: translateY(-1px);
+    box-shadow: 0 14px 28px rgba(191, 38, 41, 0.45);
 }
 
 .theme-default .home-booking-form-section {
     position: relative;
-    z-index: 3;
+    z-index: 10;
+    margin-top: -32px;
+}
+
+.theme-default .home-booking-form-section .filter-wrapper {
+    margin-top: 0 !important;
+}
+
+.theme-default .filter-wrapper .filter-item-list {
+    position: relative;
+    z-index: 2;
+    margin-bottom: -22px;
+}
+
+.theme-default .filter-wrapper .filter-item-list .single-item {
+    min-height: 44px;
+    box-shadow: 0 4px 14px rgba(15, 23, 42, 0.08);
 }
 
 @media (min-width: 577px) {
     .theme-default .home4-banner-section .banner-video-area,
     .theme-default .home4-banner-section .banner-video-area img {
-        min-height: 570px;
-        height: 570px;
+        min-height: 520px;
+        height: 520px;
+        border-radius: 30px;
+    }
+
+    body.theme-default .home4-banner-section .shared-hero-swiper .banner-content-wrap {
+        padding: 2rem 0 5.5rem;
     }
 
     .theme-default .home-booking-form-section {
-        margin-top: -110px;
+        margin-top: -64px;
     }
 }
 
 @media (min-width: 992px) {
     .theme-default .home4-banner-section .banner-video-area,
     .theme-default .home4-banner-section .banner-video-area img {
-        min-height: clamp(540px, 46vw, 820px);
-        height: clamp(540px, 46vw, 820px);
+        min-height: clamp(540px, 44vw, 700px);
+        height: clamp(540px, 44vw, 700px);
+        border-radius: 40px;
     }
 
     .theme-default .home4-banner-section .banner-video-area img {
-        object-position: center 30%;
+        object-position: center 35%;
+    }
+
+    body.theme-default .home4-banner-section .shared-hero-swiper .banner-content-wrap {
+        padding: 2.5rem 0 7rem;
     }
 
     .theme-default .home-booking-form-section {
-        margin-top: clamp(-300px, -18vw, -150px);
+        margin-top: -88px;
     }
 }
 
@@ -186,11 +261,17 @@
 
 @media (max-width: 767px) {
     .filter-wrapper .filter-input-wrap {
-        padding: 30px 15px 20px !important;
+        padding: 42px 16px 22px !important;
+        border-radius: 16px !important;
+    }
+
+    .theme-default .filter-wrapper .filter-item-list .single-item {
+        padding: 10px 8px;
+        border-radius: 12px;
     }
 
     .theme-default .home4-banner-section .banner-content h1 {
-        font-size: 34px;
+        font-size: 32px;
     }
 
     .theme-default .section-title {

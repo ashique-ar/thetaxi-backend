@@ -646,10 +646,10 @@ $themeContentType = request()->route('contentType');
 
             @media (max-width: 767px) {
                 .whatsapp-float {
-                    bottom: 20px;
-                    right: 20px;
-                    width: 48px;
-                    height: 48px;
+                    bottom: 16px;
+                    right: 12px;
+                    width: 44px;
+                    height: 44px;
                 }
             }
         </style>
@@ -689,14 +689,14 @@ $themeContentType = request()->route('contentType');
 
             @media (max-width: 767px) {
                 .call-float {
-                    bottom: 78px;
-                    right: 20px;
-                    width: 48px;
-                    height: 48px;
+                    bottom: 68px;
+                    right: 12px;
+                    width: 44px;
+                    height: 44px;
                 }
 
                 .call-float i {
-                    font-size: 20px !important;
+                    font-size: 18px !important;
                 }
             }
         </style>

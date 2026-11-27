@@ -392,8 +392,8 @@
     var isInitialSync = true;
     var instance = new Swiper(slider, {
       slidesPerView: 1,
-      loop: slideCount > 1,
-      speed: reduceMotion ? 0 : 900,
+      rewind: slideCount > 1,
+      speed: reduceMotion ? 0 : 450,
       effect: "fade",
       allowTouchMove: slideCount > 1,
       autoplay: reduceMotion || slideCount < 2 ? false : {
