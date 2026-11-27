@@ -775,7 +775,7 @@
                             <span class="tour-step-badge">3</span>
                             <div>
                                 <h2 class="tour-card-title">Review Your Route &amp; Transport Price</h2>
-                                <p class="tour-card-subtitle">Compare your route and transport estimate. Some plans may need staff review.</p>
+                                <p class="tour-card-subtitle">Compare your route and estimated transport price. Our team may need to check some trips.</p>
                             </div>
                         </div>
 
@@ -965,7 +965,7 @@
                     <span class="d-block small tour-muted">Estimated transport</span>
                     <strong id="tour-mobile-total"></strong>
                 </div>
-                <button id="tour-mobile-review" class="btn tour-btn-primary btn-sm" type="button">Review quote</button>
+                <button id="tour-mobile-review" class="btn tour-btn-primary btn-sm" type="button">Review price</button>
             </div>
         </div>
     </div>
@@ -1257,7 +1257,7 @@
                 const renderAggregate = (route, label) => {
                     const canQuote = route.quote?.status === 'priced' && !unavailable;
                     const disabledLabel = route.quote?.status === 'quotation_required' || unavailable ? 'Our team needs to review this route' : 'Our team needs to check this price';
-                    return `<div class="col-md-6"><div class="tour-option d-flex flex-column h-100"><h3 class="h6 fw-bold mb-2">${escapeHtml(label)}</h3><p class="small mb-2"><strong>${route.distance_km == null ? 'Distance unavailable' : `${escapeHtml(route.distance_km)} km total`}</strong>${route.duration_seconds != null ? ` · ${Math.round(route.duration_seconds / 3600 * 10) / 10} hr driving` : ''}</p>${route.quote?.status === 'priced' ? `<p class="h5 fw-bold mb-3" style="color: var(--tour-primary);">${escapeHtml(route.quote.currency)} ${Number(route.quote.total_amount).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</p>` : `<p class="small text-warning fw-semibold mb-3">${escapeHtml(route.quote?.reason || 'Price needs staff review.')}</p>`}<div class="mb-3">${(route.days || []).map(day => `<div class="tour-route-stop small"><span class="fw-bold">Day ${day.day_number}:</span> ${escapeHtml((day.schedule || []).map(stop => stop.stop_name).join(' → '))}</div>`).join('')}</div><button type="button" class="btn tour-btn-outline mt-auto tour-use-route" data-route="${label === 'Suggested route' ? 'suggested' : 'original'}" ${canQuote ? '' : 'disabled'}>${canQuote ? 'Use this route and review price' : disabledLabel}</button></div></div>`;
+                    return `<div class="col-md-6"><div class="tour-option d-flex flex-column h-100"><h3 class="h6 fw-bold mb-2">${escapeHtml(label)}</h3><p class="small mb-2"><strong>${route.distance_km == null ? 'Distance unavailable' : `${escapeHtml(route.distance_km)} km total`}</strong>${route.duration_seconds != null ? ` · ${Math.round(route.duration_seconds / 3600 * 10) / 10} hr driving` : ''}</p>${route.quote?.status === 'priced' ? `<p class="h5 fw-bold mb-3" style="color: var(--tour-primary);">${escapeHtml(route.quote.currency)} ${Number(route.quote.total_amount).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</p>` : `<p class="small text-warning fw-semibold mb-3">${escapeHtml(route.quote?.reason || 'Our team needs to check this price.')}</p>`}<div class="mb-3">${(route.days || []).map(day => `<div class="tour-route-stop small"><span class="fw-bold">Day ${day.day_number}:</span> ${escapeHtml((day.schedule || []).map(stop => stop.stop_name).join(' → '))}</div>`).join('')}</div><button type="button" class="btn tour-btn-outline mt-auto tour-use-route" data-route="${label === 'Suggested route' ? 'suggested' : 'original'}" ${canQuote ? '' : 'disabled'}>${canQuote ? 'Use this route and review price' : disabledLabel}</button></div></div>`;
                 };
                 return `<div class="alert ${unavailable ? 'alert-warning' : 'alert-info'}">${routeMessage}</div><div class="row g-3">${renderAggregate(data.original, 'Your selected order')}${renderAggregate(data.suggested, 'Suggested route')}</div><div class="small tour-muted mt-3">${(data.issues || []).map(issue => `<p class="mb-1">Day ${issue.day_number}: ${escapeHtml(issue.message)}</p>`).join('')}<p class="mb-0">Activity visits are route stops only. Entry tickets and reservations are arranged separately.</p></div><div class="mt-3"><button type="button" id="tour-request-review" class="btn tour-btn-outline">Ask our team to review this Tour</button><p class="small tour-muted mt-2 mb-0">Free review — no payment needed yet.</p></div>`;
             }
@@ -1284,7 +1284,7 @@
                         days: itineraryDays(),
                         custom_answers: Object.fromEntries([...document.querySelectorAll('[data-custom-name]')].reduce((entries, input) => { if (input.type === 'radio') { if (input.checked) entries.push([input.dataset.customName, input.value]); } else entries.push([input.dataset.customName, input.type === 'checkbox' ? input.checked : input.value]); return entries; }, [])),
                     };
-                    if (!payload.vehicle_class_id) throw new Error('Choose a vehicle class.');
+                    if (!payload.vehicle_class_id) throw new Error('Choose a vehicle type.');
                     const created = await request('/tours/drafts', { method: 'POST', body: JSON.stringify(payload) });
                     savedItinerary = created.itinerary;
                     const routes = created.route_options;
@@ -1297,7 +1297,7 @@
                             const review = await request(`/tours/drafts/${savedItinerary.id}/request-review`, { method: 'POST', body: JSON.stringify({}) });
                             window.location.assign(review.confirmation_url);
                         } catch (exception) {
-                            showError(exception.message || 'We could not send your Tour for staff review. Please try again.');
+                            showError(exception.message || 'We could not send your Tour to our team. Please try again.');
                             requestButton.disabled = false;
                         }
                     });
@@ -1387,7 +1387,7 @@
                 }
                 const requestKey = JSON.stringify(requestData);
                 button.disabled = true;
-                status.textContent = 'Preparing ideas from published places…';
+                status.textContent = 'Preparing trip ideas…';
                 try {
                     const response = await request('/api/public/tours/suggestions', { method: 'POST', body: JSON.stringify(requestData) });
                     if (JSON.stringify({ duration_days: Number(document.getElementById('tour-days').value), start_date: document.getElementById('tour-date').value || null, interests: document.getElementById('tour-interests').value.trim() }) !== requestKey) {

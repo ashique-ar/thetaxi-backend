@@ -871,6 +871,24 @@ input[type="time"]::-webkit-calendar-picker-indicator {
     }
 }
 
+.booking-advance-note {
+    white-space: normal !important;
+    overflow: visible !important;
+    height: auto !important;
+    max-height: none !important;
+}
+
+.booking-advance-note > div {
+    min-width: 0;
+    overflow-wrap: anywhere;
+}
+
+.booking-advance-note a {
+    color: inherit !important;
+    text-decoration: underline !important;
+    font-weight: 600;
+}
+
 /* ==================== TOUR DESTINATIONS ==================== */
 #tour-destinations-section {
     width: 100% !important;

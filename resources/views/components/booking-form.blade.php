@@ -310,14 +310,23 @@
             }
             return '<a>';
         }, $clean);
-        $clean = preg_replace_callback('/(?<![\\w"=:+>])(\+?\d[\d\s().-]{6,}\d)(?![^<]*>)/', function ($matches) {
-            $display = $matches[1];
-            $tel = preg_replace('/[^\d+]/', '', $display);
-            if (strlen(preg_replace('/\D/', '', $tel)) < 7) {
-                return e($display);
+        $parts = preg_split('/(<a\b[^>]*>.*?<\/a>)/is', $clean, -1, PREG_SPLIT_DELIM_CAPTURE);
+        if (is_array($parts)) {
+            foreach ($parts as $i => $part) {
+                if ($i % 2 === 1) {
+                    continue;
+                }
+                $parts[$i] = preg_replace_callback('/(?<![\\w"=:+>])(\+?\d[\d\s().-]{6,}\d)(?![^<]*>)/', function ($matches) {
+                    $display = $matches[1];
+                    $tel = preg_replace('/[^\d+]/', '', $display);
+                    if (strlen(preg_replace('/\D/', '', $tel)) < 7) {
+                        return e($display);
+                    }
+                    return '<a href="tel:' . e($tel) . '">' . e($display) . '</a>';
+                }, $part);
             }
-            return '<a href="tel:' . e($tel) . '">' . e($display) . '</a>';
-        }, $clean);
+            $clean = implode('', $parts);
+        }
         return nl2br($clean, false);
     };
 
@@ -325,6 +334,7 @@
     try {
         $predefinedLocations = \App\Models\PredefinedLocation::query()
             ->where('is_active', true)
+            ->where('type', '!=', 'tour')
             ->orderBy('sort_order')
             ->orderBy('name')
             ->get(['id', 'name', 'code', 'type', 'address', 'latitude', 'longitude']);

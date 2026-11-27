@@ -237,6 +237,7 @@ class BookingSearchRequest extends FormRequest
                 try {
                     $predefined = PredefinedLocation::where('code', $data[$predefinedKey])
                         ->where('is_active', true)
+                        ->where('type', '!=', 'tour')
                         ->first();
                     if ($predefined) {
                         $data[$locPrefix] = $predefined->address ?? $predefined->name;
@@ -426,7 +427,7 @@ class BookingSearchRequest extends FormRequest
                         'nullable',
                         'string',
                         Rule::exists('predefined_locations', 'code')
-                            ->where(fn($query) => $query->where('is_active', true)),
+                            ->where(fn($query) => $query->where('is_active', true)->where('type', '!=', 'tour')),
                     ];
                     break;
 
@@ -549,7 +550,10 @@ class BookingSearchRequest extends FormRequest
             $rules['dropoff'] = 'nullable|string|max:255';
             $rules['dropoff_lat'] = $rules['dropoff_lat'] ?? 'nullable|numeric|between:-90,90';
             $rules['dropoff_lng'] = $rules['dropoff_lng'] ?? 'nullable|numeric|between:-180,180';
-            $rules['dropoff_predefined'] = $rules['dropoff_predefined'] ?? 'nullable|string';
+            $rules['dropoff_predefined'] = $rules['dropoff_predefined'] ?? [
+                'nullable', 'string',
+                Rule::exists('predefined_locations', 'code')->where(fn($query) => $query->where('type', '!=', 'tour')),
+            ];
         }
 
         // Return trip fields
@@ -881,7 +885,10 @@ class BookingSearchRequest extends FormRequest
             'service_type' => 'required|string',
             'pickup' => $pickupRequired ? 'required|string|max:255' : 'nullable|string|max:255',
             'pickup_custom' => 'nullable|string|max:255',
-            'pickup_predefined' => 'nullable|string|exists:predefined_locations,code',
+            'pickup_predefined' => [
+                'nullable', 'string',
+                Rule::exists('predefined_locations', 'code')->where(fn($query) => $query->where('type', '!=', 'tour')),
+            ],
             'pickup_location_type' => 'nullable|in:predefined,custom',
             'pickup_lat' => 'nullable|numeric|between:-90,90',
             'pickup_lng' => 'nullable|numeric|between:-180,180',
@@ -894,14 +901,20 @@ class BookingSearchRequest extends FormRequest
         if ($dropoffEnabled) {
             $rules['dropoff'] = $dropoffRequired ? 'required|string|max:255' : 'nullable|string|max:255';
             $rules['dropoff_custom'] = 'nullable|string|max:255';
-            $rules['dropoff_predefined'] = 'nullable|string|exists:predefined_locations,code';
+            $rules['dropoff_predefined'] = [
+                'nullable', 'string',
+                Rule::exists('predefined_locations', 'code')->where(fn($query) => $query->where('type', '!=', 'tour')),
+            ];
             $rules['dropoff_location_type'] = 'nullable|in:predefined,custom';
             $rules['dropoff_lat'] = 'nullable|numeric|between:-90,90';
             $rules['dropoff_lng'] = 'nullable|numeric|between:-180,180';
         } else {
             // Always allow dropoff fields for self_drive/with_driver (synced from pickup or entered by user)
             $rules['dropoff'] = 'nullable|string|max:255';
-            $rules['dropoff_predefined'] = 'nullable|string';
+            $rules['dropoff_predefined'] = [
+                'nullable', 'string',
+                Rule::exists('predefined_locations', 'code')->where(fn($query) => $query->where('type', '!=', 'tour')),
+            ];
             $rules['dropoff_lat'] = 'nullable|numeric|between:-90,90';
             $rules['dropoff_lng'] = 'nullable|numeric|between:-180,180';
         }

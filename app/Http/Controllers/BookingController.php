@@ -970,6 +970,7 @@ class BookingController extends Controller
             try {
                 $predefinedLocation = \App\Models\PredefinedLocation::where('code', $predefinedCode)
                     ->where('is_active', true)
+                    ->where('type', '!=', 'tour')
                     ->first();
                 
                 if ($predefinedLocation) {

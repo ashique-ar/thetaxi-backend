@@ -287,7 +287,9 @@ class TourLaunchSeeder extends Seeder
 
         foreach ($classes as $row) {
             $classId = DB::table('vehicle_classes')->where('name', $row['class'])->value('id');
-            if (!$classId) continue;
+            if (!$classId) {
+                throw new RuntimeException('Tours vehicle class not found: '.$row['class']);
+            }
             $groupClassId = DB::table('vehicle_classes')->where('name', $row['group_class'] ?? $row['class'])->value('id');
             $groups = DB::table('vehicle_groups')->where('class_id', $groupClassId)->where('is_active', true)->whereNull('deleted_at')
                 ->whereNotNull('passengers_count')->where('passengers_count', '>=', $row['passengers'])
@@ -297,6 +299,9 @@ class TourLaunchSeeder extends Seeder
             $eligible = $groups->filter(fn($group) => $rateByGroup->has($group->id) && $distanceRateByGroup->has($group->id))->values();
             $mapping = $eligible->pluck('id')->all();
             $hasRates = $mapping !== [];
+            if (!$hasRates) {
+                throw new RuntimeException('No capacity-verified group with positive Day Rental daily and distance rates for Tours class: '.$row['display']);
+            }
             $setting = DB::table('service_vehicle_class_settings')->where('service_type_id', $serviceId)->where('vehicle_class_id', $classId)->first();
             $existingMapping = $setting ? json_decode((string) $setting->eligible_vehicle_group_ids, true) : [];
             if (!$setting) {
@@ -317,7 +322,6 @@ class TourLaunchSeeder extends Seeder
                     'is_active' => true, 'is_hidden' => !$hasRates, 'is_inquiry_only' => !$hasRates, 'updated_at' => now(),
                 ]);
             }
-            if (!$hasRates) continue;
             $minimumGroup = $eligible->sortBy(fn($group) => (float) $rateByGroup[$group->id]->rate)->first();
             $sourcePrice = $rateByGroup[$minimumGroup->id];
             DB::table('vehicle_group_pricing')->insertOrIgnore([
@@ -396,7 +400,13 @@ class TourLaunchSeeder extends Seeder
     private function setSelectedServiceWithoutEnablingSales(string $serviceId): void
     {
         $selected = DB::table('business_settings')->where('type', 'tour_service_type_id')->first();
-        if (!$selected || !filled($selected->value)) {
+        $selectedServiceIsUsable = $selected && filled($selected->value)
+            && DB::table('service_types')->where('id', $selected->value)
+                ->whereNotIn('code', ['tour', 'tour_new'])
+                ->where('context', 'public')->where('pricing_basis', 'vehicle_class')
+                ->where('is_active', true)->whereNull('deleted_at')->exists();
+
+        if (!$selectedServiceIsUsable) {
             if ($selected) {
                 DB::table('business_settings')->where('id', $selected->id)->update(['value' => $serviceId, 'updated_at' => now()]);
             } else {
@@ -405,15 +415,17 @@ class TourLaunchSeeder extends Seeder
                     'created_at' => now(), 'updated_at' => now(),
                 ]);
             }
-            if (filter_var(DB::table('business_settings')->where('type', 'tours_enabled')->value('value'), FILTER_VALIDATE_BOOLEAN)) {
-                DB::table('business_settings')->where('type', 'tours_enabled')->update(['value' => 'false', 'updated_at' => now()]);
-            }
         }
-        if (!DB::table('business_settings')->where('type', 'tours_enabled')->exists()) {
-            DB::table('business_settings')->insert([
-                'id' => (string) Str::uuid(), 'type' => 'tours_enabled', 'value' => 'false',
-                'created_at' => now(), 'updated_at' => now(),
-            ]);
+        $enabledSetting = DB::table('business_settings')->where('type', 'tours_enabled')->first();
+        if (!$selectedServiceIsUsable || !$enabledSetting) {
+            if ($enabledSetting) {
+                DB::table('business_settings')->where('type', 'tours_enabled')->update(['value' => 'false', 'updated_at' => now()]);
+            } else {
+                DB::table('business_settings')->insert([
+                    'id' => (string) Str::uuid(), 'type' => 'tours_enabled', 'value' => 'false',
+                    'created_at' => now(), 'updated_at' => now(),
+                ]);
+            }
         }
     }
 }
