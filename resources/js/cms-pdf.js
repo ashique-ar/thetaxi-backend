@@ -28,6 +28,10 @@ document.querySelectorAll('[data-cms-pdf]').forEach(async reader => {
             canvas.className = 'cms-pdf-page img-fluid mb-3';
             canvas.setAttribute('aria-label', `Page ${number} of ${pdf.numPages}`);
             pages.append(canvas);
+            if (number === 1) {
+                if (loading) loading.hidden = true;
+                if (counter) counter.textContent = `Page 1 / ${pdf.numPages}`;
+            }
             if (progress) progress.style.width = Math.round(number / pdf.numPages * 100) + '%';
         }
         if (progress) progress.style.width = '100%';

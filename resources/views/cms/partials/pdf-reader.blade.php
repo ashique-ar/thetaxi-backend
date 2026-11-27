@@ -6,13 +6,13 @@
     @if ($pdfPreview === 'magazine')
         <div class="cms-pdf-frame cms-pdf-magazine" data-magazine-frame>
             <header class="cms-pdf-toolbar">
-                <span class="cms-pdf-filename"><i class="bi bi-file-earmark-pdf" aria-hidden="true"></i> {{ basename(parse_url($pdfUrl, PHP_URL_PATH) ?: 'document.pdf') }}</span>
                 <span class="cms-pdf-page-count" data-magazine-page aria-live="polite">Loading PDF…</span>
                 <div class="cms-pdf-zoom" aria-label="PDF zoom controls"><button type="button" data-magazine-zoom-out aria-label="Zoom out">−</button><span data-magazine-zoom-label>100%</span><button type="button" data-magazine-zoom-in aria-label="Zoom in">+</button></div>
                 <button type="button" class="cms-pdf-fullscreen" data-magazine-fullscreen aria-label="View PDF full screen" title="Full screen"><i class="bi bi-arrows-fullscreen" aria-hidden="true"></i></button>
             </header>
             <div class="cms-pdf-magazine-stage">
                 <div class="cms-pdf-loading" data-magazine-status role="status" aria-live="polite">
+                    <span class="cms-pdf-spinner" aria-hidden="true"></span>
                     @if ($content->thumbnail)
                         <img class="cms-pdf-cover" src="{{ s3_asset($content->thumbnail) }}" alt="">
                     @else
@@ -29,7 +29,6 @@
     @else
         <div class="cms-pdf-frame">
             <header class="cms-pdf-toolbar">
-                <span class="cms-pdf-filename"><i class="bi bi-file-earmark-pdf" aria-hidden="true"></i> {{ basename(parse_url($pdfUrl, PHP_URL_PATH) ?: 'document.pdf') }}</span>
                 <span class="cms-pdf-page-count" data-pdf-page aria-live="polite">Loading PDF…</span>
                 <div class="cms-pdf-zoom" aria-label="PDF zoom controls"><button type="button" data-pdf-zoom-out aria-label="Zoom out" disabled>−</button><span data-pdf-zoom-label>100%</span><button type="button" data-pdf-zoom-in aria-label="Zoom in" disabled>+</button></div>
                 <button type="button" class="cms-pdf-fullscreen" data-pdf-fullscreen aria-label="View PDF full screen" title="Full screen"><i class="bi bi-arrows-fullscreen" aria-hidden="true"></i></button>
