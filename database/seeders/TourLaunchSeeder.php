@@ -84,12 +84,13 @@ class TourLaunchSeeder extends Seeder
 
     private function seedMapDrafts(string $serviceId, string $actorId): void
     {
+        $sortOrder = 0;
         foreach (self::PLACES as $code => [$city, $province, $description]) {
             $locationId = (string) (DB::table('predefined_locations')->where('code', 'tour_'.$code)->value('id') ?? Str::uuid());
             DB::table('predefined_locations')->insertOrIgnore([
                 'id' => $locationId, 'name' => $city, 'code' => 'tour_'.$code, 'type' => 'tour',
                 'city' => $city, 'country' => 'Sri Lanka', 'address' => $province,
-                'latitude' => 0, 'longitude' => 0, 'is_active' => false, 'sort_order' => count(self::PLACES),
+                'latitude' => 0, 'longitude' => 0, 'is_active' => false, 'sort_order' => $sortOrder,
                 'description' => $description, 'metadata' => json_encode(['mapping_required' => true]),
                 'created_user_id' => $actorId, 'updated_user_id' => $actorId, 'created_at' => now(), 'updated_at' => now(),
             ]);
@@ -104,7 +105,7 @@ class TourLaunchSeeder extends Seeder
             $destinationId = (string) DB::table('tour_destinations')->where('service_type_id', $serviceId)->where('code', $code)->value('id');
             foreach (self::ACTIVITIES[$code] ?? [] as $index => [$activity, $minutes]) {
                 $activityCode = Str::slug($activity);
-                $activityLocationCode = 'tour_activity_'.$code.'_'.$activityCode;
+                $activityLocationCode = substr('tour_activity_'.$code.'_'.$activityCode, 0, 39).'_'.substr(sha1($activity), 0, 10);
                 $activityLocationId = (string) (DB::table('predefined_locations')->where('code', $activityLocationCode)->value('id') ?? Str::uuid());
                 DB::table('predefined_locations')->insertOrIgnore([
                     'id' => $activityLocationId, 'name' => $activity, 'code' => $activityLocationCode, 'type' => 'tour',
@@ -122,6 +123,7 @@ class TourLaunchSeeder extends Seeder
                     'created_user_id' => $actorId, 'updated_user_id' => $actorId, 'created_at' => now(), 'updated_at' => now(),
                 ]);
             }
+            $sortOrder++;
         }
     }
 
@@ -137,7 +139,17 @@ class TourLaunchSeeder extends Seeder
         }
         $rateByGroup = DB::table('vehicle_group_pricing')->where('slab_definition_id', $sourceSlab->id)
             ->where('rate_type', 'per_day')->where('is_active', true)->whereNull('owner_type')->whereNull('owner_id')
-            ->whereNotNull('vehicle_group_id')->pluck('rate', 'vehicle_group_id');
+            ->whereNotNull('vehicle_group_id')->get(['vehicle_group_id', 'rate', 'includes_fuel', 'includes_driver'])->keyBy('vehicle_group_id');
+        $sourceDistanceDefinition = DB::table('vehicle_pricing_common_rate_definitions')
+            ->whereIn('code', ['extra_km_rate', 'distance_rate'])->where('is_active', true)->whereNull('deleted_at')
+            ->where(fn($query) => $query->where('service_type_id', $source->id)->orWhereNull('service_type_id'))
+            ->orderByRaw('CASE WHEN service_type_id IS NULL THEN 1 ELSE 0 END')->first();
+        if (!$sourceDistanceDefinition) {
+            throw new RuntimeException('No active Day Rental extra-kilometre common rate exists; Tour distance prices were not guessed.');
+        }
+        $distanceRateByGroup = DB::table('vehicle_group_common_rate_pricing')
+            ->where('common_rate_definition_id', $sourceDistanceDefinition->id)->where('is_active', true)->whereNull('deleted_at')
+            ->whereNotNull('vehicle_group_id')->pluck('value', 'vehicle_group_id');
         $classes = [
             ['class' => 'Economy', 'display' => 'Economy car', 'passengers' => 4, 'bags' => 2, 'groups' => null],
             ['class' => 'Compact', 'display' => 'Standard car', 'passengers' => 4, 'bags' => 2, 'groups' => []],
@@ -161,7 +173,7 @@ class TourLaunchSeeder extends Seeder
                 ->whereNotNull('hand_luggages')->where('hand_luggages', '>=', $row['bags'])
                 ->when(is_array($row['groups']), fn($query) => $query->whereIn('name', $row['groups']))
                 ->get(['id', 'name']);
-            $eligible = $groups->filter(fn($group) => $rateByGroup->has($group->id))->values();
+            $eligible = $groups->filter(fn($group) => $rateByGroup->has($group->id) && $distanceRateByGroup->has($group->id))->values();
             $mapping = $eligible->pluck('id')->all();
             $hasRates = $mapping !== [];
             $setting = DB::table('service_vehicle_class_settings')->where('service_type_id', $serviceId)->where('vehicle_class_id', $classId)->first();
@@ -176,13 +188,67 @@ class TourLaunchSeeder extends Seeder
                 ]);
             }
             if (!$hasRates) continue;
-            $price = $eligible->min(fn($group) => (float) $rateByGroup[$group->id]);
+            $minimumGroup = $eligible->sortBy(fn($group) => (float) $rateByGroup[$group->id]->rate)->first();
+            $sourcePrice = $rateByGroup[$minimumGroup->id];
             DB::table('vehicle_group_pricing')->insertOrIgnore([
                 'id' => (string) Str::uuid(), 'slab_definition_id' => $slabId, 'vehicle_group_id' => null,
-                'vehicle_class_id' => $classId, 'rate' => $price, 'rate_type' => 'per_day',
-                'minimum_charge' => null, 'includes_fuel' => false, 'includes_driver' => true,
+                'vehicle_class_id' => $classId, 'rate' => $sourcePrice->rate, 'rate_type' => 'per_day',
+                'minimum_charge' => null, 'includes_fuel' => $sourcePrice->includes_fuel, 'includes_driver' => $sourcePrice->includes_driver,
                 'is_active' => true, 'owner_type' => null, 'owner_id' => null, 'priority' => 0,
                 'created_user_id' => $actorId, 'updated_user_id' => $actorId, 'created_at' => now(), 'updated_at' => now(),
+            ]);
+
+            $distanceDefinitionId = $this->ensureTourDistanceRateDefinition($serviceId, $actorId);
+            DB::table('vehicle_group_common_rate_pricing')->insertOrIgnore([
+                'id' => (string) Str::uuid(), 'vehicle_group_id' => null, 'vehicle_class_id' => $classId,
+                'common_rate_definition_id' => $distanceDefinitionId,
+                'value' => $eligible->min(fn($group) => (float) $distanceRateByGroup[$group->id]),
+                'is_active' => true, 'owner_type' => null, 'owner_id' => null, 'priority' => 0,
+                'created_user_id' => $actorId, 'updated_user_id' => $actorId, 'created_at' => now(), 'updated_at' => now(),
+            ]);
+        }
+
+        $this->seedTourCalculationBranches($serviceId, $actorId);
+    }
+
+    private function ensureTourDistanceRateDefinition(string $serviceId, string $actorId): string
+    {
+        $existing = DB::table('vehicle_pricing_common_rate_definitions')->where('service_type_id', $serviceId)->where('code', 'distance_rate')->first();
+        if ($existing) return (string) $existing->id;
+        $id = (string) Str::uuid();
+        DB::table('vehicle_pricing_common_rate_definitions')->insert([
+            'id' => $id, 'name' => 'Tour extra kilometre rate', 'code' => 'distance_rate',
+            'service_type_id' => $serviceId, 'vehicle_group_id' => null,
+            'description' => 'Starting extra-kilometre rate copied from the minimum eligible Day Rental fleet-group rate.',
+            'common_rate_type' => 'per_km', 'is_mandatory' => true, 'is_active' => true, 'sort_order' => 1,
+            'created_user_id' => $actorId, 'updated_user_id' => $actorId, 'created_at' => now(), 'updated_at' => now(),
+        ]);
+        return $id;
+    }
+
+    private function seedTourCalculationBranches(string $serviceId, string $actorId): void
+    {
+        $branches = [
+            [
+                'name' => 'Tour daily class price', 'formula' => 'duration_days * slab_rate', 'priority' => 20,
+                'variables' => [['name' => 'duration_days', 'type' => 'duration'], ['name' => 'slab_rate', 'type' => 'slab_rate']],
+                'conditions' => [['field' => 'journey_distance', 'operator' => '<=', 'value' => 0, 'value_field' => 'package_included_km']],
+            ],
+            [
+                'name' => 'Tour distance class price', 'formula' => 'journey_distance * distance_rate', 'priority' => 10,
+                'variables' => [['name' => 'journey_distance', 'type' => 'distance'], ['name' => 'distance_rate', 'type' => 'common_rate']],
+                'conditions' => [['field' => 'journey_distance', 'operator' => '>', 'value' => 0, 'value_field' => 'package_included_km']],
+            ],
+        ];
+        foreach ($branches as $branch) {
+            if (DB::table('vehicle_pricing_calculation_definitions')->where('service_type_id', $serviceId)->where('name', $branch['name'])->exists()) continue;
+            DB::table('vehicle_pricing_calculation_definitions')->insert([
+                'id' => (string) Str::uuid(), 'service_type_id' => $serviceId, 'name' => $branch['name'],
+                'description' => 'Initial Tour pricing branch. Adjust slabs, included kilometres and common rate in the existing Pricing tool before enabling sales.',
+                'formula' => $branch['formula'], 'variables' => json_encode($branch['variables']),
+                'conditions' => json_encode($branch['conditions']), 'status' => 'active',
+                'owner_type' => null, 'owner_id' => null, 'priority' => $branch['priority'],
+                'created_by' => $actorId, 'updated_by' => $actorId, 'created_at' => now(), 'updated_at' => now(),
             ]);
         }
     }
