@@ -37,6 +37,11 @@ body.theme-default .home4-banner-section .shared-hero-swiper .banner-content-wra
     pointer-events: none;
 }
 
+body.theme-default .home4-banner-section .swiper-slide:only-child,
+body.theme-default .home4-banner-section .swiper-slide-active {
+    pointer-events: auto;
+}
+
 body.theme-default .home4-banner-section .banner-content .shared-hero-action {
     position: relative;
     z-index: 20;
@@ -44,7 +49,7 @@ body.theme-default .home4-banner-section .banner-content .shared-hero-action {
     cursor: pointer;
 }
 
-body.theme-default .home4-banner-section .swiper-fade .swiper-slide:not(.swiper-slide-active) .shared-hero-action {
+body.theme-default .home4-banner-section .swiper-fade .swiper-slide:not(.swiper-slide-active):not(:only-child) .shared-hero-action {
     pointer-events: none;
 }
 

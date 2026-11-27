@@ -390,11 +390,11 @@
     var statusEl = slider.querySelector("[data-hero-status]");
     var slideCount = slider.querySelectorAll(".swiper-slide").length;
     var isInitialSync = true;
-    var instance = new Swiper(slider, {
+    var swiperOptions = {
       slidesPerView: 1,
       rewind: slideCount > 1,
       speed: reduceMotion ? 0 : 450,
-      effect: "fade",
+      effect: slideCount > 1 ? "fade" : "slide",
       allowTouchMove: slideCount > 1,
       autoplay: reduceMotion || slideCount < 2 ? false : {
         delay: 6000,
@@ -402,14 +402,6 @@
         disableOnInteraction: false,
       },
       fadeEffect: { crossFade: true },
-      pagination: pagination ? {
-        el: pagination,
-        clickable: true,
-        renderBullet: function (index, className) {
-          var label = "Go to slide " + (index + 1);
-          return '<button type="button" class="' + className + '" aria-label="' + label + '"></button>';
-        },
-      } : undefined,
       on: {
         init: function () {
           syncHeroVideo(this);
@@ -421,7 +413,18 @@
           syncHeroMeta(this);
         },
       },
-    });
+    };
+    if (pagination) {
+      swiperOptions.pagination = {
+        el: pagination,
+        clickable: true,
+        renderBullet: function (index, className) {
+          var label = "Go to slide " + (index + 1);
+          return '<button type="button" class="' + className + '" aria-label="' + label + '"></button>';
+        },
+      };
+    }
+    var instance = new Swiper(slider, swiperOptions);
 
     slider.addEventListener("click", function (event) {
       var prevBtn = event.target.closest(".t4-hero__prev, .t3-hero__prev, [data-hero-prev]");
