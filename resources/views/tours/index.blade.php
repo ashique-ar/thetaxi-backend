@@ -583,19 +583,18 @@
             <div class="container">
                 <div class="tour-hero-inner">
                     <div class="tour-hero-eyebrow">
-                        <span>Multi-Day Private Tours &amp; Chauffeur Hire</span>
+                        <span>Private Tours with a Driver</span>
                     </div>
                     <h1>Custom Multi-Day Tour &amp; Private Driver Hire</h1>
                     <p class="tour-hero-lead">
-                        Design your bespoke road trip or select a handcrafted tour package. Choose from our published places
-                        and activities — we compare your order with a shorter, practical route and calculate a transparent transport quote.
+                        Plan a trip that suits you, or choose one of our ready-made tours. Pick the places and activities you want to visit. We’ll suggest a practical route and show the transport price when it is available.
                     </p>
                     <div class="tour-trust-grid">
                         <div class="tour-trust-item">
                             <svg class="tour-trust-icon" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true">
                                 <path d="M5 13l4 4L19 7" stroke-linecap="round" stroke-linejoin="round" stroke-width="2.5"></path>
                             </svg>
-                            <span>Vetted Tourist Drivers</span>
+                            <span>Experienced Tour Drivers</span>
                         </div>
                         <div class="tour-trust-item">
                             <svg class="tour-trust-icon" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true">
@@ -607,7 +606,7 @@
                             <svg class="tour-trust-icon" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true">
                                 <path d="M5 13l4 4L19 7" stroke-linecap="round" stroke-linejoin="round" stroke-width="2.5"></path>
                             </svg>
-                            <span>Smart Route Comparison</span>
+                            <span>Help Finding a Better Route</span>
                         </div>
                         <div class="tour-trust-item">
                             <svg class="tour-trust-icon" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true">
@@ -627,12 +626,12 @@
                     <nav class="tour-nav-pills" aria-label="Tour planner steps">
                         <a class="tour-nav-pill is-active" href="#tour-step-1">1. Trip &amp; Vehicle</a>
                         <a class="tour-nav-pill" href="#tour-step-2">2. Route &amp; Stops</a>
-                        <a class="tour-nav-pill" href="#tour-step-3">3. Quote &amp; Route</a>
+                        <a class="tour-nav-pill" href="#tour-step-3">3. Price &amp; Route</a>
                         <a class="tour-nav-pill" href="#tour-contact-section">4. Contact</a>
                     </nav>
                     <div class="tour-live-indicator d-none d-md-inline-flex">
                         <span class="tour-live-dot" aria-hidden="true"></span>
-                        <span>Live route &amp; tariff calculator</span>
+                        <span>Plan your route and see the transport price</span>
                     </div>
                 </div>
             </div>
@@ -643,7 +642,7 @@
 
             <div id="tour-loading" class="tour-card p-5 text-center">
                 <div class="spinner-border text-secondary mb-3" role="status" aria-hidden="true"></div>
-                <p class="mb-0 fw-semibold">Loading available tours and published destinations…</p>
+                <p class="mb-0 fw-semibold">Loading available tours and places…</p>
             </div>
 
             <form id="tour-form" class="row g-4 align-items-start" hidden>
@@ -655,14 +654,14 @@
                         <div class="tour-card-header">
                             <span class="tour-step-badge">1</span>
                             <div>
-                                <h2 class="tour-card-title">Trip Essentials &amp; Vehicle Tier</h2>
-                                <p class="tour-card-subtitle">Specify your dates, tour service, party size, and private vehicle class.</p>
+                                <h2 class="tour-card-title">Your Trip &amp; Vehicle</h2>
+                                <p class="tour-card-subtitle">Choose your dates, group size, and the vehicle that suits your trip.</p>
                             </div>
                         </div>
 
                         <div class="row g-3 mb-4">
                             <div class="col-md-6" id="tour-package-field">
-                                <label for="tour-package" class="form-label">Handcrafted package <span class="text-lowercase fw-normal tour-muted">(optional)</span></label>
+                                <label for="tour-package" class="form-label">Ready-made tour <span class="text-lowercase fw-normal tour-muted">(optional)</span></label>
                                 <select id="tour-package" class="form-select no-nice">
                                     <option value="">Choose later</option>
                                 </select>
@@ -683,7 +682,7 @@
 
                         <!-- Party Size & Baggage Sub-panel -->
                         <fieldset class="tour-subpanel mb-4">
-                            <legend class="tour-subpanel-title">Party Size &amp; Baggage Load</legend>
+                            <legend class="tour-subpanel-title">People &amp; Luggage</legend>
                             <div class="row g-3">
                                 <div class="col-6 col-md-3">
                                     <label for="tour-adults" class="form-label">Adults *</label>
@@ -709,7 +708,7 @@
 
                         <!-- Vehicle Tier Selector Cards -->
                         <fieldset class="border-0 p-0 m-0">
-                            <legend class="tour-label mb-2">Select Dedicated Private Vehicle *</legend>
+                            <legend class="tour-label mb-2">Choose your private vehicle *</legend>
                             <div id="tour-class-cards" class="row g-3" role="radiogroup" aria-label="Vehicle class"></div>
                             <select id="tour-class" class="d-none no-nice" tabindex="-1" aria-hidden="true"></select>
                         </fieldset>
@@ -738,22 +737,22 @@
                         <div class="tour-card-header">
                             <span class="tour-step-badge">2</span>
                             <div>
-                                <h2 class="tour-card-title">Day-by-Day Route &amp; Stop Customizer</h2>
-                                <p class="tour-card-subtitle">Select a start and finish point, overnight stays, and the places or activities you want to visit.</p>
+                                <h2 class="tour-card-title">Choose Places to Visit</h2>
+                                <p class="tour-card-subtitle">Choose where to start and finish, where to stay overnight, and the places or activities you want to visit.</p>
                             </div>
                         </div>
 
                         <div class="tour-subpanel mb-4">
                             <search class="mb-3 d-block">
-                                <label for="tour-start-search" class="form-label">Filter start/finish locations</label>
+                                <label for="tour-start-search" class="form-label">Find a start or finish place</label>
                                 <input id="tour-start-search" type="search" class="form-control mb-3"
                                     autocomplete="off" autocorrect="off" autocapitalize="none" spellcheck="false"
-                                    placeholder="Search listed places…">
+                                    placeholder="Type a place name…">
                             </search>
                             <div>
                                 <label for="tour-start" class="form-label">Start and finish at *</label>
                                 <select id="tour-start" class="form-select no-nice" required>
-                                    <option value="">Choose a listed place</option>
+                                    <option value="">Choose a place</option>
                                 </select>
                             </div>
                         </div>
@@ -761,7 +760,7 @@
                         <div id="tour-day-settings" class="row g-3 mb-4"></div>
 
                         <search class="mb-3 d-block">
-                            <label for="tour-destination-search" class="form-label">Search published places and activities</label>
+                            <label for="tour-destination-search" class="form-label">Find places and activities</label>
                             <input id="tour-destination-search" type="search" class="form-control"
                                 autocomplete="off" autocorrect="off" autocapitalize="none" spellcheck="false"
                                 placeholder="Type a place or activity name…">
@@ -776,12 +775,12 @@
                             <span class="tour-step-badge">3</span>
                             <div>
                                 <h2 class="tour-card-title">Review Your Route &amp; Transport Price</h2>
-                                <p class="tour-card-subtitle">Get an instant price for your route and continue to checkout.</p>
+                                <p class="tour-card-subtitle">Compare your route and transport estimate. Some plans may need staff review.</p>
                             </div>
                         </div>
 
                         <div class="d-flex flex-wrap align-items-center gap-3">
-                            <button id="tour-plan" class="btn tour-btn-primary" type="submit">Build route and quote</button>
+                            <button id="tour-plan" class="btn tour-btn-primary" type="submit">Compare route and price</button>
                             <span id="tour-working" class="small tour-muted fw-medium" hidden>Checking route and price…</span>
                         </div>
                         <div id="tour-results" class="mt-4" hidden></div>
@@ -792,8 +791,8 @@
                         <div class="tour-card-header">
                             <span class="tour-step-badge">4</span>
                             <div>
-                                <h2 class="tour-card-title">Lead Passenger Contact</h2>
-                                <p class="tour-card-subtitle">Add your contact details so we can save this route and quote to your booking.</p>
+                                <h2 class="tour-card-title">Your Contact Details</h2>
+                                <p class="tour-card-subtitle">Add your details so we can save your trip plan and price.</p>
                             </div>
                         </div>
 
@@ -842,12 +841,12 @@
                                 <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12l2 2 4-4m5.618-4.016A11.955 11.955 0 0112 2.944a11.955 11.955 0 01-8.618 3.04A12.02 12.02 0 003 9c0 5.591 3.824 10.29 9 11.622 5.176-1.332 9-6.03 9-11.622 0-1.042-.133-2.052-.382-3.016z"></path>
                             </svg>
                             <div class="small lh-base">
-                                <h3 class="tour-guarantee-title">Transparent Route &amp; Transport Guarantee</h3>
+                                <h3 class="tour-guarantee-title">Before You Book</h3>
                                 <p class="mb-2">
-                                    <strong>Smart Route Optimization:</strong> Our planner compares your selected stop order against a practical route that reduces backtracking while respecting published activity opening hours.
+                                    <strong>Route suggestions:</strong> We may suggest a route with less driving between places. You can review it and choose the route you prefer.
                                 </p>
                                 <p class="mb-0">
-                                    <strong>Activity Tickets Separate:</strong> Activity visits are included in your route only. Entry tickets and activity reservations are arranged separately.
+                                    <strong>Activity tickets:</strong> The price covers travel between places. Entry tickets and activity bookings are not included. We plan to offer activity bookings in the future.
                                 </p>
                             </div>
                         </div>
@@ -858,12 +857,12 @@
                 <aside class="col-lg-4 sticky-lg-top d-flex flex-column gap-4" style="top: 1.5rem;">
                     <div class="tour-sidebar-card p-3 p-md-4">
                         <div class="d-flex align-items-center justify-content-between pb-3 border-bottom">
-                            <span class="text-uppercase fw-bold small tour-muted" style="letter-spacing: 0.06em;">Live Transport Quote</span>
-                            <span class="tour-badge-guaranteed">Guaranteed Rate</span>
+                            <span class="text-uppercase fw-bold small tour-muted" style="letter-spacing: 0.06em;">Estimated transport price</span>
+                            <span class="tour-badge-guaranteed">Price held for 30 minutes</span>
                         </div>
 
                         <section id="tour-total-summary" class="py-3 border-bottom" aria-live="polite" hidden>
-                            <h2 class="h6 tour-muted mb-1">Estimated tour transport</h2>
+                            <h2 class="h6 tour-muted mb-1">Estimated travel price</h2>
                             <p id="tour-total-amount" class="h3 fw-extrabold mb-1" style="color: var(--tour-ink);"></p>
                             <p id="tour-total-distance" class="small tour-muted mb-0"></p>
                         </section>
@@ -875,25 +874,25 @@
                                     <svg width="16" height="16" class="flex-shrink-0 mt-1" style="color: var(--tour-emerald);" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true">
                                         <path d="M5 13l4 4L19 7" stroke-linecap="round" stroke-linejoin="round" stroke-width="2.5"></path>
                                     </svg>
-                                    <span>Smart route with less backtracking</span>
+                                    <span>Route suggestions may reduce driving between places</span>
                                 </li>
                                 <li class="d-flex align-items-start gap-2">
                                     <svg width="16" height="16" class="flex-shrink-0 mt-1" style="color: var(--tour-emerald);" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true">
                                         <path d="M5 13l4 4L19 7" stroke-linecap="round" stroke-linejoin="round" stroke-width="2.5"></path>
                                     </svg>
-                                    <span>Instant transport quote</span>
+                                    <span>Transport price when available; staff review if needed</span>
                                 </li>
                                 <li class="d-flex align-items-start gap-2">
                                     <svg width="16" height="16" class="flex-shrink-0 mt-1" style="color: var(--tour-emerald);" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true">
                                         <path d="M5 13l4 4L19 7" stroke-linecap="round" stroke-linejoin="round" stroke-width="2.5"></path>
                                     </svg>
-                                    <span>Attraction tickets not included</span>
+                                    <span>Activity tickets are not included; booking them will be available in the future</span>
                                 </li>
                             </ul>
                         </div>
 
                         <p class="small tour-muted pt-3 mb-0">
-                            Complete steps 1–4 and click <strong>Build route and quote</strong> to lock in your itinerary and proceed to checkout.
+                            Complete steps 1–4 and click <strong>Compare route and price</strong> to review your trip and continue to checkout.
                         </p>
                     </div>
 
@@ -903,9 +902,9 @@
                                 <svg width="16" height="16" style="color: var(--tour-primary);" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true">
                                     <path d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" stroke-linecap="round" stroke-linejoin="round" stroke-width="2"></path>
                                 </svg>
-                                <span>Prefer to discuss your route directly?</span>
+                                <span>Would you like help planning your trip?</span>
                             </div>
-                            <p class="tour-muted mb-2">Speak with our tour dispatch team for custom multi-day advice.</p>
+                            <p class="tour-muted mb-2">Talk with our team about planning your tour.</p>
                             <div class="d-flex flex-wrap gap-3">
                                 @if (!empty($supportPhone))
                                     <a class="tour-assistance-link" href="tel:{{ $supportPhoneHref }}">Call {{ $supportPhone }}</a>
@@ -930,27 +929,27 @@
 
                 <div class="d-flex flex-column gap-3">
                     <details class="tour-faq-item">
-                        <summary>How does the route comparison work?</summary>
+                        <summary>How do route suggestions work?</summary>
                         <div class="tour-faq-body">
-                            When you select your destinations and activities, our planner evaluates your chosen order alongside a practical route that minimizes backtracking while respecting activity opening hours. You can choose either route before generating your quote.
+                            After you choose places and activities, we may suggest a route with less driving between them. You can compare the suggestion with your chosen order and pick the one you prefer. Visit times may affect which routes are possible.
                         </div>
                     </details>
                     <details class="tour-faq-item">
-                        <summary>Are activity tickets or entry fees included in the transport quote?</summary>
+                        <summary>Are activity tickets included in the price?</summary>
                         <div class="tour-faq-body">
-                            No. The quote covers your private vehicle and driver transport for the selected itinerary. Attraction tickets, safari jeeps, train tickets, and entry fees are arranged separately.
+                            No. The price covers your private vehicle and driver. Attraction entry, safari jeeps, train tickets, and other activity costs are separate. Booking activity tickets through us is planned for the future.
                         </div>
                     </details>
                     <details class="tour-faq-item">
-                        <summary>Can I request a staff review if my schedule has timing conflicts?</summary>
+                        <summary>What if my trip needs a review?</summary>
                         <div class="tour-faq-body">
-                            Yes. If a route needs manual verification or custom vehicle availability, you can click <strong>Ask our team to review this Tour</strong> after building your route. No payment is taken for a review request.
+                            If we need to check your route or vehicle, choose <strong>Ask our team to review this Tour</strong>. You will not be charged for asking us to review it.
                         </div>
                     </details>
                     <details class="tour-faq-item">
-                        <summary>How do I proceed to booking once I see my price?</summary>
+                        <summary>How do I book after reviewing the price?</summary>
                         <div class="tour-faq-body">
-                            After selecting your preferred route, review the transport price and booking terms, then click <strong>Accept price and continue to checkout</strong> to enter the shared checkout flow.
+                            Choose your preferred route, read the booking terms, then click <strong>Accept price and continue to checkout</strong> to complete your booking.
                         </div>
                     </details>
                 </div>
@@ -1022,7 +1021,7 @@
             function fillOptions() {
                 const service = currentService();
                 const packages = service?.packages || [];
-                classSelect.innerHTML = '<option value="">Choose a vehicle class</option>' + (service?.classes || []).map(item => `<option value="${escapeHtml(item.id)}">${escapeHtml(item.display_name || item.name)}${item.max_passengers ? ` — up to ${escapeHtml(item.max_passengers)} passengers` : ''}</option>`).join('');
+                classSelect.innerHTML = '<option value="">Choose a vehicle type</option>' + (service?.classes || []).map(item => `<option value="${escapeHtml(item.id)}">${escapeHtml(item.display_name || item.name)}${item.max_passengers ? ` — up to ${escapeHtml(item.max_passengers)} passengers` : ''}</option>`).join('');
                 packageSelect.innerHTML = '<option value="">Choose later</option>' + packages.map(item => `<option value="${escapeHtml(item.id)}">${escapeHtml(item.name)}</option>`).join('');
                 if (packages.length === 1) packageSelect.value = packages[0].id;
                 const packageField = document.getElementById('tour-package-field');
@@ -1174,7 +1173,7 @@
             function renderAiSuggestion(suggestion) {
                 const destinations = new Map((catalogue?.destinations || []).map(item => [item.id, item]));
                 const activities = new Map((catalogue?.destinations || []).flatMap(item => (item.activities || []).map(activity => [activity.id, { ...activity, destinationName: item.name }])));
-                document.getElementById('tour-ai-preview').innerHTML = `<p class="small tour-muted mb-2">Review the suggested visits, then choose whether to add them. You can edit every selection afterward.</p>${suggestion.days.map(day => `<div class="mb-2"><strong>Day ${escapeHtml(day.day_number)}</strong><ul class="small mb-0">${day.stops.map(stop => { const place = stop.kind === 'activity' ? activities.get(stop.catalogue_id) : destinations.get(stop.catalogue_id); return `<li>${escapeHtml(place?.name || 'Published place')}${stop.kind === 'activity' && place?.destinationName ? ` <span class="tour-muted">at ${escapeHtml(place.destinationName)}</span>` : ''}</li>`; }).join('') || '<li>Choose visits manually for this day.</li>'}</ul></div>`).join('')}<div class="d-flex flex-wrap gap-2 mt-3"><button id="tour-ai-apply" class="btn tour-btn-primary btn-sm" type="button">Add these ideas to my itinerary</button><button id="tour-ai-discard" class="btn btn-outline-secondary btn-sm" type="button">Discard ideas</button></div>`;
+                document.getElementById('tour-ai-preview').innerHTML = `<p class="small tour-muted mb-2">Review these ideas before adding them. You can change your choices afterward.</p>${suggestion.days.map(day => `<div class="mb-2"><strong>Day ${escapeHtml(day.day_number)}</strong><ul class="small mb-0">${day.stops.map(stop => { const place = stop.kind === 'activity' ? activities.get(stop.catalogue_id) : destinations.get(stop.catalogue_id); return `<li>${escapeHtml(place?.name || 'Place')}${stop.kind === 'activity' && place?.destinationName ? ` <span class="tour-muted">at ${escapeHtml(place.destinationName)}</span>` : ''}</li>`; }).join('') || '<li>Choose places yourself for this day.</li>'}</ul></div>`).join('')}<div class="d-flex flex-wrap gap-2 mt-3"><button id="tour-ai-apply" class="btn tour-btn-primary btn-sm" type="button">Add these ideas to my trip plan</button><button id="tour-ai-discard" class="btn btn-outline-secondary btn-sm" type="button">Discard ideas</button></div>`;
                 const preview = document.getElementById('tour-ai-preview');
                 preview.hidden = false;
                 document.getElementById('tour-ai-apply').addEventListener('click', () => {
@@ -1254,10 +1253,10 @@
                         ? 'This schedule has timing conflicts. Ask our team to review it before a transport price can be confirmed.'
                         : data.changed
                             ? 'Compare the original order with the suggested order for every day. Every selected destination and activity stays in the plan.'
-                            : 'Your selected order is already the best route we found.';
+                            : 'We did not find a shorter order to suggest. You can keep your selected route or ask our team to review it.';
                 const renderAggregate = (route, label) => {
                     const canQuote = route.quote?.status === 'priced' && !unavailable;
-                    const disabledLabel = route.quote?.status === 'quotation_required' || unavailable ? 'Staff review required' : 'Price needs staff review';
+                    const disabledLabel = route.quote?.status === 'quotation_required' || unavailable ? 'Our team needs to review this route' : 'Our team needs to check this price';
                     return `<div class="col-md-6"><div class="tour-option d-flex flex-column h-100"><h3 class="h6 fw-bold mb-2">${escapeHtml(label)}</h3><p class="small mb-2"><strong>${route.distance_km == null ? 'Distance unavailable' : `${escapeHtml(route.distance_km)} km total`}</strong>${route.duration_seconds != null ? ` · ${Math.round(route.duration_seconds / 3600 * 10) / 10} hr driving` : ''}</p>${route.quote?.status === 'priced' ? `<p class="h5 fw-bold mb-3" style="color: var(--tour-primary);">${escapeHtml(route.quote.currency)} ${Number(route.quote.total_amount).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</p>` : `<p class="small text-warning fw-semibold mb-3">${escapeHtml(route.quote?.reason || 'Price needs staff review.')}</p>`}<div class="mb-3">${(route.days || []).map(day => `<div class="tour-route-stop small"><span class="fw-bold">Day ${day.day_number}:</span> ${escapeHtml((day.schedule || []).map(stop => stop.stop_name).join(' → '))}</div>`).join('')}</div><button type="button" class="btn tour-btn-outline mt-auto tour-use-route" data-route="${label === 'Suggested route' ? 'suggested' : 'original'}" ${canQuote ? '' : 'disabled'}>${canQuote ? 'Use this route and review price' : disabledLabel}</button></div></div>`;
                 };
                 return `<div class="alert ${unavailable ? 'alert-warning' : 'alert-info'}">${routeMessage}</div><div class="row g-3">${renderAggregate(data.original, 'Your selected order')}${renderAggregate(data.suggested, 'Suggested route')}</div><div class="small tour-muted mt-3">${(data.issues || []).map(issue => `<p class="mb-1">Day ${issue.day_number}: ${escapeHtml(issue.message)}</p>`).join('')}<p class="mb-0">Activity visits are route stops only. Entry tickets and reservations are arranged separately.</p></div><div class="mt-3"><button type="button" id="tour-request-review" class="btn tour-btn-outline">Ask our team to review this Tour</button><p class="small tour-muted mt-2 mb-0">Free review — no payment needed yet.</p></div>`;

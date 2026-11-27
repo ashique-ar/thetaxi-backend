@@ -386,7 +386,9 @@
     var previous = slider.querySelector(".t4-hero__prev, .t3-hero__prev");
     var next = slider.querySelector(".t4-hero__next, .t3-hero__next");
     var highlightEl = slider.querySelector("[data-hero-highlight]");
+    var highlightWrap = slider.querySelector("[data-hero-highlight-wrap]");
     var metaEl = slider.querySelector("[data-hero-meta]");
+    var metaWrap = slider.querySelector("[data-hero-meta-wrap]");
     var statusEl = slider.querySelector("[data-hero-status]");
     var slideCount = slider.querySelectorAll(".swiper-slide").length;
     var isInitialSync = true;
@@ -445,10 +447,14 @@
       var activeSlide = hero.slides[hero.activeIndex];
       if (activeSlide) {
         if (highlightEl && activeSlide.dataset.slideHighlight !== undefined) {
-          highlightEl.textContent = activeSlide.dataset.slideHighlight;
+          var highlight = activeSlide.dataset.slideHighlight;
+          highlightEl.textContent = highlight;
+          if (highlightWrap) highlightWrap.hidden = highlight === "";
         }
         if (metaEl && activeSlide.dataset.slideMeta !== undefined) {
-          metaEl.textContent = activeSlide.dataset.slideMeta;
+          var meta = activeSlide.dataset.slideMeta;
+          metaEl.textContent = meta;
+          if (metaWrap) metaWrap.hidden = meta === "";
         }
         if (statusEl && !isInitialSync) {
           statusEl.textContent = "Slide " + (realIndex + 1) + " of " + slideCount;
