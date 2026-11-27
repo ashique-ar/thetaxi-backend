@@ -137,6 +137,7 @@ it('allows corporate employees with booking create permission to fetch corporate
             $table->uuid('service_type_id');
             $table->boolean('is_active');
             $table->timestamps();
+            $table->softDeletes();
         });
     }
 
@@ -215,6 +216,12 @@ it('allows corporate employees with booking create permission to fetch corporate
             'X-Active-Context-Type' => 'corporate',
             'X-Active-Context-Id' => $blockedContextId,
         ])->assertForbidden();
+
+        $corporate = \App\Models\Corporate\Corporate::findOrFail($corporateId);
+        self::assertSame(1, $corporate->allServiceTypes()->count());
+        DB::table('corporate_service_types')->where('corporate_id', $corporateId)->where('service_type_id', $serviceTypeId)
+            ->update(['deleted_at' => now()]);
+        self::assertSame(0, $corporate->allServiceTypes()->count());
     } finally {
         if ($createdSchema) {
             foreach ([

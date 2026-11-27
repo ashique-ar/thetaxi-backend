@@ -16,7 +16,18 @@ document.querySelectorAll('[data-cms-pdf]').forEach(async reader => {
     const errorMessage = reader.querySelector('[data-pdf-error]');
     try {
         const loadingTask = getDocument({ url: reader.dataset.pdfUrl });
+        loadingTask.onProgress = ({ loaded, total }) => {
+            const percent = total > 0 ? Math.min(100, Math.round(loaded / total * 100)) : null;
+            if (counter) counter.textContent = percent === null ? 'Downloading PDF' : `Downloading ${percent}%`;
+            if (loadingLabel) loadingLabel.textContent = percent === null ? 'Downloading your document…' : `Downloading your document… ${percent}%`;
+            if (progress) {
+                progress.parentElement?.classList.toggle('is-indeterminate', percent === null);
+                if (percent !== null) progress.style.width = `${percent}%`;
+            }
+        };
         const pdf = await loadingTask.promise;
+        if (progress) progress.style.width = '0%';
+        progress?.parentElement?.classList.remove('is-indeterminate');
         const renderedPages = document.createDocumentFragment();
         for (let number = 1; number <= pdf.numPages; number++) {
             if (loadingLabel) loadingLabel.textContent = 'Preparing page ' + number + ' of ' + pdf.numPages + '…';

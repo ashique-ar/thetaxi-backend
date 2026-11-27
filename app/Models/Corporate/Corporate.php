@@ -81,6 +81,7 @@ class Corporate extends BaseModel
     public function serviceTypes()
     {
         return $this->belongsToMany(ServiceType::class, 'corporate_service_types', 'corporate_id', 'service_type_id')
+            ->wherePivotNull('deleted_at')
             ->wherePivot('is_active', true)
             ->withPivot(['is_active'])
             ->withTimestamps();
@@ -89,6 +90,7 @@ class Corporate extends BaseModel
     public function allServiceTypes()
     {
         return $this->belongsToMany(ServiceType::class, 'corporate_service_types', 'corporate_id', 'service_type_id')
+            ->wherePivotNull('deleted_at')
             ->withPivot(['is_active'])
             ->withTimestamps();
     }
