@@ -53,8 +53,17 @@ class TourCatalogueController extends Controller
                     ->where('service_type_id', $service->id)
                     ->where('is_active', true)
                     ->where('is_hidden', false)
+                    ->whereNotNull('eligible_vehicle_group_ids')
                     ->orderBy('sort_order')
                     ->get()
+                    ->filter(function (ServiceVehicleClassSetting $setting): bool {
+                        $ids = $setting->eligible_vehicle_group_ids ?? [];
+                        return $ids !== [] && \App\Models\Vehicle\VehicleGroup::query()
+                            ->whereIn('id', $ids)->where('class_id', $setting->vehicle_class_id)
+                            ->where('is_active', true)->whereNull('deleted_at')
+                            ->where('passengers_count', '>=', $setting->max_passengers)
+                            ->where('hand_luggages', '>=', $setting->max_luggage)->exists();
+                    })
                     ->map(fn(ServiceVehicleClassSetting $setting): array => [
                         'id' => $setting->vehicle_class_id,
                         'name' => $setting->vehicleClass?->name,

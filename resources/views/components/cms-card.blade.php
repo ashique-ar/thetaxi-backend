@@ -345,7 +345,7 @@
 </article>
 @else
 <div class="col-lg-3 col-md-4 col-sm-6 wow animate fadeInDown" data-wow-delay="{{ $delayMs }}ms" data-wow-duration="1500ms">
-    @if (request()->routeIs('home') && is_theme('theme-01'))
+    @if (request()->routeIs('home') && is_theme('default'))
     <article class="theme1-cms-card">
         <div class="theme1-cms-card__media">
             <a href="{{ $detailLink }}" aria-label="{{ $title }}">

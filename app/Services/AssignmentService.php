@@ -7,6 +7,7 @@ use App\Models\Driver\Driver;
 use App\Models\Booking\Booking;
 use App\Models\Booking\BookingItem;
 use App\Models\Service\ServiceType;
+use App\Models\Service\ServiceVehicleClassSetting;
 use App\Models\Vehicle\VehicleAssignment;
 use App\Models\DriverAssignment;
 use App\Jobs\SendCustomerDriverAssignedNotificationJob;
@@ -121,6 +122,18 @@ class AssignmentService
                     ->whereKey($params['booking_item_id'])->firstOrFail();
             }
             $vehicle = Vehicle::query()->whereKey($params['vehicle_id'])->lockForUpdate()->firstOrFail();
+            if (!empty($params['booking_item_id'])) {
+                $item = BookingItem::query()->where('booking_id', $params['booking_id'])
+                    ->whereKey($params['booking_item_id'])->firstOrFail();
+                if ($item->pricing_basis === 'vehicle_class' && filled(data_get($item->metadata, 'tour_itinerary_id'))) {
+                    $setting = ServiceVehicleClassSetting::query()
+                        ->where('service_type_id', $item->service_type_id)
+                        ->where('vehicle_class_id', $item->vehicle_class_id)->first();
+                    if (!$setting || !in_array((string) $vehicle->vehicle_group_id, $setting->eligible_vehicle_group_ids ?? [], true)) {
+                        throw ValidationException::withMessages(['vehicle_id' => 'This fleet group is not approved for the purchased Tour class.']);
+                    }
+                }
+            }
             $conflicts = $vehicle->getAssignmentConflicts($params['assigned_from'], $params['assigned_to']);
             if ($conflicts) {
                 $params['assignment_type'] = $vehicle->allowsConcurrentAssignments() ? 'concurrent' : 'override';

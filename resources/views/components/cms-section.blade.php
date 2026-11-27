@@ -31,7 +31,7 @@
                     @endif
                 </div>
             </div>
-            @if($displayItems->count() > 0 && request()->routeIs('home') && is_theme('theme-01'))
+            @if($displayItems->count() > 0 && request()->routeIs('home') && is_theme('default'))
                 <a href="{{ route('cms.index', ['contentType' => $type]) }}" class="theme1-cms-section__all">{{ $viewAllText }} <span aria-hidden="true">→</span></a>
             @endif
         </div>
@@ -57,7 +57,7 @@
             @endif
         </div>
         
-        @if($displayItems->count() > 0 && !(request()->routeIs('home') && is_theme('theme-01')))
+        @if($displayItems->count() > 0 && !(request()->routeIs('home') && is_theme('default')))
             <div class="row wow animate fadeInUp" data-wow-delay="200ms" data-wow-duration="1500ms">
                 <div class="col-lg-12 d-flex justify-content-center">
                     <a href="{{ route('cms.index', ['contentType' => $type]) }}" class="primary-btn1 two transparent">

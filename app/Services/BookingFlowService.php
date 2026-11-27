@@ -1061,6 +1061,12 @@ class BookingFlowService
         if (!empty($params['vehicle_group_id'])) {
             $baseQuery->where('id', $params['vehicle_group_id']);
         }
+        if (array_key_exists('eligible_vehicle_group_ids', $params)) {
+            $eligibleGroupIds = array_values(array_filter($params['eligible_vehicle_group_ids'], 'is_string'));
+            $eligibleGroupIds
+                ? $baseQuery->whereIn('id', $eligibleGroupIds)
+                : $baseQuery->whereRaw('1 = 0');
+        }
 
         $corporateAccountId = $params['corporate_account_id'] ?? null;
         if (!empty($corporateAccountId)) {
@@ -2037,9 +2043,16 @@ class BookingFlowService
             throw ValidationException::withMessages(['vehicle_class_id' => 'The selected class no longer fits this party and luggage.']);
         }
 
+        $eligibleGroupIds = $setting->eligible_vehicle_group_ids ?? [];
+        if (!$eligibleGroupIds) {
+            throw ValidationException::withMessages(['vehicle_class_id' => 'This class has no verified vehicle groups available yet.']);
+        }
         $groups = VehicleGroup::query()
+            ->whereIn('id', $eligibleGroupIds)
             ->where('class_id', $itinerary->vehicle_class_id)
             ->where('is_active', true)
+            ->whereNotNull('passengers_count')->where('passengers_count', '>=', $setting->max_passengers)
+            ->whereNotNull('hand_luggages')->where('hand_luggages', '>=', $setting->max_luggage)
             ->orderBy('id')
             ->pluck('id');
         $this->lockVehicleGroupCapacity($groups->all());
@@ -2057,6 +2070,7 @@ class BookingFlowService
             'pickup_location' => $dayOne?->start_location_snapshot,
             'dropoff_location' => $lastItineraryDay?->end_location_snapshot,
             'vehicle_group_filter' => ['class_id' => $itinerary->vehicle_class_id],
+            'eligible_vehicle_group_ids' => $groups->all(),
             'per_page' => 500,
             'sort_by' => 'name_asc',
             'defer_pricing' => true,
