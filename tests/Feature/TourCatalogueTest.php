@@ -69,6 +69,18 @@ class TourCatalogueTest extends TestCase
             $table->boolean('is_inquiry_only')->default(false);
             $table->json('allowed_upgrade_class_ids')->nullable();
             $table->json('allowed_substitute_class_ids')->nullable();
+            $table->string('customer_display_name')->nullable();
+            $table->json('eligible_vehicle_group_ids')->nullable();
+            $table->timestamps();
+            $table->softDeletes();
+        });
+        Schema::create('vehicle_groups', function (Blueprint $table): void {
+            $table->uuid('id')->primary();
+            $table->uuid('class_id');
+            $table->string('name');
+            $table->unsignedSmallInteger('passengers_count')->nullable();
+            $table->unsignedSmallInteger('hand_luggages')->nullable();
+            $table->boolean('is_active')->default(true);
             $table->timestamps();
             $table->softDeletes();
         });
@@ -150,14 +162,19 @@ class TourCatalogueTest extends TestCase
     {
         $settings = \Mockery::mock(WebsiteSettingsService::class);
         $settings->shouldReceive('get')->with('tour_ai_itinerary_enabled', false)->andReturn(false);
-        $settings->shouldReceive('getTourService')->with(true)->andReturn(ServiceType::findOrFail('c2c58e96-7a3d-4974-81b8-2f6fef280947'));
+        $settings->shouldReceive('getTourService')->with(true)->andReturnUsing(fn () => ServiceType::findOrFail('c2c58e96-7a3d-4974-81b8-2f6fef280947'));
         app()->instance(WebsiteSettingsService::class, $settings);
         $serviceId = 'c2c58e96-7a3d-4974-81b8-2f6fef280947';
         $classId = 'ad150b30-e73c-43c8-8b46-884c5297caf9';
         DB::table('vehicle_classes')->insert(['id' => $classId, 'name' => 'Standard car', 'description' => 'Room for three.']);
+        DB::table('vehicle_groups')->insert([
+            'id' => '4f73d714-776b-4cf0-8be5-70250eceff38', 'class_id' => $classId,
+            'name' => 'Verified sedan', 'passengers_count' => 3, 'hand_luggages' => 2,
+        ]);
         DB::table('service_vehicle_class_settings')->insert([
             'id' => 'a3f22d30-1d56-4d65-8805-5d30c59b3287', 'service_type_id' => $serviceId,
             'vehicle_class_id' => $classId, 'max_passengers' => 3, 'max_luggage' => 2,
+            'customer_display_name' => 'Standard car', 'eligible_vehicle_group_ids' => json_encode(['4f73d714-776b-4cf0-8be5-70250eceff38']),
         ]);
         DB::table('service_packages')->insert([
             'id' => '581ac347-a5d6-4b32-a72b-16d6512ed427', 'service_type_id' => $serviceId,
@@ -408,6 +425,7 @@ class TourCatalogueTest extends TestCase
 
         $settings = \Mockery::mock(WebsiteSettingsService::class);
         $settings->shouldReceive('get')->with('tour_ai_itinerary_enabled', false)->andReturn(true);
+        $settings->shouldReceive('getTourService')->with(true)->andReturn(ServiceType::findOrFail('c2c58e96-7a3d-4974-81b8-2f6fef280947'));
         app()->instance(WebsiteSettingsService::class, $settings);
         $ai = \Mockery::mock(AIContentService::class);
         $ai->shouldReceive('suggestTourItinerary')->once()->with(

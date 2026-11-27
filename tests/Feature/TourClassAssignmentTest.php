@@ -6,6 +6,7 @@ use App\Http\Controllers\Api\Admin\BookingAssignmentController;
 use App\Models\Booking\BookingItem;
 use App\Models\Vehicle\VehicleAssignment;
 use App\Services\AssignmentService;
+use Illuminate\Validation\ValidationException;
 use Illuminate\Database\Schema\Blueprint;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
@@ -45,6 +46,7 @@ class TourClassAssignmentTest extends TestCase
             $table->uuid('driver_id')->nullable();
             $table->dateTime('from_date')->nullable();
             $table->dateTime('to_date')->nullable();
+            $table->json('metadata')->nullable();
             $table->timestamps();
             $table->softDeletes();
         });
@@ -73,6 +75,9 @@ class TourClassAssignmentTest extends TestCase
             $table->unsignedSmallInteger('max_passengers');
             $table->unsignedSmallInteger('max_luggage');
             $table->boolean('is_active')->default(true);
+            $table->boolean('is_hidden')->default(false);
+            $table->boolean('is_inquiry_only')->default(false);
+            $table->json('eligible_vehicle_group_ids')->nullable();
             $table->json('allowed_substitute_class_ids')->nullable();
             $table->timestamps();
             $table->softDeletes();
@@ -84,6 +89,14 @@ class TourClassAssignmentTest extends TestCase
             $table->string('status')->default('active');
             $table->timestamps();
             $table->softDeletes();
+        });
+        Schema::create('booking_history_events', function (Blueprint $table): void {
+            $table->uuid('id')->primary(); $table->uuid('booking_id'); $table->uuid('booking_item_id')->nullable();
+            $table->string('entity_type'); $table->string('entity_id'); $table->string('event_type'); $table->string('actor_type');
+            $table->uuid('actor_user_id')->nullable(); $table->string('actor_display_snapshot')->nullable(); $table->string('source')->nullable();
+            $table->text('reason')->nullable(); $table->json('changes')->nullable(); $table->json('context')->nullable();
+            $table->string('correlation_id')->nullable(); $table->string('idempotency_key')->nullable();
+            $table->timestamp('occurred_at'); $table->string('provenance')->default('live'); $table->timestamps();
         });
         DB::table('service_types')->insert(['id' => '10000000-0000-4000-8000-000000000001', 'name' => 'Tours', 'pricing_basis' => 'vehicle_class']);
         DB::table('bookings')->insert(['id' => '20000000-0000-4000-8000-000000000001', 'passenger_count' => 3, 'luggage_count' => 2]);
@@ -126,5 +139,27 @@ class TourClassAssignmentTest extends TestCase
         self::assertSame('40000000-0000-4000-8000-000000000001', DB::table('booking_items')->value('vehicle_class_id'));
         self::assertSame('50000000-0000-4000-8000-000000000001', DB::table('booking_items')->value('vehicle_group_id'));
         self::assertSame('60000000-0000-4000-8000-000000000001', DB::table('booking_items')->value('vehicle_id'));
+    }
+
+    public function test_tour_dispatch_rejects_an_unmapped_or_reclassified_fleet_group(): void
+    {
+        DB::table('booking_items')->where('id', '30000000-0000-4000-8000-000000000001')->update([
+            'metadata' => json_encode(['tour_itinerary_id' => '90000000-0000-4000-8000-000000000001']),
+        ]);
+        DB::table('service_vehicle_class_settings')->where('vehicle_class_id', '40000000-0000-4000-8000-000000000001')
+            ->update(['eligible_vehicle_group_ids' => json_encode(['50000000-0000-4000-8000-000000000001'])]);
+
+        try {
+            app(AssignmentService::class)->createVehicleAssignment([
+                'booking_id' => '20000000-0000-4000-8000-000000000001',
+                'booking_item_id' => '30000000-0000-4000-8000-000000000001',
+                'vehicle_id' => '60000000-0000-4000-8000-000000000001',
+                'customer_name' => 'Tour customer', 'service_type' => 'Tours',
+                'assigned_from' => '2026-12-01 09:00:00', 'assigned_to' => '2026-12-02 18:00:00',
+            ]);
+            self::fail('A vehicle group reclassified outside the purchased Tour class was assigned.');
+        } catch (ValidationException $exception) {
+            self::assertArrayHasKey('vehicle_id', $exception->errors());
+        }
     }
 }

@@ -142,14 +142,17 @@ class TourLaunchSeeder extends Seeder
             ->whereNotNull('vehicle_group_id')->get(['vehicle_group_id', 'rate', 'includes_fuel', 'includes_driver'])->keyBy('vehicle_group_id');
         $sourceDistanceDefinition = DB::table('vehicle_pricing_common_rate_definitions')
             ->whereIn('code', ['extra_km_rate', 'distance_rate'])->where('is_active', true)->whereNull('deleted_at')
+            ->whereNull('owner_type')->whereNull('owner_id')
             ->where(fn($query) => $query->where('service_type_id', $source->id)->orWhereNull('service_type_id'))
-            ->orderByRaw('CASE WHEN service_type_id IS NULL THEN 1 ELSE 0 END')->first();
-        if (!$sourceDistanceDefinition) {
+            ->pluck('id');
+        if ($sourceDistanceDefinition->isEmpty()) {
             throw new RuntimeException('No active Day Rental extra-kilometre common rate exists; Tour distance prices were not guessed.');
         }
         $distanceRateByGroup = DB::table('vehicle_group_common_rate_pricing')
-            ->where('common_rate_definition_id', $sourceDistanceDefinition->id)->where('is_active', true)->whereNull('deleted_at')
-            ->whereNotNull('vehicle_group_id')->pluck('value', 'vehicle_group_id');
+            ->whereIn('common_rate_definition_id', $sourceDistanceDefinition)->where('is_active', true)->whereNull('deleted_at')
+            ->whereNull('owner_type')->whereNull('owner_id')->whereNotNull('vehicle_group_id')->whereNotNull('value')
+            ->get(['vehicle_group_id', 'value'])->groupBy('vehicle_group_id')
+            ->map(fn($rows) => $rows->min(fn($row) => (float) $row->value));
         $classes = [
             ['class' => 'Economy', 'display' => 'Economy car', 'passengers' => 4, 'bags' => 2, 'groups' => null],
             ['class' => 'Compact', 'display' => 'Standard car', 'passengers' => 4, 'bags' => 2, 'groups' => []],

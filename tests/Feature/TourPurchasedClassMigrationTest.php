@@ -46,6 +46,16 @@ class TourPurchasedClassMigrationTest extends TestCase
         DB::table('booking_items')->insert(['id' => 'existing', 'vehicle_group_id' => 'real-group']);
         DB::table('vehicle_classes')->insert(['id' => 'standard']);
         DB::table('service_types')->insert(['id' => 'tours']);
+        Schema::create('vehicle_groups', function (Blueprint $table): void {
+            $table->uuid('id')->primary();
+            $table->uuid('class_id');
+            $table->string('name');
+            $table->unsignedSmallInteger('passengers_count')->nullable();
+            $table->unsignedSmallInteger('hand_luggages')->nullable();
+            $table->boolean('is_active')->default(true);
+            $table->timestamps();
+            $table->softDeletes();
+        });
     }
 
     public function test_existing_group_bookings_remain_group_priced_and_a_class_booking_needs_no_fake_group(): void
@@ -171,6 +181,7 @@ class TourPurchasedClassMigrationTest extends TestCase
     {
         activity()->disableLogging();
         $this->migration()->up();
+        (require database_path('migrations/2026_11_27_000002_add_tour_vehicle_group_mapping.php'))->up();
         Schema::table('service_types', fn (Blueprint $table) => $table->string('pricing_basis')->default('vehicle_group'));
         DB::table('service_types')->where('id', 'tours')->update(['pricing_basis' => 'vehicle_class']);
     }

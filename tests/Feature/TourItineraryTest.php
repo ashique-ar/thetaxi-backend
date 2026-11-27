@@ -149,6 +149,7 @@ class TourItineraryTest extends TestCase
             $table->boolean('is_active')->default(true);
             $table->boolean('is_hidden')->default(false);
             $table->boolean('is_inquiry_only')->default(false);
+            $table->json('eligible_vehicle_group_ids')->nullable();
             $table->timestamps();
             $table->softDeletes();
         });
@@ -177,6 +178,8 @@ class TourItineraryTest extends TestCase
         Schema::create('vehicle_groups', function (Blueprint $table): void {
             $table->uuid('id')->primary();
             $table->uuid('class_id');
+            $table->unsignedSmallInteger('passengers_count')->nullable();
+            $table->unsignedSmallInteger('hand_luggages')->nullable();
             $table->boolean('is_active')->default(true);
             $table->softDeletes();
         });
@@ -584,8 +587,13 @@ class TourItineraryTest extends TestCase
         DB::table('vehicle_groups')->insert([
             'id' => '9273137e-26f6-4a02-8884-e461e3496609',
             'class_id' => self::CLASS_ID,
+            'passengers_count' => 4,
+            'hand_luggages' => 3,
             'is_active' => true,
         ]);
+        DB::table('service_vehicle_class_settings')->where('service_type_id', self::SERVICE_ID)
+            ->where('vehicle_class_id', self::CLASS_ID)
+            ->update(['eligible_vehicle_group_ids' => json_encode(['9273137e-26f6-4a02-8884-e461e3496609'])]);
         $flow = $this->bookingFlowWithAvailableClassCount(1);
         $method = new \ReflectionMethod($flow, 'lockTourClassInventory');
         $params = ['_trusted_tour_quote' => \App\Models\Tours\TourQuote::findOrFail($quoteId)];

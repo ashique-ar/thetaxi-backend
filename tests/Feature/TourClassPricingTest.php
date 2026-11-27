@@ -142,6 +142,17 @@ class TourClassPricingTest extends TestCase
             $table->timestamps();
             $table->softDeletes();
         });
+        Schema::create('km_range_pricing_rules', function (Blueprint $table): void {
+            $table->string('id')->primary(); $table->string('name'); $table->text('description')->nullable();
+            $table->string('scope'); $table->string('service_type_id')->nullable(); $table->string('vehicle_group_id')->nullable();
+            $table->json('distance_types')->nullable(); $table->json('applicable_contexts')->nullable();
+            $table->string('owner_type')->nullable(); $table->string('owner_id')->nullable();
+            $table->decimal('from_km', 10, 2); $table->decimal('to_km', 10, 2)->nullable(); $table->string('price_type');
+            $table->decimal('rate_per_km', 10, 4)->nullable(); $table->decimal('percentage', 8, 4)->nullable();
+            $table->decimal('flat_amount', 10, 2)->nullable(); $table->boolean('is_active')->default(true);
+            $table->integer('priority')->default(0); $table->dateTime('effective_from')->nullable(); $table->dateTime('effective_to')->nullable();
+            $table->timestamps(); $table->softDeletes();
+        });
     }
 
     public function test_tours_resolve_purchased_class_rates_independently_of_assigned_group(): void
@@ -393,6 +404,10 @@ class TourClassPricingTest extends TestCase
         $classId = 'e06f9be2-365c-495f-9812-98c3ba935301';
         $slabId = '9b1659ae-09ef-4e81-90ec-12ec6f56519e';
         DB::table('service_types')->insert(['id' => $serviceId, 'pricing_basis' => 'vehicle_class']);
+        Schema::create('business_settings', function (Blueprint $table): void {
+            $table->string('id')->primary(); $table->string('type')->unique(); $table->text('value')->nullable();
+            $table->timestamps(); $table->softDeletes();
+        });
         Schema::create('vehicle_classes', function (Blueprint $table): void {
             $table->string('id')->primary();
             $table->string('name');
