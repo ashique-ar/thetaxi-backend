@@ -349,8 +349,9 @@ class TourCatalogueTest extends TestCase
 
         self::assertSame($destination['id'], $catalogue['data']['destinations'][0]['id']);
         self::assertSame(90, $catalogue['data']['destinations'][0]['activities'][0]['visit_duration_minutes']);
-        self::assertSame((float) $activityLocation['latitude'], $catalogue['data']['destinations'][0]['activities'][0]['location']['latitude']);
         self::assertArrayNotHasKey('google_place_id', $catalogue['data']['destinations'][0]['activities'][0]['location']);
+        self::assertArrayNotHasKey('latitude', $catalogue['data']['destinations'][0]['activities'][0]['location']);
+        self::assertArrayNotHasKey('longitude', $catalogue['data']['destinations'][0]['activities'][0]['location']);
         self::assertStringContainsString('Tickets, entry fees and activity reservations are not included', $catalogue['activity_visit_note']);
         self::assertArrayNotHasKey('ticket_price', $activity);
     }
@@ -455,7 +456,7 @@ class TourCatalogueTest extends TestCase
         ]));
     }
 
-    public function test_route_suggestion_uses_published_access_coordinates_and_keeps_activity_visit(): void
+    public function test_route_suggestion_uses_published_place_ids_and_keeps_activity_visit(): void
     {
         $controller = new TourCatalogueController;
         $destinationLocation = $controller->storeLocation(Request::create('/tours/locations', 'POST', [
@@ -486,7 +487,8 @@ class TourCatalogueTest extends TestCase
         $planner = $this->createMock(TourRoutePlanner::class);
         $planner->expects(self::once())->method('suggest')->with(self::callback(function (array $stops) use ($destination, $activity): bool {
             self::assertSame([$destination['id'], $activity['id']], array_column($stops, 'catalogue_id'));
-            self::assertSame([7.29, 7.27], array_column($stops, 'latitude'));
+            self::assertSame(['google-route-kandy', 'google-route-gate'], array_column($stops, 'place_id'));
+            self::assertArrayNotHasKey('latitude', $stops[0]);
             self::assertSame([0, 75], array_column($stops, 'visit_minutes'));
 
             return true;
