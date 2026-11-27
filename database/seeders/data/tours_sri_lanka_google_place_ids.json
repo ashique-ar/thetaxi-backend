@@ -1,0 +1,179 @@
+{
+    "destinations": {
+        "colombo": "ChIJA3B6D9FT4joRjYPTMk0uCzI",
+        "negombo": "ChIJO_eya5zu4joRPm8YCOkmFqU",
+        "kandy": "ChIJ06yYZCZm4zoRNTzgoRg4GkE",
+        "dambulla": "ChIJT8ytyPSv_DoRFGlTscU8rmc",
+        "sigiriya": "ChIJ0Xkxp9-g_DoR3w7_DBXBBB4",
+        "anuradhapura": "ChIJWeFgk_n0_DoRDs9tvJ7-EcE",
+        "polonnaruwa": "ChIJJ84WO7pE-zoRfCsDs6KXScM",
+        "trincomalee": "ChIJJ74tkLa8-zoRuw8bM3pq530",
+        "nuwara_eliya": "ChIJx1QVTkOA4zoRnH2TTEAIFik",
+        "ella": "ChIJJZrAW5Vl5DoR-4fE3trc-r0",
+        "galle": "ChIJ4_wyabtz4ToRA0zG-QO5NUo",
+        "bentota": "ChIJIcpoAZAu4joRYMBoCvA4xJY",
+        "mirissa": "ChIJWdx3Mc4_4ToRkJzcNoun2KI",
+        "yala": "ChIJJdv2JDPV5ToR5_E7BWarvo8",
+        "arugam_bay": "ChIJ18yh9ia95ToRFTXO83m-NLk",
+        "jaffna": "ChIJpWrme_1T_joREvW6A5IN2sc",
+        "kalpitiya": "ChIJvcV8SsIM_ToR8IF4Y2Ws51o",
+        "hikkaduwa": "ChIJbSLnyvt34ToRCFPRqlDrPjc",
+        "adams_peak": "ChIJWUsjiXWX4zoR3DdbHUetI4c",
+        "bundala": "ChIJ6xSy7EKY5joRsL42L0AtWhQ",
+        "katunayake": "ChIJT4n389fv4joR8b2A_vpE4rw",
+        "batticaloa": "ChIJS3lOjVrN-joRZKUVeFRIW0Q",
+        "beruwala": "ChIJPT-U4zwu4joRJmD2KIumxdM",
+        "hambantota": "ChIJ9zVypf-85joRUiE_lFivxDY",
+        "horton_plains": "ChIJ73hL2y6I4zoRSXJ3U5GovM4",
+        "kalkudah": "ChIJV0Vu9gDZ-joRI07KMnCbz-E",
+        "kitulgala": "ChIJezMqSx2g4zoRSrAT2Ku5q1Q",
+        "knuckles": "ChIJQRfTuadY4zoRhAVwwR41B44",
+        "mannar": "ChIJbUbZugF2_joRFX1exJHg38U",
+        "matara": "ChIJ2XyTUdE44ToRowlwiUUfcR0",
+        "minneriya": "ChIJJ0U7LFFn-zoR--0uJovY6qY",
+        "nilaveli": "ChIJUUUwybW_-zoRiVEJhBCd2cY",
+        "pasikudah": "ChIJ2Sc7QAPZ-joRKzIDRzOH7s4",
+        "pinnawela": "ChIJsSAd3ckV4zoRz9aIHbEacls",
+        "puttalam": "ChIJncy6bsMV_ToR-u-ddReaJ1o",
+        "ratnapura": "ChIJL3HfNbS-4zoRYQX_U_BdSsE",
+        "sinharaja": "ChIJX9QJ0Wvn4zoRG3BJBgHxDow",
+        "unawatuna": "ChIJbZK_YvFy4ToRbER3g15MRMA",
+        "weligama": "ChIJ-erDfDcV4ToRQ5KYLU8VYyQ",
+        "wilpattu": "ChIJJ7zkh3es_ToRfBitXXGg2c0"
+    },
+    "activities": {
+        "colombo": {
+            "national-museum-of-colombo": "ChIJr7L0oW9Z4joRjaT5aD0oCtk",
+            "gangaramaya-temple": "ChIJQ9yCmWtZ4joRNu1evW41NTo"
+        },
+        "negombo": {
+            "negombo-lagoon": "ChIJk8T6Ix7u4joR0z8hM0JfS_4",
+            "st-marys-church-negombo": "ChIJuVDx2pvu4joR0bLtHc9xr3A"
+        },
+        "kandy": {
+            "temple-of-the-tooth": "ChIJ9ftJsS1m4zoRh-gVwQrXZYE",
+            "royal-botanical-gardens-peradeniya": "ChIJ_ZUvrpBo4zoRMxJ5v8KOzpI"
+        },
+        "dambulla": {
+            "dambulla-cave-temple": "ChIJaTa9xVil_DoRTHZrk8Cl2tE"
+        },
+        "sigiriya": {
+            "sigiriya-rock-fortress": "ChIJs5pMcluh_DoRUg03WydxF6s",
+            "pidurangala-rock": "ChIJM0VyZR-h_DoRC0mr-JPMcpM"
+        },
+        "anuradhapura": {
+            "ruwanwelisaya": "ChIJQRJv0Zb1_DoRjWifejv6EvQ",
+            "sri-maha-bodhi": "ChIJfbxYZb31_DoRVO6nFKyDpl4"
+        },
+        "polonnaruwa": {
+            "polonnaruwa-ancient-city": "ChIJyaTlBW5F-zoRqdDUqf4czXI"
+        },
+        "trincomalee": {
+            "koneswaram-temple": "ChIJV-_dCaK8-zoR3yIZhmhLni4",
+            "fort-frederick": "ChIJ49WeyaS8-zoRsZ8asLW6WJM"
+        },
+        "nuwara_eliya": {
+            "gregory-lake": "ChIJWVhnC_eA4zoRiSHDjfLWYjM",
+            "horton-plains-national-park": "ChIJ73hL2y6I4zoRSXJ3U5GovM4"
+        },
+        "ella": {
+            "nine-arches-bridge": "ChIJ6ZIC1WJl5DoRvbjtYLZg2YQ",
+            "little-adams-peak": "ChIJTyaDze9l5DoRO1_CRIrSq1U"
+        },
+        "galle": {
+            "galle-fort": "ChIJG4QybwBz4ToRTEWUu0YeL9A",
+            "national-maritime-museum-galle": "ChIJ5-APzaVz4ToRhZV4f-BlqXc"
+        },
+        "bentota": {
+            "brief-garden": "ChIJD7-zWb4t4joRi9nY4DFold4",
+            "bentota-beach": "ChIJbWHRtR0v4joRGCU59UNYz0M"
+        },
+        "mirissa": {
+            "coconut-tree-hill": "ChIJa4TASzI-4ToRz-2NutyMdTU",
+            "mirissa-beach": "ChIJ_9U2xtQ_4ToRspMatLlWFLg"
+        },
+        "yala": {
+            "yala-national-park-entrance": "ChIJydgSApWD5joRB60GgoY2MFA"
+        },
+        "arugam_bay": {
+            "kudumbigala-monastery": "ChIJAQAAAHvH5ToRg3L7Qy_Bt1M"
+        },
+        "jaffna": {
+            "nallur-kandaswamy-temple": "ChIJKxts7RhU_joRFhF5eEK7FXk",
+            "jaffna-fort": "ChIJ0YqBylRR_joR4wtmDju2ElA"
+        },
+        "kalpitiya": {
+            "kalpitiya-lagoon": "ChIJic_t1MoM_ToRTruyLU6I2vY"
+        },
+        "hikkaduwa": {
+            "hikkaduwa-coral-sanctuary": "ChIJC3GNVA934ToRqvxZCTiqmxU"
+        },
+        "adams_peak": {
+            "sri-pada-trail-access": "ChIJ4UJQIQCX4zoR9h-nSoVm1-w"
+        },
+        "bundala": {
+            "bundala-national-park-entrance": "ChIJYz3sAKSZ5joR_PHJmjT59IE"
+        },
+        "katunayake": {
+            "bandaranaike-international-airport-arrivals": "ChIJXS3yNbfv4joRN4uCAyFwvW4"
+        },
+        "batticaloa": {
+            "batticaloa-dutch-fort": "ChIJI0uF2FHN-joRqbLzlzwaB-w"
+        },
+        "beruwala": {
+            "masjid-ul-abrar": "ChIJAQPdHDou4joRqwgI_r6EJ7A"
+        },
+        "hambantota": {
+            "hambantota-beach": "ChIJb0HuFDy95joR98xOu5uMrWw"
+        },
+        "horton_plains": {
+            "worlds-end-trail": "ChIJ28tQm-h55DoR7B03-eM_RAw",
+            "bakers-falls-trail": "ChIJ28tQm-h55DoR7B03-eM_RAw"
+        },
+        "kalkudah": {
+            "kalkudah-beach-access": "ChIJi_xJlbXZ-joRbA33k9dANTY"
+        },
+        "kitulgala": {
+            "kelani-river-adventure-access": "ChIJZ3ccbgSh4zoRrfbi_Tw1j6g"
+        },
+        "knuckles": {
+            "knuckles-conservation-forest-trail-access": "ChIJQRfTuadY4zoRhAVwwR41B44"
+        },
+        "mannar": {
+            "mannar-baobab-tree": "ChIJMf_17V7X_ToRoJXV4c8DNPQ"
+        },
+        "matara": {
+            "dondra-head-lighthouse": "ChIJC9j3KXQ54ToRjBoz8e2Xk1c"
+        },
+        "minneriya": {
+            "minneriya-national-park-entrance": "ChIJXeALoglg-zoR9QVr8PJG0KQ"
+        },
+        "nilaveli": {
+            "pigeon-island-boat-departure-access": "ChIJ8Xash_e_-zoRN_fZDHiAKuE"
+        },
+        "pasikudah": {
+            "pasikudah-beach-access": "ChIJ7cBBYoHZ-joRPEGCnozecXo"
+        },
+        "pinnawela": {
+            "pinnawela-elephant-orphanage-entrance": "ChIJ-XI2QcgV4zoReubvadsRlbQ"
+        },
+        "puttalam": {
+            "puttalam-lagoon": "ChIJ_Z54THgT_ToR7Fk7qexazS0"
+        },
+        "ratnapura": {
+            "maha-saman-devalaya": "ChIJWfyqPyS_4zoRIsN8uBaJmj8"
+        },
+        "sinharaja": {
+            "sinharaja-forest-reserve-entrance": "ChIJRzkmfcvh4zoRYOnsSjOPI8o"
+        },
+        "unawatuna": {
+            "jungle-beach-access": "ChIJMcqAFPly4ToRi_S_f_TN93k"
+        },
+        "weligama": {
+            "weligama-bay": "ChIJ-erDfDcV4ToRQ5KYLU8VYyQ"
+        },
+        "wilpattu": {
+            "wilpattu-national-park-entrance": "ChIJh3boMCAJ_ToRvd9TSEfNwKk"
+        }
+    }
+}

@@ -129,44 +129,97 @@ class TourLaunchSeeder extends Seeder
 
     private function seedMapDrafts(string $serviceId, string $actorId): void
     {
+        $googlePlaceIds = json_decode(
+            file_get_contents(__DIR__.'/data/tours_sri_lanka_google_place_ids.json'),
+            true,
+            flags: JSON_THROW_ON_ERROR,
+        );
+        if (count($googlePlaceIds['destinations'] ?? []) !== count(self::PLACES)
+            || array_sum(array_map('count', $googlePlaceIds['activities'] ?? [])) !== array_sum(array_map('count', self::ACTIVITIES))) {
+            throw new RuntimeException('Every Tour destination and activity must have a Google Place ID before seeding.');
+        }
+
         $sortOrder = 0;
         foreach (self::PLACES as $code => [$city, $province, $description]) {
+            $googlePlaceId = $googlePlaceIds['destinations'][$code] ?? null;
+            if (!is_string($googlePlaceId) || $googlePlaceId === '') {
+                throw new RuntimeException('Missing Google Place ID for Tour destination: '.$code);
+            }
             $locationId = (string) (DB::table('predefined_locations')->where('code', 'tour_'.$code)->value('id') ?? Str::uuid());
             DB::table('predefined_locations')->insertOrIgnore([
                 'id' => $locationId, 'name' => $city, 'code' => 'tour_'.$code, 'type' => 'tour',
                 'city' => $city, 'country' => 'Sri Lanka', 'address' => $province,
                 'latitude' => 0, 'longitude' => 0, 'is_active' => false, 'sort_order' => $sortOrder,
-                'description' => $description, 'metadata' => json_encode(['mapping_required' => true]),
+                'google_place_id' => $googlePlaceId,
+                'description' => $description, 'metadata' => json_encode(['google_place_id_seeded' => true, 'mapping_required' => true]),
                 'created_user_id' => $actorId, 'updated_user_id' => $actorId, 'created_at' => now(), 'updated_at' => now(),
             ]);
             $locationId = (string) DB::table('predefined_locations')->where('code', 'tour_'.$code)->value('id');
+            $location = DB::table('predefined_locations')->where('id', $locationId)->first();
+            if (!$location->google_place_id && data_get(json_decode((string) $location->metadata, true), 'mapping_required')) {
+                DB::table('predefined_locations')->where('id', $locationId)->update([
+                    'google_place_id' => $googlePlaceId,
+                    'metadata' => json_encode(['google_place_id_seeded' => true, 'mapping_required' => true]),
+                    'updated_user_id' => $actorId, 'updated_at' => now(),
+                ]);
+            }
             $destinationId = (string) (DB::table('tour_destinations')->where('service_type_id', $serviceId)->where('code', $code)->value('id') ?? Str::uuid());
             DB::table('tour_destinations')->insertOrIgnore([
                 'id' => $destinationId, 'service_type_id' => $serviceId, 'predefined_location_id' => $locationId,
-                'code' => $code, 'name' => $city, 'description' => $description.' Location must be mapped with Google Places before publishing.',
+                'code' => $code, 'name' => $city, 'description' => $description.' Refresh the Google Place details in the catalogue before publishing.',
                 'timezone' => 'Asia/Colombo', 'sort_order' => 0, 'is_published' => false,
                 'created_user_id' => $actorId, 'updated_user_id' => $actorId, 'created_at' => now(), 'updated_at' => now(),
             ]);
             $destinationId = (string) DB::table('tour_destinations')->where('service_type_id', $serviceId)->where('code', $code)->value('id');
             foreach (self::ACTIVITIES[$code] ?? [] as $index => [$activity, $minutes]) {
                 $activityCode = Str::slug($activity);
+                $googlePlaceId = $googlePlaceIds['activities'][$code][$activityCode] ?? null;
+                if (!is_string($googlePlaceId) || $googlePlaceId === '') {
+                    throw new RuntimeException('Missing Google Place ID for Tour activity: '.$code.'/'.$activityCode);
+                }
                 $activityLocationCode = substr('tour_activity_'.$code.'_'.$activityCode, 0, 39).'_'.substr(sha1($activity), 0, 10);
                 $activityLocationId = (string) (DB::table('predefined_locations')->where('code', $activityLocationCode)->value('id') ?? Str::uuid());
                 DB::table('predefined_locations')->insertOrIgnore([
                     'id' => $activityLocationId, 'name' => $activity, 'code' => $activityLocationCode, 'type' => 'tour',
                     'city' => $city, 'country' => 'Sri Lanka', 'address' => $province, 'latitude' => 0, 'longitude' => 0,
-                    'is_active' => false, 'sort_order' => $index, 'description' => 'Activity entrance must be mapped with Google Places.',
-                    'metadata' => json_encode(['mapping_required' => true, 'tickets_included' => false]),
+                    'google_place_id' => $googlePlaceId,
+                    'is_active' => false, 'sort_order' => $index, 'description' => 'Google Place ID is preselected. Refresh its details in the catalogue before publishing.',
+                    'metadata' => json_encode(['google_place_id_seeded' => true, 'mapping_required' => true, 'tickets_included' => false]),
                     'created_user_id' => $actorId, 'updated_user_id' => $actorId, 'created_at' => now(), 'updated_at' => now(),
                 ]);
                 $activityLocationId = (string) DB::table('predefined_locations')->where('code', $activityLocationCode)->value('id');
-                DB::table('tour_activities')->insertOrIgnore([
-                    'id' => (string) Str::uuid(), 'tour_destination_id' => $destinationId,
-                    'predefined_location_id' => $activityLocationId, 'code' => $activityCode, 'name' => $activity,
+                $activityLocation = DB::table('predefined_locations')->where('id', $activityLocationId)->first();
+                if (!$activityLocation->google_place_id && data_get(json_decode((string) $activityLocation->metadata, true), 'mapping_required')) {
+                    DB::table('predefined_locations')->where('id', $activityLocationId)->update([
+                        'google_place_id' => $googlePlaceId,
+                        'metadata' => json_encode(['google_place_id_seeded' => true, 'mapping_required' => true, 'tickets_included' => false]),
+                        'updated_user_id' => $actorId, 'updated_at' => now(),
+                    ]);
+                }
+                $legacyActivityCode = match ($code.'|'.$activityCode) {
+                    'mirissa|mirissa-beach' => 'weligama-bay',
+                    'hambantota|hambantota-beach' => 'hambantota-coastal-visit',
+                    'puttalam|puttalam-lagoon' => 'puttalam-dutch-fort',
+                    default => null,
+                };
+                $existingActivity = DB::table('tour_activities')->where('tour_destination_id', $destinationId)->where('code', $activityCode)->first();
+                if (!$existingActivity && $legacyActivityCode) {
+                    $existingActivity = DB::table('tour_activities')->where('tour_destination_id', $destinationId)->where('code', $legacyActivityCode)->first();
+                }
+                $activityData = [
+                    'tour_destination_id' => $destinationId, 'predefined_location_id' => $activityLocationId,
+                    'code' => $activityCode, 'name' => $activity,
                     'description' => 'Optional visit stop. Tickets, fees and reservations are not included.',
-                    'visit_duration_minutes' => $minutes, 'sort_order' => $index, 'is_published' => false,
-                    'created_user_id' => $actorId, 'updated_user_id' => $actorId, 'created_at' => now(), 'updated_at' => now(),
-                ]);
+                    'visit_duration_minutes' => $minutes, 'sort_order' => $index, 'updated_user_id' => $actorId, 'updated_at' => now(),
+                ];
+                if ($existingActivity && !(bool) $existingActivity->is_published) {
+                    DB::table('tour_activities')->where('id', $existingActivity->id)->update($activityData);
+                } elseif (!$existingActivity) {
+                    DB::table('tour_activities')->insertOrIgnore($activityData + [
+                        'id' => (string) Str::uuid(), 'is_published' => false,
+                        'created_user_id' => $actorId, 'created_at' => now(),
+                    ]);
+                }
             }
             $sortOrder++;
         }

@@ -6,39 +6,47 @@
 
 .theme-default .home4-banner-section .banner-video-area {
     overflow: hidden;
-    min-height: 500px;
-    height: 500px;
-    border-radius: 20px;
+    min-height: 410px;
+    height: 410px;
+    border-radius: 18px;
 }
 
 .theme-default .home4-banner-section .banner-video-area img {
-    min-height: 500px;
-    height: 500px;
+    min-height: 410px;
+    height: 410px;
     object-fit: cover;
     object-position: center;
 }
 
 .theme-default .home4-banner-section .banner-video-area::before {
     z-index: 1;
+    background: linear-gradient(
+        180deg,
+        rgba(0, 0, 0, 0.34) 0%,
+        rgba(0, 0, 0, 0.2) 55%,
+        rgba(0, 0, 0, 0.32) 100%
+    );
     border-radius: inherit;
 }
 
 body.theme-default .home4-banner-section .shared-hero-swiper .banner-content-wrap {
     align-items: flex-start;
-    padding: 1.75rem 0 13rem;
+    padding: 1.25rem 0 6.5rem;
 }
 
 .theme-default .home4-banner-section .banner-content h1,
 body.theme-default .banner-content .shared-hero-heading {
     max-width: 760px;
-    line-height: 1.08;
+    line-height: 1.1;
     text-wrap: balance;
+    text-shadow: 0 2px 12px rgba(0, 0, 0, 0.5);
 }
 
 .theme-default .home4-banner-section .banner-content p,
 body.theme-default .banner-content :where(.shared-hero-description, .shared-hero-caption) {
     max-width: 620px;
-    line-height: 1.6;
+    line-height: 1.5;
+    text-shadow: 0 1px 8px rgba(0, 0, 0, 0.5);
 }
 
 body.theme-default .banner-content .shared-hero-actions {
@@ -48,7 +56,7 @@ body.theme-default .banner-content .shared-hero-actions {
 .theme-default .home-booking-form-section {
     position: relative;
     z-index: 10;
-    margin-top: -165px;
+    margin-top: -100px;
 }
 
 .theme-default .home-booking-form-section .filter-wrapper {
@@ -58,11 +66,12 @@ body.theme-default .banner-content .shared-hero-actions {
 .theme-default .filter-wrapper .filter-item-list {
     position: relative;
     z-index: 2;
-    margin-bottom: -22px;
+    margin-bottom: -18px;
 }
 
 .theme-default .filter-wrapper .filter-item-list .single-item {
     min-height: 44px;
+    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.08);
 }
 
 @media (min-width: 577px) {
@@ -243,17 +252,44 @@ body.theme-default .banner-content .shared-hero-actions {
 
 @media (max-width: 767px) {
     .filter-wrapper .filter-input-wrap {
-        padding: 42px 16px 22px !important;
+        padding: 34px 14px 20px !important;
         border-radius: 16px !important;
     }
 
-    .theme-default .filter-wrapper .filter-item-list .single-item {
-        padding: 10px 8px;
-        border-radius: 12px;
+    .theme-default .filter-wrapper .filter-item-list {
+        padding-inline: 8px;
+        gap: 6px !important;
     }
 
-    .theme-default .home4-banner-section .banner-content h1 {
-        font-size: 32px;
+    .theme-default .filter-wrapper .filter-item-list .single-item {
+        padding: 8px 6px;
+        border-radius: 10px;
+        font-size: 11px;
+        gap: 5px;
+    }
+
+    .theme-default .home4-banner-section .banner-content h1,
+    body.theme-default .home4-banner-section .banner-content .shared-hero-heading {
+        font-size: 26px;
+        margin-bottom: 8px;
+    }
+
+    .theme-default .home4-banner-section .banner-content p,
+    body.theme-default .home4-banner-section .banner-content .shared-hero-description {
+        font-size: 14px;
+        line-height: 1.45;
+        margin-bottom: 4px;
+    }
+
+    body.theme-default .home4-banner-section .banner-content .shared-hero-caption {
+        font-size: 12px;
+        margin-block: 4px 8px;
+    }
+
+    body.theme-default .home4-banner-section .banner-content .shared-hero-action {
+        margin-block: 6px 0;
+        padding: 0.65rem 1.1rem;
+        font-size: 14px;
     }
 
     .theme-default .section-title {

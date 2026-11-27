@@ -105,7 +105,11 @@ class TourLaunchSeederTest extends TestCase
         self::assertSame(40, DB::table('tour_destinations')->where('service_type_id', $tourId)->count());
         self::assertSame(53, DB::table('tour_activities')->count());
         self::assertSame(0, DB::table('predefined_locations')->where('type', 'tour')->where('is_active', true)->count());
-        self::assertSame(0, DB::table('predefined_locations')->where('type', 'tour')->whereNotNull('google_place_id')->count());
+        self::assertSame(93, DB::table('predefined_locations')->where('type', 'tour')->whereNotNull('google_place_id')->count());
+        self::assertSame(0, DB::table('tour_destinations')->where('service_type_id', $tourId)->where('is_published', true)->count());
+        self::assertSame(0, DB::table('tour_activities')->where('is_published', true)->count());
+        self::assertSame('ChIJA3B6D9FT4joRjYPTMk0uCzI', DB::table('predefined_locations')->where('code', 'tour_colombo')->value('google_place_id'));
+        self::assertSame(0, (float) DB::table('predefined_locations')->where('code', 'tour_colombo')->value('latitude'));
         self::assertFalse((bool) DB::table('terms_and_conditions')->where('service_type_id', $tourId)->value('is_active'));
         self::assertSame('false', DB::table('business_settings')->where('type', 'tours_enabled')->value('value'));
         self::assertSame(2, DB::table('vehicle_pricing_calculation_definitions')->where('service_type_id', $tourId)->count());
