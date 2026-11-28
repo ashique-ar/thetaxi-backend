@@ -583,34 +583,44 @@
         .tour-sidebar-card {
             background: var(--tour-surface);
             border: 1px solid var(--tour-border);
-            border-radius: 0.9rem;
-            box-shadow: 0 10px 25px -4px rgba(15, 23, 42, 0.06);
+            border-radius: 1rem;
+            box-shadow: 0 12px 30px -6px rgba(15, 23, 42, 0.08);
+            overflow: hidden;
         }
 
-        .tour-summary-head { background: #192638; color: #fff; margin: -1rem -1rem 0; padding: 0.8rem 0.85rem; border-radius: 0.75rem 0.75rem 0 0; }
-        .tour-summary-head h2 { color: #fff; font-size: 1rem; font-weight: 800; margin: 0.35rem 0 0.1rem; }
-        .tour-summary-head .small { color: #dbe3ef; }
-        .tour-summary-duration { border-radius: 999px; background: var(--tour-primary); padding: 0.18rem 0.48rem; font-size: 0.65rem; font-weight: 800; white-space: nowrap; }
-        .tour-summary-facts { display: grid; grid-template-columns: 1fr auto; gap: 0.35rem 0.65rem; padding: 0.75rem 0; border-bottom: 1px solid var(--tour-border); font-size: 0.7rem; }
-        .tour-summary-facts dt { color: var(--tour-muted); font-weight: 500; }
-        .tour-summary-facts dd { margin: 0; text-align: right; font-weight: 700; }
-        .tour-summary-route { padding: 0.75rem 0; border-bottom: 1px solid var(--tour-border); }
-        .tour-summary-route ol { list-style: none; padding: 0; margin: 0.42rem 0 0; font-size: 0.68rem; }
-        .tour-summary-route li { position: relative; padding: 0.16rem 0 0.16rem 0.7rem; }
-        .tour-summary-route li::before { content: ''; position: absolute; left: 0; top: 0.55rem; width: 0.3rem; height: 0.3rem; border-radius: 50%; background: var(--tour-primary); }
-        .tour-summary-price { padding: 0.7rem 0; border-bottom: 1px solid var(--tour-border); }
-        .tour-summary-price strong { color: #8f1b1e; font-size: 1.2rem; line-height: 1.15; }
-        .tour-summary-price-class { font-size: 0.68rem; }
-        .tour-summary-breakdown { border-top: 1px solid #edf0f4; margin-top: 0.45rem; padding-top: 0.25rem; }
-        .tour-summary-breakdown-line { display: flex; justify-content: space-between; gap: 0.5rem; padding: 0.16rem 0; font-size: 0.65rem; }
-        .tour-summary-breakdown-line.is-included { color: #059669; }
-        .tour-summary-total { border-top: 1px solid #edf0f4; margin-top: 0.35rem; padding-top: 0.55rem; }
-        .tour-summary-total > div:first-child strong { color: #111827; font-size: 0.75rem; }
-        .tour-advance-note { margin: 0.6rem 0 0.7rem; padding: 0.55rem 0.6rem; border: 1px solid #f4d57b; border-radius: 0.45rem; background: #fffbeb; color: #8b4b06; font-size: 0.63rem; line-height: 1.4; }
-        .tour-summary-trust { display: grid; grid-template-columns: 1fr 1fr; gap: 0.42rem 0.35rem; padding: 0.65rem 0 0.2rem; color: var(--tour-muted); font-size: 0.6rem; }
-        .tour-summary-trust span::before { content: '✓'; color: var(--tour-emerald); font-weight: 800; margin-right: 0.3rem; }
-        .tour-summary-advice { margin-top: 0.65rem; padding: 0.55rem; border: 1px solid var(--tour-border); border-radius: 0.55rem; background: #f8fafc; text-align: center; font-size: 0.64rem; }
-        .tour-summary-advice a { display: inline-block; margin-top: 0.2rem; color: var(--tour-emerald); font-weight: 800; text-decoration: none; }
+        .tour-summary-head { background: #0f172a; color: #fff; padding: 1.15rem 1.25rem; }
+        .tour-summary-head h2 { color: #fff; font-size: 1.15rem; font-weight: 800; margin: 0.55rem 0 0.15rem; letter-spacing: -0.015em; }
+        .tour-summary-head .tour-summary-vehicle-sub { color: #cbd5e1; font-size: 0.78rem; display: block; }
+        .tour-summary-duration { border-radius: 999px; background: var(--tour-primary); color: #fff; padding: 0.22rem 0.65rem; font-size: 0.66rem; font-weight: 800; letter-spacing: 0.04em; text-transform: uppercase; white-space: nowrap; }
+        .tour-summary-lock { display: inline-flex; align-items: center; gap: 0.35rem; font-size: 0.75rem; font-weight: 700; color: #34d399; white-space: nowrap; }
+        .tour-summary-lock-dot { width: 0.45rem; height: 0.45rem; border-radius: 999px; background: #10b981; }
+        .tour-summary-body { padding: 1.15rem 1.25rem; }
+        .tour-summary-facts { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 0.6rem; margin-bottom: 1.1rem; }
+        .tour-summary-fact-card { background: #f8fafc; border: 1px solid #f1f5f9; border-radius: 0.65rem; padding: 0.6rem 0.75rem; min-width: 0; }
+        .tour-summary-fact-card dt { color: #64748b; font-size: 0.62rem; font-weight: 700; text-transform: uppercase; letter-spacing: 0.05em; margin-bottom: 0.18rem; }
+        .tour-summary-fact-card dd { margin: 0; color: #0f172a; font-size: 0.8rem; font-weight: 700; line-height: 1.3; word-break: break-word; }
+        .tour-summary-route { padding-bottom: 1rem; border-bottom: 1px solid #f1f5f9; }
+        .tour-summary-route-label { font-size: 0.68rem; font-weight: 700; text-transform: uppercase; letter-spacing: 0.06em; color: #94a3b8; margin-bottom: 0.6rem; }
+        .tour-summary-route ol { list-style: none; padding: 0; margin: 0; display: flex; flex-direction: column; gap: 0.5rem; font-size: 0.78rem; }
+        .tour-summary-route li { display: flex; align-items: flex-start; gap: 0.55rem; color: #334155; line-height: 1.35; }
+        .tour-summary-day-num { width: 1.25rem; height: 1.25rem; border-radius: 999px; background: #fef2f2; color: var(--tour-primary); font-size: 0.68rem; font-weight: 800; display: inline-flex; align-items: center; justify-content: center; flex-shrink: 0; margin-top: 0.05rem; }
+        .tour-summary-price { padding: 0.95rem 0; }
+        .tour-summary-price-class { font-size: 0.78rem; color: #475569; font-weight: 500; }
+        .tour-summary-breakdown { display: flex; flex-direction: column; gap: 0.3rem; padding-bottom: 0.75rem; border-bottom: 1px solid #f1f5f9; }
+        .tour-summary-breakdown-line { display: flex; justify-content: space-between; align-items: center; gap: 0.5rem; font-size: 0.76rem; color: #475569; }
+        .tour-summary-breakdown-line.is-included span:last-child { color: #059669; font-weight: 700; }
+        .tour-summary-total { padding-top: 0.85rem; }
+        .tour-summary-total-amount { color: var(--tour-primary); font-size: 1.55rem; font-weight: 800; line-height: 1; letter-spacing: -0.02em; }
+        .tour-advance-note { margin: 0 0 0.85rem; padding: 0.55rem 0.7rem; border: 1px solid #fde68a; border-radius: 0.5rem; background: #fffbeb; color: #8b4b06; font-size: 0.68rem; line-height: 1.4; }
+        .tour-summary-cta-primary { border-radius: 0.7rem; min-height: 46px; font-size: 0.9rem; font-weight: 700; box-shadow: 0 6px 16px -4px var(--tour-primary-ring); }
+        .tour-summary-cta-wa { border-radius: 0.7rem; min-height: 44px; font-size: 0.84rem; font-weight: 700; border: 1.5px solid #86efac; background: #f0fdf4; color: #15803d; display: inline-flex; align-items: center; justify-content: center; gap: 0.4rem; text-decoration: none; }
+        .tour-summary-cta-wa:hover { background: #dcfce7; color: #166534; }
+        .tour-summary-trust-list { display: flex; flex-direction: column; gap: 0.45rem; margin-top: 0.9rem; font-size: 0.73rem; color: #64748b; }
+        .tour-summary-trust-list div { display: flex; align-items: center; gap: 0.5rem; }
+        .tour-summary-trust-list i { color: var(--tour-primary); font-size: 0.82rem; flex-shrink: 0; }
+        .tour-summary-advice-card { background: var(--tour-surface); border: 1px solid var(--tour-border); border-radius: 0.95rem; padding: 0.9rem 1.1rem; box-shadow: 0 4px 16px -2px rgba(15, 23, 42, 0.05); display: flex; align-items: center; gap: 0.85rem; text-decoration: none; color: inherit; transition: border-color 0.15s ease; }
+        .tour-summary-advice-card:hover { border-color: var(--tour-primary-border); }
+        .tour-summary-advice-avatar { width: 2.35rem; height: 2.35rem; border-radius: 999px; background: #fef2f2; color: var(--tour-primary); display: inline-flex; align-items: center; justify-content: center; flex-shrink: 0; font-size: 1rem; }
         .tour-summary-term { font-size: 0.76rem; }
         .tour-summary-term + .tour-summary-term { margin-top: 0.65rem; }
         .tour-summary-pay { width: 100%; }
@@ -732,6 +742,10 @@
             .tour-summary-aside {
                 position: sticky;
                 top: 4.25rem;
+                max-height: calc(100dvh - 5rem);
+                overflow-y: auto;
+                scrollbar-width: thin;
+                padding-bottom: 0.5rem;
             }
         }
 
@@ -873,6 +887,12 @@
                             <div class="col-sm-6 col-md-4">
                                 <label for="tour-time" class="form-label">Daily start time *</label>
                                 <input id="tour-time" type="time" class="form-control" value="09:00" required>
+                            </div>
+                            <div class="col-12">
+                                <label class="form-check d-inline-flex align-items-center gap-2 mb-0" style="cursor: pointer;">
+                                    <input id="tour-round-trip" type="checkbox" class="form-check-input mt-0" checked>
+                                    <span class="form-check-label small fw-semibold">Round trip — end the final day where the tour starts</span>
+                                </label>
                             </div>
                         </div>
 
@@ -1034,6 +1054,7 @@
                                                 <div class="col-md-6" id="tour-day-editor-end-wrap">
                                                     <label for="tour-day-editor-end" class="form-label mb-1" id="tour-day-editor-end-label">Day 1 overnight location</label>
                                                     <select id="tour-day-editor-end" class="form-select no-nice tour-location-select"></select>
+                                                    <div id="tour-day-editor-round-trip-note" class="form-text text-primary mt-1" hidden>Round trip is enabled — final day finishes at your start location.</div>
                                                 </div>
                                             </div>
                                         </div>
@@ -1184,77 +1205,98 @@
                 </div>
 
                 <!-- RIGHT COLUMN: Tour Summary -->
-                <aside class="col-lg-4 tour-summary-aside d-flex flex-column gap-4">
-                    <div class="tour-sidebar-card p-3">
+                <aside class="col-lg-4 tour-summary-aside d-flex flex-column gap-3">
+                    <div class="tour-sidebar-card">
                         <header class="tour-summary-head">
                             <div class="d-flex align-items-center justify-content-between gap-2">
-                                <span class="text-uppercase fw-bold small" style="letter-spacing: 0.06em;">Tour Summary</span>
                                 <span id="tour-summary-duration" class="tour-summary-duration">3 Days / 2 Nights</span>
+                                <span class="tour-summary-lock"><span class="tour-summary-lock-dot" aria-hidden="true"></span>Instant Lock</span>
                             </div>
-                            <h2>Private Tour</h2>
-                            <span id="tour-summary-vehicle" class="small">Choose your vehicle</span>
+                            <h2>Private Island Tour Summary</h2>
+                            <span id="tour-summary-vehicle" class="tour-summary-vehicle-sub">Choose your vehicle</span>
                         </header>
 
-                        <dl class="tour-summary-facts mb-0" aria-live="polite">
-                            <dt>Dates</dt><dd id="tour-summary-dates">Choose your travel dates</dd>
-                            <dt>Travellers</dt><dd id="tour-summary-travellers">2 Adults</dd>
-                            <dt>Pick-up location</dt><dd id="tour-summary-pickup">Choose a place</dd>
-                            <dt>Driver language</dt><dd>Fluent English</dd>
-                        </dl>
+                        <div class="tour-summary-body">
+                            <dl class="tour-summary-facts" aria-live="polite">
+                                <div class="tour-summary-fact-card">
+                                    <dt>Trip Dates</dt>
+                                    <dd id="tour-summary-dates">Choose your travel dates</dd>
+                                </div>
+                                <div class="tour-summary-fact-card">
+                                    <dt>Party Size</dt>
+                                    <dd id="tour-summary-travellers">2 Adults</dd>
+                                </div>
+                                <div class="tour-summary-fact-card">
+                                    <dt>Start Location</dt>
+                                    <dd id="tour-summary-pickup">Choose a place</dd>
+                                </div>
+                                <div class="tour-summary-fact-card">
+                                    <dt>Driver Language</dt>
+                                    <dd>Fluent English</dd>
+                                </div>
+                            </dl>
 
-                        <section class="tour-summary-route" aria-labelledby="tour-summary-route-title">
-                            <h3 id="tour-summary-route-title" class="small text-uppercase fw-bold mb-0">Planned route stops</h3>
-                            <ol id="tour-summary-route-stops" aria-live="polite"><li>Choose places to build your route</li></ol>
-                        </section>
+                            <section class="tour-summary-route" aria-labelledby="tour-summary-route-title">
+                                <h3 id="tour-summary-route-title" class="tour-summary-route-label">Planned Stops &amp; Route</h3>
+                                <ol id="tour-summary-route-stops" aria-live="polite">
+                                    <li><span class="tour-summary-day-num">1</span><span>Choose places to build your route</span></li>
+                                </ol>
+                            </section>
 
-                        <section id="tour-total-summary" class="tour-summary-price" aria-live="polite">
-                            <div class="d-flex justify-content-between align-items-center gap-2 small mb-2">
-                                <span id="tour-summary-price-label">Estimated transport price</span>
-                            </div>
-                            <div class="tour-summary-breakdown-line">
-                                <span id="tour-summary-price-class" class="tour-summary-price-class">Choose a vehicle</span>
-                                <span id="tour-total-distance" class="small tour-muted"></span>
-                            </div>
-                            <div id="tour-summary-breakdown" class="tour-summary-breakdown" hidden></div>
-                            <div class="tour-summary-total d-flex justify-content-between align-items-center gap-2">
-                                <div><strong class="d-block text-dark" style="font-size:.75rem">Total price</strong><span class="small tour-muted">Estimated transport price</span></div>
-                                <div class="text-end"><strong id="tour-total-amount">—</strong><span class="d-block small tour-muted" id="tour-summary-currency"></span></div>
-                            </div>
-                            <p id="tour-summary-price-status" class="small tour-muted mt-2 mb-0" role="status" aria-live="polite"></p>
-                        </section>
-                        <div id="tour-summary-advance-note" class="tour-advance-note" data-enabled="{{ $advancePaymentEnabled ? 'true' : 'false' }}" data-percentage="{{ number_format($advancePercentage, 4, '.', '') }}" data-minimum="{{ number_format($advanceMinAmount, 2, '.', '') }}" hidden></div>
-                        <div id="tour-summary-terms" class="py-3" hidden></div>
-                        <div class="d-grid gap-2">
-                            <button id="tour-summary-checkout" type="button" class="btn tour-btn-primary tour-summary-pay" hidden disabled>Confirm &amp; Reserve Driver <span aria-hidden="true">→</span></button>
-                            <button id="tour-summary-request-quote" type="button" class="btn tour-btn-outline tour-summary-request" hidden>Request a quotation</button>
-                            <button id="tour-summary-goto-contact" type="button" class="btn tour-btn-primary btn-sm">Continue to Contact &amp; Price <span aria-hidden="true">→</span></button>
-                            @if (!empty($supportWhatsapp))
-                                <a id="tour-whatsapp-share" href="https://wa.me/{{ $supportWhatsapp }}" target="_blank" rel="noopener noreferrer" class="btn btn-outline-success btn-sm fw-semibold">
-                                    <i class="bi bi-whatsapp me-1" aria-hidden="true"></i> Send itinerary via WhatsApp
-                                </a>
-                            @endif
-                            <button id="tour-copy-link" type="button" class="btn btn-outline-secondary btn-sm fw-semibold">
-                                <i class="bi bi-link-45deg me-1" aria-hidden="true"></i> Copy shareable link
-                            </button>
-                        </div>
-                        <p class="text-center tour-muted mt-2 mb-0" style="font-size: 0.65rem;">No payment required to quote • Free changes • Fast reply</p>
-                        <div class="tour-summary-trust">
-                            <span>Price updates with your trip</span>
-                            <span>Stops arranged by day</span>
-                            <span>Choose places and activities</span>
-                            <span>Tickets and activity fees not included</span>
-                        </div>
-                        @if (!empty($supportPhone) || !empty($supportWhatsapp))
-                            <div class="tour-summary-advice">
-                                <div class="tour-muted">Need route planning advice?</div>
+                            <section id="tour-total-summary" class="tour-summary-price" aria-live="polite">
+                                <div class="d-flex justify-content-between align-items-center gap-2 mb-1">
+                                    <span id="tour-summary-price-label" class="tour-summary-price-class">Estimated transport price</span>
+                                    <span id="tour-total-distance" class="small tour-muted"></span>
+                                </div>
+                                <div class="tour-summary-breakdown-line mb-1">
+                                    <span id="tour-summary-price-class" class="tour-summary-price-class">Choose a vehicle</span>
+                                </div>
+                                <div id="tour-summary-breakdown" class="tour-summary-breakdown" hidden></div>
+                                <div class="tour-summary-total d-flex justify-content-between align-items-center gap-2">
+                                    <div>
+                                        <strong class="d-block text-dark" style="font-size: 0.95rem; font-weight: 800;">Total Payable</strong>
+                                        <span class="tour-muted" style="font-size: 0.7rem;" id="tour-summary-price-status">Complete your trip details to see an estimate.</span>
+                                    </div>
+                                    <div class="text-end text-nowrap">
+                                        <span id="tour-total-amount" class="tour-summary-total-amount">—</span>
+                                        <span class="small fw-semibold tour-muted ms-1" id="tour-summary-currency"></span>
+                                    </div>
+                                </div>
+                            </section>
+
+                            <div id="tour-summary-advance-note" class="tour-advance-note" data-enabled="{{ $advancePaymentEnabled ? 'true' : 'false' }}" data-percentage="{{ number_format($advancePercentage, 4, '.', '') }}" data-minimum="{{ number_format($advanceMinAmount, 2, '.', '') }}" hidden></div>
+                            <div id="tour-summary-terms" class="pb-3" hidden></div>
+
+                            <div class="d-grid gap-2">
+                                <button id="tour-summary-checkout" type="button" class="btn tour-btn-primary tour-summary-pay tour-summary-cta-primary" hidden disabled>Confirm &amp; Reserve Driver <span aria-hidden="true">→</span></button>
+                                <button id="tour-summary-request-quote" type="button" class="btn tour-btn-outline tour-summary-request" hidden>Request a quotation</button>
+                                <button id="tour-summary-goto-contact" type="button" class="btn tour-btn-primary tour-summary-cta-primary">Continue to Contact &amp; Price <span aria-hidden="true">→</span></button>
                                 @if (!empty($supportWhatsapp))
-                                    <a href="https://wa.me/{{ $supportWhatsapp }}" target="_blank" rel="noopener noreferrer">Talk with our team on WhatsApp <span aria-hidden="true">→</span></a>
-                                @else
-                                    <a href="tel:{{ $supportPhoneHref }}">Talk with our team <span aria-hidden="true">→</span></a>
+                                    <a id="tour-whatsapp-share" href="https://wa.me/{{ $supportWhatsapp }}" target="_blank" rel="noopener noreferrer" class="tour-summary-cta-wa">
+                                        <i class="bi bi-whatsapp" aria-hidden="true"></i> Talk with Route Planner on WhatsApp
+                                    </a>
                                 @endif
+                                <button id="tour-copy-link" type="button" class="btn btn-link btn-sm text-decoration-none text-secondary fw-semibold py-1">
+                                    <i class="bi bi-link-45deg me-1" aria-hidden="true"></i> Copy shareable link
+                                </button>
                             </div>
-                        @endif
+
+                            <div class="tour-summary-trust-list">
+                                <div><i class="bi bi-shield-fill-check" aria-hidden="true"></i><span>No credit card required for initial consultation</span></div>
+                                <div><i class="bi bi-arrow-counterclockwise" aria-hidden="true"></i><span>Free itinerary modifications anytime</span></div>
+                            </div>
+                        </div>
                     </div>
+
+                    @if (!empty($supportPhone) || !empty($supportWhatsapp))
+                        <a class="tour-summary-advice-card" href="{{ !empty($supportWhatsapp) ? 'https://wa.me/' . $supportWhatsapp : 'tel:' . $supportPhoneHref }}" target="{{ !empty($supportWhatsapp) ? '_blank' : '_self' }}" rel="{{ !empty($supportWhatsapp) ? 'noopener noreferrer' : '' }}">
+                            <span class="tour-summary-advice-avatar"><i class="bi bi-person-fill" aria-hidden="true"></i></span>
+                            <div class="min-w-0">
+                                <strong class="d-block text-dark" style="font-size: 0.84rem;">Need a custom route suggestion?</strong>
+                                <span class="d-block tour-muted" style="font-size: 0.74rem;">Our destination specialists reply in ~15 mins</span>
+                            </div>
+                        </a>
+                    @endif
                 </aside>
             </form>
         </main>
@@ -1337,6 +1379,7 @@
             const stopTextSearch = document.getElementById('tour-stop-text-search');
             const dayEditor = document.getElementById('tour-day-editor');
             const dayEditorEnd = document.getElementById('tour-day-editor-end');
+            const roundTripCheckbox = document.getElementById('tour-round-trip');
             const whatsappSupportNumber = @json($supportWhatsapp);
             const api = '/api/public/tours';
             const csrf = document.querySelector('meta[name="csrf-token"]')?.content || '';
@@ -1493,7 +1536,7 @@
                 const routeDays = selectedRoute?.days;
                 const dayRows = routeDays?.length ? routeDays.map(day => {
                     const stops = (day.schedule || []).map(stop => stop.stop_name).filter(Boolean);
-                    return `<li><strong>Day ${escapeHtml(day.day_number)}:</strong> ${escapeHtml(stops.join(' · ') || 'Route stops to be selected')}</li>`;
+                    return `<li><span class="tour-summary-day-num">${escapeHtml(day.day_number)}</span><span><strong>Day ${escapeHtml(day.day_number)}:</strong> ${escapeHtml(stops.join(' → ') || 'Route stops to be selected')}</span></li>`;
                 }) : Array.from({ length: dayCount }, (_, index) => {
                     const day = index + 1;
                     const destinations = [...document.querySelectorAll('.tour-destination:checked')]
@@ -1503,7 +1546,7 @@
                         .filter(input => Number(document.querySelector(`.tour-activity-day[data-activity="${CSS.escape(input.value)}"]`)?.value) === day)
                         .map(input => (catalogue?.destinations || []).flatMap(place => place.activities || []).find(activity => String(activity.id) === String(input.value))?.name);
                     const names = [...destinations, ...activities].filter(Boolean);
-                    return `<li><strong>Day ${day}:</strong> ${escapeHtml(names.join(' · ') || 'Choose places or activities')}</li>`;
+                    return `<li><span class="tour-summary-day-num">${day}</span><span><strong>Day ${day}:</strong> ${escapeHtml(names.join(' → ') || 'Choose places or activities')}</span></li>`;
                 });
                 document.getElementById('tour-summary-route-stops').innerHTML = dayRows.join('');
                 updateMobileSummaryBar();
@@ -1520,7 +1563,7 @@
                 const gear = selectedGearList();
                 const text = [
                     `Hi The Taxi team! I'd like a quote for a ${dayCount}-day private tour:`,
-                    `Start Date: ${date}`,
+                    `Start Date: ${date}${roundTripCheckbox?.checked ? ' (Round trip)' : ''}`,
                     `Pick-up: ${startName}`,
                     `Vehicle: ${vehicleName}`,
                     `Group: ${adults} Adults${children ? `, ${children} Children` : ''}, ${luggage} Bags`,
@@ -2197,6 +2240,12 @@
                 limitPackageClasses();
                 results.hidden = true;
             }
+            function syncRoundTripEnd() {
+                if (!roundTripCheckbox?.checked || !startSelect.value) return;
+                const days = Math.max(1, Number(document.getElementById('tour-days').value) || 1);
+                const finalEnd = document.getElementById(`tour-day-end-${days}`);
+                if (finalEnd) finalEnd.value = startSelect.value;
+            }
             function renderDaySettings() {
                 if (!catalogue) return;
                 const destinations = catalogue.destinations || [];
@@ -2207,6 +2256,7 @@
                     return `<select id="tour-day-end-${day}" class="tour-day-end" data-day="${day}" aria-hidden="true" tabindex="-1"><option value="${escapeHtml(startSelect.value)}">Return to start</option>${destinations.map(item => `<option value="${escapeHtml(item.id)}">${escapeHtml(item.name)}</option>`).join('')}</select>`;
                 }).join('');
                 daySettings.querySelectorAll('.tour-day-end').forEach(select => { select.value = selectedEndForDay(priorEnds, Number(select.dataset.day), startSelect.value); });
+                syncRoundTripEnd();
                 applyDestinationCategoryFilter();
                 refreshVisitDayOptions();
                 renderTourItinerarySummary();
@@ -2224,9 +2274,14 @@
                 dayEditorEnd.innerHTML = endSelect.innerHTML;
                 dayEditorEnd.value = endSelect.value;
                 const isFinalDay = day === Number(document.getElementById('tour-days').value);
+                const lockRoundTrip = isFinalDay && Boolean(roundTripCheckbox?.checked);
                 document.getElementById('tour-day-editor-title').textContent = `Edit Day ${day}`;
                 document.getElementById('tour-day-editor-end-label').textContent = `Day ${day} ${isFinalDay ? 'finish' : 'overnight'} location`;
                 document.getElementById('tour-day-editor-start-wrap').hidden = day !== 1;
+                const rtNote = document.getElementById('tour-day-editor-round-trip-note');
+                if (rtNote) rtNote.hidden = !lockRoundTrip;
+                dayEditorEnd.disabled = lockRoundTrip;
+                if (lockRoundTrip && startSelect.value) dayEditorEnd.value = startSelect.value;
                 const doneBtn = document.getElementById('tour-day-editor-done');
                 if (doneBtn) doneBtn.textContent = `Save Day ${day}`;
                 if (stopTextSearch) stopTextSearch.value = '';
@@ -2696,6 +2751,7 @@
                     childSeats: Number(document.getElementById('tour-child-seats').value || 0),
                     luggage: Number(document.getElementById('tour-luggage').value || 0),
                     vehicleClass: classSelect.value,
+                    roundTrip: Boolean(roundTripCheckbox?.checked),
                     start: startSelect.value,
                     ends,
                     destinations,
@@ -2713,6 +2769,7 @@
                 if (plan.childSeats != null) document.getElementById('tour-child-seats').value = plan.childSeats;
                 if (plan.luggage != null) document.getElementById('tour-luggage').value = plan.luggage;
                 if (plan.start) window.jQuery(startSelect).val(plan.start).trigger('change');
+                if (roundTripCheckbox && typeof plan.roundTrip === 'boolean') roundTripCheckbox.checked = plan.roundTrip;
                 renderDaySettings();
                 (plan.ends || []).forEach((endId, idx) => {
                     const sel = document.getElementById(`tour-day-end-${idx + 1}`);
@@ -2928,6 +2985,7 @@
                 ordered.forEach(entry => { if (entry.card) destinationList.appendChild(entry.card); });
                 // Distribute evenly across days and update overnight locations to each day's last stop
                 const perDay = Math.ceil(ordered.length / days);
+                const isRoundTrip = Boolean(roundTripCheckbox?.checked);
                 for (let d = 1; d <= days; d++) {
                     const slice = ordered.slice((d - 1) * perDay, d * perDay);
                     slice.forEach(entry => {
@@ -2935,10 +2993,15 @@
                         if (daySel) daySel.value = String(d);
                     });
                     const endSel = document.getElementById(`tour-day-end-${d}`);
-                    if (endSel && slice.length) {
-                        endSel.value = slice[slice.length - 1].id;
+                    if (endSel) {
+                        if (d === days && isRoundTrip && startSelect.value) {
+                            endSel.value = startSelect.value;
+                        } else if (slice.length) {
+                            endSel.value = slice[slice.length - 1].id;
+                        }
                     }
                 }
+                syncRoundTripEnd();
                 syncActivityDaysFromDestinations();
                 syncStopDaySelectors();
                 renderSelectedTourMap();
@@ -2963,6 +3026,17 @@
                 } catch (_) {
                     window.location.hash = `plan=${encoded}`;
                 }
+            });
+            roundTripCheckbox?.addEventListener('change', () => {
+                syncRoundTripEnd();
+                refreshVisitDayOptions();
+                applyDestinationCategoryFilter();
+                renderSelectedTourMap();
+                renderTourItinerarySummary();
+                renderTourSummaryDetails();
+                invalidateDisplayedQuote();
+                saveLocalDraft();
+                scheduleAutomaticPriceRefresh();
             });
             form.addEventListener('change', saveLocalDraft);
             request(`${api}/services`).then(data => {
