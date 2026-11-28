@@ -1689,18 +1689,16 @@
                         "method": "POST",
                         "header": [
                             {
-                                "key": "Content-Type",
-                                "value": "application/json"
+                                "key": "Accept",
+                                "value": "application/json",
+                                "type": "text"
                             },
                             {
-                                "key": "Accept",
-                                "value": "application/json"
+                                "key": "Content-Type",
+                                "value": "application/json",
+                                "type": "text"
                             }
                         ],
-                        "body": {
-                            "mode": "raw",
-                            "raw": "{}"
-                        },
                         "url": {
                             "raw": "{{base_url}}/api/driver/heartbeat",
                             "host": [
@@ -1712,12 +1710,22 @@
                                 "heartbeat"
                             ]
                         },
-                        "description": "Send a heartbeat signal to indicate the driver is still active. Should be sent every 60 seconds while online.\n\nWhen a trip tracking session is active, the response includes `trip_phase` and `assignment_id`."
+                        "description": "Send a heartbeat signal to indicate the driver is still active. Should be sent every 60 seconds while online. Optionally include `location_enabled` (`true`/`false`) to report whether mobile GPS is on or off.\n\nWhen a trip tracking session is active, the response includes `trip_phase` and `assignment_id`.",
+                        "body": {
+                            "mode": "raw",
+                            "raw": "{\n    \"location_enabled\": true\n}",
+                            "options": {
+                                "raw": {
+                                    "language": "json"
+                                }
+                            }
+                        }
                     },
                     "response": [
                         {
                             "name": "Heartbeat With Active Trip",
-                            "status": "OK",
+                            "originalRequest": {},
+                            "status": "Heartbeat With Active Trip",
                             "code": 200,
                             "_postman_previewlanguage": "json",
                             "header": [
@@ -1727,11 +1735,12 @@
                                 }
                             ],
                             "cookie": [],
-                            "body": "{\n    \"status\": \"success\",\n    \"message\": \"Heartbeat received\",\n    \"data\": {\n        \"last_active_at\": \"2026-03-01T10:35:00Z\",\n        \"is_online\": true,\n        \"trip_phase\": \"in_progress\",\n        \"assignment_id\": \"assignment-uuid\"\n    }\n}"
+                            "body": "{\n    \"status\": \"success\",\n    \"message\": \"Heartbeat received\",\n    \"data\": {\n        \"last_active_at\": \"2026-03-01T10:35:00Z\",\n        \"is_online\": true,\n        \"location_enabled\": true,\n        \"trip_phase\": \"in_progress\",\n        \"assignment_id\": \"assignment-uuid\"\n    }\n}"
                         },
                         {
                             "name": "Heartbeat Without Active Trip",
-                            "status": "OK",
+                            "originalRequest": {},
+                            "status": "Heartbeat Without Active Trip",
                             "code": 200,
                             "_postman_previewlanguage": "json",
                             "header": [
@@ -1741,7 +1750,7 @@
                                 }
                             ],
                             "cookie": [],
-                            "body": "{\n    \"status\": \"success\",\n    \"message\": \"Heartbeat received\",\n    \"data\": {\n        \"last_active_at\": \"2026-03-01T10:35:00Z\",\n        \"is_online\": true\n    }\n}"
+                            "body": "{\n    \"status\": \"success\",\n    \"message\": \"Heartbeat received\",\n    \"data\": {\n        \"last_active_at\": \"2026-03-01T10:35:00Z\",\n        \"is_online\": true,\n        \"location_enabled\": true\n    }\n}"
                         }
                     ]
                 }
@@ -1929,10 +1938,10 @@
                                 "health"
                             ]
                         },
-                        "description": "Reports mobile GPS queue and fix health to operations monitoring. Use state values healthy, recovered, delayed, severe_gap, blocked, or queue_pressure.",
+                        "description": "Reports mobile GPS queue, fix health, and whether the device location service is enabled (`location_enabled`) to operations monitoring. Use state values healthy, recovered, delayed, severe_gap, blocked, or queue_pressure.",
                         "body": {
                             "mode": "raw",
-                            "raw": "{\n    \"state\": \"recovered\",\n    \"queue_count\": 0,\n    \"oldest_queue_age_seconds\": 0,\n    \"last_fix_age_seconds\": 5,\n    \"app_version\": \"{{app_version}}\",\n    \"app_build\": \"{{app_build}}\"\n}",
+                            "raw": "{\n    \"state\": \"recovered\",\n    \"queue_count\": 0,\n    \"oldest_queue_age_seconds\": 0,\n    \"last_fix_age_seconds\": 5,\n    \"location_enabled\": true,\n    \"app_version\": \"{{app_version}}\",\n    \"app_build\": \"{{app_build}}\"\n}",
                             "options": {
                                 "raw": {
                                     "language": "json"
@@ -1946,6 +1955,73 @@
                             "originalRequest": {},
                             "status": "OK",
                             "code": 200,
+                            "_postman_previewlanguage": "json",
+                            "header": [
+                                {
+                                    "key": "Content-Type",
+                                    "value": "application/json"
+                                }
+                            ],
+                            "cookie": [],
+                            "body": "{\n    \"status\": \"success\",\n    \"data\": {\n        \"acknowledged\": true\n    }\n}"
+                        }
+                    ]
+                },
+                {
+                    "name": "Report Tracking Incident",
+                    "request": {
+                        "auth": {
+                            "type": "bearer",
+                            "bearer": [
+                                {
+                                    "key": "token",
+                                    "value": "{{access_token}}",
+                                    "type": "string"
+                                }
+                            ]
+                        },
+                        "method": "POST",
+                        "header": [
+                            {
+                                "key": "Accept",
+                                "value": "application/json",
+                                "type": "text"
+                            },
+                            {
+                                "key": "Content-Type",
+                                "value": "application/json",
+                                "type": "text"
+                            }
+                        ],
+                        "url": {
+                            "raw": "{{base_url}}/api/driver/location/tracking-incidents",
+                            "host": [
+                                "{{base_url}}"
+                            ],
+                            "path": [
+                                "api",
+                                "driver",
+                                "location",
+                                "tracking-incidents"
+                            ]
+                        },
+                        "description": "Reports an active or recovered tracking gap incident (such as mobile location turned off, permission denied, or network stall) for map gap visualization and booking observability.",
+                        "body": {
+                            "mode": "raw",
+                            "raw": "{\n    \"incident_id\": \"00000000-0000-4000-8000-000000000001\",\n    \"assignment_id\": \"{{assignment_id}}\",\n    \"state\": \"open\",\n    \"cause\": \"tracking_blocked\",\n    \"started_at\": \"2026-11-28T05:59:00Z\",\n    \"reported_at\": \"2026-11-28T06:00:00Z\",\n    \"recovered_at\": null,\n    \"first_evidence\": {\n        \"observed_at\": \"2026-11-28T06:00:00Z\",\n        \"last_fix_at\": \"2026-11-28T05:57:00Z\",\n        \"last_fix_age_seconds\": 180,\n        \"last_upload_at\": \"2026-11-28T05:57:00Z\",\n        \"network_state\": \"online\",\n        \"queue_count\": 0,\n        \"quarantined_count\": 0,\n        \"trip_queue_count\": 0,\n        \"queue_age_seconds\": 0,\n        \"blocked_reason\": \"location_service_disabled\",\n        \"location_enabled\": false,\n        \"location_permission\": \"always\",\n        \"foreground_service_running\": true,\n        \"sample_unavailable_count\": 1,\n        \"persistence_failure_count\": 0,\n        \"live_upload_attempt_count\": 0,\n        \"live_upload_success_count\": 0,\n        \"live_upload_failure_count\": 0,\n        \"recovery_upload_attempt_count\": 0,\n        \"recovery_upload_success_count\": 0,\n        \"recovery_upload_failure_count\": 0,\n        \"buffer_eviction_count\": 0,\n        \"rejected_point_count\": 0\n    },\n    \"last_evidence\": {\n        \"observed_at\": \"2026-11-28T06:00:00Z\",\n        \"last_fix_at\": \"2026-11-28T05:57:00Z\",\n        \"last_fix_age_seconds\": 180,\n        \"last_upload_at\": \"2026-11-28T05:57:00Z\",\n        \"network_state\": \"online\",\n        \"queue_count\": 0,\n        \"quarantined_count\": 0,\n        \"trip_queue_count\": 0,\n        \"queue_age_seconds\": 0,\n        \"blocked_reason\": \"location_service_disabled\",\n        \"location_enabled\": false,\n        \"location_permission\": \"always\",\n        \"foreground_service_running\": true,\n        \"sample_unavailable_count\": 1,\n        \"persistence_failure_count\": 0,\n        \"live_upload_attempt_count\": 0,\n        \"live_upload_success_count\": 0,\n        \"live_upload_failure_count\": 0,\n        \"recovery_upload_attempt_count\": 0,\n        \"recovery_upload_success_count\": 0,\n        \"recovery_upload_failure_count\": 0,\n        \"buffer_eviction_count\": 0,\n        \"rejected_point_count\": 0\n    }\n}",
+                            "options": {
+                                "raw": {
+                                    "language": "json"
+                                }
+                            }
+                        }
+                    },
+                    "response": [
+                        {
+                            "name": "Accepted",
+                            "originalRequest": {},
+                            "status": "Accepted",
+                            "code": 202,
                             "_postman_previewlanguage": "json",
                             "header": [
                                 {

@@ -331,9 +331,16 @@ class LocationController extends Controller
             'queue_count' => ['required', 'integer', 'min:0'],
             'oldest_queue_age_seconds' => ['nullable', 'integer', 'min:0'],
             'last_fix_age_seconds' => ['nullable', 'integer', 'min:0'],
+            'location_enabled' => ['nullable', 'boolean'],
             'app_version' => ['nullable', 'string', 'max:50'],
             'app_build' => ['nullable', 'string', 'max:50'],
         ]);
+        if (array_key_exists('location_enabled', $validated) && $validated['location_enabled'] !== null) {
+            $driver->update([
+                'location_enabled' => (bool) $validated['location_enabled'],
+                'location_status_updated_at' => now(),
+            ]);
+        }
         $this->healthMonitor->recordDriverTrackingHealth($this->locationHealthContext($driver), $validated);
         return response()->json(['status' => 'success', 'data' => ['acknowledged' => true]]);
     }
@@ -411,6 +418,13 @@ class LocationController extends Controller
             'first_evidence' => $data['first_evidence'],
             'last_evidence' => $data['last_evidence'],
         ])->save();
+
+        if (is_bool($data['last_evidence']['location_enabled'] ?? null)) {
+            $driver->update([
+                'location_enabled' => $data['last_evidence']['location_enabled'],
+                'location_status_updated_at' => now(),
+            ]);
+        }
 
         return response()->json(['status' => 'success', 'data' => ['acknowledged' => true]], 202);
     }

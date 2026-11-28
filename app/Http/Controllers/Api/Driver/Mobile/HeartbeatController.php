@@ -55,8 +55,15 @@ class HeartbeatController extends Controller
                 ], 403);
             }
 
-            // Update heartbeat timestamp
-            $this->sessionService->updateHeartbeat($driver);
+            $validated = $request->validate([
+                'location_enabled' => ['nullable', 'boolean'],
+            ]);
+
+            // Update heartbeat timestamp (and mobile GPS service state if reported)
+            $locationEnabled = array_key_exists('location_enabled', $validated) && $validated['location_enabled'] !== null
+                ? (bool) $validated['location_enabled']
+                : null;
+            $this->sessionService->updateHeartbeat($driver, $locationEnabled);
 
             // Check for active trip
             $activeAssignment = $this->assignmentService->getActiveTripAssignment($driver);
@@ -64,6 +71,7 @@ class HeartbeatController extends Controller
             $responseData = [
                 'last_active_at' => $driver->last_active_at?->toIso8601String(),
                 'is_online' => $driver->is_online,
+                'location_enabled' => $driver->location_enabled,
             ];
 
             if ($activeAssignment) {

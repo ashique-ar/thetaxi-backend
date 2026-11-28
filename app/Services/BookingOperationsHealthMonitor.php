@@ -75,6 +75,9 @@ class BookingOperationsHealthMonitor
             'queue_count' => isset($health['queue_count']) ? (int) $health['queue_count'] : null,
             'oldest_queue_age_seconds' => isset($health['oldest_queue_age_seconds']) ? (int) $health['oldest_queue_age_seconds'] : null,
             'last_fix_age_seconds' => isset($health['last_fix_age_seconds']) ? (int) $health['last_fix_age_seconds'] : null,
+            'location_enabled' => array_key_exists('location_enabled', $health) && $health['location_enabled'] !== null
+                ? (bool) $health['location_enabled']
+                : null,
             'app_version' => $health['app_version'] ?? null,
             'app_build' => $health['app_build'] ?? null,
         ], fn ($value) => $value !== null && $value !== '');

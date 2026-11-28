@@ -253,11 +253,18 @@ class SessionService
      * 
      * @see Requirement 5.2 - Update last_active_at on heartbeat
      */
-    public function updateHeartbeat(Driver $driver): void
+    public function updateHeartbeat(Driver $driver, ?bool $locationEnabled = null): void
     {
-        $driver->update([
+        $attributes = [
             'last_active_at' => Carbon::now(),
-        ]);
+        ];
+
+        if ($locationEnabled !== null) {
+            $attributes['location_enabled'] = $locationEnabled;
+            $attributes['location_status_updated_at'] = Carbon::now();
+        }
+
+        $driver->update($attributes);
     }
 
     /**

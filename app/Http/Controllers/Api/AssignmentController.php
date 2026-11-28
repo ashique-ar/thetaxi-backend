@@ -993,6 +993,10 @@ class AssignmentController extends Controller
                 ))
                 : null,
             'is_online' => $includeTracking && (bool) ($selectedDriver->is_online ?? false),
+            'location_enabled' => $includeTracking && $selectedDriver && $selectedDriver->location_enabled !== null
+                ? (bool) $selectedDriver->location_enabled
+                : null,
+            'location_status_updated_at' => $includeTracking ? $selectedDriver?->location_status_updated_at?->toIso8601String() : null,
             'last_active_at' => $includeTracking ? $selectedDriver?->last_active_at?->toIso8601String() : null,
             'latitude' => $selectedDriver && $selectedDriver->current_latitude !== null
                 && $includeTracking ? (float) $selectedDriver->current_latitude

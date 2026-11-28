@@ -399,6 +399,8 @@ class BookingObservabilityService
             'driver_id' => $assignment?->driver_id,
             'enabled' => (bool) $assignment,
             'is_online' => (bool) ($driver?->is_online ?? false),
+            'location_enabled' => $driver?->location_enabled !== null ? (bool) $driver->location_enabled : null,
+            'location_status_updated_at' => $driver?->location_status_updated_at?->utc()->toIso8601String(),
             'freshness' => $this->freshness($lastReportedAt, (bool) ($driver?->is_online ?? false)),
             'last_reported_at' => $lastReportedAt?->toIso8601String(),
             'active_position' => $latest ? $this->mapPosition($latest) : null,

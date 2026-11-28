@@ -91,11 +91,89 @@ upsertAfter('Location Tracking', 'Bulk Upload Buffered Locations', requestItem(
         queue_count: 0,
         oldest_queue_age_seconds: 0,
         last_fix_age_seconds: 5,
+        location_enabled: true,
         app_version: '{{app_version}}',
         app_build: '{{app_build}}',
     },
-    'Reports mobile GPS queue and fix health to operations monitoring. Use state values healthy, recovered, delayed, severe_gap, blocked, or queue_pressure.',
+    'Reports mobile GPS queue, fix health, and whether the device location service is enabled (`location_enabled`) to operations monitoring. Use state values healthy, recovered, delayed, severe_gap, blocked, or queue_pressure.',
     [response('OK', 200, { status: 'success', data: { acknowledged: true } })],
+));
+
+const trackingIncidentEvidenceExample = {
+    observed_at: '2026-11-28T06:00:00Z',
+    last_fix_at: '2026-11-28T05:57:00Z',
+    last_fix_age_seconds: 180,
+    last_upload_at: '2026-11-28T05:57:00Z',
+    network_state: 'online',
+    queue_count: 0,
+    quarantined_count: 0,
+    trip_queue_count: 0,
+    queue_age_seconds: 0,
+    blocked_reason: 'location_service_disabled',
+    location_enabled: false,
+    location_permission: 'always',
+    foreground_service_running: true,
+    sample_unavailable_count: 1,
+    persistence_failure_count: 0,
+    live_upload_attempt_count: 0,
+    live_upload_success_count: 0,
+    live_upload_failure_count: 0,
+    recovery_upload_attempt_count: 0,
+    recovery_upload_success_count: 0,
+    recovery_upload_failure_count: 0,
+    buffer_eviction_count: 0,
+    rejected_point_count: 0,
+};
+
+upsertAfter('Location Tracking', 'Report Location Health', requestItem(
+    'Report Tracking Incident',
+    'POST',
+    '{{base_url}}/api/driver/location/tracking-incidents',
+    {
+        incident_id: '00000000-0000-4000-8000-000000000001',
+        assignment_id: '{{assignment_id}}',
+        state: 'open',
+        cause: 'tracking_blocked',
+        started_at: '2026-11-28T05:59:00Z',
+        reported_at: '2026-11-28T06:00:00Z',
+        recovered_at: null,
+        first_evidence: trackingIncidentEvidenceExample,
+        last_evidence: trackingIncidentEvidenceExample,
+    },
+    'Reports an active or recovered tracking gap incident (such as mobile location turned off, permission denied, or network stall) for map gap visualization and booking observability.',
+    [response('Accepted', 202, { status: 'success', data: { acknowledged: true } })],
+));
+
+upsertAfter('Heartbeat', 'Send Heartbeat', requestItem(
+    'Send Heartbeat',
+    'POST',
+    '{{base_url}}/api/driver/heartbeat',
+    {
+        location_enabled: true,
+    },
+    'Send a heartbeat signal to indicate the driver is still active. Should be sent every 60 seconds while online. Optionally include `location_enabled` (`true`/`false`) to report whether mobile GPS is on or off.\n\nWhen a trip tracking session is active, the response includes `trip_phase` and `assignment_id`.',
+    [
+        response('Heartbeat With Active Trip', 200, {
+            status: 'success',
+            message: 'Heartbeat received',
+            data: {
+                last_active_at: '2026-03-01T10:35:00Z',
+                is_online: true,
+                location_enabled: true,
+                trip_phase: 'in_progress',
+                assignment_id: 'assignment-uuid',
+            },
+        }),
+        response('Heartbeat Without Active Trip', 200, {
+            status: 'success',
+            message: 'Heartbeat received',
+            data: {
+                last_active_at: '2026-03-01T10:35:00Z',
+                is_online: true,
+                location_enabled: true,
+            },
+        }),
+    ],
 ));
 
 upsertAfter('Booking Assignments', 'Accept Assignment', requestItem(
@@ -330,7 +408,7 @@ openapi.paths['/api/driver/location/health'] = {
     post: {
         tags: ['Location Tracking'],
         summary: 'Report mobile location health',
-        description: 'Reports GPS queue/fix health to operations monitoring. This is telemetry acknowledgement and does not upload route points.',
+        description: 'Reports GPS queue/fix health and mobile location service status (`location_enabled`) to operations monitoring. This is telemetry acknowledgement and does not upload route points.',
         security: protectedSecurity,
         requestBody: {
             required: true,
@@ -340,15 +418,160 @@ openapi.paths['/api/driver/location/health'] = {
                     queue_count: { type: 'integer', minimum: 0 },
                     oldest_queue_age_seconds: { type: 'integer', minimum: 0, nullable: true },
                     last_fix_age_seconds: { type: 'integer', minimum: 0, nullable: true },
+                    location_enabled: { type: 'boolean', nullable: true, description: 'Whether mobile device location service (GPS) is enabled.' },
                     app_version: { type: 'string', maxLength: 50, nullable: true },
                     app_build: { type: 'string', maxLength: 50, nullable: true },
                 },
-            }, example: { state: 'recovered', queue_count: 0, oldest_queue_age_seconds: 0, last_fix_age_seconds: 5, app_version: '1.2.0', app_build: '120' } } },
+            }, example: { state: 'recovered', queue_count: 0, oldest_queue_age_seconds: 0, last_fix_age_seconds: 5, location_enabled: true, app_version: '1.2.0', app_build: '120' } } },
         },
         responses: {
             200: { description: 'Health report acknowledged', content: { 'application/json': { schema: { type: 'object', properties: { status: { type: 'string' }, data: { type: 'object', properties: { acknowledged: { type: 'boolean' } } } } }, example: { status: 'success', data: { acknowledged: true } } } } },
             403: { description: 'Authenticated user is not a driver', content: { 'application/json': { schema: errorSchema } } },
             422: { description: 'Validation error', content: { 'application/json': { schema: errorSchema } } },
+        },
+    },
+};
+
+const trackingIncidentEvidenceSchema = {
+    type: 'object',
+    required: [
+        'observed_at', 'network_state', 'queue_count', 'quarantined_count', 'trip_queue_count',
+        'sample_unavailable_count', 'persistence_failure_count',
+        'live_upload_attempt_count', 'live_upload_success_count', 'live_upload_failure_count',
+        'recovery_upload_attempt_count', 'recovery_upload_success_count', 'recovery_upload_failure_count',
+        'buffer_eviction_count', 'rejected_point_count',
+    ],
+    properties: {
+        observed_at: { type: 'string', format: 'date-time' },
+        last_fix_at: { type: 'string', format: 'date-time', nullable: true },
+        last_fix_age_seconds: { type: 'integer', minimum: 0, nullable: true },
+        last_upload_at: { type: 'string', format: 'date-time', nullable: true },
+        network_state: { type: 'string', maxLength: 40 },
+        queue_count: { type: 'integer', minimum: 0 },
+        quarantined_count: { type: 'integer', minimum: 0 },
+        trip_queue_count: { type: 'integer', minimum: 0 },
+        queue_age_seconds: { type: 'integer', minimum: 0, nullable: true },
+        blocked_reason: { type: 'string', maxLength: 80, nullable: true },
+        location_enabled: { type: 'boolean', nullable: true },
+        location_permission: { type: 'string', maxLength: 30, nullable: true },
+        foreground_service_running: { type: 'boolean', nullable: true },
+        sample_unavailable_count: { type: 'integer', minimum: 0 },
+        persistence_failure_count: { type: 'integer', minimum: 0 },
+        live_upload_attempt_count: { type: 'integer', minimum: 0 },
+        live_upload_success_count: { type: 'integer', minimum: 0 },
+        live_upload_failure_count: { type: 'integer', minimum: 0 },
+        recovery_upload_attempt_count: { type: 'integer', minimum: 0 },
+        recovery_upload_success_count: { type: 'integer', minimum: 0 },
+        recovery_upload_failure_count: { type: 'integer', minimum: 0 },
+        buffer_eviction_count: { type: 'integer', minimum: 0 },
+        rejected_point_count: { type: 'integer', minimum: 0 },
+    },
+};
+
+openapi.paths['/api/driver/location/tracking-incidents'] = {
+    post: {
+        tags: ['Location Tracking'],
+        summary: 'Report tracking gap incident',
+        description: 'Persists an open or recovered tracking gap incident (such as mobile GPS turned off) for map gap visualization and booking observability.',
+        security: protectedSecurity,
+        requestBody: {
+            required: true,
+            content: {
+                'application/json': {
+                    schema: {
+                        type: 'object',
+                        required: ['incident_id', 'state', 'cause', 'started_at', 'reported_at', 'first_evidence', 'last_evidence'],
+                        properties: {
+                            incident_id: { type: 'string', format: 'uuid' },
+                            assignment_id: { type: 'string', format: 'uuid', nullable: true },
+                            state: { type: 'string', enum: ['open', 'recovered'] },
+                            cause: { type: 'string', enum: ['network_unavailable', 'upload_queue_stalled', 'location_source_stalled', 'tracking_blocked', 'unknown_after_restart'] },
+                            started_at: { type: 'string', format: 'date-time' },
+                            reported_at: { type: 'string', format: 'date-time' },
+                            recovered_at: { type: 'string', format: 'date-time', nullable: true },
+                            first_evidence: trackingIncidentEvidenceSchema,
+                            last_evidence: trackingIncidentEvidenceSchema,
+                        },
+                    },
+                    example: {
+                        incident_id: '00000000-0000-4000-8000-000000000001',
+                        assignment_id: '00000000-0000-4000-8000-000000000002',
+                        state: 'open',
+                        cause: 'tracking_blocked',
+                        started_at: '2026-11-28T05:59:00Z',
+                        reported_at: '2026-11-28T06:00:00Z',
+                        recovered_at: null,
+                        first_evidence: trackingIncidentEvidenceExample,
+                        last_evidence: trackingIncidentEvidenceExample,
+                    },
+                },
+            },
+        },
+        responses: {
+            202: { description: 'Tracking incident acknowledged', content: { 'application/json': { schema: { type: 'object', properties: { status: { type: 'string' }, data: { type: 'object', properties: { acknowledged: { type: 'boolean' } } } } }, example: { status: 'success', data: { acknowledged: true } } } } },
+            403: { description: 'Authenticated user is not a driver', content: { 'application/json': { schema: errorSchema } } },
+            422: { description: 'Validation error', content: { 'application/json': { schema: errorSchema } } },
+        },
+    },
+};
+
+openapi.paths['/api/driver/heartbeat'] = {
+    post: {
+        tags: ['Heartbeat'],
+        summary: 'Send Heartbeat',
+        description: 'Send a heartbeat signal to indicate the driver is still active. Should be sent every 60 seconds while online. Optionally include `location_enabled` to report whether mobile GPS is on or off.\n\nWhen a trip tracking session is active, the response includes `trip_phase` and `assignment_id`.',
+        operationId: 'post_api_driver_heartbeat_Send_Heartbeat',
+        security: protectedSecurity,
+        requestBody: {
+            required: false,
+            content: {
+                'application/json': {
+                    schema: {
+                        type: 'object',
+                        properties: {
+                            location_enabled: { type: 'boolean', nullable: true, description: 'Whether mobile device location service (GPS) is enabled.' },
+                        },
+                    },
+                    example: { location_enabled: true },
+                },
+            },
+        },
+        responses: {
+            200: {
+                description: 'Heartbeat received',
+                content: {
+                    'application/json': {
+                        schema: {
+                            type: 'object',
+                            properties: {
+                                status: { type: 'string', example: 'success' },
+                                message: { type: 'string', example: 'Heartbeat received' },
+                                data: {
+                                    type: 'object',
+                                    properties: {
+                                        last_active_at: { type: 'string', format: 'date-time', example: '2026-03-01T10:35:00Z' },
+                                        is_online: { type: 'boolean', example: true },
+                                        location_enabled: { type: 'boolean', nullable: true, example: true },
+                                        trip_phase: { type: 'string', nullable: true, example: 'in_progress' },
+                                        assignment_id: { type: 'string', format: 'uuid', nullable: true },
+                                    },
+                                },
+                            },
+                        },
+                        example: {
+                            status: 'success',
+                            message: 'Heartbeat received',
+                            data: {
+                                last_active_at: '2026-03-01T10:35:00Z',
+                                is_online: true,
+                                location_enabled: true,
+                                trip_phase: 'in_progress',
+                                assignment_id: '00000000-0000-4000-8000-000000000001',
+                            },
+                        },
+                    },
+                },
+            },
         },
     },
 };

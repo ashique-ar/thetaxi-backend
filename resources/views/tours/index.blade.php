@@ -745,8 +745,12 @@
                 max-height: calc(100dvh - 5rem);
                 overflow-y: auto;
                 overscroll-behavior: contain;
-                scrollbar-width: thin;
+                scrollbar-width: none;
+                -ms-overflow-style: none;
                 padding-bottom: 0.5rem;
+            }
+            .tour-summary-aside::-webkit-scrollbar {
+                display: none;
             }
             .tour-summary-aside > * {
                 flex-shrink: 0;

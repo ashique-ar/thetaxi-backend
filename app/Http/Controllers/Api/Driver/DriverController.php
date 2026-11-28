@@ -8,6 +8,7 @@ use App\Models\Driver\DriverDevice;
 use App\Jobs\SendCustomDriverPushNotificationJob;
 use App\Models\Driver\DriverLog;
 use App\Models\Driver\DriverMobileDiagnosticReport;
+use App\Models\Driver\DriverTrackingIncident;
 use App\Models\Driver\RoutePoint;
 use App\Models\Driver\DriverSession;
 use App\Http\Requests\Driver\Driver\CreateDriverRequest;
@@ -992,7 +993,7 @@ class DriverController extends Controller
         if (!$this->websiteSettingsService->isDriverMobileAppEnabled()) {
             return response()->json(['status' => 'success', 'data' => [
                 'tracking_enabled' => false, 'sessions' => [], 'assignments' => [],
-                'segments' => [], 'markers' => [], 'route_points' => [],
+                'segments' => [], 'markers' => [], 'location_gaps' => [], 'route_points' => [],
             ]]);
         }
 
@@ -1077,7 +1078,24 @@ class DriverController extends Controller
             ->groupBy('assignment_id')
             ->map(fn($points) => $points->count());
 
+        $trackingIncidents = DriverTrackingIncident::query()
+            ->where('driver_id', $driver->id)
+            ->where('started_at', '<=', $dayEnd)
+            ->where(function ($query) use ($dayStart) {
+                $query->whereNull('recovered_at')
+                    ->orWhere('recovered_at', '>=', $dayStart);
+            })
+            ->orderBy('started_at')
+            ->get();
+
         $segments = $this->buildMovementSegments($routePoints);
+        $locationGaps = $this->buildMovementLocationGaps(
+            $driver,
+            $trackingIncidents,
+            $routePoints,
+            $sessions,
+            $isToday
+        );
         $markers = $this->buildMovementMarkers(
             $driver,
             $sessions,
@@ -1172,6 +1190,8 @@ class DriverController extends Controller
             })->count(),
             'completed_booking_count' => $assignments->filter(fn(DriverAssignment $assignment) => $assignment->trip_phase?->value === 'completed')->count(),
             'session_count' => $sessions->count(),
+            'location_gap_count' => count($locationGaps),
+            'location_off_gap_count' => count(array_filter($locationGaps, fn(array $gap) => $gap['location_enabled'] === false)),
         ];
 
         return response()->json([
@@ -1185,6 +1205,8 @@ class DriverController extends Controller
                         'recorded_at' => $driver->last_active_at?->toIso8601String(),
                         'label' => 'Current location',
                         'is_online' => (bool) $driver->is_online,
+                        'location_enabled' => $driver->location_enabled !== null ? (bool) $driver->location_enabled : null,
+                        'location_status_updated_at' => $driver->location_status_updated_at?->toIso8601String(),
                     ])
                     : null,
                 'sessions' => $sessions->map(function (DriverSession $session) use ($sessionDevices) {
@@ -1228,6 +1250,7 @@ class DriverController extends Controller
                 })->values(),
                 'segments' => $segments,
                 'markers' => $markers,
+                'location_gaps' => $locationGaps,
                 'assignments' => $assignmentPayload,
             ],
         ]);
@@ -1394,6 +1417,7 @@ class DriverController extends Controller
         $query = Driver::query()
             ->select([
                 'id', 'user_id', 'code', 'current_latitude', 'current_longitude',
+                'location_enabled', 'location_status_updated_at',
                 'is_online', 'last_active_at', 'current_device_uuid',
             ])
             ->whereNotNull('current_latitude')
@@ -1438,6 +1462,8 @@ class DriverController extends Controller
                 'latitude' => (float) $driver->current_latitude,
                 'longitude' => (float) $driver->current_longitude,
                 'is_online' => $isOnline,
+                'location_enabled' => $driver->location_enabled !== null ? (bool) $driver->location_enabled : null,
+                'location_status_updated_at' => $driver->location_status_updated_at?->toIso8601String(),
                 'last_active_at' => $driver->last_active_at?->toIso8601String(),
                 'mobile_app' => [
                     'session_active' => (bool) $activeSession && $isOnline,
@@ -1898,6 +1924,89 @@ class DriverController extends Controller
         }
 
         return array_values($segments);
+    }
+
+    private function buildMovementLocationGaps(
+        Driver $driver,
+        \Illuminate\Support\Collection $trackingIncidents,
+        \Illuminate\Support\Collection $routePoints,
+        \Illuminate\Support\Collection $sessions,
+        bool $isToday
+    ): array {
+        return $trackingIncidents->map(function (DriverTrackingIncident $incident) use ($driver, $routePoints, $sessions, $isToday) {
+            $firstEvidence = is_array($incident->first_evidence) ? $incident->first_evidence : [];
+            $lastEvidence = is_array($incident->last_evidence) ? $incident->last_evidence : [];
+
+            $firstLoc = $firstEvidence['location_enabled'] ?? null;
+            $lastLoc = $lastEvidence['location_enabled'] ?? null;
+            $blockedReason = $lastEvidence['blocked_reason'] ?? ($firstEvidence['blocked_reason'] ?? null);
+
+            if ($firstLoc === false || $lastLoc === false || in_array($blockedReason, ['location_service_disabled', 'location_permission_denied'], true)) {
+                $locationEnabled = false;
+            } elseif (is_bool($lastLoc)) {
+                $locationEnabled = $lastLoc;
+            } elseif (is_bool($firstLoc)) {
+                $locationEnabled = $firstLoc;
+            } else {
+                $locationEnabled = null;
+            }
+
+            $startedAt = $incident->started_at;
+            $recoveredAt = $incident->recovered_at;
+            $endLookupTime = $recoveredAt ?? $startedAt;
+
+            $pointBefore = $startedAt
+                ? $routePoints->filter(fn (RoutePoint $point) => $point->recorded_at && $point->recorded_at->lte($startedAt))->last()
+                : null;
+            $pointAfter = $endLookupTime
+                ? $routePoints->filter(fn (RoutePoint $point) => $point->recorded_at && $point->recorded_at->gte($endLookupTime))->first()
+                : null;
+
+            $startLocation = $pointBefore
+                ? $this->buildCoordinatePayload($pointBefore->latitude, $pointBefore->longitude, [
+                    'recorded_at' => $pointBefore->recorded_at?->toIso8601String(),
+                ])
+                : null;
+
+            if (!$startLocation && $sessions->isNotEmpty()) {
+                $session = $sessions->first();
+                $startLocation = $this->buildCoordinatePayload($session->start_latitude, $session->start_longitude, [
+                    'recorded_at' => $session->start_time?->toIso8601String(),
+                ]);
+            }
+
+            $endLocation = $pointAfter
+                ? $this->buildCoordinatePayload($pointAfter->latitude, $pointAfter->longitude, [
+                    'recorded_at' => $pointAfter->recorded_at?->toIso8601String(),
+                ])
+                : null;
+
+            if (!$endLocation && $isToday && $incident->state === 'open') {
+                $endLocation = $this->buildCoordinatePayload($driver->current_latitude, $driver->current_longitude, [
+                    'recorded_at' => $driver->last_active_at?->toIso8601String(),
+                ]);
+            }
+
+            $durationEnd = $recoveredAt ?? ($isToday ? now() : null);
+            $durationSeconds = $startedAt && $durationEnd
+                ? max(0, (int) $startedAt->diffInSeconds($durationEnd))
+                : null;
+
+            return [
+                'id' => $incident->id,
+                'incident_id' => $incident->incident_id,
+                'assignment_id' => $incident->assignment_id,
+                'state' => $incident->state,
+                'cause' => $incident->cause,
+                'blocked_reason' => $blockedReason,
+                'location_enabled' => $locationEnabled,
+                'started_at' => $startedAt?->toIso8601String(),
+                'recovered_at' => $recoveredAt?->toIso8601String(),
+                'duration_seconds' => $durationSeconds,
+                'start_location' => $startLocation,
+                'end_location' => $endLocation,
+            ];
+        })->values()->all();
     }
 
     private function classifyMovementPointPhase(RoutePoint $point, ?DriverAssignment $assignment): string

@@ -65,7 +65,7 @@ class Driver extends BaseModel
     public function getActivitylogOptions(): LogOptions
     {
         // GPS samples are retained in route_points; keep telemetry out of the per-change audit log.
-        $telemetry = ['current_latitude', 'current_longitude', 'last_active_at', 'updated_user_id'];
+        $telemetry = ['current_latitude', 'current_longitude', 'location_enabled', 'location_status_updated_at', 'last_active_at', 'updated_user_id'];
 
         return LogOptions::defaults()
             ->logFillable()
@@ -103,6 +103,8 @@ class Driver extends BaseModel
         'last_active_at',
         'current_latitude',
         'current_longitude',
+        'location_enabled',
+        'location_status_updated_at',
         'current_device_uuid',
         'created_user_id',
         'updated_user_id',
@@ -127,6 +129,8 @@ class Driver extends BaseModel
         'license_last_reminded_on' => 'date',
         'dob' => 'date',
         'is_online' => 'boolean',
+        'location_enabled' => 'boolean',
+        'location_status_updated_at' => 'datetime',
         'last_active_at' => 'datetime',
         'current_latitude' => 'decimal:8',
         'current_longitude' => 'decimal:8',
