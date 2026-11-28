@@ -10,6 +10,144 @@ class TourRoutePlanner
 {
     public function __construct(private readonly GoogleMapsService $maps) {}
 
+    public function suggestDays(array $days): array
+    {
+        // shortcut: day-aware search caps at 256 route legs and 256 candidate plans to bound Maps costs.
+        $days = array_values($days);
+        $cache = [];
+        $protectedStops = [];
+        foreach ($days as $day) {
+            foreach ($day['visits'] as $position => $visit) {
+                if (($visit['locked'] ?? false) || isset($visit['arrival_time'])) {
+                    $protectedStops[$visit['id']] = [(int) $day['day_number'], $position];
+                }
+            }
+        }
+        $evaluate = function (array $groups) use (&$cache): array {
+            $plans = [];
+            $issues = [];
+            $distance = 0.0;
+            $duration = 0;
+            foreach ($groups as $index => $day) {
+                $route = $this->measure([$day['start'], ...$day['visits'], $day['end']], $cache, $day['start_time'], 256);
+                foreach ($route['timing_issues'] as $issue) $issues[] = $issue + ['day_number' => $day['day_number']];
+                $distance += $route['distance_km'];
+                $duration += $route['duration_seconds'];
+                $plans[$index] = $route;
+            }
+
+            return ['plans' => $plans, 'issues' => $issues, 'distance_km' => round($distance, 3), 'duration_seconds' => $duration];
+        };
+
+        try {
+            $original = $evaluate($days);
+            $bestGroups = $days;
+            $best = $original;
+            $candidateCount = 0;
+            $maxPasses = max(1, array_sum(array_map(fn(array $day): int => count($day['visits']), $days)));
+            for ($pass = 0; $pass < $maxPasses && $candidateCount < 256 && count($cache) < 256; $pass++) {
+                $nextGroups = null;
+                $next = null;
+                $searchLimitReached = false;
+                foreach ($bestGroups as $sourceIndex => $source) {
+                    if ($source['locked']) continue;
+                    foreach ($source['visits'] as $visitIndex => $visit) {
+                        if (($visit['locked'] ?? false) || isset($visit['arrival_time'])) continue;
+                        $groupId = $visit['group_id'] ?? $visit['id'];
+                        $groupStart = array_search($groupId, array_column($source['visits'], 'group_id'), true);
+                        if ($groupStart !== false && $groupStart !== $visitIndex) continue;
+                        $block = array_values(array_filter($source['visits'], fn(array $candidate): bool => ($candidate['group_id'] ?? $candidate['id']) === $groupId));
+                        if (collect($block)->contains(fn(array $candidate): bool => ($candidate['locked'] ?? false) || isset($candidate['arrival_time']))) continue;
+                        $targetOrder = array_values(array_filter(array_keys($bestGroups), fn(int $index): bool => $index !== $sourceIndex));
+                        $targetOrder[] = $sourceIndex;
+                        foreach ($targetOrder as $targetIndex) {
+                            $target = $bestGroups[$targetIndex];
+                            if ($target['locked']) continue;
+                            $remaining = array_values(array_filter($source['visits'], fn(array $candidate): bool => ($candidate['group_id'] ?? $candidate['id']) !== $groupId));
+                            $targetVisits = $sourceIndex === $targetIndex ? $remaining : $target['visits'];
+                            $positions = range(0, count($targetVisits));
+                            foreach ($positions as $position) {
+                                if ($sourceIndex === $targetIndex && $position === $visitIndex) continue;
+                                if (++$candidateCount > 256 || count($cache) >= 256) { $searchLimitReached = true; break 4; }
+                                $candidateGroups = $bestGroups;
+                                $candidateGroups[$sourceIndex]['visits'] = $remaining;
+                                array_splice($candidateGroups[$targetIndex]['visits'], $position, 0, $block);
+                                if (!$this->preservesProtectedStops($candidateGroups, $protectedStops)) continue;
+                                try {
+                                    $candidate = $evaluate($candidateGroups);
+                                } catch (\LengthException) {
+                                    $searchLimitReached = true;
+                                    break 4;
+                                }
+                                if ($this->isBetterDayPlan($candidate, $next ?? $best)) {
+                                    $next = $candidate;
+                                    $nextGroups = $candidateGroups;
+                                }
+                            }
+                        }
+                    }
+                }
+                if (!$nextGroups || !$next || !$this->isBetterDayPlan($next, $best)) break;
+                $bestGroups = $nextGroups;
+                $best = $next;
+                if ($searchLimitReached) break;
+            }
+
+            $dayPlans = [];
+            foreach ($days as $index => $day) {
+                $suggestedIndex = array_search($day['day_number'], array_column($bestGroups, 'day_number'), true);
+                $suggestedDay = $suggestedIndex === false ? $index : $suggestedIndex;
+                $suggestedIds = array_column($bestGroups[$suggestedDay]['visits'], 'id');
+                $dayPlans[] = [
+                    'day_number' => $day['day_number'],
+                    'start_time' => $day['start_time'],
+                    'original' => $original['plans'][$index],
+                    'suggested' => $best['plans'][$suggestedDay],
+                    'suggested_stop_ids' => $suggestedIds,
+                    'changed' => array_column($day['visits'], 'id') !== $suggestedIds,
+                    'issues' => array_values(array_filter($best['issues'], fn(array $issue): bool => ($issue['day_number'] ?? null) === $day['day_number'])),
+                ];
+            }
+
+            return [
+                'days' => $dayPlans,
+                'status' => $best['issues'] === [] ? 'ready' : 'review_required',
+                'issues' => $best['issues'],
+                'changed' => $dayPlans !== [] && collect($dayPlans)->contains(fn(array $day): bool => $day['changed']),
+            ];
+        } catch (\Throwable) {
+            $unavailable = array_map(function (array $day): array {
+                $route = ['stops' => [$day['start'], ...$day['visits'], $day['end']], 'legs' => [], 'distance_km' => null, 'duration_seconds' => null, 'visit_duration_seconds' => 0, 'waiting_duration_seconds' => 0, 'total_duration_seconds' => null, 'schedule' => [], 'timing_issues' => []];
+                return ['day_number' => $day['day_number'], 'start_time' => $day['start_time'], 'original' => $route, 'suggested' => $route, 'suggested_stop_ids' => array_column($day['visits'], 'id'), 'changed' => false, 'issues' => []];
+            }, $days);
+
+            return ['days' => $unavailable, 'status' => 'unavailable', 'issues' => [['code' => 'route_unavailable', 'message' => 'We could not verify a shorter route. Keep your selected route or ask our team to review it.']], 'changed' => false];
+        }
+    }
+
+    private function preservesProtectedStops(array $days, array $protectedStops): bool
+    {
+        foreach ($days as $day) {
+            foreach ($day['visits'] as $position => $visit) {
+                if (isset($protectedStops[$visit['id']]) && $protectedStops[$visit['id']] !== [(int) $day['day_number'], $position]) return false;
+            }
+        }
+
+        return true;
+    }
+
+    private function isBetterDayPlan(array $candidate, array $current): bool
+    {
+        if (count($candidate['issues']) < count($current['issues'])) return true;
+        if (count($candidate['issues']) > count($current['issues'])) return false;
+        $shorter = $candidate['distance_km'] < $current['distance_km']
+            && $candidate['duration_seconds'] <= $current['duration_seconds'];
+        $faster = $candidate['duration_seconds'] < $current['duration_seconds']
+            && $candidate['distance_km'] <= $current['distance_km'];
+
+        return $shorter || $faster;
+    }
+
     public function suggest(array $stops, string $startTime = '09:00'): array
     {
         $stops = array_values($stops);
@@ -111,7 +249,7 @@ class TourRoutePlanner
         }
     }
 
-    private function measure(array $stops, array &$cache, string $startTime): array
+    private function measure(array $stops, array &$cache, string $startTime, int $maxUniqueLegs = PHP_INT_MAX): array
     {
         $legs = [];
         $distance = 0.0;
@@ -125,6 +263,7 @@ class TourRoutePlanner
                 : ['lat' => (float) $stops[$index]['latitude'], 'lng' => (float) $stops[$index]['longitude']];
             $key = json_encode([$from, $to], JSON_THROW_ON_ERROR);
             if (! isset($cache[$key])) {
+                if (count($cache) >= $maxUniqueLegs) throw new \LengthException('Route lookup limit reached.');
                 $leg = $from === $to
                     ? ['distance_km' => 0.0, 'duration_seconds' => 0]
                     : $this->maps->distanceAndDuration($from, $to);

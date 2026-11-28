@@ -116,7 +116,7 @@ class TourCatalogueController extends Controller
         abort_unless($service, 404);
         $destinations = TourDestination::query()->with([
             'location:id,name,city',
-            'activities' => fn($query) => $query->where('is_published', true)->orderBy('sort_order')->orderBy('name'),
+            'activities' => fn($query) => $query->where('is_published', true)->where('is_selectable', true)->orderBy('sort_order')->orderBy('name'),
         ])->where('service_type_id', $service->id)->where('is_published', true)
             ->orderBy('sort_order')->orderBy('name')->get();
         if ($destinations->isEmpty()) {
@@ -254,6 +254,7 @@ class TourCatalogueController extends Controller
                     'name' => $activity->name,
                     'description' => $activity->description,
                     'visit_duration_minutes' => $activity->visit_duration_minutes,
+                    'is_selectable' => (bool) $activity->is_selectable,
                     'opens_at' => $activity->opens_at,
                     'closes_at' => $activity->closes_at,
                     'location' => $this->locationPayload($activity->location),
@@ -330,6 +331,7 @@ class TourCatalogueController extends Controller
             } else {
                 $activity = TourActivity::query()
                     ->where('is_published', true)
+                    ->where('is_selectable', true)
                     ->whereHas('destination', fn($query) => $query
                         ->where('service_type_id', $service->id)
                         ->where('is_published', true))
@@ -558,6 +560,7 @@ class TourCatalogueController extends Controller
             'closes_at' => ['nullable', 'date_format:H:i'],
             'sort_order' => ['nullable', 'integer', 'min:0'],
             'is_published' => ['sometimes', 'boolean'],
+            'is_selectable' => ['sometimes', 'boolean'],
         ]);
         if (!empty($data['opens_at']) && !empty($data['closes_at']) && $data['closes_at'] <= $data['opens_at']) {
             throw ValidationException::withMessages(['closes_at' => 'Closing time must be later than opening time.']);

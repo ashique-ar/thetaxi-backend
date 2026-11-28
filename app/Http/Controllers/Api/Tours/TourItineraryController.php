@@ -76,7 +76,7 @@ class TourItineraryController extends Controller
                 'revision' => 1,
                 'status' => 'draft',
             ]);
-            $this->saveDays($itinerary, $data);
+            $this->saveDays($itinerary, $data, $request->route('tour_pricing_context') !== 'portal');
 
             return $itinerary;
         });
@@ -124,7 +124,7 @@ class TourItineraryController extends Controller
             $locked->status = 'draft';
             $locked->review_inquiry_id = null;
             $locked->save();
-            $this->saveDays($locked, $data);
+            $this->saveDays($locked, $data, $request->route('tour_pricing_context') !== 'portal');
 
             return $locked;
         });
@@ -166,32 +166,59 @@ class TourItineraryController extends Controller
             if ($orders->count() !== $itinerary->duration_days) {
                 throw ValidationException::withMessages(['days' => 'Each trip day must appear exactly once.']);
             }
+            $existingStops = collect();
+            $currentByDay = [];
             foreach ($itinerary->days as $day) {
                 $requested = $orders->get($day->day_number);
                 if (!$requested) {
                     throw ValidationException::withMessages(['days' => 'Each trip day must appear exactly once.']);
                 }
-                $stops = $day->stops()->orderBy('sequence')->get();
-                $existingIds = $stops->pluck('id')->sort()->values()->all();
-                $requestedIds = collect($requested['stop_ids'])->sort()->values()->all();
-                if ($existingIds !== $requestedIds) {
-                    throw ValidationException::withMessages(['days' => 'A route suggestion cannot add or remove selected visits.']);
+                $stops = $day->stops()->with('activity')->orderBy('sequence')->get();
+                $currentByDay[$day->day_number] = $stops->pluck('id')->map(fn($stopId) => (string) $stopId)->values()->all();
+                foreach ($stops as $position => $stop) {
+                    $groupDestinationId = $stop->tour_destination_id ?: $stop->activity?->tour_destination_id;
+                    $existingStops->put((string) $stop->id, ['stop' => $stop, 'day' => (int) $day->day_number, 'position' => $position, 'group' => (string) ($groupDestinationId ?: $stop->id)]);
                 }
-                $currentOrder = $stops->pluck('id')->values();
-                foreach ($stops as $index => $stop) {
-                    if (
-                        ($day->is_locked || $stop->is_locked || $stop->arrival_time)
-                        && $requested['stop_ids'][$index] !== $currentOrder[$index]
-                    ) {
+            }
+            $requestedIds = collect($data['days'])->flatMap(fn(array $day) => $day['stop_ids'])->map(fn($stopId) => (string) $stopId);
+            if ($requestedIds->count() !== $existingStops->count()
+                || $requestedIds->unique()->count() !== $existingStops->count()
+                || $requestedIds->sort()->values()->all() !== $existingStops->keys()->sort()->values()->all()) {
+                throw ValidationException::withMessages(['days' => 'A route suggestion must keep every selected visit exactly once.']);
+            }
+            foreach ($itinerary->days as $day) {
+                $requested = array_map('strval', $orders->get($day->day_number)['stop_ids']);
+                if ($day->is_locked && $requested !== $currentByDay[$day->day_number]) {
+                    throw ValidationException::withMessages(['days' => 'Visits on a locked day cannot be moved.']);
+                }
+                foreach ($requested as $position => $stopId) {
+                    $entry = $existingStops->get($stopId);
+                    if (($entry['stop']->is_locked || $entry['stop']->arrival_time)
+                        && ($entry['day'] !== (int) $day->day_number || $entry['position'] !== $position)) {
                         throw ValidationException::withMessages(['days' => 'Keep locked or time-constrained visits in their saved position.']);
                     }
                 }
-                foreach ($stops as $stop) {
-                    $stop->sequence += 100;
-                    $stop->save();
+            }
+            $groupDays = [];
+            foreach ($data['days'] as $requestedDay) {
+                foreach ($requestedDay['stop_ids'] as $stopId) {
+                    $group = $existingStops->get((string) $stopId)['group'];
+                    if (isset($groupDays[$group]) && $groupDays[$group] !== (int) $requestedDay['day_number']) {
+                        throw ValidationException::withMessages(['days' => 'Keep a place and its selected activities on the same day.']);
+                    }
+                    $groupDays[$group] = (int) $requestedDay['day_number'];
                 }
-                foreach ($requested['stop_ids'] as $index => $stopId) {
-                    $stops->firstWhere('id', $stopId)->update(['sequence' => $index + 1]);
+            }
+            foreach ($existingStops as $entry) {
+                $entry['stop']->sequence += 100;
+                $entry['stop']->save();
+            }
+            foreach ($itinerary->days as $day) {
+                foreach ($orders->get($day->day_number)['stop_ids'] as $position => $stopId) {
+                    $stop = $existingStops->get((string) $stopId)['stop'];
+                    $stop->tour_itinerary_day_id = $day->id;
+                    $stop->sequence = $position + 1;
+                    $stop->save();
                 }
             }
             $itinerary->quotes()->whereIn('status', ['current', 'accepted'])->update(['status' => 'superseded']);
@@ -479,7 +506,7 @@ class TourItineraryController extends Controller
         ])->all();
     }
 
-    private function saveDays(TourItinerary $itinerary, array $data): void
+    private function saveDays(TourItinerary $itinerary, array $data, bool $publicSelection = true): void
     {
         if (!array_key_exists('days', $data)) {
             return;
@@ -540,6 +567,7 @@ class TourItineraryController extends Controller
                 } else {
                     $activity = TourActivity::query()
                         ->where('is_published', true)
+                        ->when($publicSelection, fn($query) => $query->where('is_selectable', true))
                         ->whereHas('destination', fn($query) => $query
                             ->where('service_type_id', $itinerary->service_type_id)
                             ->where('is_published', true))

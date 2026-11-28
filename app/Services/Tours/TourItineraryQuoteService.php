@@ -173,32 +173,30 @@ class TourItineraryQuoteService
 
     private function plan(TourItinerary $itinerary): array
     {
-        $itinerary->loadMissing('days.stops.activity');
+        $itinerary->loadMissing('days.stops.activity.destination');
         $dayPlans = [];
-        $issues = [];
-        $overallStatus = 'ready';
-
         foreach ($itinerary->days as $day) {
             $start = $day->start_location_snapshot;
             $end = $day->end_location_snapshot;
             if (!$start || !$end) {
                 throw ValidationException::withMessages(['days' => "Choose start and end destinations for day {$day->day_number} before requesting a route."]);
             }
-            $stops = [
-                [
-                    'id' => "start-{$day->id}",
-                    'kind' => 'endpoint',
-                    'name' => $start['name'],
-                    ...(!empty($start['google_place_id']) ? ['place_id' => $start['google_place_id']] : [
-                        'latitude' => (float) $start['latitude'], 'longitude' => (float) $start['longitude'],
-                    ]),
-                    'locked' => true,
-                ]
+            $endpoint = static fn(string $id, array $location): array => [
+                'id' => $id,
+                'kind' => 'endpoint',
+                'name' => $location['name'],
+                ...(!empty($location['google_place_id']) ? ['place_id' => $location['google_place_id']] : [
+                    'latitude' => (float) $location['latitude'], 'longitude' => (float) $location['longitude'],
+                ]),
+                'locked' => true,
             ];
+            $visits = [];
             foreach ($day->stops as $stop) {
-                $stops[] = [
+                $groupDestinationId = $stop->tour_destination_id ?: $stop->activity?->tour_destination_id;
+                $visits[] = [
                     'id' => $stop->id,
                     'kind' => $stop->kind,
+                    'group_id' => 'destination:'.($groupDestinationId ?: $stop->id),
                     'catalogue_id' => $stop->tour_activity_id ?: $stop->tour_destination_id,
                     'name' => $stop->location_snapshot['name'] ?? '',
                     ...(!empty($stop->location_snapshot['google_place_id']) ? ['place_id' => $stop->location_snapshot['google_place_id']] : [
@@ -211,45 +209,28 @@ class TourItineraryQuoteService
                     ...($stop->arrival_time ? ['arrival_time' => substr((string) $stop->arrival_time, 0, 5)] : []),
                 ];
             }
-            $stops[] = [
-                'id' => "end-{$day->id}",
-                'kind' => 'endpoint',
-                'name' => $end['name'],
-                ...(!empty($end['google_place_id']) ? ['place_id' => $end['google_place_id']] : [
-                    'latitude' => (float) $end['latitude'], 'longitude' => (float) $end['longitude'],
-                ]),
-                'locked' => true,
-            ];
-            $result = $this->planner->suggest($stops, substr((string) $day->start_time, 0, 5));
-            if ($result['status'] === 'unavailable') {
-                $overallStatus = 'unavailable';
-            } elseif ($result['status'] === 'review_required' && $overallStatus === 'ready') {
-                $overallStatus = 'review_required';
-            }
-            foreach ($result['issues'] as $issue) {
-                $issues[] = $issue + ['day_number' => $day->day_number];
-            }
             $dayPlans[] = [
-                'day_number' => $day->day_number,
+                'day_number' => (int) $day->day_number,
                 'start_time' => substr((string) $day->start_time, 0, 5),
-                'original' => $result['original'],
-                'suggested' => $result['suggested'],
-                'suggested_stop_ids' => collect($result['suggested']['stops'])->where('kind', '!=', 'endpoint')->pluck('id')->values(),
-                'changed' => $result['changed'],
-                'issues' => $result['issues'],
+                'locked' => (bool) $day->is_locked,
+                'start' => $endpoint("start-{$day->id}", $start),
+                'end' => $endpoint("end-{$day->id}", $end),
+                'visits' => $visits,
             ];
         }
 
+        $suggestion = $this->planner->suggestDays($dayPlans);
+        $dayPlans = $suggestion['days'];
         $original = $this->aggregate($dayPlans, 'original');
         $suggested = $this->aggregate($dayPlans, 'suggested');
 
         return [
-            'status' => $overallStatus,
+            'status' => $suggestion['status'],
             'days' => $dayPlans,
             'original' => $original,
             'suggested' => $suggested,
-            'changed' => collect($dayPlans)->contains(fn(array $day) => $day['changed']),
-            'issues' => $issues,
+            'changed' => $suggestion['changed'],
+            'issues' => $suggestion['issues'],
         ];
     }
 

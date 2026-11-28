@@ -331,6 +331,11 @@
         .tour-itinerary-day { border: 1px solid #e2e8f0; border-radius: 0.65rem; padding: 0.65rem 0.75rem; background: #fff; }
         .tour-itinerary-day + .tour-itinerary-day { margin-top: 0.5rem; }
         .tour-itinerary-route { font-size: 0.78rem; font-weight: 600; color: #14213d; }
+        .tour-itinerary-actions { color: var(--tour-primary); font-size: 0.75rem; font-weight: 600; background: none; border: 0; padding: 0.25rem 0; }
+        .tour-itinerary-actions:hover { text-decoration: underline; }
+        .tour-itinerary-endpoint { font-size: 0.75rem; white-space: nowrap; }
+        #tour-day-editor .modal-content { border: 0; border-radius: 0.9rem; }
+        #tour-day-editor .modal-body { min-height: 18rem; }
         .tour-stop-chip { border: 0; border-radius: 999px; padding: 0.22rem 0.55rem; background: #eef8f4; color: #155f4b; font-size: 0.7rem; }
         .tour-category-chip { border-radius: 999px; white-space: nowrap; }
         .tour-category-chip.active { background: #14213d; border-color: #14213d; color: #fff; }
@@ -813,48 +818,23 @@
                         <div class="tour-card-header">
                             <span class="tour-step-badge">2</span>
                             <div>
-                                <h2 class="tour-card-title">Choose Places to Visit</h2>
-                                <p class="tour-card-subtitle">Choose where to start and finish, where to stay overnight, and the places or activities you want to visit.</p>
+                                <h2 class="tour-card-title">Custom Itinerary &amp; Attractions</h2>
+                                <p class="tour-card-subtitle">Add destinations to your days. No rigid schedules, stop whenever you like!</p>
                             </div>
+                            <span id="tour-stop-count" class="badge rounded-pill text-bg-light border">0 stops added</span>
                         </div>
 
-                        <div class="tour-subpanel mb-4">
-                            <div>
-                                <label for="tour-start" class="form-label">Start and finish at *</label>
-                                <select id="tour-start" class="form-select no-nice tour-location-select" required>
-                                    <option value="">Choose a place</option>
-                                </select>
-                            </div>
-                        </div>
-
-                        <div id="tour-day-settings" class="row g-3 mb-4"></div>
+                        <div id="tour-day-settings" hidden></div>
 
                         <div class="tour-subpanel mb-4">
                             <div class="d-flex align-items-start justify-content-between gap-2 mb-2">
                                 <div>
-                                    <h3 class="h6 fw-bold mb-1">Your itinerary</h3>
-                                    <p class="small tour-muted mb-0">Your chosen places and activities are grouped by day.</p>
+                                    <h3 class="h6 fw-bold mb-1">Your trip plan</h3>
+                                    <p class="small tour-muted mb-0">Add places and activities to each day, then adjust the order with our team if needed.</p>
                                 </div>
                             </div>
                             <div id="tour-itinerary-days" aria-live="polite"></div>
                         </div>
-
-                        <div class="mb-3">
-                            <label for="tour-destination-search" class="form-label">Search and add places or activities</label>
-                            <select id="tour-destination-search" class="form-select no-nice tour-location-select" multiple aria-label="Search and add places or activities"></select>
-                        </div>
-
-                        <div class="d-flex flex-column flex-md-row justify-content-between align-items-md-end gap-2 mb-3">
-                            <div>
-                                <h3 class="h6 fw-bold mb-1">Explore Sri Lanka highlights</h3>
-                                <p class="small tour-muted mb-0">Places near your selected trip are shown first. Choose “All places” to explore anywhere in Sri Lanka.</p>
-                            </div>
-                            <span id="tour-highlight-count" class="small tour-muted"></span>
-                        </div>
-                        <div id="tour-category-filters" class="d-flex flex-wrap gap-2 mb-3" role="group" aria-label="Filter highlights by category"></div>
-
-                        <div id="tour-destinations" class="row g-3"></div>
-                        <p id="tour-destination-empty" class="small tour-muted mt-2 mb-0" hidden></p>
 
                         <div class="tour-subpanel mt-4">
                             <div class="d-flex flex-wrap justify-content-between align-items-start gap-2 mb-2">
@@ -869,6 +849,39 @@
                             </div>
                             <div id="tour-route-map" role="img" aria-label="Map showing selected tour locations and route order"></div>
                             <p id="tour-map-help" class="small tour-muted mt-2 mb-0" aria-live="polite">Choose a start place and locations to see them on the map.</p>
+                        </div>
+
+                        <div class="modal fade" id="tour-day-editor" tabindex="-1" aria-labelledby="tour-day-editor-title" aria-hidden="true">
+                            <div class="modal-dialog modal-xl modal-dialog-scrollable">
+                                <div class="modal-content">
+                                    <div class="modal-header">
+                                        <div><h2 class="modal-title fs-5" id="tour-day-editor-title">Edit Day 1</h2><p class="small tour-muted mb-0">Choose where the day ends and add the places or activities you want to visit.</p></div>
+                                        <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+                                    </div>
+                                    <div class="modal-body">
+                                        <div class="tour-subpanel mb-3" id="tour-day-editor-start-wrap">
+                                            <label for="tour-start" class="form-label">Tour starts at *</label>
+                                            <select id="tour-start" class="form-select no-nice tour-location-select" required><option value="">Choose a place</option></select>
+                                        </div>
+                                        <div class="tour-subpanel mb-3">
+                                            <label for="tour-day-editor-end" class="form-label" id="tour-day-editor-end-label">Day 1 overnight location</label>
+                                            <select id="tour-day-editor-end" class="form-select no-nice tour-location-select"></select>
+                                        </div>
+                                        <div class="mb-3">
+                                            <label for="tour-destination-search" class="form-label">Search and add places or activities</label>
+                                            <select id="tour-destination-search" class="form-select no-nice tour-location-select" multiple aria-label="Search and add places or activities"></select>
+                                        </div>
+                                        <div class="d-flex flex-column flex-md-row justify-content-between align-items-md-end gap-2 mb-3">
+                                            <div><h3 class="h6 fw-bold mb-1">Explore Sri Lanka highlights</h3><p class="small tour-muted mb-0">Places near your selected trip are shown first. Choose “All places” to explore anywhere in Sri Lanka.</p></div>
+                                            <span id="tour-highlight-count" class="small tour-muted"></span>
+                                        </div>
+                                        <div id="tour-category-filters" class="d-flex flex-wrap gap-2 mb-3" role="group" aria-label="Filter highlights by category"></div>
+                                        <div id="tour-destinations" class="row g-3"></div>
+                                        <p id="tour-destination-empty" class="small tour-muted mt-2 mb-0" hidden></p>
+                                    </div>
+                                    <div class="modal-footer"><span class="small tour-muted me-auto">Activity entry tickets and reservations are not included.</span><button type="button" class="btn tour-btn-primary" data-bs-dismiss="modal">Done</button></div>
+                                </div>
+                            </div>
                         </div>
                     </section>
 
@@ -963,7 +976,7 @@
                             <div class="small lh-base">
                                 <h3 class="tour-guarantee-title">Before You Book</h3>
                                 <p class="mb-2">
-                                    <strong>Route suggestions:</strong> We may suggest a route with less driving between places. You can review it and choose the route you prefer.
+                                    We can suggest a shorter trip plan by changing the visit order or moving visits between days. Your overnight and finish places stay as chosen.
                                 </p>
                                 <p class="mb-0">
                                     <strong>Activity tickets:</strong> The price covers travel between places. Entry tickets and activity bookings are not included. We plan to offer activity bookings in the future.
@@ -1103,6 +1116,8 @@
             const highlightCount = document.getElementById('tour-highlight-count');
             const results = document.getElementById('tour-results');
             const stopSearchSelect = document.getElementById('tour-destination-search');
+            const dayEditor = document.getElementById('tour-day-editor');
+            const dayEditorEnd = document.getElementById('tour-day-editor-end');
             const api = '/api/public/tours';
             const csrf = document.querySelector('meta[name="csrf-token"]')?.content || '';
             let services = [];
@@ -1121,6 +1136,10 @@
             let currentTourQuote = null;
             let currentRouteOptions = null;
             let autoPriceRefreshTimer = null;
+            let activeEditDay = null;
+            let knownStopSelection = new Set();
+            let focusStopSearchOnModalOpen = false;
+            let lastTourStart = '';
 
             const escapeHtml = (value) => String(value ?? '').replace(/[&<>"']/g, (char) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#039;' }[char]));
             function destroyTourSearch(select) {
@@ -1136,7 +1155,7 @@
                     placeholder,
                     allowClear: select === startSelect,
                     closeOnSelect: !multiple,
-                    dropdownParent: $('#tour-step-2'),
+                    dropdownParent: $(select).closest('.modal').length ? $(select).closest('.modal') : $('#tour-step-2'),
                 });
             }
             const showError = (message) => { error.textContent = message; error.hidden = false; error.scrollIntoView({ behavior: 'smooth', block: 'nearest' }); };
@@ -1429,37 +1448,51 @@
             };
             window.jQuery(stopSearchSelect).on('change', () => {
                 const selected = new Set(window.jQuery(stopSearchSelect).val() || []);
+                const newlyAdded = [...selected].filter(id => !knownStopSelection.has(id));
+                knownStopSelection = selected;
                 destinationList.querySelectorAll('.tour-destination').forEach(input => { input.checked = selected.has(`destination:${input.value}`); });
                 destinationList.querySelectorAll('.tour-activity').forEach(input => { input.checked = selected.has(`activity:${input.value}`); });
-                syncDestinationActivityVisibility();
                 applyDestinationCategoryFilter();
                 syncStopDaySelectors();
+                if (activeEditDay) newlyAdded.forEach(id => assignStopToDay(id, activeEditDay));
+                if (newlyAdded.length) syncStopDaySelectors();
                 invalidateDisplayedQuote();
                 renderSelectedTourMap();
+                renderTourItinerarySummary();
                 renderTourSummaryDetails();
                 scheduleAutomaticPriceRefresh();
             });
             destinationList.addEventListener('change', event => {
                 if (!event.target.matches('.tour-destination, .tour-activity')) return;
-                syncDestinationActivityVisibility();
+                if (activeEditDay && event.target.checked) assignStopToDay(`${event.target.matches('.tour-destination') ? 'destination' : 'activity'}:${event.target.value}`, activeEditDay);
                 applyDestinationCategoryFilter();
                 syncStopSearchSelection();
                 renderSelectedTourMap();
+                renderTourItinerarySummary();
             });
-            function syncDestinationActivityVisibility() {
-                destinationList.querySelectorAll('.tour-highlight-item').forEach(card => {
-                    const placeSelected = card.querySelector('.tour-destination')?.checked;
-                    const activitySelected = [...card.querySelectorAll('.tour-activity')].some(input => input.checked);
-                    const activities = card.querySelector('.tour-destination-activities');
-                    if (activities) activities.hidden = !placeSelected && !activitySelected;
-                });
-            }
             function syncStopSearchSelection() {
                 const selected = [
                     ...[...destinationList.querySelectorAll('.tour-destination:checked')].map(input => `destination:${input.value}`),
                     ...[...destinationList.querySelectorAll('.tour-activity:checked')].map(input => `activity:${input.value}`),
                 ];
+                knownStopSelection = new Set(selected);
                 window.jQuery(stopSearchSelect).val(selected).trigger('change');
+            }
+            function assignStopToDay(stopId, day) {
+                const separator = stopId.indexOf(':');
+                const kind = stopId.slice(0, separator);
+                const id = stopId.slice(separator + 1);
+                if (kind === 'destination') {
+                    const input = [...destinationList.querySelectorAll('.tour-destination')].find(item => item.value === id);
+                    const select = input && document.getElementById(`tour-place-day-${input.id.replace('tour-destination-', '')}`);
+                    if (select) select.value = String(day);
+                } else if (kind === 'activity') {
+                    const input = [...destinationList.querySelectorAll('.tour-activity')].find(item => item.value === id);
+                    const parent = input?.closest('.tour-highlight-item')?.querySelector('.tour-destination');
+                    const select = parent && document.getElementById(`tour-place-day-${parent.id.replace('tour-destination-', '')}`);
+                    if (select) select.value = String(day);
+                }
+                syncActivityDaysFromDestinations();
             }
             function renderDestinationCategoryFilters(destinations) {
                 const counts = new Map();
@@ -1552,6 +1585,8 @@
                 const destinations = new Map((catalogue.destinations || []).map(item => [String(item.id), item]));
                 const activities = new Map((catalogue.destinations || []).flatMap(item => (item.activities || []).map(activity => [String(activity.id), activity])));
                 const totalDays = Math.max(1, Number(document.getElementById('tour-days').value) || 1);
+                const stopCount = destinationList.querySelectorAll('.tour-destination:checked, .tour-activity:checked').length;
+                document.getElementById('tour-stop-count').textContent = `${stopCount} ${stopCount === 1 ? 'stop' : 'stops'} added`;
                 itineraryDaysSummary.innerHTML = Array.from({ length: totalDays }, (_, index) => {
                     const day = index + 1;
                     const startId = day === 1 ? startSelect.value : document.querySelector(`.tour-day-end[data-day="${day - 1}"]`)?.value;
@@ -1566,11 +1601,15 @@
                             .filter(input => Number(document.querySelector(`.tour-activity-day[data-activity="${CSS.escape(input.value)}"]`)?.value) === day)
                             .map(input => ({ kind: 'activity', id: input.value, name: activities.get(String(input.value))?.name })),
                     ].filter(stop => stop.name);
-                    const routeLine = [startName, ...stops.map(stop => stop.name), endName].join(' → ');
-                    return `<div class="tour-itinerary-day"><div class="d-flex flex-wrap justify-content-between align-items-center gap-2"><div class="d-flex align-items-center gap-2"><span class="tour-day-badge">Day ${day}</span><span class="tour-itinerary-route">${escapeHtml(routeLine)}</span></div><span class="small tour-muted">${day === totalDays ? 'Finish' : `Overnight: ${escapeHtml(endName)}`}</span></div>${stops.length ? `<div class="d-flex flex-wrap gap-2 mt-2">${stops.map(stop => `<button type="button" class="tour-stop-chip" data-remove-stop="${stop.kind}" data-stop-id="${escapeHtml(stop.id)}" aria-label="Remove ${escapeHtml(stop.name)} from day ${day}">${escapeHtml(stop.name)} ×</button>`).join('')}</div>` : ''}</div>`;
+                    const routeLine = [startName, endName].join(' → ');
+                    return `<div class="tour-itinerary-day"><div class="d-flex flex-wrap justify-content-between align-items-center gap-2"><div class="d-flex align-items-center gap-2"><span class="tour-day-badge">Day ${day}</span><span class="tour-itinerary-route">${escapeHtml(routeLine)}</span></div><span class="small tour-muted">${day === totalDays ? 'Finish' : `Overnight: ${escapeHtml(endName)}`}</span></div>${stops.length ? `<div class="d-flex flex-wrap gap-2 mt-2">${stops.map(stop => `<button type="button" class="tour-stop-chip" data-remove-stop="${stop.kind}" data-stop-id="${escapeHtml(stop.id)}" aria-label="Remove ${escapeHtml(stop.name)} from day ${day}">${escapeHtml(stop.name)} ×</button>`).join('')}</div>` : ''}<div class="d-flex gap-3 mt-2"><button type="button" class="tour-itinerary-actions" data-add-stop-day="${day}">+ Add Stop to Day ${day}</button><button type="button" class="tour-itinerary-actions" data-edit-day="${day}">Edit Stops</button></div></div>`;
                 }).join('');
             }
             itineraryDaysSummary.addEventListener('click', event => {
+                const addStop = event.target.closest('[data-add-stop-day]');
+                if (addStop) { openTourDayEditor(Number(addStop.dataset.addStopDay), true); return; }
+                const editDay = event.target.closest('[data-edit-day]');
+                if (editDay) { openTourDayEditor(Number(editDay.dataset.editDay)); return; }
                 const remove = event.target.closest('[data-remove-stop]');
                 if (!remove) return;
                 const selector = remove.dataset.removeStop === 'destination' ? '.tour-destination' : '.tour-activity';
@@ -1646,7 +1685,9 @@
             }
             function currentService() { return selectedService; }
             function renderTourActivity(activity, destinationIndex, destinationId, selected, visitDay) {
-                return `<div class="mb-2 pb-2 border-bottom border-light"><label class="form-check small mb-1" style="cursor: pointer;"><input class="form-check-input tour-activity" type="checkbox" value="${escapeHtml(activity.id)}" id="tour-activity-${destinationIndex}-${escapeHtml(activity.id)}" ${selected ? 'checked' : ''}><span class="form-check-label"><strong>${escapeHtml(activity.name)}</strong>${activity.visit_duration_minutes ? ` <span class="tour-muted">(${escapeHtml(activity.visit_duration_minutes)} min)</span>` : ''}</span></label><input type="hidden" class="tour-activity-day" data-activity="${escapeHtml(activity.id)}" data-destination-id="${escapeHtml(destinationId)}" data-destination-index="${destinationIndex}" value="${escapeHtml(visitDay || '')}"></div>`;
+                const name = `<strong>${escapeHtml(activity.name)}</strong>${activity.visit_duration_minutes ? ` <span class="tour-muted">(${escapeHtml(activity.visit_duration_minutes)} min)</span>` : ''}${activity.description ? `<div class="small tour-muted ms-4">${escapeHtml(activity.description)}</div>` : ''}`;
+                if (!activity.is_selectable) return `<div class="mb-2 pb-2 border-bottom border-light small">${name}</div>`;
+                return `<div class="mb-2 pb-2 border-bottom border-light"><label class="form-check small mb-1" style="cursor: pointer;"><input class="form-check-input tour-activity" type="checkbox" value="${escapeHtml(activity.id)}" id="tour-activity-${destinationIndex}-${escapeHtml(activity.id)}" ${selected ? 'checked' : ''}><span class="form-check-label">${name}</span></label><input type="hidden" class="tour-activity-day" data-activity="${escapeHtml(activity.id)}" data-destination-id="${escapeHtml(destinationId)}" data-destination-index="${destinationIndex}" value="${escapeHtml(visitDay || '')}"></div>`;
             }
             function fillOptions() {
                 const service = currentService();
@@ -1754,19 +1795,53 @@
                 const destinations = catalogue.destinations || [];
                 const days = Number(document.getElementById('tour-days').value) || 1;
                 const priorEnds = new Map([...daySettings.querySelectorAll('.tour-day-end')].map(select => [Number(select.dataset.day), select.value]));
-                daySettings.querySelectorAll('.tour-day-end').forEach(destroyTourSearch);
                 daySettings.innerHTML = Array.from({ length: Math.max(1, Math.min(days, 60)) }, (_, index) => {
                     const day = index + 1;
-                    const selectedEnd = priorEnds.get(day) || startSelect.value;
-                    const label = day === days ? `Day ${day} finish location` : `Day ${day} overnight location`;
-                    const help = day === days ? 'Choose where the tour ends. Return to start is selected by default.' : `Day ${day + 1} starts from this location.`;
-                    return `<div class="col-md-6"><div class="tour-day-card h-100"><div class="d-flex align-items-center justify-content-between mb-2"><span class="tour-day-badge">Day ${day}</span><span class="small tour-muted">${day === days ? 'Final Stop' : 'Overnight'}</span></div><label class="form-label" for="tour-day-end-${day}">${label} *</label><select id="tour-day-end-${day}" class="form-select form-select-sm tour-day-end tour-location-select no-nice" data-day="${day}" required><option value="${escapeHtml(startSelect.value)}" ${selectedEnd === startSelect.value ? 'selected' : ''}>Return to start</option>${destinations.map(item => `<option value="${escapeHtml(item.id)}" ${selectedEnd === item.id ? 'selected' : ''}>${escapeHtml(item.name)}</option>`).join('')}</select><div class="form-text">${help}</div></div></div>`;
+                    return `<select id="tour-day-end-${day}" class="tour-day-end" data-day="${day}" aria-hidden="true" tabindex="-1"><option value="${escapeHtml(startSelect.value)}">Return to start</option>${destinations.map(item => `<option value="${escapeHtml(item.id)}">${escapeHtml(item.name)}</option>`).join('')}</select>`;
                 }).join('');
-                daySettings.querySelectorAll('.tour-day-end').forEach(select => enhanceTourSearch(select, 'Search listed places'));
+                daySettings.querySelectorAll('.tour-day-end').forEach(select => { select.value = selectedEndForDay(priorEnds, Number(select.dataset.day), startSelect.value); });
                 applyDestinationCategoryFilter();
                 refreshVisitDayOptions();
                 renderTourItinerarySummary();
             }
+            function selectedEndForDay(priorEnds, day, startId) {
+                const selected = priorEnds.get(day);
+                return [...daySettings.querySelectorAll(`#tour-day-end-${day} option`)].some(option => option.value === selected) ? selected : startId;
+            }
+            function openTourDayEditor(day, focusSearch = false) {
+                activeEditDay = day;
+                focusStopSearchOnModalOpen = focusSearch;
+                const endSelect = daySettings.querySelector(`.tour-day-end[data-day="${day}"]`);
+                if (!endSelect) return;
+                destroyTourSearch(dayEditorEnd);
+                dayEditorEnd.innerHTML = endSelect.innerHTML;
+                dayEditorEnd.value = endSelect.value;
+                const isFinalDay = day === Number(document.getElementById('tour-days').value);
+                document.getElementById('tour-day-editor-title').textContent = `Edit Day ${day}`;
+                document.getElementById('tour-day-editor-end-label').textContent = `Day ${day} ${isFinalDay ? 'finish' : 'overnight'} location`;
+                document.getElementById('tour-day-editor-start-wrap').hidden = day !== 1;
+                enhanceTourSearch(dayEditorEnd, 'Search listed places');
+                bootstrap.Modal.getOrCreateInstance(dayEditor).show();
+            }
+            window.jQuery(dayEditorEnd).on('change.tourDayEditor', () => {
+                if (!activeEditDay) return;
+                const endSelect = daySettings.querySelector(`.tour-day-end[data-day="${activeEditDay}"]`);
+                if (!endSelect) return;
+                endSelect.value = dayEditorEnd.value;
+                refreshVisitDayOptions();
+                applyDestinationCategoryFilter();
+                renderSelectedTourMap();
+                renderTourItinerarySummary();
+                renderTourSummaryDetails();
+                invalidateDisplayedQuote();
+                scheduleAutomaticPriceRefresh();
+            });
+            dayEditor.addEventListener('shown.bs.modal', () => {
+                if (!focusStopSearchOnModalOpen) return;
+                focusStopSearchOnModalOpen = false;
+                window.jQuery(stopSearchSelect).select2('open');
+            });
+            dayEditor.addEventListener('hidden.bs.modal', () => { activeEditDay = null; });
             async function loadCatalogue() {
                 const sameService = Boolean(catalogue);
                 const previousStart = sameService ? startSelect.value : '';
@@ -1788,21 +1863,21 @@
                         || String(item.name || '').trim().toLowerCase() === 'colombo');
                     if (colombo) startSelect.value = colombo.id;
                 }
+                lastTourStart = startSelect.value;
                 enhanceTourSearch(startSelect, 'Search a listed place');
                 const placeOptions = destinations.map(item => `<option value="destination:${escapeHtml(item.id)}">${escapeHtml(item.name)}</option>`).join('');
-                const activityOptions = destinations.flatMap(item => (item.activities || []).map(activity => `<option value="activity:${escapeHtml(activity.id)}">${escapeHtml(activity.name)} — ${escapeHtml(item.name)}</option>`)).join('');
-                stopSearchSelect.innerHTML = `<optgroup label="Places">${placeOptions}</optgroup><optgroup label="Activities">${activityOptions}</optgroup>`;
+                const activityOptions = destinations.flatMap(item => (item.activities || []).filter(activity => activity.is_selectable).map(activity => `<option value="activity:${escapeHtml(activity.id)}">${escapeHtml(activity.name)} — ${escapeHtml(item.name)}</option>`)).join('');
+                stopSearchSelect.innerHTML = `<optgroup label="Places">${placeOptions}</optgroup>${activityOptions ? `<optgroup label="Activities">${activityOptions}</optgroup>` : ''}`;
                 enhanceTourSearch(stopSearchSelect, 'Search places and activities', true);
                 destinationList.innerHTML = destinations.map((item, index) => `
                 <div class="col-xl-4 col-md-6 tour-highlight-item" data-category="${escapeHtml(item.category || 'Other')}"><div class="tour-option d-flex flex-column">
                     <div class="mb-2"><span class="tour-highlight-category">${escapeHtml(item.category || 'Explore')}</span></div>
                     <label class="form-check-label d-flex gap-2 align-items-start" style="cursor: pointer;"><input class="form-check-input mt-1 tour-destination" type="checkbox" value="${escapeHtml(item.id)}" id="tour-destination-${index}" ${previousDestinations.has(item.id) ? 'checked' : ''}><span><strong>Visit ${escapeHtml(item.name)}</strong><br><span class="small tour-muted">${escapeHtml(item.description || item.location?.city || item.location?.address || '')}</span></span></label>
                     <div class="mt-2 tour-stop-day-control" hidden><label class="form-label mb-1" for="tour-place-day-${index}">Visit on</label><select class="form-select form-select-sm tour-place-day no-nice" id="tour-place-day-${index}" required disabled><option value="">Choose a day</option>${Array.from({ length: Number(document.getElementById('tour-days').value) || 1 }, (_, day) => `<option value="${day + 1}" ${Number(previousDays.get(String(index))) === day + 1 ? 'selected' : ''}>Day ${day + 1}</option>`).join('')}</select></div>
-                    ${(item.activities || []).length ? `<div class="border-top mt-3 pt-3 tour-destination-activities" ${previousDestinations.has(item.id) || item.activities.some(activity => previousActivities.has(activity.id)) ? '' : 'hidden'}><p class="small fw-bold text-uppercase tour-muted mb-2" style="letter-spacing: 0.04em;">Activities at this place</p>${item.activities.map(activity => renderTourActivity(activity, index, item.id, previousActivities.has(activity.id), previousDays.get(String(index)))).join('')}</div>` : ''}
+                    ${(item.activities || []).length ? `<div class="border-top mt-3 pt-3 tour-destination-activities"><p class="small fw-bold text-uppercase tour-muted mb-2" style="letter-spacing: 0.04em;">Activities at this place</p>${item.activities.map(activity => renderTourActivity(activity, index, item.id, previousActivities.has(activity.id), previousDays.get(String(index)))).join('')}</div>` : ''}
                 </div></div>`).join('');
                 renderDestinationCategoryFilters(destinations);
                 window.jQuery(stopSearchSelect).val(previousStops).trigger('change');
-                syncDestinationActivityVisibility();
                 syncStopDaySelectors();
                 renderDaySettings();
             }
@@ -1891,11 +1966,11 @@
                 const unavailable = data.status !== 'ready';
                 const routeMessage = data.status === 'unavailable'
                     ? 'We could not verify every road route. You can save this plan and ask our team to review it.'
-                    : data.status === 'review_required'
-                        ? 'This schedule has timing conflicts. Ask our team to review it before a transport price can be confirmed.'
-                        : data.changed
-                            ? 'We found a better stop order. Compare both routes; every selected place and activity stays in your plan.'
-                            : 'We did not find a better stop order. Your selected route is shown below.';
+                    : data.changed
+                        ? 'We found a shorter trip plan. Compare both options; visits may move between days while overnight and finish places stay fixed.'
+                        : data.status === 'review_required'
+                            ? 'This schedule has timing conflicts. Ask our team to review it before a transport price can be confirmed.'
+                            : 'We did not find a shorter route to suggest. You can keep your selected route or ask our team to review it.';
                 const formatRouteStops = schedule => schedule.map(stop => {
                     const endpoint = stop.stop_id?.startsWith('start-') ? 'Start: '
                         : stop.stop_id?.startsWith('end-') ? 'Finish: ' : '';
@@ -1903,8 +1978,11 @@
                 }).join(' → ');
                 const renderAggregate = (route, label) => {
                     const canQuote = route.quote?.status === 'priced' && !unavailable;
+                    const canApplySuggestion = label === 'Suggested route' && data.changed && data.status !== 'unavailable';
                     const disabledLabel = route.quote?.status === 'quotation_required' || unavailable ? 'Our team needs to review this route' : 'Our team needs to check this price';
-                    return `<div class="col-md-6"><div class="tour-option d-flex flex-column h-100"><h3 class="h6 fw-bold mb-2">${escapeHtml(label)}</h3><p class="small mb-2"><strong>${route.distance_km == null ? 'Distance unavailable' : `${escapeHtml(route.distance_km)} km total`}</strong>${route.duration_seconds != null ? ` · ${Math.round(route.duration_seconds / 3600 * 10) / 10} hr driving` : ''}</p>${route.quote?.status === 'priced' ? `<p class="h5 fw-bold mb-3" style="color: var(--tour-primary);">${escapeHtml(route.quote.currency)} ${Number(route.quote.total_amount).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</p>` : `<p class="small text-warning fw-semibold mb-3">${escapeHtml(route.quote?.reason || 'Our team needs to check this price.')}</p>`}<div class="mb-3">${(route.days || []).map(day => `<div class="tour-route-stop small"><span class="fw-bold">Day ${day.day_number}:</span> ${formatRouteStops(day.schedule || [])}</div>`).join('')}</div><button type="button" class="btn tour-btn-outline mt-auto tour-use-route" data-route="${label === 'Suggested route' ? 'suggested' : 'original'}" ${canQuote ? '' : 'disabled'}>${canQuote ? 'Use this route and review price' : disabledLabel}</button></div></div>`;
+                    const canUse = canQuote || canApplySuggestion;
+                    const buttonLabel = canQuote ? 'Use this route and review price' : canApplySuggestion ? 'Use suggested route (team review may be needed)' : disabledLabel;
+                    return `<div class="col-md-6"><div class="tour-option d-flex flex-column h-100"><h3 class="h6 fw-bold mb-2">${escapeHtml(label)}</h3><p class="small mb-2"><strong>${route.distance_km == null ? 'Distance unavailable' : `${escapeHtml(route.distance_km)} km total`}</strong>${route.duration_seconds != null ? ` · ${Math.round(route.duration_seconds / 3600 * 10) / 10} hr driving` : ''}</p>${route.quote?.status === 'priced' ? `<p class="h5 fw-bold mb-3" style="color: var(--tour-primary);">${escapeHtml(route.quote.currency)} ${Number(route.quote.total_amount).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</p>` : `<p class="small text-warning fw-semibold mb-3">${escapeHtml(route.quote?.reason || 'Our team needs to check this price.')}</p>`}<div class="mb-3">${(route.days || []).map(day => `<div class="tour-route-stop small"><span class="fw-bold">Day ${day.day_number}:</span> ${formatRouteStops(day.schedule || [])}</div>`).join('')}</div><button type="button" class="btn tour-btn-outline mt-auto tour-use-route" data-route="${label === 'Suggested route' ? 'suggested' : 'original'}" ${canUse ? '' : 'disabled'}>${buttonLabel}</button></div></div>`;
                 };
                 return `<div class="alert ${unavailable ? 'alert-warning' : 'alert-info'}">${routeMessage}</div><div class="row g-3">${renderAggregate(data.original, data.changed ? 'Your selected order' : 'Your route')}${data.changed ? renderAggregate(data.suggested, 'Suggested route') : ''}</div><div class="small tour-muted mt-3">${(data.issues || []).map(issue => `<p class="mb-1">Day ${issue.day_number}: ${escapeHtml(issue.message)}</p>`).join('')}<p class="mb-0">Activity visits are route stops only. Entry tickets and reservations are arranged separately.</p></div>`;
             }
@@ -1978,6 +2056,12 @@
                                 const routeDays = (routes.days || []).map(day => ({ day_number: day.day_number, stop_ids: day.suggested_stop_ids || [] }));
                                 const applied = await request(`/tours/drafts/${savedItinerary.id}/route`, { method: 'POST', body: JSON.stringify({ expected_revision: savedItinerary.revision, days: routeDays }) });
                                 savedItinerary = applied;
+                                currentRouteOptions = { ...routes, changed: false };
+                            }
+                            if (routes.status !== 'ready' || routes[button.dataset.route]?.quote?.status !== 'priced') {
+                                showEstimatedSummary(routes, preferredRouteChoice);
+                                document.getElementById('tour-quote').innerHTML = '<div class="alert alert-warning border small mb-0">This route has been saved. Our team will need to review it before confirming a price.</div>';
+                                return;
                             }
                             const quote = await request(`/tours/drafts/${savedItinerary.id}/quote`, { method: 'POST', body: JSON.stringify({ expected_revision: savedItinerary.revision }) });
                             const q = quote;
@@ -1987,7 +2071,7 @@
                             document.getElementById('tour-quote').innerHTML = `<div class="alert alert-success border small mb-0">${escapeHtml(q.currency)} ${amount} is held for 30 minutes. Your summary is ready to continue to checkout.</div>`;
                         } catch (exception) {
                             showError(exception.message || 'We could not prepare the quote. Please review your route and try again.');
-                } finally { results.querySelectorAll('.tour-use-route').forEach(option => { option.disabled = option.dataset.route && (currentRouteOptions?.[option.dataset.route]?.quote?.status !== 'priced' || currentRouteOptions?.status !== 'ready'); }); }
+                } finally { results.querySelectorAll('.tour-use-route').forEach(option => { const canApply = option.dataset.route === 'suggested' && currentRouteOptions?.changed && currentRouteOptions?.status !== 'unavailable'; option.disabled = !canApply && (currentRouteOptions?.[option.dataset.route]?.quote?.status !== 'priced' || currentRouteOptions?.status !== 'ready'); }); }
                     }));
                 } catch (exception) { showError(exception.message || 'We could not plan this route. Please check your choices and try again.'); }
                 finally { busyControls.forEach((control, index) => { control.disabled = priorDisabled[index]; }); button.disabled = false; document.getElementById('tour-working').hidden = true; }
@@ -2033,15 +2117,15 @@
                 syncStopDaySelectors();
                 renderDaySettings(); invalidateDisplayedQuote(); renderSelectedTourMap();
             });
-            startSelect.addEventListener('change', () => { renderDaySettings(); applyDestinationCategoryFilter(); renderSelectedTourMap(); });
-            daySettings.addEventListener('change', event => {
-                const select = event.target;
-                if (!select.matches('.tour-day-end')) return;
-                event.stopPropagation();
-                refreshVisitDayOptions();
+            window.jQuery(startSelect).off('.tourStart').on('change.tourStart', () => {
+                const previousStart = lastTourStart;
+                lastTourStart = startSelect.value;
+                if (previousStart) daySettings.querySelectorAll('.tour-day-end').forEach(select => {
+                    if (select.value === previousStart) select.value = lastTourStart;
+                });
+                renderDaySettings();
                 applyDestinationCategoryFilter();
                 renderSelectedTourMap();
-                renderTourItinerarySummary();
                 renderTourSummaryDetails();
                 invalidateDisplayedQuote();
                 scheduleAutomaticPriceRefresh();

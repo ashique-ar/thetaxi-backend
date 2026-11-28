@@ -2744,7 +2744,7 @@ Route::middleware(['auth:api'])->group(function () {
             Route::post('driver-cash/settle', [FinancialSettlementController::class, 'settleDriverCash'])->middleware('permission:bookings.update');
             Route::post('driver-cash/{receipt}/dispute', [FinancialSettlementController::class, 'disputeDriverCash'])->middleware('permission:bookings.update');
             Route::post('driver-cash/{receipt}/resolve-dispute', [FinancialSettlementController::class, 'resolveDriverCashDispute'])->middleware('permission:bookings.update');
-            Route::get('{financialSettlement}', [FinancialSettlementController::class, 'show'])->middleware('permission:bookings.view');
+            Route::get('{financialSettlement}', [FinancialSettlementController::class, 'show'])->middleware('permission:bookings.view|financial-settlements.view');
             Route::post('', [FinancialSettlementController::class, 'store'])->middleware('permission:bookings.update');
             Route::post('{financialSettlement}/issue', [FinancialSettlementController::class, 'issue'])->middleware('permission:bookings.update');
             Route::post('{financialSettlement}/payments', [FinancialSettlementController::class, 'receivePayment'])->middleware('permission:bookings.update');
@@ -2752,8 +2752,8 @@ Route::middleware(['auth:api'])->group(function () {
             Route::post('{financialSettlement}/adjustments', [FinancialSettlementController::class, 'adjust'])->middleware('permission:bookings.update');
             Route::post('{financialSettlement}/dispute', [FinancialSettlementController::class, 'dispute'])->middleware('permission:bookings.update');
             Route::post('{financialSettlement}/resolve-dispute', [FinancialSettlementController::class, 'resolveDispute'])->middleware('permission:bookings.update');
-            Route::get('{financialSettlement}/audit', [FinancialSettlementController::class, 'audit'])->middleware('permission:bookings.view');
-            Route::get('{financialSettlement}/invoice', [FinancialSettlementController::class, 'downloadInvoice'])->middleware('permission:bookings.view');
+            Route::get('{financialSettlement}/audit', [FinancialSettlementController::class, 'audit'])->middleware('permission:bookings.view|financial-settlements.view');
+            Route::get('{financialSettlement}/invoice', [FinancialSettlementController::class, 'downloadInvoice'])->middleware('permission:bookings.view|financial-settlements.view');
         });
 
         // Booking Item Assignment (inline from booking list)

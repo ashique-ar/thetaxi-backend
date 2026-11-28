@@ -234,7 +234,7 @@ class FinancialSettlementController extends Controller
     public function show(FinancialAccountSettlement $financialSettlement)
     {
         $issues = $this->service->monitorReconciliation($financialSettlement);
-        $data = $financialSettlement->load(['items.booking', 'allocations']);
+        $data = $financialSettlement->load(['items.booking:id,booking_number,booking_date,currency', 'allocations']);
         $data->reconciliation_issues = $issues;
         return response()->json(['status' => 'success', 'data' => $data]);
     }

@@ -21,6 +21,7 @@ class TourActivity extends BaseModel
         'closes_at',
         'sort_order',
         'is_published',
+        'is_selectable',
         'created_user_id',
         'updated_user_id',
     ];
@@ -29,6 +30,7 @@ class TourActivity extends BaseModel
         'visit_duration_minutes' => 'integer',
         'sort_order' => 'integer',
         'is_published' => 'boolean',
+        'is_selectable' => 'boolean',
     ];
 
     public function destination(): BelongsTo

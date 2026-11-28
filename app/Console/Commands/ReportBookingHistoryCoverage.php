@@ -62,7 +62,7 @@ class ReportBookingHistoryCoverage extends Command
             $this->modelStateParity('bookings', 'Booking'),
             $this->modelStateParity('booking_items', 'BookingItem'),
             $this->modelStateParity('vehicle_assignments', 'VehicleAssignment'),
-            $this->modelStateParity('booking_price_adjustment_history', 'BookingPriceAdjustmentHistory'),
+            $this->modelStateParity('booking_price_adjustment_history', 'VehicleBookingPriceAdjustmentHistory'),
             $this->modelStateParity('driver_assignments', 'DriverAssignment'),
             $this->modelStateParity('driver_sessions', 'DriverSession', bookingRelationTable: 'driver_assignments', bookingRelationForeignKey: 'assignment_id'),
             $this->modelStateParity('phone_calls', 'PhoneCall'),
