@@ -406,17 +406,18 @@
         .tour-itinerary-warning { display: flex; width: fit-content; align-items: center; gap: 0.35rem; font-size: 0.72rem; font-weight: 600; color: #92400e; background: #fef3c7; border: 1px solid #fde68a; border-radius: 0.4rem; padding: 0.25rem 0.55rem; margin-top: 0.4rem; }
         .tour-text-action { background: none; border: 0; padding: 0; color: var(--tour-primary); font-size: 0.8rem; font-weight: 600; text-decoration: none; display: inline-flex; align-items: center; gap: 0.25rem; cursor: pointer; }
         .tour-text-action:hover { text-decoration: underline; color: var(--tour-primary-dark); }
-        .tour-itinerary-actions { color: var(--tour-primary); font-size: 0.76rem; font-weight: 600; background: var(--tour-primary-soft); border: 1px solid var(--tour-primary-border); border-radius: 999px; padding: 0.3rem 0.75rem; min-height: 34px; display: inline-flex; align-items: center; gap: 0.3rem; transition: background-color 0.15s ease, color 0.15s ease; }
-        .tour-itinerary-actions:hover { background: var(--tour-primary); color: #fff; text-decoration: none; }
+        .tour-itinerary-actions { color: var(--tour-primary); font-size: 0.78rem; font-weight: 600; background: none; border: 0; padding: 0.15rem 0; display: inline-flex; align-items: center; gap: 0.3rem; cursor: pointer; }
+        .tour-itinerary-actions:hover { text-decoration: underline; color: var(--tour-primary-dark); }
         .tour-itinerary-endpoint { font-size: 0.75rem; white-space: nowrap; }
 
         /* Edit Day Modal Redesign */
-        #tour-day-editor .modal-content { border: 0; border-radius: 0.95rem; overflow: hidden; }
-        #tour-day-editor .modal-header { padding: 0.9rem 1.25rem; border-bottom: 1px solid var(--tour-border); background: #fff; }
-        #tour-day-editor .modal-body { padding: 1rem 1.25rem; background: #f8fafc; }
-        #tour-day-editor .modal-footer { padding: 0.75rem 1.25rem; padding-bottom: calc(0.75rem + env(safe-area-inset-bottom)); border-top: 1px solid var(--tour-border); background: #fff; }
+        #tour-day-editor .modal-dialog { max-height: calc(100dvh - 2rem); }
+        #tour-day-editor .modal-content { border: 0; border-radius: 0.95rem; overflow: hidden; max-height: calc(100dvh - 2rem); display: flex; flex-direction: column; }
+        #tour-day-editor .modal-header { padding: 0.9rem 1.25rem; border-bottom: 1px solid var(--tour-border); background: #fff; flex-shrink: 0; }
+        #tour-day-editor .modal-body { padding: 1rem 1.25rem; background: #f8fafc; overflow-y: auto !important; -webkit-overflow-scrolling: touch; flex: 1 1 auto; min-height: 0; }
+        #tour-day-editor .modal-footer { padding: 0.75rem 1.25rem; padding-bottom: calc(0.75rem + env(safe-area-inset-bottom)); border-top: 1px solid var(--tour-border); background: #fff; flex-shrink: 0; }
         @media (max-width: 767.98px) {
-            #tour-day-editor .modal-dialog { margin: 0; max-width: 100%; height: 100dvh; }
+            #tour-day-editor .modal-dialog { margin: 0; max-width: 100%; height: 100dvh; max-height: 100dvh; }
             #tour-day-editor .modal-content { height: 100dvh; max-height: 100dvh; border-radius: 0; }
             #tour-day-editor .modal-header { padding: 0.75rem 1rem; }
             #tour-day-editor .modal-body { padding: 0.75rem 1rem; }
@@ -984,6 +985,9 @@
                                     <button type="button" id="tour-optimize-plan" class="tour-text-action">
                                         <i class="bi bi-stars" aria-hidden="true"></i> Optimize entire plan
                                     </button>
+                                    <button type="button" id="tour-undo-optimize" class="tour-text-action text-secondary" hidden>
+                                        <i class="bi bi-arrow-counterclockwise" aria-hidden="true"></i> Revert
+                                    </button>
                                 </div>
                             </div>
                             <div id="tour-quick-templates" class="mb-3" hidden></div>
@@ -1020,8 +1024,8 @@
                                         </div>
                                         <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
                                     </div>
-                                    <div class="modal-body d-flex flex-column gap-3">
-                                        <div class="tour-editor-top-panel">
+                                    <div class="modal-body">
+                                        <div class="tour-editor-top-panel mb-3">
                                             <div class="row g-2 align-items-end">
                                                 <div class="col-md-6" id="tour-day-editor-start-wrap">
                                                     <label for="tour-start" class="form-label mb-1">Tour starts at *</label>
@@ -1034,7 +1038,7 @@
                                             </div>
                                         </div>
 
-                                        <div class="tour-editor-top-panel">
+                                        <div class="tour-editor-top-panel mb-3">
                                             <div class="d-flex flex-column flex-md-row justify-content-between align-items-md-center gap-2 mb-2">
                                                 <div class="input-group flex-grow-1">
                                                     <span class="input-group-text bg-white border-end-0"><i class="bi bi-search text-muted" aria-hidden="true"></i></span>
@@ -1986,7 +1990,7 @@
                         warningHtml = `<div class="tour-itinerary-warning"><i class="bi bi-signpost-split-fill" aria-hidden="true"></i><span>Includes a ~${metrics.detourKm} km detour off the direct route.</span></div>`;
                     }
                     const routeLine = [startName, endName].join(' → ');
-                    return `<div class="tour-itinerary-day"><div class="d-flex flex-wrap justify-content-between align-items-center gap-2"><div class="d-flex flex-wrap align-items-center gap-2"><span class="tour-day-badge">Day ${day}</span><span class="tour-itinerary-route">${escapeHtml(routeLine)}</span></div><span class="small tour-muted">${day === totalDays ? 'Finish' : `Overnight: ${escapeHtml(endName)}`}</span></div>${metaParts.length ? `<div class="tour-itinerary-meta mt-1"><i class="bi bi-clock" aria-hidden="true"></i><span>${escapeHtml(metaParts.join(' · '))}</span></div>` : ''}${warningHtml}${stops.length ? `<div class="d-flex flex-wrap gap-2 mt-2">${stops.map(stop => `<button type="button" class="tour-stop-chip" data-remove-stop="${stop.kind}" data-stop-id="${escapeHtml(stop.id)}" aria-label="Remove ${escapeHtml(stop.name)} from day ${day}">${escapeHtml(stop.name)} ×</button>`).join('')}</div>` : ''}<div class="d-flex flex-wrap gap-2 mt-2"><button type="button" class="tour-itinerary-actions" data-add-stop-day="${day}"><i class="bi bi-plus-circle" aria-hidden="true"></i> Add places to Day ${day}</button><button type="button" class="tour-itinerary-actions" data-edit-day="${day}"><i class="bi bi-pencil" aria-hidden="true"></i> Edit Day ${day}</button></div></div>`;
+                    return `<div class="tour-itinerary-day"><div class="d-flex flex-wrap justify-content-between align-items-center gap-2"><div class="d-flex flex-wrap align-items-center gap-2"><span class="tour-day-badge">Day ${day}</span><span class="tour-itinerary-route">${escapeHtml(routeLine)}</span></div><span class="small tour-muted">${day === totalDays ? 'Finish' : `Overnight: ${escapeHtml(endName)}`}</span></div>${metaParts.length ? `<div class="tour-itinerary-meta mt-1"><i class="bi bi-clock" aria-hidden="true"></i><span>${escapeHtml(metaParts.join(' · '))}</span></div>` : ''}${warningHtml}${stops.length ? `<div class="d-flex flex-wrap gap-2 mt-2">${stops.map(stop => `<button type="button" class="tour-stop-chip" data-remove-stop="${stop.kind}" data-stop-id="${escapeHtml(stop.id)}" aria-label="Remove ${escapeHtml(stop.name)} from day ${day}">${escapeHtml(stop.name)} ×</button>`).join('')}</div>` : ''}<div class="mt-2"><button type="button" class="tour-itinerary-actions" data-edit-day="${day}"><i class="bi bi-pencil-square" aria-hidden="true"></i> ${stops.length ? `Edit Day ${day}` : `Add places to Day ${day}`}</button></div></div>`;
                 }).join('');
             }
             itineraryDaysSummary.addEventListener('click', event => {
@@ -2852,8 +2856,24 @@
                 })));
                 ordered.forEach(entry => { if (entry.card) destinationList.appendChild(entry.card); });
             }
+            let preOptimizePlanSnapshot = null;
+            function savePreOptimizeSnapshot() {
+                preOptimizePlanSnapshot = serializeTourPlan();
+                const undoBtn = document.getElementById('tour-undo-optimize');
+                if (undoBtn) undoBtn.hidden = false;
+            }
+            document.getElementById('tour-undo-optimize')?.addEventListener('click', () => {
+                if (!preOptimizePlanSnapshot) return;
+                applySerializedPlan(preOptimizePlanSnapshot);
+                preOptimizePlanSnapshot = null;
+                document.getElementById('tour-undo-optimize').hidden = true;
+                invalidateDisplayedQuote();
+                saveLocalDraft();
+                trackTourEvent('tour_optimize_reverted');
+            });
             document.getElementById('tour-optimize-route')?.addEventListener('click', () => {
                 if (!catalogue) return;
+                savePreOptimizeSnapshot();
                 const destinations = new Map((catalogue.destinations || []).map(item => [String(item.id), item]));
                 const days = Math.max(1, Number(document.getElementById('tour-days').value) || 1);
                 const dayAnchors = Array.from({ length: days }, (_, idx) => {
@@ -2897,6 +2917,7 @@
                 const startPt = tourLocationPoint(destinations.get(String(startSelect.value))?.location);
                 const checked = [...destinationList.querySelectorAll('.tour-destination:checked')];
                 if (checked.length < 2) return;
+                savePreOptimizeSnapshot();
                 const ordered = orderDestinationsNearest(startPt, checked.map(input => ({
                     input,
                     card: input.closest('.tour-highlight-item'),
