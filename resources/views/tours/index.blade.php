@@ -402,8 +402,10 @@
         .tour-itinerary-day:hover { border-color: #cbd5e1; }
         .tour-itinerary-day + .tour-itinerary-day { margin-top: 0.65rem; }
         .tour-itinerary-route { font-size: 0.85rem; font-weight: 700; color: #14213d; }
-        .tour-itinerary-meta { display: inline-flex; flex-wrap: wrap; align-items: center; gap: 0.4rem; font-size: 0.72rem; color: var(--tour-muted); }
-        .tour-itinerary-warning { display: inline-flex; align-items: center; gap: 0.3rem; font-size: 0.72rem; font-weight: 600; color: #92400e; background: #fef3c7; border: 1px solid #fde68a; border-radius: 0.4rem; padding: 0.22rem 0.5rem; margin-top: 0.45rem; }
+        .tour-itinerary-meta { display: flex; flex-wrap: wrap; align-items: center; gap: 0.4rem; font-size: 0.72rem; color: var(--tour-muted); }
+        .tour-itinerary-warning { display: flex; width: fit-content; align-items: center; gap: 0.35rem; font-size: 0.72rem; font-weight: 600; color: #92400e; background: #fef3c7; border: 1px solid #fde68a; border-radius: 0.4rem; padding: 0.25rem 0.55rem; margin-top: 0.4rem; }
+        .tour-text-action { background: none; border: 0; padding: 0; color: var(--tour-primary); font-size: 0.8rem; font-weight: 600; text-decoration: none; display: inline-flex; align-items: center; gap: 0.25rem; cursor: pointer; }
+        .tour-text-action:hover { text-decoration: underline; color: var(--tour-primary-dark); }
         .tour-itinerary-actions { color: var(--tour-primary); font-size: 0.76rem; font-weight: 600; background: var(--tour-primary-soft); border: 1px solid var(--tour-primary-border); border-radius: 999px; padding: 0.3rem 0.75rem; min-height: 34px; display: inline-flex; align-items: center; gap: 0.3rem; transition: background-color 0.15s ease, color 0.15s ease; }
         .tour-itinerary-actions:hover { background: var(--tour-primary); color: #fff; text-decoration: none; }
         .tour-itinerary-endpoint { font-size: 0.75rem; white-space: nowrap; }
@@ -973,11 +975,16 @@
                             <div class="d-flex flex-wrap align-items-start justify-content-between gap-2 mb-2">
                                 <div>
                                     <h3 class="h6 fw-bold mb-1">Your trip plan</h3>
-                                    <p class="small tour-muted mb-0">Add places and activities to each day, or let us suggest an optimal stop order.</p>
+                                    <p class="small tour-muted mb-0">Add places and activities to each day, or optimize your route below.</p>
                                 </div>
-                                <button type="button" id="tour-optimize-route" class="btn btn-sm tour-btn-outline" hidden>
-                                    <i class="bi bi-magic me-1" aria-hidden="true"></i> Optimize stop order
-                                </button>
+                                <div id="tour-optimize-actions" class="d-flex flex-wrap align-items-center gap-3" hidden>
+                                    <button type="button" id="tour-optimize-route" class="tour-text-action">
+                                        <i class="bi bi-arrow-down-up" aria-hidden="true"></i> Optimize stop order
+                                    </button>
+                                    <button type="button" id="tour-optimize-plan" class="tour-text-action">
+                                        <i class="bi bi-stars" aria-hidden="true"></i> Optimize entire plan
+                                    </button>
+                                </div>
                             </div>
                             <div id="tour-quick-templates" class="mb-3" hidden></div>
                             <div id="tour-itinerary-days" aria-live="polite"></div>
@@ -1940,8 +1947,8 @@
                 const totalDays = Math.max(1, Number(document.getElementById('tour-days').value) || 1);
                 const stopCount = destinationList.querySelectorAll('.tour-destination:checked, .tour-activity:checked').length;
                 document.getElementById('tour-stop-count').textContent = `${stopCount} ${stopCount === 1 ? 'stop' : 'stops'} added`;
-                const optBtn = document.getElementById('tour-optimize-route');
-                if (optBtn) optBtn.hidden = destinationList.querySelectorAll('.tour-destination:checked').length < 2;
+                const optActions = document.getElementById('tour-optimize-actions');
+                if (optActions) optActions.hidden = destinationList.querySelectorAll('.tour-destination:checked').length < 2;
                 itineraryDaysSummary.innerHTML = Array.from({ length: totalDays }, (_, index) => {
                     const day = index + 1;
                     const startId = day === 1 ? startSelect.value : document.querySelector(`.tour-day-end[data-day="${day - 1}"]`)?.value;
@@ -2815,6 +2822,36 @@
                 invalidateDisplayedQuote();
                 saveLocalDraft();
             });
+            function orderDestinationsNearest(startPt, items) {
+                const remaining = [...items];
+                const ordered = [];
+                let currentPt = startPt;
+                while (remaining.length) {
+                    let bestIdx = 0;
+                    let bestDist = Infinity;
+                    remaining.forEach((entry, idx) => {
+                        if (!currentPt || !entry.pt) return;
+                        const d = haversineKm(currentPt, entry.pt);
+                        if (d < bestDist) { bestDist = d; bestIdx = idx; }
+                    });
+                    const [picked] = remaining.splice(bestIdx, 1);
+                    ordered.push(picked);
+                    if (picked.pt) currentPt = picked.pt;
+                }
+                return ordered;
+            }
+            function reorderDomStopsForDay(day, startPt) {
+                const checked = [...destinationList.querySelectorAll('.tour-destination:checked')]
+                    .filter(input => Number(document.getElementById(`tour-place-day-${input.id.replace('tour-destination-', '')}`)?.value) === day);
+                if (checked.length < 2) return;
+                const destinations = new Map((catalogue?.destinations || []).map(item => [String(item.id), item]));
+                const ordered = orderDestinationsNearest(startPt, checked.map(input => ({
+                    input,
+                    card: input.closest('.tour-highlight-item'),
+                    pt: tourLocationPoint(destinations.get(String(input.value))?.location),
+                })));
+                ordered.forEach(entry => { if (entry.card) destinationList.appendChild(entry.card); });
+            }
             document.getElementById('tour-optimize-route')?.addEventListener('click', () => {
                 if (!catalogue) return;
                 const destinations = new Map((catalogue.destinations || []).map(item => [String(item.id), item]));
@@ -2844,13 +2881,50 @@
                     const daySel = document.getElementById(`tour-place-day-${input.id.replace('tour-destination-', '')}`);
                     if (daySel) daySel.value = String(bestDay);
                 });
+                dayAnchors.forEach(a => reorderDomStopsForDay(a.day, a.startPt));
                 syncActivityDaysFromDestinations();
                 syncStopDaySelectors();
                 renderSelectedTourMap();
                 renderTourSummaryDetails();
                 invalidateDisplayedQuote();
                 saveLocalDraft();
-                trackTourEvent('tour_route_optimized', { days });
+                trackTourEvent('tour_route_optimized', { days, mode: 'stop_order' });
+            });
+            document.getElementById('tour-optimize-plan')?.addEventListener('click', () => {
+                if (!catalogue) return;
+                const destinations = new Map((catalogue.destinations || []).map(item => [String(item.id), item]));
+                const days = Math.max(1, Number(document.getElementById('tour-days').value) || 1);
+                const startPt = tourLocationPoint(destinations.get(String(startSelect.value))?.location);
+                const checked = [...destinationList.querySelectorAll('.tour-destination:checked')];
+                if (checked.length < 2) return;
+                const ordered = orderDestinationsNearest(startPt, checked.map(input => ({
+                    input,
+                    card: input.closest('.tour-highlight-item'),
+                    id: input.value,
+                    pt: tourLocationPoint(destinations.get(String(input.value))?.location),
+                })));
+                // Reorder cards in DOM so itineraryDays(), map, and chips follow the optimal order
+                ordered.forEach(entry => { if (entry.card) destinationList.appendChild(entry.card); });
+                // Distribute evenly across days and update overnight locations to each day's last stop
+                const perDay = Math.ceil(ordered.length / days);
+                for (let d = 1; d <= days; d++) {
+                    const slice = ordered.slice((d - 1) * perDay, d * perDay);
+                    slice.forEach(entry => {
+                        const daySel = document.getElementById(`tour-place-day-${entry.input.id.replace('tour-destination-', '')}`);
+                        if (daySel) daySel.value = String(d);
+                    });
+                    const endSel = document.getElementById(`tour-day-end-${d}`);
+                    if (endSel && slice.length) {
+                        endSel.value = slice[slice.length - 1].id;
+                    }
+                }
+                syncActivityDaysFromDestinations();
+                syncStopDaySelectors();
+                renderSelectedTourMap();
+                renderTourSummaryDetails();
+                invalidateDisplayedQuote();
+                saveLocalDraft();
+                trackTourEvent('tour_route_optimized', { days, mode: 'entire_plan' });
             });
             document.getElementById('tour-whatsapp-share')?.addEventListener('click', () => {
                 trackTourEvent('tour_whatsapp_share');
