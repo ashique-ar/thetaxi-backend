@@ -821,6 +821,11 @@ class SettingsCategoryService
                     'type' => 'toggle',
                     'description' => 'Let customers request an editable itinerary draft based only on published tour places. Disabled by default; manual planning remains available.',
                 ],
+                'tour_round_trip_default' => [
+                    'label' => 'Default Tours to Round Trip',
+                    'type' => 'toggle',
+                    'description' => 'Pre-select "Round trip" on the public tour planner so the final day ends where the tour starts by default.',
+                ],
                 'show_return_trip_toggle' => [
                     'label' => 'Show Return Trip Toggle',
                     'type' => 'toggle',

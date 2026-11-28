@@ -46,9 +46,10 @@ class TourCatalogueController extends Controller
     public function publishedServices(): JsonResponse
     {
         $aiItineraryEnabled = filter_var(app(WebsiteSettingsService::class)->get('tour_ai_itinerary_enabled', false), FILTER_VALIDATE_BOOL);
+        $roundTripDefault = filter_var(app(WebsiteSettingsService::class)->get('tour_round_trip_default', true), FILTER_VALIDATE_BOOL);
         $tourService = app(WebsiteSettingsService::class)->getTourService(true);
         $services = collect($tourService ? [$tourService] : [])
-            ->map(function (ServiceType $service) use ($aiItineraryEnabled): array {
+            ->map(function (ServiceType $service) use ($aiItineraryEnabled, $roundTripDefault): array {
                 $classes = ServiceVehicleClassSetting::query()
                     ->with('vehicleClass:id,name,description')
                     ->where('service_type_id', $service->id)
@@ -84,6 +85,7 @@ class TourCatalogueController extends Controller
                     'description' => $service->description,
                     'form_fields' => TourFormConfiguration::fields($service),
                     'ai_itinerary_helper_enabled' => $aiItineraryEnabled,
+                    'round_trip_default' => $roundTripDefault,
                     'classes' => $classes,
                     'packages' => $packages,
                 ];

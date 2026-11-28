@@ -744,8 +744,12 @@
                 top: 4.25rem;
                 max-height: calc(100dvh - 5rem);
                 overflow-y: auto;
+                overscroll-behavior: contain;
                 scrollbar-width: thin;
                 padding-bottom: 0.5rem;
+            }
+            .tour-summary-aside > * {
+                flex-shrink: 0;
             }
         }
 
@@ -1054,7 +1058,6 @@
                                                 <div class="col-md-6" id="tour-day-editor-end-wrap">
                                                     <label for="tour-day-editor-end" class="form-label mb-1" id="tour-day-editor-end-label">Day 1 overnight location</label>
                                                     <select id="tour-day-editor-end" class="form-select no-nice tour-location-select"></select>
-                                                    <div id="tour-day-editor-round-trip-note" class="form-text text-primary mt-1" hidden>Round trip is enabled — final day finishes at your start location.</div>
                                                 </div>
                                             </div>
                                         </div>
@@ -1763,6 +1766,7 @@
                 const input = [...destinationList.querySelectorAll(selector)].find(item => item.value === remove.dataset.stopId);
                 if (!input) return;
                 input.checked = false;
+                syncRoundTripEnd();
                 syncStopSearchSelection();
                 syncStopDaySelectors();
                 applyDestinationCategoryFilter();
@@ -1786,6 +1790,7 @@
             destinationList.addEventListener('change', event => {
                 if (!event.target.matches('.tour-destination, .tour-activity')) return;
                 if (activeEditDay && event.target.checked) assignStopToDay(`${event.target.matches('.tour-destination') ? 'destination' : 'activity'}:${event.target.value}`, activeEditDay);
+                syncRoundTripEnd();
                 syncStopSearchSelection();
                 syncStopDaySelectors();
                 applyDestinationCategoryFilter();
@@ -2033,7 +2038,7 @@
                         warningHtml = `<div class="tour-itinerary-warning"><i class="bi bi-signpost-split-fill" aria-hidden="true"></i><span>Includes a ~${metrics.detourKm} km detour off the direct route.</span></div>`;
                     }
                     const routeLine = [startName, endName].join(' → ');
-                    return `<div class="tour-itinerary-day"><div class="d-flex flex-wrap justify-content-between align-items-center gap-2"><div class="d-flex flex-wrap align-items-center gap-2"><span class="tour-day-badge">Day ${day}</span><span class="tour-itinerary-route">${escapeHtml(routeLine)}</span></div><span class="small tour-muted">${day === totalDays ? 'Finish' : `Overnight: ${escapeHtml(endName)}`}</span></div>${metaParts.length ? `<div class="tour-itinerary-meta mt-1"><i class="bi bi-clock" aria-hidden="true"></i><span>${escapeHtml(metaParts.join(' · '))}</span></div>` : ''}${warningHtml}${stops.length ? `<div class="d-flex flex-wrap gap-2 mt-2">${stops.map(stop => `<button type="button" class="tour-stop-chip" data-remove-stop="${stop.kind}" data-stop-id="${escapeHtml(stop.id)}" aria-label="Remove ${escapeHtml(stop.name)} from day ${day}">${escapeHtml(stop.name)} ×</button>`).join('')}</div>` : ''}<div class="mt-2"><button type="button" class="tour-itinerary-actions" data-edit-day="${day}"><i class="bi bi-pencil-square" aria-hidden="true"></i> ${stops.length ? `Edit Day ${day}` : `Add places to Day ${day}`}</button></div></div>`;
+                    return `<div class="tour-itinerary-day"><div class="d-flex flex-wrap justify-content-between align-items-center gap-2"><div class="d-flex flex-wrap align-items-center gap-2"><span class="tour-day-badge">Day ${day}</span><span class="tour-itinerary-route">${escapeHtml(routeLine)}</span></div><div class="d-flex flex-wrap align-items-center gap-3 ms-auto"><span class="small tour-muted">${day === totalDays ? 'Finish' : `Overnight: ${escapeHtml(endName)}`}</span><button type="button" class="tour-itinerary-actions" data-edit-day="${day}"><i class="bi bi-pencil-square" aria-hidden="true"></i> ${stops.length ? `Edit Day ${day}` : `Add places`}</button></div></div>${metaParts.length ? `<div class="tour-itinerary-meta mt-1"><i class="bi bi-clock" aria-hidden="true"></i><span>${escapeHtml(metaParts.join(' · '))}</span></div>` : ''}${warningHtml}${stops.length ? `<div class="d-flex flex-wrap gap-2 mt-2">${stops.map(stop => `<button type="button" class="tour-stop-chip" data-remove-stop="${stop.kind}" data-stop-id="${escapeHtml(stop.id)}" aria-label="Remove ${escapeHtml(stop.name)} from day ${day}">${escapeHtml(stop.name)} ×</button>`).join('')}</div>` : ''}</div>`;
                 }).join('');
             }
             itineraryDaysSummary.addEventListener('click', event => {
@@ -2047,6 +2052,7 @@
                 const input = [...destinationList.querySelectorAll(selector)].find(item => item.value === remove.dataset.stopId);
                 if (!input) return;
                 input.checked = false;
+                syncRoundTripEnd();
                 syncStopSearchSelection();
                 syncStopDaySelectors();
                 renderSelectedTourMap();
@@ -2131,6 +2137,9 @@
                 packageField.classList.toggle('col-md-12', packages.length > 1);
                 packageField.classList.toggle('col-md-6', packages.length <= 1);
                 document.getElementById('tour-ai-helper').hidden = !service?.ai_itinerary_helper_enabled;
+                if (roundTripCheckbox && typeof service?.round_trip_default === 'boolean') {
+                    roundTripCheckbox.checked = service.round_trip_default;
+                }
                 document.getElementById('tour-ai-preview').hidden = true;
                 document.getElementById('tour-ai-status').textContent = '';
                 limitPackageClasses();
@@ -2236,6 +2245,7 @@
                         }
                     }
                 }
+                syncRoundTripEnd();
                 syncStopSearchSelection();
                 limitPackageClasses();
                 results.hidden = true;
@@ -2273,20 +2283,23 @@
                 destroyTourSearch(dayEditorEnd);
                 dayEditorEnd.innerHTML = endSelect.innerHTML;
                 dayEditorEnd.value = endSelect.value;
-                const isFinalDay = day === Number(document.getElementById('tour-days').value);
+                const totalDays = Math.max(1, Number(document.getElementById('tour-days').value) || 1);
+                const isFinalDay = day === totalDays;
                 const lockRoundTrip = isFinalDay && Boolean(roundTripCheckbox?.checked);
                 document.getElementById('tour-day-editor-title').textContent = `Edit Day ${day}`;
                 document.getElementById('tour-day-editor-end-label').textContent = `Day ${day} ${isFinalDay ? 'finish' : 'overnight'} location`;
                 document.getElementById('tour-day-editor-start-wrap').hidden = day !== 1;
-                const rtNote = document.getElementById('tour-day-editor-round-trip-note');
-                if (rtNote) rtNote.hidden = !lockRoundTrip;
                 dayEditorEnd.disabled = lockRoundTrip;
-                if (lockRoundTrip && startSelect.value) dayEditorEnd.value = startSelect.value;
+                if (lockRoundTrip && startSelect.value) {
+                    dayEditorEnd.value = startSelect.value;
+                    const startName = startSelect.selectedOptions[0]?.textContent?.trim();
+                    if (startName && dayEditorEnd.options[0]) dayEditorEnd.options[0].textContent = startName;
+                }
                 const doneBtn = document.getElementById('tour-day-editor-done');
                 if (doneBtn) doneBtn.textContent = `Save Day ${day}`;
                 if (stopTextSearch) stopTextSearch.value = '';
                 applyDestinationCategoryFilter();
-                enhanceTourSearch(dayEditorEnd, 'Search listed places');
+                if (!lockRoundTrip) enhanceTourSearch(dayEditorEnd, 'Search listed places');
                 trackTourEvent('tour_day_editor_open', { day });
                 bootstrap.Modal.getOrCreateInstance(dayEditor).show();
             }
@@ -2347,6 +2360,7 @@
                     </div></div>`;
                 }).join('');
                 renderDestinationCategoryFilters(destinations);
+                syncRoundTripEnd();
                 syncStopSearchSelection();
                 syncStopDaySelectors();
                 renderDaySettings();
@@ -2775,6 +2789,7 @@
                     const sel = document.getElementById(`tour-day-end-${idx + 1}`);
                     if (sel && endId) sel.value = endId;
                 });
+                syncRoundTripEnd();
                 destinationList.querySelectorAll('.tour-destination, .tour-activity').forEach(i => { i.checked = false; });
                 (plan.destinations || []).forEach(entry => {
                     const input = [...destinationList.querySelectorAll('.tour-destination')].find(i => i.value === String(entry.id));
@@ -2790,6 +2805,7 @@
                 });
                 if (plan.vehicleClass) classSelect.value = plan.vehicleClass;
                 renderClassCards();
+                syncRoundTripEnd();
                 syncStopSearchSelection();
                 syncStopDaySelectors();
                 renderSelectedTourMap();
@@ -2876,6 +2892,7 @@
                         if (daySel) daySel.value = String(day);
                     }
                 });
+                syncRoundTripEnd();
                 syncStopSearchSelection();
                 syncStopDaySelectors();
                 renderSelectedTourMap();
