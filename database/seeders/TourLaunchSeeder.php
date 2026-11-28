@@ -220,7 +220,7 @@ class TourLaunchSeeder extends Seeder
                 $activityData = [
                     'tour_destination_id' => $destinationId, 'predefined_location_id' => $activityLocationId,
                     'code' => $activityCode, 'name' => $activity,
-                    'description' => 'Optional visit stop. Tickets, fees and reservations are not included.',
+                    'description' => null,
                     'visit_duration_minutes' => $minutes, 'sort_order' => $index, 'is_published' => true,
                     'updated_user_id' => $actorId, 'updated_at' => now(),
                 ];

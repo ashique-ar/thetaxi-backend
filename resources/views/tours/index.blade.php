@@ -345,7 +345,8 @@
         }
 
         .tour-option:has(input.tour-class-choice:checked),
-        .tour-option:has(input.tour-destination:checked) {
+        .tour-option:has(input.tour-destination:checked),
+        .tour-option:has(input.tour-activity:checked) {
             border: 2px solid var(--tour-primary);
             background: var(--tour-primary-soft);
             box-shadow: 0 4px 14px -2px var(--tour-primary-ring);
@@ -516,7 +517,6 @@
         .tour-summary-term + .tour-summary-term { margin-top: 0.65rem; }
         .tour-summary-pay { width: 100%; }
         .tour-summary-request { width: 100%; }
-        .tour-page .tour-summary-aside { top: 7rem !important; z-index: 10; }
 
         .tour-badge-guaranteed {
             display: inline-flex;
@@ -847,13 +847,14 @@
                         <div class="d-flex flex-column flex-md-row justify-content-between align-items-md-end gap-2 mb-3">
                             <div>
                                 <h3 class="h6 fw-bold mb-1">Explore Sri Lanka highlights</h3>
-                                <p class="small tour-muted mb-0">Browse by category, then add places to your day plan.</p>
+                                <p class="small tour-muted mb-0">Start with a few suggestions, or search for any place above.</p>
                             </div>
                             <span id="tour-highlight-count" class="small tour-muted"></span>
                         </div>
                         <div id="tour-category-filters" class="d-flex flex-wrap gap-2 mb-3" role="group" aria-label="Filter highlights by category"></div>
 
                         <div id="tour-destinations" class="row g-3"></div>
+                        <p id="tour-destination-empty" class="small tour-muted mt-2 mb-0" hidden></p>
 
                         <div class="tour-subpanel mt-4">
                             <div class="d-flex flex-wrap justify-content-between align-items-start gap-2 mb-2">
@@ -972,8 +973,8 @@
                     </div>
                 </div>
 
-                <!-- RIGHT COLUMN: Sticky Live Quote & Assistance (4 Cols) -->
-                <aside class="col-lg-4 sticky-lg-top tour-summary-aside d-flex flex-column gap-4">
+                <!-- RIGHT COLUMN: Tour Summary -->
+                <aside class="col-lg-4 tour-summary-aside d-flex flex-column gap-4">
                     <div class="tour-sidebar-card p-3">
                         <header class="tour-summary-head">
                             <div class="d-flex align-items-center justify-content-between gap-2">
@@ -1115,7 +1116,7 @@
             let mapRouteSelection = 'suggested';
             let savedItinerary = null;
             let selectedTemplateDays = [];
-            let activeDestinationCategory = 'all';
+            let activeDestinationCategory = 'suggested';
             let preferredRouteChoice = 'suggested';
             let currentTourQuote = null;
             let currentRouteOptions = null;
@@ -1423,8 +1424,11 @@
             };
             window.jQuery(stopSearchSelect).on('change', () => {
                 const selected = new Set(window.jQuery(stopSearchSelect).val() || []);
+                if (selected.size) activeDestinationCategory = 'selected';
                 destinationList.querySelectorAll('.tour-destination').forEach(input => { input.checked = selected.has(`destination:${input.value}`); });
                 destinationList.querySelectorAll('.tour-activity').forEach(input => { input.checked = selected.has(`activity:${input.value}`); });
+                syncDestinationActivityVisibility();
+                applyDestinationCategoryFilter();
                 syncStopDaySelectors();
                 invalidateDisplayedQuote();
                 renderSelectedTourMap();
@@ -1433,9 +1437,19 @@
             });
             destinationList.addEventListener('change', event => {
                 if (!event.target.matches('.tour-destination, .tour-activity')) return;
+                syncDestinationActivityVisibility();
+                applyDestinationCategoryFilter();
                 syncStopSearchSelection();
                 renderSelectedTourMap();
             });
+            function syncDestinationActivityVisibility() {
+                destinationList.querySelectorAll('.tour-highlight-item').forEach(card => {
+                    const placeSelected = card.querySelector('.tour-destination')?.checked;
+                    const activitySelected = [...card.querySelectorAll('.tour-activity')].some(input => input.checked);
+                    const activities = card.querySelector('.tour-destination-activities');
+                    if (activities) activities.hidden = !placeSelected && !activitySelected;
+                });
+            }
             function syncStopSearchSelection() {
                 const selected = [
                     ...[...destinationList.querySelectorAll('.tour-destination:checked')].map(input => `destination:${input.value}`),
@@ -1449,8 +1463,8 @@
                     const category = item.category || 'Other';
                     counts.set(category, (counts.get(category) || 0) + 1);
                 });
-                if (!counts.has(activeDestinationCategory)) activeDestinationCategory = 'all';
-                categoryFilters.innerHTML = `<button type="button" class="btn btn-sm btn-outline-secondary tour-category-chip ${activeDestinationCategory === 'all' ? 'active' : ''}" data-category-filter="all">All highlights (${destinations.length})</button>${[...counts].map(([category, count]) => `<button type="button" class="btn btn-sm btn-outline-secondary tour-category-chip ${activeDestinationCategory === category ? 'active' : ''}" data-category-filter="${escapeHtml(category)}">${escapeHtml(category)} (${count})</button>`).join('')}`;
+                if (!['suggested', 'selected', 'all'].includes(activeDestinationCategory) && !counts.has(activeDestinationCategory)) activeDestinationCategory = 'suggested';
+                categoryFilters.innerHTML = `<button type="button" class="btn btn-sm btn-outline-secondary tour-category-chip ${activeDestinationCategory === 'suggested' ? 'active' : ''}" data-category-filter="suggested">Suggested</button><button type="button" class="btn btn-sm btn-outline-secondary tour-category-chip ${activeDestinationCategory === 'selected' ? 'active' : ''}" data-category-filter="selected">Selected (0)</button><button type="button" class="btn btn-sm btn-outline-secondary tour-category-chip ${activeDestinationCategory === 'all' ? 'active' : ''}" data-category-filter="all">All places (${destinations.length})</button>${[...counts].map(([category, count]) => `<button type="button" class="btn btn-sm btn-outline-secondary tour-category-chip ${activeDestinationCategory === category ? 'active' : ''}" data-category-filter="${escapeHtml(category)}">${escapeHtml(category)} (${count})</button>`).join('')}`;
                 categoryFilters.querySelectorAll('[data-category-filter]').forEach(button => button.addEventListener('click', () => {
                     activeDestinationCategory = button.dataset.categoryFilter;
                     categoryFilters.querySelectorAll('[data-category-filter]').forEach(option => option.classList.toggle('active', option === button));
@@ -1460,13 +1474,36 @@
             }
             function applyDestinationCategoryFilter() {
                 const cards = [...destinationList.querySelectorAll('.tour-highlight-item')];
+                const selectedIds = new Set([...destinationList.querySelectorAll('.tour-destination:checked')].map(input => input.value));
+                destinationList.querySelectorAll('.tour-activity:checked').forEach(input => {
+                    const parent = input.closest('.tour-highlight-item')?.querySelector('.tour-destination');
+                    if (parent) selectedIds.add(parent.value);
+                });
+                const selectedButton = categoryFilters.querySelector('[data-category-filter="selected"]');
+                if (selectedButton) selectedButton.textContent = `Selected (${selectedIds.size})`;
                 let visible = 0;
-                cards.forEach(card => {
-                    const show = activeDestinationCategory === 'all' || card.dataset.category === activeDestinationCategory;
+                cards.forEach((card, index) => {
+                    const placeId = card.querySelector('.tour-destination')?.value;
+                    const show = activeDestinationCategory === 'all'
+                        || (activeDestinationCategory === 'suggested' && index < 6)
+                        || (activeDestinationCategory === 'selected' && selectedIds.has(placeId))
+                        || (activeDestinationCategory !== 'suggested' && activeDestinationCategory !== 'selected' && card.dataset.category === activeDestinationCategory);
                     card.hidden = !show;
                     if (show) visible++;
                 });
-                highlightCount.textContent = `${visible} ${visible === 1 ? 'place' : 'places'}`;
+                categoryFilters.querySelectorAll('[data-category-filter]').forEach(button => button.classList.toggle('active', button.dataset.categoryFilter === activeDestinationCategory));
+                const empty = document.getElementById('tour-destination-empty');
+                if (activeDestinationCategory === 'suggested') {
+                    highlightCount.textContent = `Showing ${visible} of ${cards.length} places`;
+                    empty.hidden = true;
+                } else if (activeDestinationCategory === 'selected') {
+                    highlightCount.textContent = `${visible} selected ${visible === 1 ? 'place' : 'places'}`;
+                    empty.textContent = 'No places selected yet. Choose a suggestion or search for a place above.';
+                    empty.hidden = visible > 0;
+                } else {
+                    highlightCount.textContent = `${visible} ${visible === 1 ? 'place' : 'places'}`;
+                    empty.hidden = true;
+                }
             }
             function renderTourItinerarySummary() {
                 if (!catalogue || !itineraryDaysSummary) return;
@@ -1531,11 +1568,14 @@
                 destinationList.querySelectorAll('.tour-destination').forEach(input => {
                     const select = document.getElementById(`tour-place-day-${input.id.replace('tour-destination-', '')}`);
                     const destination = catalogue?.destinations?.find(item => String(item.id) === String(input.value));
-                    if (select && destination) update(select, minimumVisitDay(destination.id, destination.location?.id), input.checked);
+                    const hasSelectedActivity = [...input.closest('.tour-highlight-item').querySelectorAll('.tour-activity')].some(activity => activity.checked);
+                    if (select && destination) update(select, minimumVisitDay(destination.id, destination.location?.id), input.checked || hasSelectedActivity);
                 });
-                destinationList.querySelectorAll('.tour-activity').forEach(input => {
-                    const select = document.querySelector(`.tour-activity-day[data-activity="${CSS.escape(input.value)}"]`);
-                    if (select) update(select, minimumVisitDay(select.dataset.destinationId, select.dataset.locationId), input.checked);
+                syncActivityDaysFromDestinations();
+            }
+            function syncActivityDaysFromDestinations() {
+                destinationList.querySelectorAll('.tour-activity-day').forEach(input => {
+                    input.value = document.getElementById(`tour-place-day-${input.dataset.destinationIndex}`)?.value || '';
                 });
             }
             function syncStopDaySelectors() {
@@ -1544,18 +1584,13 @@
                     const daySelect = document.getElementById(`tour-place-day-${input.id.replace('tour-destination-', '')}`);
                     const control = daySelect?.closest('.tour-stop-day-control');
                     if (!daySelect || !control) return;
-                    control.hidden = !input.checked;
-                    daySelect.disabled = !input.checked;
-                    if (!input.checked) daySelect.value = '';
+                    const hasSelectedActivity = [...input.closest('.tour-highlight-item').querySelectorAll('.tour-activity')].some(activity => activity.checked);
+                    const selectedForDay = input.checked || hasSelectedActivity;
+                    control.hidden = !selectedForDay;
+                    daySelect.disabled = !selectedForDay;
+                    if (!selectedForDay) daySelect.value = '';
                 });
-                destinationList.querySelectorAll('.tour-activity').forEach(input => {
-                    const daySelect = document.querySelector(`.tour-activity-day[data-activity="${CSS.escape(input.value)}"]`);
-                    const control = daySelect?.closest('.tour-stop-day-control');
-                    if (!daySelect || !control) return;
-                    control.hidden = !input.checked;
-                    daySelect.disabled = !input.checked;
-                    if (!input.checked) daySelect.value = '';
-                });
+                syncActivityDaysFromDestinations();
                 renderTourItinerarySummary();
             }
             async function request(url, options = {}) {
@@ -1568,6 +1603,9 @@
                 return body.data;
             }
             function currentService() { return selectedService; }
+            function renderTourActivity(activity, destinationIndex, destinationId, selected, visitDay) {
+                return `<div class="mb-2 pb-2 border-bottom border-light"><label class="form-check small mb-1" style="cursor: pointer;"><input class="form-check-input tour-activity" type="checkbox" value="${escapeHtml(activity.id)}" id="tour-activity-${destinationIndex}-${escapeHtml(activity.id)}" ${selected ? 'checked' : ''}><span class="form-check-label"><strong>${escapeHtml(activity.name)}</strong>${activity.visit_duration_minutes ? ` <span class="tour-muted">(${escapeHtml(activity.visit_duration_minutes)} min)</span>` : ''}</span></label><input type="hidden" class="tour-activity-day" data-activity="${escapeHtml(activity.id)}" data-destination-id="${escapeHtml(destinationId)}" data-destination-index="${destinationIndex}" value="${escapeHtml(visitDay || '')}"></div>`;
+            }
             function fillOptions() {
                 const service = currentService();
                 const packages = service?.packages || [];
@@ -1639,10 +1677,6 @@
                     const current = Number(select.value);
                     select.innerHTML = `<option value="">Choose a day</option>${Array.from({ length: count }, (_, day) => `<option value="${day + 1}" ${current === day + 1 ? 'selected' : ''}>Day ${day + 1}</option>`).join('')}`;
                 });
-                document.querySelectorAll('.tour-activity-day').forEach(select => {
-                    const current = Number(select.value);
-                    select.innerHTML = `<option value="">Choose a day</option>${Array.from({ length: count }, (_, day) => `<option value="${day + 1}" ${current === day + 1 ? 'selected' : ''}>Day ${day + 1}</option>`).join('')}`;
-                });
                 const firstDay = [...days].sort((a, b) => a.day_number - b.day_number)[0];
                 startSelect.value = firstDay.start_destination_id;
                 renderDaySettings();
@@ -1663,7 +1697,8 @@
                             }
                             if (stop.kind === 'activity') {
                                 const activityDay = document.querySelector(`.tour-activity-day[data-activity="${CSS.escape(stop.catalogue_id)}"]`);
-                                if (activityDay) activityDay.value = String(day.day_number);
+                                const placeDay = activityDay && document.getElementById(`tour-place-day-${activityDay.dataset.destinationIndex}`);
+                                if (placeDay) placeDay.value = String(day.day_number);
                             }
                         }
                     }
@@ -1696,7 +1731,6 @@
                 const previousActivities = new Set(sameService ? [...document.querySelectorAll('.tour-activity:checked')].map(box => box.value) : []);
                 const previousStops = [...previousDestinations].map(id => `destination:${id}`).concat([...previousActivities].map(id => `activity:${id}`));
                 const previousDays = new Map(sameService ? [...document.querySelectorAll('.tour-place-day')].map(select => [select.id.replace('tour-place-day-', ''), select.value]) : []);
-                const previousActivityDays = new Map(sameService ? [...document.querySelectorAll('.tour-activity-day')].map(select => [select.dataset.activity, select.value]) : []);
                 destroyTourSearch(startSelect);
                 destroyTourSearch(stopSearchSelect);
                 daySettings.querySelectorAll('.tour-day-end').forEach(destroyTourSearch);
@@ -1716,10 +1750,11 @@
                     <div class="mb-2"><span class="tour-highlight-category">${escapeHtml(item.category || 'Explore')}</span></div>
                     <label class="form-check-label d-flex gap-2 align-items-start" style="cursor: pointer;"><input class="form-check-input mt-1 tour-destination" type="checkbox" value="${escapeHtml(item.id)}" id="tour-destination-${index}" ${previousDestinations.has(item.id) ? 'checked' : ''}><span><strong>Visit ${escapeHtml(item.name)}</strong><br><span class="small tour-muted">${escapeHtml(item.description || item.location?.city || item.location?.address || '')}</span></span></label>
                     <div class="mt-2 tour-stop-day-control" hidden><label class="form-label mb-1" for="tour-place-day-${index}">Visit on</label><select class="form-select form-select-sm tour-place-day no-nice" id="tour-place-day-${index}" required disabled><option value="">Choose a day</option>${Array.from({ length: Number(document.getElementById('tour-days').value) || 1 }, (_, day) => `<option value="${day + 1}" ${Number(previousDays.get(String(index))) === day + 1 ? 'selected' : ''}>Day ${day + 1}</option>`).join('')}</select></div>
-                    ${(item.activities || []).length ? `<div class="border-top mt-3 pt-3"><p class="small fw-bold text-uppercase tour-muted mb-2" style="letter-spacing: 0.04em;">Activities at this place</p>${item.activities.map((activity, activityIndex) => `<div class="mb-2 pb-2 border-bottom border-light"><label class="form-check small mb-1" style="cursor: pointer;"><input class="form-check-input tour-activity" type="checkbox" value="${escapeHtml(activity.id)}" id="tour-activity-${index}-${activityIndex}" ${previousActivities.has(activity.id) ? 'checked' : ''}><span class="form-check-label"><strong>${escapeHtml(activity.name)}</strong>${activity.visit_duration_minutes ? ` <span class="tour-muted">(${escapeHtml(activity.visit_duration_minutes)} min)</span>` : ''}<br><span class="tour-muted">Route visit: ${escapeHtml(activity.location?.name || activity.location?.address || 'mapped entrance')}</span>${activity.description ? `<br><span class="tour-muted">${escapeHtml(activity.description)}</span>` : ''}</span></label><div class="tour-stop-day-control ms-4 mt-2" hidden><label class="small tour-muted d-block mb-1" for="tour-activity-day-${index}-${activityIndex}">Visit on</label><select class="form-select form-select-sm tour-activity-day no-nice" style="width: 100%;" id="tour-activity-day-${index}-${activityIndex}" data-activity="${escapeHtml(activity.id)}" data-destination-id="${escapeHtml(item.id)}" data-location-id="${escapeHtml(activity.location?.id || '')}" required disabled><option value="">Choose a day</option>${Array.from({ length: Number(document.getElementById('tour-days').value) || 1 }, (_, day) => `<option value="${day + 1}" ${Number(previousActivityDays.get(activity.id) ?? previousDays.get(String(index))) === day + 1 ? 'selected' : ''}>Day ${day + 1}</option>`).join('')}</select></div></div>`).join('')}</div>` : ''}
+                    ${(item.activities || []).length ? `<div class="border-top mt-3 pt-3 tour-destination-activities" ${previousDestinations.has(item.id) || item.activities.some(activity => previousActivities.has(activity.id)) ? '' : 'hidden'}><p class="small fw-bold text-uppercase tour-muted mb-2" style="letter-spacing: 0.04em;">Activities at this place</p>${item.activities.map(activity => renderTourActivity(activity, index, item.id, previousActivities.has(activity.id), previousDays.get(String(index)))).join('')}</div>` : ''}
                 </div></div>`).join('');
                 renderDestinationCategoryFilters(destinations);
                 window.jQuery(stopSearchSelect).val(previousStops).trigger('change');
+                syncDestinationActivityVisibility();
                 syncStopDaySelectors();
                 renderDaySettings();
             }
@@ -1748,8 +1783,9 @@
                             }
                             if (activity) {
                                 activity.checked = true;
-                                const daySelect = document.querySelector(`.tour-activity-day[data-activity="${CSS.escape(activity.value)}"]`);
-                                if (daySelect) daySelect.value = String(day.day_number);
+                                const activityDay = document.querySelector(`.tour-activity-day[data-activity="${CSS.escape(activity.value)}"]`);
+                                const placeDay = activityDay && document.getElementById(`tour-place-day-${activityDay.dataset.destinationIndex}`);
+                                if (placeDay) placeDay.value = String(day.day_number);
                             }
                         }
                     }
@@ -1911,6 +1947,7 @@
                 if (results.contains(input) || input.closest('#tour-ai-helper') || input.type === 'search') return;
                 if (event.type === 'input' && !isPricingField(input)) return;
                 if (event.type === 'change' && input.matches('.tour-day-end')) refreshVisitDayOptions();
+                if (input.matches('.tour-place-day')) syncActivityDaysFromDestinations();
                 if (input.closest('#tour-step-2')) {
                     renderSelectedTourMap();
                     renderTourItinerarySummary();
@@ -1934,10 +1971,6 @@
                 clearAiSuggestion();
                 const count = Math.max(1, Math.min(60, Number(document.getElementById('tour-days').value) || 1));
                 document.querySelectorAll('.tour-place-day').forEach(select => {
-                    const selected = Number(select.value);
-                    select.innerHTML = `<option value="">Choose a day</option>${Array.from({ length: count }, (_, day) => `<option value="${day + 1}" ${selected === day + 1 ? 'selected' : ''}>Day ${day + 1}</option>`).join('')}`;
-                });
-                document.querySelectorAll('.tour-activity-day').forEach(select => {
                     const selected = Number(select.value);
                     select.innerHTML = `<option value="">Choose a day</option>${Array.from({ length: count }, (_, day) => `<option value="${day + 1}" ${selected === day + 1 ? 'selected' : ''}>Day ${day + 1}</option>`).join('')}`;
                 });
