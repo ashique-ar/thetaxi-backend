@@ -115,16 +115,27 @@
             background: var(--tour-surface);
             border-bottom: 1px solid var(--tour-border);
             box-shadow: 0 1px 3px rgba(15, 23, 42, 0.04);
+            position: sticky;
+            top: 0;
+            z-index: 1020;
         }
 
         .tour-nav-pills {
-            display: inline-flex;
-            flex-wrap: wrap;
+            display: flex;
+            flex-wrap: nowrap;
+            overflow-x: auto;
+            -webkit-overflow-scrolling: touch;
+            scrollbar-width: none;
             gap: 0.25rem;
             padding: 0.25rem;
             background: #f1f5f9;
             border: 1px solid var(--tour-border);
             border-radius: 0.625rem;
+            max-width: 100%;
+        }
+
+        .tour-nav-pills::-webkit-scrollbar {
+            display: none;
         }
 
         .tour-nav-pill {
@@ -137,6 +148,8 @@
             font-weight: 600;
             color: var(--tour-muted);
             text-decoration: none;
+            white-space: nowrap;
+            flex-shrink: 0;
             transition: background-color 0.15s ease, color 0.15s ease, box-shadow 0.15s ease;
         }
 
@@ -295,12 +308,69 @@
         }
 
         #tour-route-map {
-            height: 390px;
-            min-height: 300px;
+            height: 410px;
+            min-height: 240px;
             border: 1px solid #d7e0ea;
             border-radius: 12px;
             background: #f3f6f8;
             z-index: 0;
+        }
+
+        @media (max-width: 991.98px) {
+            #tour-route-map {
+                height: 260px;
+            }
+        }
+
+        /* Stepper +/- Controls for Mobile-Friendly Counters */
+        .tour-stepper {
+            display: flex;
+            align-items: stretch;
+            border: 1px solid #cbd5e1;
+            border-radius: 0.5rem;
+            background: #ffffff;
+            overflow: hidden;
+            min-height: 44px;
+        }
+
+        .tour-stepper-btn {
+            width: 42px;
+            min-height: 44px;
+            border: 0;
+            background: #f8fafc;
+            color: var(--tour-ink);
+            font-size: 1.125rem;
+            font-weight: 700;
+            line-height: 1;
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+            cursor: pointer;
+            transition: background-color 0.12s ease, color 0.12s ease;
+            flex-shrink: 0;
+        }
+
+        .tour-stepper-btn:hover {
+            background: var(--tour-primary-soft);
+            color: var(--tour-primary);
+        }
+
+        .tour-stepper .form-control {
+            border: 0 !important;
+            border-radius: 0 !important;
+            text-align: center;
+            font-weight: 700;
+            padding-left: 0.25rem;
+            padding-right: 0.25rem;
+            min-width: 0;
+            box-shadow: none !important;
+            -moz-appearance: textfield;
+        }
+
+        .tour-stepper .form-control::-webkit-outer-spin-button,
+        .tour-stepper .form-control::-webkit-inner-spin-button {
+            -webkit-appearance: none;
+            margin: 0;
         }
 
         .tour-subpanel-title {
@@ -328,18 +398,38 @@
         .tour-class-estimate strong { display: block; color: var(--tour-primary); font-size: 0.95rem; }
         .tour-class-estimate small { display: block; font-size: 0.65rem; }
         .tour-page .iti { width: 100%; }
-        .tour-itinerary-day { border: 1px solid #e2e8f0; border-radius: 0.65rem; padding: 0.65rem 0.75rem; background: #fff; }
-        .tour-itinerary-day + .tour-itinerary-day { margin-top: 0.5rem; }
-        .tour-itinerary-route { font-size: 0.78rem; font-weight: 600; color: #14213d; }
-        .tour-itinerary-actions { color: var(--tour-primary); font-size: 0.75rem; font-weight: 600; background: none; border: 0; padding: 0.25rem 0; }
-        .tour-itinerary-actions:hover { text-decoration: underline; }
+        .tour-itinerary-day { border: 1px solid #e2e8f0; border-radius: 0.75rem; padding: 0.85rem 0.95rem; background: #fff; transition: border-color 0.15s ease; }
+        .tour-itinerary-day:hover { border-color: #cbd5e1; }
+        .tour-itinerary-day + .tour-itinerary-day { margin-top: 0.65rem; }
+        .tour-itinerary-route { font-size: 0.85rem; font-weight: 700; color: #14213d; }
+        .tour-itinerary-meta { display: inline-flex; flex-wrap: wrap; align-items: center; gap: 0.4rem; font-size: 0.72rem; color: var(--tour-muted); }
+        .tour-itinerary-warning { display: inline-flex; align-items: center; gap: 0.3rem; font-size: 0.72rem; font-weight: 600; color: #92400e; background: #fef3c7; border: 1px solid #fde68a; border-radius: 0.4rem; padding: 0.22rem 0.5rem; margin-top: 0.45rem; }
+        .tour-itinerary-actions { color: var(--tour-primary); font-size: 0.76rem; font-weight: 600; background: var(--tour-primary-soft); border: 1px solid var(--tour-primary-border); border-radius: 999px; padding: 0.3rem 0.75rem; min-height: 34px; display: inline-flex; align-items: center; gap: 0.3rem; transition: background-color 0.15s ease, color 0.15s ease; }
+        .tour-itinerary-actions:hover { background: var(--tour-primary); color: #fff; text-decoration: none; }
         .tour-itinerary-endpoint { font-size: 0.75rem; white-space: nowrap; }
-        #tour-day-editor .modal-content { border: 0; border-radius: 0.9rem; }
-        #tour-day-editor .modal-body { min-height: 18rem; }
-        .tour-stop-chip { border: 0; border-radius: 999px; padding: 0.22rem 0.55rem; background: #eef8f4; color: #155f4b; font-size: 0.7rem; }
-        .tour-category-chip { border-radius: 999px; white-space: nowrap; }
+
+        /* Edit Day Modal Redesign */
+        #tour-day-editor .modal-content { border: 0; border-radius: 0.95rem; overflow: hidden; }
+        #tour-day-editor .modal-header { padding: 0.9rem 1.25rem; border-bottom: 1px solid var(--tour-border); background: #fff; }
+        #tour-day-editor .modal-body { padding: 1rem 1.25rem; background: #f8fafc; }
+        #tour-day-editor .modal-footer { padding: 0.75rem 1.25rem; padding-bottom: calc(0.75rem + env(safe-area-inset-bottom)); border-top: 1px solid var(--tour-border); background: #fff; }
+        @media (max-width: 767.98px) {
+            #tour-day-editor .modal-dialog { margin: 0; max-width: 100%; height: 100dvh; }
+            #tour-day-editor .modal-content { height: 100dvh; max-height: 100dvh; border-radius: 0; }
+            #tour-day-editor .modal-header { padding: 0.75rem 1rem; }
+            #tour-day-editor .modal-body { padding: 0.75rem 1rem; }
+            #tour-day-editor .modal-footer { padding: 0.75rem 1rem calc(0.75rem + env(safe-area-inset-bottom)); }
+        }
+        .tour-editor-top-panel { background: #fff; border: 1px solid var(--tour-border); border-radius: 0.75rem; padding: 0.75rem 0.9rem; }
+        .tour-category-scroll { display: flex; flex-wrap: nowrap; overflow-x: auto; -webkit-overflow-scrolling: touch; scrollbar-width: none; gap: 0.45rem; padding-bottom: 0.2rem; }
+        .tour-category-scroll::-webkit-scrollbar { display: none; }
+        .tour-stop-chip { border: 0; border-radius: 999px; padding: 0.25rem 0.6rem; background: #eef8f4; color: #155f4b; font-size: 0.72rem; font-weight: 600; display: inline-flex; align-items: center; gap: 0.3rem; }
+        .tour-stop-chip:hover { background: #dcfce7; }
+        .tour-category-chip { border-radius: 999px; white-space: nowrap; flex-shrink: 0; min-height: 34px; font-size: 0.78rem; font-weight: 600; }
         .tour-category-chip.active { background: #14213d; border-color: #14213d; color: #fff; }
         .tour-highlight-category { display: inline-block; font-size: 0.62rem; font-weight: 700; letter-spacing: 0.04em; text-transform: uppercase; color: var(--tour-primary); background: var(--tour-primary-soft); border-radius: 999px; padding: 0.18rem 0.45rem; }
+        .tour-other-day-badge { display: inline-block; font-size: 0.65rem; font-weight: 700; color: #0369a1; background: #e0f2fe; border-radius: 999px; padding: 0.18rem 0.5rem; }
+        .tour-place-desc { display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; }
 
         label.tour-option {
             cursor: pointer;
@@ -635,13 +725,25 @@
             color: var(--tour-muted);
         }
 
+        @media (min-width: 992px) {
+            .tour-summary-aside {
+                position: sticky;
+                top: 4.25rem;
+            }
+        }
+
         .tour-mobile-summary {
             z-index: 1030;
+            padding-bottom: calc(0.5rem + env(safe-area-inset-bottom)) !important;
         }
 
         @media (max-width: 991.98px) {
             .tour-page {
-                padding-bottom: 5.5rem;
+                padding-bottom: 6rem;
+            }
+            body:has(.tour-mobile-summary) .whatsapp-float,
+            body:has(.tour-mobile-summary) .call-float {
+                bottom: 5.25rem !important;
             }
         }
 
@@ -720,6 +822,16 @@
 
         <main class="container py-4 py-lg-5">
             <div id="tour-error" class="alert alert-danger mb-4" role="alert" hidden></div>
+            <div id="tour-restore-banner" class="alert alert-light border d-flex flex-wrap align-items-center justify-content-between gap-2 mb-4 shadow-sm" hidden>
+                <div class="small">
+                    <strong class="text-dark"><i class="bi bi-clock-history me-1" aria-hidden="true"></i>Previous trip plan found</strong>
+                    <span class="tour-muted ms-1" id="tour-restore-meta"></span>
+                </div>
+                <div class="d-flex align-items-center gap-2">
+                    <button type="button" id="tour-restore-apply" class="btn btn-sm tour-btn-primary">Restore draft</button>
+                    <button type="button" id="tour-restore-dismiss" class="btn btn-sm btn-outline-secondary">Dismiss</button>
+                </div>
+            </div>
 
             <div id="tour-loading" class="tour-card p-5 text-center">
                 <div class="spinner-border text-secondary mb-3" role="status" aria-hidden="true"></div>
@@ -767,22 +879,53 @@
                             <div class="row g-3">
                                 <div class="col-6 col-md-3">
                                     <label for="tour-adults" class="form-label">Adults *</label>
-                                    <input id="tour-adults" type="number" class="form-control" min="0" max="100" value="2" required>
+                                    <div class="tour-stepper">
+                                        <button type="button" class="tour-stepper-btn" data-step-target="tour-adults" data-step-delta="-1" aria-label="Decrease adults">−</button>
+                                        <input id="tour-adults" type="number" class="form-control" min="0" max="100" value="2" required>
+                                        <button type="button" class="tour-stepper-btn" data-step-target="tour-adults" data-step-delta="1" aria-label="Increase adults">+</button>
+                                    </div>
                                 </div>
                                 <div class="col-6 col-md-3">
                                     <label for="tour-children" class="form-label">Children *</label>
-                                    <input id="tour-children" type="number" class="form-control" min="0" max="100" value="0" required>
+                                    <div class="tour-stepper">
+                                        <button type="button" class="tour-stepper-btn" data-step-target="tour-children" data-step-delta="-1" aria-label="Decrease children">−</button>
+                                        <input id="tour-children" type="number" class="form-control" min="0" max="100" value="0" required>
+                                        <button type="button" class="tour-stepper-btn" data-step-target="tour-children" data-step-delta="1" aria-label="Increase children">+</button>
+                                    </div>
                                 </div>
                                 <div class="col-6 col-md-3">
                                     <label for="tour-child-seats" class="form-label">Child seats</label>
-                                    <input id="tour-child-seats" type="number" class="form-control" min="0" max="100" value="0" required>
+                                    <div class="tour-stepper">
+                                        <button type="button" class="tour-stepper-btn" data-step-target="tour-child-seats" data-step-delta="-1" aria-label="Decrease child seats">−</button>
+                                        <input id="tour-child-seats" type="number" class="form-control" min="0" max="100" value="0" required>
+                                        <button type="button" class="tour-stepper-btn" data-step-target="tour-child-seats" data-step-delta="1" aria-label="Increase child seats">+</button>
+                                    </div>
                                 </div>
                                 <div class="col-6 col-md-3">
                                     <label for="tour-luggage" class="form-label">Luggage *</label>
-                                    <input id="tour-luggage" type="number" class="form-control" min="0" max="100" value="0" required>
+                                    <div class="tour-stepper">
+                                        <button type="button" class="tour-stepper-btn" data-step-target="tour-luggage" data-step-delta="-1" aria-label="Decrease luggage">−</button>
+                                        <input id="tour-luggage" type="number" class="form-control" min="0" max="100" value="0" required>
+                                        <button type="button" class="tour-stepper-btn" data-step-target="tour-luggage" data-step-delta="1" aria-label="Increase luggage">+</button>
+                                    </div>
                                 </div>
                             </div>
+                            <div class="d-flex flex-wrap gap-3 mt-3 pt-2 border-top small">
+                                <label class="form-check mb-0" style="cursor: pointer;">
+                                    <input class="form-check-input tour-gear-toggle" type="checkbox" id="tour-gear-airport" value="Airport pickup">
+                                    <span class="form-check-label">Airport pickup</span>
+                                </label>
+                                <label class="form-check mb-0" style="cursor: pointer;">
+                                    <input class="form-check-input tour-gear-toggle" type="checkbox" id="tour-gear-surfboard" value="Surfboard roof rack">
+                                    <span class="form-check-label">Surfboard rack</span>
+                                </label>
+                                <label class="form-check mb-0" style="cursor: pointer;">
+                                    <input class="form-check-input tour-gear-toggle" type="checkbox" id="tour-gear-wifi" value="In-car Wi-Fi">
+                                    <span class="form-check-label">In-car Wi-Fi</span>
+                                </label>
+                            </div>
                             <p class="form-text mb-0 mt-2">Confirm child seats at checkout.</p>
+                            <div id="tour-capacity-warning" class="alert alert-warning py-2 px-3 small mt-2 mb-0" hidden></div>
                         </fieldset>
 
                         <div id="tour-custom-fields" class="row g-3 mb-4"></div>
@@ -827,12 +970,16 @@
                         <div id="tour-day-settings" hidden></div>
 
                         <div class="tour-subpanel mb-4">
-                            <div class="d-flex align-items-start justify-content-between gap-2 mb-2">
+                            <div class="d-flex flex-wrap align-items-start justify-content-between gap-2 mb-2">
                                 <div>
                                     <h3 class="h6 fw-bold mb-1">Your trip plan</h3>
-                                    <p class="small tour-muted mb-0">Add places and activities to each day, then adjust the order with our team if needed.</p>
+                                    <p class="small tour-muted mb-0">Add places and activities to each day, or let us suggest an optimal stop order.</p>
                                 </div>
+                                <button type="button" id="tour-optimize-route" class="btn btn-sm tour-btn-outline" hidden>
+                                    <i class="bi bi-magic me-1" aria-hidden="true"></i> Optimize stop order
+                                </button>
                             </div>
+                            <div id="tour-quick-templates" class="mb-3" hidden></div>
                             <div id="tour-itinerary-days" aria-live="polite"></div>
                         </div>
 
@@ -842,44 +989,67 @@
                                     <h3 class="h6 fw-bold mb-1">Your route on the map</h3>
                                     <p class="small tour-muted mb-0">The line connects your stops in order. It is a route overview, not a road-by-road navigation map.</p>
                                 </div>
-                                <div id="tour-map-route-options" class="btn-group btn-group-sm" role="group" aria-label="Choose route to show" hidden>
-                                    <button type="button" class="btn tour-btn-outline" data-map-route="original">Your selected order</button>
-                                    <button type="button" class="btn tour-btn-outline" data-map-route="suggested">Suggested route</button>
+                                <div class="d-flex flex-wrap align-items-center gap-2">
+                                    <button type="button" id="tour-map-toggle" class="btn btn-sm tour-btn-outline d-lg-none" aria-expanded="true" aria-controls="tour-map-container">Hide Map</button>
+                                    <div id="tour-map-route-options" class="btn-group btn-group-sm" role="group" aria-label="Choose route to show" hidden>
+                                        <button type="button" class="btn tour-btn-outline" data-map-route="original">Your selected order</button>
+                                        <button type="button" class="btn tour-btn-outline" data-map-route="suggested">Suggested route</button>
+                                    </div>
                                 </div>
                             </div>
-                            <div id="tour-route-map" role="img" aria-label="Map showing selected tour locations and route order"></div>
-                            <p id="tour-map-help" class="small tour-muted mt-2 mb-0" aria-live="polite">Choose a start place and locations to see them on the map.</p>
+                            <div id="tour-map-container">
+                                <div id="tour-route-map" role="img" aria-label="Map showing selected tour locations and route order"></div>
+                                <p id="tour-map-help" class="small tour-muted mt-2 mb-0" aria-live="polite">Choose a start place and locations to see them on the map.</p>
+                            </div>
                         </div>
 
                         <div class="modal fade" id="tour-day-editor" tabindex="-1" aria-labelledby="tour-day-editor-title" aria-hidden="true">
-                            <div class="modal-dialog modal-xl modal-dialog-scrollable">
+                            <div class="modal-dialog modal-xl modal-fullscreen-md-down modal-dialog-scrollable">
                                 <div class="modal-content">
                                     <div class="modal-header">
-                                        <div><h2 class="modal-title fs-5" id="tour-day-editor-title">Edit Day 1</h2><p class="small tour-muted mb-0">Choose where the day ends and add the places or activities you want to visit.</p></div>
+                                        <div>
+                                            <h2 class="modal-title fs-5 fw-bold" id="tour-day-editor-title">Edit Day 1</h2>
+                                            <p class="small tour-muted mb-0">Pick where this day ends and add places or activities for this day.</p>
+                                        </div>
                                         <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
                                     </div>
-                                    <div class="modal-body">
-                                        <div class="tour-subpanel mb-3" id="tour-day-editor-start-wrap">
-                                            <label for="tour-start" class="form-label">Tour starts at *</label>
-                                            <select id="tour-start" class="form-select no-nice tour-location-select" required><option value="">Choose a place</option></select>
+                                    <div class="modal-body d-flex flex-column gap-3">
+                                        <div class="tour-editor-top-panel">
+                                            <div class="row g-2 align-items-end">
+                                                <div class="col-md-6" id="tour-day-editor-start-wrap">
+                                                    <label for="tour-start" class="form-label mb-1">Tour starts at *</label>
+                                                    <select id="tour-start" class="form-select no-nice tour-location-select" required><option value="">Choose a place</option></select>
+                                                </div>
+                                                <div class="col-md-6" id="tour-day-editor-end-wrap">
+                                                    <label for="tour-day-editor-end" class="form-label mb-1" id="tour-day-editor-end-label">Day 1 overnight location</label>
+                                                    <select id="tour-day-editor-end" class="form-select no-nice tour-location-select"></select>
+                                                </div>
+                                            </div>
                                         </div>
-                                        <div class="tour-subpanel mb-3">
-                                            <label for="tour-day-editor-end" class="form-label" id="tour-day-editor-end-label">Day 1 overnight location</label>
-                                            <select id="tour-day-editor-end" class="form-select no-nice tour-location-select"></select>
+
+                                        <div class="tour-editor-top-panel">
+                                            <div class="d-flex flex-column flex-md-row justify-content-between align-items-md-center gap-2 mb-2">
+                                                <div class="input-group flex-grow-1">
+                                                    <span class="input-group-text bg-white border-end-0"><i class="bi bi-search text-muted" aria-hidden="true"></i></span>
+                                                    <input id="tour-stop-text-search" type="search" class="form-control border-start-0" placeholder="Search places or activities (e.g. Ella, Safari, Sigiriya)..." aria-label="Search places or activities">
+                                                </div>
+                                                <span id="tour-highlight-count" class="small tour-muted text-nowrap"></span>
+                                            </div>
+                                            <div id="tour-day-selected-strip" class="d-flex flex-wrap align-items-center gap-2 mb-2" hidden></div>
+                                            <div id="tour-category-filters" class="tour-category-scroll" role="group" aria-label="Filter highlights by category"></div>
+                                            <select id="tour-destination-search" class="d-none" multiple aria-hidden="true" tabindex="-1"></select>
                                         </div>
-                                        <div class="mb-3">
-                                            <label for="tour-destination-search" class="form-label">Search and add places or activities</label>
-                                            <select id="tour-destination-search" class="form-select no-nice tour-location-select" multiple aria-label="Search and add places or activities"></select>
-                                        </div>
-                                        <div class="d-flex flex-column flex-md-row justify-content-between align-items-md-end gap-2 mb-3">
-                                            <div><h3 class="h6 fw-bold mb-1">Explore Sri Lanka highlights</h3><p class="small tour-muted mb-0">Places near your selected trip are shown first. Choose “All places” to explore anywhere in Sri Lanka.</p></div>
-                                            <span id="tour-highlight-count" class="small tour-muted"></span>
-                                        </div>
-                                        <div id="tour-category-filters" class="d-flex flex-wrap gap-2 mb-3" role="group" aria-label="Filter highlights by category"></div>
+
                                         <div id="tour-destinations" class="row g-3"></div>
-                                        <p id="tour-destination-empty" class="small tour-muted mt-2 mb-0" hidden></p>
+                                        <p id="tour-destination-empty" class="small tour-muted mt-1 mb-0" hidden></p>
                                     </div>
-                                    <div class="modal-footer"><span class="small tour-muted me-auto">Activity entry tickets and reservations are not included.</span><button type="button" class="btn tour-btn-primary" data-bs-dismiss="modal">Done</button></div>
+                                    <div class="modal-footer d-flex flex-wrap align-items-center justify-content-between gap-2">
+                                        <div class="small">
+                                            <strong id="tour-day-editor-summary" class="d-block text-dark">Day 1: 0 places</strong>
+                                            <span class="tour-muted" style="font-size: 0.72rem;">Entry tickets &amp; activity reservations are not included.</span>
+                                        </div>
+                                        <button type="button" id="tour-day-editor-done" class="btn tour-btn-primary" data-bs-dismiss="modal">Save Day 1</button>
+                                    </div>
                                 </div>
                             </div>
                         </div>
@@ -898,6 +1068,22 @@
                         <div class="d-flex flex-wrap align-items-center gap-3">
                             <button id="tour-plan" class="btn tour-btn-primary" type="submit">Compare route and price</button>
                             <span id="tour-working" class="small tour-muted fw-medium" hidden>Checking route and price…</span>
+                        </div>
+                        <div class="row g-3 mt-3 pt-3 border-top small">
+                            <div class="col-md-6">
+                                <div class="fw-bold text-success mb-1"><i class="bi bi-check-circle-fill me-1" aria-hidden="true"></i>Included in transport quote</div>
+                                <ul class="list-unstyled mb-0 tour-muted d-flex flex-column gap-1">
+                                    <li>• Private A/C vehicle &amp; English-speaking chauffeur-guide</li>
+                                    <li>• Fuel, highway tolls, parking &amp; driver meals/lodging</li>
+                                </ul>
+                            </div>
+                            <div class="col-md-6">
+                                <div class="fw-bold text-secondary mb-1"><i class="bi bi-info-circle-fill me-1" aria-hidden="true"></i>Arranged separately</div>
+                                <ul class="list-unstyled mb-0 tour-muted d-flex flex-column gap-1">
+                                    <li>• Hotel stays &amp; personal meals</li>
+                                    <li>• Attraction entry tickets &amp; safari jeep fees</li>
+                                </ul>
+                            </div>
                         </div>
                         <div id="tour-results" class="mt-4" hidden></div>
                     </section>
@@ -1030,7 +1216,17 @@
                         <div class="d-grid gap-2">
                             <button id="tour-summary-checkout" type="button" class="btn tour-btn-primary tour-summary-pay" hidden disabled>Confirm &amp; Reserve Driver <span aria-hidden="true">→</span></button>
                             <button id="tour-summary-request-quote" type="button" class="btn tour-btn-outline tour-summary-request" hidden>Request a quotation</button>
+                            <button id="tour-summary-goto-contact" type="button" class="btn tour-btn-primary btn-sm">Continue to Contact &amp; Price <span aria-hidden="true">→</span></button>
+                            @if (!empty($supportWhatsapp))
+                                <a id="tour-whatsapp-share" href="https://wa.me/{{ $supportWhatsapp }}" target="_blank" rel="noopener noreferrer" class="btn btn-outline-success btn-sm fw-semibold">
+                                    <i class="bi bi-whatsapp me-1" aria-hidden="true"></i> Send itinerary via WhatsApp
+                                </a>
+                            @endif
+                            <button id="tour-copy-link" type="button" class="btn btn-outline-secondary btn-sm fw-semibold">
+                                <i class="bi bi-link-45deg me-1" aria-hidden="true"></i> Copy shareable link
+                            </button>
                         </div>
+                        <p class="text-center tour-muted mt-2 mb-0" style="font-size: 0.65rem;">No payment required to quote • Free changes • Fast reply</p>
                         <div class="tour-summary-trust">
                             <span>Price updates with your trip</span>
                             <span>Stops arranged by day</span>
@@ -1074,15 +1270,26 @@
 
         <!-- Mobile Sticky Quote Summary -->
         <div id="tour-mobile-summary"
-            class="tour-mobile-summary d-lg-none position-fixed bottom-0 start-0 end-0 bg-white border-top shadow p-2"
-            hidden>
-            <div class="container d-flex align-items-center justify-content-between gap-3">
-                <div>
-                    <span class="d-block small tour-muted">Estimated transport</span>
-                    <strong id="tour-mobile-total"></strong>
+            class="tour-mobile-summary d-lg-none position-fixed bottom-0 start-0 end-0 bg-white border-top shadow-lg p-2">
+            <div class="container d-flex align-items-center justify-content-between gap-2">
+                <div class="min-w-0">
+                    <span class="d-block text-truncate tour-muted" style="font-size: 0.72rem;" id="tour-mobile-meta">3 Days • Choose vehicle</span>
+                    <strong id="tour-mobile-total" class="d-block text-dark" style="font-size: 0.95rem;">Plan route for price</strong>
                 </div>
-                <button id="tour-mobile-review" class="btn tour-btn-primary btn-sm" type="button">Review price</button>
+                <div class="d-flex align-items-center gap-2 flex-shrink-0">
+                    <button id="tour-mobile-drawer-btn" class="btn btn-outline-secondary btn-sm" type="button" data-bs-toggle="offcanvas" data-bs-target="#tour-mobile-drawer" aria-controls="tour-mobile-drawer">Summary</button>
+                    <button id="tour-mobile-review" class="btn tour-btn-primary btn-sm" type="button">Get Price</button>
+                </div>
             </div>
+        </div>
+
+        <!-- Mobile Tour Summary Drawer -->
+        <div class="offcanvas offcanvas-bottom d-lg-none" tabindex="-1" id="tour-mobile-drawer" aria-labelledby="tour-mobile-drawer-label" style="height: auto; max-height: 85dvh; border-radius: 1rem 1rem 0 0;">
+            <div class="offcanvas-header border-bottom">
+                <h2 class="offcanvas-title fs-6 fw-bold" id="tour-mobile-drawer-label">Tour Summary</h2>
+                <button type="button" class="btn-close" data-bs-dismiss="offcanvas" aria-label="Close"></button>
+            </div>
+            <div class="offcanvas-body" id="tour-mobile-drawer-body"></div>
         </div>
     </div>
 @endsection
@@ -1116,8 +1323,10 @@
             const highlightCount = document.getElementById('tour-highlight-count');
             const results = document.getElementById('tour-results');
             const stopSearchSelect = document.getElementById('tour-destination-search');
+            const stopTextSearch = document.getElementById('tour-stop-text-search');
             const dayEditor = document.getElementById('tour-day-editor');
             const dayEditorEnd = document.getElementById('tour-day-editor-end');
+            const whatsappSupportNumber = @json($supportWhatsapp);
             const api = '/api/public/tours';
             const csrf = document.querySelector('meta[name="csrf-token"]')?.content || '';
             let services = [];
@@ -1142,6 +1351,16 @@
             let lastTourStart = '';
 
             const escapeHtml = (value) => String(value ?? '').replace(/[&<>"']/g, (char) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#039;' }[char]));
+            function trackTourEvent(eventName, params = {}) {
+                try {
+                    window.dataLayer = window.dataLayer || [];
+                    window.dataLayer.push({ event: eventName, ...params });
+                    if (typeof window.gtag === 'function') window.gtag('event', eventName, params);
+                } catch (_) {}
+            }
+            function selectedGearList() {
+                return [...document.querySelectorAll('.tour-gear-toggle:checked')].map(el => el.value);
+            }
             function destroyTourSearch(select) {
                 const $ = window.jQuery;
                 if ($?.fn?.select2 && $(select).hasClass('select2-hidden-accessible')) $(select).select2('destroy');
@@ -1165,18 +1384,28 @@
                 currentTourQuote = null;
                 document.getElementById('tour-summary-terms').hidden = true;
                 document.getElementById('tour-summary-checkout').hidden = true;
-                document.getElementById('tour-mobile-summary').hidden = true;
-                document.getElementById('tour-summary-price-label').textContent = savedItinerary ? 'Estimated transport price' : 'Estimated transport price';
+                const gotoBtn = document.getElementById('tour-summary-goto-contact');
+                if (gotoBtn) gotoBtn.hidden = false;
+                document.getElementById('tour-summary-price-label').textContent = 'Estimated transport price';
                 document.getElementById('tour-total-amount').textContent = savedItinerary ? 'Updating…' : '—';
                 document.getElementById('tour-summary-price-status').textContent = savedItinerary ? 'Updating your route and price…' : 'Complete your trip details to see an estimate.';
                 document.getElementById('tour-summary-breakdown').hidden = true;
                 document.getElementById('tour-summary-advance-note').hidden = true;
                 document.getElementById('tour-summary-currency').textContent = '';
+                updateMobileSummaryBar(savedItinerary ? 'Updating…' : 'Plan route for price');
                 if (classPriceEstimates.size) {
                     classPriceEstimates.clear();
                     classPriceRouteLabel = null;
                     renderClassCards();
                 }
+            }
+            function updateMobileSummaryBar(priceText = null) {
+                const days = Math.max(1, Number(document.getElementById('tour-days').value) || 1);
+                const selectedClass = classSelect.selectedOptions[0]?.textContent?.split('—')[0]?.trim() || 'Choose vehicle';
+                const metaEl = document.getElementById('tour-mobile-meta');
+                const totalEl = document.getElementById('tour-mobile-total');
+                if (metaEl) metaEl.textContent = `${days} ${days === 1 ? 'Day' : 'Days'} • ${selectedClass}`;
+                if (totalEl && priceText !== null) totalEl.textContent = priceText;
             }
             function showQuoteSummary(quote) {
                 if (quote.total_amount === null || quote.total_amount === undefined || !Number.isFinite(Number(quote.total_amount))) return;
@@ -1190,8 +1419,7 @@
                 document.getElementById('tour-summary-price-status').textContent = 'Price held for 30 minutes.';
                 renderPricingBreakdown(quote.breakdown, quote.currency);
                 renderAdvanceNote(Number(quote.total_amount), quote.currency);
-                document.getElementById('tour-mobile-total').textContent = formatted;
-                document.getElementById('tour-mobile-summary').hidden = false;
+                updateMobileSummaryBar(formatted);
                 const terms = quote.terms_snapshot || [];
                 const termsContainer = document.getElementById('tour-summary-terms');
                 termsContainer.innerHTML = terms.map((term, index) => `<div class="form-check tour-summary-term"><input class="form-check-input tour-term" type="checkbox" value="${escapeHtml(term.id)}" id="tour-summary-term-${escapeHtml(term.id || index)}"><label class="form-check-label" for="tour-summary-term-${escapeHtml(term.id || index)}"><strong>${escapeHtml(term.title || 'Booking terms')}</strong> (${escapeHtml(term.version || 'current')}) — I agree</label><div class="small tour-muted ms-4 mt-1" style="white-space:pre-wrap;line-height:1.5">${escapeHtml(term.content)}</div></div>`).join('');
@@ -1199,6 +1427,8 @@
                 const checkoutButton = document.getElementById('tour-summary-checkout');
                 checkoutButton.hidden = false;
                 checkoutButton.disabled = terms.length > 0;
+                const gotoBtn = document.getElementById('tour-summary-goto-contact');
+                if (gotoBtn) gotoBtn.hidden = true;
                 document.getElementById('tour-summary-request-quote').hidden = false;
             }
             function renderPricingBreakdown(breakdown, currency = '') {
@@ -1265,6 +1495,28 @@
                     return `<li><strong>Day ${day}:</strong> ${escapeHtml(names.join(' · ') || 'Choose places or activities')}</li>`;
                 });
                 document.getElementById('tour-summary-route-stops').innerHTML = dayRows.join('');
+                updateMobileSummaryBar();
+                updateWhatsappShareLink(dayCount, start?.name || 'TBD', selectedClass);
+            }
+            function updateWhatsappShareLink(dayCount, startName, vehicleName) {
+                const link = document.getElementById('tour-whatsapp-share');
+                if (!link || !whatsappSupportNumber) return;
+                const date = document.getElementById('tour-date').value || 'Flexible';
+                const adults = Number(document.getElementById('tour-adults').value || 0);
+                const children = Number(document.getElementById('tour-children').value || 0);
+                const luggage = Number(document.getElementById('tour-luggage').value || 0);
+                const dayLines = [...document.querySelectorAll('#tour-summary-route-stops li')].map(li => `• ${li.textContent.trim()}`);
+                const gear = selectedGearList();
+                const text = [
+                    `Hi The Taxi team! I'd like a quote for a ${dayCount}-day private tour:`,
+                    `Start Date: ${date}`,
+                    `Pick-up: ${startName}`,
+                    `Vehicle: ${vehicleName}`,
+                    `Group: ${adults} Adults${children ? `, ${children} Children` : ''}, ${luggage} Bags`,
+                    gear.length ? `Extras: ${gear.join(', ')}` : '',
+                    dayLines.length ? `\nItinerary:\n${dayLines.join('\n')}` : '',
+                ].filter(Boolean).join('\n');
+                link.href = `https://wa.me/${whatsappSupportNumber}?text=${encodeURIComponent(text)}`;
             }
             function showEstimatedSummary(routes, routeChoice = preferredRouteChoice) {
                 renderTourSummaryDetails(routes, routeChoice);
@@ -1280,8 +1532,7 @@
                     document.getElementById('tour-summary-price-status').textContent = 'Estimate updates as your trip changes.';
                     renderPricingBreakdown(estimate.breakdown, estimate.currency);
                     renderAdvanceNote(Number(estimate.total_amount), estimate.currency);
-                    document.getElementById('tour-mobile-total').textContent = formatted;
-                    document.getElementById('tour-mobile-summary').hidden = false;
+                    updateMobileSummaryBar(formatted);
                 } else {
                     document.getElementById('tour-total-amount').textContent = 'Request quote';
                     document.getElementById('tour-summary-currency').textContent = '';
@@ -1289,6 +1540,7 @@
                     document.getElementById('tour-summary-advance-note').hidden = true;
                     document.getElementById('tour-total-distance').textContent = route?.distance_km == null ? 'Route distance pending review' : `${route.distance_km} km estimated`;
                     document.getElementById('tour-summary-price-status').textContent = estimate?.reason || 'Our team will prepare a quotation for this route.';
+                    updateMobileSummaryBar('Request quote');
                 }
                 document.getElementById('tour-summary-request-quote').hidden = !savedItinerary;
                 document.getElementById('tour-summary-checkout').hidden = true;
@@ -1362,6 +1614,7 @@
                         mapTypeControl: false,
                         streetViewControl: false,
                         fullscreenControl: true,
+                        gestureHandling: 'cooperative',
                     });
                 }
                 const bounds = [];
@@ -1446,29 +1699,47 @@
                 if (routeMapOptions) drawComparedTourMap(mapRouteSelection);
                 else renderSelectedTourMap();
             };
-            window.jQuery(stopSearchSelect).on('change', () => {
-                const selected = new Set(window.jQuery(stopSearchSelect).val() || []);
-                const newlyAdded = [...selected].filter(id => !knownStopSelection.has(id));
-                knownStopSelection = selected;
-                destinationList.querySelectorAll('.tour-destination').forEach(input => { input.checked = selected.has(`destination:${input.value}`); });
-                destinationList.querySelectorAll('.tour-activity').forEach(input => { input.checked = selected.has(`activity:${input.value}`); });
+            stopTextSearch?.addEventListener('input', () => {
                 applyDestinationCategoryFilter();
+            });
+            document.getElementById('tour-day-selected-strip')?.addEventListener('click', event => {
+                const remove = event.target.closest('[data-remove-day-stop]');
+                if (!remove) return;
+                const selector = remove.dataset.removeDayStop === 'destination' ? '.tour-destination' : '.tour-activity';
+                const input = [...destinationList.querySelectorAll(selector)].find(item => item.value === remove.dataset.stopId);
+                if (!input) return;
+                input.checked = false;
+                syncStopSearchSelection();
                 syncStopDaySelectors();
-                if (activeEditDay) newlyAdded.forEach(id => assignStopToDay(id, activeEditDay));
-                if (newlyAdded.length) syncStopDaySelectors();
-                invalidateDisplayedQuote();
+                applyDestinationCategoryFilter();
                 renderSelectedTourMap();
-                renderTourItinerarySummary();
+                invalidateDisplayedQuote();
+                renderTourSummaryDetails();
+                scheduleAutomaticPriceRefresh();
+            });
+            destinationList.addEventListener('click', event => {
+                const moveBtn = event.target.closest('[data-move-to-active-day]');
+                if (!moveBtn || !activeEditDay) return;
+                const placeId = moveBtn.dataset.moveToActiveDay;
+                assignStopToDay(`destination:${placeId}`, activeEditDay);
+                syncStopDaySelectors();
+                applyDestinationCategoryFilter();
+                renderSelectedTourMap();
+                invalidateDisplayedQuote();
                 renderTourSummaryDetails();
                 scheduleAutomaticPriceRefresh();
             });
             destinationList.addEventListener('change', event => {
                 if (!event.target.matches('.tour-destination, .tour-activity')) return;
                 if (activeEditDay && event.target.checked) assignStopToDay(`${event.target.matches('.tour-destination') ? 'destination' : 'activity'}:${event.target.value}`, activeEditDay);
-                applyDestinationCategoryFilter();
                 syncStopSearchSelection();
+                syncStopDaySelectors();
+                applyDestinationCategoryFilter();
                 renderSelectedTourMap();
                 renderTourItinerarySummary();
+                renderTourSummaryDetails();
+                invalidateDisplayedQuote();
+                scheduleAutomaticPriceRefresh();
             });
             function syncStopSearchSelection() {
                 const selected = [
@@ -1476,7 +1747,6 @@
                     ...[...destinationList.querySelectorAll('.tour-activity:checked')].map(input => `activity:${input.value}`),
                 ];
                 knownStopSelection = new Set(selected);
-                window.jQuery(stopSearchSelect).val(selected).trigger('change');
             }
             function assignStopToDay(stopId, day) {
                 const separator = stopId.indexOf(':');
@@ -1540,6 +1810,85 @@
                 });
                 return nearby;
             }
+            function haversineKm(a, b) {
+                if (!a || !b) return 0;
+                const rad = Math.PI / 180;
+                const dLat = (b[0] - a[0]) * rad;
+                const dLon = (b[1] - a[1]) * rad;
+                const s1 = Math.sin(dLat / 2);
+                const s2 = Math.sin(dLon / 2);
+                const h = s1 * s1 + Math.cos(a[0] * rad) * Math.cos(b[0] * rad) * s2 * s2;
+                return 6371 * 2 * Math.atan2(Math.sqrt(h), Math.sqrt(1 - h));
+            }
+            function estimateDayMetrics(startPoint, stopPoints, endPoint) {
+                const pts = [startPoint, ...stopPoints, endPoint].filter(Boolean);
+                if (pts.length < 2) return { km: 0, driveHours: 0, detourKm: 0 };
+                let straightKm = 0;
+                for (let i = 1; i < pts.length; i++) straightKm += haversineKm(pts[i - 1], pts[i]);
+                const directKm = (startPoint && endPoint) ? haversineKm(startPoint, endPoint) : straightKm;
+                const roadKm = Math.round(straightKm * 1.32);
+                const detourKm = Math.round(Math.max(0, straightKm - directKm) * 1.32);
+                const driveHours = roadKm / 45;
+                return { km: roadKm, driveHours, detourKm };
+            }
+            function formatDurationHours(hours) {
+                if (!hours || hours <= 0) return '';
+                const totalMins = Math.round(hours * 60);
+                const h = Math.floor(totalMins / 60);
+                const m = totalMins % 60;
+                return h ? (m ? `${h}h ${m}m` : `${h}h`) : `${m}m`;
+            }
+            function updateDayEditorStripAndBadges() {
+                const strip = document.getElementById('tour-day-selected-strip');
+                const summaryEl = document.getElementById('tour-day-editor-summary');
+                if (!catalogue) return;
+                const destinations = new Map((catalogue.destinations || []).map(item => [String(item.id), item]));
+                const activities = new Map((catalogue.destinations || []).flatMap(item => (item.activities || []).map(activity => [String(activity.id), activity])));
+                const day = activeEditDay || 1;
+                const dayDest = [...destinationList.querySelectorAll('.tour-destination:checked')]
+                    .filter(input => Number(document.getElementById(`tour-place-day-${input.id.replace('tour-destination-', '')}`)?.value) === day)
+                    .map(input => ({ kind: 'destination', id: input.value, name: destinations.get(String(input.value))?.name }));
+                const dayAct = [...destinationList.querySelectorAll('.tour-activity:checked')]
+                    .filter(input => Number(document.querySelector(`.tour-activity-day[data-activity="${CSS.escape(input.value)}"]`)?.value) === day)
+                    .map(input => {
+                        const act = activities.get(String(input.value));
+                        return { kind: 'activity', id: input.value, name: act?.name, mins: Number(act?.visit_duration_minutes || 0) };
+                    });
+                const items = [...dayDest, ...dayAct].filter(item => item.name);
+                if (strip) {
+                    strip.innerHTML = items.length
+                        ? `<span class="small fw-semibold tour-muted">Day ${day}:</span>` + items.map(item => `<button type="button" class="tour-stop-chip" data-remove-day-stop="${item.kind}" data-stop-id="${escapeHtml(item.id)}">${escapeHtml(item.name)} ×</button>`).join('')
+                        : '';
+                    strip.hidden = items.length === 0;
+                }
+                const totalMins = dayAct.reduce((sum, a) => sum + a.mins, 0);
+                if (summaryEl) {
+                    const parts = [`${dayDest.length} ${dayDest.length === 1 ? 'place' : 'places'}`];
+                    if (dayAct.length) parts.push(`${dayAct.length} ${dayAct.length === 1 ? 'activity' : 'activities'}`);
+                    if (totalMins > 0) parts.push(`~${formatDurationHours(totalMins / 60)} sightseeing`);
+                    summaryEl.textContent = `Day ${day}: ${parts.join(' • ')}`;
+                }
+                destinationList.querySelectorAll('.tour-highlight-item').forEach(card => {
+                    const input = card.querySelector('.tour-destination');
+                    if (!input) return;
+                    const idx = input.id.replace('tour-destination-', '');
+                    const daySelect = document.getElementById(`tour-place-day-${idx}`);
+                    const assignedDay = Number(daySelect?.value || 0);
+                    const hasActivity = [...card.querySelectorAll('.tour-activity')].some(a => a.checked);
+                    const isSelected = input.checked || hasActivity;
+                    const badgeWrap = card.querySelector('.tour-card-day-status');
+                    if (!badgeWrap) return;
+                    if (!isSelected || !assignedDay) {
+                        badgeWrap.innerHTML = '';
+                    } else if (activeEditDay && assignedDay === activeEditDay) {
+                        badgeWrap.innerHTML = `<span class="tour-stop-chip">✓ On Day ${activeEditDay}</span>`;
+                    } else if (activeEditDay) {
+                        badgeWrap.innerHTML = `<span class="tour-other-day-badge">On Day ${assignedDay}</span> <button type="button" class="btn btn-link btn-sm p-0 ms-1 fw-semibold text-decoration-none" data-move-to-active-day="${escapeHtml(input.value)}">Move to Day ${activeEditDay}</button>`;
+                    } else {
+                        badgeWrap.innerHTML = `<span class="tour-other-day-badge">Day ${assignedDay}</span>`;
+                    }
+                });
+            }
             function applyDestinationCategoryFilter() {
                 const cards = [...destinationList.querySelectorAll('.tour-highlight-item')];
                 const selectedIds = new Set([...destinationList.querySelectorAll('.tour-destination:checked')].map(input => input.value));
@@ -1550,35 +1899,39 @@
                 const selectedButton = categoryFilters.querySelector('[data-category-filter="selected"]');
                 if (selectedButton) selectedButton.textContent = `Selected (${selectedIds.size})`;
                 const routeIds = destinationsNearSelectedRoute();
+                const query = (stopTextSearch?.value || '').trim().toLowerCase();
                 let visible = 0;
-                let selectedOutsideFilter = 0;
-                cards.forEach((card, index) => {
+                cards.forEach(card => {
                     const placeId = card.querySelector('.tour-destination')?.value;
-                    const matchesFilter = activeDestinationCategory === 'all'
+                    const matchesCategory = activeDestinationCategory === 'all'
                         || (activeDestinationCategory === 'route' && routeIds.has(String(placeId)))
                         || (activeDestinationCategory === 'selected' && selectedIds.has(placeId))
                         || (activeDestinationCategory !== 'route' && activeDestinationCategory !== 'selected' && activeDestinationCategory !== 'all' && card.dataset.category === activeDestinationCategory);
-                    const show = activeDestinationCategory === 'selected' ? selectedIds.has(placeId) : matchesFilter || selectedIds.has(placeId);
-                    if (selectedIds.has(placeId) && !matchesFilter) selectedOutsideFilter++;
+                    const matchesQuery = !query || (card.dataset.searchText || '').includes(query);
+                    const show = matchesCategory && matchesQuery;
                     card.hidden = !show;
                     if (show) visible++;
                 });
                 categoryFilters.querySelectorAll('[data-category-filter]').forEach(button => button.classList.toggle('active', button.dataset.categoryFilter === activeDestinationCategory));
                 const empty = document.getElementById('tour-destination-empty');
-                if (activeDestinationCategory === 'route') {
-                    highlightCount.textContent = selectedOutsideFilter
-                        ? `${routeIds.size} places near your trip + ${selectedOutsideFilter} selected`
-                        : `${visible} ${visible === 1 ? 'place' : 'places'} near your trip`;
+                if (query && visible === 0) {
+                    highlightCount.textContent = '0 matches';
+                    empty.textContent = `No places or activities match "${stopTextSearch.value.trim()}". Try clearing the search or switching to "All places".`;
+                    empty.hidden = false;
+                } else if (activeDestinationCategory === 'route') {
+                    highlightCount.textContent = `${visible} ${visible === 1 ? 'place' : 'places'} near your trip`;
                     empty.textContent = 'No mapped places are near this trip yet. Choose All places to browse every destination.';
                     empty.hidden = visible > 0;
                 } else if (activeDestinationCategory === 'selected') {
                     highlightCount.textContent = `${visible} selected ${visible === 1 ? 'place' : 'places'}`;
-                    empty.textContent = 'No places selected yet. Choose a suggestion or search for a place above.';
+                    empty.textContent = 'No places selected yet. Search or browse places below to add them.';
                     empty.hidden = visible > 0;
                 } else {
                     highlightCount.textContent = `${visible} ${visible === 1 ? 'place' : 'places'}`;
-                    empty.hidden = true;
+                    empty.hidden = visible > 0;
+                    empty.textContent = 'No places in this category.';
                 }
+                updateDayEditorStripAndBadges();
             }
             function renderTourItinerarySummary() {
                 if (!catalogue || !itineraryDaysSummary) return;
@@ -1587,22 +1940,46 @@
                 const totalDays = Math.max(1, Number(document.getElementById('tour-days').value) || 1);
                 const stopCount = destinationList.querySelectorAll('.tour-destination:checked, .tour-activity:checked').length;
                 document.getElementById('tour-stop-count').textContent = `${stopCount} ${stopCount === 1 ? 'stop' : 'stops'} added`;
+                const optBtn = document.getElementById('tour-optimize-route');
+                if (optBtn) optBtn.hidden = destinationList.querySelectorAll('.tour-destination:checked').length < 2;
                 itineraryDaysSummary.innerHTML = Array.from({ length: totalDays }, (_, index) => {
                     const day = index + 1;
                     const startId = day === 1 ? startSelect.value : document.querySelector(`.tour-day-end[data-day="${day - 1}"]`)?.value;
                     const endId = document.querySelector(`.tour-day-end[data-day="${day}"]`)?.value;
-                    const startName = destinations.get(String(startId))?.name || 'Choose a start place';
-                    const endName = destinations.get(String(endId))?.name || (day === totalDays ? 'Choose a finish place' : 'Choose an overnight place');
+                    const startItem = destinations.get(String(startId));
+                    const endItem = destinations.get(String(endId));
+                    const startName = startItem?.name || 'Choose a start place';
+                    const endName = endItem?.name || (day === totalDays ? 'Choose a finish place' : 'Choose an overnight place');
+                    const destStops = [...destinationList.querySelectorAll('.tour-destination:checked')]
+                        .filter(input => Number(document.getElementById(`tour-place-day-${input.id.replace('tour-destination-', '')}`)?.value) === day)
+                        .map(input => ({ kind: 'destination', id: input.value, item: destinations.get(String(input.value)) }))
+                        .filter(s => s.item);
+                    const actStops = [...destinationList.querySelectorAll('.tour-activity:checked')]
+                        .filter(input => Number(document.querySelector(`.tour-activity-day[data-activity="${CSS.escape(input.value)}"]`)?.value) === day)
+                        .map(input => ({ kind: 'activity', id: input.value, item: activities.get(String(input.value)) }))
+                        .filter(s => s.item);
                     const stops = [
-                        ...[...destinationList.querySelectorAll('.tour-destination:checked')]
-                            .filter(input => Number(document.getElementById(`tour-place-day-${input.id.replace('tour-destination-', '')}`)?.value) === day)
-                            .map(input => ({ kind: 'destination', id: input.value, name: destinations.get(String(input.value))?.name })),
-                        ...[...destinationList.querySelectorAll('.tour-activity:checked')]
-                            .filter(input => Number(document.querySelector(`.tour-activity-day[data-activity="${CSS.escape(input.value)}"]`)?.value) === day)
-                            .map(input => ({ kind: 'activity', id: input.value, name: activities.get(String(input.value))?.name })),
-                    ].filter(stop => stop.name);
+                        ...destStops.map(s => ({ kind: 'destination', id: s.id, name: s.item.name })),
+                        ...actStops.map(s => ({ kind: 'activity', id: s.id, name: s.item.name })),
+                    ];
+                    const stopPoints = [
+                        ...destStops.map(s => tourLocationPoint(s.item.location)),
+                        ...actStops.map(s => tourLocationPoint(s.item.location)),
+                    ].filter(Boolean);
+                    const metrics = estimateDayMetrics(tourLocationPoint(startItem?.location), stopPoints, tourLocationPoint(endItem?.location));
+                    const actMins = actStops.reduce((sum, s) => sum + Number(s.item.visit_duration_minutes || 0), 0);
+                    const totalHours = metrics.driveHours + (actMins / 60);
+                    const metaParts = [];
+                    if (metrics.km > 0) metaParts.push(`~${metrics.km} km • ~${formatDurationHours(metrics.driveHours)} drive`);
+                    if (actMins > 0) metaParts.push(`+${formatDurationHours(actMins / 60)} activities`);
+                    let warningHtml = '';
+                    if (metrics.driveHours > 6.5 || totalHours > 10) {
+                        warningHtml = `<div class="tour-itinerary-warning"><i class="bi bi-exclamation-triangle-fill" aria-hidden="true"></i><span>Heavy day (~${formatDurationHours(totalHours)} total) — consider splitting or moving a stop.</span></div>`;
+                    } else if (metrics.detourKm > 85) {
+                        warningHtml = `<div class="tour-itinerary-warning"><i class="bi bi-signpost-split-fill" aria-hidden="true"></i><span>Includes a ~${metrics.detourKm} km detour off the direct route.</span></div>`;
+                    }
                     const routeLine = [startName, endName].join(' → ');
-                    return `<div class="tour-itinerary-day"><div class="d-flex flex-wrap justify-content-between align-items-center gap-2"><div class="d-flex align-items-center gap-2"><span class="tour-day-badge">Day ${day}</span><span class="tour-itinerary-route">${escapeHtml(routeLine)}</span></div><span class="small tour-muted">${day === totalDays ? 'Finish' : `Overnight: ${escapeHtml(endName)}`}</span></div>${stops.length ? `<div class="d-flex flex-wrap gap-2 mt-2">${stops.map(stop => `<button type="button" class="tour-stop-chip" data-remove-stop="${stop.kind}" data-stop-id="${escapeHtml(stop.id)}" aria-label="Remove ${escapeHtml(stop.name)} from day ${day}">${escapeHtml(stop.name)} ×</button>`).join('')}</div>` : ''}<div class="d-flex gap-3 mt-2"><button type="button" class="tour-itinerary-actions" data-add-stop-day="${day}">+ Add Stop to Day ${day}</button><button type="button" class="tour-itinerary-actions" data-edit-day="${day}">Edit Stops</button></div></div>`;
+                    return `<div class="tour-itinerary-day"><div class="d-flex flex-wrap justify-content-between align-items-center gap-2"><div class="d-flex flex-wrap align-items-center gap-2"><span class="tour-day-badge">Day ${day}</span><span class="tour-itinerary-route">${escapeHtml(routeLine)}</span></div><span class="small tour-muted">${day === totalDays ? 'Finish' : `Overnight: ${escapeHtml(endName)}`}</span></div>${metaParts.length ? `<div class="tour-itinerary-meta mt-1"><i class="bi bi-clock" aria-hidden="true"></i><span>${escapeHtml(metaParts.join(' · '))}</span></div>` : ''}${warningHtml}${stops.length ? `<div class="d-flex flex-wrap gap-2 mt-2">${stops.map(stop => `<button type="button" class="tour-stop-chip" data-remove-stop="${stop.kind}" data-stop-id="${escapeHtml(stop.id)}" aria-label="Remove ${escapeHtml(stop.name)} from day ${day}">${escapeHtml(stop.name)} ×</button>`).join('')}</div>` : ''}<div class="d-flex flex-wrap gap-2 mt-2"><button type="button" class="tour-itinerary-actions" data-add-stop-day="${day}"><i class="bi bi-plus-circle" aria-hidden="true"></i> Add places to Day ${day}</button><button type="button" class="tour-itinerary-actions" data-edit-day="${day}"><i class="bi bi-pencil" aria-hidden="true"></i> Edit Day ${day}</button></div></div>`;
                 }).join('');
             }
             itineraryDaysSummary.addEventListener('click', event => {
@@ -1732,9 +2109,11 @@
                 const partySize = Number(document.getElementById('tour-adults').value || 0) + Number(document.getElementById('tour-children').value || 0);
                 const luggage = Number(document.getElementById('tour-luggage').value || 0);
                 const cards = document.getElementById('tour-class-cards');
+                let fittingCount = 0;
                 cards.innerHTML = (currentService()?.classes || []).map((item, index) => {
                     const packageAllowed = !allowed || allowed.has(item.id);
                     const capacityFits = partySize > 0 && partySize <= Number(item.max_passengers) && luggage <= Number(item.max_luggage);
+                    if (packageAllowed && capacityFits) fittingCount++;
                     const disabled = !packageAllowed || !capacityFits;
                     if (classSelect.value === item.id && disabled) classSelect.value = '';
                     const selected = classSelect.value === item.id;
@@ -1743,10 +2122,27 @@
                     const estimatePrice = estimate?.status === 'priced' && Number.isFinite(Number(estimate.total_amount))
                         ? `<span class="tour-class-estimate"><small>${escapeHtml(classPriceRouteLabel || 'ESTIMATED TOTAL')}</small><strong>${escapeHtml(estimate.currency || 'LKR')} ${Number(estimate.total_amount).toLocaleString(undefined, { maximumFractionDigits: 0 })}</strong><small>for this Tour</small></span>`
                         : `<span class="tour-class-estimate"><small>${estimate?.status === 'quotation_required' ? 'PRICE' : 'ESTIMATED PRICE'}</small><strong>${estimate?.status === 'quotation_required' ? 'Team review' : 'After route plan'}</strong></span>`;
-                    return `<div class="col-md-6"><label class="tour-option tour-class-option d-flex flex-column position-relative ${disabled ? 'opacity-50' : ''}" for="tour-class-choice-${index}"><input class="form-check-input position-absolute top-0 end-0 m-2 tour-class-choice" type="radio" name="tour_class_choice" id="tour-class-choice-${index}" value="${escapeHtml(item.id)}" ${selected ? 'checked' : ''} ${disabled ? 'disabled' : ''} required><div class="d-flex align-items-start justify-content-between gap-2 pe-4"><strong class="d-block text-dark">${escapeHtml(item.display_name || item.name)}</strong>${estimatePrice}</div><div class="tour-class-meta small tour-muted mt-auto d-flex flex-wrap"><span>Up to ${escapeHtml(item.max_passengers)} travellers</span><span>${escapeHtml(item.max_luggage)} luggage items</span></div>${item.is_inquiry_only ? '<span class="d-block small text-warning fw-semibold mt-2">Availability confirmed by our team</span>' : ''}${reason ? `<span class="d-block small text-danger mt-2">${escapeHtml(reason)}</span>` : ''}</label></div>`;
+                    return `<div class="col-md-6"><label class="tour-option tour-class-option d-flex flex-column position-relative ${disabled ? 'opacity-50' : ''}" for="tour-class-choice-${index}"><input class="form-check-input position-absolute top-0 end-0 m-2 tour-class-choice" type="radio" name="tour_class_choice" id="tour-class-choice-${index}" value="${escapeHtml(item.id)}" ${selected ? 'checked' : ''} ${disabled ? 'disabled' : ''} required><div class="d-flex align-items-start justify-content-between gap-2 pe-4"><strong class="d-block text-dark">${escapeHtml(item.display_name || item.name)}</strong>${estimatePrice}</div>${item.description ? `<span class="d-block small tour-muted mt-1">${escapeHtml(item.description)}</span>` : ''}<div class="tour-class-meta small tour-muted mt-auto d-flex flex-wrap"><span>Up to ${escapeHtml(item.max_passengers)} travellers</span><span>${escapeHtml(item.max_luggage)} luggage items</span></div>${item.is_inquiry_only ? '<span class="d-block small text-warning fw-semibold mt-2">Availability confirmed by our team</span>' : ''}${reason ? `<span class="d-block small text-danger mt-2">${escapeHtml(reason)}</span>` : ''}</label></div>`;
                 }).join('');
+                const capWarn = document.getElementById('tour-capacity-warning');
+                if (capWarn) {
+                    if (partySize <= 0) {
+                        capWarn.textContent = 'Add at least 1 traveller to see matching vehicles.';
+                        capWarn.hidden = false;
+                    } else if (fittingCount === 0 && (currentService()?.classes || []).length > 0) {
+                        capWarn.textContent = `No single vehicle fits ${partySize} travellers and ${luggage} luggage items. Reduce luggage or contact us on WhatsApp for a multi-vehicle quote.`;
+                        capWarn.hidden = false;
+                    } else {
+                        capWarn.hidden = true;
+                    }
+                }
                 cards.querySelectorAll('.tour-class-choice').forEach(input => input.addEventListener('change', () => {
-                    if (input.checked) { classSelect.value = input.value; results.hidden = true; }
+                    if (input.checked) {
+                        classSelect.value = input.value;
+                        results.hidden = true;
+                        updateMobileSummaryBar();
+                        trackTourEvent('tour_vehicle_selected', { vehicle_class_id: input.value });
+                    }
                 }));
             }
             function applyPackageTemplate() {
@@ -1820,7 +2216,12 @@
                 document.getElementById('tour-day-editor-title').textContent = `Edit Day ${day}`;
                 document.getElementById('tour-day-editor-end-label').textContent = `Day ${day} ${isFinalDay ? 'finish' : 'overnight'} location`;
                 document.getElementById('tour-day-editor-start-wrap').hidden = day !== 1;
+                const doneBtn = document.getElementById('tour-day-editor-done');
+                if (doneBtn) doneBtn.textContent = `Save Day ${day}`;
+                if (stopTextSearch) stopTextSearch.value = '';
+                applyDestinationCategoryFilter();
                 enhanceTourSearch(dayEditorEnd, 'Search listed places');
+                trackTourEvent('tour_day_editor_open', { day });
                 bootstrap.Modal.getOrCreateInstance(dayEditor).show();
             }
             window.jQuery(dayEditorEnd).on('change.tourDayEditor', () => {
@@ -1837,20 +2238,23 @@
                 scheduleAutomaticPriceRefresh();
             });
             dayEditor.addEventListener('shown.bs.modal', () => {
+                applyDestinationCategoryFilter();
                 if (!focusStopSearchOnModalOpen) return;
                 focusStopSearchOnModalOpen = false;
-                window.jQuery(stopSearchSelect).select2('open');
+                stopTextSearch?.focus();
             });
-            dayEditor.addEventListener('hidden.bs.modal', () => { activeEditDay = null; });
+            dayEditor.addEventListener('hidden.bs.modal', () => {
+                activeEditDay = null;
+                if (stopTextSearch) stopTextSearch.value = '';
+                applyDestinationCategoryFilter();
+            });
             async function loadCatalogue() {
                 const sameService = Boolean(catalogue);
                 const previousStart = sameService ? startSelect.value : '';
                 const previousDestinations = new Set(sameService ? [...document.querySelectorAll('.tour-destination:checked')].map(box => box.value) : []);
                 const previousActivities = new Set(sameService ? [...document.querySelectorAll('.tour-activity:checked')].map(box => box.value) : []);
-                const previousStops = [...previousDestinations].map(id => `destination:${id}`).concat([...previousActivities].map(id => `activity:${id}`));
                 const previousDays = new Map(sameService ? [...document.querySelectorAll('.tour-place-day')].map(select => [select.id.replace('tour-place-day-', ''), select.value]) : []);
                 destroyTourSearch(startSelect);
-                destroyTourSearch(stopSearchSelect);
                 daySettings.querySelectorAll('.tour-day-end').forEach(destroyTourSearch);
                 clearError(); results.hidden = true; destinationList.innerHTML = ''; daySettings.innerHTML = ''; startSelect.innerHTML = '<option value="">Choose a listed place</option>'; stopSearchSelect.innerHTML = '';
                 const data = await request(`${api}/catalogue`);
@@ -1865,21 +2269,22 @@
                 }
                 lastTourStart = startSelect.value;
                 enhanceTourSearch(startSelect, 'Search a listed place');
-                const placeOptions = destinations.map(item => `<option value="destination:${escapeHtml(item.id)}">${escapeHtml(item.name)}</option>`).join('');
-                const activityOptions = destinations.flatMap(item => (item.activities || []).filter(activity => activity.is_selectable).map(activity => `<option value="activity:${escapeHtml(activity.id)}">${escapeHtml(activity.name)} — ${escapeHtml(item.name)}</option>`)).join('');
-                stopSearchSelect.innerHTML = `<optgroup label="Places">${placeOptions}</optgroup>${activityOptions ? `<optgroup label="Activities">${activityOptions}</optgroup>` : ''}`;
-                enhanceTourSearch(stopSearchSelect, 'Search places and activities', true);
-                destinationList.innerHTML = destinations.map((item, index) => `
-                <div class="col-xl-4 col-md-6 tour-highlight-item" data-category="${escapeHtml(item.category || 'Other')}"><div class="tour-option d-flex flex-column">
-                    <div class="mb-2"><span class="tour-highlight-category">${escapeHtml(item.category || 'Explore')}</span></div>
-                    <label class="form-check-label d-flex gap-2 align-items-start" style="cursor: pointer;"><input class="form-check-input mt-1 tour-destination" type="checkbox" value="${escapeHtml(item.id)}" id="tour-destination-${index}" ${previousDestinations.has(item.id) ? 'checked' : ''}><span><strong>Visit ${escapeHtml(item.name)}</strong><br><span class="small tour-muted">${escapeHtml(item.description || item.location?.city || item.location?.address || '')}</span></span></label>
-                    <div class="mt-2 tour-stop-day-control" hidden><label class="form-label mb-1" for="tour-place-day-${index}">Visit on</label><select class="form-select form-select-sm tour-place-day no-nice" id="tour-place-day-${index}" required disabled><option value="">Choose a day</option>${Array.from({ length: Number(document.getElementById('tour-days').value) || 1 }, (_, day) => `<option value="${day + 1}" ${Number(previousDays.get(String(index))) === day + 1 ? 'selected' : ''}>Day ${day + 1}</option>`).join('')}</select></div>
-                    ${(item.activities || []).length ? `<div class="border-top mt-3 pt-3 tour-destination-activities"><p class="small fw-bold text-uppercase tour-muted mb-2" style="letter-spacing: 0.04em;">Activities at this place</p>${item.activities.map(activity => renderTourActivity(activity, index, item.id, previousActivities.has(activity.id), previousDays.get(String(index)))).join('')}</div>` : ''}
-                </div></div>`).join('');
+                destinationList.innerHTML = destinations.map((item, index) => {
+                    const searchBlob = [item.name, item.category, item.description, item.location?.city, ...(item.activities || []).map(a => a.name)].filter(Boolean).join(' ').toLowerCase();
+                    const cat = (item.category || '').toLowerCase();
+                    const seasonHint = cat.includes('east') ? 'Best May–Sep' : cat.includes('south') || cat.includes('west') ? 'Best Dec–Apr' : '';
+                    return `<div class="col-xl-4 col-md-6 tour-highlight-item" data-category="${escapeHtml(item.category || 'Other')}" data-search-text="${escapeHtml(searchBlob)}"><div class="tour-option d-flex flex-column">
+                        <div class="d-flex align-items-center justify-content-between gap-2 mb-2"><div class="d-flex flex-wrap align-items-center gap-1"><span class="tour-highlight-category">${escapeHtml(item.category || 'Explore')}</span>${seasonHint ? `<span class="badge rounded-pill text-bg-light border tour-muted" style="font-size: 0.62rem;">${seasonHint}</span>` : ''}</div><span class="tour-card-day-status"></span></div>
+                        <label class="form-check-label d-flex gap-2 align-items-start" style="cursor: pointer;"><input class="form-check-input mt-1 tour-destination" type="checkbox" value="${escapeHtml(item.id)}" id="tour-destination-${index}" ${previousDestinations.has(item.id) ? 'checked' : ''}><span><strong>Visit ${escapeHtml(item.name)}</strong><br><span class="small tour-muted tour-place-desc">${escapeHtml(item.description || item.location?.city || item.location?.address || '')}</span></span></label>
+                        <div class="mt-2 tour-stop-day-control" hidden><label class="form-label mb-1" for="tour-place-day-${index}">Visit on</label><select class="form-select form-select-sm tour-place-day no-nice" id="tour-place-day-${index}" required disabled><option value="">Choose a day</option>${Array.from({ length: Number(document.getElementById('tour-days').value) || 1 }, (_, day) => `<option value="${day + 1}" ${Number(previousDays.get(String(index))) === day + 1 ? 'selected' : ''}>Day ${day + 1}</option>`).join('')}</select></div>
+                        ${(item.activities || []).length ? `<div class="border-top mt-3 pt-2 tour-destination-activities"><p class="small fw-bold text-uppercase tour-muted mb-2" style="letter-spacing: 0.04em; font-size: 0.68rem;">Activities at this place</p>${item.activities.map(activity => renderTourActivity(activity, index, item.id, previousActivities.has(activity.id), previousDays.get(String(index)))).join('')}</div>` : ''}
+                    </div></div>`;
+                }).join('');
                 renderDestinationCategoryFilters(destinations);
-                window.jQuery(stopSearchSelect).val(previousStops).trigger('change');
+                syncStopSearchSelection();
                 syncStopDaySelectors();
                 renderDaySettings();
+                renderQuickTemplates();
             }
             function renderAiSuggestion(suggestion) {
                 const destinations = new Map((catalogue?.destinations || []).map(item => [item.id, item]));
@@ -2022,7 +2427,14 @@
                         custom_answers: Object.fromEntries([...document.querySelectorAll('[data-custom-name]')].reduce((entries, input) => { if (input.type === 'radio') { if (input.checked) entries.push([input.dataset.customName, input.value]); } else entries.push([input.dataset.customName, input.type === 'checkbox' ? input.checked : input.value]); return entries; }, [])),
                     };
                     if (whatsappNumber) payload.custom_answers.contact_whatsapp = whatsappPhoneInput ? whatsappPhoneInput.getNumber() : whatsappNumber;
+                    const gear = selectedGearList();
+                    if (gear.length) {
+                        const existingNote = (payload.custom_answers.special_requests || '').trim();
+                        const gearNote = `Requested extras: ${gear.join(', ')}`;
+                        payload.custom_answers.special_requests = existingNote ? `${existingNote}\n${gearNote}` : gearNote;
+                    }
                     if (!payload.vehicle_class_id) throw new Error('Choose a vehicle type.');
+                    trackTourEvent('tour_quote_requested', { duration_days: payload.duration_days, vehicle_class_id: payload.vehicle_class_id });
                     const created = await request('/tours/drafts', { method: 'POST', body: JSON.stringify(payload) });
                     savedItinerary = created.itinerary;
                     const routes = created.route_options;
@@ -2203,20 +2615,266 @@
                 }
             });
             document.getElementById('tour-mobile-review').addEventListener('click', () => {
-                document.getElementById('tour-summary-checkout').hidden
-                    ? document.getElementById('tour-results').scrollIntoView({ behavior: 'smooth', block: 'center' })
-                    : document.getElementById('tour-summary-checkout').scrollIntoView({ behavior: 'smooth', block: 'center' });
+                if (!document.getElementById('tour-summary-checkout').hidden) {
+                    document.getElementById('tour-summary-checkout').scrollIntoView({ behavior: 'smooth', block: 'center' });
+                } else if (!results.hidden) {
+                    results.scrollIntoView({ behavior: 'smooth', block: 'center' });
+                } else {
+                    document.getElementById('tour-plan').scrollIntoView({ behavior: 'smooth', block: 'center' });
+                }
+            });
+            document.getElementById('tour-summary-goto-contact')?.addEventListener('click', () => {
+                const contactValid = document.getElementById('tour-first-name').value.trim()
+                    && document.getElementById('tour-email').value.trim()
+                    && document.getElementById('tour-phone').value.trim();
+                const target = contactValid ? document.getElementById('tour-plan') : document.getElementById('tour-contact-section');
+                target?.scrollIntoView({ behavior: 'smooth', block: 'center' });
+            });
+            document.querySelectorAll('.tour-stepper-btn').forEach(button => button.addEventListener('click', () => {
+                const input = document.getElementById(button.dataset.stepTarget);
+                if (!input) return;
+                const min = Number(input.min || 0);
+                const max = Number(input.max || 100);
+                const current = Number(input.value || 0);
+                const next = Math.max(min, Math.min(max, current + Number(button.dataset.stepDelta || 0)));
+                if (next !== current) {
+                    input.value = next;
+                    input.dispatchEvent(new Event('input', { bubbles: true }));
+                    input.dispatchEvent(new Event('change', { bubbles: true }));
+                }
+            }));
+            document.getElementById('tour-map-toggle')?.addEventListener('click', event => {
+                const container = document.getElementById('tour-map-container');
+                const btn = event.currentTarget;
+                if (!container) return;
+                const isHidden = container.hidden;
+                container.hidden = !isHidden;
+                btn.textContent = isHidden ? 'Hide Map' : 'Show Map';
+                btn.setAttribute('aria-expanded', String(isHidden));
+                if (isHidden && window.google?.maps && tourMap) {
+                    google.maps.event.trigger(tourMap, 'resize');
+                }
+            });
+            document.getElementById('tour-mobile-drawer')?.addEventListener('show.bs.offcanvas', () => {
+                const body = document.getElementById('tour-mobile-drawer-body');
+                const sidebar = document.querySelector('.tour-sidebar-card');
+                if (!body || !sidebar) return;
+                body.innerHTML = sidebar.innerHTML;
+                body.querySelectorAll('[id]').forEach(el => el.removeAttribute('id'));
             });
 
             const today = new Date();
             const todayValue = `${today.getFullYear()}-${String(today.getMonth() + 1).padStart(2, '0')}-${String(today.getDate()).padStart(2, '0')}`;
             document.getElementById('tour-date').min = todayValue;
             document.getElementById('tour-date').value = todayValue;
+            const DRAFT_STORAGE_KEY = 'thetaxi_tour_draft_v1';
+            function serializeTourPlan() {
+                const days = Math.max(1, Number(document.getElementById('tour-days').value) || 1);
+                const ends = Array.from({ length: days }, (_, i) => document.querySelector(`.tour-day-end[data-day="${i + 1}"]`)?.value || '');
+                const destinations = [...destinationList.querySelectorAll('.tour-destination:checked')].map(input => ({
+                    id: input.value,
+                    day: Number(document.getElementById(`tour-place-day-${input.id.replace('tour-destination-', '')}`)?.value || 1),
+                }));
+                const activities = [...destinationList.querySelectorAll('.tour-activity:checked')].map(input => input.value);
+                return {
+                    date: document.getElementById('tour-date').value,
+                    days,
+                    time: document.getElementById('tour-time').value,
+                    adults: Number(document.getElementById('tour-adults').value || 2),
+                    children: Number(document.getElementById('tour-children').value || 0),
+                    childSeats: Number(document.getElementById('tour-child-seats').value || 0),
+                    luggage: Number(document.getElementById('tour-luggage').value || 0),
+                    vehicleClass: classSelect.value,
+                    start: startSelect.value,
+                    ends,
+                    destinations,
+                    activities,
+                    savedAt: Date.now(),
+                };
+            }
+            function applySerializedPlan(plan) {
+                if (!plan || typeof plan !== 'object') return;
+                if (plan.date && plan.date >= document.getElementById('tour-date').min) document.getElementById('tour-date').value = plan.date;
+                if (plan.days) document.getElementById('tour-days').value = Math.max(1, Math.min(60, Number(plan.days)));
+                if (plan.time) document.getElementById('tour-time').value = plan.time;
+                if (plan.adults != null) document.getElementById('tour-adults').value = plan.adults;
+                if (plan.children != null) document.getElementById('tour-children').value = plan.children;
+                if (plan.childSeats != null) document.getElementById('tour-child-seats').value = plan.childSeats;
+                if (plan.luggage != null) document.getElementById('tour-luggage').value = plan.luggage;
+                if (plan.start) window.jQuery(startSelect).val(plan.start).trigger('change');
+                renderDaySettings();
+                (plan.ends || []).forEach((endId, idx) => {
+                    const sel = document.getElementById(`tour-day-end-${idx + 1}`);
+                    if (sel && endId) sel.value = endId;
+                });
+                destinationList.querySelectorAll('.tour-destination, .tour-activity').forEach(i => { i.checked = false; });
+                (plan.destinations || []).forEach(entry => {
+                    const input = [...destinationList.querySelectorAll('.tour-destination')].find(i => i.value === String(entry.id));
+                    if (input) {
+                        input.checked = true;
+                        const daySel = document.getElementById(`tour-place-day-${input.id.replace('tour-destination-', '')}`);
+                        if (daySel && entry.day) daySel.value = String(entry.day);
+                    }
+                });
+                (plan.activities || []).forEach(actId => {
+                    const input = [...destinationList.querySelectorAll('.tour-activity')].find(i => i.value === String(actId));
+                    if (input) input.checked = true;
+                });
+                if (plan.vehicleClass) classSelect.value = plan.vehicleClass;
+                renderClassCards();
+                syncStopSearchSelection();
+                syncStopDaySelectors();
+                renderSelectedTourMap();
+                renderTourSummaryDetails();
+            }
+            function saveLocalDraft() {
+                try {
+                    const plan = serializeTourPlan();
+                    if (plan.destinations.length || plan.activities.length) {
+                        localStorage.setItem(DRAFT_STORAGE_KEY, JSON.stringify(plan));
+                    }
+                } catch (_) {}
+            }
+            function initDraftAndShareRestore() {
+                const hash = window.location.hash || '';
+                if (hash.startsWith('#plan=')) {
+                    try {
+                        const decoded = JSON.parse(decodeURIComponent(escape(atob(hash.slice(6)))));
+                        applySerializedPlan(decoded);
+                        return;
+                    } catch (_) {}
+                }
+                try {
+                    const raw = localStorage.getItem(DRAFT_STORAGE_KEY);
+                    if (!raw) return;
+                    const draft = JSON.parse(raw);
+                    if (!draft?.destinations?.length && !draft?.activities?.length) return;
+                    const banner = document.getElementById('tour-restore-banner');
+                    const meta = document.getElementById('tour-restore-meta');
+                    if (meta) meta.textContent = `(${draft.days || 3} days • ${draft.destinations?.length || 0} places)`;
+                    if (banner) banner.hidden = false;
+                    document.getElementById('tour-restore-apply')?.addEventListener('click', () => {
+                        applySerializedPlan(draft);
+                        banner.hidden = true;
+                    });
+                    document.getElementById('tour-restore-dismiss')?.addEventListener('click', () => {
+                        localStorage.removeItem(DRAFT_STORAGE_KEY);
+                        banner.hidden = true;
+                    });
+                } catch (_) {}
+            }
+            function renderQuickTemplates() {
+                const container = document.getElementById('tour-quick-templates');
+                if (!container || !catalogue) return;
+                const packages = (currentService()?.packages || []).filter(p => p.tour_itinerary_template?.days?.length);
+                if (packages.length) {
+                    container.innerHTML = `<div class="d-flex flex-wrap align-items-center gap-2"><span class="small fw-bold tour-muted">Quick-start:</span>${packages.map(p => `<button type="button" class="btn btn-sm btn-outline-secondary rounded-pill" data-quick-package="${escapeHtml(p.id)}">${escapeHtml(p.name)} (${p.tour_itinerary_template.days.length}D)</button>`).join('')}</div>`;
+                    container.hidden = false;
+                    return;
+                }
+                const byName = name => (catalogue.destinations || []).find(d => d.name.toLowerCase().includes(name.toLowerCase()));
+                const presets = [
+                    { label: 'Cultural & Tea (4D)', days: 4, names: ['Sigiriya', 'Kandy', 'Nuwara Eliya', 'Ella'] },
+                    { label: 'East Coast Beaches (3D)', days: 3, names: ['Kalkudah', 'Batticaloa', 'Arugam Bay'] },
+                    { label: 'South Coast & Safari (3D)', days: 3, names: ['Galle', 'Mirissa', 'Yala'] },
+                ].map(p => ({ ...p, items: p.names.map(byName).filter(Boolean) })).filter(p => p.items.length >= 2);
+                if (!presets.length) { container.hidden = true; return; }
+                container.innerHTML = `<div class="d-flex flex-wrap align-items-center gap-2"><span class="small fw-bold tour-muted">Quick-start ideas:</span>${presets.map((p, i) => `<button type="button" class="btn btn-sm btn-outline-secondary rounded-pill" data-quick-preset="${i}">${escapeHtml(p.label)}</button>`).join('')}</div>`;
+                container.hidden = false;
+                container._presets = presets;
+            }
+            document.getElementById('tour-quick-templates')?.addEventListener('click', event => {
+                const pkgBtn = event.target.closest('[data-quick-package]');
+                if (pkgBtn) {
+                    packageSelect.value = pkgBtn.dataset.quickPackage;
+                    packageSelect.dispatchEvent(new Event('change'));
+                    return;
+                }
+                const presetBtn = event.target.closest('[data-quick-preset]');
+                if (!presetBtn) return;
+                const preset = document.getElementById('tour-quick-templates')._presets?.[Number(presetBtn.dataset.quickPreset)];
+                if (!preset) return;
+                document.getElementById('tour-days').value = preset.days;
+                renderDaySettings();
+                destinationList.querySelectorAll('.tour-destination, .tour-activity').forEach(i => { i.checked = false; });
+                preset.items.forEach((dest, idx) => {
+                    const day = Math.min(preset.days, idx + 1);
+                    const endSel = document.getElementById(`tour-day-end-${day}`);
+                    if (endSel) endSel.value = dest.id;
+                    const input = [...destinationList.querySelectorAll('.tour-destination')].find(i => i.value === String(dest.id));
+                    if (input) {
+                        input.checked = true;
+                        const daySel = document.getElementById(`tour-place-day-${input.id.replace('tour-destination-', '')}`);
+                        if (daySel) daySel.value = String(day);
+                    }
+                });
+                syncStopSearchSelection();
+                syncStopDaySelectors();
+                renderSelectedTourMap();
+                renderTourSummaryDetails();
+                invalidateDisplayedQuote();
+                saveLocalDraft();
+            });
+            document.getElementById('tour-optimize-route')?.addEventListener('click', () => {
+                if (!catalogue) return;
+                const destinations = new Map((catalogue.destinations || []).map(item => [String(item.id), item]));
+                const days = Math.max(1, Number(document.getElementById('tour-days').value) || 1);
+                const dayAnchors = Array.from({ length: days }, (_, idx) => {
+                    const day = idx + 1;
+                    const startId = day === 1 ? startSelect.value : document.querySelector(`.tour-day-end[data-day="${day - 1}"]`)?.value;
+                    const endId = document.querySelector(`.tour-day-end[data-day="${day}"]`)?.value;
+                    return {
+                        day,
+                        startPt: tourLocationPoint(destinations.get(String(startId))?.location),
+                        endPt: tourLocationPoint(destinations.get(String(endId))?.location),
+                    };
+                });
+                destinationList.querySelectorAll('.tour-destination:checked').forEach(input => {
+                    const dest = destinations.get(String(input.value));
+                    const pt = tourLocationPoint(dest?.location);
+                    if (!pt) return;
+                    let bestDay = 1;
+                    let bestCost = Infinity;
+                    dayAnchors.forEach(a => {
+                        const direct = (a.startPt && a.endPt) ? haversineKm(a.startPt, a.endPt) : 0;
+                        const via = (a.startPt ? haversineKm(a.startPt, pt) : 0) + (a.endPt ? haversineKm(pt, a.endPt) : 0);
+                        const detour = Math.max(0, via - direct);
+                        if (detour < bestCost) { bestCost = detour; bestDay = a.day; }
+                    });
+                    const daySel = document.getElementById(`tour-place-day-${input.id.replace('tour-destination-', '')}`);
+                    if (daySel) daySel.value = String(bestDay);
+                });
+                syncActivityDaysFromDestinations();
+                syncStopDaySelectors();
+                renderSelectedTourMap();
+                renderTourSummaryDetails();
+                invalidateDisplayedQuote();
+                saveLocalDraft();
+                trackTourEvent('tour_route_optimized', { days });
+            });
+            document.getElementById('tour-whatsapp-share')?.addEventListener('click', () => {
+                trackTourEvent('tour_whatsapp_share');
+            });
+            document.getElementById('tour-copy-link')?.addEventListener('click', async event => {
+                trackTourEvent('tour_link_copied');
+                const btn = event.currentTarget;
+                const encoded = btoa(unescape(encodeURIComponent(JSON.stringify(serializeTourPlan()))));
+                const url = `${window.location.origin}${window.location.pathname}#plan=${encoded}`;
+                try {
+                    await navigator.clipboard.writeText(url);
+                    const original = btn.innerHTML;
+                    btn.innerHTML = '<i class="bi bi-check2 me-1" aria-hidden="true"></i> Link copied!';
+                    setTimeout(() => { btn.innerHTML = original; }, 2200);
+                } catch (_) {
+                    window.location.hash = `plan=${encoded}`;
+                }
+            });
+            form.addEventListener('change', saveLocalDraft);
             request(`${api}/services`).then(data => {
                 services = data.services || [];
                 if (!services.length) throw new Error('Tours are not available at the moment.');
                 selectedService = services[0]; fillOptions(); return loadCatalogue();
-            }).then(() => { if (packageSelect.value) applyPackageTemplate(); loading.hidden = true; form.hidden = false; }).catch(exception => { loading.hidden = true; showError(exception.message); });
+            }).then(() => { if (packageSelect.value) applyPackageTemplate(); initDraftAndShareRestore(); renderTourSummaryDetails(); loading.hidden = true; form.hidden = false; }).catch(exception => { loading.hidden = true; showError(exception.message); });
         })();
     </script>
 @endpush
