@@ -161,10 +161,8 @@ class TourLaunchSeeder extends Seeder
                 DB::table('predefined_locations')->where('id', $locationId)->update([
                     'google_place_id' => $googlePlaceId,
                     'address' => $province,
-                    'latitude' => 0,
-                    'longitude' => 0,
                     'is_active' => true,
-                    'metadata' => json_encode(['google_place_id_seeded' => true, 'mapping_required' => false]),
+                    'metadata' => json_encode(array_merge($locationMetadata, ['google_place_id_seeded' => true, 'mapping_required' => false])),
                     'updated_user_id' => $actorId, 'updated_at' => now(),
                 ]);
             }
@@ -200,10 +198,8 @@ class TourLaunchSeeder extends Seeder
                     DB::table('predefined_locations')->where('id', $activityLocationId)->update([
                         'google_place_id' => $googlePlaceId,
                         'address' => $province,
-                        'latitude' => 0,
-                        'longitude' => 0,
                         'is_active' => true,
-                        'metadata' => json_encode(['google_place_id_seeded' => true, 'mapping_required' => false, 'tickets_included' => false]),
+                        'metadata' => json_encode(array_merge($activityLocationMetadata, ['google_place_id_seeded' => true, 'mapping_required' => false, 'tickets_included' => false])),
                         'updated_user_id' => $actorId, 'updated_at' => now(),
                     ]);
                 }

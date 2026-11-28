@@ -148,6 +148,7 @@ class VehicleGroupPricingController extends Controller
 
         // Build cache key for frequent queries
         $cacheKey = 'unified_pricing_' . md5(serialize([
+            'pricing_basis' => 'vehicle_group',
             'service_type_id' => $serviceTypeId,
             'vehicle_group_id' => $vehicleGroupId,
             'context' => $context,
@@ -176,6 +177,7 @@ class VehicleGroupPricingController extends Controller
                     ->when($serviceTypeId, fn($q) => $q->where('service_types.id', $serviceTypeId))
                     ->when(!$includeInactive, fn($q) => $q->where('service_types.is_active', true))
                     ->where('service_types.context', 'corporate')
+                    ->where(fn ($q) => $q->where('service_types.pricing_basis', 'vehicle_group')->orWhereNull('service_types.pricing_basis'))
                     ->select(['service_types.id', 'service_types.name', 'service_types.description', 'service_types.code', 'service_types.context', 'service_types.is_active'])
                     ->orderBy('service_types.priority')
                     ->get();
@@ -183,6 +185,7 @@ class VehicleGroupPricingController extends Controller
                 $serviceTypes = ServiceType::forContext($context)
                     ->when($serviceTypeId, fn($q) => $q->where('id', $serviceTypeId))
                     ->when(!$includeInactive, fn($q) => $q->where('is_active', true))
+                    ->where(fn ($q) => $q->where('pricing_basis', 'vehicle_group')->orWhereNull('pricing_basis'))
                     ->select(['id', 'name', 'description', 'code', 'context', 'is_active'])
                     ->orderBy('priority')
                     ->get();
@@ -1875,6 +1878,7 @@ class VehicleGroupPricingController extends Controller
         // Get service types
         $serviceTypes = ServiceType::query()
             ->when($serviceTypeId, fn($q) => $q->where('id', $serviceTypeId))
+            ->where(fn ($q) => $q->where('pricing_basis', 'vehicle_group')->orWhereNull('pricing_basis'))
             ->where('is_active', true)
             ->orderBy('name')
             ->get();

@@ -589,7 +589,8 @@ class TourCatalogueController extends Controller
 
         $metadata = $location->metadata ?? [];
         $googleCoordinatesTracked = ($metadata['coordinates_source'] ?? null) === 'google_places';
-        $hasCoordinates = $location->latitude !== null && $location->longitude !== null;
+        $hasCoordinates = $location->latitude !== null && $location->longitude !== null
+            && ((float) $location->latitude !== 0.0 || (float) $location->longitude !== 0.0);
         if ($googleCoordinatesTracked && $hasCoordinates) {
             $currentHash = hash('sha256', sprintf('%.6f,%.6f', (float) $location->latitude, (float) $location->longitude));
             if (!hash_equals((string) ($metadata['google_coordinates_hash'] ?? ''), $currentHash)) {
@@ -597,12 +598,6 @@ class TourCatalogueController extends Controller
                 $location->metadata = $metadata;
                 $location->save();
                 $googleCoordinatesTracked = false;
-            } elseif (empty($metadata['google_coordinates_cached_at'])
-                || !Carbon::parse($metadata['google_coordinates_cached_at'])->addDays(30)->isFuture()) {
-                $location->latitude = null;
-                $location->longitude = null;
-                $location->save();
-                $hasCoordinates = false;
             }
         }
 
@@ -617,6 +612,7 @@ class TourCatalogueController extends Controller
                 $metadata['google_coordinates_hash'] = hash('sha256', sprintf('%.6f,%.6f', $coordinates['latitude'], $coordinates['longitude']));
                 $location->metadata = $metadata;
                 $location->save();
+                $hasCoordinates = true;
             }
         }
 
@@ -625,8 +621,8 @@ class TourCatalogueController extends Controller
             'name' => $location->name,
             'city' => $location->city,
             'country' => $location->country,
-            'latitude' => $location->latitude === null ? null : (float) $location->latitude,
-            'longitude' => $location->longitude === null ? null : (float) $location->longitude,
+            'latitude' => $hasCoordinates ? (float) $location->latitude : null,
+            'longitude' => $hasCoordinates ? (float) $location->longitude : null,
         ];
     }
 }

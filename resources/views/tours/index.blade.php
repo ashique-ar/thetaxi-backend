@@ -847,7 +847,7 @@
                         <div class="d-flex flex-column flex-md-row justify-content-between align-items-md-end gap-2 mb-3">
                             <div>
                                 <h3 class="h6 fw-bold mb-1">Explore Sri Lanka highlights</h3>
-                                <p class="small tour-muted mb-0">Start with a few suggestions, or search for any place above.</p>
+                                <p class="small tour-muted mb-0">Places near your selected trip are shown first. Choose “All places” to explore anywhere in Sri Lanka.</p>
                             </div>
                             <span id="tour-highlight-count" class="small tour-muted"></span>
                         </div>
@@ -1116,7 +1116,7 @@
             let mapRouteSelection = 'suggested';
             let savedItinerary = null;
             let selectedTemplateDays = [];
-            let activeDestinationCategory = 'suggested';
+            let activeDestinationCategory = 'route';
             let preferredRouteChoice = 'suggested';
             let currentTourQuote = null;
             let currentRouteOptions = null;
@@ -1289,7 +1289,7 @@
             function tourLocationPoint(location) {
                 const latitude = Number(location?.latitude);
                 const longitude = Number(location?.longitude);
-                return Number.isFinite(latitude) && Number.isFinite(longitude) && Math.abs(latitude) <= 90 && Math.abs(longitude) <= 180
+                return Number.isFinite(latitude) && Number.isFinite(longitude) && (latitude !== 0 || longitude !== 0) && Math.abs(latitude) <= 90 && Math.abs(longitude) <= 180
                     ? [latitude, longitude]
                     : null;
             }
@@ -1325,8 +1325,14 @@
                 const help = document.getElementById('tour-map-help');
                 const mapElement = document.getElementById('tour-route-map');
                 const validRoutes = (dayRoutes || []).map(day => ({ ...day, points: (day.points || []).filter(item => item.point) })).filter(day => day.points.length);
+                tourMapOverlays.forEach(overlay => overlay.setMap(null));
+                tourMapOverlays = [];
                 if (!validRoutes.length) {
                     help.textContent = 'Choose places with a mapped location to see them here.';
+                    if (tourMap) {
+                        tourMap.setCenter({ lat: 7.8731, lng: 80.7718 });
+                        tourMap.setZoom(7);
+                    }
                     return;
                 }
                 if (!window.google?.maps) { help.textContent = 'Loading Google Maps…'; return; }
@@ -1339,8 +1345,6 @@
                         fullscreenControl: true,
                     });
                 }
-                tourMapOverlays.forEach(overlay => overlay.setMap(null));
-                tourMapOverlays = [];
                 const bounds = [];
                 const colors = ['#bf2629', '#126b9a', '#23835b', '#7650a0', '#c27616'];
                 validRoutes.forEach((day, dayIndex) => {
@@ -1375,8 +1379,9 @@
             }
             function renderComparedTourMap(routeOptions) {
                 routeMapOptions = routeOptions;
-                mapRouteSelection = routeOptions?.[preferredRouteChoice] ? preferredRouteChoice : 'suggested';
-                document.getElementById('tour-map-route-options').hidden = false;
+                const hasSuggestion = routeOptions?.changed === true;
+                mapRouteSelection = hasSuggestion && routeOptions?.[preferredRouteChoice] ? preferredRouteChoice : 'original';
+                document.getElementById('tour-map-route-options').hidden = !hasSuggestion;
                 drawComparedTourMap(mapRouteSelection);
             }
             function setClassPriceEstimates(routeOptions, routeChoice) {
@@ -1424,7 +1429,6 @@
             };
             window.jQuery(stopSearchSelect).on('change', () => {
                 const selected = new Set(window.jQuery(stopSearchSelect).val() || []);
-                if (selected.size) activeDestinationCategory = 'selected';
                 destinationList.querySelectorAll('.tour-destination').forEach(input => { input.checked = selected.has(`destination:${input.value}`); });
                 destinationList.querySelectorAll('.tour-activity').forEach(input => { input.checked = selected.has(`activity:${input.value}`); });
                 syncDestinationActivityVisibility();
@@ -1463,14 +1467,45 @@
                     const category = item.category || 'Other';
                     counts.set(category, (counts.get(category) || 0) + 1);
                 });
-                if (!['suggested', 'selected', 'all'].includes(activeDestinationCategory) && !counts.has(activeDestinationCategory)) activeDestinationCategory = 'suggested';
-                categoryFilters.innerHTML = `<button type="button" class="btn btn-sm btn-outline-secondary tour-category-chip ${activeDestinationCategory === 'suggested' ? 'active' : ''}" data-category-filter="suggested">Suggested</button><button type="button" class="btn btn-sm btn-outline-secondary tour-category-chip ${activeDestinationCategory === 'selected' ? 'active' : ''}" data-category-filter="selected">Selected (0)</button><button type="button" class="btn btn-sm btn-outline-secondary tour-category-chip ${activeDestinationCategory === 'all' ? 'active' : ''}" data-category-filter="all">All places (${destinations.length})</button>${[...counts].map(([category, count]) => `<button type="button" class="btn btn-sm btn-outline-secondary tour-category-chip ${activeDestinationCategory === category ? 'active' : ''}" data-category-filter="${escapeHtml(category)}">${escapeHtml(category)} (${count})</button>`).join('')}`;
+                if (!['route', 'selected', 'all'].includes(activeDestinationCategory) && !counts.has(activeDestinationCategory)) activeDestinationCategory = 'route';
+                categoryFilters.innerHTML = `<button type="button" class="btn btn-sm btn-outline-secondary tour-category-chip ${activeDestinationCategory === 'route' ? 'active' : ''}" data-category-filter="route">Near your route</button><button type="button" class="btn btn-sm btn-outline-secondary tour-category-chip ${activeDestinationCategory === 'selected' ? 'active' : ''}" data-category-filter="selected">Selected (0)</button><button type="button" class="btn btn-sm btn-outline-secondary tour-category-chip ${activeDestinationCategory === 'all' ? 'active' : ''}" data-category-filter="all">All places (${destinations.length})</button>${[...counts].map(([category, count]) => `<button type="button" class="btn btn-sm btn-outline-secondary tour-category-chip ${activeDestinationCategory === category ? 'active' : ''}" data-category-filter="${escapeHtml(category)}">${escapeHtml(category)} (${count})</button>`).join('')}`;
                 categoryFilters.querySelectorAll('[data-category-filter]').forEach(button => button.addEventListener('click', () => {
                     activeDestinationCategory = button.dataset.categoryFilter;
                     categoryFilters.querySelectorAll('[data-category-filter]').forEach(option => option.classList.toggle('active', option === button));
                     applyDestinationCategoryFilter();
                 }));
                 applyDestinationCategoryFilter();
+            }
+            function destinationsNearSelectedRoute() {
+                const destinations = catalogue?.destinations || [];
+                const byId = new Map(destinations.map(item => [String(item.id), item]));
+                const routeIds = [startSelect.value, ...[...daySettings.querySelectorAll('.tour-day-end')].map(select => select.value)].filter(Boolean).map(String);
+                const anchors = routeIds.map(id => tourLocationPoint(byId.get(id)?.location)).filter(Boolean);
+                const nearby = new Set(routeIds);
+                const corridorKm = 55;
+                const distanceToSegmentKm = (point, start, end) => {
+                    const radians = Math.PI / 180;
+                    const scaleX = 111.32 * Math.cos(point[0] * radians);
+                    const ax = (start[1] - point[1]) * scaleX;
+                    const ay = (start[0] - point[0]) * 110.574;
+                    const bx = (end[1] - point[1]) * scaleX;
+                    const by = (end[0] - point[0]) * 110.574;
+                    const dx = bx - ax;
+                    const dy = by - ay;
+                    const lengthSquared = dx * dx + dy * dy;
+                    const progress = lengthSquared ? Math.max(0, Math.min(1, -((ax * dx) + (ay * dy)) / lengthSquared)) : 0;
+                    return Math.hypot(ax + progress * dx, ay + progress * dy);
+                };
+                destinations.forEach(destination => {
+                    if (nearby.has(String(destination.id))) return;
+                    const points = [destination.location, ...(destination.activities || []).map(activity => activity.location)]
+                        .map(tourLocationPoint).filter(Boolean);
+                    const closeToRoute = points.some(point => anchors.length === 1
+                        ? distanceToSegmentKm(point, anchors[0], anchors[0]) <= corridorKm
+                        : anchors.slice(1).some((anchor, index) => distanceToSegmentKm(point, anchors[index], anchor) <= corridorKm));
+                    if (closeToRoute) nearby.add(String(destination.id));
+                });
+                return nearby;
             }
             function applyDestinationCategoryFilter() {
                 const cards = [...destinationList.querySelectorAll('.tour-highlight-item')];
@@ -1481,21 +1516,28 @@
                 });
                 const selectedButton = categoryFilters.querySelector('[data-category-filter="selected"]');
                 if (selectedButton) selectedButton.textContent = `Selected (${selectedIds.size})`;
+                const routeIds = destinationsNearSelectedRoute();
                 let visible = 0;
+                let selectedOutsideFilter = 0;
                 cards.forEach((card, index) => {
                     const placeId = card.querySelector('.tour-destination')?.value;
-                    const show = activeDestinationCategory === 'all'
-                        || (activeDestinationCategory === 'suggested' && index < 6)
+                    const matchesFilter = activeDestinationCategory === 'all'
+                        || (activeDestinationCategory === 'route' && routeIds.has(String(placeId)))
                         || (activeDestinationCategory === 'selected' && selectedIds.has(placeId))
-                        || (activeDestinationCategory !== 'suggested' && activeDestinationCategory !== 'selected' && card.dataset.category === activeDestinationCategory);
+                        || (activeDestinationCategory !== 'route' && activeDestinationCategory !== 'selected' && activeDestinationCategory !== 'all' && card.dataset.category === activeDestinationCategory);
+                    const show = activeDestinationCategory === 'selected' ? selectedIds.has(placeId) : matchesFilter || selectedIds.has(placeId);
+                    if (selectedIds.has(placeId) && !matchesFilter) selectedOutsideFilter++;
                     card.hidden = !show;
                     if (show) visible++;
                 });
                 categoryFilters.querySelectorAll('[data-category-filter]').forEach(button => button.classList.toggle('active', button.dataset.categoryFilter === activeDestinationCategory));
                 const empty = document.getElementById('tour-destination-empty');
-                if (activeDestinationCategory === 'suggested') {
-                    highlightCount.textContent = `Showing ${visible} of ${cards.length} places`;
-                    empty.hidden = true;
+                if (activeDestinationCategory === 'route') {
+                    highlightCount.textContent = selectedOutsideFilter
+                        ? `${routeIds.size} places near your trip + ${selectedOutsideFilter} selected`
+                        : `${visible} ${visible === 1 ? 'place' : 'places'} near your trip`;
+                    empty.textContent = 'No mapped places are near this trip yet. Choose All places to browse every destination.';
+                    empty.hidden = visible > 0;
                 } else if (activeDestinationCategory === 'selected') {
                     highlightCount.textContent = `${visible} selected ${visible === 1 ? 'place' : 'places'}`;
                     empty.textContent = 'No places selected yet. Choose a suggestion or search for a place above.';
@@ -1721,6 +1763,7 @@
                     return `<div class="col-md-6"><div class="tour-day-card h-100"><div class="d-flex align-items-center justify-content-between mb-2"><span class="tour-day-badge">Day ${day}</span><span class="small tour-muted">${day === days ? 'Final Stop' : 'Overnight'}</span></div><label class="form-label" for="tour-day-end-${day}">${label} *</label><select id="tour-day-end-${day}" class="form-select form-select-sm tour-day-end tour-location-select no-nice" data-day="${day}" required><option value="${escapeHtml(startSelect.value)}" ${selectedEnd === startSelect.value ? 'selected' : ''}>Return to start</option>${destinations.map(item => `<option value="${escapeHtml(item.id)}" ${selectedEnd === item.id ? 'selected' : ''}>${escapeHtml(item.name)}</option>`).join('')}</select><div class="form-text">${help}</div></div></div>`;
                 }).join('');
                 daySettings.querySelectorAll('.tour-day-end').forEach(select => enhanceTourSearch(select, 'Search listed places'));
+                applyDestinationCategoryFilter();
                 refreshVisitDayOptions();
                 renderTourItinerarySummary();
             }
@@ -1740,6 +1783,11 @@
                 const destinations = data.destinations || [];
                 startSelect.innerHTML += destinations.map(item => `<option value="${escapeHtml(item.id)}">${escapeHtml(item.name)}</option>`).join('');
                 if (destinations.some(item => item.id === previousStart)) startSelect.value = previousStart;
+                else {
+                    const colombo = destinations.find(item => String(item.code || '').toLowerCase() === 'colombo'
+                        || String(item.name || '').trim().toLowerCase() === 'colombo');
+                    if (colombo) startSelect.value = colombo.id;
+                }
                 enhanceTourSearch(startSelect, 'Search a listed place');
                 const placeOptions = destinations.map(item => `<option value="destination:${escapeHtml(item.id)}">${escapeHtml(item.name)}</option>`).join('');
                 const activityOptions = destinations.flatMap(item => (item.activities || []).map(activity => `<option value="activity:${escapeHtml(activity.id)}">${escapeHtml(activity.name)} — ${escapeHtml(item.name)}</option>`)).join('');
@@ -1846,14 +1894,19 @@
                     : data.status === 'review_required'
                         ? 'This schedule has timing conflicts. Ask our team to review it before a transport price can be confirmed.'
                         : data.changed
-                            ? 'Compare the original order with the suggested order for every day. Every selected destination and activity stays in the plan.'
-                            : 'We did not find a shorter order to suggest. You can keep your selected route or ask our team to review it.';
+                            ? 'We found a better stop order. Compare both routes; every selected place and activity stays in your plan.'
+                            : 'We did not find a better stop order. Your selected route is shown below.';
+                const formatRouteStops = schedule => schedule.map(stop => {
+                    const endpoint = stop.stop_id?.startsWith('start-') ? 'Start: '
+                        : stop.stop_id?.startsWith('end-') ? 'Finish: ' : '';
+                    return `${endpoint}${escapeHtml(stop.stop_name)}`;
+                }).join(' → ');
                 const renderAggregate = (route, label) => {
                     const canQuote = route.quote?.status === 'priced' && !unavailable;
                     const disabledLabel = route.quote?.status === 'quotation_required' || unavailable ? 'Our team needs to review this route' : 'Our team needs to check this price';
-                    return `<div class="col-md-6"><div class="tour-option d-flex flex-column h-100"><h3 class="h6 fw-bold mb-2">${escapeHtml(label)}</h3><p class="small mb-2"><strong>${route.distance_km == null ? 'Distance unavailable' : `${escapeHtml(route.distance_km)} km total`}</strong>${route.duration_seconds != null ? ` · ${Math.round(route.duration_seconds / 3600 * 10) / 10} hr driving` : ''}</p>${route.quote?.status === 'priced' ? `<p class="h5 fw-bold mb-3" style="color: var(--tour-primary);">${escapeHtml(route.quote.currency)} ${Number(route.quote.total_amount).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</p>` : `<p class="small text-warning fw-semibold mb-3">${escapeHtml(route.quote?.reason || 'Our team needs to check this price.')}</p>`}<div class="mb-3">${(route.days || []).map(day => `<div class="tour-route-stop small"><span class="fw-bold">Day ${day.day_number}:</span> ${escapeHtml((day.schedule || []).map(stop => stop.stop_name).join(' → '))}</div>`).join('')}</div><button type="button" class="btn tour-btn-outline mt-auto tour-use-route" data-route="${label === 'Suggested route' ? 'suggested' : 'original'}" ${canQuote ? '' : 'disabled'}>${canQuote ? 'Use this route and review price' : disabledLabel}</button></div></div>`;
+                    return `<div class="col-md-6"><div class="tour-option d-flex flex-column h-100"><h3 class="h6 fw-bold mb-2">${escapeHtml(label)}</h3><p class="small mb-2"><strong>${route.distance_km == null ? 'Distance unavailable' : `${escapeHtml(route.distance_km)} km total`}</strong>${route.duration_seconds != null ? ` · ${Math.round(route.duration_seconds / 3600 * 10) / 10} hr driving` : ''}</p>${route.quote?.status === 'priced' ? `<p class="h5 fw-bold mb-3" style="color: var(--tour-primary);">${escapeHtml(route.quote.currency)} ${Number(route.quote.total_amount).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</p>` : `<p class="small text-warning fw-semibold mb-3">${escapeHtml(route.quote?.reason || 'Our team needs to check this price.')}</p>`}<div class="mb-3">${(route.days || []).map(day => `<div class="tour-route-stop small"><span class="fw-bold">Day ${day.day_number}:</span> ${formatRouteStops(day.schedule || [])}</div>`).join('')}</div><button type="button" class="btn tour-btn-outline mt-auto tour-use-route" data-route="${label === 'Suggested route' ? 'suggested' : 'original'}" ${canQuote ? '' : 'disabled'}>${canQuote ? 'Use this route and review price' : disabledLabel}</button></div></div>`;
                 };
-                return `<div class="alert ${unavailable ? 'alert-warning' : 'alert-info'}">${routeMessage}</div><div class="row g-3">${renderAggregate(data.original, 'Your selected order')}${renderAggregate(data.suggested, 'Suggested route')}</div><div class="small tour-muted mt-3">${(data.issues || []).map(issue => `<p class="mb-1">Day ${issue.day_number}: ${escapeHtml(issue.message)}</p>`).join('')}<p class="mb-0">Activity visits are route stops only. Entry tickets and reservations are arranged separately.</p></div>`;
+                return `<div class="alert ${unavailable ? 'alert-warning' : 'alert-info'}">${routeMessage}</div><div class="row g-3">${renderAggregate(data.original, data.changed ? 'Your selected order' : 'Your route')}${data.changed ? renderAggregate(data.suggested, 'Suggested route') : ''}</div><div class="small tour-muted mt-3">${(data.issues || []).map(issue => `<p class="mb-1">Day ${issue.day_number}: ${escapeHtml(issue.message)}</p>`).join('')}<p class="mb-0">Activity visits are route stops only. Entry tickets and reservations are arranged separately.</p></div>`;
             }
             form.addEventListener('submit', async event => {
                 event.preventDefault(); clearError(); invalidateDisplayedQuote();
@@ -1897,7 +1950,9 @@
                     const routes = created.route_options;
                     const hadPriorRouteOptions = !!currentRouteOptions;
                     currentRouteOptions = routes;
-                    if (!hadPriorRouteOptions || routes[preferredRouteChoice]?.quote?.status !== 'priced') {
+                    if (!routes.changed) {
+                        preferredRouteChoice = 'original';
+                    } else if (!hadPriorRouteOptions || routes[preferredRouteChoice]?.quote?.status !== 'priced') {
                         preferredRouteChoice = routes.suggested?.quote?.status === 'priced' ? 'suggested' : 'original';
                     }
                     document.getElementById('tour-summary-request-quote').hidden = false;
@@ -1949,6 +2004,7 @@
                 if (event.type === 'change' && input.matches('.tour-day-end')) refreshVisitDayOptions();
                 if (input.matches('.tour-place-day')) syncActivityDaysFromDestinations();
                 if (input.closest('#tour-step-2')) {
+                    applyDestinationCategoryFilter();
                     renderSelectedTourMap();
                     renderTourItinerarySummary();
                 }
@@ -1977,7 +2033,7 @@
                 syncStopDaySelectors();
                 renderDaySettings(); invalidateDisplayedQuote(); renderSelectedTourMap();
             });
-            startSelect.addEventListener('change', () => { renderDaySettings(); renderSelectedTourMap(); });
+            startSelect.addEventListener('change', () => { renderDaySettings(); applyDestinationCategoryFilter(); renderSelectedTourMap(); });
             document.getElementById('tour-send-code')?.addEventListener('click', async () => {
                 const email = document.getElementById('tour-email').value.trim();
                 if (!email) { showError('Enter your email first.'); return; }
