@@ -175,7 +175,7 @@ class BookingPaymentLedgerService
         $securityRefunded = $money((float) $confirmedSecurityReceipts->sum('refunded_amount'));
         $securityHeld = max(0, $money($securityReceived - $securityRefunded));
         $bookingItems = $booking->bookingItems()->with(['vehicleGroup', 'serviceType'])->get();
-        $requiredSecurity = $this->requiredSecurityDeposit($bookingItems);
+        $requiredSecurity = $this->requiredSecurityDeposit($bookingItems, $currency);
         $requiredServiceDeposit = $this->requiredServiceDeposit($bookingItems, $money);
         $total = $money((float) ($booking->total_actual ?? $booking->total_estimated ?? $booking->amount_to_pay ?? 0));
         $ledgerPaid = $money((float) $confirmedFareReceipts->sum(fn ($receipt) => (float) $receipt->amount - (float) $receipt->refunded_amount));
@@ -426,19 +426,24 @@ class BookingPaymentLedgerService
         return $money($required);
     }
 
-    private function requiredSecurityDeposit(iterable $items): float
+    private function requiredSecurityDeposit(iterable $items, string $currency = 'LKR'): float
     {
-        $required = 0.0;
+        $requiredLkr = 0.0;
         foreach ($items as $item) {
             $policy = is_array($item->workflow_config_snapshot ?? null) ? $item->workflow_config_snapshot : [];
             if (! (bool) ($policy['requires_refundable_deposit'] ?? $item->serviceType?->requires_refundable_deposit)) {
                 continue;
             }
             $metadata = is_array($item->metadata ?? null) ? $item->metadata : [];
-            $required += (float) ($metadata['refundable_deposit_lkr'] ?? $item->vehicleGroup?->refundable_deposit ?? 0);
+            $requiredLkr += (float) ($metadata['refundable_deposit_lkr'] ?? $item->vehicleGroup?->refundable_deposit ?? 0);
         }
 
-        return max(0, $required);
+        $requiredLkr = max(0.0, $requiredLkr);
+        if ($requiredLkr <= 0) {
+            return 0.0;
+        }
+
+        return app(CurrencyService::class)->convertFromLKR($requiredLkr, strtoupper(trim($currency ?: 'LKR')));
     }
 
     /**
@@ -540,7 +545,8 @@ class BookingPaymentLedgerService
             }
             if ($purpose === 'security_deposit') {
                 $requiredSecurity = $this->requiredSecurityDeposit(
-                    $booking->bookingItems()->with(['vehicleGroup', 'serviceType'])->get()
+                    $booking->bookingItems()->with(['vehicleGroup', 'serviceType'])->get(),
+                    $currency
                 );
                 if ($requiredSecurity <= 0) {
                     throw ValidationException::withMessages(['amount' => ['The selected vehicle group does not require a refundable security deposit.']]);
