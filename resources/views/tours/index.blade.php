@@ -2034,6 +2034,18 @@
                 renderDaySettings(); invalidateDisplayedQuote(); renderSelectedTourMap();
             });
             startSelect.addEventListener('change', () => { renderDaySettings(); applyDestinationCategoryFilter(); renderSelectedTourMap(); });
+            daySettings.addEventListener('change', event => {
+                const select = event.target;
+                if (!select.matches('.tour-day-end')) return;
+                event.stopPropagation();
+                refreshVisitDayOptions();
+                applyDestinationCategoryFilter();
+                renderSelectedTourMap();
+                renderTourItinerarySummary();
+                renderTourSummaryDetails();
+                invalidateDisplayedQuote();
+                scheduleAutomaticPriceRefresh();
+            });
             document.getElementById('tour-send-code')?.addEventListener('click', async () => {
                 const email = document.getElementById('tour-email').value.trim();
                 if (!email) { showError('Enter your email first.'); return; }
