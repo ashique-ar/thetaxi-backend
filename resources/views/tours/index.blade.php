@@ -488,24 +488,35 @@
             box-shadow: 0 10px 25px -4px rgba(15, 23, 42, 0.06);
         }
 
-        .tour-summary-head { background: #192638; color: #fff; margin: -1rem -1rem 0; padding: 1rem; border-radius: 0.85rem 0.85rem 0 0; }
-        .tour-summary-head h2 { font-size: 1.1rem; font-weight: 800; margin: 0.45rem 0 0.15rem; }
+        .tour-summary-head { background: #192638; color: #fff; margin: -1rem -1rem 0; padding: 0.8rem 0.85rem; border-radius: 0.75rem 0.75rem 0 0; }
+        .tour-summary-head h2 { color: #fff; font-size: 1rem; font-weight: 800; margin: 0.35rem 0 0.1rem; }
         .tour-summary-head .small { color: #dbe3ef; }
-        .tour-summary-duration { border-radius: 999px; background: var(--tour-primary); padding: 0.2rem 0.55rem; font-size: 0.68rem; font-weight: 800; white-space: nowrap; }
-        .tour-summary-facts { display: grid; grid-template-columns: 1fr auto; gap: 0.45rem 0.75rem; padding: 1rem 0; border-bottom: 1px solid var(--tour-border); font-size: 0.78rem; }
+        .tour-summary-duration { border-radius: 999px; background: var(--tour-primary); padding: 0.18rem 0.48rem; font-size: 0.65rem; font-weight: 800; white-space: nowrap; }
+        .tour-summary-facts { display: grid; grid-template-columns: 1fr auto; gap: 0.35rem 0.65rem; padding: 0.75rem 0; border-bottom: 1px solid var(--tour-border); font-size: 0.7rem; }
         .tour-summary-facts dt { color: var(--tour-muted); font-weight: 500; }
         .tour-summary-facts dd { margin: 0; text-align: right; font-weight: 700; }
-        .tour-summary-route { padding: 1rem 0; border-bottom: 1px solid var(--tour-border); }
-        .tour-summary-route ol { padding-left: 1.15rem; margin: 0.6rem 0 0; font-size: 0.76rem; }
-        .tour-summary-route li { padding: 0.18rem 0; }
-        .tour-summary-route li::marker { color: var(--tour-primary); }
-        .tour-summary-price { padding: 1rem 0; border-bottom: 1px solid var(--tour-border); }
-        .tour-summary-price strong { color: #8f1b1e; font-size: 1.45rem; line-height: 1.2; }
+        .tour-summary-route { padding: 0.75rem 0; border-bottom: 1px solid var(--tour-border); }
+        .tour-summary-route ol { list-style: none; padding: 0; margin: 0.42rem 0 0; font-size: 0.68rem; }
+        .tour-summary-route li { position: relative; padding: 0.16rem 0 0.16rem 0.7rem; }
+        .tour-summary-route li::before { content: ''; position: absolute; left: 0; top: 0.55rem; width: 0.3rem; height: 0.3rem; border-radius: 50%; background: var(--tour-primary); }
+        .tour-summary-price { padding: 0.7rem 0; border-bottom: 1px solid var(--tour-border); }
+        .tour-summary-price strong { color: #8f1b1e; font-size: 1.2rem; line-height: 1.15; }
+        .tour-summary-price-class { font-size: 0.68rem; }
+        .tour-summary-breakdown { border-top: 1px solid #edf0f4; margin-top: 0.45rem; padding-top: 0.25rem; }
+        .tour-summary-breakdown-line { display: flex; justify-content: space-between; gap: 0.5rem; padding: 0.16rem 0; font-size: 0.65rem; }
+        .tour-summary-breakdown-line.is-included { color: #059669; }
+        .tour-summary-total { border-top: 1px solid #edf0f4; margin-top: 0.35rem; padding-top: 0.55rem; }
+        .tour-summary-total > div:first-child strong { color: #111827; font-size: 0.75rem; }
+        .tour-advance-note { margin: 0.6rem 0 0.7rem; padding: 0.55rem 0.6rem; border: 1px solid #f4d57b; border-radius: 0.45rem; background: #fffbeb; color: #8b4b06; font-size: 0.63rem; line-height: 1.4; }
+        .tour-summary-trust { display: grid; grid-template-columns: 1fr 1fr; gap: 0.42rem 0.35rem; padding: 0.65rem 0 0.2rem; color: var(--tour-muted); font-size: 0.6rem; }
+        .tour-summary-trust span::before { content: '✓'; color: var(--tour-emerald); font-weight: 800; margin-right: 0.3rem; }
+        .tour-summary-advice { margin-top: 0.65rem; padding: 0.55rem; border: 1px solid var(--tour-border); border-radius: 0.55rem; background: #f8fafc; text-align: center; font-size: 0.64rem; }
+        .tour-summary-advice a { display: inline-block; margin-top: 0.2rem; color: var(--tour-emerald); font-weight: 800; text-decoration: none; }
         .tour-summary-term { font-size: 0.76rem; }
         .tour-summary-term + .tour-summary-term { margin-top: 0.65rem; }
         .tour-summary-pay { width: 100%; }
         .tour-summary-request { width: 100%; }
-        @media (min-width: 768px) { .tour-summary-head { margin: -1.5rem -1.5rem 0; padding: 1.25rem 1.5rem; } }
+        .tour-page .tour-summary-aside { top: 7rem !important; z-index: 10; }
 
         .tour-badge-guaranteed {
             display: inline-flex;
@@ -962,8 +973,8 @@
                 </div>
 
                 <!-- RIGHT COLUMN: Sticky Live Quote & Assistance (4 Cols) -->
-                <aside class="col-lg-4 sticky-lg-top d-flex flex-column gap-4" style="top: 1.5rem;">
-                    <div class="tour-sidebar-card p-3 p-md-4">
+                <aside class="col-lg-4 sticky-lg-top tour-summary-aside d-flex flex-column gap-4">
+                    <div class="tour-sidebar-card p-3">
                         <header class="tour-summary-head">
                             <div class="d-flex align-items-center justify-content-between gap-2">
                                 <span class="text-uppercase fw-bold small" style="letter-spacing: 0.06em;">Tour Summary</span>
@@ -977,7 +988,7 @@
                             <dt>Dates</dt><dd id="tour-summary-dates">Choose your travel dates</dd>
                             <dt>Travellers</dt><dd id="tour-summary-travellers">2 Adults</dd>
                             <dt>Pick-up location</dt><dd id="tour-summary-pickup">Choose a place</dd>
-                            <dt>Luggage</dt><dd id="tour-summary-luggage">0 bags</dd>
+                            <dt>Driver language</dt><dd>Fluent English</dd>
                         </dl>
 
                         <section class="tour-summary-route" aria-labelledby="tour-summary-route-title">
@@ -986,45 +997,43 @@
                         </section>
 
                         <section id="tour-total-summary" class="tour-summary-price" aria-live="polite">
-                            <div class="d-flex justify-content-between gap-2 small mb-2">
+                            <div class="d-flex justify-content-between align-items-center gap-2 small mb-2">
                                 <span id="tour-summary-price-label">Estimated transport price</span>
-                                <span id="tour-summary-price-class"></span>
                             </div>
-                            <div class="d-flex align-items-end justify-content-between gap-2">
-                                <span id="tour-total-distance" class="small tour-muted">Your price updates as your trip changes.</span>
-                                <strong id="tour-total-amount">—</strong>
+                            <div class="tour-summary-breakdown-line">
+                                <span id="tour-summary-price-class" class="tour-summary-price-class">Choose a vehicle</span>
+                                <span id="tour-total-distance" class="small tour-muted"></span>
                             </div>
-                            <div id="tour-summary-breakdown" class="small mt-3" hidden></div>
-                            <p id="tour-summary-payment-note" class="small tour-muted mt-2 mb-0">Full payment or any available advance payment can be selected at checkout.</p>
+                            <div id="tour-summary-breakdown" class="tour-summary-breakdown" hidden></div>
+                            <div class="tour-summary-total d-flex justify-content-between align-items-center gap-2">
+                                <div><strong class="d-block text-dark" style="font-size:.75rem">Total price</strong><span class="small tour-muted">Estimated transport price</span></div>
+                                <div class="text-end"><strong id="tour-total-amount">—</strong><span class="d-block small tour-muted" id="tour-summary-currency"></span></div>
+                            </div>
                             <p id="tour-summary-price-status" class="small tour-muted mt-2 mb-0" role="status" aria-live="polite"></p>
                         </section>
+                        <div id="tour-summary-advance-note" class="tour-advance-note" data-enabled="{{ $advancePaymentEnabled ? 'true' : 'false' }}" data-percentage="{{ number_format($advancePercentage, 4, '.', '') }}" data-minimum="{{ number_format($advanceMinAmount, 2, '.', '') }}" hidden></div>
                         <div id="tour-summary-terms" class="py-3" hidden></div>
                         <div class="d-grid gap-2">
-                            <button id="tour-summary-checkout" type="button" class="btn tour-btn-primary tour-summary-pay" hidden disabled>Continue to checkout</button>
+                            <button id="tour-summary-checkout" type="button" class="btn tour-btn-primary tour-summary-pay" hidden disabled>Confirm &amp; Reserve Driver <span aria-hidden="true">→</span></button>
                             <button id="tour-summary-request-quote" type="button" class="btn tour-btn-outline tour-summary-request" hidden>Request a quotation</button>
                         </div>
-                        <p class="small tour-muted mt-3 mb-0">Attraction tickets and activity fees are not included.</p>
-                    </div>
-
-                    @if (!empty($supportPhone) || !empty($supportWhatsapp))
-                        <div class="tour-assistance-card small">
-                            <div class="fw-bold mb-1 d-flex align-items-center gap-2" style="color: var(--tour-ink);">
-                                <svg width="16" height="16" style="color: var(--tour-primary);" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true">
-                                    <path d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" stroke-linecap="round" stroke-linejoin="round" stroke-width="2"></path>
-                                </svg>
-                                <span>Would you like help planning your trip?</span>
-                            </div>
-                            <p class="tour-muted mb-2">Talk with our team about planning your tour.</p>
-                            <div class="d-flex flex-wrap gap-3">
-                                @if (!empty($supportPhone))
-                                    <a class="tour-assistance-link" href="tel:{{ $supportPhoneHref }}">Call {{ $supportPhone }}</a>
-                                @endif
-                                @if (!empty($supportWhatsapp))
-                                    <a class="tour-assistance-link" href="https://wa.me/{{ $supportWhatsapp }}" target="_blank" rel="noopener noreferrer">WhatsApp Desk</a>
-                                @endif
-                            </div>
+                        <div class="tour-summary-trust">
+                            <span>Price updates with your trip</span>
+                            <span>Stops arranged by day</span>
+                            <span>Choose places and activities</span>
+                            <span>Tickets and activity fees not included</span>
                         </div>
-                    @endif
+                        @if (!empty($supportPhone) || !empty($supportWhatsapp))
+                            <div class="tour-summary-advice">
+                                <div class="tour-muted">Need route planning advice?</div>
+                                @if (!empty($supportWhatsapp))
+                                    <a href="https://wa.me/{{ $supportWhatsapp }}" target="_blank" rel="noopener noreferrer">Talk with our team on WhatsApp <span aria-hidden="true">→</span></a>
+                                @else
+                                    <a href="tel:{{ $supportPhoneHref }}">Talk with our team <span aria-hidden="true">→</span></a>
+                                @endif
+                            </div>
+                        @endif
+                    </div>
                 </aside>
             </form>
         </main>
@@ -1139,8 +1148,10 @@
                 document.getElementById('tour-mobile-summary').hidden = true;
                 document.getElementById('tour-summary-price-label').textContent = savedItinerary ? 'Estimated transport price' : 'Estimated transport price';
                 document.getElementById('tour-total-amount').textContent = savedItinerary ? 'Updating…' : '—';
-                document.getElementById('tour-summary-price-status').textContent = savedItinerary ? 'Updating your route and price…' : 'Your price updates as your trip changes.';
+                document.getElementById('tour-summary-price-status').textContent = savedItinerary ? 'Updating your route and price…' : 'Complete your trip details to see an estimate.';
                 document.getElementById('tour-summary-breakdown').hidden = true;
+                document.getElementById('tour-summary-advance-note').hidden = true;
+                document.getElementById('tour-summary-currency').textContent = '';
                 if (classPriceEstimates.size) {
                     classPriceEstimates.clear();
                     classPriceRouteLabel = null;
@@ -1151,12 +1162,14 @@
                 if (quote.total_amount === null || quote.total_amount === undefined || !Number.isFinite(Number(quote.total_amount))) return;
                 currentTourQuote = quote;
                 const formatted = `${quote.currency} ${Number(quote.total_amount).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
-                document.getElementById('tour-total-amount').textContent = formatted;
-                document.getElementById('tour-summary-price-label').textContent = 'Confirmed transport total';
-                document.getElementById('tour-summary-price-class').textContent = classSelect.selectedOptions[0]?.textContent || '';
+                document.getElementById('tour-total-amount').textContent = Number(quote.total_amount).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+                document.getElementById('tour-summary-currency').textContent = quote.currency;
+                document.getElementById('tour-summary-price-label').textContent = 'Transport';
+                document.getElementById('tour-summary-price-class').textContent = `${classSelect.selectedOptions[0]?.textContent?.trim() || 'Selected vehicle'} (${document.getElementById('tour-days').value} Days)`;
                 document.getElementById('tour-total-distance').textContent = `${quote.distance_km} km estimated`;
-                document.getElementById('tour-summary-price-status').textContent = `Price held until ${new Date(quote.expires_at).toLocaleString()}.`;
+                document.getElementById('tour-summary-price-status').textContent = 'Price held for 30 minutes.';
                 renderPricingBreakdown(quote.breakdown, quote.currency);
+                renderAdvanceNote(Number(quote.total_amount), quote.currency);
                 document.getElementById('tour-mobile-total').textContent = formatted;
                 document.getElementById('tour-mobile-summary').hidden = false;
                 const terms = quote.terms_snapshot || [];
@@ -1172,22 +1185,38 @@
                 const element = document.getElementById('tour-summary-breakdown');
                 const lines = Array.isArray(breakdown) ? breakdown : Object.entries(breakdown || {}).map(([component, amount]) => ({ component, amount }));
                 const visibleLines = lines.filter(line => line && typeof line === 'object' && Number.isFinite(Number(line.amount)));
-                element.innerHTML = visibleLines.map(line => `<div class="d-flex justify-content-between gap-2 py-1"><span>${escapeHtml(line.component || line.label || line.name || 'Transport')}</span><span>${escapeHtml(currency)} ${Number(line.amount).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</span></div>`).join('');
+                element.innerHTML = visibleLines.map(line => {
+                    const amount = Number(line.amount);
+                    const value = amount === 0 ? `Included (${escapeHtml(currency)} 0.00)` : `${escapeHtml(currency)} ${amount.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
+                    return `<div class="tour-summary-breakdown-line${amount === 0 ? ' is-included' : ''}"><span>${escapeHtml(line.component || line.label || line.name || 'Transport')}</span><span>${value}</span></div>`;
+                }).join('');
                 element.hidden = visibleLines.length === 0;
+            }
+            function renderAdvanceNote(total, currency) {
+                const note = document.getElementById('tour-summary-advance-note');
+                const percentage = Number(note.dataset.percentage);
+                if (note.dataset.enabled !== 'true' || !Number.isFinite(percentage) || percentage <= 0 || total <= 0) {
+                    note.hidden = true;
+                    return;
+                }
+                const amount = Math.min(total, Math.max(total * percentage / 100, Number(note.dataset.minimum) || 0));
+                note.textContent = `Pay ${percentage}% (${currency} ${amount.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}) at checkout to confirm your Tour. The remaining balance is payable according to the booking terms.`;
+                note.hidden = false;
             }
             function renderTourSummaryDetails(routeOptions = null, routeChoice = preferredRouteChoice) {
                 const date = document.getElementById('tour-date').value;
                 const dayCount = Math.max(1, Number(document.getElementById('tour-days').value) || 1);
-                const travelers = Number(document.getElementById('tour-adults').value || 0) + Number(document.getElementById('tour-children').value || 0);
+                const adults = Number(document.getElementById('tour-adults').value || 0);
+                const children = Number(document.getElementById('tour-children').value || 0);
                 const luggage = Number(document.getElementById('tour-luggage').value || 0);
                 const places = new Map((catalogue?.destinations || []).map(item => [String(item.id), item]));
                 const start = places.get(String(startSelect.value));
                 const selectedClass = classSelect.selectedOptions[0]?.textContent?.trim() || 'Choose your vehicle';
+                const classDetails = (currentService()?.classes || []).find(item => String(item.id) === String(classSelect.value));
                 const nightCount = Math.max(0, dayCount - 1);
                 document.getElementById('tour-summary-duration').textContent = `${dayCount} ${dayCount === 1 ? 'Day' : 'Days'} / ${nightCount} ${nightCount === 1 ? 'Night' : 'Nights'}`;
-                document.getElementById('tour-summary-vehicle').textContent = selectedClass;
-                document.getElementById('tour-summary-travellers').textContent = `${travelers} ${travelers === 1 ? 'Traveller' : 'Travellers'}`;
-                document.getElementById('tour-summary-luggage').textContent = `${luggage} ${luggage === 1 ? 'bag' : 'bags'}`;
+                document.getElementById('tour-summary-vehicle').textContent = classDetails?.display_name || selectedClass;
+                document.getElementById('tour-summary-travellers').textContent = `${adults} ${adults === 1 ? 'Adult' : 'Adults'}${children ? `, ${children} ${children === 1 ? 'Child' : 'Children'}` : ''}, ${luggage} ${luggage === 1 ? 'Bag' : 'Bags'}`;
                 document.getElementById('tour-summary-pickup').textContent = start?.name || 'Choose a place';
                 if (date) {
                     const startDate = new Date(`${date}T00:00:00`);
@@ -1221,19 +1250,23 @@
                 renderTourSummaryDetails(routes, routeChoice);
                 const route = routes?.[routeChoice];
                 const estimate = route?.quote;
-                document.getElementById('tour-summary-price-class').textContent = classSelect.selectedOptions[0]?.textContent || '';
-                document.getElementById('tour-summary-price-label').textContent = 'Estimated transport price';
+                document.getElementById('tour-summary-price-class').textContent = `${classSelect.selectedOptions[0]?.textContent?.trim() || 'Choose a vehicle'} (${document.getElementById('tour-days').value} Days)`;
+                document.getElementById('tour-summary-price-label').textContent = 'Transport';
                 if (estimate?.status === 'priced' && Number.isFinite(Number(estimate.total_amount))) {
                     const formatted = `${estimate.currency} ${Number(estimate.total_amount).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
-                    document.getElementById('tour-total-amount').textContent = formatted;
+                    document.getElementById('tour-total-amount').textContent = Number(estimate.total_amount).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+                    document.getElementById('tour-summary-currency').textContent = estimate.currency;
                     document.getElementById('tour-total-distance').textContent = `${route.distance_km} km estimated`;
-                    document.getElementById('tour-summary-price-status').textContent = 'Estimate updates when your trip details change.';
+                    document.getElementById('tour-summary-price-status').textContent = 'Estimate updates as your trip changes.';
                     renderPricingBreakdown(estimate.breakdown, estimate.currency);
+                    renderAdvanceNote(Number(estimate.total_amount), estimate.currency);
                     document.getElementById('tour-mobile-total').textContent = formatted;
                     document.getElementById('tour-mobile-summary').hidden = false;
                 } else {
                     document.getElementById('tour-total-amount').textContent = 'Request quote';
+                    document.getElementById('tour-summary-currency').textContent = '';
                     document.getElementById('tour-summary-breakdown').hidden = true;
+                    document.getElementById('tour-summary-advance-note').hidden = true;
                     document.getElementById('tour-total-distance').textContent = route?.distance_km == null ? 'Route distance pending review' : `${route.distance_km} km estimated`;
                     document.getElementById('tour-summary-price-status').textContent = estimate?.reason || 'Our team will prepare a quotation for this route.';
                 }

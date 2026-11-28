@@ -29,17 +29,42 @@ use Illuminate\View\View;
 
 class TourController extends Controller
 {
-    public function index(): View
+    public function index(CurrencyService $currency): View
     {
-        abort_unless(app(WebsiteSettingsService::class)->getTourService(true), 404);
+        $settings = app(WebsiteSettingsService::class);
+        abort_unless($settings->getTourService(true), 404);
 
-        $bookingSettings = app(WebsiteSettingsService::class)->getBookingSettings();
+        $bookingSettings = $settings->getBookingSettings();
+        $paymentSettings = $settings->getPaymentSettings();
+        $onlinePaymentEnabled = filter_var(
+            $paymentSettings['payment_online_enabled'] ?? config('booking.payment_methods.online.enabled', true),
+            FILTER_VALIDATE_BOOLEAN
+        ) && filter_var(
+            $paymentSettings['webxpay_enabled'] ?? config('booking.webxpay.enabled', false),
+            FILTER_VALIDATE_BOOLEAN
+        );
+        $advancePaymentEnabled = $onlinePaymentEnabled && filter_var(
+            $paymentSettings['advance_payment_enabled'] ?? config('booking.advance_payment.enabled', true),
+            FILTER_VALIDATE_BOOLEAN
+        );
+        $advancePercentage = (float) str_replace('%', '', (string) ($paymentSettings['advance_payment_percentage'] ?? config('booking.advance_payment.percentage', 50)));
+        if ($advancePercentage > 0 && $advancePercentage <= 1) {
+            $advancePercentage *= 100;
+        }
+        $advancePercentage = min(100, max(0, $advancePercentage));
+        $advanceMinAmount = $currency->convertFromLKR(
+            max(0, (float) ($paymentSettings['advance_payment_min_amount'] ?? config('booking.advance_payment.min_amount', 0))),
+            $currency->getSelectedCurrency()
+        );
         $tourFaqs = FAQCategory::active()->where('slug', 'tours')->first()?->activeFaqs ?? collect();
 
         return view('tours.index', [
             'guestBookingEnabled' => filter_var($bookingSettings['guest_booking_enabled'] ?? true, FILTER_VALIDATE_BOOLEAN),
             'customerLookupEnabled' => filter_var($bookingSettings['checkout_returning_customer_lookup_enabled'] ?? true, FILTER_VALIDATE_BOOLEAN),
             'tourFaqs' => $tourFaqs,
+            'advancePaymentEnabled' => $advancePaymentEnabled,
+            'advancePercentage' => $advancePercentage,
+            'advanceMinAmount' => $advanceMinAmount,
         ]);
     }
 
